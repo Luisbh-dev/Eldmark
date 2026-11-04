@@ -1,30 +1,30 @@
 class_name DeathScreen
 extends Control
-## Pantalla de muerte y reaparición (UI-14). Se abre al morir y enseña quién te derrotó y con qué,
-## la cuenta atrás hasta que el servidor deja reaparecer, la lista de puntos de reaparición y el
-## botón «Reaparecer», que solo se habilita cuando ya se puede y envía el punto elegido
-## ([signal respawn_requested]). Al reaparecer se cierra y no deja nada atrás.
+## Death and respawn screen (UI-14). It opens on death and shows who defeated you and with what,
+## the countdown until the server allows respawning, the list of respawn points and the
+## "Reaparecer" (Respawn) button, which is only enabled when it is possible and sends the chosen point
+## ([signal respawn_requested]). On respawn it closes and leaves nothing behind.
 ## [br][br]
-## No lee la red: el [HUD] la abre con [method open], la actualiza cada fotograma con
-## [method update_countdown] (con el tick del servidor estimado por [NetClient]) y la cierra con
-## [method close]. La cuenta se hace en ticks del servidor, así que va sincronizada con la
-## reaparición real aunque el reloj local se desfase. Los nodos se crean una sola vez en
-## [method _ready] y abrirla y cerrarla solo cambia textos y visibilidad: morir y reaparecer muchas
-## veces no acumula nada.
+## It does not read the network: the [HUD] opens it with [method open], updates it every frame with
+## [method update_countdown] (with the server tick estimated by [NetClient]) and closes it with
+## [method close]. The countdown is in server ticks, so it stays in sync with the
+## real respawn even if the local clock drifts. The nodes are created once in
+## [method _ready] and opening and closing it only changes texts and visibility: dying and respawning many
+## times accumulates nothing.
 ## [br][br]
-## [b]Plantilla de equipo[/b] (PRG-07, docs/habilidades.md, sección 6.5): debajo de los puntos de
-## reaparición, el [TemplateSelector] ([method get_template_selector]); el [HUD] manda el LOADOUT_SELECT al
-## elegir y la plantilla vale en esta reaparición.
+## [b]Equipment template[/b] (PRG-07, docs/habilidades.md, section 6.5): below the respawn points,
+## the [TemplateSelector] ([method get_template_selector]); the [HUD] sends the LOADOUT_SELECT on
+## choosing and the template applies on this respawn.
 ## [br][br]
-## [b]Con el ratón.[/b] Ningún control toma el foco ([constant Control.FOCUS_NONE]): si un clic en un punto o en una
-## plantilla se lo quedara, Tab movería el foco en vez de abrir el marcador (que se monta encima para verlo muerto) e
-## Intro pulsaría «Reaparecer» (revisión de la fase 4, cliente).
+## [b]With the mouse.[/b] No control takes focus ([constant Control.FOCUS_NONE]): if a click on a point or a
+## template left it focused, Tab would move focus instead of opening the scoreboard (which is mounted on top so it can be seen while dead) and
+## Enter would press "Reaparecer" (phase 4 review, client).
 
-## El jugador pide reaparecer en el punto [param point_index] de la lista.
+## The player asks to respawn at point [param point_index] of the list.
 signal respawn_requested(point_index: int)
-## El jugador pide ver el mapa para elegir el punto de reaparición.
+## The player asks to see the map to choose the respawn point.
 signal map_requested
-## La pantalla se ha abierto o cerrado.
+## The screen has been opened or closed.
 signal opened
 signal closed
 
@@ -38,12 +38,12 @@ const TEXT_REQUESTED: String = "Reapareciendo…"
 const NO_POINTS_TEXT: String = "Punto de reaparición del reino"
 const DIM_COLOR: Color = Color(0.02, 0.0, 0.0, 0.62)
 const PANEL_WIDTH: float = 460.0
-## Segundos sin que reaparezca el jugador tras pedirlo, pasados los cuales el botón se vuelve a
-## habilitar (el servidor no contesta a una petición fuera de plazo).
+## Seconds without the player respawning after requesting it, after which the button is enabled
+## again (the server does not answer a request made out of time).
 const REQUEST_TIMEOUT_SECONDS: float = 2.0
 
 var _open: bool = false
-# Índice que se envía por cada fila de la lista (vacío = el de la fila).
+# Index sent for each row of the list (empty = the row's own).
 var _point_indices: PackedInt32Array = PackedInt32Array()
 var _respawn_tick: int = 0
 var _estimated_tick: int = 0
@@ -61,16 +61,16 @@ var _templates: TemplateSelector = null
 
 
 func _ready() -> void:
-	# Cubre la pantalla y se come el ratón mientras está abierta (el cursor está libre).
+	# Covers the screen and swallows the mouse while open (the cursor is free).
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_ensure_built()
 	visible = _open
 
 
-## Abre la pantalla. [param cause_text] es la frase de quién te derrotó (ver [method
-## CombatText.death_text]), [param respawn_tick] el tick del servidor en el que se puede reaparecer
-## y [param point_labels] los nombres de los puntos de reaparición, en el orden de la lista cuyo
-## índice se envía al servidor. Si ya estaba abierta, solo actualiza.
+## Opens the screen. [param cause_text] is the sentence about who defeated you (see [method
+## CombatText.death_text]), [param respawn_tick] the server tick at which respawning is possible
+## and [param point_labels] the names of the respawn points, in the order of the list whose
+## index is sent to the server. If it was already open, it only updates.
 func open(cause_text: String, respawn_tick: int, point_labels: PackedStringArray) -> void:
 	_ensure_built()
 	_respawn_tick = respawn_tick
@@ -90,8 +90,8 @@ func _process(delta: float) -> void:
 	advance(delta)
 
 
-## Avanza [param delta] segundos la espera de la respuesta a una petición de reaparición: si el
-## servidor no la atiende en [constant REQUEST_TIMEOUT_SECONDS] s, el botón vuelve a habilitarse.
+## Advances [param delta] seconds the wait for the response to a respawn request: if the
+## server does not handle it within [constant REQUEST_TIMEOUT_SECONDS] s, the button is enabled again.
 func advance(delta: float) -> void:
 	if not _open or not _requested:
 		return
@@ -101,8 +101,8 @@ func advance(delta: float) -> void:
 		update_countdown(_estimated_tick)
 
 
-## Cambia la lista de puntos (la de [method open]) sin cerrar la pantalla: el estado de los fuertes
-## cambia mientras se espera. Conserva el punto elegido si sigue en la lista.
+## Changes the list of points (the one from [method open]) without closing the screen: the state of the forts
+## changes while waiting. Keeps the chosen point if it is still in the list.
 func update_points(point_labels: PackedStringArray, indices: PackedInt32Array = PackedInt32Array()) -> void:
 	_ensure_built()
 	var previous: int = get_selected_point_index()
@@ -113,13 +113,13 @@ func update_points(point_labels: PackedStringArray, indices: PackedInt32Array = 
 		select_point_index(previous)
 
 
-## Índice que se envía en la petición por cada fila de la lista (el de la lista de todos los marcadores
-## de reaparición de la zona, ver [RespawnPointList.Option.index_for]). Sin llamarla, el de la fila.
+## Index sent in the request for each row of the list (the one from the list of all the zone's
+## respawn markers, see [RespawnPointList.Option.index_for]). Without calling it, the row's own.
 func set_point_indices(indices: PackedInt32Array) -> void:
 	_point_indices = indices
 
 
-## Índice que se enviaría ahora: el de la fila elegida, pasado por [method set_point_indices] si lo hay.
+## Index that would be sent now: that of the chosen row, mapped through [method set_point_indices] if set.
 func get_selected_point_index() -> int:
 	var row: int = get_selected_point()
 	if row >= 0 and row < _point_indices.size():
@@ -127,7 +127,7 @@ func get_selected_point_index() -> int:
 	return row
 
 
-## Elige la fila cuyo índice enviado es [param point_index] (si está en la lista). Devuelve false si no.
+## Chooses the row whose sent index is [param point_index] (if it is in the list). Returns false if not.
 func select_point_index(point_index: int) -> bool:
 	for row: int in get_point_count():
 		var sent: int = _point_indices[row] if row < _point_indices.size() else row
@@ -137,13 +137,13 @@ func select_point_index(point_index: int) -> bool:
 	return false
 
 
-## Cambia la frase de quién te derrotó (el evento puede llegar con la pantalla ya abierta).
+## Changes the sentence about who defeated you (the event may arrive with the screen already open).
 func set_cause_text(text: String) -> void:
 	_ensure_built()
 	_cause.text = text
 
 
-## Cierra la pantalla (al reaparecer) y deja todo como estaba.
+## Closes the screen (on respawn) and leaves everything as it was.
 func close() -> void:
 	if not _open:
 		return
@@ -154,9 +154,9 @@ func close() -> void:
 	closed.emit()
 
 
-## Actualiza la cuenta atrás con el tick del servidor [param estimated_server_tick] (ver
-## [method NetClient.get_estimated_server_tick]). El botón se habilita cuando ese tick alcanza el de
-## reaparición.
+## Updates the countdown with the server tick [param estimated_server_tick] (see
+## [method NetClient.get_estimated_server_tick]). The button is enabled when that tick reaches the
+## respawn tick.
 func update_countdown(estimated_server_tick: int) -> void:
 	_estimated_tick = estimated_server_tick
 	if _button == null:
@@ -175,22 +175,22 @@ func is_open() -> bool:
 	return _open
 
 
-## Ticks que faltan para poder reaparecer (0 si ya se puede).
+## Ticks remaining until respawn is possible (0 if it already is).
 func get_remaining_ticks() -> int:
 	return maxi(_respawn_tick - _estimated_tick, 0)
 
 
-## Segundos enteros (hacia arriba) que faltan para poder reaparecer.
+## Whole seconds (rounded up) remaining until respawn is possible.
 func get_remaining_seconds() -> int:
 	return ceili(float(get_remaining_ticks()) / float(Engine.physics_ticks_per_second))
 
 
-## true si el botón está habilitado.
+## true if the button is enabled.
 func is_respawn_enabled() -> bool:
 	return _button != null and not _button.disabled
 
 
-## Punto elegido en la lista (0 si no hay selección).
+## Point chosen in the list (0 if there is no selection).
 func get_selected_point() -> int:
 	if _points == null:
 		return 0
@@ -203,13 +203,13 @@ func select_point(index: int) -> void:
 		_points.select(index)
 
 
-## El selector de plantilla de equipo para la reaparición.
+## The equipment template selector for the respawn.
 func get_template_selector() -> TemplateSelector:
 	_ensure_built()
 	return _templates
 
 
-## El botón «Elegir en el mapa» (visible mientras hay más de un punto donde elegir).
+## The "Elegir en el mapa" (Choose on the map) button (visible while there is more than one point to choose from).
 func get_map_button() -> Button:
 	return _map_button
 
@@ -230,12 +230,12 @@ func get_countdown_text() -> String:
 	return _countdown.text if _countdown != null else ""
 
 
-## El botón «Reaparecer»; las pruebas lo pulsan con [code]emit_signal("pressed")[/code].
+## The "Reaparecer" (Respawn) button; tests press it with [code]emit_signal("pressed")[/code].
 func get_button() -> Button:
 	return _button
 
 
-## Nodos que cuelgan de la pantalla: no crece al abrirla y cerrarla.
+## Nodes hanging from the screen: it does not grow when opened and closed.
 func get_node_total() -> int:
 	return find_children("*", "", true, false).size()
 
@@ -261,7 +261,7 @@ func _set_points(labels: PackedStringArray) -> void:
 	_points_title.visible = names.size() > 1
 	_points.visible = names.size() > 1
 	_map_button.visible = names.size() > 1
-	# La lista crece con los puntos, sin pasar de cinco filas visibles.
+	# The list grows with the points, up to five visible rows.
 	_points.custom_minimum_size = Vector2(0.0, 28.0 * mini(names.size(), 5) + 6.0)
 
 

@@ -1,33 +1,33 @@
 class_name ParchmentCanvas
 extends RefCounted
-## Lienzo de coma flotante y rasterizador de [ParchmentMapBaker] (UI-51). Todo se calcula en la CPU y
-## sin GPU, así que el resultado es el mismo en cualquier máquina y vale en headless.
+## Floating-point canvas and rasteriser of [ParchmentMapBaker] (UI-51). Everything is computed on the CPU and
+## without a GPU, so the result is the same on any machine and works in headless.
 ## [br][br]
-## [b]Lienzo[/b]: tres canales ([member r], [member g], [member b]) de 0 a 1 en sRGB y dos mapas del
-## tamaño de la imagen: [member grain] (variación del papel, media 1) y [member wear] (0 a 1, dónde se
-## salta la tinta, como en un papel viejo).
+## [b]Canvas[/b]: three channels ([member r], [member g], [member b]) from 0 to 1 in sRGB and two maps of the
+## size of the image: [member grain] (paper variation, mean 1) and [member wear] (0 to 1, where the
+## ink skips, as on old paper).
 ## [br][br]
-## [b]Formas[/b]: [method rasterize] convierte polígonos cualesquiera (cóncavos, con agujeros, anillos)
-## en una [ParchmentCanvas.Mask] de cobertura exacta por área, sin escalones. Una línea gruesa, un punteado
-## o un círculo son polígonos ([method stroke_polygons], [method dash], [method circle]). Después
-## [method paint] extiende la máscara sobre el lienzo con un modo de mezcla.
+## [b]Shapes[/b]: [method rasterize] converts arbitrary polygons (concave, with holes, rings)
+## into a [ParchmentCanvas.Mask] of exact area coverage, with no stair-stepping. A thick line, a dotted line
+## or a circle are polygons ([method stroke_polygons], [method dash], [method circle]). Then
+## [method paint] spreads the mask over the canvas with a blend mode.
 ## [br][br]
-## [b]Modos[/b]: [constant MODE_OVER] cubre (gouache); [constant MODE_MULTIPLY] oscurece o tiñe como
-## lo haría una aguada o la tinta, y deja ver las fibras del papel.
+## [b]Modes[/b]: [constant MODE_OVER] covers (gouache); [constant MODE_MULTIPLY] darkens or tints as
+## a wash or ink would, and lets the paper fibres show through.
 
-## Cubre lo que hay debajo (con el grano del papel).
+## Covers what is underneath (with the paper grain).
 const MODE_OVER: int = 0
-## Multiplica lo que hay debajo por el color (la tinta y las aguadas). El color puede pasar de 1.
+## Multiplies what is underneath by the colour (ink and washes). The colour may exceed 1.
 const MODE_MULTIPLY: int = 1
 
-## Lado máximo de una máscara (px); las líneas largas se parten antes para no pasar de aquí.
+## Maximum side of a mask (px); long lines are split beforehand so as not to exceed this.
 const MAX_MASK_SIDE: int = 1100
-## Segmentos de un semicírculo en las puntas redondas.
+## Segments of a semicircle in round caps.
 const CAP_SEGMENTS: int = 6
-## Longitud máxima (px) de un tramo recto de una línea antes de partirlo.
+## Maximum length (px) of a straight stretch of a line before splitting it.
 const MAX_SEGMENT: float = 48.0
 
-## Una máscara de cobertura (0 a 1) sobre un rectángulo del lienzo.
+## A coverage mask (0 to 1) over a rectangle of the canvas.
 class Mask extends RefCounted:
 	var x0: int = 0
 	var y0: int = 0
@@ -36,7 +36,7 @@ class Mask extends RefCounted:
 	var a: PackedFloat32Array = PackedFloat32Array()
 
 
-	## La parte común de esta máscara y [param other], con la cobertura multiplicada; null si no se tocan.
+	## The part common to this mask and [param other], with the coverage multiplied; null if they do not touch.
 	func intersect(other: Mask) -> Mask:
 		var nx0: int = maxi(x0, other.x0)
 		var ny0: int = maxi(y0, other.y0)
@@ -59,7 +59,7 @@ class Mask extends RefCounted:
 		return result
 
 
-	## Multiplica toda la cobertura por [param factor].
+	## Multiplies all the coverage by [param factor].
 	func scale(factor: float) -> void:
 		for i: int in a.size():
 			a[i] *= factor
@@ -69,9 +69,9 @@ var height: int = 0
 var r: PackedFloat32Array = PackedFloat32Array()
 var g: PackedFloat32Array = PackedFloat32Array()
 var b: PackedFloat32Array = PackedFloat32Array()
-## Variación de brillo del papel (media 1): la aguada cubriente la conserva.
+## Brightness variation of the paper (mean 1): the opaque wash preserves it.
 var grain: PackedFloat32Array = PackedFloat32Array()
-## 0 a 1: dónde falla la tinta (1 = no pinta).
+## 0 to 1: where the ink fails (1 = does not paint).
 var wear: PackedFloat32Array = PackedFloat32Array()
 
 
@@ -87,12 +87,12 @@ func _init(p_width: int, p_height: int) -> void:
 	wear.resize(count)
 
 
-# --- Pintar -------------------------------------------------------------------------------------
+# --- Painting -------------------------------------------------------------------------------------
 
-## Extiende [param mask] sobre el lienzo. [param alpha] multiplica la cobertura. [param grain_strength]
-## (solo en [constant MODE_OVER]) cuánto del grano del papel se ve en lo pintado; [param wear_strength],
-## cuánto falla la tinta donde [member wear] es alto. [param hole] (del tamaño del lienzo, 0 a 1) quita
-## lo pintado donde vale 1 (la calzada no se pinta sobre el agua).
+## Spreads [param mask] over the canvas. [param alpha] multiplies the coverage. [param grain_strength]
+## (only in [constant MODE_OVER]) how much of the paper grain shows in what is painted; [param wear_strength],
+## how much the ink fails where [member wear] is high. [param hole] (canvas-sized, 0 to 1) removes
+## what is painted where it is 1 (the roadway is not painted over water).
 func paint(mask: Mask, mode: int, color: Color, alpha: float = 1.0, grain_strength: float = 0.5,
 		wear_strength: float = 0.0, hole: PackedFloat32Array = PackedFloat32Array()) -> void:
 	if mask == null:
@@ -133,8 +133,8 @@ func paint(mask: Mask, mode: int, color: Color, alpha: float = 1.0, grain_streng
 				b[i] *= 1.0 + (cb - 1.0) * a
 
 
-## Pinta un degradado vertical dentro de [param mask]: [param top] arriba y [param bottom] abajo (del
-## rectángulo de la máscara). Siempre cubre ([constant MODE_OVER]).
+## Paints a vertical gradient inside [param mask]: [param top] at the top and [param bottom] at the bottom (of the
+## mask's rectangle). Always covers ([constant MODE_OVER]).
 func paint_vertical_gradient(mask: Mask, top: Color, bottom: Color, alpha: float = 1.0,
 		grain_strength: float = 0.5) -> void:
 	if mask == null:
@@ -163,9 +163,9 @@ func paint_vertical_gradient(mask: Mask, top: Color, bottom: Color, alpha: float
 			b[i] = b[i] * inv + color.b * gr * a
 
 
-## Como [method paint], pero la opacidad va de [param alpha_top] a [param alpha_bottom] en vertical a lo largo
-## del rectángulo de la máscara, entre sus fracciones [param t0] y [param t1] de alto (fuera de ese tramo vale
-## la del extremo más cercano). Sirve para fundir una forma con el papel por abajo sin dejar un borde duro.
+## Like [method paint], but the opacity goes from [param alpha_top] to [param alpha_bottom] vertically along
+## the mask's rectangle, between its fractions [param t0] and [param t1] of the height (outside that stretch it takes
+## the value of the nearest end). Used to blend a shape into the paper at the bottom without leaving a hard edge.
 func paint_ramp(mask: Mask, mode: int, color: Color, alpha_top: float, alpha_bottom: float, t0: float = 0.0,
 		t1: float = 1.0, grain_strength: float = 0.5) -> void:
 	if mask == null:
@@ -203,7 +203,7 @@ func paint_ramp(mask: Mask, mode: int, color: Color, alpha_top: float, alpha_bot
 				b[i] *= 1.0 + (color.b - 1.0) * a
 
 
-## El lienzo como imagen RGB8.
+## The canvas as an RGB8 image.
 func to_image() -> Image:
 	var bytes := PackedByteArray()
 	bytes.resize(width * height * 3)
@@ -216,11 +216,11 @@ func to_image() -> Image:
 	return Image.create_from_data(width, height, false, Image.FORMAT_RGB8, bytes)
 
 
-# --- Rasterizador -------------------------------------------------------------------------------
+# --- Rasteriser -------------------------------------------------------------------------------
 
-## Máscara de cobertura de [param polygons] (cada uno es un contorno cerrado en píxeles del lienzo;
-## el relleno es el de "enrollamiento no nulo": un contorno contrario dentro de otro hace un agujero).
-## null si no hay puntos o la máscara pasaría de [constant MAX_MASK_SIDE] píxeles de lado.
+## Coverage mask of [param polygons] (each one is a closed outline in canvas pixels;
+## the fill is "non-zero winding": an opposite outline inside another makes a hole).
+## null if there are no points or the mask would exceed [constant MAX_MASK_SIDE] pixels per side.
 static func rasterize(polygons: Array[PackedVector2Array]) -> Mask:
 	var min_x: float = INF
 	var min_y: float = INF
@@ -268,7 +268,7 @@ static func rasterize(polygons: Array[PackedVector2Array]) -> Mask:
 	return mask
 
 
-# Suma a la rejilla de acumulación el área con signo que deja una arista (algoritmo de font-rs).
+# Adds to the accumulation grid the signed area that an edge leaves (font-rs algorithm).
 static func _add_edge(acc: PackedFloat32Array, w: int, h: int, ax: float, ay: float, bx: float, by: float) -> void:
 	if ay == by:
 		return
@@ -326,10 +326,10 @@ static func _add_edge(acc: PackedFloat32Array, w: int, h: int, ax: float, ay: fl
 		x = xnext
 
 
-# --- Formas -------------------------------------------------------------------------------------
+# --- Shapes -------------------------------------------------------------------------------------
 
-## Contornos de una línea gruesa que sigue [param points], con [param widths] (grosor en cada punto,
-## uno solo vale para todos). Con [param closed] es un anillo. Las puntas son redondas.
+## Outlines of a thick line that follows [param points], with [param widths] (thickness at each point,
+## a single value applies to all). With [param closed] it is a ring. The ends are round.
 static func stroke_polygons(points: PackedVector2Array, widths: PackedFloat32Array,
 		closed: bool = false, round_caps: bool = true) -> Array[PackedVector2Array]:
 	var result: Array[PackedVector2Array] = []
@@ -351,7 +351,7 @@ static func stroke_polygons(points: PackedVector2Array, widths: PackedFloat32Arr
 		normals.append(Vector2(-tangent.y, tangent.x))
 	for i: int in count:
 		var half: float = 0.5 * widths[mini(i, widths.size() - 1)]
-		# Esquinas: alarga el desplazamiento para que el grosor no se estreche (límite de inglete).
+		# Corners: lengthens the offset so the thickness does not narrow (miter limit).
 		var miter: float = 1.0
 		if (closed or (i > 0 and i < count - 1)):
 			var a: Vector2 = points[i] - points[(i - 1 + count) % count]
@@ -387,7 +387,7 @@ static func stroke_polygons(points: PackedVector2Array, widths: PackedFloat32Arr
 	return result
 
 
-## Un contorno circular con [param segments] lados.
+## A circular outline with [param segments] sides.
 static func circle(center: Vector2, radius: float, segments: int = 16) -> PackedVector2Array:
 	var polygon := PackedVector2Array()
 	for i: int in segments:
@@ -396,7 +396,7 @@ static func circle(center: Vector2, radius: float, segments: int = 16) -> Packed
 	return polygon
 
 
-## Una elipse girada [param angle] radianes.
+## An ellipse rotated by [param angle] radians.
 static func ellipse(center: Vector2, radius_x: float, radius_y: float, angle: float = 0.0,
 		segments: int = 20) -> PackedVector2Array:
 	var polygon := PackedVector2Array()
@@ -407,7 +407,7 @@ static func ellipse(center: Vector2, radius_x: float, radius_y: float, angle: fl
 	return polygon
 
 
-## Un rectángulo girado [param angle] radianes alrededor de [param center].
+## A rectangle rotated by [param angle] radians around [param center].
 static func box(center: Vector2, half_x: float, half_y: float, angle: float = 0.0) -> PackedVector2Array:
 	var turn: Transform2D = Transform2D(angle, Vector2.ZERO)
 	return PackedVector2Array([
@@ -415,9 +415,9 @@ static func box(center: Vector2, half_x: float, half_y: float, angle: float = 0.
 		center + turn * Vector2(half_x, half_y), center + turn * Vector2(-half_x, half_y)])
 
 
-# --- Polilíneas ---------------------------------------------------------------------------------
+# --- Polylines ---------------------------------------------------------------------------------
 
-## Longitud de una polilínea.
+## Length of a polyline.
 static func length_of(points: PackedVector2Array) -> float:
 	var total: float = 0.0
 	for i: int in range(1, points.size()):
@@ -425,7 +425,7 @@ static func length_of(points: PackedVector2Array) -> float:
 	return total
 
 
-## La polilínea con puntos cada [param step] píxeles (el último se conserva).
+## The polyline with points every [param step] pixels (the last one is kept).
 static func resample(points: PackedVector2Array, step: float) -> PackedVector2Array:
 	var result := PackedVector2Array()
 	if points.is_empty():
@@ -448,7 +448,7 @@ static func resample(points: PackedVector2Array, step: float) -> PackedVector2Ar
 	return result
 
 
-## Curva suave (Catmull-Rom) que pasa por [param points], con [param samples] puntos por tramo.
+## Smooth curve (Catmull-Rom) passing through [param points], with [param samples] points per segment.
 static func smooth(points: PackedVector2Array, samples: int = 8) -> PackedVector2Array:
 	var count: int = points.size()
 	if count < 3:
@@ -469,7 +469,7 @@ static func smooth(points: PackedVector2Array, samples: int = 8) -> PackedVector
 	return result
 
 
-## Curva suave cerrada (Catmull-Rom) que pasa por todos los puntos de [param points].
+## Closed smooth curve (Catmull-Rom) passing through all the points of [param points].
 static func smooth_closed(points: PackedVector2Array, samples: int = 8) -> PackedVector2Array:
 	var count: int = points.size()
 	if count < 3:
@@ -489,8 +489,8 @@ static func smooth_closed(points: PackedVector2Array, samples: int = 8) -> Packe
 	return result
 
 
-## Desplaza cada punto de [param points] a lo largo de la normal con ruido (pulso de mano). [param noise]
-## se lee en 1D con la distancia recorrida como entrada.
+## Displaces each point of [param points] along the normal with noise (hand tremor). [param noise]
+## is read in 1D with the distance travelled as input.
 static func wobble(points: PackedVector2Array, noise: FastNoiseLite, amplitude: float, phase: float = 0.0) -> PackedVector2Array:
 	var result := PackedVector2Array()
 	var count: int = points.size()
@@ -506,8 +506,8 @@ static func wobble(points: PackedVector2Array, noise: FastNoiseLite, amplitude: 
 	return result
 
 
-## Trozos de [param points] con el patrón de [param on] píxeles pintados y [param off] sin pintar (cada
-## trozo es una polilínea). [param offset] adelanta el patrón.
+## Pieces of [param points] with the pattern of [param on] painted pixels and [param off] unpainted (each
+## piece is a polyline). [param offset] advances the pattern.
 static func dash(points: PackedVector2Array, on: float, off: float, offset: float = 0.0) -> Array[PackedVector2Array]:
 	var pieces: Array[PackedVector2Array] = []
 	var dense: PackedVector2Array = resample(points, 1.0)
@@ -526,14 +526,14 @@ static func dash(points: PackedVector2Array, on: float, off: float, offset: floa
 	return pieces
 
 
-## Una línea gruesa ya rasterizada y partida en trozos para que ninguna máscara pase del tamaño máximo.
-## Devuelve las máscaras (para pintarlas una a una).
+## A thick line already rasterised and split into pieces so that no mask exceeds the maximum size.
+## Returns the masks (to paint them one by one).
 static func stroke_masks(p_points: PackedVector2Array, p_widths: PackedFloat32Array, closed: bool = false,
 		round_caps: bool = true, chunk: int = 90) -> Array[Mask]:
 	var masks: Array[Mask] = []
 	if p_points.size() < 2:
 		return masks
-	# Los tramos largos (marcos, murallas) se parten para que ninguna máscara pase del tamaño máximo.
+	# Long stretches (frames, walls) are split so that no mask exceeds the maximum size.
 	var points := PackedVector2Array()
 	var widths := PackedFloat32Array()
 	var segments: int = p_points.size() if closed else p_points.size() - 1
@@ -561,7 +561,7 @@ static func stroke_masks(p_points: PackedVector2Array, p_widths: PackedFloat32Ar
 			if ring != null:
 				masks.append(ring)
 			return masks
-		# Un anillo enorme se pinta como una línea abierta que vuelve al principio.
+		# A huge ring is painted as an open line that returns to the start.
 		points.append(points[0])
 		widths.append(widths[0])
 	if points.size() <= chunk and length_of(points) < 420.0:
@@ -571,7 +571,7 @@ static func stroke_masks(p_points: PackedVector2Array, p_widths: PackedFloat32Ar
 		return masks
 	var start: int = 0
 	while start < points.size() - 1:
-		# Un trozo acaba al llegar a [param chunk] puntos o a unos 420 px de largo.
+		# A piece ends on reaching [param chunk] points or about 420 px in length.
 		var stop: int = start + 1
 		var travelled: float = points[stop].distance_to(points[start])
 		while stop < points.size() - 1 and stop - start < chunk and travelled < 420.0:
@@ -588,9 +588,9 @@ static func stroke_masks(p_points: PackedVector2Array, p_widths: PackedFloat32Ar
 	return masks
 
 
-# --- Ruido --------------------------------------------------------------------------------------
+# --- Noise --------------------------------------------------------------------------------------
 
-## Un campo de ruido de [param w] x [param h] píxeles como bytes (0 a 255, normalizado).
+## A noise field of [param w] x [param h] pixels as bytes (0 to 255, normalised).
 static func noise_bytes(p_seed: int, frequency: float, octaves: int, w: int, h: int,
 		fractal: FastNoiseLite.FractalType = FastNoiseLite.FRACTAL_FBM) -> PackedByteArray:
 	var noise := FastNoiseLite.new()

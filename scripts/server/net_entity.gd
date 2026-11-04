@@ -1,96 +1,96 @@
 class_name NetEntity
 extends RefCounted
-## Entidad replicada por el servidor (docs/red.md, sección 9.1): un jugador (y, desde la fase 4,
-## PNJ, proyectiles y estructuras).
+## Entity replicated by the server (docs/red.md, section 9.1): a player (and, since phase 4,
+## NPCs, projectiles and structures).
 ## [br][br]
-## Guarda lo que hace falta para replicarla: el id de red que asigna [NetEntityRegistry], el
-## tipo, el reino, el tick de alta, el peer dueño, el nombre, los flags, su nodo y el contador de
-## teletransporte. Sabe escribir su registro del snapshot sin crear objetos
-## ([method encode_record]) y su mensaje ENTITY_SPAWN ([method encode_spawn]).
+## It stores what is needed to replicate it: the network id assigned by [NetEntityRegistry], the
+## type, the realm, the spawn tick, the owning peer, the name, the flags, its node and the
+## teleport counter. It knows how to write its snapshot record without creating objects
+## ([method encode_record]) and its ENTITY_SPAWN message ([method encode_spawn]).
 ## [br][br]
-## También guarda lo que se ve de su vida en los snapshots: la vida cuantizada del registro
-## ([member health_q]) y el bloque extra propio ([member health], [member max_health],
-## [member status] y [member respawn_tick]). Quien lleva la vida (el [code]Combatant[/code] del
-## combate) los actualiza cada tick con [method set_health_view]; mientras nadie lo haga, la
-## entidad está sana.
+## It also stores what is seen of its health in snapshots: the record's quantized health
+## ([member health_q]) and the own extra block ([member health], [member max_health],
+## [member status] and [member respawn_tick]). Whoever carries the health (combat's
+## [code]Combatant[/code]) updates them every tick with [method set_health_view]; until someone does, the
+## entity is healthy.
 ## [br][br]
-## [member action] es el byte de acción del registro ([method ActionWire.encode]); lo
-## actualiza cada tick el mismo código que lleva la vida.
+## [member action] is the record's action byte ([method ActionWire.encode]); it is
+## updated every tick by the same code that carries the health.
 
-## La ven todos los jugadores de la zona, sin pasar por la [InterestPolicy] (fortalezas, puertas).
+## Seen by all players in the zone, without going through the [InterestPolicy] (fortresses, gates).
 const FLAG_ALWAYS_RELEVANT: int = 1 << 0
-## Vida (y vida máxima) que se anuncia mientras nadie la actualiza: la de
+## Health (and max health) announced while nobody updates it: that of
 ## [code]CombatRules.health_max[/code].
 const DEFAULT_HEALTH: int = 1000
 
-## Id de red (1..65535) que asigna [NetEntityRegistry].
+## Network id (1..65535) assigned by [NetEntityRegistry].
 var net_id: int
 ## [enum NetProtocol.EntityKind].
 var kind: int
-## Código de [enum NetProtocol.Realm].
+## Code of [enum NetProtocol.Realm].
 var realm: int
-## Tick en el que se dio de alta.
+## Tick at which it was added.
 var spawn_tick: int
-## Id del peer dueño (0 si no lo controla ningún cliente).
+## Id of the owning peer (0 if no client controls it).
 var owner_peer: int = 0
 var display_name: String
-## Personal del juego (moderador o más, el rol de la reclamación; docs/plataforma.md §5.4): su ENTITY_SPAWN
-## lleva el bit [constant NetMessages.SPAWN_FLAG_STAFF] para la etiqueta (SOC-14). Siempre false sin plataforma.
+## Game staff (moderator or higher, the claim's role; docs/plataforma.md §5.4): its ENTITY_SPAWN
+## carries the bit [constant NetMessages.SPAWN_FLAG_STAFF] for the nameplate tag (SOC-14). Always false without the platform.
 var is_staff: bool = false
-## Marcado por un comando de GM que lo mueve, lo cura o lo muestra (docs/progresion.md §6.2; lo ponen
-## [code]/gm teleport[/code], [code]/gm visible[/code] y los DEBUG_COMMAND 1, 2 y 4, plataforma.md P7b): mientras
-## dura no entra en la lista de capturas ni cobra méritos ni PNJ. La reaparición lo quita (plataforma.md P6).
+## Marked by a GM command that moves, heals or shows it (docs/progresion.md §6.2; set by
+## [code]/gm teleport[/code], [code]/gm visible[/code] and DEBUG_COMMANDs 1, 2 and 4, plataforma.md P7b): while it
+## lasts it does not enter the captures list or collect merits or NPCs. Respawning removes it (plataforma.md P6).
 var gm_forced: bool = false
-## Un GM en modo invisible ([code]/gm invisible[/code], docs/plataforma.md §9.1, P7b): no entra en el interés de
-## los demás, no hace ni recibe daño, no cuenta en el círculo ni en el marcador y no cobra recompensas. Dura hasta
-## [code]/gm visible[/code] o hasta que se va (no se guarda); la reaparición no lo quita.
+## A GM in invisible mode ([code]/gm invisible[/code], docs/plataforma.md §9.1, P7b): it does not enter the interest of
+## others, deals and takes no damage, does not count in the circle or the scoreboard and collects no rewards. Lasts until
+## [code]/gm visible[/code] or until it leaves (not saved); respawning does not remove it.
 var gm_invisible: bool = false
-## Combinación de [constant FLAG_ALWAYS_RELEVANT].
+## Combination of [constant FLAG_ALWAYS_RELEVANT].
 var flags: int = 0
-## Nodo de la entidad en el mundo del servidor: un [PlayerCharacter] si es un jugador.
+## The entity's node in the server's world: a [PlayerCharacter] if it is a player.
 var node: Node3D
-## Sube (módulo 4) con cada teletransporte, para que el cliente no interpole el salto.
+## Rises (modulo 4) with each teleport, so the client does not interpolate the jump.
 var teleport_counter: int = 0
-## Vida cuantizada que lleva su registro del snapshot ([method EntityRecord.quantize_health]).
+## Quantized health carried by its snapshot record ([method EntityRecord.quantize_health]).
 var health_q: int = EntityRecord.HEALTH_Q_FULL
-## Vida, vida máxima, bits de estado ([constant NetMessages.STATUS_IN_COMBAT] y compañía) y tick
-## de reaparición del bloque extra del snapshot propio.
+## Health, max health, state bits ([constant NetMessages.STATUS_IN_COMBAT] and company) and respawn
+## tick of the own snapshot's extra block.
 var health: int = DEFAULT_HEALTH
 var max_health: int = DEFAULT_HEALTH
 var status: int = 0
 var respawn_tick: int = 0
-## Byte de acción del registro de red ([method ActionWire.encode]); 0 = sin datos.
+## Action byte of the network record ([method ActionWire.encode]); 0 = no data.
 var action: int = 0
-## PNJ: id de su definición en el catálogo de PNJ, que viaja en su ENTITY_SPAWN para que el cliente
-## elija modelo, tabardo y barra de jefe (0 = sin definición).
+## NPC: id of its definition in the NPC catalog, which travels in its ENTITY_SPAWN so the client
+## picks the model, tabard and boss bar (0 = no definition).
 var npc_def_id: int = 0
-## STRUCTURE: id de su definición (ASCII, el de [member FortressDefinition.id]) y el estado vivo de la
-## fortaleza, que el [code]FortressController[/code] mantiene al día. Su ENTITY_SPAWN lleva el estado
-## completo en el momento del alta.
+## STRUCTURE: id of its definition (ASCII, that of [member FortressDefinition.id]) and the live state of the
+## fortress, which the [code]FortressController[/code] keeps up to date. Its ENTITY_SPAWN carries the full
+## state at the time of addition.
 var definition_id: String = ""
 var fortress_state: FortressState = null
-## PLAYER (protocolo 7, docs/progresion.md §7.3): nivel del personaje (1 a 40; 0 = sin progreso, como un jugador
-## falso) y los 8 B de su [CharacterAppearance] (vacío = sin apariencia). Los pone el progreso en el alta y al
-## subir de nivel; viajan en su ENTITY_SPAWN (el nivel, solo hacia su reino: ver [method encode_spawn]).
+## PLAYER (protocol 7, docs/progresion.md §7.3): character level (1 to 40; 0 = no progress, like a fake
+## player) and the 8 B of its [CharacterAppearance] (empty = no appearance). Set by progress on spawn and on
+## leveling up; they travel in its ENTITY_SPAWN (the level, only toward its realm: see [method encode_spawn]).
 var level: int = 0
 var appearance: PackedByteArray = PackedByteArray()
 
 
-## Posición global de la entidad (los pies, si es un jugador).
+## Global position of the entity (the feet, if it is a player).
 func get_position() -> Vector3:
 	if not is_instance_valid(node):
 		return Vector3.ZERO
 	return node.global_position if node.is_inside_tree() else node.position
 
 
-## El [PlayerCharacter] de la entidad, o null si no es un jugador.
+## The entity's [PlayerCharacter], or null if it is not a player.
 func get_character() -> PlayerCharacter:
 	return node as PlayerCharacter if is_instance_valid(node) else null
 
 
-## Actualiza lo que los snapshots muestran de la vida de la entidad: [param new_health] y
-## [param new_max_health] (la vida cuantizada del registro sale de ellas), los bits de
-## [param new_status] y el tick de reaparición ([param new_respawn_tick], 0 si está viva).
+## Updates what snapshots show of the entity's health: [param new_health] and
+## [param new_max_health] (the record's quantized health comes from them), the bits of
+## [param new_status] and the respawn tick ([param new_respawn_tick], 0 if alive).
 func set_health_view(new_health: int, new_max_health: int, new_status: int,
 		new_respawn_tick: int) -> void:
 	health = new_health
@@ -100,15 +100,15 @@ func set_health_view(new_health: int, new_max_health: int, new_status: int,
 	health_q = EntityRecord.quantize_health(new_health, new_max_health)
 
 
-## Escribe el registro de la entidad (21 B, [constant EntityRecord.SIZE]) en [param bytes] a
-## partir de [param offset], sin crear objetos si es un jugador. Amplía el búfer si hace falta.
+## Writes the entity's record (21 B, [constant EntityRecord.SIZE]) into [param bytes] starting at
+## [param offset], without creating objects if it is a player. Grows the buffer if needed.
 func encode_record(bytes: PackedByteArray, offset: int) -> void:
 	var character: PlayerCharacter = get_character()
 	if character != null:
 		EntityRecord.encode_character(bytes, offset, net_id, character, teleport_counter, action,
 				health_q)
 		return
-	# Entidades sin personaje (PNJ simples): posición y giro del nodo, sin velocidad.
+	# Entities without a character (simple NPCs): the node's position and turn, no velocity.
 	var record := EntityRecord.new()
 	record.net_id = net_id
 	record.kind = kind
@@ -121,18 +121,18 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 	record.encode_into(bytes, offset)
 
 
-## Mensaje ENTITY_SPAWN de la entidad con su estado actual, que se da como el estado «tras
-## [param tick]». [param for_owner] pone el bit «es tu personaje» (el SPAWN propio), que lleva el
-## [PlayerState] entero; el de una entidad ajena solo lleva lo que ya enseña su registro de 21 B
-## (posición, velocidad, giro, suelo, acción, las dos armas y la ranura activa): ni su resistencia
-## exacta, agotamiento, enfriamiento de la parada, búfer, controles, botones mantenidos,
-## reutilizaciones, cargas ni efectos de movimiento (docs/combate.md, secciones 1 y 6, y
-## docs/habilidades.md, sección 5.2).
+## ENTITY_SPAWN message of the entity with its current state, given as the state "after
+## [param tick]". [param for_owner] sets the "this is your character" bit (the own SPAWN), which carries the whole
+## [PlayerState]; that of another's entity carries only what its 21 B record already shows
+## (position, velocity, turn, ground, action, the two weapons and the active slot): not its exact
+## stamina, exhaustion, parry cooldown, buffer, controls, held buttons,
+## cooldowns, charges or movement effects (docs/combate.md, sections 1 and 6, and
+## docs/habilidades.md, section 5.2).
 ## [br][br]
-## Un jugador lleva además su apariencia y su nivel (protocolo 7, docs/progresion.md §7.3); el nivel real solo
-## si es el SPAWN propio o [param receiver_realm] (el código de [enum NetProtocol.Realm] de quien lo recibe) es
-## el de la entidad, y 0 si no: el nivel del enemigo no cruza (social.md §1). Por eso quien reparte SPAWN los
-## codifica por reino receptor.
+## A player also carries their appearance and level (protocol 7, docs/progresion.md §7.3); the real level only
+## if it is the own SPAWN or [param receiver_realm] (the [enum NetProtocol.Realm] code of the receiver) is
+## the entity's, and 0 if not: the enemy's level does not cross over (social.md §1). That is why whoever distributes SPAWNs
+## encodes them per receiving realm.
 func encode_spawn(tick: int, for_owner: bool, receiver_realm: int = NetProtocol.Realm.NONE) -> PackedByteArray:
 	if kind == NetProtocol.EntityKind.STRUCTURE:
 		if fortress_state == null:
@@ -166,11 +166,11 @@ func encode_spawn(tick: int, for_owner: bool, receiver_realm: int = NetProtocol.
 	return spawn.encode()
 
 
-# Deja en [param state] solo lo público de un personaje ajeno: el combate vuelve a los valores
-# iniciales de sus armas (resistencia llena, sin banderas, búfer, controles, parada, reutilizaciones,
-# cargas, consumible ni ranuras de movimiento) salvo la acción en curso, que el registro de 21 B ya
-# muestra, y las armas: la de la otra ranura y la ranura activa (bit 0 de combat_flags2) se ven
-# (docs/habilidades.md, sección 5.2). Se borran los botones del último tick y los contadores de salto.
+# Leaves in [param state] only the public part of another's character: combat goes back to the weapons'
+# initial values (full stamina, no flags, buffer, controls, parry, cooldowns,
+# charges, consumable or movement slots) except the action in progress, which the 21 B record already
+# shows, and the weapons: the other slot's and the active slot (bit 0 of combat_flags2) are visible
+# (docs/habilidades.md, section 5.2). The last tick's buttons and the jump counters are cleared.
 static func _hide_private_state(state: PlayerState) -> void:
 	var own: CombatState = state.combat
 	var public := CombatState.initial(CombatCatalog.rules(), own.weapon_id, own.alt_weapon_id)

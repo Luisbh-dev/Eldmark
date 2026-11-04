@@ -1,11 +1,11 @@
-"""Extrae solo la cabeza (y cuello) del cuerpo completo Superhero_Male de Quaternius.
+"""Extracts only the head (and neck) from Quaternius's full Superhero_Male body.
 
-El README de Modular Character Outfits dice que con la ropa solo hace falta la cabeza del
-cuerpo base: el cuerpo entero atraviesa la ropa. La versión Standard de Universal Base
-Characters solo trae cuerpos completos, así que se recorta aquí la malla del cuerpo
-conservando los triángulos cuyos vértices pesan sobre todo en los huesos de cabeza/cuello.
+The Modular Character Outfits README says that with clothing only the base body's head is
+needed: the whole body clips through the clothes. The Standard version of Universal Base
+Characters only ships full bodies, so the body mesh is cut down here, keeping the
+triangles whose vertices are weighted mostly to the head/neck bones.
 
-Uso: python -I split_head.py <entrada.gltf> <salida.gltf> [umbral de peso, 0.2 por defecto]
+Usage: python -I split_head.py <input.gltf> <output.gltf> [weight threshold, 0.2 by default]
 """
 import json, os, struct, sys
 
@@ -72,7 +72,7 @@ def main(src, dst, threshold):
     print('vértices %d -> %d, triángulos %d -> %d' % (
         len(head_weight), len(used), len(indices) // 3, len(kept_tris)))
 
-    # Nuevo buffer: se copian todos los accessors que siguen en uso, compactando los del cuerpo.
+    # New buffer: all the accessors still in use are copied, compacting the body's.
     out = bytearray()
     new_views = []
     new_accessors = []
@@ -130,8 +130,8 @@ def main(src, dst, threshold):
     js['buffers'] = [{'byteLength': len(out), 'uri': bin_name}]
     for im in js.get('images', []):
         im['uri'] = IMAGE_URI_FIXES.get(im['uri'], im['uri'])
-    # El nodo conserva su nombre (SuperHero_Male): si se llamara igual que el archivo, Godot
-    # renombraría la raíz de la escena importada.
+    # The node keeps its name (SuperHero_Male): if it were named the same as the file, Godot
+    # would rename the root of the imported scene.
     mesh['name'] = 'SuperHero_Male_Head'
     js['asset']['extras'] = {
         'eldmark': 'Cabeza recortada de Superhero_Male_FullBody (Quaternius, CC0) por split_head.py',

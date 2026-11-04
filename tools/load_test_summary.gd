@@ -1,30 +1,30 @@
 class_name LoadTestSummary
 extends RefCounted
-## Cálculos del resumen de [code]tools/load_test.gd[/code] que no necesitan lanzar procesos (y que por
-## eso se prueban en [code]tests/test_load_test.gd[/code]): el porcentaje de entradas sustituidas dentro
-## de la ventana de medida.
+## Calculations of the [code]tools/load_test.gd[/code] summary that do not need to launch processes (and that
+## are therefore tested in [code]tests/test_load_test.gd[/code]): the percentage of substituted inputs within
+## the measurement window.
 ## [br][br]
-## El informe del servidor da el porcentaje de [b]toda la sesión[/b], con el arranque dentro: mientras
-## [TickSync] encuentra su antelación cada bot pierde unas decenas de entradas (más con 100 ms de RTT),
-## y en 30 s ese coste fijo pesa más de un 1 %. El criterio de la fase 2 (docs/red.md, 16) se mide en
-## régimen, así que se resta lo acumulado al empezar la ventana. El servidor solo escribe el informe al
-## cerrar, pero cada 600 ticks escribe en su registro una línea
-## «Métricas (tick N): … entradas sustituidas X %» con el porcentaje acumulado; como las entradas
-## consumidas hasta el tick N salen de los ticks de alta y baja de cada jugador del informe, de ahí se
-## recuperan las sustituidas acumuladas en cada línea.
+## The server report gives the percentage for the [b]whole session[/b], with the startup included: while
+## [TickSync] finds its lead each bot loses a few dozen inputs (more with 100 ms of RTT),
+## and in 30 s that fixed cost weighs more than 1 %. The phase 2 criterion (docs/red.md, 16) is measured
+## in steady state, so what had accumulated when the window started is subtracted. The server only writes the report when
+## it closes, but every 600 ticks it writes to its log a line
+## "Métricas (tick N): … entradas sustituidas X %" (metrics, substituted inputs) with the accumulated percentage; since the inputs
+## consumed up to tick N come from each player's join and leave ticks in the report, from them the substituted ones
+## accumulated at each line are recovered.
 
-## Línea de métricas del registro del servidor: tick y porcentaje acumulado de sustituidas.
+## Metrics line of the server log: tick and accumulated percentage of substituted inputs.
 const METRICS_LINE_PATTERN: String = "Métricas \\(tick (\\d+)\\):.*entradas sustituidas (\\d+(?:\\.\\d+)?) %"
-## La misma línea, para el tick de cada marca: jugadores y p50, p99 y máximo del tick (µs) de los últimos
-## 2048 ticks (34 s) hasta esa marca.
+## The same line, for the tick of each mark: players and p50, p99 and maximum of the tick (µs) over the last
+## 2048 ticks (34 s) up to that mark.
 const TICK_LINE_PATTERN: String = "Métricas \\(tick (\\d+)\\): (\\d+) jugadores, tick p50 (\\d+) µs / p99 (\\d+) µs / máx (\\d+) µs"
-## Al final de la misma línea (desde F6b, GUE-16): los PNJ que simula el servidor en esa marca (los de guerra y los
-## maniquíes). Las líneas de antes no lo llevan.
+## At the end of the same line (since F6b, GUE-16): the NPCs the server simulates at that mark (the war ones and the
+## dummies). Earlier lines do not carry it.
 const NPC_COUNT_PATTERN: String = ", (\\d+) PNJ\\s*$"
 
 
-## Porcentaje acumulado de entradas sustituidas de cada línea de métricas de [param log_text]
-## (el registro del servidor): [code]{tick: porcentaje}[/code].
+## Accumulated percentage of substituted inputs of each metrics line in [param log_text]
+## (the server log): [code]{tick: percentage}[/code].
 static func parse_metrics_log(log_text: String) -> Dictionary:
 	var regex := RegEx.new()
 	regex.compile(METRICS_LINE_PATTERN)
@@ -36,10 +36,10 @@ static func parse_metrics_log(log_text: String) -> Dictionary:
 	return result
 
 
-## El tick del servidor en cada línea de métricas de [param log_text]: una lista de
-## [code]{tick, players, npcs, p50_us, p99_us, max_us}[/code] en el orden del registro ([code]npcs[/code], los PNJ que
-## se simulaban en esa marca; -1 si la línea no lo dice). Cada línea resume los últimos 2048 ticks (34 s) hasta su
-## marca, así que la serie sirve para ver cómo evoluciona una batalla larga.
+## The server tick at each metrics line of [param log_text]: a list of
+## [code]{tick, players, npcs, p50_us, p99_us, max_us}[/code] in log order ([code]npcs[/code], the NPCs that
+## were being simulated at that mark; -1 if the line does not say). Each line summarises the last 2048 ticks (34 s) up to its
+## mark, so the series is useful to see how a long battle evolves.
 static func parse_tick_timeline(log_text: String) -> Array[Dictionary]:
 	var regex := RegEx.new()
 	regex.compile(TICK_LINE_PATTERN)
@@ -59,11 +59,11 @@ static func parse_tick_timeline(log_text: String) -> Array[Dictionary]:
 	return marks
 
 
-## Resume las marcas de [method parse_tick_timeline] entre [param first_tick] y [param last_tick] (ambos
-## incluidos): [code]{marks, p50_us, p99_us, worst_p99_us, max_us, npcs_min, npcs_max, players_min, players_max}[/code]
-## con el número de marcas, la mediana de sus p50 y de sus p99, el peor p99, el mayor máximo, los PNJ que había como
-## mínimo y como máximo en ellas (-1 si ninguna lo dice) y lo mismo de los jugadores (si cambian dentro de la ventana,
-## las marcas no son todas de la misma carga). Vacío si no hay ninguna.
+## Summarises the marks of [method parse_tick_timeline] between [param first_tick] and [param last_tick] (both
+## inclusive): [code]{marks, p50_us, p99_us, worst_p99_us, max_us, npcs_min, npcs_max, players_min, players_max}[/code]
+## with the number of marks, the median of their p50s and of their p99s, the worst p99, the largest maximum, the NPCs there were at
+## minimum and at maximum in them (-1 if none says) and the same for the players (if they change within the window,
+## the marks are not all from the same load). Empty if there are none.
 static func timeline_window(marks: Array[Dictionary], first_tick: int, last_tick: int) -> Dictionary:
 	var p50s: Array[int] = []
 	var p99s: Array[int] = []
@@ -98,14 +98,14 @@ static func timeline_window(marks: Array[Dictionary], first_tick: int, last_tick
 	}
 
 
-## Cuántos jugadores (personas y falsos) había en el servidor en cada tick de [param first_tick] a [param last_tick]
-## (ambos incluidos), según el alta y la baja de cada ficha del [code]player_list[/code] del informe ([param players]):
-## está desde su [code]joined_tick[/code] hasta el tick anterior a su [code]left_tick[/code] (-1, o
-## [param end_tick] o más, el cierre del servidor: hasta el final). Devuelve [code]{min, max, ticks, ticks_at_max}[/code]:
-## el menor y el mayor número, los ticks del tramo y cuántos de ellos tuvieron el mayor. Sirve para saber si los
-## percentiles del informe del servidor (de sus últimos 2048 ticks) son de la carga que se quería medir: con muchos
-## jugadores el servidor va más despacio que el tiempo real, y un enjambre que se cierra por su reloj se iba antes de
-## que acabara ese tramo (GUE-16, revisión de F6b). Vacío si el tramo está vacío.
+## How many players (people and fakes) were on the server at each tick from [param first_tick] to [param last_tick]
+## (both inclusive), according to the join and leave of each entry of the report's [code]player_list[/code] ([param players]):
+## present from its [code]joined_tick[/code] to the tick before its [code]left_tick[/code] (-1, or
+## [param end_tick] or more, the server close: until the end). Returns [code]{min, max, ticks, ticks_at_max}[/code]:
+## the lowest and highest number, the ticks in the range and how many of them had the highest. Useful to know whether the
+## percentiles of the server report (from its last 2048 ticks) are from the load that was meant to be measured: with many
+## players the server runs slower than real time, and a swarm that closes by its clock used to leave before
+## that stretch ended (GUE-16, F6b review). Empty if the range is empty.
 static func presence(players: Array, first_tick: int, last_tick: int, end_tick: int) -> Dictionary:
 	if last_tick < first_tick:
 		return {}
@@ -126,7 +126,7 @@ static func presence(players: Array, first_tick: int, last_tick: int, end_tick: 
 			changes[left] = int(changes.get(left, 0)) - 1
 	var ticks: Array = changes.keys()
 	ticks.sort()
-	# Tramos [desde, hasta) con el mismo número de jugadores.
+	# Spans [from, to) with the same number of players.
 	var spans: Array[Vector3i] = []
 	var start: int = first_tick
 	for tick: int in ticks:
@@ -147,10 +147,10 @@ static func presence(players: Array, first_tick: int, last_tick: int, end_tick: 
 	return {"min": lowest, "max": highest, "ticks": last_tick - first_tick + 1, "ticks_at_max": at_max}
 
 
-## Entradas que el servidor había consumido de los jugadores de red (no los falsos) hasta el tick
-## [param tick]: un jugador consume una por tick desde su alta ([code]joined_tick[/code]) hasta su baja
-## ([code]left_tick[/code]; -1 = sigue dentro, y entonces hasta [param end_tick], el último tick del
-## servidor). [param players] es el [code]player_list[/code] del informe del servidor.
+## Inputs the server had consumed from the network players (not the fakes) up to tick
+## [param tick]: a player consumes one per tick from its join ([code]joined_tick[/code]) until its leave
+## ([code]left_tick[/code]; -1 = still in, and then until [param end_tick], the server's last
+## tick). [param players] is the server report's [code]player_list[/code].
 static func consumed_until(players: Array, tick: int, end_tick: int) -> int:
 	var total: int = 0
 	for entry: Dictionary in players:
@@ -162,12 +162,12 @@ static func consumed_until(players: Array, tick: int, end_tick: int) -> int:
 	return total
 
 
-## Entradas sustituidas dentro de la ventana de medida, de la primera línea de métricas desde
-## [param first_tick] a la última hasta [param last_tick]: [code]{from_tick, to_tick, inputs,
-## substituted, percent}[/code], con las entradas consumidas y sustituidas en la ventana y el
-## porcentaje. Vacío si no hay dos líneas en ese rango o ningún jugador de red consumió nada.
-## [param cumulative] es [method parse_metrics_log], [param players] el [code]player_list[/code] del
-## informe y [param end_tick] el último tick del servidor.
+## Substituted inputs within the measurement window, from the first metrics line from
+## [param first_tick] to the last one up to [param last_tick]: [code]{from_tick, to_tick, inputs,
+## substituted, percent}[/code], with the inputs consumed and substituted in the window and the
+## percentage. Empty if there are not two lines in that range or no network player consumed anything.
+## [param cumulative] is [method parse_metrics_log], [param players] the report's [code]player_list[/code]
+## and [param end_tick] the server's last tick.
 static func window_substituted(cumulative: Dictionary, players: Array, first_tick: int, last_tick: int,
 		end_tick: int) -> Dictionary:
 	var from_tick: int = -1
@@ -196,19 +196,19 @@ static func window_substituted(cumulative: Dictionary, players: Array, first_tic
 	}
 
 
-## Cifras del combate de una refriega a partir del informe del servidor ([param server], de
-## [method ZoneServer.write_report]) y de los [param seconds] que duró la ejecución:
+## Combat figures of a brawl from the server report ([param server], from
+## [method ZoneServer.write_report]) and the [param seconds] the run lasted:
 ## [code]{hits, blocked, deaths, events, events_sent, event_kb_per_s, hit_tests, resolve_us_per_test,
 ## resolve_share, events_us_per_event}[/code].
-## [br]- [code]events_sent[/code] cuenta paquetes (un evento llega a todos los que tienen relevante al
-## atacante o a la víctima) y [code]event_kb_per_s[/code] sale de [code]event_bytes_sent[/code] (sin
-## cabeceras de ENet) entre los segundos de la ejecución.
-## [br]- [code]resolve_us_per_test[/code]: µs de resolver los golpes con rebobinado en los ticks en que
-## había algo que probar ([code]resolve_us[/code]) por comprobación de forma y línea de visión
-## ([code]hit_tests[/code]); 0 si no hubo. [code]resolve_busy_ticks[/code] son esos ticks.
-## [br]- [code]resolve_share[/code]: fracción de la sección [code]combat[/code] que ocupa la sección
-## [code]combat_resolve[/code] (todos los ticks).
-## [br]- [code]events_us_per_event[/code]: µs medios de [code]combat_events[/code] por evento emitido.
+## [br]- [code]events_sent[/code] counts packets (an event reaches everyone who has the attacker or the victim
+## as relevant) and [code]event_kb_per_s[/code] comes from [code]event_bytes_sent[/code] (without
+## ENet headers) divided by the seconds of the run.
+## [br]- [code]resolve_us_per_test[/code]: µs spent resolving hits with rewind in the ticks in which
+## there was something to test ([code]resolve_us[/code]) per shape and line-of-sight check
+## ([code]hit_tests[/code]); 0 if there were none. [code]resolve_busy_ticks[/code] are those ticks.
+## [br]- [code]resolve_share[/code]: fraction of the [code]combat[/code] section taken up by the
+## [code]combat_resolve[/code] section (all ticks).
+## [br]- [code]events_us_per_event[/code]: average µs of [code]combat_events[/code] per emitted event.
 static func combat_figures(server: Dictionary, seconds: float) -> Dictionary:
 	var combat: Dictionary = server.get("combat", {})
 	var sections: Dictionary = (server.get("metrics", {}) as Dictionary).get("sections", {})
@@ -234,13 +234,13 @@ static func combat_figures(server: Dictionary, seconds: float) -> Dictionary:
 	}
 
 
-## Cuándo llegaron al fuerte los bots reales de un asedio (GUE-16; desde GUE-44 los que entran cuando los falsos ya han
-## salido esperan a los suyos en el campamento): de los informes de los enjambres ([param swarms], uno por proceso, con
-## la lista [code]clients[/code] de [method SwarmBot.get_stats]), los bots de asedio que hay
-## ([code]bots[/code]), cuántos han llegado alguna vez a menos de [constant BotBrain.SIEGE_RALLY_FORT_RADIUS] del
-## círculo ([code]arrived[/code]), cuántos lo hicieron hasta el tick [param first_tick] incluido, el principio de la
-## ventana de medida ([code]before_window[/code]), y el tick del servidor del último en llegar ([code]last_tick[/code];
-## -1 si no llegó ninguno). Los bots sin [code]fort_reached_tick[/code] (no son de asedio) no cuentan.
+## When the real bots of a siege reached the fort (GUE-16; since GUE-44 those that join when the fakes have already
+## left wait for their own in the camp): from the swarm reports ([param swarms], one per process, with
+## the [code]clients[/code] list of [method SwarmBot.get_stats]), the siege bots there are
+## ([code]bots[/code]), how many have ever got within [constant BotBrain.SIEGE_RALLY_FORT_RADIUS] of the
+## circle ([code]arrived[/code]), how many did so up to and including tick [param first_tick], the start of the
+## measurement window ([code]before_window[/code]), and the server tick of the last to arrive ([code]last_tick[/code];
+## -1 if none arrived). Bots without [code]fort_reached_tick[/code] (not siege ones) do not count.
 static func fort_arrivals(swarms: Array, first_tick: int) -> Dictionary:
 	var bots: int = 0
 	var arrived: int = 0
@@ -261,11 +261,11 @@ static func fort_arrivals(swarms: Array, first_tick: int) -> Dictionary:
 	return {"bots": bots, "arrived": arrived, "before_window": before_window, "last_tick": last_tick}
 
 
-## Cifras de la fase 4 de una refriega (H5; docs/habilidades.md, secciones 7.3 y 8), del bloque
-## [code]combat[/code] del informe del servidor ([method ZoneServer.write_report]): flechas (disparos, a quién dan,
-## pico de vivas frente al tope de la zona, las que echó el tope, rebobinados rechazados, coste por tick ocupado y
-## mensajes) y el resto del kit (efectos, curaciones, interrupciones y derribos). [param seconds]: lo que duró el
-## servidor.
+## Phase 4 figures of a brawl (H5; docs/habilidades.md, sections 7.3 and 8), from the
+## [code]combat[/code] block of the server report ([method ZoneServer.write_report]): arrows (shots, who they hit,
+## peak of live ones against the zone cap, those evicted by the cap, rewinds rejected, cost per busy tick and
+## messages) and the rest of the kit (effects, heals, interrupts and knockdowns). [param seconds]: how long the
+## server ran.
 static func phase_4_figures(server: Dictionary, seconds: float) -> Dictionary:
 	var combat: Dictionary = server.get("combat", {})
 	var busy: int = int(combat.get("projectile_busy_ticks", 0))

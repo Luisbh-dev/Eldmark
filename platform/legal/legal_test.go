@@ -26,7 +26,7 @@ func TestEmbeddedDrafts(t *testing.T) {
 			t.Fatalf("%s: %+v", kind, d)
 		}
 	}
-	// privacy-1.md recoge la tabla de retenciones de plataforma.md §11.1.
+	// privacy-1.md reflects the retention table from plataforma.md §11.1.
 	privacy := string(s.Current("privacy").Text)
 	for _, want := range []string{"30 días", "1 año", "14 días", "35 días", "HMAC", "7 días", "1 día", "90 días",
 		"desde que se purga", "instancias de zona terminadas", "dato de moderación"} {
@@ -84,7 +84,7 @@ func TestSync(t *testing.T) {
 	if err := pool.QueryRow(ctx, `select count(*) from legal_documents`).Scan(&n); err != nil || n != 3 {
 		t.Fatalf("filas: %d %v", n, err)
 	}
-	// Un texto publicado que cambia: en staging y production no arranca; en dev y test, aviso.
+	// A published text that changes: in staging and production it does not start; in dev and test, a warning.
 	edited := fstest.MapFS{
 		"terms-1.md":   {Data: []byte("otro texto")},
 		"privacy-1.md": {Data: s.Current("privacy").Text},

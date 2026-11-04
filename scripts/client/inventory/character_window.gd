@@ -1,18 +1,18 @@
 class_name CharacterWindow
 extends UIWindow
-## Ventana de personaje (tecla C; docs/progresion.md §11.1, UI-26): la figura 3D (un [SubViewport] con su propio
-## mundo, un [PlayerCharacter] quieto con [HumanoidVisual], su apariencia y sus armas, que gira al arrastrar), las
-## dos ranuras de arma (las otras cinco, en gris con «Próximamente»), nombre, reino, nivel y barra de XP, puntos
-## de reino y de atributo, y la hoja de [CombatRules] (vida y resistencia máximas; en la fase 5 no cambia con el
-## equipo).
+## Character window (key C; docs/progresion.md §11.1, UI-26): the 3D figure (a [SubViewport] with its own
+## world, a still [PlayerCharacter] with [HumanoidVisual], its appearance and its weapons, which turns when dragged), the
+## two weapon slots (the other five, grayed out with "Próximamente", coming soon), name, realm, level and XP bar, realm
+## and attribute points, and the [CombatRules] sheet (maximum health and stamina; in phase 5 it does not change with
+## equipment).
 ## [br][br]
-## Las casillas del equipo son [InventorySlotView] del contenedor EQUIPMENT y sus gestos (arrastrar, soltar, doble
-## clic, soltar fuera) los resuelve la [InventoryWindow] que se le da en [method bind]: se arrastra de una ventana
-## a otra. Las armas de la figura son las del estado de combate confirmado ([method set_weapons]), no las de la
-## vista optimista del inventario: un rechazo nunca hace parpadear el arma.
+## The equipment slots are [InventorySlotView]s of the EQUIPMENT container and their gestures (drag, drop, double
+## click, drop outside) are resolved by the [InventoryWindow] given in [method bind]: items are dragged from one window
+## to the other. The figure's weapons are those of the confirmed combat state ([method set_weapons]), not those of the
+## inventory's optimistic view: a rejection never makes the weapon flicker.
 ## [br][br]
-## La figura se monta la primera vez que se abre ([method ensure_preview]) y su [SubViewport] solo dibuja
-## mientras la ventana está abierta. Solo cliente.
+## The figure is mounted the first time it is opened ([method ensure_preview]) and its [SubViewport] only draws
+## while the window is open. Client only.
 
 const TEXT_TITLE: String = "Personaje"
 const TEXT_SOON: String = "Próximamente"
@@ -23,15 +23,15 @@ const TEXT_REALM_POINTS: String = "Puntos de reino: %d"
 const TEXT_ATTRIBUTE_POINTS: String = "Puntos de atributo: %d"
 const TEXT_HEALTH: String = "Vida máxima: %d"
 const TEXT_STAMINA: String = "Resistencia máxima: %d"
-## Nombre de cada ranura del equipo ([enum InventoryState.EquipmentSlot]).
+## Name of each equipment slot ([enum InventoryState.EquipmentSlot]).
 const SLOT_NAMES: Array[String] = ["Arma 1", "Arma 2", "Cabeza", "Torso", "Manos", "Piernas", "Pies"]
 const PLAYER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
-## Tamaño (px) de la figura.
+## Size (px) of the figure.
 const PREVIEW_SIZE: Vector2i = Vector2i(220, 300)
-## Radianes que gira la figura por píxel arrastrado.
+## Radians the figure turns per dragged pixel.
 const TURN_RATE: float = 0.012
-## Cámara de la figura: de frente (el personaje mira hacia −Z) y a la altura del pecho. # TODO(arte): encuadre, luz y
-## fondo provisionales hasta el visto bueno de la ventana (docs/progresion.md §16).
+## Camera of the figure: front-facing (the character looks toward −Z) and at chest height. # TODO(arte): framing, light and
+## background are provisional until the window gets sign-off (docs/progresion.md §16).
 const CAMERA_POSITION: Vector3 = Vector3(0.0, 1.1, -3.1)
 const CAMERA_TARGET: Vector3 = Vector3(0.0, 0.92, 0.0)
 const CAMERA_FOV: float = 38.0
@@ -137,8 +137,8 @@ func _ready() -> void:
 		view_slot.bind_tooltip(tooltip)
 
 
-## Conecta la ventana con el inventario y el progreso del jugador y con la [InventoryWindow] que resuelve los
-## gestos de sus casillas (también cuenta esta ventana como «dentro» al soltar).
+## Connects the window to the player's inventory and progress and to the [InventoryWindow] that resolves the
+## gestures of its slots (this window also counts as "inside" when dropping).
 func bind(inventory: ClientInventory, progress: ClientProgress, gestures: InventoryWindow) -> void:
 	if _inventory != null and _inventory.view_changed.is_connected(refresh):
 		_inventory.view_changed.disconnect(refresh)
@@ -159,8 +159,8 @@ func bind(inventory: ClientInventory, progress: ClientProgress, gestures: Invent
 	refresh()
 
 
-## Nombre, reino (código de [enum NetProtocol.Realm]) y los 8 B de la apariencia del jugador (los del SPAWN
-## propio; los que no valen caen a la de por defecto de su reino, [method AppearanceApplier.resolve]).
+## Name, realm (code from [enum NetProtocol.Realm]) and the 8 B of the player's appearance (those from their own
+## SPAWN; invalid ones fall back to their realm's default, [method AppearanceApplier.resolve]).
 func set_identity(display_name: String, realm: int, appearance: PackedByteArray) -> void:
 	_display_name = display_name
 	_realm = realm
@@ -170,7 +170,7 @@ func set_identity(display_name: String, realm: int, appearance: PackedByteArray)
 	refresh()
 
 
-## Las armas de la figura: la activa y la de la otra ranura (ids de [CombatCatalog], del estado confirmado).
+## The figure's weapons: the active one and the one in the other slot ([CombatCatalog] ids, from the confirmed state).
 func set_weapons(weapon_id: int, alt_weapon_id: int) -> void:
 	_weapon_id = weapon_id
 	_alt_weapon_id = alt_weapon_id
@@ -179,7 +179,7 @@ func set_weapons(weapon_id: int, alt_weapon_id: int) -> void:
 		_preview.combat.alt_weapon_id = alt_weapon_id
 
 
-## Rehace las casillas del equipo y los textos.
+## Rebuilds the equipment slots and the texts.
 func refresh() -> void:
 	for view_slot: InventorySlotView in _slots:
 		if _gestures != null and _inventory != null:
@@ -203,7 +203,7 @@ func refresh() -> void:
 	_stamina_label.text = TEXT_STAMINA % rules.stamina_max
 
 
-## La casilla [param slot] del equipo ([enum InventoryState.EquipmentSlot]).
+## Equipment slot [param slot] ([enum InventoryState.EquipmentSlot]).
 func get_slot_view(slot: int) -> InventorySlotView:
 	return _slots[slot] if slot >= 0 and slot < _slots.size() else null
 
@@ -236,12 +236,12 @@ func get_health_label() -> Label:
 	return _health_label
 
 
-## El [HumanoidVisual] de la figura (null hasta [method ensure_preview]).
+## The figure's [HumanoidVisual] (null until [method ensure_preview]).
 func get_preview_visual() -> HumanoidVisual:
 	return _visual
 
 
-## El [PlayerCharacter] quieto de la figura (null hasta [method ensure_preview]).
+## The figure's still [PlayerCharacter] (null until [method ensure_preview]).
 func get_preview_character() -> PlayerCharacter:
 	return _preview
 
@@ -250,19 +250,19 @@ func get_preview_viewport() -> SubViewport:
 	return _viewport
 
 
-## Giro de la figura (radianes).
+## Turn of the figure (radians).
 func get_preview_yaw() -> float:
 	return _turntable.rotation.y if is_instance_valid(_turntable) else 0.0
 
 
-## Gira la figura lo que corresponde a arrastrar [param pixels] en horizontal.
+## Turns the figure by the amount corresponding to dragging [param pixels] horizontally.
 func rotate_preview(pixels: float) -> void:
 	if is_instance_valid(_turntable):
 		_turntable.rotation.y = wrapf(_turntable.rotation.y + pixels * TURN_RATE, -PI, PI)
 
 
-## Monta la figura si aún no está (al abrir la ventana por primera vez) y la devuelve. Null si no hay árbol o
-## no se pudo cargar el personaje.
+## Mounts the figure if it is not there yet (when the window is first opened) and returns it. Null if there is no tree or
+## the character could not be loaded.
 func ensure_preview() -> HumanoidVisual:
 	if is_instance_valid(_visual):
 		return _visual
@@ -297,7 +297,7 @@ func ensure_preview() -> HumanoidVisual:
 		push_warning("[Eldmark] No se pudo montar la figura de la ventana de personaje")
 		return null
 	_preview.name = "Figura"
-	# Nadie simula a este personaje: sin esto el animador lo ve siempre en el aire y lo enseña en la pose de caída (UI-49).
+	# Nobody simulates this character: without this the animator always sees it in the air and shows it in the fall pose (UI-49).
 	_preview.grounded = true
 	_turntable.add_child(_preview)
 	_visual = HumanoidVisual.install_replacing_placeholder(_preview)

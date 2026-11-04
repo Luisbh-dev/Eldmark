@@ -1,22 +1,21 @@
 class_name AudioBuses
 extends RefCounted
-## Buses de audio del cliente y sus volúmenes guardados (ART-10).
+## Client audio buses and their saved volumes (ART-10).
 ## [br][br]
-## La disposición está en [code]default_bus_layout.tres[/code] (la raíz del proyecto, que Godot
-## carga solo): [code]Master[/code] (con un limitador que evita saturar la salida) y, enviando a él,
-## [code]Music[/code], [code]SFX[/code], [code]Ambience[/code], [code]UI[/code] y [code]Voices[/code].
-## Los identificadores son en inglés; [method display_name] da el nombre en español que ven los
-## ajustes.
+## The layout is in [code]default_bus_layout.tres[/code] (the project root, which Godot loads on
+## its own): [code]Master[/code] (with a limiter that prevents saturating the output) and, sending
+## to it, [code]Music[/code], [code]SFX[/code], [code]Ambience[/code], [code]UI[/code] and
+## [code]Voices[/code]. Identifiers are in English; [method display_name] gives the Spanish name
+## that the settings show.
 ## [br][br]
-## Los volúmenes son lineales (0 a 1, como un deslizador) y se convierten a decibelios al aplicarlos;
-## con 0 el bus se silencia del todo. Se guardan en la sección [code][audio][/code] de
-## [code]user://settings.cfg[/code] (la misma que escriben los ajustes de UI-16), una clave
-## [code]volume_<bus>[/code] por bus. [method save_volumes] conserva el resto de secciones del
-## archivo.
+## Volumes are linear (0 to 1, like a slider) and are converted to decibels when applied; at 0 the
+## bus is fully muted. They are saved in the [code][audio][/code] section of
+## [code]user://settings.cfg[/code] (the same one the UI-16 settings write), one
+## [code]volume_<bus>[/code] key per bus. [method save_volumes] keeps the file's other sections.
 ## [br][br]
-## Solo cliente: el servidor dedicado no carga nada de [code]scripts/client/[/code] (ni, por tanto,
-## de [code]scripts/client/audio/[/code]); lo comprueba [code]tests/test_architecture.gd[/code] con un
-## proceso arrancado con [code]--server[/code].
+## Client only: the dedicated server loads nothing from [code]scripts/client/[/code] (nor, therefore,
+## from [code]scripts/client/audio/[/code]); this is checked by [code]tests/test_architecture.gd[/code]
+## with a process started with [code]--server[/code].
 
 const MASTER: StringName = &"Master"
 const MUSIC: StringName = &"Music"
@@ -25,42 +24,42 @@ const AMBIENCE: StringName = &"Ambience"
 const UI: StringName = &"UI"
 const VOICES: StringName = &"Voices"
 
-## Todos los buses, en el orden del diseño de buses.
+## All the buses, in the bus layout's order.
 const ALL: Array[StringName] = [MASTER, MUSIC, SFX, AMBIENCE, UI, VOICES]
 
-## Nombre en español de cada bus (para los ajustes).
+## Spanish name of each bus (for the settings).
 const DISPLAY_NAMES: Dictionary = {
 	MASTER: "General", MUSIC: "Música", SFX: "Efectos", AMBIENCE: "Ambiente",
 	UI: "Interfaz", VOICES: "Voces",
 }
-## Volumen lineal por defecto de cada bus.
+## Default linear volume of each bus.
 const DEFAULT_VOLUMES: Dictionary = {
 	MASTER: 1.0, MUSIC: 0.7, SFX: 1.0, AMBIENCE: 0.8, UI: 0.8, VOICES: 1.0,
 }
 
-## Archivo y sección donde se guardan los volúmenes.
+## File and section where the volumes are saved.
 const SETTINGS_PATH: String = "user://settings.cfg"
 const SETTINGS_SECTION: String = "audio"
-## Volumen lineal por debajo del cual el bus se silencia.
+## Linear volume below which the bus is muted.
 const MUTE_THRESHOLD: float = 0.0001
 
 
-## Nombre en español de [param bus] («Efectos»...); el propio identificador si no se conoce.
+## Spanish name of [param bus] ("Efectos"...); the identifier itself if it is not known.
 static func display_name(bus: StringName) -> String:
 	return DISPLAY_NAMES.get(bus, String(bus))
 
 
-## Clave del volumen de [param bus] en el archivo de ajustes ([code]volume_sfx[/code]...).
+## Key of the volume of [param bus] in the settings file ([code]volume_sfx[/code]...).
 static func volume_key(bus: StringName) -> String:
 	return "volume_%s" % String(bus).to_lower()
 
 
-## true si el bus existe en el [AudioServer] (sin el diseño de buses cargado, no).
+## true if the bus exists in the [AudioServer] (without the bus layout loaded, it does not).
 static func has_bus(bus: StringName) -> bool:
 	return AudioServer.get_bus_index(bus) >= 0
 
 
-## Volumen lineal (0 a 1) del bus; 0 si está silenciado o no existe.
+## Linear volume (0 to 1) of the bus; 0 if it is muted or does not exist.
 static func get_volume(bus: StringName) -> float:
 	var index: int = AudioServer.get_bus_index(bus)
 	if index < 0 or AudioServer.is_bus_mute(index):
@@ -68,8 +67,8 @@ static func get_volume(bus: StringName) -> float:
 	return db_to_linear(AudioServer.get_bus_volume_db(index))
 
 
-## Aplica el volumen lineal [param linear] (se limita a 0..1) al bus. Con un valor casi nulo el
-## bus se silencia y se deja a -80 dB. No hace nada si el bus no existe.
+## Applies the linear volume [param linear] (clamped to 0..1) to the bus. With a nearly zero value
+## the bus is muted and left at -80 dB. It does nothing if the bus does not exist.
 static func set_volume(bus: StringName, linear: float) -> void:
 	var index: int = AudioServer.get_bus_index(bus)
 	if index < 0:
@@ -83,18 +82,18 @@ static func set_volume(bus: StringName, linear: float) -> void:
 		AudioServer.set_bus_volume_db(index, linear_to_db(value))
 
 
-## Volumen lineal por defecto de [param bus] (1 si no se conoce).
+## Default linear volume of [param bus] (1 if it is not known).
 static func default_volume(bus: StringName) -> float:
 	return float(DEFAULT_VOLUMES.get(bus, 1.0))
 
 
-## Vuelve todos los buses a su volumen por defecto (sin guardar).
+## Returns all the buses to their default volume (without saving).
 static func reset_volumes() -> void:
 	for bus: StringName in ALL:
 		set_volume(bus, default_volume(bus))
 
 
-## Volúmenes lineales actuales de todos los buses: bus -> float.
+## Current linear volumes of all the buses: bus -> float.
 static func get_volumes() -> Dictionary:
 	var volumes: Dictionary = {}
 	for bus: StringName in ALL:
@@ -102,8 +101,8 @@ static func get_volumes() -> Dictionary:
 	return volumes
 
 
-## Lee los volúmenes de [param path] y los aplica. Los buses sin clave en el archivo (o si el
-## archivo no existe o está mal) quedan a su valor por defecto. Devuelve los volúmenes aplicados.
+## Reads the volumes from [param path] and applies them. Buses with no key in the file (or if the
+## file does not exist or is malformed) stay at their default value. Returns the applied volumes.
 static func load_volumes(path: String = SETTINGS_PATH) -> Dictionary:
 	var config: ConfigFile = ConfigFile.new()
 	var error: Error = config.load(path)
@@ -117,11 +116,11 @@ static func load_volumes(path: String = SETTINGS_PATH) -> Dictionary:
 	return get_volumes()
 
 
-## Guarda los volúmenes actuales en [param path], conservando lo demás que hubiera en el archivo.
-## Devuelve el error de [method ConfigFile.save] ([constant OK] si fue bien).
+## Saves the current volumes to [param path], keeping whatever else was in the file.
+## Returns the error from [method ConfigFile.save] ([constant OK] if it went well).
 static func save_volumes(path: String = SETTINGS_PATH) -> Error:
 	var config: ConfigFile = ConfigFile.new()
-	# Si el archivo no existe o está roto se empieza de cero; un archivo roto se sobrescribe.
+	# If the file does not exist or is broken, it starts from scratch; a broken file is overwritten.
 	config.load(path)
 	for bus: StringName in ALL:
 		config.set_value(SETTINGS_SECTION, volume_key(bus), snappedf(get_volume(bus), 0.001))

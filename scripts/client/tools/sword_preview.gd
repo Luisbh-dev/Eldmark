@@ -1,34 +1,34 @@
 extends Node3D
-## Vista previa de la espada (herramienta de desarrollo, solo cliente).
+## Sword preview (development tool, client only).
 ##
-## Pone el modelo (o los cuatro) bajo la luz del Vado Gris (el sol y los dos rellenos de
-## vado_gris.tscn y su ambiente) sobre un fondo liso, y hace las fotos en un SubViewport de tamaño
-## propio, así que el tamaño de la ventana da igual.
+## It puts the model (or all four) under Vado Gris's light (the sun and the two fill lights of
+## vado_gris.tscn and its ambience) against a plain background, and takes the pictures in a SubViewport of
+## its own size, so the window size does not matter.
 ## [br][br]
-## Uso (con ventana; en esta máquina las ventanas van a la segunda pantalla por override.cfg):
+## Usage (with a window; on this machine windows go to the second screen via override.cfg):
 ## [codeblock]
 ## godot --path . res://scenes/tests/sword_preview.tscn -- --sin-raton \
 ##     --shots=build/sword/render [--views=perfil,frente,empunadura,juntas] [--variant=base] \
 ##     [--lod=0|1] [--no-quit]
 ## [/codeblock]
-## [br]- [code]--shots=<carpeta>[/code]: guarda un PNG por vista ([code]sword_<variante>_<vista>.png[/code],
-## o [code]sword_juntas.png[/code]). Sin ella, enseña la primera vista en la ventana.
-## [br]- [code]--views=[/code]: lista separada por comas (por defecto, todas).
-## [br]- [code]--variant=[/code]: [code]base[/code], [code]vardheim[/code], [code]solmarch[/code] o
-## [code]askarra[/code] (por defecto, el base; con [code]all[/code] se hacen las cuatro).
-## [br]- [code]--lod=0|1[/code]: fuerza el detalle completo (0, por defecto) o el sencillo (1).
+## [br]- [code]--shots=<folder>[/code]: saves one PNG per view ([code]sword_<variant>_<view>.png[/code],
+## or [code]sword_juntas.png[/code]). Without it, it shows the first view in the window.
+## [br]- [code]--views=[/code]: comma-separated list (by default, all).
+## [br]- [code]--variant=[/code]: [code]base[/code], [code]vardheim[/code], [code]solmarch[/code] or
+## [code]askarra[/code] (by default, the base one; with [code]all[/code] all four are done).
+## [br]- [code]--lod=0|1[/code]: forces full detail (0, the default) or the simple one (1).
 ## [br][br]
-## Vistas: [code]perfil[/code] (de canto, 90°), [code]frente[/code] (la cara ancha de la hoja),
-## [code]tres_cuartos[/code], [code]empunadura[/code] (guarda, cuero y pomo de cerca) y
-## [code]pomo[/code] (el pomo de cerca), [code]pomo_frente[/code] y [code]guarda_frente[/code] (el pomo y la guarda de
-## cara, sin giro: la silueta tal como está modelada); [code]juntas[/code] pone las cuatro espadas en fila.
+## Views: [code]perfil[/code] (profile, edge-on, 90°), [code]frente[/code] (the blade's broad face),
+## [code]tres_cuartos[/code] (three-quarter), [code]empunadura[/code] (grip: guard, leather and pommel up
+## close) and [code]pomo[/code] (the pommel up close), [code]pomo_frente[/code] and
+## [code]guarda_frente[/code] (the pommel and the guard head-on, with no rotation: the silhouette as
+## modeled); [code]juntas[/code] puts the four swords in a row.
 
-## Fondo de las fotos: gris pizarra, para que el acero se despegue.
+## Background of the pictures: slate gray, so that the steel stands out.
 const BACKGROUND: Color = Color(0.19, 0.205, 0.23, 1.0)
 const ENVIRONMENT_PATH: String = "res://assets/environments/vado_gris_frontier.tres"
-## Por vista: giro de la espada sobre Y (grados), elevación de la cámara (grados), distancia (m),
-## campo de visión vertical (grados), punto al que mira (altura sobre el centro de la empuñadura, m)
-## y tamaño de la imagen.
+## Per view: sword rotation about Y (degrees), camera elevation (degrees), distance (m), vertical field
+## of view (degrees), point it looks at (height above the grip's center, m) and image size.
 const VIEWS: Dictionary[String, Dictionary] = {
 	"perfil": {"yaw": -90.0, "pitch": 4.0, "distance": 3.4, "fov": 22.0, "target": 0.40,
 			"size": Vector2i(800, 1400)},
@@ -46,7 +46,7 @@ const VIEWS: Dictionary[String, Dictionary] = {
 			"size": Vector2i(1200, 800)},
 }
 const ALL_VARIANTS: Array[StringName] = [&"base", &"vardheim", &"solmarch", &"askarra"]
-## Separación entre espadas en la vista de conjunto (m) y tamaño de esa imagen.
+## Spacing between swords in the lineup view (m) and size of that image.
 const LINEUP_SPACING: float = 0.46
 const LINEUP_SIZE: Vector2i = Vector2i(1800, 1150)
 const LINEUP_YAW: float = -28.0
@@ -96,7 +96,7 @@ func _ready() -> void:
 
 func _setup_environment() -> void:
 	var environment: Environment = (load(ENVIRONMENT_PATH) as Environment).duplicate() as Environment
-	# Fondo liso; el ambiente y los reflejos siguen saliendo del cielo del juego.
+	# Plain background; ambient light and reflections still come from the game's sky.
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = BACKGROUND
 	environment.fog_enabled = false
@@ -116,7 +116,7 @@ func _run() -> void:
 		else:
 			push_warning("[SwordPreview] Vista desconocida: %s" % view_name)
 		if _shots_dir.is_empty() and first:
-			# Sin carpeta: se queda enseñando la primera vista.
+			# No folder: it stays showing the first view.
 			return
 		first = false
 	if _quit_when_done and not _shots_dir.is_empty():
@@ -172,7 +172,7 @@ func _frame_camera(pitch_deg: float, distance: float, fov: float, target: Vector
 
 func _capture(size: Vector2i, file_name: String) -> void:
 	_viewport.size = size
-	# Unos fotogramas para que se asienten sombras y oclusión ambiental.
+	# A few frames for shadows and ambient occlusion to settle.
 	for i: int in range(6):
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw

@@ -1,23 +1,23 @@
 class_name AppearancePart
 extends Resource
-## Una pieza de la apariencia (docs/progresion.md §7.2, ART-19): un cuerpo, una cabeza, un peinado, una
-## barba o unas marcas de [AppearanceCatalog]. Va dentro del catálogo; su posición en la lista es el
-## índice que se guarda en los 8 B de [CharacterAppearance], así que las listas solo crecen.
+## A part of the appearance (docs/progresion.md §7.2, ART-19): a body, a head, a hairstyle, a
+## beard or marks from [AppearanceCatalog]. It lives inside the catalog; its position in the list
+## is the index stored in the 8 B of [CharacterAppearance], so lists only grow.
 ## [br][br]
-## La escena va como ruta ([member scene_path]) y no como [PackedScene]: el servidor carga el catálogo
-## para validar y nunca debe cargar modelos (el preset del servidor recorta [code]assets/[/code]).
+## The scene is a path ([member scene_path]) and not a [PackedScene]: the server loads the catalog
+## to validate and must never load models (the server preset trims [code]assets/[/code]).
 
-## Id estable ([code][a-z0-9_][/code]); lo congela [code]data/characters/appearance_ids.txt[/code].
+## Stable id ([code][a-z0-9_][/code]); frozen by [code]data/characters/appearance_ids.txt[/code].
 @export var id: StringName = &""
-## Nombre en español para la pantalla de creación.
+## Name in Spanish for the creation screen.
 @export var display_name: String = ""
-## Escena glTF de la pieza (solo cliente; la monta [code]AppearanceApplier[/code]). Vacía en una pieza
-## que no tiene malla propia.
+## glTF scene of the part (client-only; mounted by [code]AppearanceApplier[/code]). Empty for a
+## part that has no mesh of its own.
 @export var scene_path: String = ""
-## Índices de [member AppearanceCatalog.bodies] con los que encaja; vacío = todos.
+## Indices of [member AppearanceCatalog.bodies] it fits with; empty = all.
 @export var bodies: PackedInt32Array = PackedInt32Array()
 
 
-## true si la pieza encaja con el cuerpo [param body] (índice en el catálogo).
+## true if the part fits body [param body] (index in the catalog).
 func fits_body(body: int) -> bool:
 	return bodies.is_empty() or bodies.has(body)

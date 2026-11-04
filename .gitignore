@@ -2,38 +2,38 @@
 .godot/
 /android/
 
-# Builds y exportaciones
+# Builds and exports
 /build/
 /exports/
 
-# Paquetes originales de assets (se guardan fuera del repo, en ../Eldmark-raw)
+# Original asset packs (kept outside the repo, in ../Eldmark-raw)
 *.zip
 *.7z
 *.blend1
 
-# Demos de los addons
+# Addon demos
 addons/*/demo/
 
-# Configuración local
+# Local configuration
 .env
 CLAUDE.local.md
 
-# Sistema operativo
+# Operating system
 Thumbs.db
 desktop.ini
 .DS_Store
 
-# Ajustes locales de Godot de cada máquina
+# Local Godot settings of each machine
 override.cfg
 .claude/worktrees/
 
-# Copias temporales de las librerías de GDExtension que crea el editor en Windows
+# Temporary copies of the GDExtension libraries that the editor creates on Windows
 addons/*/bin/~*
 
-# Ajustes locales de Claude Code (permisos de esta máquina)
+# Local Claude Code settings (permissions of this machine)
 .claude/settings.local.json
 
-# Secretos (plataforma.md §10.3): nunca entran en git; sí los ejemplos y los PEM de prueba
+# Secrets (plataforma.md §10.3): they never go into git; the examples and the test PEMs do
 *.env
 !*.env.example
 platform/deploy/secrets/
@@ -41,10 +41,10 @@ platform/deploy/secrets/
 *.key
 !tests/fixtures/**/*.pem
 
-# Binario de la plataforma compilado dentro de platform/
+# Platform binary compiled inside platform/
 /platform/eldmark-platform
 /platform/eldmark-platform.exe
 
-# Caches de Python (herramientas de assets)
+# Python caches (asset tools)
 __pycache__/
 *.pyc

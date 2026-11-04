@@ -1,22 +1,23 @@
 class_name ScoreboardPanel
 extends Control
-## Marcador de la zona (UI-41, docs/fuerte.md sección 6): mientras se mantiene Tab ([code]scoreboard[/code]) se
-## ve una tabla con una fila por jugador (bajas, muertes, asistencias, daño a la puerta, tiempo en el círculo
-## y méritos), ordenada por bajas, y un resumen por reino. Los datos son los del último SCOREBOARD completo
-## ([ScoreboardState], que el servidor manda cada 2 s a toda la zona y que el cliente junta por páginas); el
-## nombre y el reino de cada fila salen del [PlayerDirectory], porque el mensaje solo lleva ids.
+## Zone scoreboard (UI-41, docs/fuerte.md section 6): while Tab ([code]scoreboard[/code]) is held, a table
+## is shown with one row per player (kills, deaths, assists, gate damage, time in the circle and merits),
+## sorted by kills, and a summary per realm. The data is that of the last complete SCOREBOARD
+## ([ScoreboardState], which the server sends every 2 s to the whole zone and which the client assembles
+## from pages); each row's name and realm come from the [PlayerDirectory], because the message only carries
+## ids.
 ## [br][br]
-## [b]Límite conocido.[/b] Un jugador al que este cliente nunca ha visto (siempre estuvo fuera del radio de
-## interés) no tiene nombre ni reino conocidos: sale como «Jugador N», sin color. Arreglarlo es cosa del
-## protocolo (nombres en el marcador o un mensaje de lista de jugadores), no de esta interfaz.
+## [b]Known limitation.[/b] A player this client has never seen (always outside the interest radius) has no
+## known name or realm: it appears as "Jugador N" (Player N), with no color. Fixing it is a protocol matter
+## (names in the scoreboard or a player list message), not this interface's.
 ## [br][br]
-## [b]La tecla.[/b] Se abre al pulsar [code]scoreboard[/code] y se cierra al soltarla, con cualquier modificador pulsado:
-## Mayús es esprintar, Ctrl esquivar y Alt soltar el cursor, así que en pleno combate Tab casi nunca llega sola. Si el
-## soltar no llega (se lo queda otro nodo), se cierra igual en cuanto [Input] ve la tecla suelta; abierto por código
-## ([method open]) no se cierra solo.
+## [b]The key.[/b] It opens when [code]scoreboard[/code] is pressed and closes when released, with any
+## modifier held: Shift is sprint, Ctrl is dodge and Alt is release the cursor, so in the middle of combat
+## Tab almost never arrives alone. If the release does not arrive (another node keeps it), it closes anyway
+## as soon as [Input] sees the key released; when opened by code ([method open]) it does not close on its own.
 ## [br][br]
-## La tabla es un [Tree] (rápido y con desplazamiento con cientos de filas). Las medidas, los colores y los
-## textos son provisionales. Solo cliente.
+## The table is a [Tree] (fast and scrollable with hundreds of rows). The measurements, colors and texts
+## are provisional. Client only.
 
 const WIDTH: float = 900.0
 const HEIGHT: float = 600.0
@@ -31,7 +32,7 @@ const TEXT_REFRESH: String = "Se actualiza cada 2 s · mantén %s"
 const TEXT_REALM_SUMMARY: String = "%s: %s · %d bajas"
 const TEXT_NO_REALM: String = "Sin reino conocido"
 
-## Columnas, en orden, con su título.
+## Columns, in order, with their title.
 const COLUMN_NAME: int = 0
 const COLUMN_REALM: int = 1
 const COLUMN_KILLS: int = 2
@@ -48,7 +49,7 @@ var _client: NetClient = null
 var _state: ScoreboardState = null
 var _directory: PlayerDirectory = null
 var _open: bool = false
-# true si lo abrió la tecla (y se cierra al verla suelta).
+# true if the key opened it (and it closes when seeing the key released).
 var _held_by_key: bool = false
 var _shown_version: int = -1
 var _entries: Array[Dictionary] = []
@@ -70,7 +71,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	# Red de seguridad: abierto con la tecla, se cierra en cuanto la tecla está suelta aunque su soltar no haya llegado.
+	# Safety net: opened with the key, it closes as soon as the key is released even if its release did not arrive.
 	if _open and _held_by_key and InputMap.has_action(&"scoreboard") and not Input.is_action_pressed(&"scoreboard"):
 		close()
 
@@ -81,7 +82,7 @@ func _exit_tree() -> void:
 
 
 func _notification(what: int) -> void:
-	# Con la ventana sin foco no llegará el soltar de la tecla: se cierra.
+	# With the window unfocused the key release will not arrive: it closes.
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and _open:
 		close()
 
@@ -89,7 +90,7 @@ func _notification(what: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not InputMap.has_action(&"scoreboard"):
 		return
-	# Sin coincidencia exacta de modificadores: corriendo (Mayús) o esquivando (Ctrl) también vale.
+	# Without exact modifier matching: running (Shift) or dodging (Ctrl) also counts.
 	if event.is_action_pressed(&"scoreboard"):
 		open()
 		_held_by_key = true
@@ -98,7 +99,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		close()
 
 
-## Conecta el marcador con el cliente: sus datos, el directorio de nombres y el id propio.
+## Connects the scoreboard to the client: its data, the name directory and the own id.
 func bind(client: NetClient) -> void:
 	if is_instance_valid(_client) and _client.scoreboard_updated.is_connected(_on_scoreboard_updated):
 		_client.scoreboard_updated.disconnect(_on_scoreboard_updated)
@@ -133,7 +134,7 @@ func is_open() -> bool:
 	return _open
 
 
-## Vuelve a pintar la tabla si hay un marcador nuevo (o siempre con [param force]). Solo trabaja abierto.
+## Repaints the table if there is a new scoreboard (or always with [param force]). It only works while open.
 func refresh(force: bool = false) -> void:
 	if not _open:
 		return
@@ -152,9 +153,9 @@ func refresh(force: bool = false) -> void:
 	_footer.text = _footer_text()
 
 
-# --- Datos (puros) ----------------------------------------------------------------------------
+# --- Data (pure) ------------------------------------------------------------------------------
 
-## Las filas de [param rows] listas para mostrar, ordenadas ([method ScoreboardState.sort_rows]): cada una
+## The rows of [param rows] ready to display, sorted ([method ScoreboardState.sort_rows]): each one
 ## [code]{net_id, name, realm, kills, deaths, assists, gate_damage, circle_seconds, merits, own}[/code].
 static func build_entries(rows: Array[NetMessages.ScoreRow], directory: PlayerDirectory,
 		own_id: int) -> Array[Dictionary]:
@@ -171,7 +172,7 @@ static func build_entries(rows: Array[NetMessages.ScoreRow], directory: PlayerDi
 	return entries
 
 
-## Totales por reino (código de red; 0 = sin reino conocido) de [param entries]:
+## Totals per realm (network code; 0 = no known realm) of [param entries]:
 ## [code]{players, kills, deaths, assists, gate_damage, circle_seconds, merits}[/code].
 static func realm_totals(entries: Array[Dictionary]) -> Dictionary:
 	var totals: Dictionary = {}
@@ -187,7 +188,7 @@ static func realm_totals(entries: Array[Dictionary]) -> Dictionary:
 	return totals
 
 
-## Las celdas de [param entry] como texto, una por columna.
+## The cells of [param entry] as text, one per column.
 static func cells_of(entry: Dictionary) -> PackedStringArray:
 	var realm: int = int(entry["realm"])
 	return PackedStringArray([
@@ -202,7 +203,7 @@ static func cells_of(entry: Dictionary) -> PackedStringArray:
 	])
 
 
-## Número con puntos de millar («12.345»).
+## Number with thousands separators as periods ("12.345").
 static func format_count(value: int) -> String:
 	var digits: String = str(absi(value))
 	var grouped: String = ""
@@ -212,7 +213,7 @@ static func format_count(value: int) -> String:
 	return ("-" if value < 0 else "") + digits + grouped
 
 
-## Segundos como «m:ss» («2:05»); con horas, «h:mm:ss».
+## Seconds as "m:ss" ("2:05"); with hours, "h:mm:ss".
 @warning_ignore("integer_division")
 static func format_time(seconds: int) -> String:
 	var total: int = maxi(seconds, 0)
@@ -221,9 +222,9 @@ static func format_time(seconds: int) -> String:
 	return "%d:%02d" % [total / 60, total % 60]
 
 
-# --- Accesos (para las pruebas y para quien monta la interfaz) --------------------------------
+# --- Accessors (for the tests and for whoever assembles the interface) ------------------------
 
-## Filas que se están mostrando (ordenadas).
+## Rows being shown (sorted).
 func get_entries() -> Array[Dictionary]:
 	return _entries.duplicate()
 
@@ -232,7 +233,7 @@ func get_row_count() -> int:
 	return _entries.size()
 
 
-## Celdas de la fila [param index] como texto (vacío si no existe).
+## Cells of row [param index] as text (empty if it does not exist).
 func get_cells(index: int) -> PackedStringArray:
 	return cells_of(_entries[index]) if index >= 0 and index < _entries.size() else PackedStringArray()
 
@@ -241,7 +242,7 @@ func is_own_row(index: int) -> bool:
 	return index >= 0 and index < _entries.size() and bool(_entries[index]["own"])
 
 
-## Resumen por reino (una línea por reino con jugadores), en el orden de los reinos.
+## Summary per realm (one line per realm with players), in realm order.
 func get_summary_lines() -> PackedStringArray:
 	return summary_lines(_entries)
 
@@ -265,19 +266,19 @@ func get_footer_text() -> String:
 	return _footer.text if _footer != null else ""
 
 
-## La tabla (para quien la quiera ver por dentro).
+## The table (for whoever wants to look inside).
 func get_tree_control() -> Tree:
 	return _tree
 
 
-## Filas de la tabla ya pintadas.
+## Table rows already painted.
 func get_tree_row_count() -> int:
 	if _tree == null or _tree.get_root() == null:
 		return 0
 	return _tree.get_root().get_child_count()
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ---------------------------------------------------------------------------------
 
 func _on_scoreboard_updated(_scoreboard: ScoreboardState) -> void:
 	if _open:

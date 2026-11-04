@@ -1,44 +1,46 @@
 class_name SwordModel
 extends RefCounted
-## La espada de armas de Eldmark (modelo propio, ver tools/blender/build_sword.py). Solo cliente.
+## Eldmark's weapon sword (our own model, see tools/blender/build_sword.py). Client only.
 ## [br][br]
-## Cuatro GLB con la misma hoja: [code]base[/code] y una variante por reino que cambia guarda, pomo
-## y colores ([code]vardheim[/code]: lobo y cuero azul; [code]solmarch[/code]: guarda de sol,
-## oro y cuero blanco; [code]askarra[/code]: bronce, cuero carmesí y pomo de yunque con brasa).
+## Four GLBs with the same blade: [code]base[/code] and one variant per realm that changes the guard,
+## pommel and colors ([code]vardheim[/code]: wolf and blue leather; [code]solmarch[/code]: sun guard,
+## gold and white leather; [code]askarra[/code]: bronze, crimson leather and an anvil pommel with an
+## ember).
 ## [br][br]
-## Convención del modelo: el origen es el centro de la empuñadura (donde cierra la mano), la hoja
-## sale por +Y y mide unos 0,94 m desde ese punto (1,11 m en total con el pomo), el ancho va por X
-## (los filos miran a +X y -X) y las caras planas de la hoja miran a +Z y -Z.
+## Model convention: the origin is the center of the grip (where the hand closes), the blade extends
+## along +Y and measures about 0.94 m from that point (1.11 m in total with the pommel), the width runs
+## along X (the edges face +X and -X) and the flat faces of the blade face +Z and -Z.
 ## [br][br]
-## Cada GLB trae dos mallas, [code]Sword_LOD0[/code] (unos 2.700 triángulos) y [code]Sword_LOD1[/code]
-## (unos 560, sin acanaladura ni vueltas de cuero modeladas). [method setup_lods] reparte cuál se ve
-## con los rangos de visibilidad del motor.
+## Each GLB has two meshes, [code]Sword_LOD0[/code] (about 2,700 triangles) and [code]Sword_LOD1[/code]
+## (about 560, without the modeled fuller or leather wraps). [method setup_lods] distributes which one is
+## seen using the engine's visibility ranges.
 
 const MODEL_DIR: String = "res://assets/models/weapons/"
 const BASE: StringName = &"base"
-## Variante -> ruta del GLB.
+## Variant -> GLB path.
 const MODELS: Dictionary[StringName, String] = {
 	&"base": "res://assets/models/weapons/sword_base.glb",
 	&"vardheim": "res://assets/models/weapons/sword_vardheim.glb",
 	&"solmarch": "res://assets/models/weapons/sword_solmarch.glb",
 	&"askarra": "res://assets/models/weapons/sword_askarra.glb",
 }
-## Nombres de las dos mallas dentro del GLB.
+## Names of the two meshes inside the GLB.
 const LOD0_NAME: StringName = &"Sword_LOD0"
 const LOD1_NAME: StringName = &"Sword_LOD1"
-## Marcas vacías del modelo para la estela del golpe: el arranque del filo y la punta.
+## Empty markers in the model for the hit trail: the start of the edge and the tip.
 const TRAIL_BASE_NAME: StringName = &"TrailBase"
 const TRAIL_TIP_NAME: StringName = &"TrailTip"
-## Distancia (m) a la que la espada pasa del detalle completo al sencillo, y margen de histéresis.
+## Distance (m) at which the sword switches from full detail to the simple one, and the hysteresis margin.
 const LOD_DISTANCE: float = 14.0
 const LOD_MARGIN: float = 1.5
-## Largo total del modelo (m) y distancia del centro de la empuñadura a la punta.
+## Total length of the model (m) and distance from the grip's center to the tip.
 const TOTAL_LENGTH: float = 1.11
 const GRIP_TO_TIP: float = 0.94
 
 
-## Instancia el modelo de [param variant] (o el base si no existe) con los LOD ya repartidos, o
-## devuelve null si el GLB no se puede cargar. No lo orienta: eso lo decide quien lo cuelga.
+## Instantiates the model of [param variant] (or the base one if it does not exist) with the LODs already
+## distributed, or returns null if the GLB cannot be loaded. It does not orient it: that is up to whoever
+## attaches it.
 static func instantiate(variant: StringName = BASE, with_lods: bool = true) -> Node3D:
 	var path: String = MODELS.get(variant, MODELS[BASE])
 	var scene: PackedScene = load(path) as PackedScene
@@ -52,7 +54,7 @@ static func instantiate(variant: StringName = BASE, with_lods: bool = true) -> N
 	return root
 
 
-## Reparte los rangos de visibilidad: el LOD0 hasta [constant LOD_DISTANCE] y el LOD1 desde ahí.
+## Distributes the visibility ranges: LOD0 up to [constant LOD_DISTANCE] and LOD1 from there.
 static func setup_lods(root: Node) -> void:
 	var near: MeshInstance3D = root.find_child(LOD0_NAME, true, false) as MeshInstance3D
 	var far: MeshInstance3D = root.find_child(LOD1_NAME, true, false) as MeshInstance3D
@@ -64,8 +66,7 @@ static func setup_lods(root: Node) -> void:
 		far.visibility_range_begin_margin = LOD_MARGIN
 
 
-## Enseña solo el LOD [param level] (0 o 1), sin rangos de visibilidad: para las pruebas y las vistas
-## previas.
+## Shows only LOD [param level] (0 or 1), without visibility ranges: for tests and previews.
 static func show_only_lod(root: Node, level: int) -> void:
 	var near: MeshInstance3D = root.find_child(LOD0_NAME, true, false) as MeshInstance3D
 	var far: MeshInstance3D = root.find_child(LOD1_NAME, true, false) as MeshInstance3D
@@ -79,7 +80,7 @@ static func show_only_lod(root: Node, level: int) -> void:
 		far.visible = level == 1
 
 
-## Triángulos de la malla [param level] del modelo, o 0 si no está.
+## Triangles of the model's [param level] mesh, or 0 if it is not there.
 static func triangle_count(root: Node, level: int) -> int:
 	var mesh_node: MeshInstance3D = root.find_child(LOD0_NAME if level == 0 else LOD1_NAME, true, false) \
 			as MeshInstance3D

@@ -14,15 +14,15 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// Solo X-Real-IP y solo desde un proxy de confianza; nunca X-Forwarded-For (plataforma.md §4.2).
+// Only X-Real-IP and only from a trusted proxy; never X-Forwarded-For (plataforma.md §4.2).
 func TestClientIP(t *testing.T) {
 	trusted := []netip.Prefix{netip.MustParsePrefix("172.18.0.5/32")}
 	cases := []struct {
 		remote, realIP, forwarded, want string
 	}{
 		{"203.0.113.7:5000", "", "", "203.0.113.7"},
-		{"203.0.113.7:5000", "1.2.3.4", "", "203.0.113.7"},              // X-Real-IP de un origen no fiable
-		{"203.0.113.7:5000", "", "1.2.3.4", "203.0.113.7"},              // X-Forwarded-For nunca
+		{"203.0.113.7:5000", "1.2.3.4", "", "203.0.113.7"},              // X-Real-IP from an untrusted origin
+		{"203.0.113.7:5000", "", "1.2.3.4", "203.0.113.7"},              // X-Forwarded-For never
 		{"172.18.0.5:41000", "198.51.100.9", "1.2.3.4", "198.51.100.9"}, // Caddy
 		{"172.18.0.5:41000", "no-es-ip", "", "172.18.0.5"},
 		{"[::ffff:203.0.113.7]:5000", "", "", "203.0.113.7"},
@@ -59,7 +59,7 @@ func TestAddrGroup(t *testing.T) {
 	}
 }
 
-// Sin X-Eldmark-Protocol o por debajo del mínimo: 426 client_outdated con min_protocol (§4.1).
+// Without X-Eldmark-Protocol or below the minimum: 426 client_outdated with min_protocol (§4.1).
 func TestRequireProtocol(t *testing.T) {
 	h := RequireProtocol(7, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
 	for header, want := range map[string]int{"": 426, "6": 426, "x": 426, "7": 204, "8": 204} {

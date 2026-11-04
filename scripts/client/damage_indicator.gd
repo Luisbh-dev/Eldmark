@@ -1,28 +1,28 @@
 class_name DamageIndicator
 extends Control
-## Arcos de dirección del daño alrededor del punto de mira (UI-10). Cada golpe recibido dibuja un
-## arco rojo en el borde de un anillo centrado en la pantalla, del lado de donde vino, y se
-## desvanece en [constant LIFETIME_SECONDS] s. Los arcos se orientan según la cámara: un golpe por
-## detrás sale abajo y, si la cámara gira, el arco gira con ella.
+## Damage direction arcs around the crosshair (UI-10). Each hit received draws a red
+## arc on the edge of a ring centered on the screen, on the side it came from, and it
+## fades out in [constant LIFETIME_SECONDS] s. The arcs are oriented according to the camera: a hit from
+## behind appears at the bottom and, if the camera turns, the arc turns with it.
 ## [br][br]
-## [method relative_angle] es la cuenta: el ángulo, respecto a hacia dónde mira la cámara, de la
-## dirección en la que está el atacante. 0 es delante (arriba en la pantalla), +PI/2 la derecha,
-## -PI/2 la izquierda y ±PI detrás. Se guarda el ángulo [b]respecto al mundo[/b] del golpe
-## ([method add_hit]) y se recalcula con la cámara actual en cada fotograma, así el arco sigue
-## señalando al atacante aunque se gire la vista.
+## [method relative_angle] is the computation: the angle, relative to where the camera faces, of the
+## direction the attacker is in. 0 is ahead (up on the screen), +PI/2 the right,
+## -PI/2 the left and ±PI behind. The hit's angle [b]relative to the world[/b] is stored
+## ([method add_hit]) and recomputed with the current camera every frame, so the arc keeps
+## pointing at the attacker even if the view turns.
 
-## Duración (s) de un arco y arcos como mucho a la vez.
+## Duration (s) of an arc and maximum number of arcs at once.
 const LIFETIME_SECONDS: float = 1.4
 const MAX_ARCS: int = 8
-## Dibujo: radio del anillo (px), grosor, semiancho del arco (radianes) y tramos del trazo.
+## Drawing: ring radius (px), thickness, arc half-width (radians) and stroke segments.
 const RING_RADIUS: float = 140.0
 const ARC_WIDTH: float = 10.0
 const ARC_HALF_ANGLE: float = deg_to_rad(24.0)
 const ARC_SEGMENTS: int = 20
 const ARC_COLOR: Color = Color(0.9, 0.12, 0.1, 1.0)
 
-## Un arco: [code]world_yaw[/code] es el rumbo del atacante visto desde la víctima (misma
-## convención que [member Node3D.rotation].y).
+## An arc: [code]world_yaw[/code] is the attacker's heading as seen from the victim (same
+## convention as [member Node3D.rotation].y).
 class _Arc:
 	var world_yaw: float = 0.0
 	var age: float = 0.0
@@ -40,17 +40,17 @@ func _process(delta: float) -> void:
 	advance(delta)
 
 
-## Ángulo (radianes, en [-PI, PI]) de la dirección de [param from_position] a [param to_position]
-## respecto a hacia dónde mira la cámara ([param camera_yaw], misma convención que
-## [member Node3D.rotation].y): 0 delante, +PI/2 a la derecha. Solo cuenta el plano horizontal;
-## si las dos posiciones coinciden en él, devuelve 0.
+## Angle (radians, in [-PI, PI]) of the direction from [param from_position] to [param to_position]
+## relative to where the camera faces ([param camera_yaw], same convention as
+## [member Node3D.rotation].y): 0 ahead, +PI/2 to the right. Only the horizontal plane counts;
+## if the two positions coincide in it, returns 0.
 static func relative_angle(camera_yaw: float, from_position: Vector3, to_position: Vector3) -> float:
 	var world_yaw: float = world_heading(from_position, to_position)
 	return wrapf(world_yaw - camera_yaw, -PI, PI) * -1.0
 
 
-## Rumbo (yaw) de la dirección de [param from_position] a [param to_position]: 0 es hacia -Z y
-## crece hacia -X (la convención de [member Node3D.rotation].y).
+## Heading (yaw) of the direction from [param from_position] to [param to_position]: 0 is toward -Z and
+## grows toward -X (the convention of [member Node3D.rotation].y).
 static func world_heading(from_position: Vector3, to_position: Vector3) -> float:
 	var flat := Vector2(to_position.x - from_position.x, to_position.z - from_position.z)
 	if flat.length_squared() < 0.0001:
@@ -58,8 +58,8 @@ static func world_heading(from_position: Vector3, to_position: Vector3) -> float
 	return atan2(-flat.x, -flat.y)
 
 
-## Apunta un golpe recibido: [param world_yaw] es el rumbo del atacante visto desde la víctima
-## ([method world_heading]) y [param strength] (0 a 1) la intensidad del arco.
+## Records a hit received: [param world_yaw] is the attacker's heading as seen from the victim
+## ([method world_heading]) and [param strength] (0 to 1) the arc's intensity.
 func add_hit(world_yaw: float, strength: float = 1.0) -> void:
 	var arc := _Arc.new()
 	arc.world_yaw = world_yaw
@@ -70,7 +70,7 @@ func add_hit(world_yaw: float, strength: float = 1.0) -> void:
 	queue_redraw()
 
 
-## Yaw de la cámara con el que se orientan los arcos. El [HUD] lo actualiza en cada fotograma.
+## Camera yaw the arcs are oriented with. The [HUD] updates it every frame.
 func set_camera_yaw(camera_yaw: float) -> void:
 	if not is_equal_approx(camera_yaw, _camera_yaw):
 		_camera_yaw = camera_yaw
@@ -78,7 +78,7 @@ func set_camera_yaw(camera_yaw: float) -> void:
 			queue_redraw()
 
 
-## Avanza [param delta] segundos: envejece los arcos y quita los que ya se desvanecieron.
+## Advances [param delta] seconds: ages the arcs and removes those that have already faded.
 func advance(delta: float) -> void:
 	if _arcs.is_empty():
 		return
@@ -91,25 +91,25 @@ func advance(delta: float) -> void:
 	queue_redraw()
 
 
-## Quita todos los arcos.
+## Removes all arcs.
 func clear() -> void:
 	_arcs.clear()
 	queue_redraw()
 
 
-## Arcos visibles.
+## Visible arcs.
 func get_arc_count() -> int:
 	return _arcs.size()
 
 
-## Ángulo en pantalla del arco [param index] con la cámara actual (ver [method relative_angle]).
+## On-screen angle of arc [param index] with the current camera (see [method relative_angle]).
 func get_arc_angle(index: int) -> float:
 	if index < 0 or index >= _arcs.size():
 		return 0.0
 	return wrapf(_arcs[index].world_yaw - _camera_yaw, -PI, PI) * -1.0
 
 
-## Opacidad del arco [param index].
+## Opacity of arc [param index].
 func get_arc_alpha(index: int) -> float:
 	if index < 0 or index >= _arcs.size():
 		return 0.0
@@ -123,7 +123,7 @@ func _draw() -> void:
 		var alpha: float = get_arc_alpha(i)
 		if alpha <= 0.0:
 			continue
-		# Ángulo en pantalla -> ángulo de draw_arc (0 = derecha, sentido horario hacia abajo).
+		# On-screen angle -> draw_arc angle (0 = right, clockwise going down).
 		var screen_angle: float = get_arc_angle(i) - PI * 0.5
 		var color: Color = ARC_COLOR
 		color.a = alpha

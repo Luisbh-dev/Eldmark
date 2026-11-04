@@ -1,40 +1,38 @@
 class_name FortressTimeline
 extends RefCounted
-## Historia de cambios de una fortaleza tal como la conoce el cliente (docs/fuerte.md, secciones 2 y
-## 3.2). Puro, sin nodos: [FortressView] guarda una por fortaleza.
+## History of changes of a fortress as the client knows it (docs/fuerte.md, sections 2 and 3.2). Pure, no
+## nodes: [FortressView] keeps one per fortress.
 ## [br][br]
-## Cada OBJECT_STATE (y el ENTITY_SPAWN de la estructura, que lleva todos los campos) se anota con su
-## [code]tick[/code]: el tick del servidor [b]tras[/b] el que vale el estado. De ahí salen dos
-## preguntas distintas:
-## [br]- [method state_at]: el estado válido tras el tick [code]t[/code] (el último cambio con
-## [code]tick ≤ t[/code]). La interfaz y los estandartes lo piden con el tick de dibujo, así que se
-## aplican cuando [code]render_tick[/code] alcanza el del mensaje, no al llegar.
-## [br]- [method gate_layers_for_tick]: las capas de la puerta para [i]simular[/i] el tick
-## [code]t[/code]. Un cambio con [code]tick = s[/code] vale desde [code]s + 1[/code] (el servidor lo
-## aplica en el paso 4b del tick [code]s[/code]), así que se mira el estado tras [code]t - 1[/code].
-## La predicción lo pregunta en cada tick simulado, también en las repeticiones, y así cliente y
-## servidor simulan cada tick con la misma puerta.
+## Each OBJECT_STATE (and the structure's ENTITY_SPAWN, which carries all the fields) is recorded with its
+## [code]tick[/code]: the server tick [b]after[/b] which the state holds. Two different questions come out
+## of this:
+## [br]- [method state_at]: the state valid after tick [code]t[/code] (the last change with
+## [code]tick ≤ t[/code]). The interface and the banners request it with the draw tick, so they apply
+## when [code]render_tick[/code] reaches that of the message, not on arrival.
+## [br]- [method gate_layers_for_tick]: the gate's layers for [i]simulating[/i] tick [code]t[/code]. A change
+## with [code]tick = s[/code] holds from [code]s + 1[/code] (the server applies it in step 4b of tick
+## [code]s[/code]), so the state after [code]t - 1[/code] is looked at. Prediction asks for it on every
+## simulated tick, also in replays, so client and server simulate each tick with the same gate.
 ## [br][br]
-## [b]Qué se guarda.[/b] Por cambio, los campos que trajo y el estado acumulado tras aplicarlos (un
-## [FortressState] reconstruido con [method FortressState.initial] y los campos de
-## [FortressFields]; lo que no viaja sale de la definición). Si un mensaje llega desordenado
-## (canal fiable, no debería) se inserta en su sitio y se recalculan los siguientes. La historia se
-## poda por antigüedad ([constant RETAIN_TICKS] respecto al cambio más nuevo) y por número
-## ([constant MAX_ENTRIES]); la entrada más antigua que queda hace de base, y un mensaje anterior a
-## ella se ignora.
+## [b]What is stored.[/b] Per change, the fields it brought and the accumulated state after applying them
+## (a [FortressState] rebuilt with [method FortressState.initial] and the [FortressFields] fields; what
+## does not travel comes from the definition). If a message arrives out of order (reliable channel, it
+## should not) it is inserted in its place and the following ones are recomputed. The history is pruned by
+## age ([constant RETAIN_TICKS] relative to the newest change) and by count ([constant MAX_ENTRIES]); the
+## oldest remaining entry serves as the base, and a message older than it is ignored.
 ## [br][br]
-## El estado que devuelve [method state_at] es el guardado: no se debe modificar.
+## The state returned by [method state_at] is the stored one: it must not be modified.
 ## [br][br]
-## Solo cliente, pero sin dependencias de nodos de interfaz.
+## Client only, but with no dependencies on interface nodes.
 
-## Cambios que se recuerdan como máximo.
+## Changes remembered at most.
 const MAX_ENTRIES: int = 512
-## Ticks de antigüedad (respecto al cambio más nuevo) a partir de los que se poda: 30 s, más que de
-## sobra para las repeticiones de la reconciliación (anillos de 256 ticks).
+## Age in ticks (relative to the newest change) from which it is pruned: 30 s, more than enough for the
+## reconciliation replays (256-tick rings).
 const RETAIN_TICKS: int = 1800
 
 
-## Un cambio: el tick, los campos que trajo y el estado acumulado tras aplicarlos.
+## A change: the tick, the fields it brought and the accumulated state after applying them.
 class Entry extends RefCounted:
 	var tick: int = 0
 	var fields: Array[NetMessages.ObjectField] = []
@@ -54,57 +52,57 @@ func _init(definition: FortressDefinition) -> void:
 	_initial = FortressState.initial(definition, 0)
 
 
-## Definición con la que se reconstruyen los estados.
+## Definition with which the states are rebuilt.
 func get_definition() -> FortressDefinition:
 	return _definition
 
 
-## true si ya ha llegado algún estado (el SPAWN de la estructura o un OBJECT_STATE).
+## true if any state has already arrived (the structure's SPAWN or an OBJECT_STATE).
 func has_state() -> bool:
 	return not _entries.is_empty()
 
 
-## Cambios guardados.
+## Stored changes.
 func get_entry_count() -> int:
 	return _entries.size()
 
 
-## Contador que sube con cada cambio anotado: sirve para saber si hay algo nuevo sin comparar estados.
+## Counter that rises with each recorded change: used to know whether there is anything new without comparing states.
 func get_version() -> int:
 	return _version
 
 
-## Campos conocidos aplicados desde que existe (los que se saltan por tipo o id desconocido no).
+## Known fields applied since it was created (those skipped because of unknown type or id do not count).
 func get_applied_fields() -> int:
 	return _applied_total
 
 
-## Tick del cambio más nuevo (-1 si no hay ninguno).
+## Tick of the newest change (-1 if there is none).
 func get_latest_tick() -> int:
 	return _entries[_entries.size() - 1].tick if not _entries.is_empty() else -1
 
 
-## Tick del cambio más antiguo que se conserva (-1 si no hay ninguno).
+## Tick of the oldest change that is kept (-1 if there is none).
 func get_oldest_tick() -> int:
 	return _entries[0].tick if not _entries.is_empty() else -1
 
 
-## Anota el OBJECT_STATE [param object_state] (o el SPAWN pasado por
-## [method NetMessages.EntitySpawn.to_object_state]). Devuelve cuántos campos conocidos aplicó; 0 si
-## no trae ninguno y no se anota nada.
+## Records the OBJECT_STATE [param object_state] (or the SPAWN converted with
+## [method NetMessages.EntitySpawn.to_object_state]). Returns how many known fields it applied; 0 if it
+## carries none and nothing is recorded.
 func apply_object_state(object_state: NetMessages.ObjectState) -> int:
 	if object_state == null:
 		return 0
 	return apply_fields(object_state.tick, object_state.fields)
 
 
-## Anota los campos [param fields] como un cambio del tick [param tick]. Los ids desconocidos y los
-## campos con otro tipo de valor que el suyo se saltan (compatibilidad hacia delante). Devuelve
-## cuántos campos aplicó; con 0 no se anota nada.
+## Records the fields [param fields] as a change at tick [param tick]. Unknown ids and fields with a value
+## type other than their own are skipped (forward compatibility). Returns how many fields it applied; with
+## 0 nothing is recorded.
 func apply_fields(tick: int, fields: Array[NetMessages.ObjectField]) -> int:
 	var index: int = _insert_index(tick)
 	if _pruned and index == 0:
-		# Anterior a la base que queda tras podar: ya no se puede reconstruir en su sitio.
+		# Earlier than the base that remains after pruning: it can no longer be rebuilt in place.
 		return 0
 	var state: FortressState = _state_before(index).duplicate_state()
 	var applied: int = _apply_to(state, fields)
@@ -123,39 +121,39 @@ func apply_fields(tick: int, fields: Array[NetMessages.ObjectField]) -> int:
 	return applied
 
 
-## Estado válido tras el tick [param tick]: el del último cambio con [code]tick ≤ tick[/code]. Antes
-## del primer cambio conocido devuelve ese primero (el SPAWN trae el estado completo y es lo mejor
-## que se sabe); sin ningún cambio, el estado inicial de la definición (neutral, entera). No se debe
-## modificar.
+## State valid after tick [param tick]: that of the last change with [code]tick ≤ tick[/code]. Before the
+## first known change it returns that first one (the SPAWN carries the full state and it is the best that
+## is known); with no change at all, the definition's initial state (neutral, intact). It must not be
+## modified.
 func state_at(tick: int) -> FortressState:
 	if _entries.is_empty():
 		return _initial
 	return _entries[maxi(_floor_index(tick), 0)].state
 
 
-## Tick del cambio que da [method state_at] para [param tick] (-1 si aún no hay ninguno).
+## Tick of the change that [method state_at] gives for [param tick] (-1 if there is none yet).
 func change_tick_at(tick: int) -> int:
 	if _entries.is_empty():
 		return -1
 	return _entries[maxi(_floor_index(tick), 0)].tick
 
 
-## Capas de colisión de movimiento de la puerta para [i]simular[/i] el tick [param tick] (ver la
-## descripción de la clase): [method FortGate.layers_for] con el dueño y la rotura del estado tras
+## Movement collision layers of the gate for [i]simulating[/i] tick [param tick] (see the class
+## description): [method FortGate.layers_for] with the owner and the breakage of the state after
 ## [code]tick - 1[/code].
 func gate_layers_for_tick(tick: int) -> int:
 	var state: FortressState = state_at(tick - 1)
 	return FortGate.layers_for(state.owner, state.is_gate_broken())
 
 
-## Progreso de la captura (0 a [member FortressState.progress_max]) en el instante de dibujo
-## [param render_time] (ticks con fracción): la fórmula
-## [code]clamp(p0 + rate · (t − t0), 0, P)[/code] del estado vigente en ese instante.
+## Capture progress (0 to [member FortressState.progress_max]) at draw instant [param render_time] (ticks
+## with fraction): the formula [code]clamp(p0 + rate · (t − t0), 0, P)[/code] of the state in force at
+## that instant.
 func progress_at(render_time: float) -> int:
 	return state_at(floori(render_time)).progress_at(render_time)
 
 
-## Progreso de 0 a 1 en [param render_time].
+## Progress from 0 to 1 at [param render_time].
 func progress_fraction_at(render_time: float) -> float:
 	var state: FortressState = state_at(floori(render_time))
 	if state.progress_max <= 0:
@@ -163,10 +161,10 @@ func progress_fraction_at(render_time: float) -> float:
 	return clampf(float(state.progress_at(render_time)) / float(state.progress_max), 0.0, 1.0)
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ---------------------------------------------------------------------------------
 
-# Primera posición cuyo tick es mayor que [param tick]: donde va un cambio nuevo (detrás de los que
-# tienen su mismo tick, que se aplican antes).
+# First position whose tick is greater than [param tick]: where a new change goes (after those with the
+# same tick, which are applied first).
 func _insert_index(tick: int) -> int:
 	var low: int = 0
 	var high: int = _entries.size()
@@ -179,12 +177,12 @@ func _insert_index(tick: int) -> int:
 	return low
 
 
-# Posición del último cambio con tick ≤ [param tick], o -1 si todos son posteriores.
+# Position of the last change with tick ≤ [param tick], or -1 if all are later.
 func _floor_index(tick: int) -> int:
 	return _insert_index(tick) - 1
 
 
-# Estado acumulado justo antes de la posición [param index] (el inicial si es la primera).
+# Accumulated state right before position [param index] (the initial one if it is the first).
 func _state_before(index: int) -> FortressState:
 	return _entries[index - 1].state if index > 0 else _initial
 
@@ -199,7 +197,7 @@ func _apply_to(state: FortressState, fields: Array[NetMessages.ObjectField]) -> 
 	return applied
 
 
-# Recalcula los estados acumulados desde la posición [param first] (tras insertar uno en medio).
+# Recomputes the accumulated states from position [param first] (after inserting one in the middle).
 func _rebuild_from(first: int) -> void:
 	for index: int in range(first, _entries.size()):
 		var state: FortressState = _state_before(index).duplicate_state()
@@ -207,7 +205,7 @@ func _rebuild_from(first: int) -> void:
 		_entries[index].state = state
 
 
-# Quita lo muy antiguo, dejando siempre una entrada de base.
+# Removes the very old, always leaving a base entry.
 func _prune() -> void:
 	var newest: int = _entries[_entries.size() - 1].tick
 	while _entries.size() > 1 and (_entries.size() > MAX_ENTRIES

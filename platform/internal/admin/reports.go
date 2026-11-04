@@ -13,10 +13,10 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// Estados de un reporte (reports.status).
+// Statuses of a report (reports.status).
 var reportStatuses = []string{"open", "in_review", "actioned", "dismissed"}
 
-// ReportSummary es un reporte en la lista.
+// ReportSummary is a report in the list.
 type ReportSummary struct {
 	ID                  int64
 	WorldID             int16
@@ -25,22 +25,22 @@ type ReportSummary struct {
 	Status              string
 	ReporterAccountID   *int64
 	ReporterCharacterID *int64
-	ReporterName        *string // el nombre de ahora del personaje que reporta (null si se purgó)
+	ReporterName        *string // the current name of the reporting character (null if purged)
 	TargetAccountID     *int64
 	TargetCharacterID   *int64
-	TargetName          string // el nombre que se reportó
+	TargetName          string // the name that was reported
 	Comment             string
 	Evidence            int
 }
 
-// ReportFilter son los filtros de reports list.
+// ReportFilter is the filters of reports list.
 type ReportFilter struct {
-	Status string // open (por defecto), in_review, actioned, dismissed o all
+	Status string // open (default), in_review, actioned, dismissed or all
 	Limit  int
 }
 
-// Reports es reports list (lectura, moderator): los reportes de ese estado, del más viejo al más
-// nuevo (la cola). Deja la fila reports list (args {status, limit, os_user}).
+// Reports is reports list (read, moderator): the reports of that status, from oldest to newest (the
+// queue). It leaves the reports list row (args {status, limit, os_user}).
 func (s *Service) Reports(ctx context.Context, actor *Actor, f ReportFilter) ([]ReportSummary, error) {
 	if f.Status == "" {
 		f.Status = "open"
@@ -80,7 +80,7 @@ func scanSummary(row pgx.CollectableRow) (ReportSummary, error) {
 	return r, err
 }
 
-// Evidence es un mensaje copiado al reporte (report_evidence).
+// Evidence is a message copied into the report (report_evidence).
 type Evidence struct {
 	Seq        int16
 	SenderName string
@@ -89,7 +89,7 @@ type Evidence struct {
 	SentAt     time.Time
 }
 
-// ReportDetail es reports show: el reporte con su prueba y sus sanciones.
+// ReportDetail is reports show: the report with its evidence and its sanctions.
 type ReportDetail struct {
 	ReportSummary
 	Context    json.RawMessage
@@ -97,11 +97,11 @@ type ReportDetail struct {
 	Resolution *string
 	ClosedAt   *time.Time
 	Evidence   []Evidence
-	Sanctions  []int64 // sanciones enlazadas (sanction_reports)
+	Sanctions  []int64 // linked sanctions (sanction_reports)
 }
 
-// Report es reports show (lectura, moderator). Deja la fila reports show con el objetivo del
-// reporte en target_account_id y target_character_id y args {report_id, os_user}.
+// Report is reports show (read, moderator). It leaves the reports show row with the report's target
+// in target_account_id and target_character_id and args {report_id, os_user}.
 func (s *Service) Report(ctx context.Context, actor *Actor, id int64) (*ReportDetail, error) {
 	var out *ReportDetail
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
@@ -148,10 +148,10 @@ func (s *Service) Report(ctx context.Context, actor *Actor, id int64) (*ReportDe
 	return out, err
 }
 
-// CloseReport es reports close (admin): cierra un reporte abierto o en revisión como actioned o
-// dismissed, con handled_by del --actor, la resolución y closed_at (la retención de un año cuenta
-// desde ahí, §11.1). Deja la fila reports close (args {report_id, status, os_user}; la resolución
-// queda en reports.resolution, no en la auditoría).
+// CloseReport is reports close (admin): it closes an open or in-review report as actioned or
+// dismissed, with the --actor's handled_by, the resolution and closed_at (the one-year retention
+// counts from there, §11.1). It leaves the reports close row (args {report_id, status, os_user}; the
+// resolution stays in reports.resolution, not in the audit).
 func (s *Service) CloseReport(ctx context.Context, actor *Actor, id int64, status, resolution string) error {
 	if status != "actioned" && status != "dismissed" {
 		return errors.New("un reporte se cierra como actioned o dismissed")

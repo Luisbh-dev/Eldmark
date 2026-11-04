@@ -1,11 +1,11 @@
 extends TestCase
-## Pruebas de [AccountFlow] con [member PlatformApi.request_hook] ([FakePublicPlatform]) y del bot con cuenta
-## (docs/plataforma.md §5.5, §13.3 y §15 P8): iniciar sesión, crear el personaje si falta (y encontrarlo por la clave
-## de su nombre), [code]enter[/code] → [ClientConfig] con billete, los reintentos de [code]character_busy[/code], y
-## [OnlineMain] en modo BOT con [code]--platform[/code]: sin [code]--login[/code] o con credenciales malas sale con
-## código 1 y el [code]code[/code] en el informe; con todo bien entra en una zona de verdad ([ZoneServer] con
-## [FakeZonePlatform] y [TicketAuthProvider]) con el billete en el HELLO. Y [code]--bots --platform[/code] no
-## arranca.
+## Tests of [AccountFlow] with [member PlatformApi.request_hook] ([FakePublicPlatform]) and of the bot with an account
+## (docs/plataforma.md §5.5, §13.3 and §15 P8): logging in, creating the character if missing (and finding it by the key
+## of its name), [code]enter[/code] → [ClientConfig] with a ticket, the retries of [code]character_busy[/code], and
+## [OnlineMain] in BOT mode with [code]--platform[/code]: without [code]--login[/code] or with bad credentials it exits with
+## code 1 and the [code]code[/code] in the report; with everything right it enters a real zone ([ZoneServer] with
+## [FakeZonePlatform] and [TicketAuthProvider]) with the ticket in the HELLO. And [code]--bots --platform[/code] does not
+## start.
 
 const ONLINE_MAIN_SCENE: String = "res://scenes/client/online_main.tscn"
 const REPORT_FILE: String = "test_account_flow_report.json"
@@ -26,7 +26,7 @@ var _saved_account_hook: Callable
 var _saved_swarm_hook: Callable
 var _saved_swarm_config: ClientConfig
 var _saved_max_fps: int = 0
-# La zona de verdad con la plataforma falsa (prueba de extremo a extremo del bot).
+# The real zone with the fake platform (the bot's end-to-end test).
 var _server_viewport: SubViewport
 var _server: ZoneServer
 var _zone_platform: FakeZonePlatform
@@ -103,11 +103,11 @@ func test_login_keeps_the_session_and_sends_the_normalized_email() -> void:
 	assert_eq(session.scope, "game")
 	assert_eq(session.account.get("account_id"), "42")
 	var body: Dictionary = _platform.calls_to("/v1/sessions")[0]["body"]
-	assert_eq(body.get("email"), "prueba@eldmark.test", "sin espacios y en minúsculas")
+	assert_eq(body.get("email"), "prueba@eldmark.test", "no spaces and in lowercase")
 	var bad: ApiResult = await AccountFlow.new(_api).login(_platform.email, "otra")
 	assert_eq(bad.code, "invalid_credentials")
 	await _flow.logout()
-	assert_false(_flow.get_session().is_active(), "cerrar sesión la olvida")
+	assert_false(_flow.get_session().is_active(), "logging out forgets it")
 	assert_eq(_platform.calls_to("/v1/sessions/current", HTTPClient.METHOD_DELETE).size(), 1)
 
 
@@ -116,9 +116,9 @@ func test_ensure_character_finds_it_by_the_key_of_its_name() -> void:
 	await _flow.login(_platform.email, _platform.password)
 	var result: ApiResult = await _flow.ensure_character(1, "aneira", &"")
 	assert_true(result.ok, "%s" % result)
-	assert_false(result.data.get("created"), "ya existía: «aneira» es «Anéira»")
+	assert_false(result.data.get("created"), "it already existed: \"aneira\" is \"Anéira\"")
 	assert_eq((result.data.get("character") as Dictionary).get("name"), "Anéira")
-	assert_eq(_platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST).size(), 0, "no se crea")
+	assert_eq(_platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST).size(), 0, "it is not created")
 
 
 func test_ensure_character_creates_the_missing_one_with_the_defaults() -> void:
@@ -132,27 +132,27 @@ func test_ensure_character_creates_the_missing_one_with_the_defaults() -> void:
 		return
 	var body: Dictionary = posted[0]["body"]
 	assert_eq(body.get("name"), "Aneira")
-	assert_eq(body.get("realm"), "solmarch", "sin reino pedido, el de la cuenta")
+	assert_eq(body.get("realm"), "solmarch", "with no realm requested, the account's")
 	assert_eq(body.get("race_id"), "race_solmarch")
-	assert_eq(body.get("starter_template_id"), "marksman", "la primera plantilla por id")
+	assert_eq(body.get("starter_template_id"), "marksman", "the first template by id")
 	var appearance: CharacterAppearance = CharacterAppearance.decode(AccountFlow.decode_base64(body.get("appearance")))
-	assert_not_null(appearance, "8 B en base64")
+	assert_not_null(appearance, "8 B in base64")
 	assert_true(appearance.validate(AppearanceCatalog.shared(), NetProtocol.Realm.SOLMARCH, &"race_solmarch"),
-			"la apariencia por defecto del pueblo vale")
+			"the people's default appearance is valid")
 
 
 func test_ensure_character_creates_it_with_the_asked_starter_template() -> void:
-	# progresion.md P8: el --loadout del bot con cuenta es la plantilla de inicio del personaje que crea.
+	# progresion.md P8: the account bot's --loadout is the starting template of the character it creates.
 	await _flow.login(_platform.email, _platform.password)
 	await _flow.ensure_character(1, "Aneira", &"", &"squire")
 	await _flow.ensure_character(1, "Bruno", &"", &"volar")
 	var posted: Array[Dictionary] = _platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST)
 	if not assert_eq(posted.size(), 2):
 		return
-	assert_eq(posted[0]["body"].get("starter_template_id"), "squire", "la pedida")
-	assert_eq(posted[1]["body"].get("starter_template_id"), "marksman", "una que no existe: la primera por id")
+	assert_eq(posted[0]["body"].get("starter_template_id"), "squire", "the requested one")
+	assert_eq(posted[1]["body"].get("starter_template_id"), "marksman", "one that does not exist: the first by id")
 	var found: ApiResult = await _flow.ensure_character(1, "Aneira", &"", &"marksman")
-	assert_false(found.data.get("created"), "uno que ya existe no se crea otra vez")
+	assert_false(found.data.get("created"), "one that already exists is not created again")
 	assert_eq(_platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST).size(), 2)
 
 
@@ -165,7 +165,7 @@ func test_ensure_character_on_a_new_account_uses_the_asked_realm_or_vardheim() -
 	_platform.account_realm = ""
 	await _flow.ensure_character(1, "Bruno", &"")
 	var second: Dictionary = _platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST)[1]["body"]
-	assert_eq(second.get("realm"), "vardheim", "sin reino de la cuenta ni pedido, Vardheim")
+	assert_eq(second.get("realm"), "vardheim", "with no account realm or requested one, Vardheim")
 
 
 func test_ensure_character_restores_a_deleted_one() -> void:
@@ -173,7 +173,7 @@ func test_ensure_character_restores_a_deleted_one() -> void:
 	await _flow.login(_platform.email, _platform.password)
 	var result: ApiResult = await _flow.ensure_character(1, "Aneira", &"")
 	assert_true(result.ok)
-	assert_true(result.data.get("restored", false), "se restaura en plazo")
+	assert_true(result.data.get("restored", false), "it is restored in time")
 	assert_eq(_platform.calls_to("/v1/characters/%s/restore" % deleted["character_id"]).size(), 1)
 	assert_eq(_platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST).size(), 0)
 
@@ -193,26 +193,26 @@ func test_enter_gives_a_new_config_with_the_ticket() -> void:
 		return
 	assert_eq(config.address, "127.0.0.1")
 	assert_eq(config.port, 24600)
-	assert_eq(config.ticket, _platform.ticket, "los 52 B del billete")
-	assert_eq(config.character_id, 9007199254740993, "el id de más de 2^53, entero")
+	assert_eq(config.ticket, _platform.ticket, "the ticket's 52 B")
+	assert_eq(config.character_id, 9007199254740993, "the id above 2^53, as an integer")
 	assert_eq(config.display_name, "Aneira")
 	assert_eq(config.realm, NetProtocol.Realm.SOLMARCH)
-	assert_eq(config.mode, ClientConfig.Mode.ONLINE, "el título pasa a ONLINE")
-	assert_eq(config.loadout, "", "con billete no se manda plantilla")
-	assert_eq(config.report_path, "build/x.json", "lo demás se copia")
-	assert_false(config.has_dtls(), "sin DTLS")
+	assert_eq(config.mode, ClientConfig.Mode.ONLINE, "the title switches to ONLINE")
+	assert_eq(config.loadout, "", "with a ticket no template is sent")
+	assert_eq(config.report_path, "build/x.json", "the rest is copied")
+	assert_false(config.has_dtls(), "without DTLS")
 	assert_true(config.has_ticket())
-	assert_eq(base.ticket.size(), 0, "la de partida no se toca")
+	assert_eq(base.ticket.size(), 0, "the starting one is left untouched")
 	assert_eq(base.mode, ClientConfig.Mode.TITLE)
 	_platform.dtls = {"cert_pem": "-----BEGIN CERTIFICATE-----\nMII…\n-----END CERTIFICATE-----", "name": "zona.eld"}
 	var bot := ClientConfig.new()
 	bot.mode = ClientConfig.Mode.BOT
 	bot.dtls_cert_path = "viejo.pem"
 	var with_dtls: ClientConfig = (await _flow.enter(id, bot)).data.get("config") as ClientConfig
-	assert_eq(with_dtls.mode, ClientConfig.Mode.BOT, "un bot sigue siendo bot")
-	assert_true(with_dtls.dtls_cert_pem.begins_with("-----BEGIN CERTIFICATE-----"), "el PEM de enter")
+	assert_eq(with_dtls.mode, ClientConfig.Mode.BOT, "a bot is still a bot")
+	assert_true(with_dtls.dtls_cert_pem.begins_with("-----BEGIN CERTIFICATE-----"), "the PEM from enter")
 	assert_eq(with_dtls.dtls_name, "zona.eld")
-	assert_eq(with_dtls.dtls_cert_path, "", "y no el de --dtls-cert")
+	assert_eq(with_dtls.dtls_cert_path, "", "and not the one from --dtls-cert")
 
 
 func test_enter_retries_character_busy_until_the_character_is_free() -> void:
@@ -223,10 +223,10 @@ func test_enter_retries_character_busy_until_the_character_is_free() -> void:
 	var waits: Array[int] = []
 	_flow.busy_waiting.connect(func(seconds_left: int) -> void: waits.append(seconds_left))
 	var result: ApiResult = await _flow.enter(AccountFlow.parse_id(character["character_id"]), ClientConfig.new())
-	assert_true(result.ok, "al tercer intento entra: %s" % result)
+	assert_true(result.ok, "on the third attempt it gets in: %s" % result)
 	assert_eq(_platform.calls_to("/v1/characters/").size(), 3)
-	assert_eq(waits.size(), 2, "avisa de cada espera")
-	assert_true(waits[0] <= 30 and waits[0] >= 29, "con los segundos que quedan: %s" % [waits])
+	assert_eq(waits.size(), 2, "it reports each wait")
+	assert_true(waits[0] <= 30 and waits[0] >= 29, "with the seconds left: %s" % [waits])
 
 
 func test_enter_gives_up_after_the_busy_time_or_when_canceled() -> void:
@@ -238,8 +238,8 @@ func test_enter_gives_up_after_the_busy_time_or_when_canceled() -> void:
 	_platform.busy_answers = 1000
 	var started: int = Time.get_ticks_msec()
 	var result: ApiResult = await _flow.enter(id, ClientConfig.new())
-	assert_eq(result.code, "character_busy", "pasado el plazo, el último character_busy")
-	assert_true(Time.get_ticks_msec() - started < 1500, "sin esperar de más")
+	assert_eq(result.code, "character_busy", "past the deadline, the last character_busy")
+	assert_true(Time.get_ticks_msec() - started < 1500, "without waiting longer than needed")
 	assert_true(_platform.calls_to("/v1/characters/").size() >= 3)
 	_flow.busy_timeout_s = 30.0
 	_flow.busy_retry_s = 0.2
@@ -248,7 +248,7 @@ func test_enter_gives_up_after_the_busy_time_or_when_canceled() -> void:
 	run.call()
 	await wait_process_frames(2)
 	_flow.cancel_enter()
-	assert_true(await _wait_until(func() -> bool: return not canceled.is_empty(), 120), "cancelar corta la espera")
+	assert_true(await _wait_until(func() -> bool: return not canceled.is_empty(), 120), "cancelling cuts the wait")
 	assert_eq(canceled[0].code, "character_busy")
 
 
@@ -271,37 +271,37 @@ func test_enter_with_an_answer_that_is_not_understood() -> void:
 	for body: Dictionary in broken_bodies:
 		_platform.script_next("/v1/characters/", ApiResult.success(body))
 		var result: ApiResult = await _flow.enter(id, ClientConfig.new())
-		assert_eq(result.code, ApiResult.CODE_BAD_RESPONSE, "no se entiende: %s" % [body])
+		assert_eq(result.code, ApiResult.CODE_BAD_RESPONSE, "it cannot be understood: %s" % [body])
 
 
 func test_ids_and_base64_are_read_strictly() -> void:
 	assert_eq(AccountFlow.parse_id("42"), 42)
 	assert_eq(AccountFlow.parse_id("9007199254740993"), 9007199254740993)
-	assert_eq(AccountFlow.parse_id(42), 0, "un número sin comillas no es un id")
+	assert_eq(AccountFlow.parse_id(42), 0, "a number without quotes is not an id")
 	assert_eq(AccountFlow.parse_id(42.0), 0)
-	assert_eq(AccountFlow.parse_id("042"), 0, "sin ceros a la izquierda")
+	assert_eq(AccountFlow.parse_id("042"), 0, "no leading zeros")
 	assert_eq(AccountFlow.parse_id("-1"), 0)
 	assert_eq(AccountFlow.parse_id("1e3"), 0)
-	assert_eq(AccountFlow.parse_id("1234567890123456789012"), 0, "sin desbordar")
+	assert_eq(AccountFlow.parse_id("1234567890123456789012"), 0, "without overflowing")
 	assert_eq(AccountFlow.parse_id(""), 0)
 	assert_eq(AccountFlow.decode_base64("AQID"), PackedByteArray([1, 2, 3]))
 	assert_eq(AccountFlow.decode_base64("AQ=="), PackedByteArray([1]))
-	assert_true(AccountFlow.decode_base64("AQ").is_empty(), "sin el relleno no vale")
+	assert_true(AccountFlow.decode_base64("AQ").is_empty(), "without the padding it is not valid")
 	assert_true(AccountFlow.decode_base64("A*==").is_empty())
 	assert_true(AccountFlow.decode_base64(null).is_empty())
 	assert_eq(AccountFlow.first_starter_template(), &"marksman")
 	var ids: Array[String] = []
 	for template: EquipmentTemplate in AccountFlow.starter_templates():
 		ids.append(String(template.id))
-	assert_eq(ids, ["marksman", "squire"], "las elegibles, por id (las de starter_templates de las reglas)")
+	assert_eq(ids, ["marksman", "squire"], "the eligible ones, by id (those in the rules' starter_templates)")
 	var rules: Dictionary = ProgressionRulesExport.build()
 	var exported: Array[String] = []
 	for entry: Variant in rules["starter_templates"]:
 		exported.append(str((entry as Dictionary).get("id")))
-	assert_eq(ids, exported, "las mismas que valida la plataforma")
+	assert_eq(ids, exported, "the same ones the platform validates")
 
 
-# --- Bot con cuenta -------------------------------------------------------------------------------
+# --- Bot with an account -------------------------------------------------------------------------------
 
 func _write_password(text: String) -> String:
 	var path: String = NetHarness.build_path(PASSWORD_FILE)
@@ -311,7 +311,7 @@ func _write_password(text: String) -> String:
 	return path
 
 
-## Un bot con cuenta con la escena de verdad.
+## An account bot with the real scene.
 func _start_bot(configure: Callable = Callable()) -> void:
 	var config := ClientConfig.new()
 	config.mode = ClientConfig.Mode.BOT
@@ -336,12 +336,12 @@ func _report() -> Dictionary:
 
 func test_a_bot_with_platform_and_without_login_ends_with_code_one() -> void:
 	_start_bot(func(config: ClientConfig) -> void: config.login = "")
-	assert_true(await _wait_until(func() -> bool: return not _exit_codes.is_empty(), 60), "cierra")
+	assert_true(await _wait_until(func() -> bool: return not _exit_codes.is_empty(), 60), "closes")
 	assert_eq(_exit_codes, [1])
 	var platform: Dictionary = _report().get("platform", {})
-	assert_eq(platform.get("code"), "missing_login", "el code en el informe: %s" % [_report()])
-	assert_true(_platform.calls.is_empty(), "sin --login no se llama a la plataforma")
-	assert_null(_online.get_client(), "ni se conecta a ninguna zona")
+	assert_eq(platform.get("code"), "missing_login", "the code in the report: %s" % [_report()])
+	assert_true(_platform.calls.is_empty(), "without --login the platform is not called")
+	assert_null(_online.get_client(), "nor does it connect to any zone")
 
 
 func test_a_bot_without_a_readable_password_file_ends_with_code_one() -> void:
@@ -368,7 +368,7 @@ func test_a_bot_with_bad_credentials_or_no_zone_ends_with_the_code_in_the_report
 	assert_eq(_exit_codes, [1])
 	assert_eq((_report().get("platform", {}) as Dictionary).get("code"), "zone_unavailable")
 	assert_eq(_platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST).size(), 1,
-			"antes creó su personaje (no existía)")
+			"it created its character first (it did not exist)")
 
 
 func test_a_suspended_account_bot_ends_with_code_one() -> void:
@@ -378,11 +378,11 @@ func test_a_suspended_account_bot_ends_with_code_one() -> void:
 	assert_true(await _wait_until(func() -> bool: return not _exit_codes.is_empty(), 60))
 	assert_eq(_exit_codes, [1])
 	assert_eq((_report().get("platform", {}) as Dictionary).get("code"), "account_suspended")
-	assert_eq(_platform.calls_to("/v1/worlds/").size(), 0, "con la sesión de privacidad no pide personajes")
+	assert_eq(_platform.calls_to("/v1/worlds/").size(), 0, "with the privacy session it does not ask for characters")
 
 
-## Extremo a extremo en el proceso: el bot inicia sesión, crea su personaje, recibe un billete firmado para la zona
-## y entra con él en un ZoneServer con la plataforma falsa (reclamación incluida).
+## End to end in the process: the bot logs in, creates its character, receives a signed ticket for the zone
+## and enters a ZoneServer with the fake platform using it (claim included).
 func test_a_bot_with_an_account_enters_a_zone_with_its_ticket() -> void:
 	if not await _start_zone():
 		return
@@ -396,21 +396,21 @@ func test_a_bot_with_an_account_enters_a_zone_with_its_ticket() -> void:
 		config.quit_after_ticks = 400)
 	assert_true(await _wait_until(func() -> bool:
 		return _online.get_client() != null and _online.get_client().get_state() == NetClient.State.IN_WORLD),
-			"entra en el mundo con el billete")
+			"enters the world with the ticket")
 	var claims: Array[Dictionary] = _zone_platform.sent(&"claim")
-	if assert_eq(claims.size(), 1, "la zona reclamó el personaje"):
-		assert_eq(claims[0].get("character_id"), str(character_id), "el del billete y el HELLO")
+	if assert_eq(claims.size(), 1, "the zone claimed the character"):
+		assert_eq(claims[0].get("character_id"), str(character_id), "the one in the ticket and the HELLO")
 	assert_eq(_online.get_client().get_config().character_id, character_id)
 	assert_eq(_online.get_client().get_welcome().zone_id, ZONE_ID)
 	var created: Dictionary = _platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST)[0]["body"]
 	assert_eq(created.get("name"), "Bot")
-	assert_eq(created.get("realm"), "vardheim", "en el reino de --realm")
-	assert_true(await _wait_until(func() -> bool: return not _exit_codes.is_empty()), "termina")
-	assert_eq(_exit_codes, [0], "y sale bien")
+	assert_eq(created.get("realm"), "vardheim", "in the realm from --realm")
+	assert_true(await _wait_until(func() -> bool: return not _exit_codes.is_empty()), "finishes")
+	assert_eq(_exit_codes, [0], "and exits cleanly")
 	var report: Dictionary = _report()
 	assert_eq(report.get("character_id"), str(character_id))
 	var platform: Dictionary = report.get("platform", {})
-	assert_eq(platform.get("code"), "", "sin error de la cuenta")
+	assert_eq(platform.get("code"), "", "with no account error")
 	assert_eq(platform.get("created"), true)
 
 
@@ -424,11 +424,11 @@ func test_the_swarm_refuses_the_platform() -> void:
 	_swarm = packed.instantiate() as BotSwarm
 	tree.root.add_child(_swarm)
 	assert_true(await _wait_until(func() -> bool: return not _exit_codes.is_empty(), 30))
-	assert_eq(_exit_codes, [1], "--bots con --platform sale con código 1")
-	assert_eq(_swarm.get_bots().size(), 0, "sin crear bots")
+	assert_eq(_exit_codes, [1], "--bots with --platform exits with code 1")
+	assert_eq(_swarm.get_bots().size(), 0, "without creating bots")
 
 
-# La zona de prueba (test_world) con FakeZonePlatform y TicketAuthProvider escuchando en un puerto libre.
+# The test zone (test_world) with FakeZonePlatform and TicketAuthProvider listening on a free port.
 func _start_zone() -> bool:
 	_server_viewport = NetHarness.make_world_viewport(_root, NetZones.scene_path(ZONE_ID))
 	var world: Node3D = NetHarness.get_world(_server_viewport)
@@ -459,18 +459,18 @@ func _start_zone() -> bool:
 		if not finished.is_empty():
 			break
 		await wait_process_frames()
-	if not assert_eq(finished, [[true, ""]], "la plataforma falsa de la zona arranca"):
+	if not assert_eq(finished, [[true, ""]], "the zone's fake platform starts"):
 		return false
 	var provider := TicketAuthProvider.new(_zone_platform, config.world_id, config.zone_id, config.channel, _keys)
 	provider.log_sink = func(_text: String) -> void: pass
 	if not assert_eq(_server.start(config, world, transport, provider, _zone_platform), OK,
-			"el servidor abre el puerto %d" % _port):
+			"the server opens port %d" % _port):
 		return false
 	_zone_platform.go_live()
 	return true
 
 
-# Un billete válido para [param character_id] en la zona de prueba, firmado con la clave 2.
+# A valid ticket for [param character_id] in the test zone, signed with key 2.
 func _ticket(character_id: int, realm: int) -> PackedByteArray:
 	var ticket := HandoffTicket.new()
 	ticket.key_id = 2

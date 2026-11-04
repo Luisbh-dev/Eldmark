@@ -1,7 +1,6 @@
-// Package ratelimit da los límites de ritmo en memoria de la plataforma (plataforma.md §4.2): un
-// cubo de fichas por clave y un LRU que acota cuántas claves se recuerdan. En la fase 5 hay una
-// sola instancia de la plataforma, así que vale la memoria; reiniciar la plataforma reinicia los
-// contadores (§16).
+// Package ratelimit provides the platform's in-memory rate limits (plataforma.md §4.2): a token
+// bucket per key and an LRU that bounds how many keys are remembered. In phase 5 there is only
+// one platform instance, so memory is enough; restarting the platform resets the counters (§16).
 package ratelimit
 
 import (
@@ -11,11 +10,11 @@ import (
 	"time"
 )
 
-// LRU es un mapa con capacidad fija que olvida la clave usada hace más tiempo. No es seguro entre
-// gorrutinas: quien lo usa lo protege.
+// LRU is a fixed-capacity map that forgets the least recently used key. It is not safe across
+// goroutines: whoever uses it protects it.
 type LRU[K comparable, V any] struct {
 	capacity int
-	order    *list.List // frente: lo más reciente
+	order    *list.List // front: the most recent
 	items    map[K]*list.Element
 }
 
@@ -24,12 +23,12 @@ type entry[K comparable, V any] struct {
 	value V
 }
 
-// NewLRU devuelve un LRU con la capacidad dada (al menos 1).
+// NewLRU returns an LRU with the given capacity (at least 1).
 func NewLRU[K comparable, V any](capacity int) *LRU[K, V] {
 	return &LRU[K, V]{capacity: max(1, capacity), order: list.New(), items: map[K]*list.Element{}}
 }
 
-// Get devuelve el valor de la clave y la marca como reciente.
+// Get returns the key's value and marks it as recent.
 func (l *LRU[K, V]) Get(key K) (V, bool) {
 	if el, ok := l.items[key]; ok {
 		l.order.MoveToFront(el)
@@ -39,7 +38,7 @@ func (l *LRU[K, V]) Get(key K) (V, bool) {
 	return zero, false
 }
 
-// Put guarda el valor de la clave; si no cabe, olvida la menos reciente.
+// Put stores the key's value; if it does not fit, it forgets the least recent one.
 func (l *LRU[K, V]) Put(key K, value V) {
 	if el, ok := l.items[key]; ok {
 		el.Value.(*entry[K, V]).value = value
@@ -54,7 +53,7 @@ func (l *LRU[K, V]) Put(key K, value V) {
 	}
 }
 
-// Delete olvida la clave.
+// Delete forgets the key.
 func (l *LRU[K, V]) Delete(key K) {
 	if el, ok := l.items[key]; ok {
 		l.order.Remove(el)
@@ -62,17 +61,17 @@ func (l *LRU[K, V]) Delete(key K) {
 	}
 }
 
-// Len devuelve cuántas claves recuerda.
+// Len returns how many keys it remembers.
 func (l *LRU[K, V]) Len() int { return l.order.Len() }
 
-// DefaultCapacity es cuántas claves recuerda cada límite (plataforma.md §4.2: LRU de 100 000).
+// DefaultCapacity is how many keys each limit remembers (plataforma.md §4.2: LRU of 100 000).
 const DefaultCapacity = 100_000
 
-// Limiter es un cubo de fichas por clave: cada clave tiene hasta Burst fichas, que se rellenan a
-// razón de Rate por segundo; cada intento gasta una. Es seguro entre gorrutinas.
+// Limiter is a token bucket per key: each key has up to Burst tokens, which refill at a rate of
+// Rate per second; each attempt spends one. It is safe across goroutines.
 type Limiter struct {
 	mu      sync.Mutex
-	rate    float64 // fichas por segundo
+	rate    float64 // tokens per second
 	burst   float64
 	buckets *LRU[string, *bucket]
 }
@@ -82,7 +81,7 @@ type bucket struct {
 	last   time.Time
 }
 
-// New devuelve un límite de n intentos cada per, con ráfaga burst (como mucho capacity claves).
+// New returns a limit of n attempts every per, with burst burst (at most capacity keys).
 func New(n int, per time.Duration, burst, capacity int) *Limiter {
 	return &Limiter{rate: float64(n) / per.Seconds(), burst: float64(burst), buckets: NewLRU[string, *bucket](capacity)}
 }
@@ -101,7 +100,7 @@ func (l *Limiter) fill(key string, now time.Time) *bucket {
 	return b
 }
 
-// wait es lo que falta para tener una ficha entera.
+// wait is how long until a whole token is available.
 func (l *Limiter) wait(b *bucket) time.Duration {
 	if b.tokens >= 1 {
 		return 0
@@ -109,14 +108,14 @@ func (l *Limiter) wait(b *bucket) time.Duration {
 	return time.Duration(math.Ceil((1 - b.tokens) / l.rate * float64(time.Second)))
 }
 
-// Check dice cuánto falta para poder intentarlo con esa clave (0: ya), sin gastar ficha.
+// Check says how long until an attempt with that key is possible (0: now), without spending a token.
 func (l *Limiter) Check(key string, now time.Time) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.wait(l.fill(key, now))
 }
 
-// Take gasta una ficha de la clave (aunque no quede ninguna entera: quien llama ya miró Check).
+// Take spends one of the key's tokens (even if no whole token is left: the caller already looked at Check).
 func (l *Limiter) Take(key string, now time.Time) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -124,7 +123,7 @@ func (l *Limiter) Take(key string, now time.Time) {
 	b.tokens = math.Max(b.tokens-1, -l.burst)
 }
 
-// Allow gasta una ficha si la hay. Si no, devuelve false y cuánto falta.
+// Allow spends a token if there is one. Otherwise it returns false and how long is left.
 func (l *Limiter) Allow(key string, now time.Time) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -136,14 +135,14 @@ func (l *Limiter) Allow(key string, now time.Time) (bool, time.Duration) {
 	return true, 0
 }
 
-// Key es una clave de un límite.
+// Key is a key of a limit.
 type Key struct {
 	Limiter *Limiter
 	Key     string
 }
 
-// AllowAll gasta una ficha de cada clave solo si todas tienen; si no, no gasta ninguna y devuelve
-// la mayor espera.
+// AllowAll spends one token from each key only if all have one; otherwise it spends none and
+// returns the longest wait.
 func AllowAll(now time.Time, keys ...Key) (bool, time.Duration) {
 	var wait time.Duration
 	for _, k := range keys {
@@ -158,8 +157,7 @@ func AllowAll(now time.Time, keys ...Key) (bool, time.Duration) {
 	return true, 0
 }
 
-// RetryAfterSeconds redondea una espera hacia arriba a segundos enteros (al menos 1), para
-// retry_after_s y Retry-After.
+// RetryAfterSeconds rounds a wait up to whole seconds (at least 1), for retry_after_s and Retry-After.
 func RetryAfterSeconds(d time.Duration) int {
 	if d <= 0 {
 		return 1

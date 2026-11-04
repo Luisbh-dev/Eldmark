@@ -96,7 +96,7 @@ func TestMigrateCommands(t *testing.T) {
 	}
 }
 
-// serveEnv es la configuración mínima de serve en test.
+// serveEnv is the minimal serve configuration in tests.
 func serveEnv(pool *pgxpool.Pool) map[string]string {
 	sum := sha256.Sum256([]byte("token"))
 	return map[string]string{
@@ -107,14 +107,14 @@ func serveEnv(pool *pgxpool.Pool) map[string]string {
 	}
 }
 
-// startServe arranca serve en puertos libres con los servicios montados y espera a que termine el
-// arranque; devuelve la URL de la API pública. Se para al acabar la prueba.
+// startServe starts serve on free ports with the services wired up and waits for startup to
+// finish; it returns the public API URL. It is stopped when the test ends.
 func startServe(t *testing.T, pool *pgxpool.Pool, env map[string]string) string {
 	t.Helper()
 	return "http://" + startServeApp(t, pool, env).PublicAddr()
 }
 
-// startServeApp es startServe y devuelve el proceso (las dos direcciones).
+// startServeApp is startServe and returns the process (both addresses).
 func startServeApp(t *testing.T, pool *pgxpool.Pool, env map[string]string) *app.App {
 	t.Helper()
 	cfg, err := config.Load(func(k string) (string, bool) { v, ok := env[k]; return v, ok })
@@ -154,8 +154,8 @@ func startServeApp(t *testing.T, pool *pgxpool.Pool, env map[string]string) *app
 	return a
 }
 
-// request hace una petición a /v1 con el protocolo y, si se da, el token; devuelve el estado y el
-// cuerpo JSON.
+// request makes a request to /v1 with the protocol and, if given, the token; it returns the status
+// and the JSON body.
 func request(t *testing.T, method, url, token, body string) (int, map[string]any) {
 	t.Helper()
 	req, _ := http.NewRequest(method, url, strings.NewReader(body))
@@ -176,8 +176,8 @@ func request(t *testing.T, method, url, token, body string) (int, map[string]any
 const registerJSON = `{"email": "serve@example.org", "password": "una contraseña larga", "age_confirmed": true,
 	"accept": {"terms": 1, "privacy": 1, "rules": 1}, "consents": {"crash_reports": false, "analytics": false}}`
 
-// serve monta las cuentas: los textos legales se publican al arrancar y el registro manda su
-// correo a outbound_mail (ELDMARK_MAIL=log).
+// serve wires up the accounts: the legal texts are published at startup and registration sends its
+// email to outbound_mail (ELDMARK_MAIL=log).
 func TestServeMountsTheAccounts(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
@@ -204,8 +204,8 @@ func TestServeMountsTheAccounts(t *testing.T) {
 	}
 }
 
-// serve monta los personajes (P2) con el almacén del progreso de verdad (progresion.md P7: la
-// validación de las reglas exportadas y las tablas de 0010_progress) y el protocolo mínimo de
+// serve wires up the characters (P2) with the real progression store (progresion.md P7: validation
+// of the exported rules and the tables of 0010_progress) and the minimum protocol from
 // progression_rules.json.
 func TestServeMountsTheCharacters(t *testing.T) {
 	pool := testdb.New(t)
@@ -219,7 +219,7 @@ func TestServeMountsTheCharacters(t *testing.T) {
 	if status != 200 || token == "" {
 		t.Fatalf("inicio de sesión: %d %v", status, body)
 	}
-	// 8 B que la validación provisional admitía y las reglas no (otra raza en el byte 0).
+	// 8 B that the provisional validation allowed and the rules do not (another race at byte 0).
 	status, body = request(t, http.MethodPost, base+"/v1/worlds/1/characters", token, `{"name": "Servida",
 		"realm": "solmarch", "race_id": "race_solmarch", "appearance": "AQACAQADAiE=", "starter_template_id": "squire"}`)
 	if errBody, _ := body["error"].(map[string]any); status != 400 || errBody["code"] != "validation" {
@@ -240,7 +240,7 @@ func TestServeMountsTheCharacters(t *testing.T) {
 	if status != 200 || body["realm"] != "solmarch" || body["used"] != 1.0 {
 		t.Fatalf("lista: %d %v", status, body)
 	}
-	// El protocolo mínimo es el de progression_rules.json: uno menor da 426.
+	// The minimum protocol is that of progression_rules.json: a lower one gives 426.
 	minProtocol := gamedata.MustLoad().ProtocolVersion
 	req, _ := http.NewRequest(http.MethodGet, base+"/v1/status", nil)
 	req.Header.Set("X-Eldmark-Protocol", strconv.Itoa(minProtocol-1))
@@ -258,8 +258,8 @@ func TestServeMountsTheCharacters(t *testing.T) {
 	}
 }
 
-// En staging y production, serve monta lo mismo: el almacén del progreso ya no es el falso en memoria
-// (hasta progresion.md P7, no arrancaba).
+// In staging and production, serve wires up the same thing: the progression store is no longer the
+// fake in-memory one (until progresion.md P7, it did not start).
 func TestServeMountsTheStoreWhenDeployed(t *testing.T) {
 	pool := testdb.New(t)
 	env := serveEnv(pool)
@@ -282,7 +282,7 @@ func TestServeMountsTheStoreWhenDeployed(t *testing.T) {
 	}
 }
 
-// internalRequest hace una petición a la API interna con el token de zona dado.
+// internalRequest makes a request to the internal API with the given zone token.
 func internalRequest(t *testing.T, method, url, token, body string) (int, map[string]any) {
 	t.Helper()
 	req, _ := http.NewRequest(method, url, strings.NewReader(body))
@@ -299,9 +299,9 @@ func internalRequest(t *testing.T, method, url, token, body string) (int, map[st
 	return resp.StatusCode, out
 }
 
-// serve monta la API interna (P3) en ELDMARK_INTERNAL_ADDR: una zona con el token de su despliegue
-// se registra, pasa a live, pide un bloque de ids y late; sin token, 401 bad_token; una ruta
-// desconocida, 404.
+// serve wires up the internal API (P3) on ELDMARK_INTERNAL_ADDR: a zone with its deployment's token
+// registers, goes live, asks for a block of ids and heartbeats; without a token, 401 bad_token; an
+// unknown route, 404.
 func TestServeMountsTheInternalAPI(t *testing.T) {
 	pool := testdb.New(t)
 	a := startServeApp(t, pool, serveEnv(pool))
@@ -332,7 +332,7 @@ func TestServeMountsTheInternalAPI(t *testing.T) {
 	if status, _ = internalRequest(t, http.MethodGet, base+"/internal/v1/nada", "token", ""); status != 404 {
 		t.Fatalf("ruta desconocida: %d", status)
 	}
-	// La API pública no tiene las rutas internas.
+	// The public API does not have the internal routes.
 	if status, _ = internalRequest(t, http.MethodPost, "http://"+a.PublicAddr()+"/internal/v1/id-blocks", "token",
 		`{"zone_instance_id": "`+id+`"}`); status != 404 {
 		t.Fatalf("interna por la pública: %d", status)

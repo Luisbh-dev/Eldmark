@@ -15,16 +15,16 @@ import (
 	"eldmark/platform/internal/tickets"
 )
 
-// EnterView es la respuesta de POST /v1/characters/{id}/enter (§4.5).
+// EnterView is the response of POST /v1/characters/{id}/enter (§4.5).
 type EnterView struct {
 	Zone       ZoneView       `json:"zone"`
-	Ticket     string         `json:"ticket"` // los 52 B en base64 estándar
+	Ticket     string         `json:"ticket"` // the 52 B in standard base64
 	ExpiresInS int            `json:"expires_in_s"`
 	Character  EnterCharacter `json:"character"`
 }
 
-// ZoneView es la instancia de zona a la que conectar. DTLS es null si la zona no usa DTLS (solo en
-// dev y test, §10.2).
+// ZoneView is the zone instance to connect to. DTLS is null if the zone does not use DTLS (only in
+// dev and test, §10.2).
 type ZoneView struct {
 	ZoneID  string    `json:"zone_id"`
 	Channel int       `json:"channel"`
@@ -33,20 +33,20 @@ type ZoneView struct {
 	DTLS    *DTLSView `json:"dtls"`
 }
 
-// DTLSView es el certificado de la zona, que el cliente ancla (§10.2).
+// DTLSView is the zone's certificate, which the client pins (§10.2).
 type DTLSView struct {
 	CertPEM string `json:"cert_pem"`
 	Name    string `json:"name"`
 }
 
-// EnterCharacter es el personaje que entra, con el reino en su id de texto.
+// EnterCharacter is the character entering, with the realm in its text id.
 type EnterCharacter struct {
 	CharacterID jsonx.ID `json:"character_id"`
 	Name        string   `json:"name"`
 	Realm       string   `json:"realm"`
 }
 
-// instance es una instancia de zona viva candidata.
+// instance is a candidate live zone instance.
 type instance struct {
 	ID         [16]byte
 	ZoneID     string
@@ -59,14 +59,15 @@ type instance struct {
 	MaxPlayers int
 }
 
-// Enter emite el billete para entrar al mundo con un personaje (§4.5). Comprueba en orden (la
-// sesión, sus sanciones y la sesión de privacidad ya las miró accounts.API.RequireSession):
-// 10 por minuto y cuenta (429), mantenimiento del mundo del personaje salvo para admin (503),
-// borrado pendiente (403), textos por aceptar (403 terms_required), correo verificado si se exige
-// (403), personaje vivo de la cuenta (404), renombrado forzado (409 rename_required) y ningún
-// arrendamiento vivo de ningún personaje de la cuenta en ese mundo (409 character_busy: un solo
-// personaje en el mundo por cuenta; la reclamación lo vuelve a mirar, §5.3). Después elige la zona
-// ([Service.chooseInstance]), inserta el billete en enter_tickets (10 s) y lo firma.
+// Enter issues the ticket to enter the world with a character (§4.5). It checks in order (the
+// session, its sanctions and the privacy session were already checked by
+// accounts.API.RequireSession): 10 per minute per account (429), maintenance of the character's
+// world except for admin (503), pending deletion (403), texts to accept (403 terms_required),
+// verified email if required (403), a living character of the account (404), forced rename (409
+// rename_required) and no live lease of any character of the account in that world (409
+// character_busy: a single character in the world per account; the claim checks it again, §5.3).
+// Then it picks the zone ([Service.chooseInstance]), inserts the ticket in enter_tickets (10 s) and
+// signs it.
 func (s *Service) Enter(ctx context.Context, sess *accounts.Session, characterID int64) (*EnterView, error) {
 	now := s.clock.Now()
 	if ok, wait := s.limits.enter.Allow("a:"+itoa(sess.AccountID), now); !ok {
@@ -137,7 +138,7 @@ func (s *Service) Enter(ctx context.Context, sess *accounts.Session, characterID
 		CharacterID: uint64(c.ID), ZoneKey: tickets.ZoneKey(inst.ZoneID), Channel: uint8(inst.Channel),
 		Realm: uint8(c.Realm), Arrival: 0, Flags: tickets.FlagFromMenu, IssuedAt: uint32(issued.Unix()),
 		ExpiresAt: uint32(issued.Unix() + tickets.Lifetime)}
-	// Un ticket_id repetido (2^63 posibles) choca con la clave primaria: se prueba con otro.
+	// A repeated ticket_id (2^63 possible) clashes with the primary key: another one is tried.
 	for attempt := 0; ; attempt++ {
 		if t.TicketID, err = tickets.NewID(); err != nil {
 			return nil, err
@@ -168,10 +169,10 @@ func (s *Service) Enter(ctx context.Context, sess *accounts.Session, characterID
 	return v, nil
 }
 
-// chooseInstance elige la instancia de zona (§4.5): la última zona del personaje si tiene una
-// instancia live que admite su reino y con sitio (en su último canal si sigue vivo y con sitio); si
-// no, la zona de entrada de su reino (ELDMARK_ENTRY_ZONES). Dentro de la zona, el canal con menos
-// jugadores bajo max_players (a igualdad, el menor). Sin ninguna, 503 zone_unavailable.
+// chooseInstance picks the zone instance (§4.5): the character's last zone if it has a live
+// instance that admits its realm and has room (in its last channel if still alive and with room);
+// otherwise, its realm's entry zone (ELDMARK_ENTRY_ZONES). Within the zone, the channel with the
+// fewest players under max_players (ties broken by the lowest). With none, 503 zone_unavailable.
 func (s *Service) chooseInstance(ctx context.Context, c *characterRow, lastZone string, lastChannel int) (*instance, error) {
 	zones := []string{}
 	if lastZone != "" {
@@ -210,7 +211,7 @@ func (s *Service) chooseInstance(ctx context.Context, c *characterRow, lastZone 
 				return in, nil
 			}
 			if best == nil {
-				best = in // la lista viene ordenada por jugadores y canal
+				best = in // the list is sorted by players and channel
 			}
 		}
 		if best != nil {

@@ -1,18 +1,20 @@
-// Package progress es el lado Go del progreso de los personajes (progresion.md §13.2): las reglas
-// exportadas por Godot y el almacén que implementa persistence.ProgressStore (progresion.md P7).
+// Package progress is the Go side of character progress (progresion.md §13.2): the rules
+// exported by Godot and the store that implements persistence.ProgressStore (progresion.md P7).
 //
-// De progresion.md P3 es [LoadRules]: lee de progression_rules.json (internal/gamedata) las secciones de
-// progresion.md §13.4 (races, appearance, level_curve, currencies, reasons, containers y combat; items y
-// starter_templates desde P1) y aplica con ellas la regla de la apariencia de CharacterAppearance.validate
-// ([Rules.ValidAppearance]), la curva de niveles ([Rules.LevelFor], [Rules.TotalTo]) y las búsquedas de
-// objetos y plantillas ([Rules.Item], [Rules.SelectableTemplate]). Las dos implementaciones dan lo mismo con
-// los mismos datos: los casos de tests/fixtures/progression/appearance_cases.json los leen
-// test_character_appearance.gd y las pruebas de este paquete.
+// From progresion.md P3 comes [LoadRules]: it reads from progression_rules.json
+// (internal/gamedata) the sections of progresion.md §13.4 (races, appearance, level_curve,
+// currencies, reasons, containers and combat; items and starter_templates since P1) and applies
+// with them the appearance rule of CharacterAppearance.validate ([Rules.ValidAppearance]), the
+// level curve ([Rules.LevelFor], [Rules.TotalTo]) and the object and template lookups
+// ([Rules.Item], [Rules.SelectableTemplate]). The two implementations give the same results with
+// the same data: the cases in tests/fixtures/progression/appearance_cases.json are read by
+// test_character_appearance.gd and by this package's tests.
 //
-// De progresion.md P7 son [Rules.ValidateCreate] (persistence.CreateValidator) y [Store]
-// (persistence.ProgressStore): las tablas de 0010_progress, el guardado con S1–S8 (checks.go y write.go,
-// con los casos de tests/fixtures/progression/save_cases.json que genera la zona), los resúmenes, la purga y la
-// retención, la exportación y las rutas de operación y libro.
+// From progresion.md P7 come [Rules.ValidateCreate] (persistence.CreateValidator) and [Store]
+// (persistence.ProgressStore): the 0010_progress tables, the save with S1–S8 (checks.go and
+// write.go, with the cases from tests/fixtures/progression/save_cases.json that the zone
+// generates), the summaries, the purge and the retention, the export and the operation and
+// ledger routes.
 package progress
 
 import (
@@ -25,9 +27,9 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// Race es un pueblo de la sección races: su reino (código de NetProtocol.Realm, 1–3) y los índices que
-// permite de cada lista del catálogo de la apariencia (desde 0; el pelo y la barba también, aunque en los
-// 8 B vayan con +1).
+// Race is a people in the races section: its realm (NetProtocol.Realm code, 1–3) and the indices
+// it allows from each list of the appearance catalog (from 0; hair and beard too, although in the
+// 8 B they go with +1).
 type Race struct {
 	ID            string `json:"id"`
 	Realm         int16  `json:"realm"`
@@ -43,18 +45,18 @@ type Race struct {
 	EyeColors     []int  `json:"eye_colors"`
 }
 
-// Part es una pieza del catálogo con los cuerpos con los que encaja (vacío = todos).
+// Part is a catalog piece with the bodies it fits (empty = all).
 type Part struct {
 	ID     string `json:"id"`
 	Bodies []int  `json:"bodies"`
 }
 
-// fits dice si la pieza encaja con el cuerpo body.
+// fits says whether the piece fits the given body.
 func (p Part) fits(body int) bool {
 	return len(p.Bodies) == 0 || contains(p.Bodies, body)
 }
 
-// Appearance es la sección appearance: las piezas con forma y cuántos cuerpos y colores hay.
+// Appearance is the appearance section: the shaped pieces and how many bodies and colors there are.
 type Appearance struct {
 	BodyCount      int    `json:"body_count"`
 	Heads          []Part `json:"heads"`
@@ -66,28 +68,28 @@ type Appearance struct {
 	EyeColorCount  int    `json:"eye_color_count"`
 }
 
-// LevelCurve es la sección level_curve: la XP de cada nivel al siguiente (progresion.md §6.1).
+// LevelCurve is the level_curve section: the XP from each level to the next (progresion.md §6.1).
 type LevelCurve struct {
 	LevelCap                int     `json:"level_cap"`
 	XPToNext                []int64 `json:"xp_to_next"`
 	AttributePointsPerLevel int     `json:"attribute_points_per_level"`
 }
 
-// Currency es una moneda de la sección currencies (progresion.md §5.1).
+// Currency is a currency in the currencies section (progresion.md §5.1).
 type Currency struct {
 	Code int    `json:"code"`
 	ID   string `json:"id"`
 	Cap  int64  `json:"cap"`
 }
 
-// Range es un rango cerrado de códigos de motivo.
+// Range is a closed range of reason codes.
 type Range struct {
 	Min int `json:"min"`
 	Max int `json:"max"`
 }
 
-// Reasons es la sección reasons (progresion.md §5.3): rangos de fuentes, sumideros e internos, los
-// motivos por nombre y los tipos de operación por nombre.
+// Reasons is the reasons section (progresion.md §5.3): ranges of sources, sinks and internal
+// ones, the reasons by name and the operation types by name.
 type Reasons struct {
 	Ranges struct {
 		Source   Range `json:"source"`
@@ -98,7 +100,7 @@ type Reasons struct {
 	OpKinds map[string]int `json:"op_kinds"`
 }
 
-// Containers es la sección containers (progresion.md §4.1).
+// Containers is the containers section (progresion.md §4.1).
 type Containers struct {
 	Bag struct {
 		Code         int `json:"code"`
@@ -113,12 +115,12 @@ type Containers struct {
 	Open []int `json:"open"`
 }
 
-// Combat es la sección combat: la vida máxima (CombatRules.health_max), para S6.
+// Combat is the combat section: maximum health (CombatRules.health_max), for S6.
 type Combat struct {
 	HealthMax int `json:"health_max"`
 }
 
-// Categorías de objeto (ItemDefinition.Category, progresion.md §2.1).
+// Item categories (ItemDefinition.Category, progresion.md §2.1).
 const (
 	CategoryWeapon     = 1
 	CategoryArmor      = 2
@@ -128,8 +130,8 @@ const (
 	CategoryMisc       = 6
 )
 
-// Ranuras de equipo de una definición (ItemDefinition.EquipSlot): SlotWeapon vale para las dos ranuras de
-// arma; las armaduras van de SlotHead a SlotFeet.
+// Equipment slots of a definition (ItemDefinition.EquipSlot): SlotWeapon covers both weapon
+// slots; armor goes from SlotHead to SlotFeet.
 const (
 	SlotNone   = 0
 	SlotWeapon = 1
@@ -137,10 +139,10 @@ const (
 	SlotFeet   = 6
 )
 
-// MaxStack es el tope de una pila (ItemDefinition.MAX_STACK).
+// MaxStack is the cap of a stack (ItemDefinition.MAX_STACK).
 const MaxStack = 999
 
-// Item es una definición de la sección items (progresion.md §2.1): lo que S5 mira de cada objeto.
+// Item is a definition in the items section (progresion.md §2.1): what S5 looks at for each object.
 type Item struct {
 	ID            string `json:"id"`
 	Category      int    `json:"category"`
@@ -150,44 +152,44 @@ type Item struct {
 	RequiredLevel int    `json:"required_level"`
 }
 
-// StarterTemplate es una plantilla elegible de la sección starter_templates (progresion.md §2.5): su id y
-// los objetos de sus armas en orden de ranura.
+// StarterTemplate is a selectable template in the starter_templates section (progresion.md
+// §2.5): its id and the objects of its weapons in slot order.
 type StarterTemplate struct {
 	ID      string   `json:"id"`
 	Weapons []string `json:"weapons"`
 }
 
-// Rules son las reglas de progresion.md leídas de progression_rules.json. Son de solo lectura: valen
-// entre gorrutinas.
+// Rules are the progresion.md rules read from progression_rules.json. They are read-only: they
+// are safe to share between goroutines.
 type Rules struct {
-	Races      []Race // en el orden del catálogo: el byte 0 de la apariencia es la posición + 1
+	Races      []Race // in catalog order: byte 0 of the appearance is the position + 1
 	Appearance Appearance
 	LevelCurve LevelCurve
 	Currencies []Currency
 	Reasons    Reasons
 	Containers Containers
 	Combat     Combat
-	Items      []Item            // en orden de net id (alfabético)
-	Templates  []StarterTemplate // las EquipmentTemplate con selectable = true
+	Items      []Item            // in net id order (alphabetical)
+	Templates  []StarterTemplate // the EquipmentTemplate entries with selectable = true
 
-	items     map[string]int // id → posición en Items
-	templates map[string]int // id → posición en Templates
+	items     map[string]int // id → position in Items
+	templates map[string]int // id → position in Templates
 
-	// Lo que mira el almacén (P7), resuelto por nombre en check: así un motivo o un tipo que cambie de número
-	// en Godot cambia aquí con el archivo.
+	// What the store (P7) looks at, resolved by name in check: this way a reason or a type whose
+	// number changes in Godot changes here with the file.
 	kinds        opKinds
-	kindReasons  map[int]map[int]bool // tipo de operación → motivos de sus apuntes y eventos (S2)
-	realmReasons map[int]bool         // motivos de méritos que dan puntos de reino (I9: 3–5)
-	reversal     int                  // el motivo REVERSAL
-	merits       int                  // el código de la moneda de los méritos
-	currencyCaps map[int]int64        // código → tope
+	kindReasons  map[int]map[int]bool // operation type → reasons of its entries and events (S2)
+	realmReasons map[int]bool         // merit reasons that give realm points (I9: 3–5)
+	reversal     int                  // the REVERSAL reason
+	merits       int                  // the merits currency code
+	currencyCaps map[int]int64        // code → cap
 }
 
-// opKinds son los tipos de operación (EconomyOp.Kind, progresion.md §5.3) por su nombre en reasons.op_kinds.
+// opKinds are the operation types (EconomyOp.Kind, progresion.md §5.3) by their name in reasons.op_kinds.
 type opKinds struct{ player, gameplay, starterKit, gm, reversal, migration int }
 
-// kindReasonNames son los motivos de cada tipo de operación que admite S2 (progresion.md §13.3, el
-// EconomyOp.KIND_REASONS de la zona): PLAYER 64; GAMEPLAY 2–6 y 65; STARTER_KIT 1; GM 7 y 66; REVERSAL 128.
+// kindReasonNames are the reasons of each operation type that S2 admits (progresion.md §13.3,
+// the zone's EconomyOp.KIND_REASONS): PLAYER 64; GAMEPLAY 2–6 and 65; STARTER_KIT 1; GM 7 and 66; REVERSAL 128.
 var kindReasonNames = map[string][]string{
 	"player":      {"player_destroy"},
 	"gameplay":    {"camp_refill", "pvp_kill", "pvp_assist", "objective", "npc_kill", "consume"},
@@ -197,11 +199,11 @@ var kindReasonNames = map[string][]string{
 	"migration":   {"migration"},
 }
 
-// realmReasonNames son los motivos de los méritos de juego que suben los puntos de reino (I9,
+// realmReasonNames are the reasons of the gameplay merits that raise realm points (I9,
 // EconomyReason.gives_realm_points).
 var realmReasonNames = []string{"pvp_kill", "pvp_assist", "objective"}
 
-// Tamaños máximos de cada lista para que su índice quepa en los 8 B (AppearanceCatalog.MAX_SIZES).
+// Maximum sizes of each list so that its index fits in the 8 B (AppearanceCatalog.MAX_SIZES).
 const (
 	maxRaces     = 255
 	maxBodies    = 256
@@ -218,10 +220,10 @@ var (
 	itemIDPattern = regexp.MustCompile(`^[a-z0-9_]{3,32}$`) // ItemDefinition.ID_PATTERN
 )
 
-// LoadRules lee las secciones de progresion.md de un progression_rules.json (gamedata.Raw()) y
-// comprueba que tienen sentido. Cada sección se lee estricta (campos desconocidos y tipos que no casan
-// son errores); las secciones de otros (names, protocol_version) y las que aún no lee este paquete no
-// cuentan.
+// LoadRules reads the progresion.md sections of a progression_rules.json (gamedata.Raw()) and
+// checks that they make sense. Each section is read strictly (unknown fields and mismatched types
+// are errors); sections belonging to others (names, protocol_version) and those this package does
+// not read yet do not count.
 func LoadRules(raw []byte) (*Rules, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &top); err != nil {
@@ -251,8 +253,8 @@ func LoadRules(raw []byte) (*Rules, error) {
 	return r, nil
 }
 
-// check comprueba lo mismo que AppearanceCatalog.get_errors y LevelCurve.get_errors, más lo que Go
-// necesita de las demás secciones.
+// check verifies the same as AppearanceCatalog.get_errors and LevelCurve.get_errors, plus what Go
+// needs from the other sections.
 func (r *Rules) check() error {
 	var errs []error
 	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf("progress: "+format, args...)) }
@@ -390,8 +392,8 @@ func (r *Rules) check() error {
 	return errors.Join(errs...)
 }
 
-// resolveEconomy busca por su nombre los tipos de operación, los motivos y la moneda de los méritos que
-// usan S2, S3 y S6, y falla si alguno no está.
+// resolveEconomy looks up by name the operation types, reasons and merits currency that S2, S3
+// and S6 use, and fails if any is missing.
 func (r *Rules) resolveEconomy(fail func(format string, args ...any)) {
 	kind := func(name string) int {
 		v, ok := r.Reasons.OpKinds[name]
@@ -435,8 +437,9 @@ func (r *Rules) resolveEconomy(fail func(format string, args ...any)) {
 	}
 }
 
-// signMatches dice si el signo de delta cuadra con el rango de reason (progresion.md §5.2): fuentes > 0,
-// sumideros < 0 e internos, cualquiera distinto de 0. Un motivo fuera de los rangos no cuadra nunca.
+// signMatches says whether the sign of delta fits the range of reason (progresion.md §5.2):
+// sources > 0, sinks < 0 and internal ones, anything other than 0. A reason outside the ranges
+// never fits.
 func (r *Rules) signMatches(reason int, delta int64) bool {
 	rg := r.Reasons.Ranges
 	switch {
@@ -452,12 +455,12 @@ func (r *Rules) signMatches(reason int, delta int64) bool {
 	return false
 }
 
-// ValidateCreate implementa persistence.CreateValidator (plataforma.md §4.4 paso 5, progresion.md §13.2):
-// la raza existe y es del reino realm (código de NetProtocol.Realm), los 8 B valen para ella
-// ([Rules.ValidAppearance]) y la plantilla es elegible ([Rules.SelectableTemplate]). Devuelve nil o un
-// *persistence.ValidationError con un campo por fallo: race_id «unknown» (no existe) o «wrong_realm» (es de
-// otro reino), appearance «invalid» (solo se mira con una raza que vale) y starter_template_id
-// «not_selectable».
+// ValidateCreate implements persistence.CreateValidator (plataforma.md §4.4 step 5, progresion.md
+// §13.2): the race exists and belongs to realm realm (NetProtocol.Realm code), the 8 B are valid
+// for it ([Rules.ValidAppearance]) and the template is selectable ([Rules.SelectableTemplate]). It
+// returns nil or a *persistence.ValidationError with one field per failure: race_id "unknown"
+// (does not exist) or "wrong_realm" (belongs to another realm), appearance "invalid" (only checked
+// with a valid race) and starter_template_id "not_selectable".
 func (r *Rules) ValidateCreate(realm int16, raceID string, appearance [8]byte, templateID string) error {
 	fields := map[string]string{}
 	switch i := r.RaceIndex(raceID); {
@@ -479,8 +482,8 @@ func (r *Rules) ValidateCreate(realm int16, raceID string, appearance [8]byte, t
 
 var _ persistence.CreateValidator = (*Rules)(nil)
 
-// checkItems comprueba items y starter_templates con las reglas de ItemDatabase (progresion.md §2.1) y
-// rellena los índices de Item y SelectableTemplate.
+// checkItems checks items and starter_templates with the ItemDatabase rules (progresion.md §2.1)
+// and fills in the indices for Item and SelectableTemplate.
 func (r *Rules) checkItems(fail func(format string, args ...any)) {
 	if len(r.Items) == 0 {
 		fail("items: no hay ningún objeto")
@@ -550,7 +553,7 @@ func (r *Rules) checkItems(fail func(format string, args ...any)) {
 	}
 }
 
-// Item devuelve la definición del objeto id de la sección items.
+// Item returns the definition of object id from the items section.
 func (r *Rules) Item(id string) (Item, bool) {
 	i, ok := r.items[id]
 	if !ok {
@@ -559,18 +562,18 @@ func (r *Rules) Item(id string) (Item, bool) {
 	return r.Items[i], true
 }
 
-// SelectableTemplate dice si id es una plantilla de inicio elegible (starter_templates), la regla de
-// starter_template_id al crear el personaje (plataforma.md §4.4 paso 5).
+// SelectableTemplate says whether id is a selectable starter template (starter_templates), the
+// rule for starter_template_id when creating the character (plataforma.md §4.4 step 5).
 func (r *Rules) SelectableTemplate(id string) bool {
 	_, ok := r.templates[id]
 	return ok
 }
 
-// ValidAppearance es CharacterAppearance.validate (progresion.md §7.2): true si los 8 B valen para un
-// personaje del reino realm (código de NetProtocol.Realm) y del pueblo raceID. raceID existe, es de ese
-// reino y el byte 0 es su posición + 1; cada índice está en las listas del pueblo y existe; cabeza, pelo,
-// barba y marcas encajan con el cuerpo; un 0 de pelo o barba solo si el pueblo lo admite; sin marcas vale
-// siempre.
+// ValidAppearance is CharacterAppearance.validate (progresion.md §7.2): true if the 8 B are valid
+// for a character of realm realm (NetProtocol.Realm code) and of people raceID. raceID exists,
+// belongs to that realm and byte 0 is its position + 1; each index is in the people's lists and
+// exists; head, hair, beard and marks fit the body; a 0 for hair or beard only if the people
+// allows it; no marks is always valid.
 func (r *Rules) ValidAppearance(realm int16, raceID string, appearance [8]byte) bool {
 	index := int(appearance[0]) - 1
 	if index < 0 || index >= len(r.Races) {
@@ -600,7 +603,7 @@ func (r *Rules) ValidAppearance(realm int16, raceID string, appearance [8]byte) 
 		allowed(race.EyeColors, eyes, a.EyeColorCount)
 }
 
-// RaceIndex devuelve la posición del pueblo raceID en Races, o -1.
+// RaceIndex returns the position of people raceID in Races, or -1.
 func (r *Rules) RaceIndex(raceID string) int {
 	for i, race := range r.Races {
 		if race.ID == raceID {
@@ -610,8 +613,8 @@ func (r *Rules) RaceIndex(raceID string) int {
 	return -1
 }
 
-// TotalTo es LevelCurve.total_to: la XP total para llegar a level (0 en el nivel 1; fuera de
-// 1..LevelCap, el extremo más cercano).
+// TotalTo is LevelCurve.total_to: the total XP to reach level (0 at level 1; outside
+// 1..LevelCap, the nearest end).
 func (r *Rules) TotalTo(level int) int64 {
 	level = max(1, min(level, r.LevelCurve.LevelCap))
 	var total int64
@@ -621,7 +624,7 @@ func (r *Rules) TotalTo(level int) int64 {
 	return total
 }
 
-// LevelFor es LevelCurve.level_for (I8): el mayor nivel cuyo TotalTo no pasa de xpTotal.
+// LevelFor is LevelCurve.level_for (I8): the highest level whose TotalTo does not exceed xpTotal.
 func (r *Rules) LevelFor(xpTotal int64) int {
 	level := 1
 	var total int64

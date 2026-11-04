@@ -1,23 +1,24 @@
 class_name FrontMain
 extends Node
-## Raíz del título con cuenta (docs/plataforma.md §13, UI-22 a UI-24): monta las pantallas, habla con la plataforma
-## ([PlatformApi] y [AccountFlow]) y guarda la [AccountSession] entre escenas ([member session]).
+## Root of the title screen with an account (docs/plataforma.md §13, UI-22 to UI-24): mounts the screens, talks to the platform
+## ([PlatformApi] and [AccountFlow]) and keeps the [AccountSession] between scenes ([member session]).
 ## [codeblock]
 ## título ──Entrar──▶ (aceptar textos nuevos) ──▶ selección ──Entrar──▶ OnlineMain con billete
 ##   │ Crear cuenta · ¿Has olvidado la contraseña?      │ Crear ──▶ creación ──▶ selección
 ##   └ Ajustes (F10) · Salir                            │ Borrar · Restaurar · Cerrar sesión ──▶ título
 ## OnlineMain: rechazo o desconexión ──▶ selección con el motivo (la sesión sigue)
 ## [/codeblock]
-## Una cuenta suspendida o expulsada recibe la sesión de privacidad y solo ve [SanctionedPanel]. Al entrar,
-## [method AccountFlow.enter] devuelve el [ClientConfig] con billete; se marca [member ClientConfig.from_front] y se
-## pasa a [OnlineMain], que vuelve aquí con el motivo en [member return_notice]. Si el refresco de la sesión es
-## imposible ([signal PlatformApi.session_lost]) se vuelve al título.
+## (The diagram shows the Spanish UI labels: title screen, "Entrar" = enter, character select, creation, and so on.)
+## A suspended or banned account receives the privacy session and only sees [SanctionedPanel]. On entering,
+## [method AccountFlow.enter] returns the [ClientConfig] with a ticket; [member ClientConfig.from_front] is set and
+## control passes to [OnlineMain], which returns here with the reason in [member return_notice]. If refreshing the session is
+## impossible ([signal PlatformApi.session_lost]) it returns to the title screen.
 ## [br][br]
-## [ClientLauncher] la abre con [code]--title[/code], con [code]--platform=<url>[/code] o, en una exportación, sin
-## argumentos ([member config]). «Recordar correo» guarda solo el correo en la sección
-## [constant ACCOUNT_SECTION] de [code]user://settings.cfg[/code]; la contraseña y los tokens, nunca. En
-## desarrollo (plataforma en esta máquina: [method is_dev_platform]) crear una cuenta inicia sesión con lo escrito
-## (§13.2); fuera, no: con un correo que ya tenía cuenta eso delataría que existe. Solo cliente.
+## [ClientLauncher] opens it with [code]--title[/code], with [code]--platform=<url>[/code] or, in an export, with no
+## arguments ([member config]). "Recordar correo" (Remember email) saves only the email in the
+## [constant ACCOUNT_SECTION] section of [code]user://settings.cfg[/code]; never the password or the tokens. In
+## development (platform on this machine: [method is_dev_platform]) creating an account logs in with what was typed
+## (§13.2); outside it, no: with an email that already had an account that would reveal that it exists. Client only.
 
 const ONLINE_MAIN_SCENE_PATH: String = "res://scenes/client/online_main.tscn"
 const TITLE_SCENE_PATH: String = "res://scenes/ui/title_screen.tscn"
@@ -28,9 +29,9 @@ const SELECT_SCENE_PATH: String = "res://scenes/ui/character_select.tscn"
 const CREATE_SCENE_PATH: String = "res://scenes/ui/character_create.tscn"
 const RENAME_SCENE_PATH: String = "res://scenes/ui/rename_dialog.tscn"
 const WINDOW_TITLE: String = "Eldmark"
-## Capa de las pantallas (por debajo de las ventanas de [ClientServices]).
+## Layer of the screens (below the [ClientServices] windows).
 const SCREEN_LAYER: int = 40
-## Sección y clave del correo recordado en [code]user://settings.cfg[/code].
+## Section and key of the remembered email in [code]user://settings.cfg[/code].
 const ACCOUNT_SECTION: String = "account"
 const EMAIL_KEY: String = "email"
 const EXPORT_DEFAULT_NAME: String = "eldmark-datos.json"
@@ -41,21 +42,21 @@ const TEXT_RESTORED: String = "Personaje restaurado"
 const TEXT_RENAMED: String = "Nombre cambiado"
 const TEXT_EXPORT_FAILED: String = "No se pudo guardar el archivo con tus datos"
 
-## Configuración (la rellena [ClientLauncher]; si es null al arrancar, se lee de los argumentos).
+## Configuration (filled in by [ClientLauncher]; if it is null on start-up, it is read from the arguments).
 static var config: ClientConfig
-## La sesión de la cuenta, que sobrevive a los cambios de escena (null o vacía = sin sesión).
+## The account session, which survives scene changes (null or empty = no session).
 static var session: AccountSession
-## Motivo con el que [OnlineMain] vuelve a la selección (se enseña una vez).
+## Reason with which [OnlineMain] returns to selection (shown once).
 static var return_notice: String = ""
-## Pruebas: [member PlatformApi.request_hook] de la API.
+## Tests: the API's [member PlatformApi.request_hook].
 static var request_hook: Callable = Callable()
-## Pruebas: si es válido, entrar al mundo llama a este gancho con el [ClientConfig] en lugar de cambiar de escena.
+## Tests: if valid, entering the world calls this hook with the [ClientConfig] instead of changing scene.
 static var online_hook: Callable = Callable()
-## Pruebas: si es válido, «Salir» llama a este gancho en lugar de cerrar el proceso.
+## Tests: if valid, "Salir" (Quit) calls this hook instead of closing the process.
 static var quit_hook: Callable = Callable()
-## Archivo del correo recordado (el de los ajustes; las pruebas usan otro).
+## File of the remembered email (the settings one; tests use another).
 static var settings_path: String = ClientSettings.PATH
-## Carpeta donde se guarda la exportación de datos (vacía = Descargas o, si no hay, [code]user://[/code]).
+## Folder where the data export is saved (empty = Downloads or, if there is none, [code]user://[/code]).
 static var export_dir: String = ""
 
 var _api: PlatformApi = null
@@ -108,7 +109,7 @@ func _exit_tree() -> void:
 		_flow.cancel_enter()
 
 
-# --- Acceso (pruebas) -----------------------------------------------------------------------------
+# --- Access (tests) -------------------------------------------------------------------------------
 
 func get_api() -> PlatformApi:
 	return _api
@@ -118,7 +119,7 @@ func get_flow() -> AccountFlow:
 	return _flow
 
 
-## La pantalla que se ve.
+## The screen being shown.
 func get_current_screen() -> FrontScreen:
 	return _current
 
@@ -151,12 +152,12 @@ func get_rename_dialog() -> RenameDialog:
 	return _rename
 
 
-## true si la plataforma está en esta máquina (desarrollo): crear una cuenta inicia sesión con lo escrito.
+## true if the platform is on this machine (development): creating an account logs in with what was typed.
 func is_dev_platform() -> bool:
 	return ClientConfig.is_loopback_host(ClientConfig.url_host(config.platform_url))
 
 
-## El correo recordado (vacío si no hay).
+## The remembered email (empty if there is none).
 static func remembered_email() -> String:
 	var file := ConfigFile.new()
 	if file.load(settings_path) != OK:
@@ -164,7 +165,7 @@ static func remembered_email() -> String:
 	return str(file.get_value(ACCOUNT_SECTION, EMAIL_KEY, ""))
 
 
-## Recuerda [param email] (vacío lo olvida) sin tocar el resto del archivo de ajustes.
+## Remembers [param email] (empty forgets it) without touching the rest of the settings file.
 static func remember_email(email: String) -> void:
 	var file := ConfigFile.new()
 	file.load(settings_path)
@@ -177,7 +178,7 @@ static func remember_email(email: String) -> void:
 		push_warning("[Eldmark] No se pudo guardar el correo recordado en %s" % settings_path)
 
 
-# --- Pantallas ------------------------------------------------------------------------------------
+# --- Screens --------------------------------------------------------------------------------------
 
 func _build_screens() -> void:
 	_layer = CanvasLayer.new()
@@ -262,7 +263,7 @@ func _open_terms(documents: Variant) -> void:
 	_show(_terms)
 
 
-# --- Título ---------------------------------------------------------------------------------------
+# --- Title ----------------------------------------------------------------------------------------
 
 func _load_status() -> void:
 	var result: ApiResult = await _api.call_api(HTTPClient.METHOD_GET, "/v1/status", null, false)
@@ -289,7 +290,7 @@ func _on_login_requested(email: String, password: String, remember: bool) -> voi
 	await _after_login()
 
 
-# Tras iniciar sesión: la cuenta sancionada a su pantalla; los textos por aceptar, primero; si no, la selección.
+# After logging in: a sanctioned account goes to its screen; texts pending acceptance come first; otherwise, selection.
 func _after_login() -> void:
 	session = _api.session
 	if _api.session.is_privacy():
@@ -332,7 +333,7 @@ func _on_quit_requested() -> void:
 	get_tree().quit(0)
 
 
-# --- Registro y textos ----------------------------------------------------------------------------
+# --- Registration and texts -----------------------------------------------------------------------
 
 func _on_register_requested() -> void:
 	_register.reset(_title.get_email_edit().text.strip_edges())
@@ -360,7 +361,7 @@ func _on_register_submitted(body: Dictionary) -> void:
 		_register.set_notice(PlatformErrors.text_for(result))
 		return
 	if is_dev_platform():
-		# Desarrollo: la cuenta se usa enseguida (sin verificar el correo, §4.2).
+		# Development: the account is used right away (without verifying the email, §4.2).
 		var login: ApiResult = await _flow.login(str(body.get("email", "")), str(body.get("password", "")))
 		if not is_inside_tree():
 			return
@@ -404,7 +405,7 @@ func _on_terms_accepted() -> void:
 	_open_select("")
 
 
-# --- Cuenta sancionada ----------------------------------------------------------------------------
+# --- Sanctioned account ---------------------------------------------------------------------------
 
 func _on_export_requested(password: String) -> void:
 	_sanctioned.set_busy(true)
@@ -423,7 +424,7 @@ func _on_export_requested(password: String) -> void:
 		_sanctioned.show_export_saved(path)
 
 
-## Guarda la exportación de [param result] y devuelve la ruta (vacía si no se pudo).
+## Saves the export from [param result] and returns the path (empty if it could not be saved).
 func _save_export(result: ApiResult) -> String:
 	var directory: String = export_dir
 	if directory.is_empty():
@@ -439,8 +440,8 @@ func _save_export(result: ApiResult) -> String:
 	return path
 
 
-## El nombre del archivo de [code]Content-Disposition: attachment; filename="…"[/code], solo con letras, números,
-## punto, guion y guion bajo ([constant EXPORT_DEFAULT_NAME] si no trae uno que valga).
+## The file name from [code]Content-Disposition: attachment; filename="…"[/code], with only letters, digits,
+## dot, hyphen and underscore ([constant EXPORT_DEFAULT_NAME] if it does not carry a valid one).
 static func export_file_name(disposition: String) -> String:
 	var start: int = disposition.find("filename=")
 	if start < 0:
@@ -470,7 +471,7 @@ func _on_deletion_requested(password: String) -> void:
 	_sanctioned.show_deletion(result.int_of("purge_at", 0))
 
 
-# --- Selección ------------------------------------------------------------------------------------
+# --- Selection ------------------------------------------------------------------------------------
 
 func _load_characters(select_id: int = 0) -> void:
 	_select.set_busy(true)
@@ -575,7 +576,7 @@ func _on_rename_requested(character_id: int, display_name: String) -> void:
 	_select.set_notice(TEXT_RENAMED, false)
 
 
-# --- Creación -------------------------------------------------------------------------------------
+# --- Creation -------------------------------------------------------------------------------------
 
 func _on_name_check_requested(display_name: String) -> void:
 	var path: String = "/v1/worlds/%d/name-check?name=%s" % [config.world_id, display_name.uri_encode()]
@@ -616,7 +617,7 @@ func _on_create_submitted(body: Dictionary) -> void:
 	_select.set_notice(TEXT_CREATED, false)
 
 
-# --- Sesión ---------------------------------------------------------------------------------------
+# --- Session --------------------------------------------------------------------------------------
 
 func _logout() -> void:
 	_flow.cancel_enter()

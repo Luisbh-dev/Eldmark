@@ -1,52 +1,52 @@
 class_name SnapshotBuilder
 extends RefCounted
-## Construye los SNAPSHOT de cada cliente (docs/red.md, sección 9.3).
+## Builds each client's SNAPSHOTs (docs/red.md, section 9.3).
 ## [br][br]
-## [method begin] se llama una vez por tick: codifica [b]cada registro una sola vez[/b] en un
-## búfer compartido y guarda su offset por [code]net_id[/code]. Codificar es O(entidades); por
-## cliente solo hay copias de memoria. [method build_for] arma el paquete de un peer:
+## [method begin] is called once per tick: it encodes [b]each record only once[/b] in a shared buffer and stores its
+## offset per [code]net_id[/code]. Encoding is O(entities); per client there are only memory copies. [method build_for]
+## assembles a peer's packet:
 ## [codeblock]
-## cabecera  tick, input_ack_tick, input_margin, sustituciones, estado propio, su contador
-##           de teletransporte y el bloque extra propio (vida, vida máxima, estado y tick
-##           de reaparición, de NetEntity.health y compañía)
-## candidatas  las entidades de peer.relevant menos la propia; a cada una se le suma
-##             peer.priority[id] += policy.priority_weight(observador, entidad)
-## selección   si caben todas en MAX_PACKET_BYTES se escriben todas; si no, las de mayor
-##             prioridad (desempate por net_id) hasta llenar el presupuesto
-## escritura   las escritas vuelven a prioridad 0; los registros van agrupados por kind en
-##             secciones y, dentro de cada una, por net_id ascendente
+## header      tick, input_ack_tick, input_margin, substitutions, own state, its teleport
+##             counter and the own extra block (health, max health, state and respawn tick,
+##             from NetEntity.health and company)
+## candidates  the entities of peer.relevant minus its own; each one gets
+##             peer.priority[id] += policy.priority_weight(observer, entity)
+## selection   if all fit in MAX_PACKET_BYTES all are written; otherwise, those with the highest
+##             priority (ties broken by net_id) until the budget is filled
+## writing     the written ones go back to priority 0; records are grouped by kind into
+##             sections and, within each one, by ascending net_id
 ## [/codeblock]
-## El paquete nunca pasa de [constant NetProtocol.MAX_PACKET_BYTES]. Como lo que no se envía
-## acumula prioridad y lo que se envía vuelve a cero, con N candidatas y C plazas ninguna pasa más
-## de ceil(N / C) snapshots sin enviarse (con los pesos de la fase 2, todos 1,0).
+## The packet never exceeds [constant NetProtocol.MAX_PACKET_BYTES]. Since what is not sent accumulates priority and what
+## is sent goes back to zero, with N candidates and C slots none goes more than ceil(N / C) snapshots without being sent
+## (with the phase 2 weights, all 1.0).
 
-## Bytes de la cabecera de cada sección: kind y número de registros.
+## Bytes of each section's header: kind and number of records.
 const SECTION_HEADER_SIZE: int = 2
-## Los tipos que viajan como registro de flujo en un snapshot, en el orden de sus secciones.
+## The kinds that travel as a stream record in a snapshot, in the order of their sections.
 const _STREAM_KINDS: Array[int] = [NetProtocol.EntityKind.PLAYER, NetProtocol.EntityKind.NPC]
-## La prioridad se compara como entero con esta resolución (una millonésima), que junto con el
-## id de 16 bits cabe en un entero de 64 bits y se ordena con la ordenación nativa.
+## Priority is compared as an integer with this resolution (one millionth), which together with the 16-bit id fits in a
+## 64-bit integer and is sorted with the native sort.
 const _SCORE_SCALE: float = 1048576.0
 const _MAX_SCORE: int = (1 << 43) - 1
 const _ID_MASK: int = 0xFFFF
 
 var _policy: InterestPolicy
 var _tick: int = 0
-# Registros de todas las entidades del tick, uno detrás de otro (EntityRecord.SIZE bytes cada uno).
+# Records of all the tick's entities, one after another (EntityRecord.SIZE bytes each).
 var _records: PackedByteArray = PackedByteArray()
-# net_id -> offset de su registro en _records.
+# net_id -> offset of its record in _records.
 var _offsets: Dictionary[int, int] = {}
-# net_id -> entidad (para el kind y para la política).
+# net_id -> entity (for the kind and for the policy).
 var _entities: Dictionary[int, NetEntity] = {}
 
 
-## [param policy] da el peso de prioridad de cada entidad para cada observador. null = la base.
+## [param policy] gives the priority weight of each entity for each observer. null = the base one.
 func _init(policy: InterestPolicy) -> void:
 	_policy = policy if policy != null else InterestPolicy.new()
 
 
-## Codifica una vez los registros de [param entities] (que son las del tick [param tick]).
-## Solo los tipos que viajan como registro de flujo (jugadores y PNJ) entran en un snapshot.
+## Encodes once the records of [param entities] (which are those of tick [param tick]). Only the kinds that travel as a
+## stream record (players and NPCs) go into a snapshot.
 func begin(tick: int, entities: Array[NetEntity]) -> void:
 	_tick = tick
 	_offsets.clear()
@@ -64,9 +64,9 @@ func begin(tick: int, entities: Array[NetEntity]) -> void:
 		offset += EntityRecord.SIZE
 
 
-## El SNAPSHOT de [param peer]: nunca más de [constant NetProtocol.MAX_PACKET_BYTES]. Consume
-## [method InputQueue.pop_min_lead] de la cola del peer (la antelación mínima desde el snapshot
-## anterior) y actualiza [member ServerPeer.priority].
+## The SNAPSHOT of [param peer]: never more than [constant NetProtocol.MAX_PACKET_BYTES]. Consumes
+## [method InputQueue.pop_min_lead] from the peer's queue (the minimum lead since the previous snapshot) and updates
+## [member ServerPeer.priority].
 func build_for(peer: ServerPeer) -> PackedByteArray:
 	var observer: NetEntity = peer.entity
 	var own_id: int = observer.net_id if observer != null else 0
@@ -83,13 +83,13 @@ func build_for(peer: ServerPeer) -> PackedByteArray:
 	if queue != null:
 		input_ack_tick = queue.get_ack_tick()
 		var lead: int = queue.pop_min_lead()
-		# -128 solo significa «sin datos»: una antelación muy negativa se satura a -127.
+		# -128 only means "no data": a very negative lead saturates at -127.
 		input_margin = lead if lead == NetProtocol.NO_MARGIN else clampi(lead, -127, 127)
 		substitutions = queue.substitutions_total & 0xFFFF
 	var teleport_counter: int = observer.teleport_counter if observer != null else 0
 
 	var packet := PackedByteArray()
-	# El bloque extra propio sale de la propia entidad (NetEntity.set_health_view).
+	# The own extra block comes from the entity itself (NetEntity.set_health_view).
 	var section_offset: int = NetMessages.Snapshot.write_header(packet, _tick, input_ack_tick,
 			input_margin, substitutions, teleport_counter, own_state_bytes,
 			observer.health if observer != null else 0,
@@ -97,7 +97,7 @@ func build_for(peer: ServerPeer) -> PackedByteArray:
 			observer.status if observer != null else 0,
 			observer.respawn_tick if observer != null else 0)
 
-	# Candidatas y acumulador de prioridad.
+	# Candidates and priority accumulator.
 	var candidates := PackedInt32Array()
 	var kinds_present: int = 0
 	for net_id: int in peer.relevant:
@@ -107,14 +107,14 @@ func build_for(peer: ServerPeer) -> PackedByteArray:
 		candidates.append(net_id)
 		kinds_present |= 1 << entity.kind
 		var weight: float = _policy.priority_weight(observer, entity)
-		# Un peso negativo o NaN no resta prioridad: cuenta como 0.
+		# A negative or NaN weight does not subtract priority: it counts as 0.
 		var safe_weight: float = weight if weight > 0.0 else 0.0
 		var accumulated: float = peer.priority.get(net_id, 0.0)
 		peer.priority[net_id] = accumulated + safe_weight
 	if peer.priority.size() > candidates.size():
 		_prune_priority(peer, own_id)
 
-	# Presupuesto: lo que queda del paquete tras la cabecera y las cabeceras de sección.
+	# Budget: what is left of the packet after the header and the section headers.
 	var section_kinds: int = 0
 	for kind: int in _STREAM_KINDS:
 		if (kinds_present & (1 << kind)) != 0:
@@ -127,7 +127,7 @@ func build_for(peer: ServerPeer) -> PackedByteArray:
 		chosen = _select_top(candidates, peer, capacity)
 	chosen.sort()
 
-	# Secciones por kind, con los registros por net_id ascendente.
+	# Sections by kind, with records by ascending net_id.
 	var by_kind: Array[PackedInt32Array] = []
 	for _kind: int in _STREAM_KINDS:
 		by_kind.append(PackedInt32Array())
@@ -149,9 +149,9 @@ func build_for(peer: ServerPeer) -> PackedByteArray:
 	return packet
 
 
-# Los [param capacity] ids de [param candidates] con más prioridad; a igual prioridad, los de
-# menor net_id. Ordena enteros de 64 bits (prioridad en los bits altos, id invertido en los
-# 16 bajos) con la ordenación nativa en vez de llamar a un comparador por cada par.
+# The [param capacity] ids of [param candidates] with the highest priority; at equal priority, those with the lowest
+# net_id. Sorts 64-bit integers (priority in the high bits, inverted id in the low 16) with the native sort instead of
+# calling a comparator for each pair.
 func _select_top(candidates: PackedInt32Array, peer: ServerPeer, capacity: int) -> PackedInt32Array:
 	var keys := PackedInt64Array()
 	keys.resize(candidates.size())
@@ -167,7 +167,7 @@ func _select_top(candidates: PackedInt32Array, peer: ServerPeer, capacity: int) 
 	return top
 
 
-# Borra del acumulador lo que ya no es candidata (dejó de ser relevante o desapareció).
+# Deletes from the accumulator what is no longer a candidate (it stopped being relevant or disappeared).
 func _prune_priority(peer: ServerPeer, own_id: int) -> void:
 	for net_id: int in peer.priority.keys():
 		if not peer.relevant.get(net_id, false) or net_id == own_id or not _offsets.has(net_id):

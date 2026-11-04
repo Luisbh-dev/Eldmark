@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
-"""Genera las texturas propias del torreón del fuerte (ART-57) con numpy y PIL: aspecto pintado.
+"""Generates the fort keep's own textures (ART-57) with numpy and PIL: a painted look.
 
-No hay IA ni fotos. El estilo objetivo es el de la familia Quaternius (docs/arte.md): superficies
-casi lisas con lavados de color suaves, manchas de pincel, grietas finas con labio claro, pocos
-poros y nada de ruido de alta frecuencia. El valor y el tono de cada sillar, la oclusión de las
-juntas y la suciedad del pie salen del color de vértice de la malla (build_fort_keep.py), no de
-estas texturas, que solo aportan la "pintura" común y el relieve suave.
+No AI and no photos. The target style is that of the Quaternius family (docs/arte.md): almost
+smooth surfaces with soft color washes, brush marks, fine cracks with a light lip, few
+pores and no high-frequency noise. The value and tone of each ashlar, the joint occlusion and the dirt at the
+foot come from the mesh's vertex color (build_fort_keep.py), not from
+these textures, which only supply the common "paint" and the soft relief.
 
-Salida, en assets/models/environment/custom/fort_keep/textures/ (todo PNG, para que
-tools/assets/apply_texture_import_presets.gd fije VRAM comprimida, mipmaps y mapa de normales):
+Output, in assets/models/environment/custom/fort_keep/textures/ (all PNG, so that
+tools/assets/apply_texture_import_presets.gd sets VRAM compression, mipmaps and normal map):
 
-    keep_stone_albedo.png / keep_stone_normal.png   sillar de cara. Alfa = máscara de grietas
-                                                    (las brasas de Eldrun brillan por ahí)
-    keep_trim_albedo.png  / keep_trim_normal.png    piedra labrada: más clara, más lisa
-    keep_wall_albedo.png  / keep_wall_normal.png    paño de sillería ya despiezado (LOD medio)
-    keep_wood_albedo.png  / keep_wood_normal.png    tablas pintadas con veta (cadalso, puerta)
-    keep_shingle_albedo.png / keep_shingle_normal.png  tablillas del tejado
-    keep_pennant_atlas.png                           gallardete: 4 emblemas apilados (1024 x 2048)
-    keep_pendant_atlas.png                           pendón vertical: 4 emblemas en fila (1536 x 1024)
-    keep_textures.txt                                luminancias medias (para realm_surface)
+    keep_stone_albedo.png / keep_stone_normal.png   face ashlar. Alpha = crack mask
+                                                    (the embers of Eldrun glow through there)
+    keep_trim_albedo.png  / keep_trim_normal.png    dressed stone: lighter, smoother
+    keep_wall_albedo.png  / keep_wall_normal.png    already-cut ashlar masonry panel (medium LOD)
+    keep_wood_albedo.png  / keep_wood_normal.png    painted boards with grain (hoarding, door)
+    keep_shingle_albedo.png / keep_shingle_normal.png  roof shingles
+    keep_pennant_atlas.png                           pennant: 4 stacked emblems (1024 x 2048)
+    keep_pendant_atlas.png                           vertical banner: 4 emblems in a row (1536 x 1024)
+    keep_textures.txt                                mean luminances (for realm_surface)
 
-Uso, desde la raíz del repo y antes de build_fort_keep.py:
+Usage, from the repo root and before build_fort_keep.py:
 
     python tools/blender/make_fort_keep_textures.py
 
-Es determinista (semillas fijas). Normales en convención OpenGL (verde hacia arriba), la de Godot y
-glTF. Los emblemas se leen de assets/emblems/*.svg (polígonos, líneas y un semicírculo).
+It is deterministic (fixed seeds). Normals in the OpenGL convention (green up), the one Godot and
+glTF use. The emblems are read from assets/emblems/*.svg (polygons, lines and a semicircle).
 """
 
 import math
@@ -41,15 +41,15 @@ OUT_DIR = os.path.join(ROOT, "assets", "models", "environment", "custom", "fort_
 EMBLEM_DIR = os.path.join(ROOT, "assets", "emblems")
 SIZE = 1024
 
-# Orden de los emblemas en los atlas de estandartes (el índice que da el controlador del fuerte).
+# Order of the emblems in the banner atlases (the index the fort controller provides).
 EMBLEMS = ["vardheim", "solmarch", "askarra", "huecos"]
 
 
 # ---------------------------------------------------------------------------------------------
-# Utilidades numéricas
+# Numeric utilities
 # ---------------------------------------------------------------------------------------------
 def fft_noise(n: int, beta: float, seed: int) -> np.ndarray:
-	"""Ruido periódico con espectro 1/f^beta, normalizado a media 0 y desviación 1."""
+	"""Periodic noise with a 1/f^beta spectrum, normalized to mean 0 and deviation 1."""
 	rng = np.random.default_rng(seed)
 	spectrum = np.fft.fft2(rng.standard_normal((n, n)))
 	fx = np.fft.fftfreq(n)[:, None]
@@ -63,7 +63,7 @@ def fft_noise(n: int, beta: float, seed: int) -> np.ndarray:
 
 
 def blur(img: np.ndarray, radius: float) -> np.ndarray:
-	"""Desenfoque gaussiano periódico por FFT."""
+	"""Periodic Gaussian blur via FFT."""
 	fx = np.fft.fftfreq(img.shape[0])[:, None]
 	fy = np.fft.fftfreq(img.shape[1])[None, :]
 	kernel = np.exp(-2.0 * (np.pi ** 2) * (radius ** 2) * (fx * fx + fy * fy))
@@ -76,7 +76,7 @@ def smoothstep(a: float, b: float, x: np.ndarray) -> np.ndarray:
 
 
 def normal_from_height(h: np.ndarray, strength: float) -> np.ndarray:
-	"""Mapa de normales OpenGL (X a la derecha, Y hacia arriba de la imagen) desde una altura."""
+	"""OpenGL normal map (X to the right, Y toward the top of the image) from a height."""
 	dx = (np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)) * 0.5
 	d_row = (np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)) * 0.5
 	nx = -dx * strength
@@ -98,7 +98,7 @@ def luminance(rgb: np.ndarray) -> float:
 
 
 def add_wrapped(canvas: np.ndarray, patch: np.ndarray, cx: int, cy: int) -> None:
-	"""Suma un parche centrado en (cx, cy) envolviendo por los bordes."""
+	"""Adds a patch centered at (cx, cy), wrapping around the edges."""
 	ph, pw = patch.shape
 	ys = (np.arange(ph) + cy - ph // 2) % canvas.shape[0]
 	xs = (np.arange(pw) + cx - pw // 2) % canvas.shape[1]
@@ -106,7 +106,7 @@ def add_wrapped(canvas: np.ndarray, patch: np.ndarray, cx: int, cy: int) -> None
 
 
 def dabs(n: int, count: int, size: tuple, angle: float, spread: float, amp: tuple, seed: int) -> np.ndarray:
-	"""Pinceladas elípticas suaves (positivas y negativas), orientadas hacia `angle`."""
+	"""Soft elliptical brush strokes (positive and negative), oriented toward `angle`."""
 	rng = np.random.default_rng(seed)
 	canvas = np.zeros((n, n), dtype=np.float32)
 	for _ in range(count):
@@ -123,7 +123,7 @@ def dabs(n: int, count: int, size: tuple, angle: float, spread: float, amp: tupl
 
 
 def cracks(n: int, count: int, length: tuple, seed: int, branch: float = 0.5) -> np.ndarray:
-	"""Grietas finas: caminos aleatorios con alguna ramificación. Devuelve el trazo (0..1)."""
+	"""Fine cracks: random walks with some branching. Returns the stroke (0..1)."""
 	rng = np.random.default_rng(seed)
 	canvas = np.zeros((n, n), dtype=np.float32)
 
@@ -149,7 +149,7 @@ def cracks(n: int, count: int, length: tuple, seed: int, branch: float = 0.5) ->
 
 
 def pits(n: int, count: int, radius: tuple, seed: int) -> tuple:
-	"""Oquedades pequeñas. Devuelve (hueco 0..1, labio claro 0..1)."""
+	"""Small pits. Returns (pit 0..1, light lip 0..1)."""
 	rng = np.random.default_rng(seed)
 	hole = np.zeros((n, n), dtype=np.float32)
 	for _ in range(count):
@@ -164,11 +164,11 @@ def pits(n: int, count: int, radius: tuple, seed: int) -> tuple:
 
 
 # ---------------------------------------------------------------------------------------------
-# Piedra pintada
+# Painted stone
 # ---------------------------------------------------------------------------------------------
 def painted_stone(seed: int, base: float, wash: float, crack_count: int, pit_count: int,
 		warm: float, glaze: float = 1.0) -> tuple:
-	"""Piedra pintada. Devuelve (albedo RGBA, altura). El alfa es la máscara de grietas."""
+	"""Painted stone. Returns (RGBA albedo, height). The alpha is the crack mask."""
 	n = SIZE
 	a = fft_noise(n, 3.2, seed)
 	b = fft_noise(n, 2.4, seed + 1)
@@ -177,22 +177,22 @@ def painted_stone(seed: int, base: float, wash: float, crack_count: int, pit_cou
 	patch_b = smoothstep(-0.1, 0.6, b)
 	lum = base + wash * (0.030 * (patch_a - 0.5) + 0.022 * (patch_b - 0.5) + 0.006 * c)
 
-	# pinceladas: ovaladas, algo inclinadas, de dos tamaños
+	# brush strokes: oval, slightly tilted, of two sizes
 	big = blur(dabs(n, 420, (26.0, 70.0), math.radians(24.0), 0.45, (0.004, 0.014), seed + 3), 2.0)
 	small = blur(dabs(n, 700, (9.0, 24.0), math.radians(28.0), 0.55, (0.004, 0.012), seed + 4), 0.8)
 	lum = lum + wash * (big + small) * glaze
 
-	# grietas finas: oscuras con un labio claro desplazado
+	# fine cracks: dark with an offset light lip
 	crack = cracks(n, crack_count, (50.0, 170.0), seed + 5)
 	crack_core = np.clip(blur(crack, 0.55) * 1.35, 0.0, 1.0)
 	lip = np.clip(np.roll(crack, (2, 2), axis=(0, 1)) - crack, 0.0, 1.0)
 	lum = lum - 0.095 * crack_core + 0.030 * blur(lip, 0.5)
 
-	# oquedades pocas y suaves
+	# few, soft pits
 	hole, hole_lip = pits(n, pit_count, (2.4, 6.5), seed + 6)
 	lum = lum - 0.070 * blur(hole, 0.6) + 0.030 * hole_lip
 
-	# rozaduras claras muy sueltas
+	# very loose light scuffs
 	scuff = np.clip(fft_noise(n, 1.4, seed + 7) - 1.35, 0.0, None)
 	lum = lum + 0.020 * blur(scuff, 0.8)
 	lum = np.clip(lum, 0.05, 0.95)
@@ -210,7 +210,7 @@ def painted_stone(seed: int, base: float, wash: float, crack_count: int, pit_cou
 
 
 def trim_stone(seed: int) -> tuple:
-	"""Piedra labrada: más clara y casi lisa, con líneas finas horizontales de maza."""
+	"""Dressed stone: lighter and almost smooth, with fine horizontal mallet lines."""
 	albedo, height = painted_stone(seed, base=0.60, wash=0.7, crack_count=3, pit_count=14, warm=0.4, glaze=0.8)
 	rows = np.sin(np.arange(SIZE) * 0.62)[:, None] * np.ones((1, SIZE))
 	rough = blur(fft_noise(SIZE, 1.0, seed + 40), 0.8)
@@ -222,11 +222,11 @@ def trim_stone(seed: int) -> tuple:
 
 
 # ---------------------------------------------------------------------------------------------
-# Paño de sillería despiezado (LOD medio)
+# Cut-ashlar masonry panel (medium LOD)
 # ---------------------------------------------------------------------------------------------
 def ashlar_tile(seed: int, courses: int = 7, tile_m: float = 3.2) -> tuple:
-	"""Paño de sillares pintados para el LOD medio: hiladas, juntas oscuras, bisel claro y valor
-	distinto por sillar. Una hilada mide tile_m / courses (0,457 m con los valores por defecto)."""
+	"""Panel of painted ashlars for the medium LOD: courses, dark joints, light bevel and a different value
+	per ashlar. A course measures tile_m / courses (0.457 m with the default values)."""
 	n = SIZE
 	rng = np.random.default_rng(seed)
 	stone_albedo, stone_height = painted_stone(seed + 100, base=0.50, wash=1.0, crack_count=6, pit_count=24, warm=0.5)
@@ -240,7 +240,7 @@ def ashlar_tile(seed: int, courses: int = 7, tile_m: float = 3.2) -> tuple:
 	for row in range(courses):
 		y0 = row * row_h
 		y1 = y0 + row_h
-		# sillares del hilo: anchos entre 0,7 y 1,5 m, repartidos para que cierren el ancho de la baldosa
+		# ashlars of the course: widths between 0.7 and 1.5 m, laid out so that they close the tile's width
 		widths = []
 		total = 0.0
 		while total < n - 1:
@@ -258,7 +258,7 @@ def ashlar_tile(seed: int, courses: int = 7, tile_m: float = 3.2) -> tuple:
 			warm = rng.normal(0.0, 0.018)
 			mask_x = ((xx - x0) % n) < w
 			inner = mask_x & (yy >= y0) & (yy < y1)
-			# distancias al borde del sillar (para junta, bisel y oclusión)
+			# distances to the ashlar's edge (for joint, bevel and occlusion)
 			dx = np.minimum((xx - x0) % n, w - ((xx - x0) % n))
 			dy = np.minimum(yy - y0, y1 - yy)
 			d = np.minimum(dx, dy)
@@ -270,13 +270,13 @@ def ashlar_tile(seed: int, courses: int = 7, tile_m: float = 3.2) -> tuple:
 			col[..., 0] *= 1.0 + warm
 			col[..., 2] *= 1.0 - warm
 			col = col * (1.0 + 0.10 * rim[..., None])
-			# dentro del sillar, más claro arriba y más oscuro abajo (pincelada)
+			# inside the ashlar, lighter at the top and darker at the bottom (brush stroke)
 			grad = 1.0 + 0.045 * ((yy - y0) / row_h * -2.0 + 1.0)
 			col = col * grad[..., None]
 			lum = np.where(core[..., None], col, lum)
 			height = np.where(core, 1.0 * bevel + stone_height * 0.15, height)
 			ao = np.where(core, 0.55 + 0.45 * smoothstep(joint * 0.5, joint * 0.5 + 26.0, d), ao)
-	# juntas (huecos): color de mortero
+	# joints (gaps): mortar color
 	mortar = np.array([0.20, 0.19, 0.17], dtype=np.float32)
 	filled = (lum.sum(axis=-1) > 0)
 	lum = np.where(filled[..., None], lum, mortar[None, None, :] * (0.9 + 0.1 * fft_noise(n, 2.0, seed + 5)[..., None]))
@@ -288,10 +288,10 @@ def ashlar_tile(seed: int, courses: int = 7, tile_m: float = 3.2) -> tuple:
 
 
 # ---------------------------------------------------------------------------------------------
-# Madera pintada
+# Painted wood
 # ---------------------------------------------------------------------------------------------
 def painted_wood(seed: int) -> tuple:
-	"""Tablas horizontales de 0,18 m con veta fina, nudos y un tono distinto por tabla."""
+	"""Horizontal boards of 0.18 m with fine grain, knots and a different tone per board."""
 	n = SIZE
 	rng = np.random.default_rng(seed)
 	plank_h = 0.18 / 3.0 * n
@@ -300,7 +300,7 @@ def painted_wood(seed: int) -> tuple:
 	plank_id = (np.arange(n) / (n / count)).astype(int)
 	tint = rng.normal(0.0, 0.055, size=count)
 	grain_a = blur(fft_noise(n, 1.6, seed + 1), 0.7)
-	# veta: ruido estirado a lo largo de x
+	# grain: noise stretched along x
 	stretch = np.zeros((n, n), dtype=np.float32)
 	g = fft_noise(n, 2.2, seed + 2)
 	for k in range(28):
@@ -313,13 +313,13 @@ def painted_wood(seed: int) -> tuple:
 	fine = blur(fft_noise(n, 0.9, seed + 3), 0.5)
 	lum += 0.004 * fine
 	height = 0.25 * stretch + 0.06 * grain_a
-	# juntas entre tablas
+	# joints between boards
 	local = (np.arange(n) % (n / count)) / (n / count)
 	seam = np.exp(-((np.minimum(local, 1.0 - local)) / 0.045) ** 2)
 	lum -= 0.16 * seam[:, None] * np.ones((1, n))
 	height -= 1.4 * seam[:, None] * np.ones((1, n))
 	lum += 0.04 * np.exp(-(((local - 0.10)) / 0.05) ** 2)[:, None] * np.ones((1, n))
-	# nudos
+	# knots
 	yy, xx = np.mgrid[0:n, 0:n].astype(np.float32)
 	for _ in range(14):
 		cx, cy = rng.uniform(0, n), rng.uniform(0, n)
@@ -331,7 +331,7 @@ def painted_wood(seed: int) -> tuple:
 		ring = np.exp(-((np.sqrt(d2) - r * 0.8) / 2.5) ** 2)
 		lum -= 0.09 * knot + 0.03 * ring
 		height -= 0.4 * knot
-	# clavos
+	# nails
 	for _ in range(30):
 		cx, cy = rng.uniform(0, n), rng.uniform(0, n)
 		dx = (xx - cx + n / 2) % n - n / 2
@@ -349,11 +349,11 @@ def painted_wood(seed: int) -> tuple:
 
 
 # ---------------------------------------------------------------------------------------------
-# Tablillas del tejado
+# Roof shingles
 # ---------------------------------------------------------------------------------------------
 def shingles(seed: int, rows: int = 10, tile_m: float = 2.0) -> tuple:
-	"""Tejado de tablillas: una hilera de 0,2 m, tablillas de 0,18 m desfasadas, cada una de un valor
-	distinto, más claras arriba y con sombra bajo el canto, veta fina y algún parche de musgo claro."""
+	"""Shingle roof: a 0.2 m row, 0.18 m shingles offset from one another, each with a different value,
+	lighter at the top and with a shadow under the edge, fine grain and an occasional patch of light moss."""
 	n = SIZE
 	rng = np.random.default_rng(seed)
 	row_h = n / rows
@@ -393,21 +393,21 @@ def shingles(seed: int, rows: int = 10, tile_m: float = 2.0) -> tuple:
 
 
 # ---------------------------------------------------------------------------------------------
-# Estandartes
+# Banners
 # ---------------------------------------------------------------------------------------------
 def _numbers(text: str) -> list:
 	return [float(v) for v in re.findall(r"-?\d+\.?\d*", text)]
 
 
 def render_emblem(name: str, size: int, supersample: int = 4) -> Image.Image:
-	"""Rasteriza un emblema de assets/emblems/<name>.svg (polígonos, líneas y semicírculos) en un
-	RGBA de `size` px. Solo entiende lo que usan los emblemas provisionales."""
+	"""Rasterizes an emblem from assets/emblems/<name>.svg (polygons, lines and semicircles) into an
+	RGBA of `size` px. It only understands what the provisional emblems use."""
 	with open(os.path.join(EMBLEM_DIR, name + ".svg"), encoding="utf-8") as handle:
 		text = handle.read()
 	s = size * supersample / 128.0
 	canvas = Image.new("RGBA", (size * supersample, size * supersample), (0, 0, 0, 0))
 	draw = ImageDraw.Draw(canvas)
-	# recorre los elementos en orden, con el translate del <g> más cercano
+	# walks the elements in order, with the translate of the nearest <g>
 	offset = (0.0, 0.0)
 	for match in re.finditer(r"<(/?)(g|polygon|polyline|line|path)\b([^>]*)>", text):
 		closing, tag, attrs = match.group(1), match.group(2), match.group(3)
@@ -436,7 +436,7 @@ def render_emblem(name: str, size: int, supersample: int = 4) -> Image.Image:
 			x1, y1, x2, y2 = [float(re.search(k + r'="([-\d.]+)"', attrs).group(1)) for k in ("x1", "y1", "x2", "y2")]
 			draw.line([tx(x1, y1), tx(x2, y2)], fill=stroke.group(1), width=int(float(width.group(1)) * s))
 		elif tag == "path" and fill:
-			# semicírculo "M64 38 A26 26 0 0 f 64 90 Z": f = 0 la mitad izquierda, 1 la derecha
+			# semicircle "M64 38 A26 26 0 0 f 64 90 Z": f = 0 the left half, 1 the right half
 			d = re.search(r'd="([^"]*)"', attrs).group(1)
 			v = _numbers(d)
 			radius, sweep = v[2], int(v[5])
@@ -451,7 +451,7 @@ def render_emblem(name: str, size: int, supersample: int = 4) -> Image.Image:
 
 
 def cloth_base(w: int, h: int, seed: int) -> np.ndarray:
-	"""Tela gris clara (se multiplica por el color de bando) con tejido y pliegues suaves."""
+	"""Light gray cloth (multiplied by the faction color) with soft weave and folds."""
 	weave_x = np.sin(np.arange(w) * np.pi / 2.0)[None, :]
 	weave_y = np.sin(np.arange(h) * np.pi / 2.0 + 1.0)[:, None]
 	weave = 0.5 + 0.25 * weave_x * weave_y
@@ -461,20 +461,20 @@ def cloth_base(w: int, h: int, seed: int) -> np.ndarray:
 
 def banner_cell(emblem: str, w: int, h: int, seed: int, roundel_u: float, roundel_v: float,
 		roundel_r: float, pendant: bool) -> np.ndarray:
-	"""Una casilla de estandarte RGBA. RGB: tela (gris, se tiñe de color de bando) o emblema con sus
-	colores; A: 1 donde manda el emblema (disco oscuro con el emblema encima) y 0 en la tela."""
+	"""One banner cell, RGBA. RGB: cloth (gray, tinted with the faction color) or emblem with its
+	colors; A: 1 where the emblem rules (dark disc with the emblem on top) and 0 on the cloth."""
 	lum = cloth_base(w, h, seed)
 	img = Image.new("L", (w, h), 255)
 	draw = ImageDraw.Draw(img)
 	hem = int(min(w, h) * (0.10 if pendant else 0.12))
-	# dobladillos y listones tejidos
+	# woven hems and battens
 	if pendant:
 		draw.rectangle([0, 0, w, hem], fill=150)
 		draw.rectangle([0, 0, hem, h], fill=150)
 		draw.rectangle([w - hem, 0, w, h], fill=150)
 		draw.rectangle([hem + 6, hem + 6, hem + 12, h], fill=205)
 		draw.rectangle([w - hem - 12, hem + 6, w - hem - 6, h], fill=205)
-		# cuña oscura bajo el emblema
+		# dark wedge under the emblem
 		cx = w // 2
 		draw.polygon([(cx - int(w * 0.34), int(h * 0.62)), (cx + int(w * 0.34), int(h * 0.62)),
 				(cx + int(w * 0.34), int(h * 0.78)), (cx, int(h * 0.92)), (cx - int(w * 0.34), int(h * 0.78))], fill=170)
@@ -499,7 +499,7 @@ def banner_cell(emblem: str, w: int, h: int, seed: int, roundel_u: float, rounde
 	rgb = rgb * (1.0 - disc[..., None]) + field[None, None, :] * disc[..., None]
 	rgb = rgb * (1.0 - ring[..., None] * 0.9) + trim[None, None, :] * ring[..., None] * 0.9
 	alpha = disc.copy()
-	# emblema encima
+	# emblem on top
 	size = int(r * 1.52)
 	emb = np.asarray(render_emblem(emblem, size), dtype=np.float32) / 255.0
 	x0, y0 = int(cx - size / 2), int(cy - size / 2)

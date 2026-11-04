@@ -1,44 +1,44 @@
 class_name HintLog
 extends RefCounted
-## Qué pistas del juego (UI-42, [HintCatalog]) ha visto ya el jugador, para que cada una salga una sola vez
-## por jugador. Se guarda en [code]user://hints.cfg[/code] (un [ConfigFile], sección [code]shown[/code], una
-## clave por pista) cada vez que se anota una: son pocas y sueltas. Un archivo ilegible o con basura no rompe
-## nada: se ignora lo que no sea una pista conocida marcada como vista.
+## Which game hints (UI-42, [HintCatalog]) the player has already seen, so that each shows only once per
+## player. It is saved to [code]user://hints.cfg[/code] (a [ConfigFile], section [code]shown[/code], one
+## key per hint) every time one is recorded: they are few and sparse. An unreadable file or one with
+## garbage breaks nothing: anything that is not a known hint marked as seen is ignored.
 ## [br][br]
-## [method in_memory] da un registro que no toca el disco. Es el que usa [method current] en modo headless
-## (las pruebas y los clientes de procesos de prueba no son un jugador y no deben dejar un archivo en
-## [code]user://[/code]). Solo cliente.
+## [method in_memory] gives a log that does not touch the disk. It is the one [method current] uses in
+## headless mode (the tests and the clients of test processes are not a player and must not leave a file
+## in [code]user://[/code]). Client only.
 
 const PATH: String = "user://hints.cfg"
 const SECTION: String = "shown"
 
 static var _current: HintLog = null
 
-## Archivo donde se guarda; vacío = solo en memoria.
+## File where it is saved; empty = in memory only.
 var path: String = ""
 
 var _shown: Dictionary[StringName, bool] = {}
 
 
-## El registro del jugador: se carga de [constant PATH] la primera vez que se pide (sin pantalla, uno en
-## memoria).
+## The player's log: loaded from [constant PATH] the first time it is requested (without a display, an
+## in-memory one).
 static func current() -> HintLog:
 	if _current == null:
 		_current = in_memory() if DisplayServer.get_name() == "headless" else load_from(PATH)
 	return _current
 
 
-## Sustituye el registro en uso (null lo olvida y se vuelve a cargar al pedirlo).
+## Replaces the log in use (null forgets it and it is reloaded when requested).
 static func set_current(hint_log: HintLog) -> void:
 	_current = hint_log
 
 
-## Un registro vacío que no se guarda en ningún archivo.
+## An empty log that is not saved to any file.
 static func in_memory() -> HintLog:
 	return HintLog.new()
 
 
-## El registro guardado en [param file_path] (vacío si no existe o está mal).
+## The log saved in [param file_path] (empty if it does not exist or is malformed).
 static func load_from(file_path: String) -> HintLog:
 	var hint_log := HintLog.new()
 	hint_log.path = file_path
@@ -46,12 +46,12 @@ static func load_from(file_path: String) -> HintLog:
 	return hint_log
 
 
-## true si la pista [param id] ya se ha mostrado alguna vez.
+## true if hint [param id] has already been shown at some point.
 func has_shown(id: StringName) -> bool:
 	return _shown.has(id)
 
 
-## Anota que se ha mostrado [param id] y guarda. Devuelve false si ya estaba anotada.
+## Records that [param id] has been shown and saves. Returns false if it was already recorded.
 func mark_shown(id: StringName) -> bool:
 	if _shown.has(id):
 		return false
@@ -60,18 +60,18 @@ func mark_shown(id: StringName) -> bool:
 	return true
 
 
-## Olvida todo lo visto (y guarda): las pistas vuelven a salir.
+## Forgets everything seen (and saves): the hints show again.
 func reset() -> void:
 	_shown.clear()
 	save_file()
 
 
-## Cuántas pistas se han visto.
+## How many hints have been seen.
 func get_shown_count() -> int:
 	return _shown.size()
 
 
-## Lee [member path] (si lo hay). Devuelve el error de [method ConfigFile.load].
+## Reads [member path] (if set). Returns the error of [method ConfigFile.load].
 func load_file() -> Error:
 	_shown.clear()
 	if path.is_empty():
@@ -88,7 +88,7 @@ func load_file() -> Error:
 	return OK
 
 
-## Guarda en [member path] (no hace nada si está vacío). Devuelve el error de [method ConfigFile.save].
+## Saves to [member path] (does nothing if empty). Returns the error of [method ConfigFile.save].
 func save_file() -> Error:
 	if path.is_empty():
 		return OK

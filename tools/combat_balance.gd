@@ -1,82 +1,82 @@
 extends SceneTree
-## Primera pasada de equilibrio del combate (CMB-29; docs/combate.md, sección 12). Fuera del ejecutor de
-## pruebas: monta un [ZoneServer] sin red sobre [code]test_world[/code] (jugadores falsos con cerebros a
-## mano, ni clientes ni ENet) y mide con él lo que dicen los datos de [code]data/combat/[/code].
+## First combat balance pass (CMB-29; docs/combate.md, section 12). Outside the test runner:
+## it sets up a network-less [ZoneServer] over [code]test_world[/code] (fake players with hand-driven brains, no clients or
+## ENet) and uses it to measure what the data in [code]data/combat/[/code] says.
 ## [br][br]
-## [b]Uso[/b], desde la raíz del proyecto (el [code]godot[/code] de consola):
+## [b]Usage[/b], from the project root (the console [code]godot[/code]):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/combat_balance.gd
 ## godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30
 ## [/codeblock]
-## [b]Opciones[/b]: [code]--duels=N[/code] duelos de bots de combate (por defecto 40), [code]--seconds=S[/code]
-## segundos de medida del DPS contra el maniquí (por defecto 30), [code]--team-runs=N[/code] combates de cada
-## tamaño de equipo (por defecto el mayor de N/3 y 5), [code]--reference[/code] (también los duelos sin habilidades),
-## [code]--no-template-duels[/code] (sin los duelos con el tirador; la prueba en pequeño los salta por tiempo) y
-## [code]--out=<ruta.json>[/code] (por defecto [code]build/combat_balance.json[/code]).
+## [b]Options[/b]: [code]--duels=N[/code] combat bot duels (default 40), [code]--seconds=S[/code]
+## seconds of DPS measurement against the dummy (default 30), [code]--team-runs=N[/code] fights of each
+## team size (default the larger of N/3 and 5), [code]--reference[/code] (also the duels without abilities),
+## [code]--no-template-duels[/code] (without the duels with the ranged template; the small-scale test skips them for time) and
+## [code]--out=<path.json>[/code] (default [code]build/combat_balance.json[/code]).
 ## [br][br]
-## El servidor se avanza a mano, un tick de 1/60 s cada vez y sin esperar al motor
-## ([method _step]), así que la simulación va mucho más deprisa que el tiempo real y el resultado no
-## depende de la máquina (no se usa [code]Engine.time_scale[/code]: escala el [code]delta[/code] de la
-## física y distorsiona el movimiento).
+## The server is advanced by hand, one 1/60 s tick at a time and without waiting for the engine
+## ([method _step]), so the simulation runs much faster than real time and the result does not
+## depend on the machine ([code]Engine.time_scale[/code] is not used: it scales the physics [code]delta[/code] and
+## distorts movement).
 ## [br][br]
-## [b]Qué mide[/b]:
-## [br]- [b]DPS contra el maniquí[/b]: el combo de tres ligeros encadenado en su ventana, un ligero repetido
-## sin enlazar y el fuerte con la carga mínima y con la máxima, cada uno durante los segundos de medida,
-## frente al calculado con los datos ([method CombatCatalog]).
-## [br]- [b]TTK ideal[/b]: tiempo desde el primer golpe hasta la muerte de un atacante perfecto (combo
-## encadenado) contra alguien que no se defiende, y contra alguien que bloquea sin parar (hasta la rotura
-## de guardia).
-## [br]- [b]TTK entre iguales[/b]: duelos de dos bots de combate ([constant BotBrain.Pattern.COMBAT], que
-## ataca, bloquea y esquiva con su semilla) de reinos enemigos, con las mismas armas, desde la distancia de
-## 4 m hasta que uno cae: tiempo del primer golpe a la caída, quién gana, golpes, bloqueos y esquivas.
-## [br]- [b]Equipos[/b]: 2 contra 2 y 5 contra 5 de bots de combate, hasta que un bando se queda sin nadie
-## en pie (o pasan 60 s, con reapariciones de 10 s de por medio): tiempo hasta la primera baja y hasta
-## el fin, y bajas por bando.
+## [b]What it measures[/b]:
+## [br]- [b]DPS against the dummy[/b]: the three-light combo chained within its window, a repeated light
+## unlinked and the heavy with minimum charge and with maximum, each one for the measurement seconds,
+## against the one calculated from the data ([method CombatCatalog]).
+## [br]- [b]Ideal TTK[/b]: time from the first hit to the death of a perfect attacker (chained
+## combo) against someone who does not defend, and against someone who blocks without stopping (up to the guard
+## break).
+## [br]- [b]TTK between equals[/b]: duels of two combat bots ([constant BotBrain.Pattern.COMBAT], which
+## attacks, blocks and dodges according to its seed) from enemy realms, with the same weapons, from a distance of
+## 4 m until one falls: time from the first hit to the fall, who wins, hits, blocks and dodges.
+## [br]- [b]Teams[/b]: 2 vs 2 and 5 vs 5 of combat bots, until one side has no one left
+## standing (or 60 s pass, with 10 s respawns in between): time to the first casualty and to
+## the end, and casualties per side.
 ## [br][br]
-## Entre jugadores de reinos enemigos el golpe mortal derriba (docs/habilidades.md, sección 4.5): la «muerte» de
-## estas medidas es la caída, DOWNED o DEATH (lo que llegue antes), que es cuando el caído deja de pelear.
+## Between players of enemy realms the killing blow knocks down (docs/habilidades.md, section 4.5): the "death" of
+## these measurements is the fall, DOWNED or DEATH (whichever comes first), which is when the fallen stops fighting.
 ## [br][br]
-## [b]Kits de la fase 4[/b] (H5; docs/habilidades.md, sección 2.4, y combate.md, sección 12.8):
-## [br]- [b]Arco contra el maniquí[/b] a 10 m: disparo rápido repetido y tensado con la carga mínima y la máxima,
-## apuntado como un bot ([method BotBrain.lead_look]); el DPS medido frente al calculado con los datos.
-## [br]- [b]Alcances[/b]: el rápido y el tensado máximo contra el maniquí a 10, 30 y 50 m: aciertos, tiempo de vuelo
-## (del compromiso al impacto) y cuánto hay que apuntar por encima del blanco.
-## [br]- [b]Habilidades[/b]: un uso de cada una contra el maniquí (el abanico a 3 y a 10 m): daño, aciertos y DPS
-## a reutilización.
-## [br]- [b]Muro de escudos[/b]: uno y dos atacantes con el combo perfecto contra quien lo mantiene los 6 s:
-## resistencia que le quitan y si le rompen la guardia.
-## [br]- Los duelos y los equipos de bots de combate usan el kit ([BotBrain] con su estado de combate): espada contra
-## espada (escuderos), y además, con las dos plantillas, tirador contra tirador, escudero contra tirador y 2 contra 2
-## con un escudero y un tirador en cada bando; con [code]--reference[/code], también los duelos sin habilidades (el
-## cerebro de la fase 3) para comparar.
+## [b]Phase 4 kits[/b] (H5; docs/habilidades.md, section 2.4, and combate.md, section 12.8):
+## [br]- [b]Bow against the dummy[/b] at 10 m: repeated quick shot and drawn shot with minimum and maximum charge,
+## aimed like a bot ([method BotBrain.lead_look]); the measured DPS against the one calculated from the data.
+## [br]- [b]Ranges[/b]: the quick shot and the maximum drawn shot against the dummy at 10, 30 and 50 m: hits, flight time
+## (from commitment to impact) and how far above the target you have to aim.
+## [br]- [b]Abilities[/b]: one use of each against the dummy (the fan at 3 and 10 m): damage, hits and DPS
+## at cooldown.
+## [br]- [b]Shield wall[/b]: one and two attackers with the perfect combo against whoever holds it for 6 s:
+## stamina it takes from them and whether it breaks their guard.
+## [br]- The combat bot duels and teams use the kit ([BotBrain] with its combat state): sword against
+## sword (shield-bearers), and also, with both templates, ranged vs ranged, shield-bearer vs ranged and 2 vs 2
+## with one shield-bearer and one ranged fighter on each side; with [code]--reference[/code], also the duels without abilities (the
+## phase 3 brain) for comparison.
 
-## Zona de las mediciones (sin zonas seguras ni terreno).
+## Zone for the measurements (no safe zones or terrain).
 const ZONE_ID: String = "test_world"
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
-## Posición del atacante, del maniquí y de los duelistas (m): el atacante mira a -Z.
+## Position of the attacker, the dummy and the duelists (m): the attacker faces -Z.
 const ATTACKER_HOME := Vector3(0.0, 0.1, 0.0)
 const TARGET_POSITION := Vector3(0.0, 0.1, -2.2)
-## Distancia (m) entre duelistas al empezar.
+## Distance (m) between duelists at the start.
 const DUEL_DISTANCE: float = 4.0
-## Segundos simulados como mucho que dura un duelo antes de darlo por empatado.
+## Maximum simulated seconds a duel lasts before it is declared a draw.
 const DUEL_TIMEOUT_SECONDS: float = 90.0
-## Segundos simulados como mucho que dura un combate de equipos.
+## Maximum simulated seconds a team fight lasts.
 const TEAM_TIMEOUT_SECONDS: float = 60.0
-## Semilla del primer duelista; cada duelo suma 2.
+## Seed of the first duelist; each duel adds 2.
 const DUEL_SEED_BASE: int = 5000
-## Ticks de cada pulsación de un toque.
+## Ticks of each single-tap press.
 const TAP_TICKS: int = 2
-## Ticks antes del final de un ligero en los que se pulsa para enlazar el siguiente (dentro de su ventana).
+## Ticks before the end of a light attack at which the button is pressed to chain the next (within its window).
 const LINK_LEAD_TICKS: int = 4
-## Distancia (m) del arquero al maniquí en la medida del DPS del arco.
+## Distance (m) from the archer to the dummy in the bow DPS measurement.
 const BOW_DPS_DISTANCE: float = 10.0
-## Distancias (m) de la medida de alcances y disparos por distancia y tipo.
+## Distances (m) of the range measurement and of the shots by distance and type.
 const BOW_RANGES: Array[float] = [10.0, 30.0, 50.0]
 const RANGE_SHOTS: int = 5
-## Distancia (m) entre quien mantiene el muro y sus atacantes.
+## Distance (m) between whoever holds the wall and its attackers.
 const WALL_DISTANCE: float = 2.2
-## Distancia (m) de partida de los duelos con un tirador.
+## Starting distance (m) of the duels with a ranged fighter.
 const TEMPLATE_DUEL_DISTANCE: float = 20.0
 
 var _duels: int = 40
@@ -90,13 +90,13 @@ var _server: ZoneServer = null
 var _events: Array[NetMessages.EntityEvent] = []
 
 
-## Cerebro a mano: en cada tick llama a [member script_fn] ([code](relative_tick: int, position: Vector3) ->
-## PlayerInput[/code], con el tick contado desde [member start_tick]).
+## Hand-driven brain: on each tick it calls [member script_fn] ([code](relative_tick: int, position: Vector3) ->
+## PlayerInput[/code], with the tick counted from [member start_tick]).
 class ScriptedBrain:
 	extends BotBrain
 
 	var script_fn: Callable = Callable()
-	## Tick en el que empieza el guion (hasta entonces, el tick relativo es negativo y el bot no hace nada).
+	## Tick at which the script starts (until then, the relative tick is negative and the bot does nothing).
 	var start_tick: int = 1 << 40
 
 	func next_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
@@ -155,9 +155,9 @@ func _run() -> void:
 	quit(0)
 
 
-# --- Lo que dicen los datos -------------------------------------------------------------------
+# --- What the data says -------------------------------------------------------------------
 
-# Duración, daño y coste de cada acción según el catálogo, y los DPS ideales que salen de ellos.
+# Duration, damage and cost of each action according to the catalog, and the ideal DPS that follow from them.
 func _data_table() -> Dictionary:
 	var weapon: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON))
 	var rules: CombatRules = CombatCatalog.rules()
@@ -210,14 +210,14 @@ func _data_table() -> Dictionary:
 	return table
 
 
-# --- DPS contra el maniquí --------------------------------------------------------------------
+# --- DPS against the dummy --------------------------------------------------------------------
 
-# Mide el DPS de cuatro guiones de ataque contra un maniquí que se cura solo.
+# Measures the DPS of four attack scripts against a self-healing dummy.
 func _measure_dps() -> Dictionary:
 	var weapon: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON))
-	var combo_presses: Array[Vector2i] = []    # (tick relativo, ticks pulsado)
-	# Tick (relativo al inicio del ciclo) en que cae cada golpe según los datos: lo que duran los ataques
-	# anteriores más la anticipación del suyo.
+	var combo_presses: Array[Vector2i] = []    # (relative tick, ticks held)
+	# Tick (relative to the start of the cycle) at which each hit lands according to the data: the duration of the preceding
+	# attacks plus its own windup.
 	var combo_hits: Array[int] = []
 	var cycle: int = 0
 	for index: int in weapon.light_ids.size():
@@ -256,7 +256,7 @@ func _measure_dps() -> Dictionary:
 	return results
 
 
-# Un guion de ataque repetido contra el maniquí durante _seconds segundos (ciclos enteros).
+# An attack script repeated against the dummy for _seconds seconds (whole cycles).
 func _dps_of(entry: Dictionary) -> Dictionary:
 	await _start_server()
 	var cycle: int = entry["cycle"]
@@ -276,8 +276,8 @@ func _dps_of(entry: Dictionary) -> Dictionary:
 	var dummy: int = _server.spawn_dummy(TARGET_POSITION, PI)
 	_server.teleport(attacker, ATTACKER_HOME)
 	_step(4)
-	# El guion empieza en un tick futuro; antes de cada ciclo se devuelve al atacante a su sitio (los
-	# ataques avanzan). Se mide desde ese tick, en ciclos enteros.
+	# The script starts at a future tick; before each cycle the attacker is put back in place (the
+	# attacks move forward). It is measured from that tick, in whole cycles.
 	var start: int = _server.get_tick() + 8
 	brain.start_tick = start
 	var end: int = start + cycles * cycle
@@ -285,15 +285,15 @@ func _dps_of(entry: Dictionary) -> Dictionary:
 	while _server.get_tick() < end + cycle:
 		var next_tick: int = _server.get_tick() + 1
 		if next_tick >= start - 1 and (next_tick - (start - 1)) % cycle == 0:
-			# Los ataques avanzan al atacante y el empuje del fuerte aleja al maniquí: se devuelve a los dos.
+			# The attacks move the attacker forward and the fort's knockback pushes the dummy away: both are put back.
 			_server.teleport(attacker, ATTACKER_HOME)
 			_server.teleport(dummy, TARGET_POSITION)
 		_step(1)
 	var damage: int = 0
 	var hits: int = 0
-	# Tick de cada golpe (relativo al inicio del guion) y el que le tocaba según los datos: con ellos se
-	# comprueba que el enlace no pierde ticks. Dividir el daño entre los segundos de ciclos enteros da
-	# siempre el DPS calculado, aunque cada ataque durase un tick más de lo que dicen los datos.
+	# Tick of each hit (relative to the start of the script) and the one it was due according to the data: with them it
+	# is checked that the chaining does not lose ticks. Dividing the damage by the seconds of whole cycles always
+	# gives the calculated DPS, even if each attack lasted one tick longer than the data says.
 	var hit_ticks: Array[int] = []
 	for event: NetMessages.EntityEvent in _events:
 		if event.event == NetMessages.EntityEvent.Kind.HIT and event.attacker == attacker \
@@ -331,9 +331,9 @@ func _dps_of(entry: Dictionary) -> Dictionary:
 	}
 
 
-# --- Kits de la fase 4: lo que dicen los datos (docs/habilidades.md, sección 2.4) ---------------
+# --- Phase 4 kits: what the data says (docs/habilidades.md, section 2.4) ---------------
 
-# El arco, las habilidades y las pociones según el catálogo, con los DPS calculados de la hoja de §2.4.
+# The bow, abilities and potions according to the catalog, with the DPS calculated from the §2.4 sheet.
 func _kit_data_table() -> Dictionary:
 	var table: Dictionary = {}
 	var bow: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(&"bow"))
@@ -416,8 +416,8 @@ func _data_combo_ticks() -> int:
 	return ticks
 
 
-# Un tiro sobre llano a [param distance] m (de la boca al centro de un blanco a la misma altura) a [param speed]
-# m/s: tiempo de vuelo y caída que hay que compensar apuntando por encima ([method Ballistics.solve_lead]).
+# A shot on level ground at [param distance] m (from the muzzle to the center of a target at the same height) at [param speed]
+# m/s: flight time and drop that must be compensated by aiming above ([method Ballistics.solve_lead]).
 func _flat_shot(distance: float, speed: float, gravity: float) -> Dictionary:
 	var origin := Vector3.ZERO
 	var target := Vector3(0.0, 0.0, -distance)
@@ -426,10 +426,10 @@ func _flat_shot(distance: float, speed: float, gravity: float) -> Dictionary:
 	return {"flight_s": flight, "drop_m": 0.5 * gravity * flight * flight}
 
 
-# --- Arco contra el maniquí -------------------------------------------------------------------
+# --- Bow against the dummy -------------------------------------------------------------------
 
-# DPS del disparo rápido repetido y del tensado con la carga mínima y la máxima contra el maniquí a
-# BOW_DPS_DISTANCE m, apuntado como un bot.
+# DPS of the repeated quick shot and of the drawn shot with minimum and maximum charge against the dummy at
+# BOW_DPS_DISTANCE m, aimed like a bot.
 func _measure_bow_dps() -> Dictionary:
 	var bow: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(&"bow"))
 	var quick: AttackTicks = CombatCatalog.attack(bow.light_ids[0])
@@ -461,7 +461,7 @@ func _measure_bow_dps() -> Dictionary:
 	return results
 
 
-# El rápido y el tensado máximo contra el maniquí a 10, 30 y 50 m: aciertos, vuelo medido y caída.
+# The quick shot and the maximum drawn shot against the dummy at 10, 30 and 50 m: hits, measured flight and drop.
 func _measure_ranges() -> Dictionary:
 	var bow: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(&"bow"))
 	var quick: AttackTicks = CombatCatalog.attack(bow.light_ids[0])
@@ -487,9 +487,9 @@ func _measure_ranges() -> Dictionary:
 	return results
 
 
-# [param cycles] disparos de [param entry] contra el maniquí a [param distance] m, cada uno pulsando PRIMARY
-# entry.hold ticks al empezar su ciclo y apuntando con el tiro adelantado (blanco quieto: solo la caída). Devuelve
-# flechas, aciertos, daño, ticks de cada golpe y el vuelo medio (del compromiso al golpe).
+# [param cycles] shots of [param entry] against the dummy at [param distance] m, each one pressing PRIMARY
+# entry.hold ticks at the start of its cycle and aiming with the lead shot (still target: only the drop). Returns
+# arrows, hits, damage, ticks of each hit and the mean flight (from commitment to hit).
 func _shots_at(entry: Dictionary, distance: float, cycles: int) -> Dictionary:
 	await _start_server()
 	var dummy: int = _server.spawn_dummy(Vector3(0.0, 0.1, -distance), PI)
@@ -515,7 +515,7 @@ func _shots_at(entry: Dictionary, distance: float, cycles: int) -> Dictionary:
 	var start: int = _server.get_tick() + 8
 	brain.start_tick = start
 	_events.clear()
-	# Tick de salida de cada flecha del arquero y tick del golpe de cada una (por su id).
+	# Launch tick of each of the archer's arrows and the hit tick of each one (by its id).
 	var spawn_ticks: Dictionary[int, int] = {}
 	var arrow_hits: Dictionary[int, int] = {}
 	_server.get_combat().projectiles.spawned.connect(func(spawn: NetMessages.EntitySpawn,
@@ -535,12 +535,12 @@ func _shots_at(entry: Dictionary, distance: float, cycles: int) -> Dictionary:
 		if event.event == NetMessages.EntityEvent.Kind.HIT and event.attacker == attacker and event.net_id == dummy:
 			damage += event.amount
 			hit_ticks.append(event.tick - start)
-	# Vuelo: del tick de salida al del impacto de cada flecha que dio en el maniquí.
+	# Flight: from the launch tick to the impact tick of each arrow that hit the dummy.
 	var flight_total: float = 0.0
 	for projectile_id: int in arrow_hits:
 		flight_total += float(arrow_hits[projectile_id] - spawn_ticks[projectile_id]) / 60.0
 	var shots: int = spawn_ticks.size()
-	# Cuánto por encima del centro del blanco pasa el rayo de la mira a su distancia (la caída compensada).
+	# How far above the center of the target the crosshair ray passes at its distance (the compensated drop).
 	var ray: Array = AimRay.canonical(feet, look.x, look.y, false)
 	var center: Vector3 = dummy_feet + Vector3(0.0, AimRay.TARGET_CENTER_HEIGHT, 0.0)
 	var depth: float = ((center - Vector3(ray[0])).dot(Vector3(ray[1])))
@@ -551,10 +551,10 @@ func _shots_at(entry: Dictionary, distance: float, cycles: int) -> Dictionary:
 			"speed": launch.speed}
 
 
-# --- Habilidades contra el maniquí ------------------------------------------------------------
+# --- Abilities against the dummy ------------------------------------------------------------
 
-# Un uso de cada habilidad de espada y escudo y de arco contra el maniquí (el abanico a 3 y a 10 m): daño y aciertos
-# frente a los datos, y el DPS que suma a reutilización.
+# One use of each sword and shield and bow ability against the dummy (the fan at 3 and 10 m): damage and hits
+# against the data, and the DPS it adds at cooldown.
 func _measure_abilities() -> Dictionary:
 	var results: Dictionary = {}
 	print("\nHabilidades contra el maniquí (un uso de cada una):")
@@ -572,7 +572,7 @@ func _measure_abilities() -> Dictionary:
 	return results
 
 
-# Un uso de [param ability] contra el maniquí a [param distance] m.
+# One use of [param ability] against the dummy at [param distance] m.
 func _ability_use(ability: AbilityTicks, distance: float) -> Dictionary:
 	await _start_server()
 	var dummy: int = _server.spawn_dummy(Vector3(0.0, 0.1, -distance), PI)
@@ -619,9 +619,9 @@ func _ability_use(ability: AbilityTicks, distance: float) -> Dictionary:
 			"dps_at_cooldown": float(damage) / (float(ability.cooldown_ticks) / 60.0)}
 
 
-# --- Muro de escudos --------------------------------------------------------------------------
+# --- Shield wall --------------------------------------------------------------------------
 
-# Uno y dos atacantes con el combo perfecto contra quien mantiene el muro de escudos sus 6 s.
+# One and two attackers with the perfect combo against whoever holds the shield wall for its 6 s.
 func _measure_wall() -> Dictionary:
 	var results: Dictionary = {}
 	print("\nMuro de escudos contra el combo perfecto (6 s de muro):")
@@ -677,7 +677,7 @@ func _wall_against(attackers: int) -> Dictionary:
 	_step(4)
 	var start: int = _server.get_tick() + 8
 	holder_brain.start_tick = start
-	# Los atacantes empiezan cuando el muro ya bloquea (fin del lanzamiento).
+	# The attackers start once the wall is already blocking (end of the cast).
 	for brain: ScriptedBrain in brains:
 		brain.start_tick = start + wall.cast_ticks
 	var character: PlayerCharacter = _server.get_registry().get_entity(holder).get_character()
@@ -712,9 +712,9 @@ func _wall_against(attackers: int) -> Dictionary:
 			"break_s": float(break_tick - (start + wall.cast_ticks)) / 60.0 if break_tick >= 0 else -1.0}
 
 
-# --- Duelos con las dos plantillas -------------------------------------------------------------
+# --- Duels with the two templates -------------------------------------------------------------
 
-# Tirador contra tirador y escudero contra tirador, desde 20 m (el arco tiene sitio).
+# Ranged vs ranged and shield-bearer vs ranged, from 20 m (the bow has room).
 func _measure_template_duels() -> Dictionary:
 	var marksman: int = CombatCatalog.template_id(&"marksman")
 	return {
@@ -725,10 +725,10 @@ func _measure_template_duels() -> Dictionary:
 	}
 
 
-# --- TTK ideal --------------------------------------------------------------------------------
+# --- Ideal TTK --------------------------------------------------------------------------------
 
-# Tiempo del primer golpe a la muerte de un atacante perfecto (combo encadenado) contra una víctima
-# quieta y contra una que bloquea sin parar (hasta la rotura de guardia).
+# Time from the first hit to the death of a perfect attacker (chained combo) against a still
+# victim and against one who blocks without stopping (up to the guard break).
 func _measure_ideal_ttk() -> Dictionary:
 	print("\nTTK ideal (combo encadenado, del primer golpe a la muerte):")
 	var results: Dictionary = {}
@@ -809,10 +809,10 @@ func _ideal_ttk_against(mode: String) -> Dictionary:
 	return result
 
 
-# --- Duelos de bots de combate -----------------------------------------------------------------
+# --- Combat bot duels -----------------------------------------------------------------
 
-# Duelos de bots de combate: con el kit o sin él ([param kit]), con las plantillas [param templates] (0 = el
-# escudero) y desde [param distance] metros.
+# Combat bot duels: with or without the kit ([param kit]), with the templates [param templates] (0 = the
+# shield-bearer) and from [param distance] meters.
 func _measure_duels(kit: bool = true, templates: Array[int] = [0, 0], label: String = "espada contra espada",
 		distance: float = DUEL_DISTANCE, potions: bool = true) -> Dictionary:
 	print("\nDuelos de bots de combate, %s%s, de %.0f m (%d duelos):" % [label,
@@ -872,8 +872,8 @@ func _measure_duels(kit: bool = true, templates: Array[int] = [0, 0], label: Str
 	return summary
 
 
-# Un duelo entre dos bots de combate con las semillas [param seed_first] y [param seed_first] + 1, con el kit o
-# sin él ([param kit]) y con las plantillas [param templates] (0 = la de por defecto, el escudero).
+# A duel between two combat bots with the seeds [param seed_first] and [param seed_first] + 1, with or without
+# the kit ([param kit]) and with the templates [param templates] (0 = the default one, the shield-bearer).
 func _duel(seed_first: int, kit: bool = true, templates: Array[int] = [0, 0],
 		distance: float = DUEL_DISTANCE, potions: bool = true) -> Dictionary:
 	await _start_server()
@@ -884,7 +884,7 @@ func _duel(seed_first: int, kit: bool = true, templates: Array[int] = [0, 0],
 	var first: int = _server.add_fake_player(brains[0], VARDHEIM, templates[0])
 	var second: int = _server.add_fake_player(brains[1], SOLMARCH, templates[1])
 	if not potions:
-		# Sin cargas: lo que aportan las pociones al TTK, por diferencia (solo en esta medida de referencia).
+		# No charges: what the potions contribute to TTK, by difference (only in this reference measurement).
 		for net_id: int in [first, second]:
 			ActionMachine.set_charges(_server.get_registry().get_entity(net_id).get_character().combat, 0)
 	_server.teleport(first, Vector3(-distance / 2.0, 0.1, 0.0))
@@ -931,14 +931,14 @@ func _duel(seed_first: int, kit: bool = true, templates: Array[int] = [0, 0],
 	return result
 
 
-# --- Equipos ----------------------------------------------------------------------------------
+# --- Teams ----------------------------------------------------------------------------------
 
-# 2 contra 2 y 5 contra 5 de bots de combate.
+# 2 vs 2 and 5 vs 5 of combat bots.
 func _measure_teams() -> Dictionary:
 	var results: Dictionary = {}
 	var runs: int = maxi(_team_runs, 1)
 	print("\nEquipos de bots de combate, de %.0f m (%d combates de cada tamaño):" % [DUEL_DISTANCE, runs])
-	# 2 y 5 escuderos por bando y, con las dos plantillas, 2 contra 2 con un escudero y un tirador en cada uno.
+	# 2 and 5 shield-bearers per side and, with both templates, 2 vs 2 with one shield-bearer and one ranged fighter on each.
 	for setup: Array in [[2, false], [5, false], [2, true]]:
 		var size: int = setup[0]
 		var mixed: bool = setup[1]
@@ -973,8 +973,8 @@ func _measure_teams() -> Dictionary:
 	return results
 
 
-# Un combate de [param size] contra [param size]: Vardheim a un lado y Solmarch al otro, en fila. Con
-# [param mixed], los impares de cada bando llevan la plantilla del tirador (si no, todos el escudero).
+# A [param size] vs [param size] fight: Vardheim on one side and Solmarch on the other, in a line. With
+# [param mixed], the odd ones on each side use the ranged template (otherwise all use the shield-bearer).
 func _team_fight(size: int, seed_first: int, mixed: bool = false) -> Dictionary:
 	await _start_server()
 	var marksman: int = CombatCatalog.template_id(&"marksman")
@@ -998,7 +998,7 @@ func _team_fight(size: int, seed_first: int, mixed: bool = false) -> Dictionary:
 	var first_hit: int = -1
 	var end_tick: int = -1
 	var deaths: int = 0
-	# Quién sigue en pie: un derribado que luego muere solo cae una vez.
+	# Who is still standing: a knocked-down player who later dies only falls once.
 	var standing: Dictionary[int, bool] = {}
 	for side: int in 2:
 		for net_id: int in teams[side]:
@@ -1034,14 +1034,14 @@ func _team_fight(size: int, seed_first: int, mixed: bool = false) -> Dictionary:
 	return result
 
 
-# true si [param event] es una caída: un derribo o una muerte (docs/habilidades.md, sección 4.5).
+# true if [param event] is a fall: a knockdown or a death (docs/habilidades.md, section 4.5).
 static func _is_fall(event: NetMessages.EntityEvent) -> bool:
 	return event.event == NetMessages.EntityEvent.Kind.DEATH or event.event == NetMessages.EntityEvent.Kind.DOWNED
 
 
-# --- Servidor ---------------------------------------------------------------------------------
+# --- Server ---------------------------------------------------------------------------------
 
-# Un servidor sin red sobre test_world (sin lo visual, como el dedicado).
+# A network-less server over test_world (without the visual layer, like the dedicated one).
 func _start_server() -> void:
 	var packed: PackedScene = load(NetZones.scene_path(ZONE_ID)) as PackedScene
 	_world = packed.instantiate() as Node3D
@@ -1066,7 +1066,7 @@ func _start_server() -> void:
 		return
 	_server.get_combat().event_emitted.connect(func(event: NetMessages.EntityEvent,
 			_involved: PackedInt32Array) -> void: _events.append(event))
-	# A partir de aquí el servidor se avanza a mano.
+	# From here on the server is advanced by hand.
 	_server.set_physics_process(false)
 	_events.clear()
 
@@ -1084,13 +1084,13 @@ func _stop_server() -> void:
 	await process_frame
 
 
-# Avanza el servidor [param count] ticks de 1/60 s, uno detrás de otro y sin esperar al motor.
+# Advances the server [param count] 1/60 s ticks, one after another and without waiting for the engine.
 func _step(count: int) -> void:
 	for _i: int in count:
 		_server._physics_process(1.0 / 60.0)
 
 
-# --- Ayudas -----------------------------------------------------------------------------------
+# --- Helpers -----------------------------------------------------------------------------------
 
 func _percentile(sorted_values: Array[float], fraction: float) -> float:
 	if sorted_values.is_empty():

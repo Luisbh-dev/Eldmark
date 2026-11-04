@@ -1,7 +1,7 @@
 extends TestCase
-## El marcador de la batalla ([ScoreKeeper], docs/fuerte.md sección 6; UI-41): contadores por jugador,
-## méritos provisionales (bajas x 10 + asistencias x 5 + segundos en el círculo) y las filas del
-## SCOREBOARD.
+## The battle scoreboard ([ScoreKeeper], docs/fuerte.md section 6; UI-41): per-player counters,
+## provisional merits (kills x 10 + assists x 5 + seconds in the circle) and the SCOREBOARD
+## rows.
 
 
 func test_counters_and_merits() -> void:
@@ -19,10 +19,10 @@ func test_counters_and_merits() -> void:
 	assert_eq(entry.kills, 2)
 	assert_eq(entry.assists, 1)
 	assert_eq(entry.deaths, 1)
-	assert_eq(entry.gate_damage, 120, "el daño no positivo no cuenta")
-	assert_eq(entry.circle_seconds(), 3, "239 ticks son 3 segundos enteros")
-	assert_eq(entry.merits(), 2 * 10 + 1 * 5 + 3, "bajas x 10 + asistencias x 5 + segundos en el círculo")
-	assert_null(scores.get_entry(9), "quien no ha hecho nada no tiene ficha")
+	assert_eq(entry.gate_damage, 120, "non-positive damage does not count")
+	assert_eq(entry.circle_seconds(), 3, "239 ticks are 3 whole seconds")
+	assert_eq(entry.merits(), 2 * 10 + 1 * 5 + 3, "kills x 10 + assists x 5 + seconds in the circle")
+	assert_null(scores.get_entry(9), "whoever has done nothing has no record")
 	assert_eq(scores.size(), 1)
 
 
@@ -35,7 +35,7 @@ func test_rows_follow_the_order_given_and_zero_the_unknown() -> void:
 	assert_eq(rows[0].net_id, 3)
 	assert_eq(rows[0].deaths, 1)
 	assert_eq(rows[1].net_id, 5)
-	assert_eq(rows[1].kills + rows[1].deaths + rows[1].merits, 0, "sin ficha: todo a cero")
+	assert_eq(rows[1].kills + rows[1].deaths + rows[1].merits, 0, "no record: everything at zero")
 	assert_eq(rows[2].kills, 1)
 	assert_eq(rows[2].merits, 10)
 
@@ -45,7 +45,7 @@ func test_forget_and_clear() -> void:
 	scores.add_kill(1)
 	scores.add_kill(2)
 	scores.forget(1)
-	assert_null(scores.get_entry(1), "al irse un jugador su id puede ser de otro")
+	assert_null(scores.get_entry(1), "when a player leaves, their id may belong to someone else")
 	assert_not_null(scores.get_entry(2))
 	scores.clear()
 	assert_eq(scores.size(), 0)

@@ -1,47 +1,46 @@
 class_name ChatCommandParser
 extends RefCounted
-## Analizador de la línea del chat (SOC-05, docs/social.md, sección 4): decide si lo que escribe el
-## jugador es texto para el canal activo o un comando en español, y cuál.
+## Chat line parser (SOC-05, docs/social.md, section 4): decides whether what the player types is
+## text for the active channel or a command in Spanish, and which one.
 ## [br][br]
-## Los comandos empiezan por [code]/[/code] y se reconocen sin distinguir mayúsculas ni tildes
-## ([code]/Susurrar[/code], [code]/susurrar[/code] y [code]/SUSURRAR[/code] valen igual; la clave es la de
-## [method NameRules.normalize_key]). El nombre de un jugador, como argumento, no lleva comillas ni
-## espacios y tampoco distingue mayúsculas ni tildes (lo busca el servidor). Es puro: no toca la red ni
-## la interfaz, así que se prueba con texto. No depende del servidor.
+## Commands start with [code]/[/code] and are recognized case- and accent-insensitively
+## ([code]/Susurrar[/code], [code]/susurrar[/code] and [code]/SUSURRAR[/code] are equivalent; the
+## key is that of [method NameRules.normalize_key]). A player's name, as an argument, has no quotes
+## or spaces and is also case- and accent-insensitive (the server looks it up). It is pure: it
+## touches neither the network nor the interface, so it is tested with text. It does not depend on the server.
 ## [br][br]
-## [b]Comandos de la fase 4[/b] (la tabla [constant COMMANDS] es la única lista; [code]/ayuda[/code] se
-## genera de ella):
-## [br]- Canales: [code]/d[/code] [code]/decir[/code], [code]/z[/code] [code]/zona[/code], [code]/g[/code]
-## [code]/grupo[/code]: con texto lo envían por ese canal ([constant Kind.SEND]) y sin texto lo dejan como
-## canal activo ([constant Kind.SET_CHANNEL]).
-## [br]- [code]/s nombre texto[/code] [code]/susurrar[/code]: susurro; sin texto deja el susurro a ese
-## nombre como canal activo; sin nombre, uso incorrecto ([constant Kind.INVALID]).
-## [br]- [code]/r texto[/code] [code]/responder[/code]: susurro al último interlocutor
-## ([constant Kind.REPLY]; lo resuelve quien tiene el historial: [ChatBox]).
-## [br]- [code]/ayuda [comando][/code]: la lista de comandos o el detalle de uno ([constant Kind.HELP]).
+## [b]Phase 4 commands[/b] (the [constant COMMANDS] table is the only list; [code]/ayuda[/code] is
+## generated from it):
+## [br]- Channels: [code]/d[/code] [code]/decir[/code], [code]/z[/code] [code]/zona[/code],
+## [code]/g[/code] [code]/grupo[/code]: with text they send it through that channel ([constant Kind.SEND]) and without text they leave it as the active channel ([constant Kind.SET_CHANNEL]).
+## [br]- [code]/s nombre texto[/code] [code]/susurrar[/code]: whisper; without text it leaves the
+## whisper to that name as the active channel; without a name, incorrect usage ([constant Kind.INVALID]).
+## [br]- [code]/r texto[/code] [code]/responder[/code]: whisper to the last correspondent
+## ([constant Kind.REPLY]; resolved by whoever holds the history: [ChatBox]).
+## [br]- [code]/ayuda [comando][/code]: the list of commands or the detail of one ([constant Kind.HELP]).
 ## [br]- [code]/invitar nombre[/code], [code]/salir[/code], [code]/expulsar nombre[/code],
-## [code]/lider nombre[/code]: los grupos (SOC-06 y SOC-08).
-## [br]- Desde la fase 5 (docs/plataforma.md §9, P7b), los que atiende el servidor ([constant Kind.SERVER]):
-## [code]/ignorar nombre[/code], [code]/designorar nombre[/code] y [code]/reportar nombre categoría
-## [comentario][/code], y [code]/gm …[/code], que no sale en la ayuda (solo lo usa quien tiene rol; a los demás el
-## servidor les contesta «Comando desconocido», sin revelar que existe). Se mandan tal cual por el canal GM.
+## [code]/lider nombre[/code]: parties (SOC-06 and SOC-08).
+## [br]- Since phase 5 (docs/plataforma.md §9, P7b), those handled by the server ([constant Kind.SERVER]): [code]/ignorar nombre[/code], [code]/designorar nombre[/code] and [code]/reportar
+## nombre categoría [comentario][/code], and [code]/gm …[/code], which does not appear in the help
+## (only used by those with a role; to everyone else the server answers "Comando desconocido"
+## (unknown command), without revealing that it exists). They are sent as is through the GM channel.
 ## [br][br]
-## Cualquier otro comando, aunque exista en docs/social.md para una fase futura ([code]/b[/code],
-## [code]/gr[/code], [code]/reino[/code]...), es [constant Kind.UNKNOWN] y se contesta con
-## [constant TEXT_UNKNOWN]: tampoco se avisa de que existe.
+## Any other command, even if it exists in docs/social.md for a future phase ([code]/b[/code],
+## [code]/gr[/code], [code]/reino[/code]...), is [constant Kind.UNKNOWN] and is answered with
+## [constant TEXT_UNKNOWN]: it does not reveal that it exists either.
 
 enum Kind {
-	## Línea vacía: no hay nada que hacer.
+	## Empty line: there is nothing to do.
 	EMPTY,
-	## Texto sin comando: va al canal activo.
+	## Text without a command: goes to the active channel.
 	TEXT,
-	## Texto con un comando de canal: se envía por ese canal.
+	## Text with a channel command: it is sent through that channel.
 	SEND,
-	## Un comando de canal sin texto: el canal (y el destinatario) pasan a ser el activo.
+	## A channel command without text: the channel (and the recipient) become the active one.
 	SET_CHANNEL,
-	## [code]/r[/code]: susurro al último interlocutor (el texto puede estar vacío).
+	## [code]/r[/code]: whisper to the last correspondent (the text may be empty).
 	REPLY,
-	## [code]/ayuda[/code]: [member Command.topic] dice de qué comando (vacío = la lista).
+	## [code]/ayuda[/code]: [member Command.topic] says which command (empty = the list).
 	HELP,
 	## [code]/invitar nombre[/code].
 	INVITE,
@@ -51,23 +50,23 @@ enum Kind {
 	KICK,
 	## [code]/lider nombre[/code].
 	LEADER,
-	## Un comando que no existe.
+	## A command that does not exist.
 	UNKNOWN,
-	## Un comando que existe pero está mal usado: [member Command.error] explica cómo.
+	## A command that exists but is misused: [member Command.error] explains how.
 	INVALID,
-	## Un comando que atiende el servidor ([code]/gm[/code], [code]/ignorar[/code], [code]/designorar[/code],
-	## [code]/reportar[/code]): [member Command.text] es la línea sin la barra, que va por el canal GM.
+	## A command handled by the server ([code]/gm[/code], [code]/ignorar[/code], [code]/designorar[/code],
+	## [code]/reportar[/code]): [member Command.text] is the line without the slash, which goes through the GM channel.
 	SERVER,
 }
 
-## Respuesta a un comando desconocido.
+## Response to an unknown command.
 const TEXT_UNKNOWN: String = "Comando desconocido. Escribe /ayuda."
 const TEXT_NAME_TOO_LONG: String = "Ese nombre es demasiado largo."
 const TEXT_HELP_TITLE: String = "Comandos disponibles (escribe /ayuda comando para más detalle):"
 const TEXT_NO_HELP: String = "No hay ayuda para «%s». Escribe /ayuda."
 
-## Los comandos: [code]id[/code] (el [enum Kind] o canal que producen), [code]names[/code] (todas las
-## formas, ya sin tildes ni mayúsculas), [code]usage[/code] y [code]help[/code].
+## The commands: [code]id[/code] (the [enum Kind] or channel they produce), [code]names[/code] (all
+## the forms, already without accents or uppercase), [code]usage[/code] and [code]help[/code].
 const COMMANDS: Array[Dictionary] = [
 	{"id": &"say", "names": ["d", "decir"], "usage": "/d [texto]",
 			"help": "Habla a los de tu reino que estén cerca (30 m). Sin texto, es tu canal activo."},
@@ -96,10 +95,10 @@ const COMMANDS: Array[Dictionary] = [
 	{"id": &"help", "names": ["ayuda"], "usage": "/ayuda [comando]",
 			"help": "Lista los comandos o explica uno."},
 ]
-## El comando de la moderación: no está en [constant COMMANDS] (no sale en la ayuda).
+## The moderation command: it is not in [constant COMMANDS] (it does not appear in the help).
 const GM_COMMAND: String = "gm"
 
-## Canal de los comandos de canal.
+## Channel of the channel commands.
 const _CHANNEL_OF: Dictionary[StringName, int] = {
 	&"say": ChatChannel.Id.SAY,
 	&"zone": ChatChannel.Id.ZONE,
@@ -108,27 +107,26 @@ const _CHANNEL_OF: Dictionary[StringName, int] = {
 }
 
 
-## Lo que significa una línea.
+## What a line means.
 class Command:
 	extends RefCounted
 
 	var kind: int = Kind.EMPTY
-	## [enum ChatChannel.Id] del canal (en [constant Kind.SEND] y [constant Kind.SET_CHANNEL]); -1 si no
-	## hay.
+	## [enum ChatChannel.Id] of the channel (for [constant Kind.SEND] and [constant Kind.SET_CHANNEL]); -1 if none.
 	var channel: int = -1
-	## Nombre de jugador que se escribió (susurro, invitar, expulsar, líder); vacío si no hay.
+	## Player name that was typed (whisper, invite, kick, leader); empty if none.
 	var target: String = ""
-	## Texto a enviar (puede ir vacío en [constant Kind.REPLY]).
+	## Text to send (may be empty for [constant Kind.REPLY]).
 	var text: String = ""
-	## En [constant Kind.HELP], el comando del que se pide ayuda (sin barra, sin tildes); vacío = lista.
+	## For [constant Kind.HELP], the command that help is requested for (without slash, without accents); empty = list.
 	var topic: String = ""
-	## En [constant Kind.INVALID], cómo se usa el comando.
+	## For [constant Kind.INVALID], how the command is used.
 	var error: String = ""
-	## El comando tal como se escribió, sin barra (para los avisos).
+	## The command as it was typed, without the slash (for notices).
 	var name: String = ""
 
 
-## Analiza [param line], la línea que escribió el jugador.
+## Parses [param line], the line the player typed.
 static func parse(line: String) -> Command:
 	var command := Command.new()
 	var trimmed: String = line.strip_edges()
@@ -182,8 +180,8 @@ static func parse(line: String) -> Command:
 	return command
 
 
-## La ficha de [COMMANDS] cuyo nombre es [param raw_name] (con o sin barra, sin distinguir mayúsculas ni
-## tildes), o un diccionario vacío si no existe.
+## The [COMMANDS] entry whose name is [param raw_name] (with or without slash, case- and
+## accent-insensitive), or an empty dictionary if it does not exist.
 static func find_command(raw_name: String) -> Dictionary:
 	var key: String = _topic_key(raw_name)
 	if key.is_empty():
@@ -194,8 +192,8 @@ static func find_command(raw_name: String) -> Dictionary:
 	return {}
 
 
-## Las líneas de ayuda de [param topic] (el nombre de un comando; vacío = la lista de todos). Para un
-## comando que no existe, el aviso de que no hay ayuda.
+## The help lines for [param topic] (a command's name; empty = the list of all). For a command that
+## does not exist, the notice that there is no help.
 static func help_lines(topic: String) -> PackedStringArray:
 	var lines := PackedStringArray()
 	var key: String = _topic_key(topic)
@@ -217,7 +215,7 @@ static func help_lines(topic: String) -> PackedStringArray:
 	return lines
 
 
-# Clave de un nombre de comando: sin barra inicial, sin mayúsculas ni tildes.
+# Key of a command name: without the leading slash, without uppercase or accents.
 static func _topic_key(text: String) -> String:
 	var cleaned: String = text.strip_edges()
 	var first: int = _first_space(cleaned)
@@ -228,7 +226,7 @@ static func _topic_key(text: String) -> String:
 	return NameRules.normalize_key(cleaned)
 
 
-# Posición del primer espacio o tabulador de [param text] (-1 si no hay).
+# Position of the first space or tab in [param text] (-1 if none).
 static func _first_space(text: String) -> int:
 	for i: int in text.length():
 		if ChatText.is_space(text.unicode_at(i)):
@@ -236,7 +234,7 @@ static func _first_space(text: String) -> int:
 	return -1
 
 
-# /s nombre [texto].
+# /s name [text].
 static func _parse_whisper(command: Command, spec: Dictionary, rest: String) -> void:
 	command.channel = ChatChannel.Id.WHISPER
 	if rest.is_empty():
@@ -253,7 +251,7 @@ static func _parse_whisper(command: Command, spec: Dictionary, rest: String) -> 
 	command.kind = Kind.SEND if not command.text.is_empty() else Kind.SET_CHANNEL
 
 
-# Comandos que piden un nombre (invitar, expulsar, líder).
+# Commands that ask for a name (invite, kick, leader).
 static func _parse_with_name(command: Command, spec: Dictionary, rest: String, kind: int) -> void:
 	if rest.is_empty():
 		command.kind = Kind.INVALID

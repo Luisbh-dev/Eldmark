@@ -1,10 +1,10 @@
 extends TestCase
-## Pruebas de la ventana de ajustes ([SettingsMenu], UI-16) y de [ClientServices], que la abre con F10
-## y aplica los ajustes en vivo y al arrancar: los controles reflejan y cambian los ajustes, restaurar
-## pestaña y todo, guardado al cerrar, cada valor aplicado al motor, a las cámaras, a las luces y al
-## audio, y el sandbox ([ClientMain]) con su F10.
+## Tests for the settings window ([SettingsMenu], UI-16) and for [ClientServices], which opens it with F10
+## and applies the settings live and at startup: the controls reflect and change the settings, restoring a
+## tab and everything, saving on close, each value applied to the engine, the cameras, the lights and the
+## audio, and the sandbox ([ClientMain]) with its F10.
 ## [br][br]
-## Los ajustes de la prueba viven en un archivo temporal y se restauran el motor y el audio al terminar.
+## The test's settings live in a temporary file and the engine and audio are restored when it finishes.
 
 const TEST_PATH: String = "user://test_settings_menu.cfg"
 const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
@@ -12,7 +12,7 @@ const CLIENT_MAIN_SCENE: String = "res://scenes/client/client_main.tscn"
 
 var _nodes: Array[Node] = []
 var _settings: ClientSettings = null
-## El diálogo de confirmación de la última [method _make_menu] con diálogo (null si no lo llevaba).
+## The confirmation dialog of the last [method _make_menu] with a dialog (null if it had none).
 var _confirm: UIConfirmDialog = null
 var _saved_fps: int = 0
 var _saved_scale: float = 1.0
@@ -92,7 +92,7 @@ func _press(key: Key) -> void:
 	tree.root.push_input(event)
 
 
-# --- La ventana -------------------------------------------------------------------------------
+# --- The window -------------------------------------------------------------------------------
 
 func test_the_menu_has_a_tab_per_group_and_a_control_per_setting() -> void:
 	var menu: SettingsMenu = _make_menu()
@@ -105,24 +105,24 @@ func test_the_menu_has_a_tab_per_group_and_a_control_per_setting() -> void:
 	for spec: Dictionary in ClientSettings.get_schema():
 		var id: StringName = spec["id"]
 		var control: Control = menu.get_control(id)
-		if not assert_not_null(control, "hay un control para %s" % id):
+		if not assert_not_null(control, "there is a control for %s" % id):
 			continue
 		match int(spec["kind"]):
 			ClientSettings.Kind.BOOL:
-				assert_true(control is CheckButton, "%s es un interruptor" % id)
+				assert_true(control is CheckButton, "%s is a toggle" % id)
 			ClientSettings.Kind.CHOICE:
-				assert_true(control is OptionButton, "%s es una lista" % id)
+				assert_true(control is OptionButton, "%s is a list" % id)
 				assert_eq((control as OptionButton).item_count, (spec["labels"] as Array).size())
 			_:
-				assert_true(control is HSlider, "%s es un deslizador" % id)
+				assert_true(control is HSlider, "%s is a slider" % id)
 				assert_eq((control as HSlider).min_value, float(spec["min"]))
 				assert_eq((control as HSlider).max_value, float(spec["max"]))
-				assert_not_null(menu.get_value_label(id), "con su valor al lado")
-		# El control vive en la página de su pestaña.
+				assert_not_null(menu.get_value_label(id), "with its value next to it")
+		# The control lives on the page of its tab.
 		var page: Node = menu.get_tabs().get_child(ClientSettings.TABS.find(spec["tab"]))
-		assert_true(page.is_ancestor_of(control), "%s está en su pestaña" % id)
+		assert_true(page.is_ancestor_of(control), "%s is in its tab" % id)
 	assert_null(menu.get_control(&"no_existe"))
-	assert_null(menu.get_value_label(ClientSettings.INVERT_Y), "un interruptor no tiene texto de valor")
+	assert_null(menu.get_value_label(ClientSettings.INVERT_Y), "a toggle has no value text")
 	assert_eq(menu.get_current_tab_id(), ClientSettings.TAB_GRAPHICS)
 	menu.show_tab(ClientSettings.TAB_AUDIO)
 	assert_eq(menu.get_current_tab_id(), ClientSettings.TAB_AUDIO)
@@ -147,9 +147,9 @@ func test_the_controls_start_at_the_current_values() -> void:
 	assert_near(music.value, 0.25, 0.0001)
 	assert_eq(menu.get_value_label(ClientSettings.volume_id(AudioBuses.MUSIC)).text, "25 %")
 	var resolution: OptionButton = menu.get_control(ClientSettings.RESOLUTION) as OptionButton
-	assert_true(resolution.disabled, "la resolución solo vale en modo ventana")
+	assert_true(resolution.disabled, "the resolution only applies in windowed mode")
 	_settings.set_value(ClientSettings.WINDOW_MODE, ClientSettings.MODE_WINDOWED)
-	assert_false(resolution.disabled, "y vuelve al elegir ventana")
+	assert_false(resolution.disabled, "and comes back when windowed is chosen")
 
 
 func test_changing_a_control_changes_the_setting() -> void:
@@ -159,7 +159,7 @@ func test_changing_a_control_changes_the_setting() -> void:
 	(menu.get_control(ClientSettings.FOV) as HSlider).value = 88.0
 	assert_eq(_settings.get_value(ClientSettings.FOV), 88.0)
 	assert_eq(menu.get_value_label(ClientSettings.FOV).text, "88°")
-	assert_true(_settings.is_stored(ClientSettings.FOV), "queda como elegido por el jugador")
+	assert_true(_settings.is_stored(ClientSettings.FOV), "it stays as chosen by the player")
 	(menu.get_control(ClientSettings.INVERT_Y) as CheckButton).button_pressed = true
 	assert_eq(_settings.get_value(ClientSettings.INVERT_Y), true)
 	var fps: OptionButton = menu.get_control(ClientSettings.FPS_LIMIT) as OptionButton
@@ -169,18 +169,18 @@ func test_changing_a_control_changes_the_setting() -> void:
 	var shoulder: OptionButton = menu.get_control(ClientSettings.DEFAULT_SHOULDER) as OptionButton
 	shoulder.select(1)
 	shoulder.item_selected.emit(1)
-	assert_eq(_settings.get_value(ClientSettings.DEFAULT_SHOULDER), -1, "el segundo valor es el izquierdo")
+	assert_eq(_settings.get_value(ClientSettings.DEFAULT_SHOULDER), -1, "the second value is the left one")
 	var sfx: StringName = ClientSettings.volume_id(AudioBuses.SFX)
 	(menu.get_control(sfx) as HSlider).value = 0.4
 	assert_near(float(_settings.get_value(sfx)), 0.4, 0.0001)
 	assert_eq(changed, [ClientSettings.FOV, ClientSettings.INVERT_Y, ClientSettings.FPS_LIMIT,
 			ClientSettings.DEFAULT_SHOULDER, sfx] as Array[StringName])
-	# Cambios hechos desde fuera se reflejan en el control sin volver a emitir.
+	# Changes made from outside are reflected in the control without emitting again.
 	changed.clear()
 	_settings.set_value(ClientSettings.FOV, 70.0)
 	assert_eq((menu.get_control(ClientSettings.FOV) as HSlider).value, 70.0)
 	assert_eq(menu.get_value_label(ClientSettings.FOV).text, "70°")
-	assert_true(changed.is_empty(), "sin bucle de avisos")
+	assert_true(changed.is_empty(), "no notification loop")
 
 
 func test_restore_tab_and_restore_all() -> void:
@@ -199,18 +199,18 @@ func test_restore_tab_and_restore_all() -> void:
 				option.select(index)
 				option.item_selected.emit(index)
 	for spec: Dictionary in ClientSettings.get_schema():
-		assert_true(_settings.get_value(spec["id"]) != spec["default"], "%s cambiado" % spec["id"])
+		assert_true(_settings.get_value(spec["id"]) != spec["default"], "%s changed" % spec["id"])
 	menu.show_tab(ClientSettings.TAB_CAMERA)
 	menu.get_restore_tab_button().pressed.emit()
 	for spec: Dictionary in ClientSettings.get_schema():
 		var is_camera: bool = spec["tab"] == ClientSettings.TAB_CAMERA
 		assert_eq(_settings.get_value(spec["id"]) == spec["default"], is_camera,
-				"%s: solo la pestaña de cámara vuelve a su valor" % spec["id"])
-	assert_eq((menu.get_control(ClientSettings.FOV) as HSlider).value, 72.0, "y los controles también")
+				"%s: only the camera tab goes back to its value" % spec["id"])
+	assert_eq((menu.get_control(ClientSettings.FOV) as HSlider).value, 72.0, "and the controls too")
 	assert_false((menu.get_control(ClientSettings.INVERT_Y) as CheckButton).button_pressed)
 	menu.get_restore_all_button().pressed.emit()
 	for spec: Dictionary in ClientSettings.get_schema():
-		assert_eq(_settings.get_value(spec["id"]), spec["default"], "%s restaurado" % spec["id"])
+		assert_eq(_settings.get_value(spec["id"]), spec["default"], "%s restored" % spec["id"])
 		assert_false(_settings.is_stored(spec["id"]))
 	assert_eq((menu.get_control(ClientSettings.RENDER_SCALE) as HSlider).value, 1.0)
 	assert_eq(menu.get_value_label(ClientSettings.RENDER_SCALE).text, "100 %")
@@ -222,14 +222,14 @@ func test_restore_all_asks_before_when_there_is_a_dialog() -> void:
 	var confirm: UIConfirmDialog = _confirm
 	assert_not_null(confirm)
 	menu.get_restore_all_button().pressed.emit()
-	assert_true(confirm.is_open(), "pregunta antes")
-	assert_eq(confirm.get_confirm_button().theme_type_variation, &"DangerButton", "con el estilo de peligro")
-	assert_eq(_settings.get_value(ClientSettings.FOV), 99.0, "y todavía no ha restaurado nada")
+	assert_true(confirm.is_open(), "asks first")
+	assert_eq(confirm.get_confirm_button().theme_type_variation, &"DangerButton", "with the danger style")
+	assert_eq(_settings.get_value(ClientSettings.FOV), 99.0, "and has not restored anything yet")
 	confirm.cancel()
-	assert_eq(_settings.get_value(ClientSettings.FOV), 99.0, "cancelar lo deja como estaba")
+	assert_eq(_settings.get_value(ClientSettings.FOV), 99.0, "cancelling leaves it as it was")
 	menu.get_restore_all_button().pressed.emit()
 	confirm.confirm()
-	assert_eq(_settings.get_value(ClientSettings.FOV), 72.0, "confirmar restaura")
+	assert_eq(_settings.get_value(ClientSettings.FOV), 72.0, "confirming restores")
 
 
 func test_closing_the_menu_saves_the_settings() -> void:
@@ -237,14 +237,14 @@ func test_closing_the_menu_saves_the_settings() -> void:
 	menu.open()
 	(menu.get_control(ClientSettings.FOV) as HSlider).value = 91.0
 	(menu.get_control(ClientSettings.NAMEPLATES) as CheckButton).button_pressed = false
-	assert_false(FileAccess.file_exists(TEST_PATH), "no escribe en cada cambio")
+	assert_false(FileAccess.file_exists(TEST_PATH), "it does not write on every change")
 	menu.close()
-	assert_true(FileAccess.file_exists(TEST_PATH), "al cerrar, guarda")
+	assert_true(FileAccess.file_exists(TEST_PATH), "on close, it saves")
 	var back: ClientSettings = ClientSettings.load_from(TEST_PATH)
 	assert_eq(back.get_value(ClientSettings.FOV), 91.0)
 	assert_eq(back.get_value(ClientSettings.NAMEPLATES), false)
-	assert_false(back.is_stored(ClientSettings.INVERT_Y), "y solo lo que se tocó")
-	# Esc la cierra y también guarda.
+	assert_false(back.is_stored(ClientSettings.INVERT_Y), "and only what was touched")
+	# Esc closes it and also saves.
 	menu.open()
 	(menu.get_control(ClientSettings.INVERT_Y) as CheckButton).button_pressed = true
 	_press(KEY_ESCAPE)
@@ -260,15 +260,15 @@ func test_opening_refreshes_the_controls_and_sounds() -> void:
 	assert_eq(UISounds.get_play_count(UISounds.OPEN), 1)
 	assert_true(menu.visible)
 	var focus_owner: Control = menu.get_viewport().gui_get_focus_owner()
-	assert_not_null(focus_owner, "abrirla da el foco a un ajuste")
+	assert_not_null(focus_owner, "opening it gives focus to a setting")
 	assert_true(menu.get_tabs().get_current_tab_control().is_ancestor_of(focus_owner),
-			"el primero de la pestaña abierta")
-	# Sus botones suenan al pulsarlos.
+			"the first one in the open tab")
+	# Its buttons make a sound when pressed.
 	menu.get_restore_tab_button().pressed.emit()
 	assert_eq(UISounds.get_play_count(UISounds.CLICK), 1)
 
 
-# --- ClientServices: F10, aplicar en vivo y al arrancar ----------------------------------------
+# --- ClientServices: F10, applying live and at startup -----------------------------------------
 
 func test_f10_opens_and_closes_the_settings_and_frees_the_cursor() -> void:
 	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
@@ -280,24 +280,24 @@ func test_f10_opens_and_closes_the_settings_and_frees_the_cursor() -> void:
 	assert_false(menu.is_open())
 	assert_false(rig.is_cursor_free())
 	_press(KEY_F10)
-	assert_true(menu.is_open(), "F10 abre los ajustes")
-	assert_true(rig.is_cursor_free(), "y libera el cursor")
+	assert_true(menu.is_open(), "F10 opens the settings")
+	assert_true(rig.is_cursor_free(), "and releases the cursor")
 	_press(KEY_F10)
-	assert_false(menu.is_open(), "F10 otra vez los cierra")
-	assert_false(rig.is_cursor_free(), "y recaptura el cursor")
+	assert_false(menu.is_open(), "F10 again closes them")
+	assert_false(rig.is_cursor_free(), "and recaptures the cursor")
 	_press(KEY_F10)
 	assert_true(menu.is_open())
 	_press(KEY_ESCAPE)
-	assert_false(menu.is_open(), "Esc también")
+	assert_false(menu.is_open(), "Esc too")
 	assert_false(rig.is_cursor_free())
-	assert_eq(menu.get_parent().get_parent(), services, "la ventana cuelga de la capa de los servicios")
+	assert_eq(menu.get_parent().get_parent(), services, "the window hangs from the services layer")
 	assert_eq((menu.get_parent() as CanvasLayer).layer, ClientServices.UI_LAYER)
 	assert_true(InputMap.has_action(&"open_settings"))
 	assert_eq(UIKeyGlyph.label_for_action(&"open_settings"), "F10")
 
 
 func test_cancelling_the_restore_dialog_keeps_the_cursor_free_for_the_open_settings() -> void:
-	# T1: el diálogo de «Restaurar todo» y la ventana de ajustes piden el cursor a la vez.
+	# T1: the "Restaurar todo" (Restore all) dialog and the settings window ask for the cursor at the same time.
 	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
 	_add(rig)
 	var services: ClientServices = _add(ClientServices.new()) as ClientServices
@@ -307,17 +307,17 @@ func test_cancelling_the_restore_dialog_keeps_the_cursor_free_for_the_open_setti
 	assert_true(menu.is_open())
 	assert_true(rig.is_cursor_free())
 	menu.restore_all()
-	assert_true(confirm.is_open(), "pregunta antes")
+	assert_true(confirm.is_open(), "asks first")
 	assert_true(rig.is_cursor_free())
 	confirm.cancel()
-	assert_true(menu.is_open(), "los ajustes siguen abiertos")
-	assert_true(rig.is_cursor_free(), "y con el ratón libre para poder usarlos")
+	assert_true(menu.is_open(), "the settings stay open")
+	assert_true(rig.is_cursor_free(), "and with the mouse free so they can be used")
 	menu.restore_all()
 	confirm.confirm()
-	assert_true(rig.is_cursor_free(), "también tras confirmar")
+	assert_true(rig.is_cursor_free(), "also after confirming")
 	_press(KEY_ESCAPE)
 	assert_false(menu.is_open())
-	assert_false(rig.is_cursor_free(), "al cerrar los ajustes, el ratón vuelve a la cámara")
+	assert_false(rig.is_cursor_free(), "when the settings are closed, the mouse goes back to the camera")
 
 
 func test_changes_are_applied_live_through_the_menu() -> void:
@@ -326,9 +326,9 @@ func test_changes_are_applied_live_through_the_menu() -> void:
 	var services: ClientServices = _add(ClientServices.new()) as ClientServices
 	var menu: SettingsMenu = services.get_settings_menu()
 	menu.open()
-	# Cámara.
+	# Camera.
 	(menu.get_control(ClientSettings.FOV) as HSlider).value = 90.0
-	assert_eq(rig.get_fov(), 90.0, "el campo de visión se aplica en vivo")
+	assert_eq(rig.get_fov(), 90.0, "the field of view is applied live")
 	(menu.get_control(ClientSettings.MOUSE_SENSITIVITY) as HSlider).value = 2.0
 	assert_near(rig.mouse_sensitivity, CameraRig.DEFAULT_MOUSE_SENSITIVITY * 2.0, 0.000001)
 	(menu.get_control(ClientSettings.INVERT_Y) as CheckButton).button_pressed = true
@@ -337,7 +337,7 @@ func test_changes_are_applied_live_through_the_menu() -> void:
 	shoulder.select(1)
 	shoulder.item_selected.emit(1)
 	assert_eq(rig.get_chosen_shoulder(), -1)
-	# Gráficos.
+	# Graphics.
 	var fps: OptionButton = menu.get_control(ClientSettings.FPS_LIMIT) as OptionButton
 	fps.select(2)
 	fps.item_selected.emit(2)
@@ -354,12 +354,12 @@ func test_changes_are_applied_live_through_the_menu() -> void:
 	menu.show_tab(ClientSettings.TAB_AUDIO)
 	menu.get_restore_tab_button().pressed.emit()
 	assert_near(AudioBuses.get_volume(AudioBuses.UI), AudioBuses.default_volume(AudioBuses.UI), 0.001,
-			"restaurar también se aplica en vivo")
-	# Restaurar todo vuelve el motor a lo de siempre.
+			"restoring is also applied live")
+	# Restore all puts the engine back to its defaults.
 	services.get_confirm_dialog().open("x", "y")
 	services.get_confirm_dialog().cancel()
 	menu.restore_all()
-	assert_true(services.get_confirm_dialog().is_open(), "con confirmación en el cliente")
+	assert_true(services.get_confirm_dialog().is_open(), "with confirmation on the client")
 	services.get_confirm_dialog().confirm()
 	assert_eq(rig.get_fov(), 72.0)
 	assert_eq(Engine.max_fps, 0)
@@ -369,16 +369,16 @@ func test_changes_are_applied_live_through_the_menu() -> void:
 
 
 func test_stored_settings_are_applied_on_start_and_defaults_are_not() -> void:
-	# Sin nada guardado, arrancar no toca el motor.
+	# With nothing saved, starting up does not touch the engine.
 	Engine.max_fps = 77
 	tree.root.msaa_3d = Viewport.MSAA_8X
 	var plain: ClientServices = _add(ClientServices.new()) as ClientServices
-	assert_eq(Engine.max_fps, 77, "sin ajustes guardados no se pisa el límite de FPS")
-	assert_eq(tree.root.msaa_3d, Viewport.MSAA_8X, "ni el suavizado del proyecto")
+	assert_eq(Engine.max_fps, 77, "without saved settings the FPS limit is not overridden")
+	assert_eq(tree.root.msaa_3d, Viewport.MSAA_8X, "nor the project's antialiasing")
 	tree.root.remove_child(plain)
 	_nodes.erase(plain)
 	plain.free()
-	# Con ajustes guardados, se aplican al arrancar.
+	# With saved settings, they are applied at startup.
 	var config: ConfigFile = ConfigFile.new()
 	config.set_value("graphics", "fps_limit", 90)
 	config.set_value("graphics", "antialiasing", 1)
@@ -391,14 +391,14 @@ func test_stored_settings_are_applied_on_start_and_defaults_are_not() -> void:
 	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
 	_add(ClientServices.new())
 	_add(rig)
-	assert_eq(Engine.max_fps, 90, "el límite de FPS guardado se aplica al arrancar")
+	assert_eq(Engine.max_fps, 90, "the saved FPS limit is applied at startup")
 	assert_eq(tree.root.screen_space_aa, Viewport.SCREEN_SPACE_AA_FXAA)
 	assert_eq(tree.root.msaa_3d, Viewport.MSAA_DISABLED)
 	assert_near(tree.root.scaling_3d_scale, 0.8, 0.0001)
-	assert_near(AudioBuses.get_volume(AudioBuses.SFX), 0.5, 0.001, "el volumen guardado")
+	assert_near(AudioBuses.get_volume(AudioBuses.SFX), 0.5, 0.001, "the saved volume")
 	assert_near(AudioBuses.get_volume(AudioBuses.MUSIC), AudioBuses.default_volume(AudioBuses.MUSIC),
-			0.001, "y los demás, los de fábrica")
-	assert_eq(rig.get_fov(), 85.0, "una cámara que nace después recoge el campo de visión guardado")
+			0.001, "and the rest, the factory ones")
+	assert_eq(rig.get_fov(), 85.0, "a camera born later picks up the saved field of view")
 
 
 func test_lights_that_arrive_later_get_the_players_shadow_setting() -> void:
@@ -411,8 +411,8 @@ func test_lights_that_arrive_later_get_the_players_shadow_setting() -> void:
 	var light: DirectionalLight3D = DirectionalLight3D.new()
 	light.shadow_enabled = true
 	_add(light)
-	assert_false(light.shadow_enabled, "una luz que entra con las sombras desactivadas las pierde")
-	# Sin ese ajuste guardado, las luces no se tocan.
+	assert_false(light.shadow_enabled, "a light that enters with shadows disabled loses them")
+	# Without that saved setting, lights are not touched.
 	_settings.reset(ClientSettings.SHADOWS)
 	var other: DirectionalLight3D = DirectionalLight3D.new()
 	other.shadow_enabled = true
@@ -425,12 +425,12 @@ func test_services_save_unsaved_changes_when_leaving() -> void:
 	_settings.set_value(ClientSettings.FOV, 77.0)
 	assert_false(FileAccess.file_exists(TEST_PATH))
 	tree.root.remove_child(services)
-	assert_true(FileAccess.file_exists(TEST_PATH), "al salir se guardan los cambios pendientes")
+	assert_true(FileAccess.file_exists(TEST_PATH), "on exit, pending changes are saved")
 	tree.root.add_child(services)
 	assert_eq(ClientSettings.load_from(TEST_PATH).get_value(ClientSettings.FOV), 77.0)
 
 
-# --- El sandbox -------------------------------------------------------------------------------
+# --- The sandbox ------------------------------------------------------------------------------
 
 func test_the_offline_sandbox_opens_the_settings_with_f10() -> void:
 	ClientMain.zone_id = &"test_world"
@@ -442,17 +442,17 @@ func test_the_offline_sandbox_opens_the_settings_with_f10() -> void:
 	_add(client)
 	await wait_physics_frames(3)
 	var services: ClientServices = client.get_node(^"ClientServices") as ClientServices
-	assert_not_null(services, "el sandbox monta los servicios del cliente")
+	assert_not_null(services, "the sandbox mounts the client services")
 	var rig: CameraRig = client.get_camera_rig()
 	assert_not_null(rig)
-	assert_eq(rig.get_fov(), 72.0, "sin ajustes guardados, la cámara es la de siempre")
+	assert_eq(rig.get_fov(), 72.0, "without saved settings, the camera is the usual one")
 	assert_false(rig.is_cursor_free())
 	_press(KEY_F10)
-	assert_true(services.get_settings_menu().is_open(), "F10 abre los ajustes en el sandbox")
+	assert_true(services.get_settings_menu().is_open(), "F10 opens the settings in the sandbox")
 	assert_true(rig.is_cursor_free())
 	(services.get_settings_menu().get_control(ClientSettings.FOV) as HSlider).value = 80.0
-	assert_eq(rig.get_fov(), 80.0, "y los cambios llegan a la cámara del sandbox")
+	assert_eq(rig.get_fov(), 80.0, "and the changes reach the sandbox camera")
 	_press(KEY_ESCAPE)
 	assert_false(services.get_settings_menu().is_open())
-	assert_false(rig.is_cursor_free(), "Esc la cierra y el ratón vuelve a la cámara")
-	assert_true(FileAccess.file_exists(TEST_PATH), "y se guarda")
+	assert_false(rig.is_cursor_free(), "Esc closes it and the mouse goes back to the camera")
+	assert_true(FileAccess.file_exists(TEST_PATH), "and it is saved")

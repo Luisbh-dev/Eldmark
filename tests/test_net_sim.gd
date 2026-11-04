@@ -1,18 +1,18 @@
 extends TestCase
-## Pruebas de NetSim (simulador de red en ticks) y de NetTransport sobre ENet real en 127.0.0.1.
+## Tests of NetSim (tick-based network simulator) and of NetTransport over real ENet on 127.0.0.1.
 ##
-## NetSim: misma semilla, misma secuencia; la pérdida no toca los canales fiables; los fiables
-## salen en orden FIFO por (peer, canal); el retardo cae dentro de rtt/2 ± jitter.
+## NetSim: same seed, same sequence; loss does not touch the reliable channels; reliable packets
+## come out in FIFO order per (peer, channel); the delay falls within rtt/2 ± jitter.
 ## [br][br]
-## NetTransport: un servidor y un cliente en el mismo proceso (dos nodos, cada uno con su
-## [SceneMultiplayer] registrado por ruta), el handshake con send_auth/complete_auth en los dos
-## lados, un paquete por canal después de peer_connected, el rechazo con corte ordenado, el fallo de
-## conexión y el simulador aplicado a un lado. El ejecutor falla ante cualquier error del motor, así
-## que cada una de estas pruebas también comprueba que no se envía nada antes de peer_connected.
+## NetTransport: a server and a client in the same process (two nodes, each with its
+## [SceneMultiplayer] registered by path), the handshake with send_auth/complete_auth on both
+## sides, one packet per channel after peer_connected, rejection with an orderly disconnect, the
+## connection failure and the simulator applied on one side. The runner fails on any engine error, so
+## each of these tests also checks that nothing is sent before peer_connected.
 
 const TICK_MS: float = 1000.0 / 60.0
-## Primer puerto que se prueba para los servidores de las pruebas (se desplaza por proceso para no
-## chocar con otras ejecuciones a la vez).
+## First port tried for the test servers (shifted per process so as not to collide with other
+## simultaneous runs).
 const FIRST_PORT: int = 24700
 const MAX_HANDSHAKE_TICKS: int = 400
 
@@ -20,13 +20,13 @@ const HELLO: PackedByteArray = [0x45, 0x4C, 0x44, 0x4D, 0x01]
 const WELCOME: PackedByteArray = [0x45, 0x4C, 0x44, 0x4D, 0x00, 0x77]
 const REJECT: PackedByteArray = [0x45, 0x4C, 0x44, 0x4D, 0x03, 0x78]
 
-## Tipos de mensaje de prueba, uno por canal y sentido.
+## Test message types, one per channel and direction.
 const TYPE_UP_UNRELIABLE: int = NetProtocol.MSG_INPUT_BATCH
 const TYPE_UP_RELIABLE: int = NetProtocol.MSG_CLIENT_READY
 const TYPE_DOWN_UNRELIABLE: int = NetProtocol.MSG_SNAPSHOT
 const TYPE_DOWN_RELIABLE: int = NetProtocol.MSG_ENTITY_SPAWN
 
-## Claves de las latencias que devuelve _measure_latencies().
+## Keys of the latencies returned by _measure_latencies().
 const LATENCY_KEYS: Array[String] = [
 	"up_unreliable", "up_reliable", "down_unreliable", "down_reliable",
 ]
@@ -36,30 +36,30 @@ var _port: int = 0
 var _nodes: Array[NetTransport] = []
 
 
-## Un extremo de la prueba: un NetTransport más el registro de todo lo que le llega.
+## One end of the test: a NetTransport plus the log of everything that arrives at it.
 class Endpoint:
 	extends RefCounted
 
 	var transport: NetTransport
 	var tick: int = 0
-	## En el servidor: contesta REJECT y corta, en lugar de WELCOME.
+	## On the server: replies REJECT and disconnects, instead of WELCOME.
 	var reject: bool = false
-	## En el servidor: false = solo anota los mensajes de autenticación, sin contestar.
+	## On the server: false = only records the authentication messages, without replying.
 	var respond_to_auth: bool = true
 	var authenticating: Array[int] = []
-	## get_remote_address() de cada peer en el momento de peer_authenticating.
+	## get_remote_address() of each peer at the moment of peer_authenticating.
 	var authenticating_addresses: Array[String] = []
 	var auth_messages: Array[PackedByteArray] = []
 	var connected: Array[int] = []
 	var disconnected: Array[int] = []
 	var failed_count: int = 0
-	## Paquetes que el transporte ha descartado por no ser del protocolo (packets_discarded).
+	## Packets the transport has discarded for not belonging to the protocol (packets_discarded).
 	var discarded: int = 0
-	## Cada paquete recibido: [tick de llegada, peer_id, bytes].
+	## Each packet received: [arrival tick, peer_id, bytes].
 	var packets: Array[Array] = []
-	## Resultados de send() hechos antes de peer_connected (todos deben ser ERR_UNAVAILABLE).
+	## Results of send() made before peer_connected (all must be ERR_UNAVAILABLE).
 	var early_sends: Array[int] = []
-	## Orden en que llegan las señales: "authenticating", "auth", "connected", "packet",
+	## Order in which the signals arrive: "authenticating", "auth", "connected", "packet",
 	## "disconnected", "failed".
 	var event_log: Array[String] = []
 
@@ -100,7 +100,7 @@ class Endpoint:
 			transport.complete_auth(peer_id)
 		elif bytes == WELCOME:
 			transport.complete_auth(peer_id)
-		# Justo después de complete_auth() el peer aún no está conectado en este lado.
+		# Right after complete_auth() the peer is not yet connected on this side.
 		early_sends.append(transport.send(peer_id, NetProtocol.CH_RELIABLE, PackedByteArray([1])))
 
 	func _on_connected(peer_id: int) -> void:
@@ -147,39 +147,39 @@ func after_each() -> void:
 # --- NetSim -----------------------------------------------------------------------------------
 
 func test_from_arg_parses_the_spec() -> void:
-	assert_null(NetSim.from_arg(""), "un texto vacío no crea simulador")
-	assert_null(NetSim.from_arg("   "), "solo espacios tampoco")
+	assert_null(NetSim.from_arg(""), "an empty text does not create a simulator")
+	assert_null(NetSim.from_arg("   "), "neither does only whitespace")
 
 	var sim: NetSim = NetSim.from_arg("rtt=120,jitter=20,loss=5,dup=1.5,seed=7")
-	if not assert_not_null(sim, "el texto de --net-sim se interpreta"):
+	if not assert_not_null(sim, "the --net-sim text is parsed"):
 		return
 	assert_true(sim.is_enabled())
 	var text: String = sim.describe()
-	assert_true(text.contains("rtt=120"), "describe() incluye el rtt: %s" % text)
-	assert_true(text.contains("jitter=20"), "describe() incluye el jitter: %s" % text)
-	assert_true(text.contains("pérdida=5%"), "describe() incluye la pérdida: %s" % text)
-	assert_true(text.contains("duplicados=1.5%"), "describe() incluye los duplicados: %s" % text)
-	assert_true(text.contains("semilla=7"), "describe() incluye la semilla: %s" % text)
+	assert_true(text.contains("rtt=120"), "describe() includes the rtt: %s" % text)
+	assert_true(text.contains("jitter=20"), "describe() includes the jitter: %s" % text)
+	assert_true(text.contains("pérdida=5%"), "describe() includes the loss: %s" % text)
+	assert_true(text.contains("duplicados=1.5%"), "describe() includes the duplicates: %s" % text)
+	assert_true(text.contains("semilla=7"), "describe() includes the seed: %s" % text)
 
 	assert_true(NetSim.from_arg("rtt=120,seed=7", 1).describe().contains("semilla=8"),
-			"el desplazamiento de semilla se suma")
+			"the seed offset is added")
 	assert_true(NetSim.from_arg("rtt=120").describe().contains("semilla=1"),
-			"sin semilla vale 1")
+			"without a seed it is 1")
 
 	var tolerant: NetSim = NetSim.from_arg(" rtt = 100 , bogus=3, jitter=abc, loss ,dup=2 ")
-	if assert_not_null(tolerant, "las claves desconocidas y los valores inválidos se ignoran"):
+	if assert_not_null(tolerant, "unknown keys and invalid values are ignored"):
 		var tolerant_text: String = tolerant.describe()
 		assert_true(tolerant_text.contains("rtt=100"), tolerant_text)
 		assert_true(tolerant_text.contains("jitter=0"), tolerant_text)
 		assert_true(tolerant_text.contains("duplicados=2%"), tolerant_text)
 
 	var idle: NetSim = NetSim.from_arg("seed=3")
-	if assert_not_null(idle, "un texto sin parámetros útiles sigue creando el objeto"):
-		assert_false(idle.is_enabled(), "pero no hace nada")
+	if assert_not_null(idle, "a text without useful parameters still creates the object"):
+		assert_false(idle.is_enabled(), "but does nothing")
 
 	var clamped := NetSim.new()
 	clamped.configure(-10, -5, 250.0, -3.0, 1)
-	assert_true(clamped.is_enabled(), "con la pérdida limitada a 100 % queda activo")
+	assert_true(clamped.is_enabled(), "with loss capped at 100 % quota it stays active")
 	assert_true(clamped.describe().contains("pérdida=100%"), clamped.describe())
 	assert_true(clamped.describe().contains("rtt=0"), clamped.describe())
 
@@ -188,26 +188,26 @@ func test_same_seed_gives_same_sequence() -> void:
 	var spec: String = "rtt=100,jitter=40,loss=20,dup=15,seed=42"
 	var first: Array[Array] = _run_sequence(NetSim.from_arg(spec), 600)
 	var second: Array[Array] = _run_sequence(NetSim.from_arg(spec), 600)
-	assert_false(first.is_empty(), "la secuencia no está vacía")
-	assert_true(first == second, "misma semilla, misma secuencia")
+	assert_false(first.is_empty(), "the sequence is not empty")
+	assert_true(first == second, "same seed, same sequence")
 
 	var other_seed: Array[Array] = _run_sequence(
 			NetSim.from_arg("rtt=100,jitter=40,loss=20,dup=15,seed=43"), 600)
-	assert_false(first == other_seed, "otra semilla, otra secuencia")
+	assert_false(first == other_seed, "another seed, another sequence")
 
-	# La salida y la entrada de un transporte usan seed y seed + 1: no deben ser la misma.
+	# The output and the input of a transport use seed and seed + 1: they must not be the same.
 	var output_side: Array[Array] = _run_sequence(NetSim.from_arg(spec, 0), 600)
 	var input_side: Array[Array] = _run_sequence(NetSim.from_arg(spec, 1), 600)
-	assert_true(output_side == first, "el desplazamiento 0 es la semilla tal cual")
-	assert_false(output_side == input_side, "el desplazamiento 1 cambia la secuencia")
+	assert_true(output_side == first, "offset 0 is the seed as is")
+	assert_false(output_side == input_side, "offset 1 changes the sequence")
 
-	# configure() reinicia el generador: repetir la configuración repite la secuencia.
+	# configure() resets the generator: repeating the configuration repeats the sequence.
 	var reused := NetSim.new()
 	reused.configure(100, 40, 20.0, 15.0, 42)
 	var before: Array[Array] = _run_sequence(reused, 300)
 	reused.configure(100, 40, 20.0, 15.0, 42)
 	var after: Array[Array] = _run_sequence(reused, 300)
-	assert_true(before == after, "configure() con la misma semilla repite la secuencia")
+	assert_true(before == after, "configure() with the same seed repeats the sequence")
 
 
 func test_loss_does_not_touch_reliable_channels() -> void:
@@ -223,13 +223,13 @@ func test_loss_does_not_touch_reliable_channels() -> void:
 	for packet: NetSim.Packet in delivered:
 		var key: String = "auth" if packet.is_auth else str(packet.channel)
 		per_channel[key] = int(per_channel.get(key, 0)) + 1
-	assert_false(per_channel.has("1"), "con loss=100 no llega ningún paquete del canal 1")
-	assert_false(per_channel.has("2"), "con loss=100 no llega ningún paquete del canal 2")
-	assert_eq(per_channel.get("3", 0), count, "el canal fiable llega entero, sin duplicados")
-	assert_eq(per_channel.get("auth", 0), count, "la autenticación llega entera, sin duplicados")
-	assert_eq(sim.get_pending_count(), 0, "no queda nada en cola")
+	assert_false(per_channel.has("1"), "with loss=100 no packet arrives on channel 1")
+	assert_false(per_channel.has("2"), "with loss=100 no packet arrives on channel 2")
+	assert_eq(per_channel.get("3", 0), count, "the reliable channel arrives whole, without duplicates")
+	assert_eq(per_channel.get("auth", 0), count, "the authentication arrives whole, without duplicates")
+	assert_eq(sim.get_pending_count(), 0, "nothing is left in the queue")
 
-	# Con una pérdida parcial, los fiables siguen intactos y los demás pierden aproximadamente eso.
+	# With partial loss, the reliable ones stay intact and the others lose roughly that much.
 	var partial: NetSim = NetSim.from_arg("rtt=60,jitter=20,loss=50,seed=9")
 	var total: int = 2000
 	for i: int in total:
@@ -242,9 +242,9 @@ func test_loss_does_not_touch_reliable_channels() -> void:
 			got_reliable += 1
 		else:
 			got_unreliable += 1
-	assert_eq(got_reliable, total, "al 50 % de pérdida el canal fiable llega entero")
+	assert_eq(got_reliable, total, "at 50 % drop rate the reliable channel arrives whole")
 	assert_true(got_unreliable > total * 0.4 and got_unreliable < total * 0.6,
-			"al 50 %% de pérdida llega más o menos la mitad de los no fiables (%d de %d)" % [
+			"at 50 %% loss roughly half of the unreliable ones arrive (%d of %d)" % [
 				got_unreliable, total,
 			])
 
@@ -259,13 +259,13 @@ func test_duplicates_only_on_unreliable_channels() -> void:
 	for packet: NetSim.Packet in sim.pop_due(100):
 		var key: String = "auth" if packet.is_auth else str(packet.channel)
 		counts[key] = int(counts.get(key, 0)) + 1
-	assert_eq(counts.get("1", 0), 100, "con dup=100 cada paquete no fiable llega dos veces")
-	assert_eq(counts.get("3", 0), 50, "los fiables no se duplican")
-	assert_eq(counts.get("auth", 0), 50, "la autenticación no se duplica")
+	assert_eq(counts.get("1", 0), 100, "with dup=100 each unreliable packet arrives twice")
+	assert_eq(counts.get("3", 0), 50, "reliable ones are not duplicated")
+	assert_eq(counts.get("auth", 0), 50, "the authentication is not duplicated")
 
 
 func test_reliable_channels_keep_fifo_order() -> void:
-	# Con tanto jitter los no fiables se desordenan; los fiables, no.
+	# With that much jitter the unreliable ones get reordered; the reliable ones do not.
 	var sim: NetSim = NetSim.from_arg("rtt=100,jitter=60,seed=11")
 	var ticks: int = 300
 	var delivered: Array[NetSim.Packet] = []
@@ -277,7 +277,7 @@ func test_reliable_channels_keep_fifo_order() -> void:
 				sim.enqueue(_packet(peer_id, NetProtocol.CH_SNAPSHOT, tick), tick)
 				sim.enqueue(_packet(peer_id, NetSim.AUTH_CHANNEL, tick, true), tick)
 		delivered.append_array(sim.pop_due(tick))
-	assert_eq(sim.get_pending_count(), 0, "se ha entregado todo")
+	assert_eq(sim.get_pending_count(), 0, "everything has been delivered")
 
 	var last_seen: Dictionary = {}
 	var reordered_unreliable: int = 0
@@ -291,20 +291,20 @@ func test_reliable_channels_keep_fifo_order() -> void:
 		if is_fifo:
 			reliable_count += 1
 			if seq <= previous:
-				fail("%s: llegó %d después de %d (los fiables mantienen el orden)" % [
+				fail("%s: %d arrived after %d (reliable ones keep the order)" % [
 					key, seq, previous,
 				])
 				return
 		elif seq < previous:
 			reordered_unreliable += 1
 		last_seen[key] = maxi(previous, seq)
-	assert_eq(reliable_count, ticks * 2 * 2, "llegan todos los fiables y la autenticación")
+	assert_eq(reliable_count, ticks * 2 * 2, "all the reliable ones and the authentication arrive")
 	assert_true(reordered_unreliable > 0,
-			"el jitter sí desordena los no fiables (si no, la prueba no probaría nada)")
+			"the jitter does reorder the unreliable ones (otherwise the test would prove nothing)")
 
 
 func test_delay_is_within_half_rtt_plus_minus_jitter() -> void:
-	# rtt=120, jitter=20: 60 ± 20 ms = de 40 a 80 ms = de 2,4 a 4,8 ticks = de 2 a 5 ticks.
+	# rtt=120, jitter=20: 60 ± 20 ms = 40 to 80 ms = 2.4 to 4.8 ticks = 2 to 5 ticks.
 	var low: int = roundi((60.0 - 20.0) / TICK_MS)
 	var high: int = roundi((60.0 + 20.0) / TICK_MS)
 	assert_eq(low, 2)
@@ -315,27 +315,27 @@ func test_delay_is_within_half_rtt_plus_minus_jitter() -> void:
 		var seen: Dictionary = {}
 		for i: int in 3000:
 			var packet: NetSim.Packet = _packet(1, channel, i, channel == NetSim.AUTH_CHANNEL)
-			# Un solo paquete cada vez y un tick de salida distinto: sin efecto del orden FIFO.
+			# One packet at a time and a different send tick: no effect from the FIFO order.
 			var now: int = i * 100
 			sim.enqueue(packet, now)
 			var delay: int = packet.due_tick - now
 			seen[delay] = true
 			if delay < low or delay > high:
-				fail("canal %d: retardo %d fuera de [%d, %d]" % [channel, delay, low, high])
+				fail("channel %d: delay %d outside [%d, %d]" % [channel, delay, low, high])
 				return
 			sim.pop_due(now + 100)
 		assert_true(seen.has(low) and seen.has(high),
-				"canal %d: el retardo recorre todo el intervalo (%s)" % [channel, seen.keys()])
+				"channel %d: the delay covers the whole interval (%s)" % [channel, seen.keys()])
 
-	# Sin jitter el retardo es fijo: 100 ms de RTT = 50 ms por sentido = 3 ticks.
+	# Without jitter the delay is fixed: 100 ms of RTT = 50 ms per direction = 3 ticks.
 	var fixed: NetSim = NetSim.from_arg("rtt=100,seed=1")
 	for i: int in 100:
 		var packet: NetSim.Packet = _packet(1, NetProtocol.CH_INPUT, i)
 		fixed.enqueue(packet, 10)
-		assert_eq(packet.due_tick, 13, "retardo fijo de 3 ticks")
+		assert_eq(packet.due_tick, 13, "fixed delay of 3 ticks")
 		fixed.pop_due(100)
 
-	# Un retardo que saldría negativo se queda en 0.
+	# A delay that would come out negative stays at 0.
 	var clamped: NetSim = NetSim.from_arg("rtt=10,jitter=50,seed=2")
 	var longest: int = 0
 	for i: int in 500:
@@ -343,12 +343,12 @@ func test_delay_is_within_half_rtt_plus_minus_jitter() -> void:
 		clamped.enqueue(packet, 0)
 		longest = maxi(longest, packet.due_tick)
 		if packet.due_tick < 0:
-			fail("retardo negativo: %d" % packet.due_tick)
+			fail("negative delay: %d" % packet.due_tick)
 			return
 		clamped.pop_due(100)
-	assert_eq(longest, roundi(55.0 / TICK_MS), "con rtt=10, jitter=50 el máximo es 55 ms")
+	assert_eq(longest, roundi(55.0 / TICK_MS), "with rtt=10, jitter=50 the maximum is 55 ms")
 
-	# Un simulador a cero entrega en el mismo tick.
+	# A simulator at zero delivers on the same tick.
 	var idle := NetSim.new()
 	idle.configure(0, 0, 0.0, 0.0, 1)
 	assert_false(idle.is_enabled())
@@ -360,100 +360,100 @@ func test_delay_is_within_half_rtt_plus_minus_jitter() -> void:
 
 func test_max_delay_ticks_matches_the_worst_case_of_one_direction() -> void:
 	assert_eq(NetSim.from_arg("rtt=100,jitter=10").get_max_delay_ticks(), 4,
-			"rtt/2 + jitter = 60 ms = 3,6 ticks, redondeado a 4")
-	assert_eq(NetSim.from_arg("rtt=0,jitter=0,loss=5").get_max_delay_ticks(), 0, "sin retardo")
+			"rtt/2 + jitter = 60 ms = 3.6 ticks, rounded to 4")
+	assert_eq(NetSim.from_arg("rtt=0,jitter=0,loss=5").get_max_delay_ticks(), 0, "no delay")
 	assert_eq(NetSim.from_arg("rtt=200").get_max_delay_ticks(), 6, "100 ms = 6 ticks")
-	# Ningún retardo sorteado pasa del máximo.
+	# No sampled delay exceeds the maximum.
 	var sim: NetSim = NetSim.from_arg("rtt=120,jitter=40,seed=9")
 	for i: int in 200:
 		sim.enqueue(NetSim.Packet.new(1, NetProtocol.CH_RELIABLE, PackedByteArray([1]), false), 0)
 	for packet: NetSim.Packet in sim.pop_due(1000):
-		assert_true(packet.due_tick <= sim.get_max_delay_ticks(), "el retardo cabe en el máximo")
+		assert_true(packet.due_tick <= sim.get_max_delay_ticks(), "the delay fits within the maximum")
 
 
 func test_transport_reports_the_round_trip_its_simulators_add() -> void:
 	var transport: NetTransport = _make_transport("NetTransportSimRtt")
-	assert_eq(transport.get_sim_round_trip_ticks(), 0, "sin simulador no añade nada")
+	assert_eq(transport.get_sim_round_trip_ticks(), 0, "without a simulator it adds nothing")
 	transport.set_net_sim_spec("rtt=100,jitter=10")
-	assert_eq(transport.get_sim_round_trip_ticks(), 8, "salida + entrada: 2 × 4 ticks")
+	assert_eq(transport.get_sim_round_trip_ticks(), 8, "output + input: 2 × 4 ticks")
 	transport.set_net_sim_spec("")
-	assert_eq(transport.get_sim_round_trip_ticks(), 0, "se quita con el texto vacío")
+	assert_eq(transport.get_sim_round_trip_ticks(), 0, "it is removed with the empty text")
 
 
 func test_pop_due_returns_only_due_packets_in_order() -> void:
-	var sim: NetSim = NetSim.from_arg("rtt=100,seed=1")  # 3 ticks por sentido, sin jitter
+	var sim: NetSim = NetSim.from_arg("rtt=100,seed=1")  # 3 ticks per direction, without jitter
 	var late: NetSim.Packet = _packet(1, NetProtocol.CH_INPUT, 1)
 	var early: NetSim.Packet = _packet(1, NetProtocol.CH_INPUT, 2)
 	var tie: NetSim.Packet = _packet(2, NetProtocol.CH_INPUT, 3)
-	sim.enqueue(late, 10)    # vence en el 13
-	sim.enqueue(early, 4)    # vence en el 7
-	sim.enqueue(tie, 10)     # vence en el 13, llegó después que late
+	sim.enqueue(late, 10)    # due at 13
+	sim.enqueue(early, 4)    # due at 7
+	sim.enqueue(tie, 10)     # due at 13, arrived after late
 	assert_eq(sim.get_pending_count(), 3)
-	assert_eq(sim.pop_due(6).size(), 0, "todavía no vence nada")
+	assert_eq(sim.pop_due(6).size(), 0, "nothing is due yet")
 	var first: Array[NetSim.Packet] = sim.pop_due(7)
 	assert_eq(first.size(), 1)
-	assert_true(first[0] == early, "sale primero el que vence antes")
+	assert_true(first[0] == early, "the one that is due earliest comes out first")
 	assert_true(sim.has_pending(1) and sim.has_pending(2))
 	var rest: Array[NetSim.Packet] = sim.pop_due(50)
 	assert_eq(rest.size(), 2)
-	assert_true(rest[0] == late and rest[1] == tie, "a igualdad de tick, por orden de llegada")
+	assert_true(rest[0] == late and rest[1] == tie, "on equal ticks, in arrival order")
 	assert_eq(sim.get_pending_count(), 0)
 
-	# drain_peer() saca todo lo de un peer, venza o no, y deja el resto.
+	# drain_peer() takes out everything of a peer, due or not, and leaves the rest.
 	sim.enqueue(_packet(1, NetProtocol.CH_RELIABLE, 4), 0)
 	sim.enqueue(_packet(2, NetProtocol.CH_RELIABLE, 5), 0)
 	sim.enqueue(_packet(1, NetProtocol.CH_INPUT, 6), 1)
 	var drained: Array[NetSim.Packet] = sim.drain_peer(1)
 	assert_eq(drained.size(), 2)
-	assert_eq(drained[0].bytes.decode_u32(0), 4, "en orden de entrega")
+	assert_eq(drained[0].bytes.decode_u32(0), 4, "in delivery order")
 	assert_false(sim.has_pending(1))
 	assert_true(sim.has_pending(2))
 	assert_eq(sim.get_pending_count(), 1)
 
 
-# --- NetTransport: ENet real en 127.0.0.1 -----------------------------------------------------
+# --- NetTransport: real ENet on 127.0.0.1 -----------------------------------------------------
 
 func test_transport_registers_its_own_multiplayer() -> void:
 	var transport: NetTransport = _make_transport("NetTransportRegistered")
 	var custom: MultiplayerAPI = tree.get_multiplayer(transport.get_path())
-	assert_not_null(custom, "el transporte registra su SceneMultiplayer")
-	assert_true(custom is SceneMultiplayer, "es un SceneMultiplayer")
-	assert_true(custom != tree.get_multiplayer(), "distinto del multijugador por defecto del árbol")
-	assert_false(tree.multiplayer_poll, "el árbol no sondea: lo hace NetTransport.poll()")
+	assert_not_null(custom, "the transport registers its SceneMultiplayer")
+	assert_true(custom is SceneMultiplayer, "it is a SceneMultiplayer")
+	assert_true(custom != tree.get_multiplayer(), "different from the tree's default multiplayer")
+	assert_false(tree.multiplayer_poll, "the tree does not poll: NetTransport.poll() does")
 	var other: NetTransport = _make_transport("NetTransportOther")
-	assert_true(tree.get_multiplayer(other.get_path()) != custom, "cada instancia tiene el suyo")
+	assert_true(tree.get_multiplayer(other.get_path()) != custom, "each instance has its own")
 
 	var path: NodePath = transport.get_path()
 	_nodes.erase(transport)
 	transport.get_parent().remove_child(transport)
 	assert_true(tree.get_multiplayer(path) == tree.get_multiplayer(),
-			"al salir del árbol se quita el registro")
+			"the registration is removed when leaving the tree")
 	transport.free()
 
 
 func test_send_validates_before_touching_enet() -> void:
 	var server: Endpoint = Endpoint.new(_make_transport("NetTransportValidate"))
 	assert_eq(server.transport.send(5, NetProtocol.CH_RELIABLE, PackedByteArray([1])),
-			ERR_UNCONFIGURED, "sin host() ni connect_to() no hay nada configurado")
+			ERR_UNCONFIGURED, "without host() or connect_to() nothing is configured")
 	assert_eq(server.transport.send_auth(5, HELLO), ERR_UNCONFIGURED)
 	assert_eq(server.transport.complete_auth(5), ERR_UNCONFIGURED)
 	assert_eq(server.transport.get_rtt_ms(5), 0.0)
 	assert_eq(server.transport.get_remote_address(5), "")
 	var port: int = _find_free_port()
-	if not assert_true(port > 0, "hay un puerto libre"):
+	if not assert_true(port > 0, "there is a free port"):
 		return
 	assert_eq(server.transport.host(port, 4), OK)
 	assert_true(server.transport.is_server())
-	assert_eq(server.transport.host(port + 1, 4), ERR_ALREADY_IN_USE, "no se puede abrir dos veces")
+	assert_eq(server.transport.host(port + 1, 4), ERR_ALREADY_IN_USE, "it cannot be opened twice")
 	assert_eq(server.transport.connect_to("127.0.0.1", port), ERR_ALREADY_IN_USE)
 	assert_eq(server.transport.send(123456, NetProtocol.CH_RELIABLE, PackedByteArray([1])),
-			ERR_UNAVAILABLE, "a un peer desconocido no se envía")
+			ERR_UNAVAILABLE, "nothing is sent to an unknown peer")
 	assert_eq(server.transport.send_auth(123456, HELLO), ERR_UNAVAILABLE)
 	assert_eq(server.transport.complete_auth(123456), ERR_UNAVAILABLE)
 	assert_eq(server.transport.get_remote_address(123456), "")
-	server.transport.disconnect_after_flush(123456)  # un peer desconocido no hace nada
+	server.transport.disconnect_after_flush(123456)  # an unknown peer does nothing
 	server.transport.close()
-	assert_false(server.transport.is_server(), "tras close() ya no es servidor")
+	assert_false(server.transport.is_server(), "after close() it is no longer a server")
 	assert_eq(server.transport.send(5, NetProtocol.CH_RELIABLE, PackedByteArray([1])),
 			ERR_UNCONFIGURED)
 
@@ -465,22 +465,22 @@ func test_handshake_and_one_packet_per_channel() -> void:
 	var connected: bool = await _run_until(pair, func() -> bool:
 		return not server.connected.is_empty() and not client.connected.is_empty(),
 			MAX_HANDSHAKE_TICKS)
-	if not assert_true(connected, "el handshake termina"):
+	if not assert_true(connected, "the handshake finishes"):
 		return
 	var client_id: int = server.connected[0]
-	assert_eq(server.authenticating, [client_id], "peer_authenticating del cliente en el servidor")
-	assert_eq(client.authenticating, [1], "peer_authenticating del servidor (peer 1) en el cliente")
-	assert_eq(client.connected, [1], "el cliente ve conectado al peer 1")
-	assert_eq(server.auth_messages, [HELLO], "el servidor recibe el HELLO")
-	assert_eq(client.auth_messages, [WELCOME], "el cliente recibe el WELCOME")
+	assert_eq(server.authenticating, [client_id], "peer_authenticating of the client on the server")
+	assert_eq(client.authenticating, [1], "peer_authenticating of the server (peer 1) on the client")
+	assert_eq(client.connected, [1], "the client sees peer 1 as connected")
+	assert_eq(server.auth_messages, [HELLO], "the server receives the HELLO")
+	assert_eq(client.auth_messages, [WELCOME], "the client receives the WELCOME")
 	assert_true(server.all_early_sends_unavailable(),
-			"antes de peer_connected send() devuelve ERR_UNAVAILABLE (sin error del motor)")
+			"before peer_connected send() returns ERR_UNAVAILABLE (without an engine error)")
 	assert_true(client.all_early_sends_unavailable(),
-			"incluso justo después de complete_auth() send() devuelve ERR_UNAVAILABLE")
+			"even right after complete_auth() send() returns ERR_UNAVAILABLE")
 	assert_false(server.early_sends.is_empty() or client.early_sends.is_empty(),
-			"las comprobaciones de arriba sí se han hecho")
+			"the checks above were indeed performed")
 
-	# Un paquete por canal y sentido, con el contenido exacto.
+	# One packet per channel and direction, with the exact content.
 	var up_unreliable: PackedByteArray = _message(TYPE_UP_UNRELIABLE, 1, 0)
 	var up_reliable: PackedByteArray = _message(TYPE_UP_RELIABLE, 2, 0)
 	var down_unreliable: PackedByteArray = _message(TYPE_DOWN_UNRELIABLE, 3, 0)
@@ -495,23 +495,23 @@ func test_handshake_and_one_packet_per_channel() -> void:
 			down_reliable), OK)
 	var arrived: bool = await _run_until(pair, func() -> bool:
 		return server.packets.size() >= 2 and client.packets.size() >= 2, 60)
-	if not assert_true(arrived, "llegan los cuatro paquetes"):
+	if not assert_true(arrived, "the four packets arrive"):
 		return
 	assert_eq(server.packets.size(), 2)
 	assert_eq(client.packets.size(), 2)
 	var server_got: Array[Array] = server.packets_of_type(TYPE_UP_UNRELIABLE)
-	assert_eq(server_got.size(), 1, "el servidor recibe el paquete del canal de entradas")
-	assert_eq(server_got[0][1], client_id, "con el id del cliente")
-	assert_eq(server_got[0][2], up_unreliable, "con el contenido intacto")
+	assert_eq(server_got.size(), 1, "the server receives the packet on the inputs channel")
+	assert_eq(server_got[0][1], client_id, "with the client's id")
+	assert_eq(server_got[0][2], up_unreliable, "with the content intact")
 	assert_eq(server.packets_of_type(TYPE_UP_RELIABLE)[0][2], up_reliable,
-			"el servidor recibe el paquete fiable")
+			"the server receives the reliable packet")
 	assert_eq(client.packets_of_type(TYPE_DOWN_UNRELIABLE)[0][2], down_unreliable,
-			"el cliente recibe el snapshot")
-	assert_eq(client.packets_of_type(TYPE_DOWN_RELIABLE)[0][1], 1, "del peer 1")
+			"the client receives the snapshot")
+	assert_eq(client.packets_of_type(TYPE_DOWN_RELIABLE)[0][1], 1, "from peer 1")
 	assert_eq(client.packets_of_type(TYPE_DOWN_RELIABLE)[0][2], down_reliable,
-			"el cliente recibe el paquete fiable")
+			"the client receives the reliable packet")
 
-	# Datos del peer y contadores.
+	# Peer data and counters.
 	assert_eq(server.transport.get_remote_address(client_id), "127.0.0.1")
 	assert_eq(client.transport.get_remote_address(1), "127.0.0.1")
 	assert_true(server.transport.get_rtt_ms(client_id) >= 0.0)
@@ -521,25 +521,25 @@ func test_handshake_and_one_packet_per_channel() -> void:
 	var client_counters: Dictionary = client.transport.get_byte_counters()
 	var client_sent: int = HELLO.size() + up_unreliable.size() + up_reliable.size()
 	var server_sent: int = WELCOME.size() + down_unreliable.size() + down_reliable.size()
-	assert_eq(client_counters["app_out"], client_sent, "bytes de aplicación del cliente")
-	assert_eq(server_counters["app_in"], client_sent, "y recibidos por el servidor")
-	assert_eq(server_counters["app_out"], server_sent, "bytes enviados por el servidor")
-	assert_eq(client_counters["app_in"], server_sent, "y recibidos por el cliente")
+	assert_eq(client_counters["app_out"], client_sent, "application bytes of the client")
+	assert_eq(server_counters["app_in"], client_sent, "and received by the server")
+	assert_eq(server_counters["app_out"], server_sent, "bytes sent by the server")
+	assert_eq(client_counters["app_in"], server_sent, "and received by the client")
 	for counters: Dictionary in [server_counters, client_counters]:
 		assert_true(int(counters["wire_in"]) > 0 and int(counters["wire_out"]) > 0,
-				"ENet cuenta bytes en el cable: %s" % [counters])
+				"ENet counts bytes on the wire: %s" % [counters])
 		assert_true(int(counters["wire_out"]) >= int(counters["app_out"]),
-				"en el cable hay al menos lo que envió la aplicación: %s" % [counters])
+				"on the wire there is at least what the application sent: %s" % [counters])
 
-	# El cliente se despide: el servidor lo nota y deja de enviarle.
+	# The client says goodbye: the server notices and stops sending to it.
 	client.transport.close()
 	var left: bool = await _run_until(pair, func() -> bool:
 		return not server.disconnected.is_empty(), 120)
-	assert_true(left, "el servidor nota que el cliente se ha ido")
+	assert_true(left, "the server notices that the client has left")
 	assert_eq(server.disconnected, [client_id])
 	assert_eq(server.transport.send(client_id, NetProtocol.CH_RELIABLE, PackedByteArray([1])),
-			ERR_UNAVAILABLE, "a un peer desconectado no se envía")
-	assert_eq(client.disconnected.size(), 0, "close() no emite señales en quien cierra")
+			ERR_UNAVAILABLE, "nothing is sent to a disconnected peer")
+	assert_eq(client.disconnected.size(), 0, "close() emits no signals in whoever closes")
 	assert_eq(client.failed_count, 0)
 
 
@@ -549,24 +549,24 @@ func test_send_rejects_invalid_packets() -> void:
 	var client: Endpoint = pair[1]
 	var connected: bool = await _run_until(pair, func() -> bool:
 		return not client.connected.is_empty(), MAX_HANDSHAKE_TICKS)
-	if not assert_true(connected, "el handshake termina"):
+	if not assert_true(connected, "the handshake finishes"):
 		return
 	var transport: NetTransport = client.transport
 	assert_eq(transport.send(1, 0, PackedByteArray([1])), ERR_INVALID_PARAMETER,
-			"el canal 0 no existe")
+			"channel 0 does not exist")
 	assert_eq(transport.send(1, NetProtocol.CUSTOM_CHANNELS + 1, PackedByteArray([1])),
-			ERR_INVALID_PARAMETER, "tampoco el canal 4")
+			ERR_INVALID_PARAMETER, "neither does channel 4")
 	assert_eq(transport.send(1, NetProtocol.CH_RELIABLE, PackedByteArray()), ERR_INVALID_PARAMETER,
-			"un paquete vacío no se envía")
+			"an empty packet is not sent")
 	var too_big := PackedByteArray()
 	too_big.resize(NetProtocol.MAX_PACKET_BYTES + 1)
 	too_big[0] = TYPE_UP_UNRELIABLE
 	assert_eq(transport.send(1, NetProtocol.CH_INPUT, too_big), ERR_PARAMETER_RANGE_ERROR,
-			"un paquete no fiable de más de 1200 B se rechaza")
+			"an unreliable packet of more than 1200 B is rejected")
 	too_big.resize(NetProtocol.MAX_PACKET_BYTES)
-	assert_eq(transport.send(1, NetProtocol.CH_INPUT, too_big), OK, "de 1200 B justos sí")
+	assert_eq(transport.send(1, NetProtocol.CH_INPUT, too_big), OK, "one of exactly 1200 B is not")
 	assert_eq(transport.send_auth(1, HELLO), ERR_UNAVAILABLE,
-			"una vez conectado ya no se envía autenticación")
+			"once connected, authentication is no longer sent")
 	assert_eq(server.packets.size(), 0)
 
 
@@ -575,13 +575,13 @@ func test_reject_flushes_before_disconnect() -> void:
 
 
 func test_reject_flushes_before_disconnect_with_net_sim() -> void:
-	# Con retardo, el REJECT está en la cola del simulador cuando se pide el corte: tiene que salir.
+	# With delay, the REJECT is in the simulator queue when the disconnect is requested: it has to go out.
 	await _check_reject("rtt=200,jitter=30,seed=3", "")
 
 
 func test_connection_failed_waits_for_the_delayed_reject() -> void:
-	# Con el simulador en el cliente, el REJECT llega retrasado, pero el corte ya está hecho: la
-	# señal connection_failed espera a que se entregue el REJECT.
+	# With the simulator on the client, the REJECT arrives late, but the disconnect is already done: the
+	# connection_failed signal waits for the REJECT to be delivered.
 	await _check_reject("", "rtt=300,jitter=40,seed=6")
 
 
@@ -592,40 +592,40 @@ func test_disconnect_after_flush_delivers_pending_packets() -> void:
 	var connected: bool = await _run_until(pair, func() -> bool:
 		return not server.connected.is_empty() and not client.connected.is_empty(),
 			MAX_HANDSHAKE_TICKS)
-	if not assert_true(connected, "el handshake termina"):
+	if not assert_true(connected, "the handshake finishes"):
 		return
 	var client_id: int = server.connected[0]
 	var notice: PackedByteArray = PackedByteArray([
 		NetProtocol.MSG_NOTICE, NetProtocol.NoticeCode.KICK, 9,
 	])
 	assert_eq(server.transport.send(client_id, NetProtocol.CH_RELIABLE, notice), OK)
-	# El simulador (en el servidor) lo retiene unos ticks; el corte pedido ahora no debe perderlo.
+	# The simulator (on the server) holds it for a few ticks; the disconnect requested now must not lose it.
 	server.transport.disconnect_after_flush(client_id)
 	assert_eq(server.transport.send(client_id, NetProtocol.CH_RELIABLE, notice), ERR_UNAVAILABLE,
-			"tras pedir el corte ya no se envía a ese peer")
+			"after requesting the disconnect nothing is sent to that peer")
 	var done: bool = await _run_until(pair, func() -> bool:
 		return not client.disconnected.is_empty() and not server.disconnected.is_empty(), 300)
-	if not assert_true(done, "ambos lados notan el corte"):
+	if not assert_true(done, "both sides notice the disconnect"):
 		return
 	assert_eq(client.packets_of_type(NetProtocol.MSG_NOTICE).size(), 1,
-			"el NOTICE llega antes del corte")
+			"the NOTICE arrives before the disconnect")
 	assert_eq(client.packets_of_type(NetProtocol.MSG_NOTICE)[0][2], notice)
 	assert_eq(client.disconnected, [1])
 	assert_eq(server.disconnected, [client_id])
-	assert_eq(client.failed_count, 0, "se había conectado: no es un fallo de conexión")
+	assert_eq(client.failed_count, 0, "it had connected: it is not a connection failure")
 
 
 func test_disconnect_waits_for_delayed_packets() -> void:
-	# El simulador de entrada del servidor retrasa el paquete de despedida; el cliente pide el corte
-	# ordenado justo después de enviarlo. El servidor tiene que recibir el paquete antes de enterarse
-	# del corte.
+	# The server's input simulator delays the goodbye packet; the client requests the orderly disconnect
+	# right after sending it. The server has to receive the packet before learning about the
+	# disconnect.
 	var pair: Array[Endpoint] = _make_pair("", "rtt=200,jitter=20,seed=2")
 	var server: Endpoint = pair[0]
 	var client: Endpoint = pair[1]
 	var connected: bool = await _run_until(pair, func() -> bool:
 		return not server.connected.is_empty() and not client.connected.is_empty(),
 			MAX_HANDSHAKE_TICKS)
-	if not assert_true(connected, "el handshake termina"):
+	if not assert_true(connected, "the handshake finishes"):
 		return
 	var client_id: int = server.connected[0]
 	var leave: PackedByteArray = PackedByteArray([NetProtocol.MSG_CLIENT_LEAVE, 0])
@@ -633,41 +633,41 @@ func test_disconnect_waits_for_delayed_packets() -> void:
 	client.transport.disconnect_after_flush(1)
 	var done: bool = await _run_until(pair, func() -> bool:
 		return not server.disconnected.is_empty(), 300)
-	if not assert_true(done, "el servidor acaba enterándose del corte"):
+	if not assert_true(done, "the server ends up learning about the disconnect"):
 		return
 	assert_eq(server.packets_of_type(NetProtocol.MSG_CLIENT_LEAVE).size(), 1,
-			"recibe el paquete de despedida")
+			"it receives the goodbye packet")
 	assert_eq(server.disconnected, [client_id])
 	var log: Array[String] = server.event_log
 	assert_eq(log.slice(log.size() - 2), ["packet", "disconnected"],
-			"primero el paquete, después el corte: %s" % [log])
+			"first the packet, then the disconnect: %s" % [log])
 
 
 func test_connect_to_closed_port_fails() -> void:
 	var port: int = _find_free_port()
-	if not assert_true(port > 0, "hay un puerto libre"):
+	if not assert_true(port > 0, "there is a free port"):
 		return
 	var client: Endpoint = Endpoint.new(_make_transport("NetTransportLonely"))
 	assert_eq(client.transport.connect_to("127.0.0.1", port, 250), OK)
 	var one: Array[Endpoint] = [client]
 	var failed: bool = await _run_until(one, func() -> bool:
 		return client.failed_count > 0, 300)
-	assert_true(failed, "sin servidor, la conexión falla")
+	assert_true(failed, "without a server, the connection fails")
 	await _run_ticks(one, 20)
-	assert_eq(client.failed_count, 1, "connection_failed se emite una sola vez")
+	assert_eq(client.failed_count, 1, "connection_failed is emitted only once")
 	assert_true(client.authenticating.is_empty())
 	assert_eq(client.connected.size(), 0)
-	# Tras el fallo se puede volver a intentar sin llamar antes a close().
-	assert_eq(client.transport.connect_to("127.0.0.1", port, 250), OK, "se puede reintentar")
+	# After the failure you can try again without calling close() first.
+	assert_eq(client.transport.connect_to("127.0.0.1", port, 250), OK, "it can be retried")
 	client.transport.close()
 
 
-## connect_to promete avisar de que no hay servidor «como mucho al doble» de connect_timeout_ms.
-## ENet solo mira el plazo cuando vence una retransmisión del CONNECT (a 0,5, 1,5, 3,5 y 7,5 s) y
-## con un máximo del doble tardaba 3,5 s para 1000 ms y 7,5 s para 3000 ms (hallazgo S7).
+## connect_to promises to report that there is no server "at most at double" connect_timeout_ms.
+## ENet only checks the deadline when a CONNECT retransmission expires (at 0.5, 1.5, 3.5 and 7.5 s)
+## and with a maximum of double it took 3.5 s for 1000 ms and 7.5 s for 3000 ms (finding S7).
 func test_connect_timeout_is_at_most_double_the_requested_one() -> void:
 	var port: int = _find_free_port()
-	if not assert_true(port > 0, "hay un puerto libre"):
+	if not assert_true(port > 0, "there is a free port"):
 		return
 	for timeout_ms: int in [1000, 3000]:
 		var client: Endpoint = Endpoint.new(_make_transport("NetTransportTimeout%d" % timeout_ms))
@@ -676,27 +676,27 @@ func test_connect_timeout_is_at_most_double_the_requested_one() -> void:
 		var limit_ticks: int = 2 * timeout_ms * 60 / 1000 + 10
 		var failed: bool = await _run_until(one, func() -> bool:
 			return client.failed_count > 0, limit_ticks)
-		assert_true(failed, "con %d ms, connection_failed llega en menos de %d ticks (%d ms)"
+		assert_true(failed, "with %d ms, connection_failed arrives in fewer than %d ticks (%d ms)"
 				% [timeout_ms, limit_ticks, limit_ticks * 1000 / 60])
 		client.transport.close()
 
 
-# --- Paquetes ajenos al protocolo (hallazgo S1) -----------------------------------------------
+# --- Packets foreign to the protocol (finding S1) ---------------------------------------------
 
-## Un servidor y un cliente ENet en bruto, sin [SceneMultiplayer], conectados a nivel de ENet.
+## A raw ENet server and client, without [SceneMultiplayer], connected at the ENet level.
 func _make_attacker(server: Endpoint) -> RawEnetAttacker:
 	var attacker := RawEnetAttacker.new()
-	assert_eq(attacker.connect_to(_port), OK, "el atacante conecta")
+	assert_eq(attacker.connect_to(_port), OK, "the attacker connects")
 	var both: Array[Endpoint] = [server]
 	var connected: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return attacker.is_connected_to_server() and not server.authenticating.is_empty(), 300)
-	assert_true(connected, "el servidor ve al atacante autenticándose")
+	assert_true(connected, "the server sees the attacker authenticating")
 	return attacker
 
 
-## Autentica al atacante contra el servidor del [Endpoint] (que contesta WELCOME y confirma):
-## HELLO, WELCOME y las dos confirmaciones.
+## Authenticates the attacker against the [Endpoint] server (which replies WELCOME and confirms):
+## HELLO, WELCOME and the two confirmations.
 func _authenticate(server: Endpoint, attacker: RawEnetAttacker) -> bool:
 	attacker.send_auth(HELLO)
 	attacker.flush()
@@ -704,28 +704,27 @@ func _authenticate(server: Endpoint, attacker: RawEnetAttacker) -> bool:
 	var welcomed: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return attacker.server_confirmed and not attacker.auth_messages.is_empty(), 300)
-	if not assert_true(welcomed, "llegan el WELCOME y la confirmación del servidor"):
+	if not assert_true(welcomed, "the WELCOME and the server's confirmation arrive"):
 		return false
 	attacker.send_confirmation()
 	attacker.flush()
 	var admitted: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return not server.connected.is_empty(), 300)
-	assert_true(admitted, "el servidor admite al atacante")
+	assert_true(admitted, "the server admits the attacker")
 	return admitted
 
 
-## Antes del HELLO, SceneMultiplayer solo admite mensajes de autenticación: cualquier otra cosa
-## registraba un error del motor por paquete (el ejecutor falla con cualquier error del motor, así
-## que esta prueba ya lo comprueba) y no pasaba por ningún limitador. Ahora el transporte la
-## descarta y la cuenta.
+## Before the HELLO, SceneMultiplayer only admits authentication messages: anything else logged an
+## engine error per packet (the runner fails on any engine error, so this test already checks it)
+## and did not go through any limiter. Now the transport discards it and counts it.
 func test_foreign_packets_before_the_hello_are_discarded_and_counted() -> void:
 	var server: Endpoint = _make_server()
 	var attacker: RawEnetAttacker = await _make_attacker(server)
 	for i: int in 200:
 		attacker.send(PackedByteArray([3, 1]), 1)
 	for i: int in 20:
-		# RPC, SIMPLIFY_PATH, SPAWN y órdenes de sistema que no son de autenticación.
+		# RPC, SIMPLIFY_PATH, SPAWN and system commands that are not authentication.
 		attacker.send(PackedByteArray([0, 1, 2, 3, 4, 5]), 0)
 		attacker.send(PackedByteArray([1, 9, 9, 9, 9, 9, 9, 9, 9, 9]), 0)
 		attacker.send(PackedByteArray([4, 1, 2, 3, 4, 5, 6, 7]), 0)
@@ -736,30 +735,30 @@ func test_foreign_packets_before_the_hello_are_discarded_and_counted() -> void:
 	var all_seen: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return server.discarded >= 280, 300)
-	assert_true(all_seen, "se descartan los 280 paquetes (%d)" % server.discarded)
-	assert_eq(server.discarded, 280, "y se cuentan exactamente")
-	assert_true(server.packets.is_empty(), "ninguno llega a la aplicación")
-	assert_true(server.auth_messages.is_empty(), "ni cuenta como autenticación")
-	assert_eq(server.authenticating.size(), 1, "el peer sigue autenticándose")
-	assert_true(server.connected.is_empty(), "sin admitir")
+	assert_true(all_seen, "all 280 packets are discarded (%d)" % server.discarded)
+	assert_eq(server.discarded, 280, "and counted exactly")
+	assert_true(server.packets.is_empty(), "none reaches the application")
+	assert_true(server.auth_messages.is_empty(), "nor counts as authentication")
+	assert_eq(server.authenticating.size(), 1, "the peer is still authenticating")
+	assert_true(server.connected.is_empty(), "not admitted")
 	attacker.close()
 
 
-## Ya autenticado, solo se admiten paquetes de aplicación (RAW): lo demás se descarta y se cuenta,
-## y los RAW de verdad siguen llegando a la aplicación.
+## Once authenticated, only application packets (RAW) are admitted: the rest is discarded and counted,
+## and the real RAW ones keep reaching the application.
 func test_foreign_packets_after_the_handshake_are_discarded_but_app_packets_pass() -> void:
 	var server: Endpoint = _make_server()
 	var attacker: RawEnetAttacker = await _make_attacker(server)
 	if not await _authenticate(server, attacker):
 		return
-	assert_eq(server.discarded, 0, "hasta aquí, nada descartado")
+	assert_eq(server.discarded, 0, "up to here, nothing discarded")
 	for i: int in 50:
 		attacker.send(PackedByteArray([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]), 0)  # SIMPLIFY_PATH
 		attacker.send(PackedByteArray([0, 1, 2, 3, 4, 5, 6]), 0)  # RPC
 		attacker.send(PackedByteArray([4, 1, 2, 3, 4, 5, 6, 7, 8]), 0)  # SPAWN
 		attacker.send(PackedByteArray([7, 1, 2, 0, 0, 0]), 0)  # SYS ADD_PEER
-		attacker.send(PackedByteArray([7, 0, 9, 9]), 0)  # otra autenticación
-		attacker.send(PackedByteArray([7, 0]), 0)  # y otra confirmación
+		attacker.send(PackedByteArray([7, 0, 9, 9]), 0)  # another authentication
+		attacker.send(PackedByteArray([7, 0]), 0)  # and another confirmation
 	for i: int in 3:
 		attacker.send_app(PackedByteArray([TYPE_UP_RELIABLE, i]), NetProtocol.CH_RELIABLE)
 	attacker.flush()
@@ -767,17 +766,17 @@ func test_foreign_packets_after_the_handshake_are_discarded_but_app_packets_pass
 	var done: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return server.discarded >= 300 and server.packets_of_type(TYPE_UP_RELIABLE).size() >= 3, 300)
-	assert_true(done, "se descartan 300 y llegan los 3 de aplicación (%d, %d)"
+	assert_true(done, "300 are discarded and the 3 application ones arrive (%d, %d)"
 			% [server.discarded, server.packets_of_type(TYPE_UP_RELIABLE).size()])
-	assert_eq(server.discarded, 300, "se cuentan exactamente")
-	assert_eq(server.packets.size(), 3, "y a la aplicación solo llegan los RAW")
-	assert_eq(server.disconnected.size(), 0, "el transporte no corta por su cuenta")
+	assert_eq(server.discarded, 300, "they are counted exactly")
+	assert_eq(server.packets.size(), 3, "and only the RAW ones reach the application")
+	assert_eq(server.disconnected.size(), 0, "the transport does not disconnect on its own")
 	attacker.close()
 
 
-## La confirmación y un paquete de aplicación pueden llegar en el mismo poll si el servidor se
-## retrasa: el paquete no es ajeno y no se puede perder ni descartar (SceneMultiplayer los procesa
-## en orden y admite al peer con la confirmación).
+## The confirmation and an application packet may arrive in the same poll if the server lags: the
+## packet is not foreign and must not be lost or discarded (SceneMultiplayer processes them in
+## order and admits the peer with the confirmation).
 func test_a_packet_that_arrives_with_the_confirmation_is_delivered() -> void:
 	var server: Endpoint = _make_server()
 	var attacker: RawEnetAttacker = await _make_attacker(server)
@@ -787,23 +786,23 @@ func test_a_packet_that_arrives_with_the_confirmation_is_delivered() -> void:
 	var welcomed: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return attacker.server_confirmed and not attacker.auth_messages.is_empty(), 300)
-	if not assert_true(welcomed, "llegan el WELCOME y la confirmación del servidor"):
+	if not assert_true(welcomed, "the WELCOME and the server's confirmation arrive"):
 		return
-	# Confirmación y paquete de aplicación en el mismo datagrama.
+	# Confirmation and application packet in the same datagram.
 	attacker.send_confirmation()
 	attacker.send_app(PackedByteArray([TYPE_UP_RELIABLE, 77]), NetProtocol.CH_RELIABLE)
 	attacker.flush()
 	var delivered: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return not server.packets_of_type(TYPE_UP_RELIABLE).is_empty(), 300)
-	assert_true(delivered, "el paquete llega a la aplicación")
-	assert_eq(server.discarded, 0, "y no se cuenta como ajeno")
-	assert_eq(server.connected.size(), 1, "con el peer admitido")
+	assert_true(delivered, "the packet reaches the application")
+	assert_eq(server.discarded, 0, "and is not counted as foreign")
+	assert_eq(server.connected.size(), 1, "with the peer admitted")
 	attacker.close()
 
 
-## Los mensajes de autenticación de un peer sin admitir están acotados: un HELLO (y la confirmación)
-## y poco más.
+## The authentication messages of a peer that is not yet admitted are bounded: a HELLO (and the
+## confirmation) and little else.
 func test_auth_messages_from_a_pending_peer_are_bounded() -> void:
 	var server: Endpoint = _make_server()
 	server.respond_to_auth = false
@@ -820,15 +819,15 @@ func test_auth_messages_from_a_pending_peer_are_bounded() -> void:
 	var done: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return server.discarded >= 27 + 1 + 9, 300)
-	assert_true(done, "se descartan los HELLO de más, el enorme y las confirmaciones repetidas (%d)"
+	assert_true(done, "the extra HELLOs, the huge one and the repeated confirmations are discarded (%d)"
 			% server.discarded)
 	assert_eq(server.auth_messages.size(), GuardedEnetPeer.MAX_AUTH_PAYLOADS,
-			"llegan MAX_AUTH_PAYLOADS mensajes de autenticación")
+			"MAX_AUTH_PAYLOADS authentication messages arrive")
 	attacker.close()
 
 
-## Un peer al que el servidor ya está cortando (disconnect_after_flush) se descarta sin contarlo: no
-## hay que sumarle más avisos ni procesar lo que siga mandando.
+## A peer the server is already disconnecting (disconnect_after_flush) is discarded without counting
+## it: no more warnings should be added to it nor should what it keeps sending be processed.
 func test_packets_from_a_peer_being_cut_are_dropped_without_counting() -> void:
 	var server: Endpoint = _make_server()
 	var attacker: RawEnetAttacker = await _make_attacker(server)
@@ -839,85 +838,85 @@ func test_packets_from_a_peer_being_cut_are_dropped_without_counting() -> void:
 	var counted: bool = await _run_until(both, func() -> bool:
 		attacker.poll()
 		return server.discarded >= 10, 300)
-	assert_true(counted, "los primeros 10 se cuentan")
+	assert_true(counted, "the first 10 are counted")
 	server.transport.disconnect_after_flush(server.authenticating[0])
 	for i: int in 100:
 		attacker.send(PackedByteArray([3, 1]), 1)
 	attacker.flush()
 	await _run_ticks(both, 10, func(_t: int) -> void: attacker.poll())
-	assert_eq(server.discarded, 10, "lo que manda después de empezar el corte no se cuenta")
+	assert_eq(server.discarded, 10, "what it sends after the disconnect starts is not counted")
 	attacker.close()
 
 
 func test_net_sim_delays_packets_by_the_expected_ticks() -> void:
-	# Referencia sin simulador: lo que tarda un paquete por el propio bucle de la prueba.
+	# Baseline without a simulator: how long a packet takes through the test loop itself.
 	var base: Dictionary = await _measure_latencies("", 60)
 	var base_max: int = 0
 	for key: String in LATENCY_KEYS:
-		if not assert_eq(base[key].size(), 60, "sin simulador, %s: llegan los 60 paquetes" % key):
+		if not assert_eq(base[key].size(), 60, "without a simulator, %s: all 60 packets arrive" % key):
 			return
 		for latency: int in base[key]:
 			if latency < 1 or latency > 2:
-				fail("sin simulador, %s tarda %d ticks (se esperaba 1 o 2)" % [key, latency])
+				fail("without a simulator, %s takes %d ticks (1 or 2 expected)" % [key, latency])
 				return
 			base_max = maxi(base_max, latency)
 
-	# rtt=100 sin jitter solo en el cliente: 50 ms por sentido = 3 ticks exactos, en las dos
-	# direcciones y en los dos tipos de canal.
+	# rtt=100 without jitter only on the client: 50 ms per direction = exactly 3 ticks, in both
+	# directions and on both channel types.
 	var fixed: Dictionary = await _measure_latencies("rtt=100,seed=1", 60)
 	for key: String in LATENCY_KEYS:
 		var latencies: Array = fixed[key]
-		if not assert_eq(latencies.size(), 60, "%s: llegan los 60 paquetes" % key):
+		if not assert_eq(latencies.size(), 60, "%s: all 60 packets arrive" % key):
 			return
 		for latency: int in latencies:
 			if latency < 3 + 1 or latency > 3 + base_max:
-				fail("%s: %d ticks, se esperaban 3 más los del bucle (%d a %d)" % [
+				fail("%s: %d ticks, 3 plus the loop's were expected (%d to %d)" % [
 					key, latency, 3 + 1, 3 + base_max,
 				])
 				return
 
-	# rtt=100 jitter=20: de 30 a 70 ms = de 1,8 a 4,2 ticks = de 2 a 4 ticks por sentido.
+	# rtt=100 jitter=20: 30 to 70 ms = 1.8 to 4.2 ticks = 2 to 4 ticks per direction.
 	var jittery: Dictionary = await _measure_latencies("rtt=100,jitter=20,seed=8", 120)
 	var observed: Dictionary = {}
 	for key: String in LATENCY_KEYS:
 		var latencies: Array = jittery[key]
-		if not assert_eq(latencies.size(), 120, "%s: llegan los 120 paquetes" % key):
+		if not assert_eq(latencies.size(), 120, "%s: all 120 packets arrive" % key):
 			return
 		for latency: int in latencies:
 			observed[latency] = true
 			if latency < 2 + 1 or latency > 4 + base_max:
-				fail("%s: %d ticks, se esperaban de %d a %d" % [key, latency, 2 + 1, 4 + base_max])
+				fail("%s: %d ticks, %d to %d were expected" % [key, latency, 2 + 1, 4 + base_max])
 				return
-	assert_true(observed.size() >= 3, "el jitter se nota: latencias vistas %s" % [observed.keys()])
+	assert_true(observed.size() >= 3, "the jitter shows: observed latencies %s" % [observed.keys()])
 
-	# Los fiables llegan en el orden en que se enviaron aunque el jitter retrase cada uno distinto.
-	assert_true(_is_sorted(jittery["up_reliable_seq"]), "fiables hacia el servidor, en orden")
-	assert_true(_is_sorted(jittery["down_reliable_seq"]), "fiables hacia el cliente, en orden")
+	# Reliable ones arrive in the order they were sent even though the jitter delays each one differently.
+	assert_true(_is_sorted(jittery["up_reliable_seq"]), "reliable ones toward the server, in order")
+	assert_true(_is_sorted(jittery["down_reliable_seq"]), "reliable ones toward the client, in order")
 
 
 func test_net_sim_loss_drops_unreliable_but_not_reliable_packets() -> void:
-	# Con loss=100 en el cliente, ni sus entradas llegan al servidor ni los snapshots le llegan a
-	# él; lo fiable (y el propio handshake, que usa autenticación) pasa entero.
+	# With loss=100 on the client, neither its inputs reach the server nor do snapshots reach it; what
+	# is reliable (and the handshake itself, which uses authentication) goes through whole.
 	var results: Dictionary = await _measure_latencies("rtt=60,jitter=10,loss=100,seed=2", 40)
-	assert_eq(results["up_unreliable"].size(), 0, "las entradas del cliente se pierden")
-	assert_eq(results["down_unreliable"].size(), 0, "los snapshots hacia el cliente se pierden")
-	assert_eq(results["up_reliable"].size(), 40, "los fiables hacia el servidor llegan todos")
-	assert_eq(results["down_reliable"].size(), 40, "los fiables hacia el cliente llegan todos")
+	assert_eq(results["up_unreliable"].size(), 0, "the client's inputs are lost")
+	assert_eq(results["down_unreliable"].size(), 0, "the snapshots toward the client are lost")
+	assert_eq(results["up_reliable"].size(), 40, "the reliable ones toward the server all arrive")
+	assert_eq(results["down_reliable"].size(), 40, "the reliable ones toward the client all arrive")
 	assert_true(_is_sorted(results["up_reliable_seq"]))
 	assert_true(_is_sorted(results["down_reliable_seq"]))
 
 
 func test_net_sim_on_both_sides_adds_up() -> void:
-	# Con el simulador en los dos lados cada sentido lo paga dos veces: la salida de uno (3 ticks) y
-	# la entrada del otro (3 ticks).
+	# With the simulator on both sides each direction pays twice: the output of one (3 ticks) and
+	# the input of the other (3 ticks).
 	var both: Dictionary = await _measure_latencies("rtt=100,seed=1", 30, "rtt=100,seed=5")
 	for key: String in LATENCY_KEYS:
 		var latencies: Array = both[key]
-		if not assert_eq(latencies.size(), 30, "%s: llegan los 30 paquetes" % key):
+		if not assert_eq(latencies.size(), 30, "%s: all 30 packets arrive" % key):
 			return
 		for latency: int in latencies:
 			if latency < 6 + 1 or latency > 6 + 2:
-				fail("%s: %d ticks, se esperaban de 7 a 8 (6 simulados más el bucle)" % [
+				fail("%s: %d ticks, 7 to 8 were expected (6 simulated plus the loop)" % [
 					key, latency,
 				])
 				return
@@ -930,30 +929,30 @@ func test_disconnect_after_flush_forces_the_cut_after_60_ticks() -> void:
 	var connected: bool = await _run_until(pair, func() -> bool:
 		return not server.connected.is_empty() and not client.connected.is_empty(),
 			MAX_HANDSHAKE_TICKS)
-	if not assert_true(connected, "el handshake termina"):
+	if not assert_true(connected, "the handshake finishes"):
 		return
 	var client_id: int = server.connected[0]
-	# El cliente deja de atender la red, así que no puede confirmar el corte ordenado.
+	# The client stops servicing the network, so it cannot confirm the orderly disconnect.
 	var only_server: Array[Endpoint] = [server]
 	var requested_at: int = _tick
 	server.transport.disconnect_after_flush(client_id)
 	await _run_ticks(only_server, NetTransport.FORCE_DISCONNECT_TICKS - 5)
-	assert_true(server.disconnected.is_empty(), "antes de los 60 ticks el corte aún no es forzoso")
+	assert_true(server.disconnected.is_empty(), "before 60 ticks the disconnect is not yet forced")
 	var cut: bool = await _run_until(only_server, func() -> bool:
 		return not server.disconnected.is_empty(), 20)
-	if not assert_true(cut, "a los 60 ticks el servidor corta a la fuerza"):
+	if not assert_true(cut, "at 60 ticks the server forcibly disconnects"):
 		return
 	var waited: int = _tick - requested_at
 	assert_true(waited >= NetTransport.FORCE_DISCONNECT_TICKS
 			and waited <= NetTransport.FORCE_DISCONNECT_TICKS + 2,
-			"esperó %d ticks (se esperaban 60)" % waited)
-	assert_eq(server.disconnected, [client_id], "y avisa una sola vez")
+			"waited %d ticks (60 were expected)" % waited)
+	assert_eq(server.disconnected, [client_id], "and notifies only once")
 	await _run_ticks(only_server, 10)
-	assert_eq(server.disconnected, [client_id], "aunque el motor avise después, no se repite")
-	# El cliente vuelve a atender la red y se entera del corte.
+	assert_eq(server.disconnected, [client_id], "even if the engine notifies later, it is not repeated")
+	# The client starts servicing the network again and learns of the disconnect.
 	var noticed: bool = await _run_until(pair, func() -> bool:
 		return not client.disconnected.is_empty(), 120)
-	assert_true(noticed, "el cliente acaba enterándose")
+	assert_true(noticed, "the client ends up learning")
 	assert_eq(client.disconnected, [1])
 
 
@@ -971,17 +970,17 @@ func test_server_serves_several_clients() -> void:
 			if client.connected.is_empty():
 				return false
 		return true, MAX_HANDSHAKE_TICKS)
-	if not assert_true(connected, "los tres clientes terminan el handshake"):
+	if not assert_true(connected, "the three clients finish the handshake"):
 		return
 	assert_eq(server.authenticating.size(), 3)
 	var ids: Dictionary = {}
 	for peer_id: int in server.connected:
 		ids[peer_id] = true
-	assert_eq(ids.size(), 3, "cada cliente tiene un id distinto")
+	assert_eq(ids.size(), 3, "each client has a different id")
 	assert_eq(server.authenticating_addresses, ["127.0.0.1", "127.0.0.1", "127.0.0.1"],
-			"la dirección ya se conoce durante peer_authenticating")
+			"the address is already known during peer_authenticating")
 
-	# El servidor manda a cada cliente un paquete distinto; cada cliente manda el suyo.
+	# The server sends each client a different packet; each client sends its own.
 	for index: int in 3:
 		var peer_id: int = server.connected[index]
 		assert_eq(server.transport.send(peer_id, NetProtocol.CH_RELIABLE,
@@ -997,35 +996,35 @@ func test_server_serves_several_clients() -> void:
 			if client.packets.size() < 2:
 				return false
 		return true, 60)
-	if not assert_true(arrived, "llegan todos los paquetes"):
+	if not assert_true(arrived, "all the packets arrive"):
 		return
 	var from_clients: Dictionary = {}
 	for entry: Array in server.packets:
 		var bytes: PackedByteArray = entry[2]
 		from_clients[int(entry[1])] = bytes.decode_u32(1)
-	assert_eq(from_clients.size(), 3, "el servidor oye a los tres, cada uno con su id")
+	assert_eq(from_clients.size(), 3, "the server hears all three, each with its id")
 	for index: int in 3:
 		var received: Array[Array] = clients[index].packets
-		assert_eq(received.size(), 2, "cada cliente recibe sus dos paquetes y ninguno ajeno")
+		assert_eq(received.size(), 2, "each client receives its two packets and none belonging to another")
 		var expected_id: int = (received[0][2] as PackedByteArray).decode_u32(1)
-		assert_true(server.connected.has(expected_id), "con el id de su peer: %d" % expected_id)
+		assert_true(server.connected.has(expected_id), "with the id of its peer: %d" % expected_id)
 		for entry: Array in received:
 			assert_eq((entry[2] as PackedByteArray).decode_u32(1), expected_id)
 
-	# Echar a uno no afecta a los demás.
+	# Kicking one does not affect the others.
 	var kicked_id: int = server.connected[0]
 	server.transport.disconnect_after_flush(kicked_id)
 	var done: bool = await _run_until(everyone, func() -> bool:
 		return not server.disconnected.is_empty() and not clients[0].disconnected.is_empty(), 200)
-	assert_true(done, "el cliente echado se entera y el servidor también")
+	assert_true(done, "the kicked client finds out and so does the server")
 	assert_eq(server.disconnected, [kicked_id])
 	assert_true(clients[1].disconnected.is_empty() and clients[2].disconnected.is_empty(),
-			"los demás siguen conectados")
+			"the others stay connected")
 	assert_eq(server.transport.send(server.connected[1], NetProtocol.CH_RELIABLE,
-			PackedByteArray([1])), OK, "y se les puede seguir enviando")
+			PackedByteArray([1])), OK, "and they can still be sent to")
 
 
-# --- Apoyo ------------------------------------------------------------------------------------
+# --- Support ----------------------------------------------------------------------------------
 
 func _packet(peer_id: int, channel: int, seq: int, is_auth: bool = false) -> NetSim.Packet:
 	var bytes := PackedByteArray()
@@ -1034,8 +1033,8 @@ func _packet(peer_id: int, channel: int, seq: int, is_auth: bool = false) -> Net
 	return NetSim.Packet.new(peer_id, channel, bytes, is_auth)
 
 
-# Mete 'count' paquetes (uno por tick, repartidos entre dos peers y todos los canales) y devuelve
-# lo que sale: [tick, peer, canal, es_auth, secuencia] por entrega.
+# Feeds in 'count' packets (one per tick, spread across two peers and all channels) and returns
+# what comes out: [tick, peer, channel, is_auth, sequence] per delivery.
 func _run_sequence(sim: NetSim, count: int) -> Array[Array]:
 	var out: Array[Array] = []
 	var channels: Array[int] = [
@@ -1060,17 +1059,17 @@ func _make_transport(node_name: String) -> NetTransport:
 	return transport
 
 
-# Servidor ya abierto en un puerto libre (el puerto queda en _port).
+# Server already open on a free port (the port is left in _port).
 func _make_server(sim: String = "") -> Endpoint:
 	var server := Endpoint.new(_make_transport("NetTransportServer"))
 	server.transport.set_net_sim_spec(sim)
 	_port = _find_free_port()
-	assert_true(_port > 0, "hay un puerto libre")
-	assert_eq(server.transport.host(_port, 8), OK, "el servidor abre el puerto %d" % _port)
+	assert_true(_port > 0, "there is a free port")
+	assert_eq(server.transport.host(_port, 8), OK, "the server opens port %d" % _port)
 	return server
 
 
-# Cliente que empieza a conectar con el servidor de _make_server().
+# Client that starts connecting to the server from _make_server().
 func _make_client(index: int = 0, sim: String = "") -> Endpoint:
 	var client := Endpoint.new(_make_transport("NetTransportClient%d" % index))
 	client.transport.set_net_sim_spec(sim)
@@ -1078,7 +1077,7 @@ func _make_client(index: int = 0, sim: String = "") -> Endpoint:
 	return client
 
 
-# Servidor y cliente en el mismo proceso, ya lanzados, con un simulador opcional en cada uno.
+# Server and client in the same process, already launched, with an optional simulator on each.
 func _make_pair(client_sim: String = "", server_sim: String = "") -> Array[Endpoint]:
 	var server: Endpoint = _make_server(server_sim)
 	var client: Endpoint = _make_client(0, client_sim)
@@ -1086,7 +1085,7 @@ func _make_pair(client_sim: String = "", server_sim: String = "") -> Array[Endpo
 	return pair
 
 
-# Primer puerto UDP libre a partir de FIRST_PORT (desplazado por proceso).
+# First free UDP port starting from FIRST_PORT (shifted per process).
 func _find_free_port() -> int:
 	var start: int = FIRST_PORT + OS.get_process_id() % 40
 	for port: int in range(start, start + 200):
@@ -1098,8 +1097,8 @@ func _find_free_port() -> int:
 	return -1
 
 
-# Un tick del bucle del dueño: poll de todos, 'hook' (la simulación: aquí se envía) y flush de
-# todos.
+# One tick of the owner's loop: poll everyone, 'hook' (the simulation: here, sending) and flush
+# everyone.
 func _step(endpoints: Array[Endpoint], hook: Callable = Callable()) -> void:
 	await tree.physics_frame
 	_tick += 1
@@ -1117,7 +1116,7 @@ func _run_ticks(endpoints: Array[Endpoint], ticks: int, hook: Callable = Callabl
 		await _step(endpoints, hook)
 
 
-# Avanza ticks hasta que 'done' sea verdadero. Devuelve false si no ocurre en 'max_ticks'.
+# Advances ticks until 'done' is true. Returns false if it does not happen within 'max_ticks'.
 func _run_until(endpoints: Array[Endpoint], done: Callable, max_ticks: int,
 		hook: Callable = Callable()) -> bool:
 	for _i: int in max_ticks:
@@ -1127,7 +1126,7 @@ func _run_until(endpoints: Array[Endpoint], done: Callable, max_ticks: int,
 	return false
 
 
-# Mensaje de prueba de 9 bytes: tipo, secuencia (u32) y tick de envío (u32).
+# 9-byte test message: type, sequence (u32) and send tick (u32).
 func _message(msg_type: int, seq: int, send_tick: int) -> PackedByteArray:
 	var bytes := PackedByteArray()
 	bytes.resize(9)
@@ -1144,8 +1143,8 @@ func _is_sorted(values: Array) -> bool:
 	return true
 
 
-# Establece una sesión (con el simulador solo en el cliente), envía 'count' paquetes por canal y
-# sentido, uno por tick, y devuelve las latencias (en ticks) y las secuencias de llegada.
+# Establishes a session (with the simulator only on the client), sends 'count' packets per channel
+# and direction, one per tick, and returns the latencies (in ticks) and the arrival sequences.
 func _measure_latencies(client_sim: String, count: int, server_sim: String = "") -> Dictionary:
 	var pair: Array[Endpoint] = _make_pair(client_sim, server_sim)
 	var server: Endpoint = pair[0]
@@ -1153,7 +1152,7 @@ func _measure_latencies(client_sim: String, count: int, server_sim: String = "")
 	var connected: bool = await _run_until(pair, func() -> bool:
 		return not server.connected.is_empty() and not client.connected.is_empty(),
 			MAX_HANDSHAKE_TICKS)
-	assert_true(connected, "el handshake termina (simuladores: '%s' y '%s')" % [
+	assert_true(connected, "the handshake finishes (simulators: '%s' and '%s')" % [
 		client_sim, server_sim,
 	])
 	var results: Dictionary = {
@@ -1186,7 +1185,7 @@ func _measure_latencies(client_sim: String, count: int, server_sim: String = "")
 	return results
 
 
-# Cierra y libera los transportes de una pareja (para empezar otra en la misma prueba).
+# Closes and frees the transports of a pair (to start another in the same test).
 func _dispose(endpoints: Array[Endpoint]) -> void:
 	for endpoint: Endpoint in endpoints:
 		var node: NetTransport = endpoint.transport
@@ -1205,8 +1204,8 @@ func _collect(results: Dictionary, key: String, receiver: Endpoint, msg_type: in
 			results[key + "_seq"].append(bytes.decode_u32(1))
 
 
-# Rechazo: el servidor contesta REJECT y pide el corte ordenado; el cliente tiene que recibir el
-# REJECT antes de que se cierre la conexión, y los dos lados se enteran del corte.
+# Rejection: the server replies REJECT and requests the orderly disconnect; the client has to
+# receive the REJECT before the connection closes, and both sides learn of the disconnect.
 func _check_reject(server_sim: String, client_sim: String) -> void:
 	var pair: Array[Endpoint] = _make_pair(client_sim, server_sim)
 	var server: Endpoint = pair[0]
@@ -1214,17 +1213,17 @@ func _check_reject(server_sim: String, client_sim: String) -> void:
 	server.reject = true
 	var done: bool = await _run_until(pair, func() -> bool:
 		return client.failed_count > 0 and not server.disconnected.is_empty(), 400)
-	if not assert_true(done, "el rechazo termina en un corte en los dos lados"):
+	if not assert_true(done, "the rejection ends in a disconnect on both sides"):
 		return
 	await _run_ticks(pair, 20)
-	assert_eq(client.auth_messages, [REJECT], "el cliente recibe el REJECT antes del corte")
-	assert_eq(client.failed_count, 1, "y luego connection_failed, una sola vez")
+	assert_eq(client.auth_messages, [REJECT], "the client receives the REJECT before the disconnect")
+	assert_eq(client.failed_count, 1, "and then connection_failed, only once")
 	assert_eq(client.event_log, ["authenticating", "auth", "failed"],
-			"el REJECT se entrega antes de connection_failed")
-	assert_eq(client.connected.size(), 0, "nunca llega a conectar")
+			"the REJECT is delivered before connection_failed")
+	assert_eq(client.connected.size(), 0, "it never gets to connect")
 	assert_eq(server.connected.size(), 0)
 	assert_eq(server.authenticating.size(), 1)
 	assert_eq(server.disconnected, server.authenticating,
-			"el servidor recibe peer_disconnected del peer que estaba autenticando")
+			"the server receives peer_disconnected from the peer that was authenticating")
 	assert_true(client.all_early_sends_unavailable())
 	assert_true(server.all_early_sends_unavailable())

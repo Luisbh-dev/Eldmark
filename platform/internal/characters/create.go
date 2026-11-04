@@ -16,9 +16,9 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// CharacterView es un personaje en la API (§4.4). Raza, apariencia (base64 de los 8 B), nivel,
-// última zona y tiempo jugado salen de ProgressStore.Summaries; si el almacén no tiene al
-// personaje, race_id, appearance y last_zone_id van a null y el nivel a 1. Las fechas, en Unix.
+// CharacterView is a character in the API (§4.4). Race, appearance (base64 of the 8 B), level, last
+// zone and play time come from ProgressStore.Summaries; if the store does not have the character,
+// race_id, appearance and last_zone_id go to null and the level to 1. Dates, in Unix.
 type CharacterView struct {
 	CharacterID   jsonx.ID `json:"character_id"`
 	Name          string   `json:"name"`
@@ -34,7 +34,7 @@ type CharacterView struct {
 	MustRename    bool     `json:"must_rename"`
 }
 
-// characterRow es la identidad de un personaje (la fila de characters).
+// characterRow is a character's identity (the characters row).
 type characterRow struct {
 	ID           int64
 	WorldID      int16
@@ -74,7 +74,7 @@ func (c *characterRow) view(sum persistence.Summary, ok bool) CharacterView {
 	return v
 }
 
-// viewOf arma la vista de un personaje con su resumen.
+// viewOf builds a character's view with its summary.
 func (s *Service) viewOf(ctx context.Context, q persistence.Querier, c *characterRow) (*CharacterView, error) {
 	sums, err := s.summaries(ctx, q, []int64{c.ID})
 	if err != nil {
@@ -85,9 +85,9 @@ func (s *Service) viewOf(ctx context.Context, q persistence.Querier, c *characte
 	return &v, nil
 }
 
-// ListView es GET /v1/worlds/{w}/characters: el reino de la cuenta en ese mundo (null si aún no
-// tiene) y cuándo se libera, los huecos, los ocupados y los personajes (vivos y borrados que aún se
-// pueden restaurar, que ocupan hueco), por fecha de creación.
+// ListView is GET /v1/worlds/{w}/characters: the account's realm in that world (null if it does not
+// have one yet) and when it is freed, the slots, the occupied ones and the characters (live and
+// deleted ones that can still be restored, which occupy a slot), by creation date.
 type ListView struct {
 	Realm      *string         `json:"realm"`
 	UnlockAt   *int64          `json:"unlock_at"`
@@ -96,11 +96,11 @@ type ListView struct {
 	Characters []CharacterView `json:"characters"`
 }
 
-// occupiesSlot es la condición de un personaje que ocupa hueco a la hora $now: vivo, o borrado y aún
-// restaurable (§4.4 paso 3).
+// occupiesSlot is the condition of a character that occupies a slot at time $now: alive, or deleted
+// and still restorable (§4.4 step 3).
 const occupiesSlot = `purged_at is null and (deleted_at is null or restore_until > `
 
-// List devuelve los personajes de la cuenta en un mundo.
+// List returns the account's characters in a world.
 func (s *Service) List(ctx context.Context, sess *accounts.Session, worldID int16) (*ListView, error) {
 	if _, err := s.checkWorld(ctx, s.pool, worldID); err != nil {
 		return nil, err
@@ -149,15 +149,15 @@ func (s *Service) List(ctx context.Context, sess *accounts.Session, worldID int1
 	return v, nil
 }
 
-// NameCheckView es GET /v1/worlds/{w}/name-check: disponible, o el código (name_invalid o
-// name_taken) y, en name_invalid, el motivo de NameRules.
+// NameCheckView is GET /v1/worlds/{w}/name-check: available, or the code (name_invalid or
+// name_taken) and, for name_invalid, the reason from NameRules.
 type NameCheckView struct {
 	Available bool   `json:"available"`
 	Code      string `json:"code"`
 	Reason    string `json:"reason"`
 }
 
-// NameCheck dice si un nombre se puede usar en el mundo (30 por minuto y sesión).
+// NameCheck says whether a name can be used in the world (30 per minute and session).
 func (s *Service) NameCheck(ctx context.Context, sess *accounts.Session, worldID int16, name string) (*NameCheckView, error) {
 	now := s.clock.Now()
 	if ok, wait := s.limits.nameCheck.Allow("s:"+itoa(sess.ID), now); !ok {
@@ -184,8 +184,8 @@ func (s *Service) NameCheck(ctx context.Context, sess *accounts.Session, worldID
 	return &NameCheckView{Available: true}, nil
 }
 
-// checkName aplica NameRules y la lista negra: devuelve el motivo (Reserved si está en la lista
-// negra) y la clave normalizada.
+// checkName applies NameRules and the blacklist: it returns the reason (Reserved if it is in the
+// blacklist) and the normalized key.
 func (s *Service) checkName(ctx context.Context, q persistence.Querier, name string) (names.Reason, string, error) {
 	if reason := s.names.Validate(name); reason != names.OK {
 		return reason, "", nil
@@ -201,10 +201,10 @@ func (s *Service) checkName(ctx context.Context, q persistence.Querier, name str
 	return names.OK, key, nil
 }
 
-// claimName da la clave del nombre al personaje (character_names con status active). Una fila
-// reservada y vencida se reutiliza; una activa o reservada en plazo da name_taken. Dos creaciones
-// a la vez con el mismo nombre: una espera a la otra y no encuentra fila (o choca con la clave
-// primaria): name_taken.
+// claimName gives the name's key to the character (character_names with status active). A reserved
+// and expired row is reused; an active one or one reserved within its window gives name_taken. Two
+// simultaneous creations with the same name: one waits for the other and finds no row (or clashes
+// with the primary key): name_taken.
 func claimName(ctx context.Context, tx pgx.Tx, worldID int16, key string, characterID int64, now time.Time) error {
 	var got int64
 	err := tx.QueryRow(ctx, `insert into character_names (world_id, name_key, character_id, status, reserved_until)
@@ -220,8 +220,8 @@ func claimName(ctx context.Context, tx pgx.Tx, worldID int16, key string, charac
 	return err
 }
 
-// CreateRequest es el cuerpo de POST /v1/worlds/{w}/characters: el reino en su id de texto y la
-// apariencia en base64 de 8 B.
+// CreateRequest is the body of POST /v1/worlds/{w}/characters: the realm in its text id and the
+// appearance in base64 of 8 B.
 type CreateRequest struct {
 	Name              *string `json:"name"`
 	Realm             *string `json:"realm"`
@@ -230,7 +230,8 @@ type CreateRequest struct {
 	StarterTemplateID *string `json:"starter_template_id"`
 }
 
-// parse comprueba que el cuerpo trae todo y en su forma: si no, 400 validation con los campos.
+// parse checks that the body brings everything and in its shape: if not, 400 validation with the
+// fields.
 func (r CreateRequest) parse() (name string, realm config.Realm, raceID string, appearance [8]byte, template string,
 	err error) {
 	fields := map[string]string{}
@@ -260,20 +261,21 @@ func (r CreateRequest) parse() (name string, realm config.Realm, raceID string, 
 	return *r.Name, realm, *r.RaceID, appearance, *r.StarterTemplateID, nil
 }
 
-// Create crea un personaje (§4.4) en una transacción que bloquea primero la fila de la cuenta, así
-// que las creaciones (y los borrados) de una cuenta van en serie: reino, huecos y límite diario no
-// se cruzan, y el nombre lo decide la clave primaria de character_names. No es serializable, como
-// decía §4.4: con SSI, cuentas distintas que crean a la vez chocaban sin motivo (bloqueos de
-// predicado sobre tablas pequeñas) y agotaban los reintentos (plataforma.md §19.3). Pasos:
-//  1. cuenta activa sin borrado pendiente (403 account_pending_deletion), reino abierto (409
-//     realm_closed) y menos de 5 creaciones en 24 h (429);
-//  2. el reino de la cuenta en el mundo: se fija si no tiene, o si el suyo se liberó y no le queda
-//     ningún personaje vivo; si es otro, 409 realm_locked;
-//  3. huecos: 6 más los derechos; ocupan los vivos y los borrados en plazo (409 slots_full);
-//  4. nombre: NameRules (422 name_invalid), lista negra (422 reserved) y la clave en
+// Create creates a character (§4.4) in a transaction that locks the account's row first, so an
+// account's creations (and deletions) run in series: realm, slots and daily limit do not cross, and
+// the name is decided by character_names' primary key. It is not serializable, as §4.4 said: with
+// SSI, different accounts creating at the same time clashed for no reason (predicate locks on small
+// tables) and exhausted the retries (plataforma.md §19.3). Steps:
+//  1. active account with no pending deletion (403 account_pending_deletion), open realm (409
+//     realm_closed) and fewer than 5 creations in 24 h (429);
+//  2. the account's realm in the world: it is set if it has none, or if its own was freed and it has
+//     no living character left; if it is another, 409 realm_locked;
+//  3. slots: 6 plus the entitlements; living ones and those deleted within the window occupy them
+//     (409 slots_full);
+//  4. name: NameRules (422 name_invalid), blacklist (422 reserved) and the key in
 //     character_names (409 name_taken);
-//  5. raza, apariencia y plantilla con el CreateValidator (400 validation);
-//  6. la fila de characters, la de character_pvp_stats, ProgressStore.Create y auth_events.
+//  5. race, appearance and template with the CreateValidator (400 validation);
+//  6. the characters row, the character_pvp_stats row, ProgressStore.Create and auth_events.
 func (s *Service) Create(ctx context.Context, sess *accounts.Session, worldID int16, req CreateRequest,
 	meta accounts.ClientMeta) (*CharacterView, error) {
 	name, realm, raceID, appearance, template, err := req.parse()
@@ -287,7 +289,7 @@ func (s *Service) Create(ctx context.Context, sess *accounts.Session, worldID in
 	var view *CharacterView
 	err = db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		view = nil
-		// 1. La cuenta, el reino y el límite diario.
+		// 1. The account, the realm and the daily limit.
 		status, purgeAfter, err := lockAccount(ctx, tx, sess.AccountID)
 		if err != nil {
 			return err
@@ -301,11 +303,11 @@ func (s *Service) Create(ctx context.Context, sess *accounts.Session, worldID in
 		if err := dailyLimit(ctx, tx, sess.AccountID, "character_create", now); err != nil {
 			return err
 		}
-		// 2. El reino de la cuenta en este mundo.
+		// 2. The account's realm in this world.
 		if err := s.fixAccountRealm(ctx, tx, sess.AccountID, worldID, realm, now); err != nil {
 			return err
 		}
-		// 3. Huecos.
+		// 3. Slots.
 		slots, err := s.accounts.Slots(ctx, tx, sess.AccountID, now)
 		if err != nil {
 			return err
@@ -318,7 +320,7 @@ func (s *Service) Create(ctx context.Context, sess *accounts.Session, worldID in
 		if used >= slots[worldID] {
 			return errSlotsFull()
 		}
-		// 4. El nombre.
+		// 4. The name.
 		reason, key, err := s.checkName(ctx, tx, name)
 		if err != nil {
 			return err
@@ -335,7 +337,7 @@ func (s *Service) Create(ctx context.Context, sess *accounts.Session, worldID in
 		if err := claimName(ctx, tx, worldID, key, c.ID, now); err != nil {
 			return err
 		}
-		// 5. Raza, apariencia y plantilla.
+		// 5. Race, appearance and template.
 		if err := s.validator.ValidateCreate(int16(realm), raceID, appearance, template); err != nil {
 			var ve *persistence.ValidationError
 			if errors.As(err, &ve) {
@@ -343,7 +345,7 @@ func (s *Service) Create(ctx context.Context, sess *accounts.Session, worldID in
 			}
 			return err
 		}
-		// 6. El resto de la identidad, el progreso y el apunte del límite.
+		// 6. The rest of the identity, the progression and the limit entry.
 		if _, err := tx.Exec(ctx, `insert into character_pvp_stats (character_id, world_id, updated_at) values ($1, $2, $3)`,
 			c.ID, worldID, now); err != nil {
 			return err
@@ -364,7 +366,7 @@ func (s *Service) Create(ctx context.Context, sess *accounts.Session, worldID in
 	return view, nil
 }
 
-// fixAccountRealm aplica el paso 2 de la creación: el reino de la cuenta en el mundo.
+// fixAccountRealm applies step 2 of creation: the account's realm in the world.
 func (s *Service) fixAccountRealm(ctx context.Context, tx pgx.Tx, accountID int64, worldID int16, realm config.Realm,
 	now time.Time) error {
 	var current config.Realm
@@ -389,7 +391,8 @@ func (s *Service) fixAccountRealm(ctx context.Context, tx pgx.Tx, accountID int6
 			return errRealmLocked(current, unlockAt)
 		}
 	}
-	// El reino es este (o se cambia a este): con un personaje nuevo deja de estar por liberarse.
+	// The realm is this one (or is changed to this one): with a new character it is no longer about to
+	// be freed.
 	_, err = tx.Exec(ctx, `update account_realms set realm = $3, unlock_at = null where account_id = $1 and world_id = $2`,
 		accountID, worldID, realm)
 	return err

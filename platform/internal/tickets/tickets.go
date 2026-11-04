@@ -1,10 +1,10 @@
-// Package tickets es el billete de entrada en la zona (plataforma.md §5.1, TEC-24): 52 B en
-// little-endian con solo la identidad del personaje y su destino, firmados con HMAC-SHA256 truncado
-// a 16 B. La plataforma lo emite en enter (§4.5); la zona lo comprueba sin red (HandoffTicket y
-// TicketAuthProvider, §5.2) y la reclamación (§5.3) garantiza el un solo uso.
+// Package tickets is the zone entry ticket (plataforma.md §5.1, TEC-24): 52 B in little-endian
+// with only the character's identity and its destination, signed with HMAC-SHA256 truncated to
+// 16 B. The platform issues it in enter (§4.5); the zone checks it without a network (HandoffTicket
+// and TicketAuthProvider, §5.2) and the claim (§5.3) guarantees single use.
 //
-// Los vectores de tests/fixtures/tickets/handoff_ticket_vectors.json los comprueban las pruebas de
-// este paquete y, con el mismo archivo, las de HandoffTicket en GDScript (plataforma.md P4).
+// The vectors in tests/fixtures/tickets/handoff_ticket_vectors.json are checked by this
+// package's tests and, with the same file, by those of HandoffTicket in GDScript (plataforma.md P4).
 package tickets
 
 import (
@@ -15,23 +15,23 @@ import (
 	"errors"
 )
 
-// Tamaños y valores del formato (§5.1).
+// Sizes and values of the format (§5.1).
 const (
-	Size     = 52 // bytes del billete
-	Version  = 1  // único formato
-	MACSize  = 16 // HMAC-SHA256 truncado
+	Size     = 52 // ticket bytes
+	Version  = 1  // only format
+	MACSize  = 16 // truncated HMAC-SHA256
 	bodySize = Size - MACSize
-	// Lifetime es lo que vale un billete, en segundos: expires_at = issued_at + Lifetime.
+	// Lifetime is how long a ticket is valid, in seconds: expires_at = issued_at + Lifetime.
 	Lifetime = 10
 )
 
-// Bits de Flags.
+// Bits of Flags.
 const (
-	FlagFromMenu uint8 = 1 << 0 // entrada desde el menú
-	FlagHandoff  uint8 = 1 << 1 // traspaso entre zonas (fase 6)
+	FlagFromMenu uint8 = 1 << 0 // entry from the menu
+	FlagHandoff  uint8 = 1 << 1 // handoff between zones (phase 6)
 )
 
-// Errores de [Parse] (errors.Is).
+// [Parse] errors (errors.Is).
 var (
 	ErrSize    = errors.New("tickets: el billete no mide 52 B")
 	ErrVersion = errors.New("tickets: versión de billete desconocida")
@@ -39,20 +39,20 @@ var (
 	ErrMAC     = errors.New("tickets: la firma del billete no vale")
 )
 
-// Ticket son los campos de un billete, en el orden del formato.
+// Ticket holds the fields of a ticket, in the format's order.
 type Ticket struct {
 	Version, KeyID uint8
 	WorldID        uint16
-	// TicketID es aleatorio, con el bit 63 a 0 ([NewID]); es la clave de enter_tickets.
+	// TicketID is random, with bit 63 at 0 ([NewID]); it is the key of enter_tickets.
 	TicketID, CharacterID uint64
-	ZoneKey               uint32 // [ZoneKey] del id de la zona
-	Channel, Realm        uint8  // Realm: código de NetProtocol.Realm, informativo
+	ZoneKey               uint32 // [ZoneKey] of the zone's id
+	Channel, Realm        uint8  // Realm: NetProtocol.Realm code, informational
 	Arrival, Flags        uint8
 	IssuedAt, ExpiresAt   uint32 // Unix, s
 }
 
-// ZoneKey es la huella de una zona en el billete: los 4 primeros bytes del SHA-256 de su id ASCII,
-// leídos como u32 little-endian («vado_gris» → 0x19efc013).
+// ZoneKey is a zone's fingerprint in the ticket: the first 4 bytes of the SHA-256 of its ASCII
+// id, read as a little-endian u32 ("vado_gris" → 0x19efc013).
 func ZoneKey(zoneID string) uint32 {
 	sum := sha256.Sum256([]byte(zoneID))
 	return binary.LittleEndian.Uint32(sum[:4])
@@ -77,7 +77,7 @@ func mac(key, body []byte) []byte {
 	return m.Sum(nil)[:MACSize]
 }
 
-// Sign codifica el billete y lo firma con la clave de su KeyID.
+// Sign encodes the ticket and signs it with the key for its KeyID.
 func (t Ticket) Sign(key []byte) [Size]byte {
 	var out [Size]byte
 	body := t.body()
@@ -86,9 +86,10 @@ func (t Ticket) Sign(key []byte) [Size]byte {
 	return out
 }
 
-// Parse decodifica un billete y comprueba, en este orden, el tamaño ([ErrSize]), la versión
-// ([ErrVersion]), que su key_id esté en keys ([ErrKey]) y la firma en tiempo constante
-// ([ErrMAC]). No mira la zona, el reloj ni el un solo uso: eso es de quien lo recibe (§5.2, §5.3).
+// Parse decodes a ticket and checks, in this order, the size ([ErrSize]), the version
+// ([ErrVersion]), that its key_id is in keys ([ErrKey]) and the signature in constant time
+// ([ErrMAC]). It does not check the zone, the clock or single use: that is up to whoever receives
+// it (§5.2, §5.3).
 func Parse(b []byte, keys map[uint8][]byte) (Ticket, error) {
 	if len(b) != Size {
 		return Ticket{}, ErrSize
@@ -115,8 +116,8 @@ func Parse(b []byte, keys map[uint8][]byte) (Ticket, error) {
 	}, nil
 }
 
-// NewID devuelve un ticket_id aleatorio de crypto/rand: de 1 a 2^63 − 1 (el bit 63 a 0, para que
-// quepa en un bigint y en el int64 de GDScript).
+// NewID returns a random ticket_id from crypto/rand: from 1 to 2^63 − 1 (bit 63 at 0, so that it
+// fits in a bigint and in GDScript's int64).
 func NewID() (uint64, error) {
 	var b [8]byte
 	for {

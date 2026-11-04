@@ -1,10 +1,10 @@
-// Package legal guarda los textos legales versionados de Eldmark (plataforma.md §11.4): términos
-// (terms-N.md), privacidad (privacy-N.md) y normas de la comunidad (rules-N.md), en Markdown.
+// Package legal holds Eldmark's versioned legal texts (plataforma.md §11.4): terms (terms-N.md),
+// privacy (privacy-N.md) and community rules (rules-N.md), in Markdown.
 //
-// Los archivos de esta carpeta van dentro del binario ([Embedded]); ELDMARK_LEGAL_DIR los cambia
-// por los de otra carpeta. Al arrancar, la plataforma calcula el SHA-256 de cada versión y la
-// inserta en legal_documents si falta ([Set.Sync]). Una versión publicada no cambia: un texto
-// nuevo es un archivo nuevo con el número siguiente, y la cuenta tiene que aceptarlo.
+// The files in this folder are embedded in the binary ([Embedded]); ELDMARK_LEGAL_DIR replaces
+// them with those from another folder. On startup, the platform computes the SHA-256 of each
+// version and inserts it into legal_documents if missing ([Set.Sync]). A published version does
+// not change: a new text is a new file with the next number, and the account must accept it.
 package legal
 
 import (
@@ -26,13 +26,13 @@ import (
 //go:embed *.md
 var embedded embed.FS
 
-// Embedded devuelve los textos que van en el binario.
+// Embedded returns the texts that are embedded in the binary.
 func Embedded() fs.FS { return embedded }
 
-// Tipos de texto, en el orden en que se muestran.
+// Text types, in the order they are shown.
 var Kinds = []string{"terms", "privacy", "rules"}
 
-// Document es una versión de un texto.
+// Document is a version of a text.
 type Document struct {
 	Kind    string
 	Version int
@@ -40,18 +40,18 @@ type Document struct {
 	SHA256  [sha256.Size]byte
 }
 
-// FileName es el nombre de su archivo: terms-1.md.
+// FileName is the name of its file: terms-1.md.
 func (d *Document) FileName() string { return d.Kind + "-" + strconv.Itoa(d.Version) + ".md" }
 
-// Set son todas las versiones de los tres textos.
+// Set is all the versions of the three texts.
 type Set struct {
-	byKind map[string][]*Document // de menor a mayor versión
+	byKind map[string][]*Document // from lowest to highest version
 }
 
 var fileName = regexp.MustCompile(`^(terms|privacy|rules)-([1-9][0-9]{0,5})\.md$`)
 
-// Load lee los textos de fsys: los archivos <tipo>-<versión>.md de su raíz (los demás se
-// ignoran). Cada tipo necesita al menos una versión; la vigente es la mayor.
+// Load reads the texts from fsys: the <type>-<version>.md files in its root (the others are
+// ignored). Each type needs at least one version; the current one is the highest.
 func Load(fsys fs.FS) (*Set, error) {
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
@@ -83,7 +83,7 @@ func Load(fsys fs.FS) (*Set, error) {
 	return s, nil
 }
 
-// Current devuelve la versión vigente de un tipo, o nil si el tipo no existe.
+// Current returns the current version of a type, or nil if the type does not exist.
 func (s *Set) Current(kind string) *Document {
 	docs := s.byKind[kind]
 	if len(docs) == 0 {
@@ -92,7 +92,7 @@ func (s *Set) Current(kind string) *Document {
 	return docs[len(docs)-1]
 }
 
-// Versions devuelve la versión vigente de cada tipo.
+// Versions returns the current version of each type.
 func (s *Set) Versions() map[string]int {
 	out := make(map[string]int, len(Kinds))
 	for _, kind := range Kinds {
@@ -101,19 +101,19 @@ func (s *Set) Versions() map[string]int {
 	return out
 }
 
-// DB es lo que Sync necesita de la base: *pgxpool.Pool o pgx.Tx.
+// DB is what Sync needs from the database: *pgxpool.Pool or pgx.Tx.
 type DB interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// ErrChanged es la causa del error de Sync cuando una versión ya publicada ha cambiado de texto.
+// ErrChanged is the cause of the Sync error when an already published version has changed its text.
 var ErrChanged = errors.New("legal: un texto ya publicado ha cambiado")
 
-// Sync inserta en legal_documents las versiones que faltan. Si una versión ya está con otro
-// SHA-256, el texto publicado ha cambiado: con strict (staging y production) es un error, porque
-// las cuentas aceptaron el texto anterior; sin él (dev y test) se actualiza la suma y se devuelve
-// en changed para avisar en el registro.
+// Sync inserts the missing versions into legal_documents. If a version is already there with a
+// different SHA-256, the published text has changed: with strict (staging and production) it is
+// an error, because accounts accepted the earlier text; without it (dev and test) the checksum is
+// updated and the version is returned in changed so it can be flagged in the log.
 func (s *Set) Sync(ctx context.Context, db DB, strict bool) (changed []string, err error) {
 	for _, kind := range Kinds {
 		for _, d := range s.byKind[kind] {

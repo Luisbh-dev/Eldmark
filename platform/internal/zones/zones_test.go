@@ -66,8 +66,8 @@ func TestRegistryAuthenticate(t *testing.T) {
 	}
 }
 
-// El token de 1:vado_gris:0 no registra vado_gris:1 ni un host fuera de la lista, ni late por otra
-// instancia (403); sin token o con uno que no casa, 401 bad_token.
+// The token for 1:vado_gris:0 does not register vado_gris:1 or a host outside the list, nor does
+// it send a heartbeat for another instance (403); with no token or one that does not match, 401 bad_token.
 func TestTokenScope(t *testing.T) {
 	p := platformtest.New(t)
 	z0 := p.NewZone(1, "vado_gris", 0)
@@ -78,13 +78,13 @@ func TestTokenScope(t *testing.T) {
 	platformtest.Expect(t, z0.Register(map[string]any{"world_id": 2}), 403, "forbidden")
 	platformtest.Expect(t, z0.Register(map[string]any{"public_host": "198.51.100.7"}), 403, "forbidden")
 
-	// Con el token de z0, el latido, live, los bloques y la baja de la instancia de z1: 403.
+	// With z0's token, the heartbeat, live, the blocks and the deregistration of z1's instance: 403.
 	z0.ID = z1.ID
 	platformtest.Expect(t, z0.Heartbeat(0), 403, "forbidden")
 	platformtest.Expect(t, z0.Live(), 403, "forbidden")
 	platformtest.Expect(t, z0.Do("POST", "/internal/v1/id-blocks", map[string]any{"zone_instance_id": z1.ID}), 403, "forbidden")
 	platformtest.Expect(t, z0.Do("DELETE", "/internal/v1/zone-instances/"+z1.ID, nil), 403, "forbidden")
-	// Una instancia que no existe tampoco es del alcance.
+	// An instance that does not exist is not in scope either.
 	z0.ID = zones.FormatUUID(zones.NewUUID())
 	platformtest.Expect(t, z0.Heartbeat(0), 403, "forbidden")
 	z0.ID = "no-es-un-uuid"
@@ -97,7 +97,7 @@ func TestTokenScope(t *testing.T) {
 	if got := p.Count(`select count(*) from zone_instances`); got != 1 {
 		t.Fatalf("solo se registró z1: %d", got)
 	}
-	// La propia zona sí.
+	// The zone's own instance is.
 	platformtest.Expect(t, z0Fresh(p).Register(nil), 200, "")
 }
 
@@ -127,13 +127,13 @@ func TestRegisterValidation(t *testing.T) {
 	}
 	platformtest.Expect(t, z.Register(map[string]any{"world_id": "1"}), 400, "bad_request")
 	platformtest.Expect(t, z.Register(map[string]any{"desconocido": true}), 400, "bad_request")
-	// Un record_format que no se admite o un protocolo por debajo del mínimo: 409 schema_mismatch.
+	// A record_format that is not admitted or a protocol below the minimum: 409 schema_mismatch.
 	platformtest.Expect(t, z.Register(map[string]any{"record_format": 2}), 409, "schema_mismatch")
 	platformtest.Expect(t, z.Register(map[string]any{"protocol_version": platformtest.Protocol - 1}), 409, "schema_mismatch")
 	platformtest.Expect(t, z.Register(map[string]any{"channel": 0.0, "max_players": 64.0}), 200, "")
 }
 
-// selfSigned es un certificado de prueba en PEM.
+// selfSigned is a test certificate in PEM format.
 func selfSigned(t *testing.T) string {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -149,7 +149,8 @@ func selfSigned(t *testing.T) string {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }
 
-// En staging (y production) el registro sin certificado DTLS da 400; con uno, vale y enter lo da.
+// In staging (and production) registration without a DTLS certificate gives 400; with one, it
+// works and enter offers it.
 func TestRegisterInStagingNeedsCertificate(t *testing.T) {
 	p := platformtest.New(t, func(c *config.Config) { c.Env = config.EnvStaging })
 	z := p.NewZone(1, "vado_gris", 0)
@@ -159,7 +160,7 @@ func TestRegisterInStagingNeedsCertificate(t *testing.T) {
 		t.Fatal(res.Raw)
 	}
 	cert := selfSigned(t)
-	platformtest.Expect(t, z.Register(map[string]any{"dtls_cert_pem": cert}), 400, "validation") // sin dtls_name
+	platformtest.Expect(t, z.Register(map[string]any{"dtls_cert_pem": cert}), 400, "validation") // without dtls_name
 	res = z.Register(map[string]any{"dtls_cert_pem": cert, "dtls_name": "vado-gris.eldmark"})
 	platformtest.Expect(t, res, 200, "")
 	if res.String("env") != "staging" || res.Int("heartbeat_s") != 5 || res.Int("lease_ttl_s") != 30 ||
@@ -173,9 +174,9 @@ func TestRegisterInStagingNeedsCertificate(t *testing.T) {
 	}
 }
 
-// Registro sin replace con la vieja latiendo: 409 instance_alive; con replace, la vieja pasa a
-// replaced (sin liberar sus arrendamientos) y queda una fila en la auditoría; la vieja recibe
-// instance_replaced en el latido.
+// Registration without replace with the old one still sending heartbeats: 409 instance_alive; with replace, the
+// old one moves to replaced (without releasing its leases) and a row remains in the audit; the
+// old one receives instance_replaced on its heartbeat.
 func TestRegisterAliveAndReplace(t *testing.T) {
 	p := platformtest.New(t)
 	old := p.NewZone(1, "vado_gris", 0).Start()
@@ -183,7 +184,7 @@ func TestRegisterAliveAndReplace(t *testing.T) {
 	id := p.NewCharacter(pl, "Aneira", "vardheim")
 	lease := old.Join(pl, id)
 
-	p.Clock.Advance(14 * time.Second) // aún no lleva 3 × 5 s sin latir
+	p.Clock.Advance(14 * time.Second) // it has not yet gone 3 × 5 s without a heartbeat
 	fresh := p.NewZone(1, "vado_gris", 0)
 	platformtest.Expect(t, fresh.Register(nil), 409, "instance_alive")
 	res := fresh.Register(map[string]any{"replace": true})
@@ -207,8 +208,8 @@ func TestRegisterAliveAndReplace(t *testing.T) {
 		"instance_replaced")
 }
 
-// Con la vieja aún live pero sin latir desde hace 3 × HEARTBEAT_S, el registro la pasa a lost,
-// libera sus arrendamientos y registra la nueva (sin 500).
+// With the old one still live but with no heartbeat for 3 × HEARTBEAT_S, registration moves it to
+// lost, releases its leases and registers the new one (no 500).
 func TestRegisterOverASilentInstance(t *testing.T) {
 	p := platformtest.New(t)
 	old := p.NewZone(1, "vado_gris", 0).Start()
@@ -235,7 +236,7 @@ func TestRegisterOverASilentInstance(t *testing.T) {
 	}
 }
 
-// Dos registros a la vez del mismo alcance: uno gana y el otro recibe instance_alive.
+// Two simultaneous registrations of the same scope: one wins and the other gets instance_alive.
 func TestTwoRegistrationsAtOnce(t *testing.T) {
 	p := platformtest.New(t)
 	for round := 0; round < 5; round++ {
@@ -275,9 +276,9 @@ func TestLiveAndStop(t *testing.T) {
 	platformtest.Expect(t, z.Register(nil), 200, "")
 	pl := p.NewPlayer("a@example.org")
 	id := p.NewCharacter(pl, "Aneira", "vardheim")
-	platformtest.Expect(t, p.Enter(pl, id), 503, "zone_unavailable") // starting: enter no la ofrece
+	platformtest.Expect(t, p.Enter(pl, id), 503, "zone_unavailable") // starting: enter does not offer it
 	platformtest.Expect(t, z.Live(), 204, "")
-	platformtest.Expect(t, z.Live(), 204, "") // repetida
+	platformtest.Expect(t, z.Live(), 204, "") // repeated
 	lease := z.Join(pl, id)
 	platformtest.Expect(t, z.Do("DELETE", "/internal/v1/zone-instances/"+z.ID, nil), 204, "")
 	var status string
@@ -292,7 +293,7 @@ func TestLiveAndStop(t *testing.T) {
 	platformtest.Expect(t, z.Live(), 409, "instance_stopped")
 }
 
-// La tabla de estados de §6.1: cada petición en cada estado.
+// The §6.1 state table: each request in each state.
 func TestInstanceStateTable(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0)
@@ -301,7 +302,7 @@ func TestInstanceStateTable(t *testing.T) {
 	type route struct {
 		name         string
 		call         func() *platformtest.Response
-		startingCode string // "" = pasa la comprobación de estado
+		startingCode string // "" = passes the state check
 		notLiveOK    bool
 	}
 	routes := []route{
@@ -356,7 +357,7 @@ func TestInstanceStateTable(t *testing.T) {
 				platformtest.Expect(t, res, 409, "instance_"+status)
 			}
 		}
-		// Los lotes valen en todos los estados.
+		// Batches are valid in every state.
 		for i, b := range batches {
 			if res := b(); res.Status != 204 {
 				t.Errorf("lote %d en %s: %d %s", i, status, res.Status, res.Raw)
@@ -365,7 +366,7 @@ func TestInstanceStateTable(t *testing.T) {
 	}
 }
 
-// Bloques de ids: 1024 cada uno, de la secuencia común; en starting y live.
+// Id blocks: 1024 each, from the shared sequence; in starting and live.
 func TestIDBlocks(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0)
@@ -392,9 +393,9 @@ func TestIDBlocks(t *testing.T) {
 	}
 }
 
-// El latido renueva solo lo que casa: un lease_id viejo vuelve en revoked con lease_lost (y su
-// lease_id) y no se renueva; uno que casa se renueva hasta ahora + TTL; uno que no va en el
-// latido caduca solo a los 30 s.
+// The heartbeat renews only what matches: an old lease_id comes back in revoked with lease_lost
+// (and its lease_id) and is not renewed; one that matches is renewed until now + TTL; one that is
+// not in the heartbeat expires on its own after 30 s.
 func TestHeartbeatRenewsOnlyMatchingLeases(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -428,7 +429,7 @@ func TestHeartbeatRenewsOnlyMatchingLeases(t *testing.T) {
 	if n := p.Count(`select players from zone_instances where zone_instance_id = $1`, z.ID); n != 2 {
 		t.Fatalf("jugadores: %d", n)
 	}
-	// B no va en los latidos: a los 30 s de su reclamación caduca y puede volver a entrar.
+	// B is not in the heartbeats: 30 s after its claim it expires and can enter again.
 	platformtest.Expect(t, p.Enter(b, idB), 409, "character_busy")
 	p.Clock.Advance(11 * time.Second)
 	platformtest.Expect(t, z.Heartbeat(1, platformtest.Lease{CharacterID: idA, LeaseID: leaseA}), 200, "")
@@ -444,9 +445,9 @@ func TestHeartbeatRenewsOnlyMatchingLeases(t *testing.T) {
 	}
 }
 
-// Expulsiones del latido por la cuenta y la sesión: la sesión revocada (otro inicio de sesión),
-// suspendida, expulsada y con el borrado pedido; refrescar la sesión no expulsa. Cada entrada lleva
-// el lease_id del arrendamiento y su texto.
+// Heartbeat removals due to the account and the session: revoked session (another login),
+// suspended, banned and with deletion requested; refreshing the session does not remove. Each
+// entry carries the lease's lease_id and its text.
 func TestHeartbeatRevocations(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -471,8 +472,8 @@ func TestHeartbeatRevocations(t *testing.T) {
 		t.Fatalf("latido limpio: %s", res.Raw)
 	}
 
-	// 0: refresca la sesión del billete, la que guarda el arrendamiento (no expulsa: el refresco
-	// rota en la misma fila, §4.2), dos veces; después inicia otra (replaced: sí).
+	// 0: refreshes the ticket's session, the one the lease holds (it does not remove: the refresh
+	// rotates in the same row, §4.2), twice; then logs in again (replaced: yes).
 	var session int64
 	p.Scalar(&session, `select session_id from character_leases where character_id = $1`, all[0].id)
 	for i := 0; i < 2; i++ {
@@ -492,7 +493,7 @@ func TestHeartbeatRevocations(t *testing.T) {
 		t.Fatalf("el acceso refrescado vale: %s", res.Raw)
 	}
 	p.Login(all[0].pl)
-	// 1: suspendida con un motivo largo; 2: expulsada; 3: borrado pedido; 4: silenciada.
+	// 1: suspended with a long reason; 2: banned; 3: deletion requested; 4: muted.
 	now := p.Clock.Now()
 	long := strings.Repeat("ñ", 300)
 	p.Exec(`insert into sanctions (account_id, kind, reason, starts_at, ends_at) values ($1, 'suspension', $2, $3, $4)`,
@@ -539,7 +540,7 @@ func TestHeartbeatRevocations(t *testing.T) {
 		strconv.FormatInt(now.Add(10*time.Minute).Unix(), 10) {
 		t.Fatalf("silencio: %v", m)
 	}
-	// Los expulsados siguen renovados: la zona aún manda su guardado final.
+	// Those removed stay renewed: the zone still sends its final save.
 	var alive int
 	p.Scalar(&alive, `select count(*) from character_leases where zone_instance_id = $1 and expires_at > $2`,
 		z.ID, p.Clock.Now())
@@ -548,9 +549,10 @@ func TestHeartbeatRevocations(t *testing.T) {
 	}
 }
 
-// Un latido tardío no resucita un arrendamiento caducado (§5.3: renueva solo lo vivo). Caducado, la
-// reclamación, enter y el borrado lo dan por libre; si el latido lo renovara, la cuenta tendría dos
-// personajes en el mundo, o uno borrado seguiría dentro. Sale en revoked con lease_lost.
+// A late heartbeat does not resurrect an expired lease (§5.3: it renews only what is live). Once
+// expired, the claim, enter and deletion treat it as free; if the heartbeat renewed it, the
+// account would have two characters in the world, or a deleted one would stay inside. It comes
+// out in revoked with lease_lost.
 func TestLateHeartbeatDoesNotRenewExpiredLeases(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -558,7 +560,8 @@ func TestLateHeartbeatDoesNotRenewExpiredLeases(t *testing.T) {
 	idA := p.NewCharacter(pl, "Aneira", "vardheim")
 	idB := p.NewCharacter(pl, "Bran", "vardheim")
 	leaseA := z.Join(pl, idA)
-	// La zona no late a tiempo y el trabajo de perdidas no pasa (se retrasa): A caduca con la instancia viva.
+	// The zone does not send its heartbeat in time and the lost-instances job does not run (it is
+	// delayed): A expires with the instance live.
 	p.Clock.Advance(31 * time.Second)
 	leaseB := z.Join(pl, idB)
 	res := z.Heartbeat(2, platformtest.Lease{CharacterID: idA, LeaseID: leaseA}, platformtest.Lease{CharacterID: idB, LeaseID: leaseB})
@@ -576,7 +579,8 @@ func TestLateHeartbeatDoesNotRenewExpiredLeases(t *testing.T) {
 	if n := alive(); n != 1 {
 		t.Fatalf("arrendamientos vivos de la cuenta: %d", n)
 	}
-	// Con B fuera del latido y caducado, se puede borrar; el latido tardío no lo devuelve al mundo.
+	// With B outside the heartbeat and expired, it can be deleted; the late heartbeat does not bring
+	// it back into the world.
 	p.Clock.Advance(31 * time.Second)
 	res = p.PublicDo("DELETE", "/v1/characters/"+strconv.FormatInt(idB, 10), pl.Token, map[string]any{"confirm_name": "Bran"})
 	platformtest.Expect(t, res, 200, "")
@@ -589,9 +593,9 @@ func TestLateHeartbeatDoesNotRenewExpiredLeases(t *testing.T) {
 	}
 }
 
-// Sin latido durante 3 × HEARTBEAT_S, el trabajo de perdidas pasa la instancia a lost y libera sus
-// arrendamientos: el personaje vuelve a entrar en 15 s como mucho. La instancia perdida que late
-// recibe instance_lost.
+// With no heartbeat for 3 × HEARTBEAT_S, the lost-instances job moves the instance to lost and
+// releases its leases: the character can enter again within 15 s at most. The lost instance that
+// sends a heartbeat receives instance_lost.
 func TestLostInstance(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -625,7 +629,7 @@ func TestLostInstance(t *testing.T) {
 	if !strings.Contains(p.Logs.String(), "instancia perdida") {
 		t.Fatal("registro")
 	}
-	// Otra instancia de la zona y el personaje entra en ella.
+	// Another instance of the zone and the character enters it.
 	fresh := p.NewZone(1, "vado_gris", 0).Start()
 	p.Login(pl)
 	fresh.Join(pl, id)
@@ -634,8 +638,8 @@ func TestLostInstance(t *testing.T) {
 	}
 }
 
-// InsertEach: si una fila choca con una restricción, ninguna queda a medias y se insertan de una en
-// una para rechazar solo esa.
+// InsertEach: if a row hits a constraint, none is left half-done and they are inserted one by one
+// to reject only that one.
 func TestInsertEachIsolatesTheBadRow(t *testing.T) {
 	p := platformtest.New(t)
 	p.Exec(`create table lote (k text primary key, n int check (n >= 0))`)
@@ -648,14 +652,14 @@ func TestInsertEachIsolatesTheBadRow(t *testing.T) {
 	if n := p.Count(`select count(*) from lote`); n != 2 {
 		t.Fatal(n)
 	}
-	// Todo bien: una ida y vuelta, nada rechazado; repetido, sin duplicar.
+	// All fine: one round trip, nothing rejected; repeated, without duplicating.
 	rejected, err = zones.InsertEach(ctx, p.Pool, sql, [][]any{{"a", 1}, {"d", 4}}, []string{"a", "d"})
 	if err != nil || len(rejected) != 0 || p.Count(`select count(*) from lote`) != 3 {
 		t.Fatalf("%v %v", rejected, err)
 	}
-	// Un dato que PostgreSQL rechaza (SQLSTATE de clase 22: un NUL en jsonb, una fecha fuera de rango)
-	// es tan determinista como una restricción: se rechaza esa fila y no el lote (antes, 500 y la zona
-	// reintentaba el mismo lote sin fin).
+	// Data that PostgreSQL rejects (SQLSTATE of class 22: a NUL in jsonb, an out-of-range date) is as
+	// deterministic as a constraint: that row is rejected and not the batch (before, a 500 and the
+	// zone retried the same batch endlessly).
 	p.Exec(`create table lote_datos (k text primary key, j jsonb, at timestamptz)`)
 	sql = `insert into lote_datos (k, j, at) values ($1, $2, to_timestamp($3)) on conflict (k) do nothing`
 	rows := [][]any{{"x", `{"n": 1}`, 1800000000}, {"nul", `{"n": "\u0000"}`, 1800000000}, {"fecha", `{}`, 9e15},
@@ -667,14 +671,14 @@ func TestInsertEachIsolatesTheBadRow(t *testing.T) {
 	}
 }
 
-// IsJSONObject: lo que jsonb guarda y lo que no (PostgreSQL rechaza \u0000, los suplentes sueltos y
-// el UTF-8 roto, que encoding/json deja pasar).
+// IsJSONObject: what jsonb stores and what it does not (PostgreSQL rejects \u0000, lone
+// surrogates and broken UTF-8, which encoding/json lets through).
 func TestIsJSONObject(t *testing.T) {
 	cases := map[string]bool{
 		`{}`:                             true,
 		` {"a": [1, {"b": "ñ"}]} `:       true,
-		`{"cara": "\ud83d\ude00"}`:       true, // un par de suplentes
-		`{"barra": "\\u0000"}`:           true, // una barra escapada y el texto u0000
+		`{"cara": "\ud83d\ude00"}`:       true, // a surrogate pair
+		`{"barra": "\\u0000"}`:           true, // an escaped backslash and the text u0000
 		`{"a": "\"\u00e9"}`:              true,
 		`[]`:                             false,
 		`{"a": 1`:                        false,
@@ -692,8 +696,8 @@ func TestIsJSONObject(t *testing.T) {
 	}
 }
 
-// Un error de datos (clase 22) que llega a la respuesta de una ruta interna es un 400 validation,
-// definitivo, y no un 500 que la zona reintenta.
+// A data error (class 22) that reaches an internal route's response is a 400 validation, final,
+// and not a 500 that the zone retries.
 func TestFailDataErrorIs400(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/internal/v1/reports", nil)

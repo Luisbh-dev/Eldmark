@@ -1,9 +1,9 @@
 extends TestCase
-## El servidor del fuerte sobre la zona de verdad, el Vado Gris (docs/fuerte.md, secciones 1 a 5): la
-## fortaleza del grupo [code]fortresses[/code] con su definición, su círculo y su puerta; los 12 puntos de
-## reaparición (campamentos primero, después el interior del fuerte) y cuáles valen según el dueño; un
-## golpe a la puerta de verdad, que no frena ningún collider de la zona; y una captura con jugadores falsos
-## sobre el terreno real. Se avanza deprisa con un [FortressFixture.Stepper].
+## The fort server on the real zone, Vado Gris (docs/fuerte.md, sections 1 to 5): the fortress from the
+## [code]fortresses[/code] group with its definition, circle and gate; the 12 respawn points (camps
+## first, then the inside of the fort) and which ones are valid depending on the owner; a real hit on the
+## gate, which no collider of the zone stops; and a capture with fake players on the real terrain. It
+## advances quickly with a [FortressFixture.Stepper].
 
 const ZONE_ID: String = "vado_gris"
 const DEFINITION_ID: StringName = &"vado_gris_fort"
@@ -33,9 +33,9 @@ func before_each() -> void:
 	config.zone_id = ZONE_ID
 	config.max_players = 16
 	config.no_dummies = true
-	# Esta prueba habla del fuerte con el doble del capitán (spawn_captain_double): sin los PNJ de verdad.
+	# This test talks about the fort with the captain double (spawn_captain_double): without the real NPCs.
 	config.no_npcs = true
-	assert_eq(_server.start(config, _world, null, DevAuthProvider.new()), OK, "el servidor arranca")
+	assert_eq(_server.start(config, _world, null, DevAuthProvider.new()), OK, "the server starts")
 	_server.get_fortresses().war_event_emitted.connect(func(event: NetMessages.EntityEvent) -> void:
 		_war.append(event))
 	_server.set_physics_process(false)
@@ -79,7 +79,7 @@ func _brain(script: Callable = Callable()) -> CombatFixture.ScriptBrain:
 
 func test_the_server_builds_the_vado_gris_fortress_from_the_scene() -> void:
 	var fortresses: FortressController = _server.get_fortresses()
-	if not assert_eq(fortresses.get_fortress_ids(), [DEFINITION_ID] as Array[StringName], "una fortaleza"):
+	if not assert_eq(fortresses.get_fortress_ids(), [DEFINITION_ID] as Array[StringName], "one fortress"):
 		return
 	var fort: Node3D = fortresses.get_node_of(DEFINITION_ID)
 	assert_eq(fort.name, &"Fuerte")
@@ -90,49 +90,49 @@ func test_the_server_builds_the_vado_gris_fortress_from_the_scene() -> void:
 	assert_eq(_state().gate_max, 9000)
 	var circle: Dictionary = fortresses.get_circle(DEFINITION_ID)
 	assert_vec_near(circle["center"], fort.global_position + Vector3(-8.5, 0.05, 0.0), 1e-3,
-			"el círculo es el marcador CaptureCircle")
-	assert_eq(circle["radius"], 5.0, "con el radio del marcador")
+			"the circle is the CaptureCircle marker")
+	assert_eq(circle["radius"], 5.0, "with the marker's radius")
 	var gate: FortGate = fortresses.get_gate(DEFINITION_ID)
-	if assert_not_null(gate, "la puerta de la escena"):
+	if assert_not_null(gate, "the scene's gate"):
 		var targets: Array[StructureTarget] = fortresses.get_structure_targets()
 		assert_eq(targets.size(), 1)
 		assert_vec_near(targets[0].box.origin, gate.global_position + Vector3(0.0, 2.15, 0.0), 1e-3)
 		assert_vec_near(targets[0].half_extents, Vector3(0.25, 2.15, 2.0), 1e-3)
-		assert_eq(gate.collision_layer, FortGate.layers_for(0, false), "cerrada para los tres reinos")
-	assert_eq(_server.get_combat_timing().respawn_wave_ticks, 600, "oleadas de 10 s")
-	assert_eq(_server.get_combat().get_all_respawn_points().size(), 12, "la lista estática: 8 + 4")
-	assert_eq(_server.get_registry().size(), 1, "solo la fortaleza")
+		assert_eq(gate.collision_layer, FortGate.layers_for(0, false), "closed to the three realms")
+	assert_eq(_server.get_combat_timing().respawn_wave_ticks, 600, "10 s waves")
+	assert_eq(_server.get_combat().get_all_respawn_points().size(), 12, "the static list: 8 + 4")
+	assert_eq(_server.get_registry().size(), 1, "only the fortress")
 
 
 func test_the_vado_gris_definition_restarts_the_fort_every_thirty_minutes() -> void:
 	var definition: FortressDefinition = _server.get_fortresses().get_definition(DEFINITION_ID)
 	var thirty_minutes: int = 30 * 60 * CombatCatalog.TICK_RATE
-	assert_eq(definition.reset_to_neutral_ticks(), thirty_minutes, "1800 s en ticks")
-	assert_eq(_state().last_reset_tick, 0, "el reloj del reinicio arranca con el servidor")
-	# La misma definición, sin servidor: justo a los 30 min, y no un tick antes, vuelve a neutral.
+	assert_eq(definition.reset_to_neutral_ticks(), thirty_minutes, "1800 s in ticks")
+	assert_eq(_state().last_reset_tick, 0, "the reset clock starts with the server")
+	# The same definition, without a server: exactly at 30 min, and not one tick earlier, it goes back to neutral.
 	var state: FortressState = FortressState.initial(definition, 0)
 	state.owner = SOLMARCH
 	var nobody := PackedInt32Array([0, 0, 0, 0])
-	assert_true(state.advance(definition, thirty_minutes - 1, nobody).is_empty(), "un tick antes, nada")
+	assert_true(state.advance(definition, thirty_minutes - 1, nobody).is_empty(), "one tick earlier, nothing")
 	assert_eq(state.owner, SOLMARCH)
 	assert_eq(state.advance(definition, thirty_minutes, nobody),
-			PackedInt32Array([WarEvents.FORT_RESET]), "a los 30 min, el aviso de reinicio")
+			PackedInt32Array([WarEvents.FORT_RESET]), "at 30 min, the reset alert")
 	assert_eq(state.owner, 0)
-	assert_eq(state.last_reset_tick, thirty_minutes, "y el reloj vuelve a contar")
+	assert_eq(state.last_reset_tick, thirty_minutes, "and the clock starts counting again")
 
 
 func test_which_respawn_points_are_valid_depends_on_the_owner_of_the_fort() -> void:
 	var combat: CombatDirector = _server.get_combat()
 	assert_eq(combat.get_valid_respawn_points(VARDHEIM, 10), PackedInt32Array([0, 1, 2, 3]),
-			"neutral: solo el campamento propio")
+			"neutral: only the own camp")
 	assert_eq(combat.get_valid_respawn_points(SOLMARCH, 10), PackedInt32Array([4, 5, 6, 7]))
 	_server.console_command("fort_owner vardheim")
 	await _advance(3)
 	assert_eq(combat.get_valid_respawn_points(VARDHEIM, _server.get_tick()),
-			PackedInt32Array([0, 1, 2, 3, 8, 9, 10, 11]), "de Vardheim: el campamento y el interior")
+			PackedInt32Array([0, 1, 2, 3, 8, 9, 10, 11]), "Vardheim's: the camp and the inside")
 	assert_eq(combat.get_valid_respawn_points(SOLMARCH, _server.get_tick()), PackedInt32Array([4, 5, 6, 7]),
-			"Solmarch sigue sin poder elegir el fuerte enemigo")
-	# Un reinicio vuelve a dejarlo neutral.
+			"Solmarch still cannot choose the enemy fort")
+	# A reset leaves it neutral again.
 	_server.console_command("fort_reset")
 	await _advance(3)
 	assert_eq(combat.get_valid_respawn_points(VARDHEIM, _server.get_tick()), PackedInt32Array([0, 1, 2, 3]))
@@ -151,12 +151,12 @@ func test_a_real_swing_hits_the_real_gate() -> void:
 		if tick >= press_tick and tick < press_tick + 2:
 			input.buttons = PlayerInput.PRIMARY
 		return input), VARDHEIM)
-	# A 2,25 m de la cara oeste de la puerta, unos centímetros por encima del suelo: cae y se asienta.
+	# 2.25 m from the west face of the gate, a few centimetres above the ground: it falls and settles.
 	_server.teleport(attacker, gate_position + Vector3(-2.5, 0.4, 0.0))
 	_server.get_registry().get_entity(attacker).get_character().yaw = YAW_EAST
 	await _advance(150)
-	assert_eq(_state().gate_health, 9000 - roundi(90.0 * 0.35), "el golpe de verdad quita lo que dicen los datos")
-	assert_eq(_war.size(), 1, "y avisa de que atacan el fuerte")
+	assert_eq(_state().gate_health, 9000 - roundi(90.0 * 0.35), "the real hit removes what the data says")
+	assert_eq(_war.size(), 1, "and alerts that the fort is being attacked")
 	assert_eq(_war[0].war_event, WarEvents.UNDER_ATTACK)
 
 
@@ -168,11 +168,11 @@ func test_a_full_capture_on_the_real_terrain() -> void:
 	var player: int = _server.add_fake_player(_brain(), VARDHEIM)
 	_server.teleport(player, circle + Vector3(0.0, 0.3, 0.0))
 	await _advance(60)
-	assert_eq(_state().presence[VARDHEIM], 1, "dentro del círculo del Vado Gris")
+	assert_eq(_state().presence[VARDHEIM], 1, "inside the Vado Gris circle")
 	assert_eq(_server.console_command("fort_capture_speed 30"), "Captura de %s a x30" % DEFINITION_ID)
 	assert_true(_server.console_command("fort_kill_captain").contains("ha muerto"))
 	await _advance(120)
-	assert_eq(_state().owner, VARDHEIM, "capturado")
+	assert_eq(_state().owner, VARDHEIM, "captured")
 	assert_eq(_server.get_fortresses().get_gate(DEFINITION_ID).get_owner_realm(), VARDHEIM)
 	var ids: Array[int] = []
 	for event: NetMessages.EntityEvent in _war:

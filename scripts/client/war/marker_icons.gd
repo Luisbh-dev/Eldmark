@@ -1,25 +1,25 @@
 class_name MarkerIcons
 extends RefCounted
-## Iconos provisionales de los [WorldMarker] (UI-19, UI-20): formas sencillas que se dibujan con
-## primitivas de [CanvasItem] (sin texturas) para que la brújula, los marcadores del mundo, el minimapa
-## y el mapa usen el mismo dibujo. Cada tipo ([enum WorldMarker.Kind]) tiene una forma:
-## [br]- fuerte: un rombo; puerta: un arco de dos postes y un dintel; círculo de captura: un anillo con
-## un punto; campamento: una tienda (triángulo); paso: una flecha hacia arriba.
+## Placeholder icons for the [WorldMarker]s (UI-19, UI-20): simple shapes drawn with [CanvasItem]
+## primitives (no textures) so that the compass, the world markers, the minimap and the map use the same
+## drawing. Each kind ([enum WorldMarker.Kind]) has a shape:
+## [br]- fort: a diamond; gate: an arch of two posts and a lintel; capture circle: a ring with a dot; camp:
+## a tent (triangle); pass: an upward arrow.
 ## [br][br]
-## El arte definitivo (ART-12) los sustituirá. Solo cliente.
+## The final art (ART-12) will replace them. Client only.
 
 const OUTLINE_COLOR: Color = Color(0.04, 0.04, 0.05, 0.9)
 
 
-## Dibuja el icono de [param kind] centrado en [param center] con el color [param color]; [param size] es
-## su radio en píxeles.
+## Draws the icon of [param kind] centered at [param center] with color [param color]; [param size] is its
+## radius in pixels.
 static func draw(item: CanvasItem, kind: int, center: Vector2, color: Color, size: float) -> void:
 	_draw_shape(item, kind, center, OUTLINE_COLOR, size + 1.5)
 	_draw_shape(item, kind, center, color, size)
 
 
-## Dibuja una flecha que señala hacia [param angle] (radianes, 0 = arriba, positivo hacia la derecha) en
-## [param center]: la de los marcadores que quedan fuera de la pantalla.
+## Draws an arrow pointing toward [param angle] (radians, 0 = up, positive to the right) at
+## [param center]: the one for markers that are off screen.
 static func draw_arrow(item: CanvasItem, center: Vector2, angle: float, color: Color, size: float) -> void:
 	var points := PackedVector2Array([Vector2(0.0, -size), Vector2(size * 0.8, size * 0.7), Vector2(0.0, size * 0.25),
 			Vector2(-size * 0.8, size * 0.7)])

@@ -1,16 +1,16 @@
 class_name SplitDialog
 extends Control
-## Diálogo de cantidad para dividir una pila (docs/progresion.md §11.2, UI-26): Mayúsculas + arrastrar abre este
-## diálogo con un selector de 1 a la pila − 1 (por defecto, la mitad) y dos botones. Emite
-## [signal confirmed] con la cantidad elegida o [signal canceled], y se cierra antes de emitir. Es modal, como
-## [UIConfirmDialog]: un velo atenúa y bloquea el resto de la pantalla, Esc cancela e Intro en el selector
-## confirma. Con [method bind_camera] libera el cursor mientras está abierto.
+## Quantity dialog for splitting a stack (docs/progresion.md §11.2, UI-26): Shift + drag opens this
+## dialog with a selector from 1 to the stack − 1 (half by default) and two buttons. It emits
+## [signal confirmed] with the chosen quantity or [signal canceled], and closes before emitting. It is modal, like
+## [UIConfirmDialog]: a veil dims and blocks the rest of the screen, Esc cancels and Enter in the selector
+## confirms. With [method bind_camera] it releases the cursor while open.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## El jugador eligió [param amount] unidades.
+## The player chose [param amount] units.
 signal confirmed(amount: int)
-## El jugador canceló (botón, Esc o [method cancel]).
+## The player canceled (button, Esc or [method cancel]).
 signal canceled
 
 const TITLE_TEXT: String = "Dividir pila"
@@ -28,7 +28,7 @@ var _confirm_button: Button = null
 var _cancel_button: Button = null
 
 
-## La cantidad que propone el diálogo para una pila de [param stack]: la mitad hacia abajo, al menos 1.
+## The quantity the dialog proposes for a stack of [param stack]: half rounded down, at least 1.
 static func default_amount(stack: int) -> int:
 	return maxi(stack / 2, 1)
 
@@ -67,7 +67,7 @@ func _init() -> void:
 	_spin.step = 1.0
 	_spin.rounded = true
 	_spin.select_all_on_focus = true
-	# Lo escrito cuenta al momento (sin esperar a Intro ni a perder el foco).
+	# What is typed counts immediately (without waiting for Enter or for focus loss).
 	_spin.update_on_text_changed = true
 	_spin.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_spin.custom_minimum_size = Vector2(140.0, 0.0)
@@ -98,8 +98,8 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Abre el diálogo para la pila [param item_name] de [param stack] unidades (al menos 2): el selector va de 1 a
-## [param stack] − 1 y empieza en la mitad.
+## Opens the dialog for the stack [param item_name] of [param stack] units (at least 2): the selector goes from 1 to
+## [param stack] − 1 and starts at half.
 func open(item_name: String, stack: int) -> void:
 	var top: int = maxi(stack - 1, 1)
 	_message.text = MESSAGE_TEXT % [item_name, stack]
@@ -117,7 +117,7 @@ func open(item_name: String, stack: int) -> void:
 		_spin.get_line_edit().grab_focus()
 
 
-## Enlaza el diálogo con la cámara: mientras está abierto el cursor queda libre.
+## Links the dialog to the camera: while it is open the cursor stays free.
 func bind_camera(rig: CameraRig) -> void:
 	if _open and is_instance_valid(_camera_rig) and _camera_rig != rig:
 		_camera_rig.set_ui_cursor_release(false, self)
@@ -130,12 +130,12 @@ func is_open() -> bool:
 	return _open
 
 
-## La cantidad elegida ahora.
+## The quantity chosen now.
 func get_amount() -> int:
 	return int(_spin.value)
 
 
-## Elige [param amount] (se recorta al rango).
+## Chooses [param amount] (clamped to the range).
 func set_amount(amount: int) -> void:
 	_spin.value = float(amount)
 
@@ -156,7 +156,7 @@ func get_cancel_button() -> Button:
 	return _cancel_button
 
 
-## Confirma: cierra y emite [signal confirmed] con la cantidad elegida.
+## Confirms: closes and emits [signal confirmed] with the chosen quantity.
 func confirm() -> void:
 	if not _open:
 		return
@@ -166,7 +166,7 @@ func confirm() -> void:
 	confirmed.emit(amount)
 
 
-## Cancela: cierra y emite [signal canceled].
+## Cancels: closes and emits [signal canceled].
 func cancel() -> void:
 	if not _open:
 		return

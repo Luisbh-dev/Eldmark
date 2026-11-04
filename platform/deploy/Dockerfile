@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-# Imágenes de la plataforma (docs/plataforma.md §12). El contexto es platform/:
+# Platform images (docs/plataforma.md §12). The context is platform/:
 #   docker build -f deploy/Dockerfile --target platform -t eldmark-platform platform
 #   docker build -f deploy/Dockerfile --target ops -t eldmark-ops platform
-# docker-compose.yml las construye igual. Los textos legales van dentro del binario (embed).
+# docker-compose.yml builds them the same way. The legal texts go inside the binary (embed).
 
-# Compilación: binario estático (sin cgo), con el toolchain fijo de go.mod (§2.2).
+# Build: static binary (no cgo), with the toolchain pinned in go.mod (§2.2).
 FROM golang:1.24.7-bookworm AS build
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 WORKDIR /src
@@ -13,9 +13,10 @@ RUN go mod download
 COPY . .
 RUN go build -trimpath -ldflags="-s -w" -o /out/eldmark-platform ./cmd/eldmark-platform
 
-# platform: serve, migrate y admin sobre debian-slim, con un usuario sin privilegios. Escucha en
-# todas las interfaces del contenedor: la pública (:24680) solo la alcanza Caddy por la red edge y
-# la interna (:24681), las zonas por la red zones; el compose no publica ninguna de las dos.
+# platform: serve, migrate and admin on debian-slim, with an unprivileged user. It listens on all
+# the container's interfaces: the public one (:24680) is reached only by Caddy over the edge network
+# and the internal one (:24681) by the zones over the zones network; the compose file publishes
+# neither.
 FROM debian:bookworm-slim AS platform
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates tzdata \
@@ -29,10 +30,10 @@ EXPOSE 24680 24681
 ENTRYPOINT ["/usr/local/bin/eldmark-platform"]
 CMD ["serve"]
 
-# ops: las copias y sus comprobaciones (backup.sh, restore_check.sh, pitr_check.sh) sobre la imagen
-# de PostgreSQL 16, que trae pg_dump, pg_restore, initdb y pg_ctl de la misma versión que la base,
-# con el mismo binario de la plataforma (reapply-purges y migrate en restore_check.sh). Corre como
-# root y los scripts levantan sus clústeres de prueba con el usuario postgres (runuser).
+# ops: the backups and their checks (backup.sh, restore_check.sh, pitr_check.sh) on top of the
+# PostgreSQL 16 image, which ships pg_dump, pg_restore, initdb and pg_ctl of the same version as the
+# database, with the same platform binary (reapply-purges and migrate in restore_check.sh). It runs
+# as root and the scripts bring up their test clusters with the postgres user (runuser).
 FROM postgres:16-bookworm AS ops
 COPY --from=build /out/eldmark-platform /usr/local/bin/eldmark-platform
 COPY deploy/pglib.sh deploy/backup.sh deploy/restore_check.sh deploy/pitr_check.sh /opt/eldmark/deploy/
@@ -42,5 +43,5 @@ ENV ELDMARK_PLATFORM_BIN=/usr/local/bin/eldmark-platform \
 ENTRYPOINT []
 CMD ["/opt/eldmark/deploy/restore_check.sh", "--help"]
 
-# La imagen por defecto (sin --target) es la de la plataforma.
+# The default image (without --target) is the platform one.
 FROM platform

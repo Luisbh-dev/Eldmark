@@ -1,35 +1,35 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50): el cliente de captura como compañero de entrenamiento.
+## Quality capture bench (TEC-50): the capture client as a sparring partner.
 ##
-## Conduce al personaje del cliente con [code]Input.action_press[/code] contra un enemigo, para que pelee de verdad
-## contra los PNJ y los bots mientras los escenarios graban. Modos ([member mode]):
-## [br]- [code]fight[/code]: se acerca, ataca con ligeros y de vez en cuando usa una habilidad, esquiva o bloquea.
-## [br]- [code]heavy[/code]: se acerca y suelta golpes fuertes cargados (derriban y hacen tambalear).
-## [br]- [code]tank[/code]: se queda delante con el escudo arriba, sin atacar (para ver golpes recibidos en bloqueo).
-## [br]- [code]idle[/code]: mira al enemigo sin hacer nada, recibe los golpes.
-## [br]- [code]kite[/code]: retrocede mirando al enemigo (para que corra detrás).
-## [br]- [code]observe[/code]: se aleja hasta unos 5 m y se queda quieto mirando (para ver caer o morir a alguien sin
-## tenerlo encima).
-## [br]- [code]execute[/code]: se acerca a un derribado y mantiene INTERACT para rematarlo.
-## Se llama a [method step] una vez por fotograma. La cámara apunta [member look_offset_deg] grados a la izquierda del
-## enemigo: con la cámara por encima del hombro, así el enemigo queda a la derecha del centro y el cuerpo del cliente,
-## que está en primer plano a la izquierda, no lo tapa en las tiras.
+## Drives the client's character with [code]Input.action_press[/code] against an enemy, so that it really fights
+## the NPCs and bots while the scenarios record. Modes ([member mode]):
+## [br]- [code]fight[/code]: approaches, attacks with light attacks and now and then uses an ability, dodges or blocks.
+## [br]- [code]heavy[/code]: approaches and throws charged heavy attacks (they knock down and stagger).
+## [br]- [code]tank[/code]: stays in front with the shield up, without attacking (to see hits received while blocking).
+## [br]- [code]idle[/code]: looks at the enemy doing nothing, takes the hits.
+## [br]- [code]kite[/code]: backs away looking at the enemy (so that it runs after).
+## [br]- [code]observe[/code]: moves away to about 5 m and stands still watching (to see someone fall or die without
+## having them on top).
+## [br]- [code]execute[/code]: approaches a knocked-down player and holds INTERACT to finish them off.
+## [method step] is called once per frame. The camera points [member look_offset_deg] degrees to the left of the
+## enemy: with the over-the-shoulder camera, this way the enemy ends up right of centre and the client's body,
+## which is in the foreground on the left, does not block it in the strips.
 
-## Puntos (x, z) delante del campamento de Solmarch, fuera de su zona segura (a unos 30 m de su centro) y a la vista del bot
-## de combate (40 m), para quedar con él: [code]online_driver.open_spot[/code] elige el más despejado.
+## Points (x, z) in front of the Solmarch camp, outside its safe zone (about 30 m from its centre) and in view of the
+## combat bot (40 m), to meet it: [code]online_driver.open_spot[/code] picks the most open one.
 const MEET_CANDIDATES: Array = [Vector2(0.0, 105.0), Vector2(30.0, 100.0), Vector2(-30.0, 100.0), Vector2(55.0, 104.0),
 		Vector2(-55.0, 104.0), Vector2(15.0, 92.0), Vector2(-15.0, 92.0), Vector2(75.0, 100.0), Vector2(-75.0, 100.0)]
 
 var mode: String = "fight"
-## Con [code]true[/code], el modo [code]fight[/code] no usa habilidades ni esquiva (solo ligeros y bloqueo ocasional).
+## With [code]true[/code], the [code]fight[/code] mode uses no abilities or dodge (only light attacks and the occasional block).
 var plain: bool = false
-## Grados que la cámara se desvía hacia la izquierda del enemigo (ver arriba).
+## Degrees the camera is offset to the left of the enemy (see above).
 var look_offset_deg: float = 24.0
-## Distancia (m) a la que se queda en el modo [code]observe[/code].
+## Distance (m) it stays at in [code]observe[/code] mode.
 var observe_distance: float = 5.0
-## Separación (m) que mantiene en el cuerpo a cuerpo: se acerca si está más lejos que [member melee_max] y retrocede si está
-## más cerca que [member melee_min], para que los cuerpos no se monten uno sobre otro (con la cámara por encima del hombro, un
-## enemigo pegado queda detrás del personaje y las tiras no enseñan nada). La espada llega a 2,6 m, así que se golpea bien así.
+## Separation (m) it keeps in melee: it approaches if it is further than [member melee_max] and backs off if it is
+## closer than [member melee_min], so that the bodies do not overlap (with the over-the-shoulder camera, an
+## enemy right up close ends up behind the character and the strips show nothing). The sword reaches 2.6 m, so hitting works fine like this.
 var melee_min: float = 1.5
 var melee_max: float = 2.4
 
@@ -54,13 +54,13 @@ func set_mode(new_mode: String) -> void:
 	mode = new_mode
 
 
-## Un fotograma de sparring contra el enemigo en [param enemy_pos]: mira hacia él y hace lo que toque según el modo.
+## One frame of sparring against the enemy at [param enemy_pos]: looks towards it and does what is due according to the mode.
 func step(enemy_pos: Vector3) -> void:
 	var now: int = Time.get_ticks_msec()
 	var p: Vector3 = _d.pos()
 	var dist: float = Vector2(enemy_pos.x - p.x, enemy_pos.z - p.z).length()
-	# La desviación de la cámara solo vale en el cuerpo a cuerpo (cerca y sin andar hacia el enemigo): al acercarse, retroceder
-	# o apartarse, el personaje anda hacia donde mira la cámara y una cámara torcida lo desviaría.
+	# The camera offset only applies in melee (close and not walking towards the enemy): when approaching, backing off
+	# or stepping aside, the character walks where the camera looks and a skewed camera would divert it.
 	var offset: float = look_offset_deg if (dist <= 5.0 and mode != "kite" and mode != "observe") else 0.0
 	_d.look(_d.yaw_to(p.x, p.z, enemy_pos.x, enemy_pos.z) + offset, 6.0)
 	match mode:
@@ -123,7 +123,7 @@ func _approach(dist: float, stop_at: float) -> void:
 		_d.release(&"sprint")
 
 
-# Se acerca si está lejos, retrocede si está demasiado cerca y se queda quieto entre las dos distancias.
+# Approaches if far, backs off if too close and stands still between the two distances.
 func _keep_spacing(dist: float, min_d: float, max_d: float) -> void:
 	if dist > max_d:
 		_d.release(&"move_back")

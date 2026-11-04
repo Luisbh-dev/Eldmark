@@ -1,38 +1,39 @@
 class_name BotCheater
 extends RefCounted
-## Bot tramposo (docs/red.md, secciones 12 y 16; TEC-46): el comportamiento de [code]--bot-cheat[/code].
+## Cheating bot (docs/red.md, sections 12 and 16; TEC-46): the behavior of [code]--bot-cheat[/code].
 ## [br][br]
-## [NetClient] lo consulta en dos sitios: al armar el HELLO ([method tamper_hello]) y, una vez por tick
-## de física, después de enviar su lote de entradas honrado ([method extra_packets]). El bot sigue
-## jugando limpio por debajo: lo que cambia es el tráfico de más que añade este objeto. Lo que debe
-## pasar en el servidor con cada modo ([constant MODES]):
+## [NetClient] queries it in two places: when building the HELLO ([method tamper_hello]) and, once
+## per physics tick, after sending its honest batch of inputs ([method extra_packets]). The bot
+## keeps playing clean underneath: what changes is the extra traffic this object adds. What should
+## happen on the server with each mode ([constant MODES]):
 ## [codeblock]
-## version  HELLO con otra versión del protocolo        -> REJECT VERSION, el bot no llega a entrar
-## future   lotes con ticks muy por delante             -> TOO_EARLY: se descartan y se cuentan, sin
-##          (más allá de MAX_INPUT_LEAD_TICKS)             efecto en nadie y sin ventaja
-## dupes    copias distintas de las mismas entradas     -> gana la primera copia: la honrada
-## garbage  paquetes al azar por el canal de entradas   -> avisos (malformado / tipo inesperado) y
-##          y por el fiable                                 NOTICE de expulsión a los 50 en 600 ticks
-## flood    más paquetes por tick de los que permiten   -> avisos por exceso de ritmo y expulsión
-##          los limitadores
-## rewind   pelea (cerebro de combate), pero falsea el   -> el golpe no se prueba (más de 24 ticks de
-##          view_offset_q de todas sus entradas a 40        rebobinado): ningún daño y la puntuación de
-##          ticks                                           sospecha del peer sube con cada golpe
-## reach    ataca a un enemigo desde 5 m, con entradas   -> no hay golpe: el sector del arma llega a
-##          legítimas                                       2,6 m (3 m con la cápsula)
-## rate     machaca PRIMARY (un flanco cada dos ticks,   -> no pega más rápido que el combo de los
-##          lo máximo que se puede pulsar)                  datos: la máquina de acciones del servidor
-##                                                          decide el ritmo
-## reuse    machaca la habilidad 1 (el golpe de escudo)  -> una habilidad en reutilización no sale: un
-##          pegado al enemigo, un flanco cada dos ticks     golpe cada cooldown + cast ticks (CMB-19)
-## potion   machaca las dos pociones                     -> sin cargas o en la reutilización compartida
-##                                                          no se bebe: ni curación ni resistencia de más
-## interact machaca INTERACT lejos de nadie              -> ni levanta ni remata a nadie
+## version  HELLO with another protocol version         -> REJECT VERSION, the bot never gets in
+## future   batches with ticks far ahead                -> TOO_EARLY: discarded and counted, with
+##          (beyond MAX_INPUT_LEAD_TICKS)                  no effect on anyone and no advantage
+## dupes    different copies of the same inputs         -> the first copy wins: the honest one
+## garbage  random packets on the input channel         -> warnings (malformed / unexpected type)
+##          and on the reliable one                        and a kick NOTICE at 50 in 600 ticks
+## flood    more packets per tick than the limiters     -> rate-excess warnings and a kick
+##          allow
+## rewind   fights (combat brain) but fakes the         -> the hit is not proven (more than 24 ticks
+##          view_offset_q of all its inputs to 40          of rewind): no damage and the peer's
+##          ticks                                          suspicion score rises with each hit
+## reach    attacks an enemy from 5 m, with legitimate  -> no hit: the weapon's sector reaches
+##          inputs                                         2.6 m (3 m with the capsule)
+## rate     mashes PRIMARY (one edge every two ticks,   -> no faster than the combo in the data: the
+##          the most that can be pressed)                  server's action machine sets the pace
+## reuse    mashes ability 1 (the shield strike)        -> an ability on cooldown does not fire: one
+##          stuck to the enemy, one edge every two ticks   hit every cooldown + cast ticks (CMB-19)
+## potion   mashes both potions                         -> without charges or in the shared cooldown
+##                                                         nothing is drunk: no extra healing or
+##                                                         resistance
+## interact mashes INTERACT away from everyone          -> it revives and finishes nobody
 ## [/codeblock]
-## Los modos de combate ([constant COMBAT_MODES]: rewind, reach, rate y los de la fase 4, reuse, potion e
-## interact; docs/habilidades.md, sección 4.7) no mandan tráfico de más: el bot juega con las reglas del juego
-## ([method make_brain]), sin sospecha posible, y el servidor tiene que dejarlo sin ventaja. Las semillas son de la configuración ([member ClientConfig.bot_seed]), así que lo
-## que envía es reproducible. Esto es solo cliente: el servidor no sabe quién hace trampa, solo valida.
+## The combat modes ([constant COMBAT_MODES]: rewind, reach, rate and those from phase 4, reuse,
+## potion and interact; docs/habilidades.md, section 4.7) send no extra traffic: the bot plays by
+## the game's rules ([method make_brain]), with no possible suspicion, and the server must leave it
+## without an advantage. The seeds come from the configuration ([member ClientConfig.bot_seed]), so
+## what it sends is reproducible. This is client-only: the server does not know who is cheating, it only validates.
 
 const MODE_VERSION: String = "version"
 const MODE_FUTURE: String = "future"
@@ -45,40 +46,39 @@ const MODE_RATE: String = "rate"
 const MODE_REUSE: String = "reuse"
 const MODE_POTION: String = "potion"
 const MODE_INTERACT: String = "interact"
-## Los modos admitidos de [code]--bot-cheat[/code].
+## The supported modes of [code]--bot-cheat[/code].
 const MODES: Array[String] = [MODE_VERSION, MODE_FUTURE, MODE_DUPES, MODE_GARBAGE, MODE_FLOOD,
 		MODE_REWIND, MODE_REACH, MODE_RATE, MODE_REUSE, MODE_POTION, MODE_INTERACT]
-## Los modos que cambian cómo juega el bot (tienen cerebro propio, [method make_brain]).
+## The modes that change how the bot plays (they have their own brain, [method make_brain]).
 const COMBAT_MODES: Array[String] = [MODE_REWIND, MODE_REACH, MODE_RATE, MODE_REUSE, MODE_POTION,
 		MODE_INTERACT]
 
-## Versión del protocolo que miente el modo [constant MODE_VERSION].
+## Protocol version that [constant MODE_VERSION] mode lies about.
 const FAKE_PROTOCOL_VERSION: int = NetProtocol.PROTOCOL_VERSION + 1
-## Ticks, además de [constant NetProtocol.MAX_INPUT_LEAD_TICKS], a los que se adelanta el lote del
-## modo [constant MODE_FUTURE] (como mínimo; se le suma un tramo al azar).
+## Ticks, in addition to [constant NetProtocol.MAX_INPUT_LEAD_TICKS], by which the batch of
+## [constant MODE_FUTURE] mode is moved ahead (as a minimum; a random amount is added).
 const FUTURE_MIN_EXTRA_TICKS: int = 10
 const FUTURE_RANDOM_EXTRA_TICKS: int = 40
-## Entradas de cada lote de más de los modos [constant MODE_FUTURE] y [constant MODE_DUPES].
+## Inputs in each extra batch of the [constant MODE_FUTURE] and [constant MODE_DUPES] modes.
 const EXTRA_BATCH_INPUTS: int = 4
-## Copias del lote honrado que envía por tick el modo [constant MODE_FLOOD] (el limitador admite 2
-## por tick con una ráfaga de 30) y paquetes fiables de relleno.
+## Copies of the honest batch that [constant MODE_FLOOD] mode sends per tick (the limiter allows 2
+## per tick with a burst of 30) and filler reliable packets.
 const FLOOD_COPIES_PER_TICK: int = 8
 const FLOOD_RELIABLE_PER_TICK: int = 2
-## Tamaño (en bytes) de la basura: nunca 2 (CLIENT_READY y CLIENT_LEAVE válidos) ni más de lo que
-## cabe en un paquete no fiable.
+## Size (in bytes) of the garbage: never 2 (valid CLIENT_READY and CLIENT_LEAVE) nor more than what
+## fits in an unreliable packet.
 const GARBAGE_MIN_BYTES: int = 3
 const GARBAGE_MAX_BYTES: int = 120
-## Primer byte de los paquetes de relleno del modo [constant MODE_FLOOD]: un tipo que nadie envía al
-## servidor.
+## First byte of the filler packets of [constant MODE_FLOOD] mode: a type that nobody sends to the server.
 const FLOOD_FILLER_TYPE: int = 0x7F
-## Ticks de rebobinado que dice llevar el modo [constant MODE_REWIND] en todas sus entradas (el tope del
-## servidor es [constant NetProtocol.MAX_REWIND_TICKS]).
+## Rewind ticks that [constant MODE_REWIND] mode claims to carry in all its inputs (the server's
+## cap is [constant NetProtocol.MAX_REWIND_TICKS]).
 const REWIND_VIEW_TICKS: int = 40
-## Escala de [code]view_offset_q[/code] (ticks × 16).
+## Scale of [code]view_offset_q[/code] (ticks × 16).
 const VIEW_OFFSET_SCALE: int = 16
 
 
-## Un paquete que el bot envía además de su lote honrado.
+## A packet that the bot sends in addition to its honest batch.
 class Extra:
 	extends RefCounted
 
@@ -97,39 +97,37 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _packets: int = 0
 
 
-## [param mode] debe ser uno de [constant MODES] (si no, el objeto no hace nada).
+## [param mode] must be one of [constant MODES] (otherwise, the object does nothing).
 func _init(mode: String, rng_seed: int) -> void:
 	_mode = mode.to_lower()
 	_seed = rng_seed
 	_rng.seed = rng_seed
 
 
-## true si [param mode] es uno de [constant MODES] (sin distinguir mayúsculas).
+## true if [param mode] is one of [constant MODES] (case-insensitive).
 static func is_valid_mode(mode: String) -> bool:
 	return MODES.has(mode.to_lower())
 
 
-## Modo en curso.
+## Current mode.
 func get_mode() -> String:
 	return _mode
 
 
-## Paquetes de más generados desde el principio.
+## Extra packets generated since the start.
 func get_packets_generated() -> int:
 	return _packets
 
 
-## true si el modo cambia cómo juega el bot ([constant COMBAT_MODES]).
+## true if the mode changes how the bot plays ([constant COMBAT_MODES]).
 func is_combat_mode() -> bool:
 	return COMBAT_MODES.has(_mode)
 
 
-## El cerebro con el que juega un bot de un modo de combate, o null si el modo es de tráfico.
-## [param enemy_finder] es [code](position: Vector3) -> Variant[/code] (ver
-## [method BotBrain.set_enemy_finder]). El modo [constant MODE_REWIND] pelea con el cerebro de combate
-## de siempre (lo tramposo es la vista que declara, [method tamper_batch]); [constant MODE_REACH],
-## [constant MODE_RATE], [constant MODE_REUSE], [constant MODE_POTION] y [constant MODE_INTERACT] usan
-## [BotCheatBrain].
+## The brain a bot of a combat mode plays with, or null if the mode is a traffic one.
+## [param enemy_finder] is [code](position: Vector3) -> Variant[/code] (see
+## [method BotBrain.set_enemy_finder]). [constant MODE_REWIND] mode fights with the usual combat
+## brain (the cheating part is the view it declares, [method tamper_batch]); [constant MODE_REACH], [constant MODE_RATE], [constant MODE_REUSE], [constant MODE_POTION] and [constant MODE_INTERACT] use [BotCheatBrain].
 func make_brain(enemy_finder: Callable, home: Vector3, radius: float) -> BotBrain:
 	var brain: BotBrain = null
 	match _mode:
@@ -150,8 +148,8 @@ func make_brain(enemy_finder: Callable, home: Vector3, radius: float) -> BotBrai
 	return brain
 
 
-## Falsea el lote de entradas honrado antes de enviarlo. Solo el modo [constant MODE_REWIND] lo toca:
-## todas sus entradas dicen que el bot veía el mundo [constant REWIND_VIEW_TICKS] ticks atrás.
+## Tampers with the honest input batch before sending it. Only [constant MODE_REWIND] mode touches
+## it: all its inputs claim that the bot saw the world [constant REWIND_VIEW_TICKS] ticks back.
 func tamper_batch(batch: NetMessages.InputBatch) -> void:
 	if _mode != MODE_REWIND:
 		return
@@ -159,15 +157,15 @@ func tamper_batch(batch: NetMessages.InputBatch) -> void:
 		batch.view_offsets_q[index] = REWIND_VIEW_TICKS * VIEW_OFFSET_SCALE
 
 
-## Falsea el HELLO que se va a enviar. Solo el modo [constant MODE_VERSION] lo toca.
+## Tampers with the HELLO about to be sent. Only [constant MODE_VERSION] mode touches it.
 func tamper_hello(hello: NetMessages.Hello) -> void:
 	if _mode == MODE_VERSION:
 		hello.protocol_version = FAKE_PROTOCOL_VERSION
 
 
-## Paquetes de más de este tick, para enviarlos justo después del lote [param honest] (el que acaba
-## de enviar el bot, ya con sus entradas y desfases). El orden importa en [constant MODE_DUPES]: las
-## copias distintas van después de la honrada, y gana la primera que llega.
+## Extra packets for this tick, to be sent right after the [param honest] batch (the one the bot
+## just sent, already with its inputs and offsets). Order matters in [constant MODE_DUPES]: the
+## different copies go after the honest one, and the first to arrive wins.
 func extra_packets(honest: NetMessages.InputBatch) -> Array[Extra]:
 	var packets: Array[Extra] = []
 	match _mode:
@@ -189,8 +187,8 @@ func extra_packets(honest: NetMessages.InputBatch) -> Array[Extra]:
 	return packets
 
 
-# Un lote con ticks más allá de la ventana de entradas del servidor (esprintando hacia delante): el
-# bot intenta que el servidor se las guarde para aplicarlas más adelante. Se descartan (TOO_EARLY).
+# A batch with ticks beyond the server's input window (sprinting ahead): the bot tries to get the
+# server to keep them to apply later. They are discarded (TOO_EARLY).
 func _add_future_batch(honest: NetMessages.InputBatch, packets: Array[Extra]) -> void:
 	var shift: int = NetProtocol.MAX_INPUT_LEAD_TICKS + FUTURE_MIN_EXTRA_TICKS \
 			+ _rng.randi_range(0, FUTURE_RANDOM_EXTRA_TICKS)
@@ -209,9 +207,9 @@ func _add_future_batch(honest: NetMessages.InputBatch, packets: Array[Extra]) ->
 	_append_batch(batch, packets)
 
 
-# Las mismas entradas que el lote honrado (mismos ticks) pero con otro contenido: movimiento
-# invertido, vista girada media vuelta y botones distintos. Si el servidor se quedara con la última
-# copia en vez de con la primera, el bot iría al revés de lo que predice.
+# The same inputs as the honest batch (same ticks) but with other content: inverted movement,
+# view turned half a turn and different buttons. If the server kept the last copy instead of the
+# first, the bot would go the opposite way to what it predicts.
 func _add_conflicting_copy(honest: NetMessages.InputBatch, packets: Array[Extra]) -> void:
 	var batch := NetMessages.InputBatch.new()
 	batch.ack_snapshot_tick = honest.ack_snapshot_tick
@@ -233,7 +231,7 @@ func _append_batch(batch: NetMessages.InputBatch, packets: Array[Extra]) -> void
 		packets.append(Extra.new(NetProtocol.CH_INPUT, bytes))
 
 
-# Bytes al azar, de un tamaño que no puede ser un mensaje de 2 bytes válido.
+# Random bytes, of a size that cannot be a valid 2-byte message.
 func _garbage() -> PackedByteArray:
 	var bytes := PackedByteArray()
 	bytes.resize(_rng.randi_range(GARBAGE_MIN_BYTES, GARBAGE_MAX_BYTES))

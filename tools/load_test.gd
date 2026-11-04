@@ -1,178 +1,178 @@
 extends SceneTree
-## Prueba de carga de la fase 2 (docs/red.md, secciones 14 y 16, «Carga»; TEC-11). Fuera del ejecutor de
-## pruebas: lanza un servidor y los clientes como procesos de Godot, los espera y resume lo que mide el
-## servidor (y el enjambre de bots) en un informe por escenario.
+## Phase 2 load test (docs/red.md, sections 14 and 16, "Load"; TEC-11). Outside the test runner:
+## it launches a server and the clients as Godot processes, waits for them and summarises what the
+## server (and the bot swarm) measures in one report per scenario.
 ## [br][br]
-## [b]Uso[/b], desde la raíz del proyecto (el [code]godot[/code] de consola):
+## [b]Usage[/b], from the project root (the console [code]godot[/code]):
 ## [codeblock]
-## # Un escenario: 64 jugadores falsos agrupados y 10 clientes reales (--bots) durante 30 s de medida
+## # One scenario: 64 clustered fake players and 10 real clients (--bots) for 30 s of measurement
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=cluster --fakes=64 --bots=10
 ##
-## # La batería de la fase 2 (ver MATRIX): agrupado con 2, 10 y 50 bots, el criterio con 100 ms de RTT,
-## # disperso, altas y bajas, y 128 y 256 jugadores falsos; 120 s de medida cada escenario (unos 25 min)
+## # The phase 2 battery (see MATRIX): clustered with 2, 10 and 50 bots, the criterion with 100 ms of RTT,
+## # spread, joins and leaves, and 128 and 256 fake players; 120 s of measurement per scenario (about 25 min)
 ## godot --headless --path . -s res://tools/load_test.gd -- --matrix
 ##
-## # 128 y 256 jugadores: los clientes reales se reparten entre varios procesos de enjambre
+## # 128 and 256 players: the real clients are split among several swarm processes
 ## godot --headless --path . -s res://tools/load_test.gd -- --fakes=128 --bots=100 --swarms=2
 ## godot --headless --path . -s res://tools/load_test.gd -- --fakes=156 --bots=100 --swarms=2 --seconds=20
 ##
-## # La batería de la fase 3 (ver BRAWL_MATRIX): refriegas agrupadas de 32, 40, 64 y 128 combatientes con el
-## # cerebro de combate (falsos del servidor y bots reales que pelean); 60 s de medida cada una. Desde H5 (fase 4,
-## # docs/habilidades.md, sección 7.3) los falsos pelean con el kit y la mitad lleva la plantilla del tirador
-## # (--fake-loadout=marksman:50), arqueros puros de los que la mitad dispara al cielo (--fake-archers=50: sus flechas
-## # viven 2 s): flechas, habilidades, pociones y derribos, con los PNJ del fuerte en la zona
+## # The phase 3 battery (see BRAWL_MATRIX): clustered brawls of 32, 40, 64 and 128 combatants with the
+## # combat brain (server-side fakes and real bots that fight); 60 s of measurement each. Since H5 (phase 4,
+## # docs/habilidades.md, section 7.3) the fakes fight with the kit and half of them use the marksman
+## # loadout (--fake-loadout=marksman:50), pure archers of which half fire at the sky (--fake-archers=50: their
+## # arrows live 2 s): arrows, abilities, potions and knockdowns, with the fort NPCs in the zone
 ## godot --headless --path . -s res://tools/load_test.gd -- --brawl
-## # Una refriega suelta: 54 falsos de combate y 10 clientes reales de combate (64 en total)
+## # A single brawl: 54 combat fakes and 10 real combat clients (64 in total)
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=brawl --fakes=54 --bots=10
 ##
-## # La batería de la fase 4 (ver SIEGE_MATRIX, GUE-16): asedios de 32 contra 32 y de 64 contra 64 en la puerta y el
-## # círculo del fuerte del Vado Gris, 120 s de medida cada uno (unos 4 min por escenario)
+## # The phase 4 battery (see SIEGE_MATRIX, GUE-16): sieges of 32 vs 32 and 64 vs 64 at the gate and the
+## # circle of the Vado Gris fort, 120 s of measurement each (about 4 min per scenario)
 ## godot --headless --path . -s res://tools/load_test.gd -- --siege
-## # Un asedio suelto: 54 falsos de asedio y 10 clientes reales (--bot-brain=siege), 32 contra 32
+## # A single siege: 54 siege fakes and 10 real clients (--bot-brain=siege), 32 vs 32
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=siege --fakes=54 --bots=10 --seconds=60
-## # Lo mismo con los PNJ de verdad y el fuerte sin ayudas (F6b): 32 contra 32, 120 s de medida
+## # The same with the real NPCs and the fort without help (F6b): 32 vs 32, 120 s of measurement
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=siege --fakes=54 --bots=10 --seconds=120 --npcs
 ##
-## # TEC-27 (docs/plataforma.md §10.2): 64 bots reales agrupados sin DTLS y con DTLS contra la misma zona, alternados
-## # (sin, con, sin, con), 60 s de medida cada pasada, y la comparación con el criterio (el p99 del tick no sube más
-## # de un 10 %)
+## # TEC-27 (docs/plataforma.md §10.2): 64 clustered real bots without DTLS and with DTLS against the same zone, alternating
+## # (without, with, without, with), 60 s of measurement per pass, and the comparison with the criterion (the tick p99
+## # does not rise by more than 10 %)
 ## godot --headless --path . -s res://tools/load_test.gd -- --dtls-compare
-## # Un escenario cualquiera por DTLS (con el certificado de las pruebas, o con --dtls-cert, --dtls-key y --dtls-name)
+## # Any scenario over DTLS (with the test certificate, or with --dtls-cert, --dtls-key and --dtls-name)
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=cluster --fakes=0 --bots=64 --swarms=2 --dtls
 ## [/codeblock]
-## [b]Opciones[/b] (después de [code]--[/code]):
-## [br]- [code]--scenario=cluster|spread|churn[/code] (por defecto [code]cluster[/code]):
-## [br]  · [code]cluster[/code], agrupado: todos los jugadores falsos y todos los bots en torno al mismo punto
-## (el campamento de Vardheim; el servidor los coloca con [code]--fake-layout=cluster[/code]), a menos de unos
-## 60 m unos de otros.
-## [br]  · [code]spread[/code], disperso: los falsos repartidos por la zona ([code]--fake-layout=spread[/code]) y
-## los bots en los dos campamentos.
-## [br]  · [code]churn[/code], altas y bajas: como [code]cluster[/code], pero cada segundo sale el jugador falso
-## más antiguo y entra uno nuevo ([code]--fake-churn=60[/code]).
-## [br]  · [code]brawl[/code], refriega agrupada (TEC-15): los falsos pelean con el cerebro de combate
-## ([code]--fake-brain=combat[/code]) en un corro alrededor de [constant BRAWL_CENTER], en campo abierto
-## junto al campamento de Vardheim (la zona segura de los campamentos les impediría pelear), y los
-## bots reales ([code]--bots[/code], todos de Vardheim) salen del campamento y pelean también
-## ([code]--bot-brain=combat[/code]): reciben snapshots y ENTITY_EVENT y mandan su desfase de vista, así que
-## el servidor hace el rebobinado de verdad. Los falsos son la mitad de cada reino.
-## [br]  · [code]siege[/code], asedio (GUE-16): los falsos asedian y defienden el fuerte del Vado Gris
-## ([code]--fake-brain=siege[/code], repartidos entre Vardheim y Solmarch) y los bots reales ([code]--bots[/code],
-## uno de cada reino por turnos) llevan el cerebro de asedio ([code]--bot-brain=siege[/code], que sigue la ruta,
-## golpea la puerta, entra en el círculo y pelea sin simular). Sin [code]--npcs[/code] es el asedio de F6a: el
-## servidor arranca sin PNJ ([code]--no-npcs[/code]) y abre el círculo con una orden programada
-## ([code]--run-at=<tick>:fort_kill_captain[/code]). Con [code]--npcs[/code] (F6b) arranca con sus PNJ (Huecos, Capitán
-## del Vado, guarnición del dueño y Guardianes) y el fuerte va solo: nadie mata al capitán por ellos. En los dos casos
-## escribe un registro de batalla ([code]--battle-log[/code]) que el resumen lee. La ventana de medida empieza cuando
-## los bots ya han llegado a la puerta ([constant SIEGE_EXTRA_SETTLE_SECONDS]); el resumen dice cuántos bots reales
-## habían llegado al fuerte antes de ella (GUE-44: los que entran tarde esperan a los suyos en el campamento).
-## [br]- [code]--fakes=N[/code] jugadores falsos (entradas inyectadas en la cola, sin red; por defecto 64).
-## [br]- [code]--bots=N[/code] clientes reales: procesos [code]--bots=N[/code] ([BotSwarm]) que entran uno cada 5 ticks
-## (por defecto 0).
-## [br]- [code]--swarms=K[/code] procesos de enjambre entre los que se reparten los bots (por defecto 1; un proceso
-## aguanta algunas decenas).
-## [br]- [code]--seconds=S[/code] segundos de medida con todos dentro (por defecto 30; 120 con
-## [code]--matrix[/code], como pide docs/red.md, 16).
-## [br]- [code]--net-sim=rtt=100,jitter=10,loss=1[/code] simulador de red de los bots. En [code]--matrix[/code]
-## lo fija cada escenario de [constant MATRIX] (el de 100 ms de RTT); la opción solo vale para los que no
-## llevan uno.
-## [br]- [code]--zone=<id>[/code] zona del servidor (por defecto la de siempre, el Vado Gris).
-## [br]- [code]--fake-loadout=<plantilla>[:<porcentaje>][/code] plantilla de equipo de los falsos (la pasa al
-## servidor). En las refriegas, por defecto [constant BRAWL_LOADOUT].
-## [br]- [code]--sky-archers=<porcentaje>[/code] en las refriegas con tiradores: qué parte de ellos dispara al cielo
-## (por defecto [constant BRAWL_SKY_ARCHERS_PERCENT]; con 100, un pico de 54 de las 64 del tope con 64 combatientes;
-## para llenar el tope y medir los desalojos, todos tiradores: [code]--fake-loadout=marksman:100
-## --sky-archers=100[/code]: pico de 64 y unas 4600 echadas en toda la ejecución).
-## [br]- [code]--out=<carpeta>[/code] dónde van los informes y los registros (por defecto [code]build/load_test[/code]).
-## [br]- [code]--siege[/code] lanza la batería de [constant SIEGE_MATRIX] (120 s de medida cada una).
-## [br]- [code]--npcs[/code] (solo en los asedios, también con [code]--siege[/code]): con los PNJ de la zona y sin la
-## orden que mata al capitán (ver [code]siege[/code] arriba). En los demás escenarios no cambia nada.
-## [br]- [code]--brawl[/code] lanza la batería de refriegas de [constant BRAWL_MATRIX] (60 s de medida cada una).
-## [br]- [code]--dtls[/code] el servidor abre el puerto por DTLS ([code]--dtls-cert --dtls-key[/code]) y los
-## enjambres conectan con el certificado anclado ([code]--dtls-cert --dtls-name[/code]): por defecto, los de las pruebas
-## ([constant DTLS_TEST_CERT]); con [code]--dtls-cert=<pem> --dtls-key=<pem> --dtls-name=<cn>[/code], otros.
-## [br]- [code]--dtls-compare[/code] la campaña de TEC-27: el escenario (por defecto [code]cluster[/code] con
-## [constant DTLS_COMPARE_BOTS] bots en [constant DTLS_COMPARE_SWARMS] enjambres y [constant DTLS_COMPARE_FAKES]
-## falsos, [constant DTLS_COMPARE_SECONDS] s) sin y con DTLS, alternados, [code]--repeat=N[/code] veces cada uno
-## ([constant DTLS_COMPARE_REPEAT]); al final, la comparación ([method dtls_comparison]) y el criterio. Sale con 1 si no
-## se cumple y lleva [code]--check[/code].
-## [br]- [code]--check[/code] sale con código 1 si algún escenario incumple el criterio de la fase 2.
+## [b]Options[/b] (after [code]--[/code]):
+## [br]- [code]--scenario=cluster|spread|churn[/code] (default [code]cluster[/code]):
+## [br]  · [code]cluster[/code], clustered: all the fake players and all the bots around the same point
+## (the Vardheim camp; the server places them with [code]--fake-layout=cluster[/code]), within about
+## 60 m of each other.
+## [br]  · [code]spread[/code], spread out: the fakes scattered across the zone ([code]--fake-layout=spread[/code]) and
+## the bots in the two camps.
+## [br]  · [code]churn[/code], joins and leaves: like [code]cluster[/code], but every second the oldest fake player
+## leaves and a new one joins ([code]--fake-churn=60[/code]).
+## [br]  · [code]brawl[/code], clustered brawl (TEC-15): the fakes fight with the combat brain
+## ([code]--fake-brain=combat[/code]) in a ring around [constant BRAWL_CENTER], in the open field
+## next to the Vardheim camp (the camps' safe zone would keep them from fighting), and the real
+## bots ([code]--bots[/code], all from Vardheim) leave the camp and fight too
+## ([code]--bot-brain=combat[/code]): they receive snapshots and ENTITY_EVENT and send their view offset, so
+## the server does the real rewind. The fakes are half from each realm.
+## [br]  · [code]siege[/code], siege (GUE-16): the fakes besiege and defend the Vado Gris fort
+## ([code]--fake-brain=siege[/code], split between Vardheim and Solmarch) and the real bots ([code]--bots[/code],
+## one from each realm in turns) carry the siege brain ([code]--bot-brain=siege[/code], which follows the route,
+## hits the gate, enters the circle and fights without simulating). Without [code]--npcs[/code] it is the F6a siege: the
+## server starts without NPCs ([code]--no-npcs[/code]) and opens the circle with a scheduled command
+## ([code]--run-at=<tick>:fort_kill_captain[/code]). With [code]--npcs[/code] (F6b) it starts with its NPCs (the Hollow, the Ford
+## Captain, the owner's garrison and the Guardians) and the fort runs on its own: nobody kills the captain for them. In both cases
+## it writes a battle log ([code]--battle-log[/code]) that the summary reads. The measurement window starts once
+## the bots have reached the gate ([constant SIEGE_EXTRA_SETTLE_SECONDS]); the summary says how many real bots
+## had reached the fort before it (GUE-44: those that join late wait for their own in the camp).
+## [br]- [code]--fakes=N[/code] fake players (entries injected into the queue, no network; default 64).
+## [br]- [code]--bots=N[/code] real clients: [code]--bots=N[/code] processes ([BotSwarm]) that join one every 5 ticks
+## (default 0).
+## [br]- [code]--swarms=K[/code] swarm processes among which the bots are split (default 1; one process
+## handles a few dozen).
+## [br]- [code]--seconds=S[/code] seconds of measurement with everyone in (default 30; 120 with
+## [code]--matrix[/code], as docs/red.md, 16 requires).
+## [br]- [code]--net-sim=rtt=100,jitter=10,loss=1[/code] network simulator for the bots. With [code]--matrix[/code]
+## each [constant MATRIX] scenario sets it (the 100 ms RTT one); the option only applies to those that
+## do not carry one.
+## [br]- [code]--zone=<id>[/code] server zone (by default the usual one, Vado Gris).
+## [br]- [code]--fake-loadout=<template>[:<percentage>][/code] equipment template of the fakes (passed on to the
+## server). In brawls, [constant BRAWL_LOADOUT] by default.
+## [br]- [code]--sky-archers=<percentage>[/code] in brawls with marksmen: what share of them fires at the sky
+## (default [constant BRAWL_SKY_ARCHERS_PERCENT]; with 100, a peak of 54 of the 64 cap with 64 combatants;
+## to fill the cap and measure the evictions, all marksmen: [code]--fake-loadout=marksman:100
+## --sky-archers=100[/code]: peak of 64 and about 4600 evicted over the whole run).
+## [br]- [code]--out=<folder>[/code] where the reports and logs go (default [code]build/load_test[/code]).
+## [br]- [code]--siege[/code] launches the [constant SIEGE_MATRIX] battery (120 s of measurement each).
+## [br]- [code]--npcs[/code] (only in sieges, also with [code]--siege[/code]): with the zone's NPCs and without the
+## command that kills the captain (see [code]siege[/code] above). In the other scenarios it changes nothing.
+## [br]- [code]--brawl[/code] launches the [constant BRAWL_MATRIX] brawl battery (60 s of measurement each).
+## [br]- [code]--dtls[/code] the server opens the port over DTLS ([code]--dtls-cert --dtls-key[/code]) and the
+## swarms connect with the pinned certificate ([code]--dtls-cert --dtls-name[/code]): by default, the test ones
+## ([constant DTLS_TEST_CERT]); with [code]--dtls-cert=<pem> --dtls-key=<pem> --dtls-name=<cn>[/code], others.
+## [br]- [code]--dtls-compare[/code] the TEC-27 campaign: the scenario (by default [code]cluster[/code] with
+## [constant DTLS_COMPARE_BOTS] bots in [constant DTLS_COMPARE_SWARMS] swarms and [constant DTLS_COMPARE_FAKES]
+## fakes, [constant DTLS_COMPARE_SECONDS] s) without and with DTLS, alternating, [code]--repeat=N[/code] times each
+## ([constant DTLS_COMPARE_REPEAT]); at the end, the comparison ([method dtls_comparison]) and the criterion. Exits with 1 if it
+## is not met and implies [code]--check[/code].
+## [br]- [code]--check[/code] exits with code 1 if any scenario fails the phase 2 criterion.
 ## [br][br]
-## [b]Qué mide[/b] (del [code]--report[/code] del servidor, de [method ZoneServer.write_report], y del de cada
-## enjambre): el p50, el p99 y el máximo del tick y de cada una de sus secciones (red, simulación, historial,
-## snapshots, vaciado) en µs; los µs de [code]PlayerCharacter.simulate()[/code] por personaje; el tamaño de los
-## snapshots y los µs de construir cada uno; los KB/s de subida y de bajada por cliente; el porcentaje de
-## entradas sustituidas, los avisos y las expulsiones. En las refriegas, además, las secciones de combate
-## ([code]combat[/code], con [code]combat_resolve[/code] —golpes con rebobinado— y [code]combat_events[/code]
-## —envío de los ENTITY_EVENT— dentro), los µs por comprobación de golpe, los golpes, las muertes y los eventos
-## por segundo, y la bajada de cada cliente separada en snapshots y eventos (KB/s). En los asedios, además, las
-## secciones de los PNJ ([code]npc_brains[/code], sus cerebros, y [code]npc[/code], los generadores) y la de las
-## fortalezas ([code]war[/code]), con su media de toda la sesión, y los PNJ que había en cada marca de métricas del
-## servidor (su [code]simulate()[/code] va en [code]sim[/code], con el de los jugadores). Los percentiles del servidor son de los últimos 2048
-## ticks (34 s) de su ejecución, así que el servidor sigue unos segundos de más después de que los bots
-## entren, para que la ventana sea solo de régimen. Los enjambres se cierran por el tick del servidor
-## ([code]--quit-at-server-tick[/code], [constant TAIL_SECONDS] y [constant SWARM_START_MARGIN_TICKS] antes de su final),
-## no por su propio reloj: con muchos jugadores el servidor va más despacio que el tiempo real y los bots se iban antes de
-## tiempo. El resumen dice cuántos jugadores había en esos 2048 ticks y en las marcas de la ventana, y avisa si no son
-## los del pico.
+## [b]What it measures[/b] (from the server's [code]--report[/code], from [method ZoneServer.write_report], and from that of each
+## swarm): the p50, p99 and maximum of the tick and of each of its sections (network, simulation, history,
+## snapshots, flush) in µs; the µs of [code]PlayerCharacter.simulate()[/code] per character; the size of the
+## snapshots and the µs to build each one; the upload and download KB/s per client; the percentage of
+## substituted inputs, the warnings and the kicks. In brawls, in addition, the combat sections
+## ([code]combat[/code], with [code]combat_resolve[/code] —hits with rewind— and [code]combat_events[/code]
+## —sending the ENTITY_EVENTs— inside it), the µs per hit check, the hits, the deaths and the events
+## per second, and each client's download split into snapshots and events (KB/s). In sieges, in addition, the
+## NPC sections ([code]npc_brains[/code], their brains, and [code]npc[/code], the spawners) and the fortress
+## section ([code]war[/code]), with their average over the whole session, and the NPCs present at each metrics mark of the
+## server (their [code]simulate()[/code] goes in [code]sim[/code], along with the players'). The server's percentiles are from the last 2048
+## ticks (34 s) of its run, so the server keeps going a few extra seconds after the bots
+## join, so that the window is steady-state only. The swarms close by the server's tick
+## ([code]--quit-at-server-tick[/code], [constant TAIL_SECONDS] and [constant SWARM_START_MARGIN_TICKS] before its end),
+## not by their own clock: with many players the server runs slower than real time and the bots used to leave
+## too early. The summary says how many players there were in those 2048 ticks and at the window's marks, and warns if they are not
+## those of the peak.
 ## [br][br]
-## [b]Entradas sustituidas.[/b] El informe del servidor da el porcentaje de toda la sesión, con el arranque
-## dentro (cada bot pierde unas decenas de entradas mientras [TickSync] encuentra su antelación, más con
-## 100 ms de RTT). Se muestran las dos cifras: la de la sesión y la de la ventana de medida, que resta lo
-## acumulado al empezar ([LoadTestSummary]; sale de las líneas de métricas que el servidor escribe cada
-## 600 ticks, así que la ventana va de la primera tras entrar los bots a la última antes de que se
-## vayan). El criterio usa la de la ventana.
+## [b]Substituted inputs.[/b] The server report gives the percentage for the whole session, with the startup
+## included (each bot loses a few dozen inputs while [TickSync] finds its lead, more with
+## 100 ms of RTT). Both figures are shown: the session's and the measurement window's, which subtracts what had
+## accumulated at the start ([LoadTestSummary]; it comes from the metrics lines the server writes every
+## 600 ticks, so the window runs from the first one after the bots join to the last one before they
+## leave). The criterion uses the window's.
 ## [br][br]
-## [b]Criterio de la fase 4[/b] (docs/habilidades.md, secciones 7.3 y 8): en la refriega de 64 con la mitad de
-## tiradores, el p99 del tick por debajo de 16,7 ms y la sección [code]combat_projectiles[/code] por debajo de
-## 1 ms (p99); se muestra con el pico de flechas vivas frente al tope de la zona y las que el tope echó.
+## [b]Phase 4 criterion[/b] (docs/habilidades.md, sections 7.3 and 8): in the 64 brawl with half
+## marksmen, tick p99 below 16.7 ms and the [code]combat_projectiles[/code] section below
+## 1 ms (p99); it is shown with the peak of live arrows against the zone cap and those the cap evicted.
 ## [br][br]
-## [b]Criterio de la fase 2[/b] (docs/red.md, 14 y 16), con 64 jugadores agrupados y 100 ms de RTT en los
-## bots: p99 del tick por debajo de 8 ms, como mucho 37 KB/s de bajada por cliente y menos de un 1 % de
-## entradas sustituidas. Con otros tamaños o escenarios se muestra como referencia.
+## [b]Phase 2 criterion[/b] (docs/red.md, 14 and 16), with 64 clustered players and 100 ms of RTT on the
+## bots: tick p99 below 8 ms, at most 37 KB/s download per client and less than 1 % of
+## substituted inputs. With other sizes or scenarios it is shown for reference.
 ## [br][br]
-## Las cifras dependen de la máquina y de lo que más corra en ella: el servidor, el enjambre y quien lo lance
-## comparten núcleos. Cada servidor usa un puerto distinto a partir del 25000.
+## The figures depend on the machine and on whatever else runs on it: the server, the swarm and whoever launches it
+## share cores. Each server uses a different port starting from 25000.
 
 const FIRST_PORT: int = 25000
 const LAST_PORT: int = 26000
-## Segundos que se esperan, como mucho, a que el servidor empiece a escuchar.
+## Seconds to wait, at most, for the server to start listening.
 const LISTEN_TIMEOUT_SECONDS: float = 40.0
-## Segundos de más, sobre la duración prevista, que se espera a que terminen los procesos.
+## Extra seconds, on top of the expected duration, to wait for the processes to finish.
 const FINISH_MARGIN_SECONDS: float = 60.0
-## Segundos que se dejan, tras empezar a escuchar, para que arranquen los procesos y entren todos los bots
-## antes de la ventana de medida (se suman 5 ticks por bot de cada enjambre).
+## Seconds left, after it starts listening, for the processes to start and all the bots to join
+## before the measurement window (5 ticks per bot of each swarm are added).
 const SETTLE_SECONDS: float = 8.0
-## Segundos que sigue el servidor después de que se vayan los bots (poco, para no ensuciar la ventana).
+## Seconds the server keeps running after the bots leave (short, so as not to pollute the window).
 const TAIL_SECONDS: float = 2.0
-## Ticks de margen entre el cierre del enjambre y el del servidor (arranque del proceso del enjambre).
+## Ticks of margin between the swarm closing and the server closing (swarm process startup).
 const SWARM_START_MARGIN_TICKS: int = 90
-## El enjambre se cierra por el tick del servidor ([code]--quit-at-server-tick[/code]): con muchos jugadores el servidor
-## va más despacio que el tiempo real, y uno que se cerrase por su propio reloj se iría antes de que acabase la ventana
-## (con 128 jugadores, a los 8400 ticks de 10 850: los percentiles del último tramo salían de 118 jugadores sin ningún
-## cliente; revisión de F6b). Como cota, y para esperar a los procesos, se admite un servidor hasta este número de veces
-## más lento que el tiempo real.
+## The swarm closes by the server's tick ([code]--quit-at-server-tick[/code]): with many players the server
+## runs slower than real time, and one that closed by its own clock would leave before the window ended
+## (with 128 players, at 8400 ticks out of 10 850: the percentiles of the last stretch came from 118 players with no
+## clients; F6b review). As an upper bound, and to wait for the processes, a server up to this many times
+## slower than real time is accepted.
 const SLOW_SERVER_FACTOR: float = 3.0
-## Si menos de esta parte de los últimos 2048 ticks del servidor (de los que salen los percentiles de su informe) tuvo el
-## pico de jugadores, el resumen avisa de que esos percentiles no son de la carga que se quería medir.
+## If less than this share of the server's last 2048 ticks (the ones its report's percentiles come from) had the
+## peak of players, the summary warns that those percentiles are not from the load that was meant to be measured.
 const MIN_TAIL_AT_PEAK: float = 0.75
-## Criterio de la fase 2.
+## Phase 2 criterion.
 const MAX_P99_TICK_US: int = 8000
 const MAX_KB_PER_CLIENT: float = 37.0
 const MAX_SUBSTITUTED_PERCENT: float = 1.0
-## Secciones del tick que se muestran (las de combate van dentro de [code]combat[/code]).
+## Tick sections that are shown (the combat ones go inside [code]combat[/code]).
 const SECTIONS: Array[String] = ["tick", "net", "npc_brains", "sim", "combat", "combat_resolve", "combat_projectiles",
 		"combat_events", "war", "npc", "history", "snapshot", "flush"]
-## Plantilla de los falsos de una refriega (fase 4, H5): la mitad tiradores, arqueros puros, de los que este
-## porcentaje dispara al cielo ([code]--fake-archers[/code]).
+## Loadout of the fakes in a brawl (phase 4, H5): half marksmen, pure archers, of which this
+## percentage fires at the sky ([code]--fake-archers[/code]).
 const BRAWL_LOADOUT: String = "marksman:50"
 const BRAWL_SKY_ARCHERS_PERCENT: int = 50
-## Criterio de la fase 4 (docs/habilidades.md, secciones 7.3 y 8): p99 del tick y de la sección de proyectiles.
+## Phase 4 criterion (docs/habilidades.md, sections 7.3 and 8): p99 of the tick and of the projectiles section.
 const MAX_P99_TICK_US_PHASE_4: int = 16700
 const MAX_P99_PROJECTILES_US: int = 1000
-## Batería de [code]--matrix[/code]: [escenario, jugadores falsos, bots, simulador de red de los bots].
-## Los tres primeros son los de siempre (sin retardo); el cuarto es el criterio de la fase 2 medido como
-## pide docs/red.md, 16 (64 agrupados y 100 ms de RTT); después disperso, altas y bajas y los tamaños
-## de 128 y 256 jugadores falsos.
+## Battery for [code]--matrix[/code]: [scenario, fake players, bots, bots' network simulator].
+## The first three are the usual ones (no delay); the fourth is the phase 2 criterion measured as
+## docs/red.md, 16 requires (64 clustered and 100 ms of RTT); then spread, joins and leaves, and the sizes
+## of 128 and 256 fake players.
 const MATRIX: Array[Array] = [
 	["cluster", 64, 2, ""],
 	["cluster", 64, 10, ""],
@@ -184,54 +184,54 @@ const MATRIX: Array[Array] = [
 	["cluster", 256, 10, ""],
 	["spread", 256, 10, ""],
 ]
-## Segundos de medida de cada escenario de [constant MATRIX] (docs/red.md, 16: 120 s cada uno).
+## Seconds of measurement for each [constant MATRIX] scenario (docs/red.md, 16: 120 s each).
 const MATRIX_SECONDS: int = 120
-## Batería de [code]--brawl[/code] (TEC-15): [escenario, jugadores falsos, bots reales, simulador de red de los
-## bots]. Los combatientes son los falsos más los diez bots reales: 32, 40, 64 y 128 en total. La de 40 es el
-## límite de jugadores por batalla con el kit de la fase 4 (docs/red.md, sección 14) y el aforo del Vado Gris.
+## Battery for [code]--brawl[/code] (TEC-15): [scenario, fake players, real bots, bots' network
+## simulator]. The combatants are the fakes plus the ten real bots: 32, 40, 64 and 128 in total. The 40 one is the
+## per-battle player limit with the phase 4 kit (docs/red.md, section 14) and the Vado Gris capacity.
 const BRAWL_MATRIX: Array[Array] = [
 	["brawl", 22, 10, ""],
 	["brawl", 30, 10, ""],
 	["brawl", 54, 10, ""],
 	["brawl", 118, 10, ""],
 ]
-## Segundos de medida de cada refriega de [constant BRAWL_MATRIX].
+## Seconds of measurement for each [constant BRAWL_MATRIX] brawl.
 const BRAWL_SECONDS: int = 60
-## Punto (x, z) del Vado Gris en el que se juntan los falsos de una refriega: campo abierto a 18 m del
-## borde de la zona segura del campamento de Vardheim (z = -138, radio 24) y a unos 34 m del brazo
-## norte del río, sin obstáculos de aquí al campamento.
+## Point (x, z) in Vado Gris where the fakes of a brawl gather: open field 18 m from the
+## edge of the Vardheim camp's safe zone (z = -138, radius 24) and about 34 m from the north
+## arm of the river, with no obstacles from here to the camp.
 const BRAWL_CENTER: String = "0,-96"
-## Segundos de más que se dejan, en una refriega, antes de la ventana de medida: los bots reales salen
-## del campamento y tardan unos segundos en llegar al corro.
+## Extra seconds left, in a brawl, before the measurement window: the real bots leave
+## the camp and take a few seconds to reach the ring.
 const BRAWL_EXTRA_SETTLE_SECONDS: float = 12.0
-## Batería de [code]--siege[/code] (GUE-16): [escenario, jugadores falsos, bots reales, simulador de red de los
-## bots]. Los dos bandos son los falsos más los diez bots reales entre dos: 32 contra 32 (54 + 10) y 64 contra 64
+## Battery for [code]--siege[/code] (GUE-16): [scenario, fake players, real bots, bots' network
+## simulator]. The two sides are the fakes plus the ten real bots split in two: 32 vs 32 (54 + 10) and 64 vs 64
 ## (118 + 10).
 const SIEGE_MATRIX: Array[Array] = [
 	["siege", 54, 10, ""],
 	["siege", 118, 10, ""],
 ]
-## Segundos de medida de cada asedio de [constant SIEGE_MATRIX] (docs/fuerte.md, sección 7: 120 s).
+## Seconds of measurement for each [constant SIEGE_MATRIX] siege (docs/fuerte.md, section 7: 120 s).
 const SIEGE_SECONDS: int = 120
-## Segundos de más que se dejan, en un asedio, antes de la ventana de medida: los bots salen de sus campamentos
-## y tardan de 25 a 45 s en llegar a la puerta (el puente, directo; el vado, más largo).
+## Extra seconds left, in a siege, before the measurement window: the bots leave their camps
+## and take 25 to 45 s to reach the gate (the bridge, direct; the ford, longer).
 const SIEGE_EXTRA_SETTLE_SECONDS: float = 50.0
-## Segundos de medida de un escenario suelto.
+## Seconds of measurement for a single scenario.
 const DEFAULT_SECONDS: int = 30
-## Certificado, clave y nombre DTLS de [code]--dtls[/code] si no se dan otros: los de las pruebas
+## Certificate, key and DTLS name of [code]--dtls[/code] if no others are given: the test ones
 ## (docs/plataforma.md §10.2).
 const DTLS_TEST_CERT: String = "res://tests/fixtures/dtls/zone_cert.pem"
 const DTLS_TEST_KEY: String = "res://tests/fixtures/dtls/zone_key.pem"
 const DTLS_TEST_NAME: String = "zona-pruebas.eldmark.test"
-## Campaña de [code]--dtls-compare[/code] (TEC-27, docs/plataforma.md §10.2): por defecto, 64 bots reales sin falsos
-## en dos enjambres, agrupados ([code]cluster[/code]: cada snapshot va lleno), 60 s de medida, y dos pasadas de cada
-## (sin, con, sin, con).
+## Campaign of [code]--dtls-compare[/code] (TEC-27, docs/plataforma.md §10.2): by default, 64 real bots with no fakes
+## in two swarms, clustered ([code]cluster[/code]: every snapshot goes full), 60 s of measurement, and two passes of each
+## (without, with, without, with).
 const DTLS_COMPARE_FAKES: int = 0
 const DTLS_COMPARE_BOTS: int = 64
 const DTLS_COMPARE_SWARMS: int = 2
 const DTLS_COMPARE_SECONDS: int = 60
 const DTLS_COMPARE_REPEAT: int = 2
-## Criterio de TEC-27 (provisional, pendiente del usuario): DTLS no sube el p99 del tick más de esta fracción.
+## TEC-27 criterion (provisional, pending the user): DTLS does not raise the tick p99 by more than this fraction.
 const MAX_DTLS_P99_RISE: float = 0.10
 
 var _pids: Array[int] = []
@@ -247,7 +247,7 @@ func _run() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	var runs: Array[Dictionary] = []
 	if args.has("--dtls-compare"):
-		# TEC-27: el mismo escenario sin DTLS y con DTLS, alternados, --repeat veces cada uno.
+		# TEC-27: the same scenario without DTLS and with DTLS, alternating, --repeat times each.
 		var repeat: int = maxi(_int_option(args, "--repeat=", DTLS_COMPARE_REPEAT), 1)
 		for i: int in repeat:
 			for with_dtls: bool in [false, true]:
@@ -309,7 +309,7 @@ func _run() -> void:
 	quit(1 if (errors or (args.has("--check") and failed)) else 0)
 
 
-# [param net_sim] es el del escenario (el de la batería); vacío = el de --net-sim.
+# [param net_sim] is the scenario's (the battery's); empty = the one from --net-sim.
 func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int, net_sim: String,
 		default_seconds: int) -> Dictionary:
 	return {
@@ -330,9 +330,9 @@ func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int,
 	}
 
 
-# --- Un escenario -----------------------------------------------------------------------------
+# --- One scenario -----------------------------------------------------------------------------
 
-# Lanza el servidor y los enjambres, espera a que terminen y devuelve el resumen de lo medido.
+# Launches the server and the swarms, waits for them to finish and returns the summary of what was measured.
 func _run_scenario(run: Dictionary) -> Dictionary:
 	var scenario: String = run["scenario"]
 	var fakes: int = run["fakes"]
@@ -353,7 +353,7 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		summary["error"] = "no hay ningún puerto UDP libre"
 		return summary
 
-	# Tiempos: el servidor escucha, arrancan los enjambres, entran todos y se mide `seconds` segundos.
+	# Timings: the server listens, the swarms start, everyone joins and `seconds` seconds are measured.
 	var bots_per_swarm: int = ceili(float(bots) / float(swarms)) if bots > 0 else 0
 	var settle_seconds: float = SETTLE_SECONDS
 	if scenario == "brawl":
@@ -391,8 +391,8 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		if not str(run["loadout"]).is_empty():
 			server_args.append("--fake-loadout=%s" % run["loadout"])
 		if scenario == "brawl" and not str(run["loadout"]).is_empty():
-			# Los tiradores son arqueros puros y una parte dispara al cielo: flechas que viven sus 2 s, para acercarse al
-			# tope de la zona (docs/habilidades.md, secciones 7.3 y 8).
+			# The marksmen are pure archers and a share of them fire at the sky: arrows that live their 2 s, to get close to the
+			# zone cap (docs/habilidades.md, sections 7.3 and 8).
 			server_args.append("--fake-archers=%d" % int(run["sky_archers"]))
 	if scenario == "siege":
 		server_args.append_array(siege_server_args(bool(run.get("npcs", false)), battle_log, settle_ticks))
@@ -434,7 +434,7 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		if scenario == "brawl":
 			swarm_args.append("--bot-brain=combat")
 		elif scenario == "siege":
-			# Sin --realm: los bots se reparten entre Vardheim y Solmarch.
+			# Without --realm: the bots are split between Vardheim and Solmarch.
 			swarm_args.append("--bot-brain=siege")
 		if not str(run["net_sim"]).is_empty():
 			swarm_args.append("--net-sim=%s" % run["net_sim"])
@@ -471,7 +471,7 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 	return summary
 
 
-# Cifras del resumen a partir de los informes.
+# Summary figures from the reports.
 func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionary], bots: int) -> void:
 	var metrics: Dictionary = server.get("metrics", {})
 	var sections: Dictionary = metrics.get("sections", {})
@@ -482,7 +482,7 @@ func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionar
 	var peak: int = int(players.get("peak", 0))
 	summary["players_peak"] = peak
 	summary["server_ticks"] = int(server.get("ticks", 0))
-	# Quién había en el tramo del que salen los percentiles del informe (los últimos 2048 ticks del servidor).
+	# Who was present in the stretch the report's percentiles come from (the server's last 2048 ticks).
 	var samples: int = int((sections.get("tick", {}) as Dictionary).get("samples", ServerMetrics.WINDOW_TICKS))
 	var end_tick: int = int(server.get("ticks", 0))
 	summary["tail_presence"] = LoadTestSummary.presence(server.get("player_list", []),
@@ -511,7 +511,7 @@ func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionar
 	summary["left_total"] = int(players.get("left_total", 0))
 	summary["server_kb_out_per_s"] = float(metrics.get("kb_out_per_s", 0.0))
 	summary["server_kb_in_per_s"] = float(metrics.get("kb_in_per_s", 0.0))
-	# Si el servidor abrió el puerto con DTLS y si todos los enjambres conectaron con él (TEC-27).
+	# Whether the server opened the port with DTLS and whether all the swarms connected with it (TEC-27).
 	summary["server_dtls"] = bool(server.get("dtls", false))
 	var swarms_dtls: bool = not swarms.is_empty()
 	for data: Dictionary in swarms:
@@ -520,7 +520,7 @@ func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionar
 	if bool((summary["run"] as Dictionary).get("dtls", false)) and not bool(summary["server_dtls"]):
 		summary["error"] = "se pidió DTLS y el servidor no lo usó"
 
-	# Lo que miden los propios bots.
+	# What the bots themselves measure.
 	var played: int = 0
 	var requested: int = 0
 	var down_sum: float = 0.0
@@ -560,8 +560,8 @@ func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionar
 	_apply_criterion(summary)
 
 
-# Cifras del combate de una refriega: lo que cuesta cada parte y lo que baja cada cliente en snapshots y en
-# eventos (de los bots reales, que miden sus bytes de aplicación).
+# Combat figures of a brawl: what each part costs and what each client downloads in snapshots and in
+# events (from the real bots, which measure their application bytes).
 func _summarise_combat(summary: Dictionary, server: Dictionary, swarms: Array[Dictionary]) -> void:
 	var seconds: float = float(server.get("ticks", 0)) / float(_tick_rate)
 	var figures: Dictionary = LoadTestSummary.combat_figures(server, seconds)
@@ -594,16 +594,16 @@ func _summarise_combat(summary: Dictionary, server: Dictionary, swarms: Array[Di
 	figures["seconds"] = seconds
 	figures["phase_4"] = LoadTestSummary.phase_4_figures(server, seconds)
 	summary["combat"] = figures
-	# Criterio de la fase 4: tick y proyectiles por debajo de su presupuesto.
+	# Phase 4 criterion: tick and projectiles below their budget.
 	var sections: Dictionary = summary["sections_us"]
 	summary["phase_4_criterion_met"] = int((sections["tick"] as Dictionary)["p99"]) <= MAX_P99_TICK_US_PHASE_4 \
 			and int((sections["combat_projectiles"] as Dictionary)["p99"]) <= MAX_P99_PROJECTILES_US
 
 
-# Cifras del asedio (GUE-16): cómo se comporta el tick a lo largo de la ventana de medida (las marcas de
-# métricas que el servidor escribe cada 10 s, cada una sobre los 34 s anteriores, con los PNJ de cada una), qué pasó
-# en el fuerte según el registro de batalla (capturas, puertas rotas, muertes de jugadores y de PNJ), lo que cuestan
-# las secciones de los PNJ y de las fortalezas, y cuándo llegaron al fuerte los bots reales.
+# Siege figures (GUE-16): how the tick behaves along the measurement window (the metrics marks
+# that the server writes every 10 s, each over the previous 34 s, with the NPCs of each one), what happened
+# at the fort according to the battle log (captures, broken gates, player and NPC deaths), what
+# the NPC and fortress sections cost, and when the real bots reached the fort.
 func _summarise_siege(summary: Dictionary, server: Dictionary, swarms: Array[Dictionary], server_log: String,
 		battle_log: String, first_tick: int, last_tick: int) -> void:
 	var marks: Array[Dictionary] = LoadTestSummary.parse_tick_timeline(FileAccess.get_file_as_string(server_log))
@@ -621,15 +621,15 @@ func _summarise_siege(summary: Dictionary, server: Dictionary, swarms: Array[Dic
 	figures["npc_brains_section"] = sections.get("npc_brains", {})
 	figures["npc_section"] = sections.get("npc", {})
 	figures["npcs"] = server.get("npcs", {})
-	# Los maniquíes que se crearon (al cerrar el servidor ya no queda ninguno).
+	# The dummies that were created (when the server closes none are left).
 	figures["dummies"] = int((server.get("combat", {}) as Dictionary).get("dummies_created", 0))
 	figures["fort_arrivals"] = LoadTestSummary.fort_arrivals(swarms, first_tick)
 	summary["siege"] = figures
 
 
-# Porcentaje de entradas sustituidas dentro de la ventana de medida (restando el arranque): de la
-# primera línea de métricas del servidor desde [param first_tick] a la última hasta [param last_tick].
-# Sin dos líneas en ese rango se queda la cifra de toda la sesión.
+# Percentage of substituted inputs within the measurement window (subtracting the startup): from the
+# first server metrics line from [param first_tick] to the last one up to [param last_tick].
+# Without two lines in that range, the whole-session figure is kept.
 func _summarise_window(summary: Dictionary, server: Dictionary, server_log: String, first_tick: int,
 		last_tick: int) -> void:
 	var cumulative: Dictionary = LoadTestSummary.parse_metrics_log(FileAccess.get_file_as_string(server_log))
@@ -641,8 +641,8 @@ func _summarise_window(summary: Dictionary, server: Dictionary, server_log: Stri
 	_apply_criterion(summary)
 
 
-# Criterio de la fase 2 (solo tiene sentido con clientes reales para los KB/s). Las entradas
-# sustituidas son las de la ventana de medida, si se ha podido calcular, y si no las de la sesión.
+# Phase 2 criterion (only meaningful with real clients for the KB/s). The substituted
+# inputs are those of the measurement window, if it could be computed, and otherwise those of the session.
 func _apply_criterion(summary: Dictionary) -> void:
 	var sections: Dictionary = summary["sections_us"]
 	var p99_tick: int = int((sections["tick"] as Dictionary)["p99"])
@@ -653,7 +653,7 @@ func _apply_criterion(summary: Dictionary) -> void:
 	summary["criterion_met"] = met
 
 
-# Imprime el resumen de un escenario y lo añade a summary.txt.
+# Prints a scenario's summary and appends it to summary.txt.
 func _print_summary(summary: Dictionary) -> void:
 	var lines := PackedStringArray()
 	lines.append("== %s: %d falsos, %d bots ==" % [summary["tag"], (summary["run"] as Dictionary)["fakes"],
@@ -665,7 +665,7 @@ func _print_summary(summary: Dictionary) -> void:
 	_print_lines(lines)
 
 
-# Imprime [param lines] y las añade a summary.txt.
+# Prints [param lines] and appends them to summary.txt.
 func _print_lines(lines: PackedStringArray) -> void:
 	for line: String in lines:
 		print(line)
@@ -736,7 +736,7 @@ func _summary_lines(summary: Dictionary) -> PackedStringArray:
 	return lines
 
 
-# Líneas del resumen de un asedio.
+# Lines of a siege's summary.
 func _siege_lines(figures: Dictionary) -> PackedStringArray:
 	var lines := PackedStringArray()
 	var window: Dictionary = figures.get("window", {})
@@ -784,7 +784,7 @@ func _siege_lines(figures: Dictionary) -> PackedStringArray:
 	return lines
 
 
-# Líneas del resumen de una refriega.
+# Lines of a brawl's summary.
 func _combat_lines(figures: Dictionary) -> PackedStringArray:
 	var lines := PackedStringArray()
 	lines.append("   Combate:                    %d golpes (%d bloqueados), %d muertes, %d eventos (%.1f/s), %d paquetes de evento" % [
@@ -813,17 +813,17 @@ func _combat_lines(figures: Dictionary) -> PackedStringArray:
 	return lines
 
 
-## El aforo con el que se lanza el servidor de un escenario de [param fakes] falsos y [param bots] bots reales: todos y un
-## margen de 8, siempre con [code]--max-players[/code] explícito. Sin él, el Vado Gris tendría su aforo propio (40, el
-## límite por batalla medido con el kit de la fase 4: [method NetZones.max_players], docs/red.md, sección 14) y los
-## asedios de 32 contra 32 y 64 contra 64 de [constant SIEGE_MATRIX], o las refriegas de 64 y 128, no cabrían.
+## The capacity the server of a scenario with [param fakes] fakes and [param bots] real bots is launched with: all of them plus a
+## margin of 8, always with an explicit [code]--max-players[/code]. Without it, Vado Gris would have its own capacity (40, the
+## per-battle limit measured with the phase 4 kit: [method NetZones.max_players], docs/red.md, section 14) and the
+## 32 vs 32 and 64 vs 64 sieges of [constant SIEGE_MATRIX], or the 64 and 128 brawls, would not fit.
 static func server_max_players(fakes: int, bots: int) -> int:
 	return fakes + bots + 8
 
 
-## Las opciones con las que se cierra un enjambre: cuando alguno de sus bots ve el tick [param swarm_ticks] del servidor
-## ([code]--quit-at-server-tick[/code]) y, como cota, tras [constant SLOW_SERVER_FACTOR] veces ese número de ticks de su
-## propio reloj ([code]--quit-after-ticks[/code]).
+## The options a swarm closes with: when any of its bots sees the server's tick [param swarm_ticks]
+## ([code]--quit-at-server-tick[/code]) and, as an upper bound, after [constant SLOW_SERVER_FACTOR] times that number of ticks of its
+## own clock ([code]--quit-after-ticks[/code]).
 static func swarm_quit_args(swarm_ticks: int) -> PackedStringArray:
 	return PackedStringArray([
 		"--quit-at-server-tick=%d" % swarm_ticks,
@@ -831,10 +831,10 @@ static func swarm_quit_args(swarm_ticks: int) -> PackedStringArray:
 	])
 
 
-## Opciones del servidor propias de un asedio: el registro de batalla en [param battle_log] y, sin [param with_npcs]
-## (el asedio de F6a), [code]--no-npcs[/code] y la orden que da por muerto al capitán al terminar el tick
-## [param open_circle_tick] (el principio de la ventana de medida), para que el círculo se abra. Con
-## [param with_npcs] el servidor lleva sus PNJ y nadie le ayuda.
+## Server options specific to a siege: the battle log at [param battle_log] and, without [param with_npcs]
+## (the F6a siege), [code]--no-npcs[/code] and the command that declares the captain dead at the end of tick
+## [param open_circle_tick] (the start of the measurement window), so that the circle opens. With
+## [param with_npcs] the server carries its NPCs and nobody helps it.
 static func siege_server_args(with_npcs: bool, battle_log: String, open_circle_tick: int) -> PackedStringArray:
 	var args := PackedStringArray(["--battle-log=%s" % battle_log])
 	if not with_npcs:
@@ -842,21 +842,21 @@ static func siege_server_args(with_npcs: bool, battle_log: String, open_circle_t
 	return args
 
 
-## Opciones DTLS del servidor de [param run] (las rutas de su certificado y su clave).
+## DTLS options of the server of [param run] (the paths to its certificate and its key).
 static func dtls_server_args(run: Dictionary) -> PackedStringArray:
 	return PackedStringArray(["--dtls-cert=%s" % run["dtls_cert"], "--dtls-key=%s" % run["dtls_key"]])
 
 
-## Opciones DTLS de un enjambre de [param run]: el certificado que ancla y el nombre que comprueba.
+## DTLS options of a swarm of [param run]: the certificate it pins and the name it checks.
 static func dtls_swarm_args(run: Dictionary) -> PackedStringArray:
 	return PackedStringArray(["--dtls-cert=%s" % run["dtls_cert"], "--dtls-name=%s" % run["dtls_name"]])
 
 
-## Comparación de [code]--dtls-compare[/code] (TEC-27): de los resúmenes de [param summaries] que salieron bien, la media
-## de cada cifra sin DTLS y con DTLS y lo que sube, con el criterio (el p99 del tick con DTLS no pasa en más de
-## [constant MAX_DTLS_P99_RISE] el de sin DTLS). Las cifras: p50 y p99 del tick y de las secciones [code]net[/code]
-## (recibir y descifrar) y [code]flush[/code] (cifrar y enviar), KB/s de entrada y salida del servidor y bajada por
-## cliente; [code]pairs[/code] trae los p99 del tick de cada pasada, para ver el ruido entre pasadas iguales.
+## Comparison of [code]--dtls-compare[/code] (TEC-27): from the [param summaries] that came out fine, the average
+## of each figure without DTLS and with DTLS and how much it rises, with the criterion (the tick p99 with DTLS must not exceed by more than
+## [constant MAX_DTLS_P99_RISE] the one without DTLS). The figures: p50 and p99 of the tick and of the [code]net[/code]
+## (receive and decrypt) and [code]flush[/code] (encrypt and send) sections, server in and out KB/s and download per
+## client; [code]pairs[/code] carries the tick p99s of each pass, to see the noise between identical passes.
 static func dtls_comparison(summaries: Array[Dictionary]) -> Dictionary:
 	var groups: Dictionary = {false: [], true: []}
 	for summary: Dictionary in summaries:
@@ -895,7 +895,7 @@ static func dtls_comparison(summaries: Array[Dictionary]) -> Dictionary:
 	return result
 
 
-# Media de [param figure] (un Callable sobre un resumen) sin y con DTLS, y lo que sube en fracción de la de sin.
+# Average of [param figure] (a Callable over a summary) without and with DTLS, and how much it rises as a fraction of the one without.
 static func _compare(groups: Dictionary, figure: Callable) -> Dictionary:
 	var means: Array[float] = []
 	for with_dtls: bool in [false, true]:
@@ -907,7 +907,7 @@ static func _compare(groups: Dictionary, figure: Callable) -> Dictionary:
 			"rise": (means[1] - means[0]) / means[0] if means[0] > 0.0 else 0.0}
 
 
-# Líneas del resumen de --dtls-compare.
+# Lines of the --dtls-compare summary.
 func _dtls_comparison_lines(comparison: Dictionary) -> PackedStringArray:
 	var lines := PackedStringArray()
 	lines.append("== DTLS (TEC-27): %d pasadas sin y %d con ==" % [comparison["plain_runs"], comparison["dtls_runs"]])
@@ -927,18 +927,18 @@ func _dtls_comparison_lines(comparison: Dictionary) -> PackedStringArray:
 	return lines
 
 
-# true si el escenario es aquel para el que se define el criterio de la fase 2 (docs/red.md, 16): 64
-# jugadores falsos agrupados, con bots y 100 ms de RTT.
+# true if the scenario is the one the phase 2 criterion is defined for (docs/red.md, 16): 64
+# clustered fake players, with bots and 100 ms of RTT.
 func _is_reference_run(run: Dictionary) -> bool:
 	return run["scenario"] == "cluster" and int(run["fakes"]) == 64 and int(run["bots"]) > 0 \
 			and str(run["net_sim"]).begins_with("rtt=100")
 
 
-# --- Procesos y ayudas ------------------------------------------------------------------------
+# --- Processes and helpers ------------------------------------------------------------------------
 
-# Lanza otro Godot sin ventana sobre este proyecto con [param user_args] y su registro en [param log_path].
-# Su salida estándar se mezcla con la de esta herramienta (--quiet también vaciaría el registro, que es
-# por donde se sabe que el servidor ya escucha); el resumen de cada escenario queda en summary.txt.
+# Launches another windowless Godot on this project with [param user_args] and its log at [param log_path].
+# Its standard output is mixed with this tool's (--quiet would also flush the log, which is
+# how it is known that the server is already listening); each scenario's summary goes into summary.txt.
 func _launch(user_args: PackedStringArray, log_path: String) -> int:
 	var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"),
 			"--log-file", log_path, "--"])
@@ -949,7 +949,7 @@ func _launch(user_args: PackedStringArray, log_path: String) -> int:
 	return pid
 
 
-# Espera a que se cumpla [param condition] hasta [param timeout_seconds]. false si pasa el tiempo.
+# Waits for [param condition] to be met, up to [param timeout_seconds]. false if time runs out.
 func _wait_until(condition: Callable, timeout_seconds: float) -> bool:
 	var deadline: int = Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
 	while not condition.call():

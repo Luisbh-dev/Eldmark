@@ -1,15 +1,15 @@
 extends SceneTree
-## Reduce texturas a la resolución máxima permitida en el repo antes de copiarlas.
+## Reduces textures to the maximum resolution allowed in the repo before copying them.
 ##
-## Reglas de docs/arte.md y CLAUDE.md: ninguna textura de más de 2048 px entra en el repo (1024
-## para props pequeños). Reduce a la mitad con filtro de caja ([method Image.shrink_x2]) hasta
-## que el lado mayor no pase de [code]--max[/code]; en mapas de normales, además, vuelve a
-## normalizar cada vector tras promediar.
+## Rules from docs/arte.md and CLAUDE.md: no texture over 2048 px enters the repo (1024
+## for small props). It halves with a box filter ([method Image.shrink_x2]) until
+## the longer side does not exceed [code]--max[/code]; on normal maps, it also
+## renormalizes each vector after averaging.
 ## [br][br]
-## Uso (desde la raíz del proyecto, con rutas absolutas o relativas al directorio actual):
+## Usage (from the project root, with absolute paths or paths relative to the current directory):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/assets/downscale_texture.gd -- \
-##     --in=<origen.png> --out=<destino.png> [--max=2048] [--normal]
+##     --in=<source.png> --out=<destination.png> [--max=2048] [--normal]
 ## [/codeblock]
 
 const DEFAULT_MAX_SIZE: int = 2048
@@ -56,7 +56,7 @@ func _initialize() -> void:
 	quit(0)
 
 
-## Vuelve a normalizar un mapa de normales (RGB en [0, 1] -> vector en [-1, 1]).
+## Renormalizes a normal map (RGB in [0, 1] -> vector in [-1, 1]).
 func _renormalize(image: Image) -> void:
 	if image.get_format() != Image.FORMAT_RGB8 and image.get_format() != Image.FORMAT_RGBA8:
 		image.convert(Image.FORMAT_RGBA8)

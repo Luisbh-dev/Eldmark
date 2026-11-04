@@ -1,9 +1,9 @@
 extends TestCase
-## Pruebas de los casos compartidos de las comprobaciones del guardado ([SaveFixtures],
-## [code]tests/fixtures/progression/save_cases.json[/code]; docs/progresion.md §13.3 y §15 P5a): el archivo del
-## repositorio coincide con lo que genera [code]tools/progression/write_fixtures.gd[/code] con [PlayerProgress], y los
-## casos están bien formados: al menos uno por comprobación, los pasos válidos se leen como un registro con
-## operaciones coherentes, y S3 y S4 (repetidas aquí como referencia) dan lo que dice cada caso.
+## Tests for the shared cases of the save checks ([SaveFixtures],
+## [code]tests/fixtures/progression/save_cases.json[/code]; docs/progresion.md §13.3 and §15 P5a): the file in the
+## repository matches what [code]tools/progression/write_fixtures.gd[/code] generates with [PlayerProgress], and the
+## cases are well formed: at least one per check, valid steps read as a record with
+## consistent operations, and S3 and S4 (repeated here as a reference) give what each case says.
 
 const CHECKS: Array[String] = ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"]
 const APPLIED: String = "applied"
@@ -17,47 +17,47 @@ func _data() -> Dictionary:
 
 
 func test_the_file_matches_the_generator() -> void:
-	assert_true(FileAccess.file_exists(SaveFixtures.OUTPUT_PATH), "existe %s" % SaveFixtures.OUTPUT_PATH)
+	assert_true(FileAccess.file_exists(SaveFixtures.OUTPUT_PATH), "%s exists" % SaveFixtures.OUTPUT_PATH)
 	var text: String = SaveFixtures.to_json()
-	assert_eq(SaveFixtures.to_json(), text, "dos llamadas dan lo mismo")
+	assert_eq(SaveFixtures.to_json(), text, "two calls give the same result")
 	assert_true(FileAccess.get_file_as_string(SaveFixtures.OUTPUT_PATH) == text,
-			"%s está al día (si no, ejecuta tools/progression/write_fixtures.gd y súbelo)" % SaveFixtures.OUTPUT_PATH)
+			"%s is up to date (if not, run tools/progression/write_fixtures.gd and commit it)" % SaveFixtures.OUTPUT_PATH)
 
 
 func test_the_cases_are_well_formed() -> void:
 	var data: Dictionary = _data()
-	if not assert_false(data.is_empty(), "JSON válido"):
+	if not assert_false(data.is_empty(), "valid JSON"):
 		return
 	var keys: Array = data.keys()
 	keys.sort()
 	assert_eq(keys, ["about", "accounts", "cases", "characters", "format", "id_blocks", "instance_id", "now_unix",
-			"world_id", "zone_id"], "las claves del archivo")
-	assert_eq(int(data["format"]), SaveFixtures.FORMAT, "formato")
+			"world_id", "zone_id"], "the file's keys")
+	assert_eq(int(data["format"]), SaveFixtures.FORMAT, "format")
 	var characters: Dictionary = {}
 	for character: Dictionary in data["characters"]:
 		characters[character["character_id"]] = character
 		var appearance := PackedByteArray(Marshalls.base64_to_raw(character["appearance"]))
 		var decoded: CharacterAppearance = CharacterAppearance.decode(appearance)
 		assert_true(decoded != null and decoded.validate(AppearanceCatalog.shared(), int(character["realm"]),
-				StringName(character["race_id"])), "la apariencia del personaje %s vale" % character["character_id"])
+				StringName(character["race_id"])), "the appearance of character %s is valid" % character["character_id"])
 	var names: Dictionary = {}
 	var expected: Dictionary = {}
 	for entry: Dictionary in data["cases"]:
-		assert_false(names.has(entry["name"]), "nombre único: %s" % entry["name"])
+		assert_false(names.has(entry["name"]), "unique name: %s" % entry["name"])
 		names[entry["name"]] = true
-		assert_false(String(entry["rule"]).is_empty(), "%s explica su regla" % entry["name"])
+		assert_false(String(entry["rule"]).is_empty(), "%s explains its rule" % entry["name"])
 		for step: Dictionary in entry["steps"]:
-			assert_true(characters.has(step["character_id"]), "%s: el personaje existe" % entry["name"])
+			assert_true(characters.has(step["character_id"]), "%s: the character exists" % entry["name"])
 			assert_true(step["expect"] == APPLIED or CHECKS.has(step["expect"]), "%s: expect" % entry["name"])
 			expected[step["expect"]] = true
 	for check: String in CHECKS:
-		assert_true(expected.has(check), "al menos un caso de %s" % check)
-	assert_true(expected.has(APPLIED), "y válidos")
-	assert_true(names.has("s5_swapped_definitions"), "con los dos uids que se cambian el def_id (§13.3)")
+		assert_true(expected.has(check), "at least one case of %s" % check)
+	assert_true(expected.has(APPLIED), "and valid ones")
+	assert_true(names.has("s5_swapped_definitions"), "with the two uids swapping their def_id (§13.3)")
 
 
-## Cada paso válido es la forma del guardado de un registro que se lee (con los campos de solo lectura añadidos), sus
-## operaciones se leen y usan motivos de su tipo, y no lleva campos de solo lectura.
+## Each valid step is the save shape of a record that can be read (with the read-only fields added), its
+## operations can be read and use reasons of their type, and it carries no read-only fields.
 func test_valid_steps_read_as_records_with_consistent_ops() -> void:
 	var data: Dictionary = _data()
 	var characters: Dictionary = {}
@@ -72,7 +72,7 @@ func test_valid_steps_read_as_records_with_consistent_ops() -> void:
 			var progress: Dictionary = (step["progress"] as Dictionary).duplicate(true)
 			var label: String = "%s (%s)" % [entry["name"], step["character_id"]]
 			for key: String in ProgressRecord.CLAIM_ONLY_KEYS:
-				assert_false(progress.has(key), "%s: sin %s" % [label, key])
+				assert_false(progress.has(key), "%s: without %s" % [label, key])
 			var ops: Array = progress["ops"]
 			progress.erase("ops")
 			var character: Dictionary = characters[step["character_id"]]
@@ -80,21 +80,21 @@ func test_valid_steps_read_as_records_with_consistent_ops() -> void:
 				progress[key] = character[key]
 			if progress["location"] is Dictionary:
 				progress["location"]["saved_at_unix"] = data["now_unix"]
-			assert_not_null(ProgressRecord.from_dictionary(progress, null), "%s se lee como registro" % label)
+			assert_not_null(ProgressRecord.from_dictionary(progress, null), "%s reads as a record" % label)
 			for op_data: Dictionary in ops:
 				var op: EconomyOp = EconomyOp.from_dictionary(op_data)
-				assert_true(op != null and op.is_consistent(), "%s: la operación %s se lee y cuadra"
+				assert_true(op != null and op.is_consistent(), "%s: operation %s can be read and adds up"
 						% [label, op_data["op_id"]])
-	assert_true(count >= 10, "hay pasos válidos (%d)" % count)
+	assert_true(count >= 10, "there are valid steps (%d)" % count)
 
 
-## S3 y S4 de §13.3, repetidas aquí como referencia: los pasos válidos las cumplen, los de S3 fallan S3, los de S4
-## pasan S3 y fallan S4, y los de S5 en adelante pasan las dos. Así la etiqueta de cada caso es la primera
-## comprobación que falla (al menos entre S3, S4 y las siguientes).
+## S3 and S4 of §13.3, repeated here as a reference: valid steps satisfy them, those of S3 fail S3, those of S4
+## pass S3 and fail S4, and those from S5 onward pass both. That way the label of each case is the first
+## check that fails (at least among S3, S4 and the following ones).
 func test_s3_and_s4_agree_with_each_case() -> void:
 	var data: Dictionary = _data()
 	for entry: Dictionary in data.get("cases", []):
-		# Una base por caso y por personaje: saldos, objetos vivos por uid y uids que han existido.
+		# One base per case and per character: balances, live items by uid and uids that have existed.
 		var states: Dictionary = {}
 		for step: Dictionary in entry["steps"]:
 			var character: String = step["character_id"]
@@ -107,19 +107,19 @@ func test_s3_and_s4_agree_with_each_case() -> void:
 			var label: String = "%s, paso %s (%s)" % [entry["name"], step["expect"], character]
 			match String(step["expect"]):
 				APPLIED:
-					assert_true(s3 and s4, "%s: cumple S3 y S4" % label)
+					assert_true(s3 and s4, "%s: satisfies S3 and S4" % label)
 					_apply(state, progress)
 				"S3":
-					assert_false(s3, "%s: falla S3" % label)
+					assert_false(s3, "%s: fails S3" % label)
 				"S4":
-					assert_true(s3, "%s: pasa S3" % label)
-					assert_false(s4, "%s: falla S4" % label)
+					assert_true(s3, "%s: passes S3" % label)
+					assert_false(s4, "%s: fails S4" % label)
 				"S5", "S6", "S7", "S8":
-					assert_true(s3 and s4, "%s: pasa S3 y S4" % label)
+					assert_true(s3 and s4, "%s: passes S3 and S4" % label)
 
 
-# S3: por moneda y en orden, balance_after = anterior + delta, en 0 … tope y con el signo de su motivo; el último es
-# el saldo de la foto; una moneda sin apuntes no cambia.
+# S3: per currency and in order, balance_after = previous + delta, in 0 … cap and with the sign of its reason; the last is
+# the snapshot's balance; a currency without entries does not change.
 func _s3(state: Dictionary, progress: Dictionary) -> bool:
 	var balance: Dictionary = (state["wallets"] as Dictionary).duplicate()
 	for op: Dictionary in progress["ops"]:
@@ -136,8 +136,8 @@ func _s3(state: Dictionary, progress: Dictionary) -> bool:
 	return true
 
 
-# S4: por definición, Σ vivas en la base + Σ eventos = Σ de la foto; un evento con uid y count_delta > 0 es de un uid
-# que no estaba (para este personaje); con count_delta < 0, de uno vivo.
+# S4: per definition, Σ alive in the base + Σ events = Σ of the snapshot; an event with uid and count_delta > 0 is for a uid
+# that was not there (for this character); with count_delta < 0, for a live one.
 func _s4(state: Dictionary, progress: Dictionary) -> bool:
 	var totals: Dictionary = {}
 	for item: Dictionary in (state["items"] as Dictionary).values():

@@ -1,30 +1,30 @@
 class_name ServerAuth
 extends RefCounted
-## Validación del HELLO de un cliente (docs/red.md, sección 3).
+## Validation of a client's HELLO (docs/red.md, section 3).
 ## [br][br]
-## Decide si se envía WELCOME o REJECT. El magic y el formato ya los comprueba
-## [method NetMessages.Hello.decode] (un HELLO mal formado ni llega aquí). Las comprobaciones,
-## en este orden y devolviendo el primer fallo:
+## Decides whether a WELCOME or a REJECT is sent. The magic and the format are already checked by
+## [method NetMessages.Hello.decode] (a malformed HELLO never gets here). The checks, in this order, returning the
+## first failure:
 ## [codeblock]
-## versión del protocolo        -> VERSION
+## protocol version             -> VERSION
 ## sim_hash                     -> SIM_HASH
-## reino válido y admitido      -> REALM    (NONE siempre se rechaza)
-## nombre (NameRules)           -> NAME     (y no repetido entre los conectados)
-## servidor lleno               -> FULL     (los falsos de relleno no ocupan plaza: GUE-43)
-## demasiadas conexiones por IP -> TOO_MANY_CONNECTIONS (salvo loopback)
-## el AuthProvider              -> OK, PENDING o su motivo (TICKET, UNAVAILABLE…)
-## el reino elegido              -> IMBALANCE (solo con --max-realm-diff, tras el proveedor: el reino lo puede
-##                                 decidir él; ver RealmBalance)
+## valid and admitted realm     -> REALM    (NONE is always rejected)
+## name (NameRules)             -> NAME     (and not repeated among the connected)
+## server full                  -> FULL     (filler fakes do not take seats: GUE-43)
+## too many connections per IP  -> TOO_MANY_CONNECTIONS (except loopback)
+## the AuthProvider             -> OK, PENDING or its reason (TICKET, UNAVAILABLE…)
+## the chosen realm             -> IMBALANCE (only with --max-realm-diff, after the provider: it can decide the
+##                                 realm; see RealmBalance)
 ## [/codeblock]
-## Con un proveedor de billetes ([method AuthProvider.uses_tickets], docs/plataforma.md §5.4) el reino y el
-## nombre del HELLO no se miran: mandan los de la reclamación, que la zona aplica al llegar (REALM) y que la
-## plataforma hace únicos al crear el personaje. Así no hay REJECT NAME y el HELLO deja de delatar si un nombre
-## está en la zona (docs/social.md, 12.7). Tampoco hay IMBALANCE: el reino ya no se elige al conectar.
+## With a ticket provider ([method AuthProvider.uses_tickets], docs/plataforma.md §5.4) the HELLO's realm and name are
+## not looked at: those of the claim rule, which the zone applies on arrival (REALM) and which the platform makes unique
+## when creating the character. So there is no REJECT NAME and the HELLO stops revealing whether a name is in the zone
+## (docs/social.md, 12.7). There is no IMBALANCE either: the realm is no longer chosen when connecting.
 
-## Direcciones de loopback exentas del tope por IP (para los bots y los clientes locales).
-## Además se considera loopback cualquier dirección que empiece por [code]127.[/code].
+## Loopback addresses exempt from the per-IP cap (for bots and local clients). In addition, any address that starts with
+## [code]127.[/code] is considered loopback.
 const LOOPBACK_ADDRESSES: Array[String] = ["127.0.0.1", "::1", "localhost"]
-## Cuerpo de [code]127.0.0.0/8[/code] y su forma IPv4 mapeada en IPv6.
+## Body of [code]127.0.0.0/8[/code] and its IPv4-mapped IPv6 form.
 const _LOOPBACK_PREFIXES: Array[String] = ["127.", "::ffff:127."]
 
 var _config: ServerConfig
@@ -35,9 +35,8 @@ var _connected_names: Callable = Callable()
 var _realm_counts: Callable = Callable()
 
 
-## [param sim_hash] es la huella de la simulación del servidor
-## ([method NetProtocol.compute_sim_hash]); [param allowed_realms], los reinos de la zona
-## (vacío = todos los reales); [param provider], quien da la última palabra.
+## [param sim_hash] is the server's simulation fingerprint ([method NetProtocol.compute_sim_hash]);
+## [param allowed_realms], the zone's realms (empty = all the real ones); [param provider], whoever has the last word.
 func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array,
 		provider: AuthProvider) -> void:
 	_config = config
@@ -46,39 +45,38 @@ func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array
 	_provider = provider
 
 
-## Fuente de los nombres de los jugadores ya conectados en la zona: un [Callable] sin argumentos
-## que devuelve un [PackedStringArray]. Se consulta en cada HELLO; con un nombre que ya está ahí
-## (se compara con [method NameRules.normalize_key]: da igual mayúsculas y tildes) se rechaza con
-## NAME, para que los susurros por nombre no sean ambiguos. Sin fuente no se comprueba.
+## Source of the names of players already connected in the zone: a [Callable] without arguments that returns a
+## [PackedStringArray]. It is queried on every HELLO; a name that is already there (compared with
+## [method NameRules.normalize_key]: case and accents do not matter) is rejected with NAME, so that whispers by name are
+## not ambiguous. Without a source it is not checked.
 ## [br][br]
-## [b]Limitación conocida de la fase 4[/b] (docs/social.md, 12.7): como el cliente elige su nombre, ese
-## REJECT dice si un nombre, de cualquier reino, está ahora en la zona, y con el «no está conectado» del
-## susurro se deduce que es un enemigo. No se tapa aquí porque el mismo cliente también elige su reino
-## ([DevAuthProvider]) y puede entrar en el del enemigo y susurrarle sin más; desde la fase 5 el nombre y el
-## reino salen del personaje del billete y este REJECT por un nombre ajeno deja de existir.
+## [b]Known limitation of phase 4[/b] (docs/social.md, 12.7): since the client chooses its name, that REJECT tells
+## whether a name, of any realm, is currently in the zone, and with the whisper's "not connected" it can be deduced that
+## it is an enemy. It is not covered here because the same client also chooses its realm ([DevAuthProvider]) and can
+## enter the enemy's and whisper to them without more ado; from phase 5 the name and realm come from the ticket's
+## character and this REJECT for someone else's name ceases to exist.
 func set_connected_names_source(source: Callable) -> void:
 	_connected_names = source
 
 
-## Fuente de las personas conectadas en cada reino (GUE-42): un [Callable] sin argumentos que devuelve un
-## [PackedInt32Array] de tres posiciones (Vardheim, Solmarch, Askarra; ver [RealmBalance]). Se consulta en
-## cada HELLO aceptado cuando [member ServerConfig.max_realm_diff] es mayor que 0; sin fuente no se rechaza
-## nunca por desequilibrio.
+## Source of the people connected in each realm (GUE-42): a [Callable] without arguments that returns a three-position
+## [PackedInt32Array] (Vardheim, Solmarch, Askarra; see [RealmBalance]). It is queried on every accepted HELLO when
+## [member ServerConfig.max_realm_diff] is greater than 0; without a source it never rejects for imbalance.
 func set_realm_counts_source(source: Callable) -> void:
 	_realm_counts = source
 
 
-## Devuelve un [enum NetProtocol.Result]: OK si hay que aceptar al cliente, [constant AuthProvider.PENDING] si el
-## proveedor no decide aún (el peer pasa a VERIFYING) o el motivo del rechazo. [param peer_id] es el peer del
-## HELLO, para el proveedor. [param player_count] son los jugadores ya conectados (también los que verifican) y
-## [param connections_from_address], las conexiones que ya tiene abiertas esa IP (sin contar
-## esta): se rechaza si llega a [member ServerConfig.max_connections_per_ip].
+## Returns an [enum NetProtocol.Result]: OK if the client must be accepted, [constant AuthProvider.PENDING] if the
+## provider has not decided yet (the peer moves to VERIFYING) or the reason for rejection. [param peer_id] is the HELLO's
+## peer, for the provider. [param player_count] is the players already connected (also those verifying) and
+## [param connections_from_address], the connections that IP already has open (not counting this one): it is rejected if
+## it reaches [member ServerConfig.max_connections_per_ip].
 ## [br][br]
-## [param filler_seats] son los falsos de relleno de [code]--max-realm-diff[/code] que hay entre esos jugadores y que
-## aún pueden ceder su plaza (GUE-43): no ocupan plazas de personas, así que el servidor solo está lleno (FULL) si los
-## demás (personas y falsos que no son de relleno) llegan a [member ServerConfig.max_players]. Si con un OK el servidor
-## sigue lleno, quien llama le aparta a la persona la plaza de un falso de relleno, que se va cuando ella entra en el
-## mundo ([method FillerKeeper.reserve_seat]).
+## [param filler_seats] are the [code]--max-realm-diff[/code] filler fakes among those players that can still give up
+## their seat (GUE-43): they take no people's seats, so the server is only full (FULL) if the others (people and fakes
+## that are not fillers) reach [member ServerConfig.max_players]. If with an OK the server is still full, the caller
+## reserves for the person the seat of a filler fake, which leaves when the person enters the world
+## ([method FillerKeeper.reserve_seat]).
 func validate(peer_id: int, hello: NetMessages.Hello, remote_address: String, player_count: int,
 		connections_from_address: int, filler_seats: int = 0) -> int:
 	if hello == null:
@@ -106,18 +104,18 @@ func validate(peer_id: int, hello: NetMessages.Hello, remote_address: String, pl
 	return result
 
 
-## true si el proveedor usa billetes (el reino y el nombre salen de la reclamación).
+## true if the provider uses tickets (the realm and name come from the claim).
 func uses_tickets() -> bool:
 	return _provider != null and _provider.uses_tickets()
 
 
-## true si [param realm] es un reino real admitido en la zona (lo usa la zona al aplicar la reclamación).
+## true if [param realm] is a real realm admitted in the zone (used by the zone when applying the claim).
 func is_realm_allowed(realm: int) -> bool:
 	return _is_realm_allowed(realm)
 
 
-## true si [param remote_address] es loopback (127.0.0.1, ::1, localhost o cualquier 127.x), que
-## no cuenta para el tope de conexiones por IP.
+## true if [param remote_address] is loopback (127.0.0.1, ::1, localhost or any 127.x), which does not count towards the
+## per-IP connection cap.
 static func is_loopback(remote_address: String) -> bool:
 	var address: String = remote_address.strip_edges().to_lower()
 	if LOOPBACK_ADDRESSES.has(address):
@@ -128,11 +126,10 @@ static func is_loopback(remote_address: String) -> bool:
 	return false
 
 
-## Clave con la que el tope por IP cuenta las conexiones de [param remote_address]: una IPv4 tal
-## cual, una IPv6 mapeada ([code]::ffff:a.b.c.d[/code]) como su IPv4 y el resto de IPv6 por su
-## prefijo /64 (sus cuatro primeros grupos, ya expandidos y sin ceros a la izquierda), porque quien
-## tiene IPv6 suele tener un /64 entero y cada dirección suya sería otra IP. La zona de ámbito
-## ([code]%eth0[/code]) no cuenta. Lo que no se entiende se devuelve tal cual.
+## Key with which the per-IP cap counts connections from [param remote_address]: an IPv4 as is, a mapped IPv6
+## ([code]::ffff:a.b.c.d[/code]) as its IPv4 and other IPv6 by its /64 prefix (its first four groups, already expanded
+## and without leading zeros), because whoever has IPv6 usually has a whole /64 and each of their addresses would count
+## as another IP. The scope zone ([code]%eth0[/code]) does not count. What is not understood is returned as is.
 static func address_group(remote_address: String) -> String:
 	var text: String = remote_address.strip_edges().to_lower()
 	var scope: int = text.find("%")
@@ -167,16 +164,16 @@ static func address_group(remote_address: String) -> String:
 	return ":".join(prefix)
 
 
-## true si [param display_name] cabe en el HELLO (como mucho [constant NetProtocol.MAX_NAME_CHARS]
-## caracteres y [constant NetProtocol.MAX_NAME_BYTES] bytes en UTF-8) y cumple las reglas de
-## [NameRules]. No mira los nombres de los conectados: para eso está [method check_name].
+## true if [param display_name] fits in the HELLO (at most [constant NetProtocol.MAX_NAME_CHARS] characters and
+## [constant NetProtocol.MAX_NAME_BYTES] bytes in UTF-8) and meets the [NameRules] rules. It does not look at the names
+## of those connected: [method check_name] is for that.
 static func is_valid_name(display_name: String) -> bool:
 	return _fits_protocol(display_name) and NameRules.is_valid(display_name)
 
 
-## Motivo ([enum NameRules.Reason]) por el que [param display_name] no se admite, o
-## [constant NameRules.Reason.OK] si vale: cabe en el HELLO, cumple las reglas de [NameRules] y
-## no lo lleva ya un jugador conectado ([constant NameRules.Reason.TAKEN]).
+## Reason ([enum NameRules.Reason]) why [param display_name] is not admitted, or [constant NameRules.Reason.OK] if it is
+## valid: it fits in the HELLO, meets the [NameRules] rules and is not already used by a connected player
+## ([constant NameRules.Reason.TAKEN]).
 func check_name(display_name: String) -> int:
 	if not _fits_protocol(display_name):
 		return NameRules.Reason.TOO_LONG
@@ -188,8 +185,8 @@ func check_name(display_name: String) -> int:
 	return NameRules.Reason.OK
 
 
-## true si la fuente de [method set_connected_names_source] da algún nombre con la misma clave
-## ([method NameRules.normalize_key]) que [param display_name].
+## true if the source of [method set_connected_names_source] gives any name with the same key
+## ([method NameRules.normalize_key]) as [param display_name].
 func is_name_connected(display_name: String) -> bool:
 	if not _connected_names.is_valid():
 		return false
@@ -201,15 +198,15 @@ func is_name_connected(display_name: String) -> bool:
 	return false
 
 
-# Los topes del cable: 24 caracteres y 48 bytes en UTF-8 como mucho (el mínimo lo pone NameRules).
+# The wire caps: 24 characters and 48 bytes in UTF-8 at most (the minimum is set by NameRules).
 static func _fits_protocol(display_name: String) -> bool:
 	if display_name.length() > NetProtocol.MAX_NAME_CHARS:
 		return false
 	return display_name.to_utf8_buffer().size() <= NetProtocol.MAX_NAME_BYTES
 
 
-# true si entrar en [param realm] dejaría más de --max-realm-diff personas de ventaja sobre el reino con
-# menos de los que admite la zona. Los jugadores falsos no cuentan: el recuento es de personas.
+# true if entering [param realm] would leave more than --max-realm-diff people of advantage over the realm with the
+# fewest among those the zone admits. Fake players do not count: the count is of people.
 func _would_unbalance(realm: int) -> bool:
 	if _config.max_realm_diff <= 0 or not _realm_counts.is_valid():
 		return false

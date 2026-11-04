@@ -1,30 +1,32 @@
 class_name FortressFixture
 extends RefCounted
-## Fortaleza de pruebas para el servidor del fuerte (paquete F3): sobre la zona plana de [ZoneFixture]
-## añade un nodo de fortaleza con el mismo reparto que el del Vado Gris (círculo de 5 m, marcador del
-## capitán y la puerta de verdad) pero con tiempos cortos, y los puntos de reaparición de los campamentos y
-## del interior del fuerte, en el mismo orden que la zona real (campamentos primero).
+## Test fort for the fort server (package F3): on top of the flat zone of [ZoneFixture] it adds a
+## fort node with the same layout as Vado Gris's (5 m circle, captain marker and the real gate) but
+## with short timings, and the respawn points of the camps and of the fort interior, in the same
+## order as the real zone (camps first).
 ## [br][br]
-## El fuerte está en [constant ORIGIN]; la puerta, en el plano x = ORIGIN.x - 20 con el interior hacia +X.
+## The fort is at [constant ORIGIN]; the gate, on the plane x = ORIGIN.x - 20 with the interior
+## toward +X.
 
-## Id de la fortaleza de pruebas.
+## Id of the test fort.
 const FORTRESS_ID: StringName = &"test_fort"
-## Escena de la puerta.
+## Gate scene.
 const GATE_SCENE: String = "res://scenes/world/props/fort/fort_gate.tscn"
-## Origen del nodo de la fortaleza (en el suelo plano de [ZoneFixture], lejos de sus puntos de aparición).
+## Origin of the fort node (on [ZoneFixture]'s flat ground, far from its spawn points).
 const ORIGIN: Vector3 = Vector3(100.0, 0.0, 0.0)
-## Posiciones locales del círculo (radio 5), del capitán y de la puerta.
+## Local positions of the circle (radius 5), the captain and the gate.
 const CIRCLE_LOCAL: Vector3 = Vector3(-8.5, 0.05, 0.0)
 const CAPTAIN_LOCAL: Vector3 = Vector3(-6.0, 0.05, 4.0)
 const GATE_LOCAL: Vector3 = Vector3(-20.0, 0.0, 0.0)
-## Campamentos de los reinos (los de [ZoneFixture]) y puntos del interior del fuerte (locales).
+## Realm camps (those of [ZoneFixture]) and points inside the fort (local).
 const VARDHEIM_CAMP: Vector3 = Vector3(-20.0, 0.0, 0.0)
 const SOLMARCH_CAMP: Vector3 = Vector3(20.0, 0.0, 0.0)
 const INNER_POINTS_LOCAL: Array[Vector3] = [Vector3(11.0, 0.25, -6.0), Vector3(11.0, 0.25, -2.0)]
 
 
-## Definición con tiempos cortos: captura de [param capture_seconds] con un atacante, consolidación de
-## [param consolidation_seconds] y el resto de plazos de las pruebas. Sin reinicio periódico por defecto.
+## Definition with short timings: capture of [param capture_seconds] with one attacker,
+## consolidation of [param consolidation_seconds] and the other test deadlines. No periodic reset
+## by default.
 static func make_definition(capture_seconds: float = 2.0, consolidation_seconds: float = 2.0,
 		reset_seconds: float = 0.0) -> FortressDefinition:
 	var definition := FortressDefinition.new()
@@ -43,8 +45,8 @@ static func make_definition(capture_seconds: float = 2.0, consolidation_seconds:
 	return definition
 
 
-## Añade a [param world] (que debe estar en el árbol) la fortaleza con [param definition] y devuelve su
-## nodo. La puerta es la escena real, cerrada y neutral.
+## Adds to [param world] (which must be in the tree) the fort with [param definition] and returns
+## its node. The gate is the real scene, closed and neutral.
 static func add_fortress(world: Node3D, definition: FortressDefinition) -> Node3D:
 	var fort := Node3D.new()
 	fort.name = "Fuerte"
@@ -69,9 +71,8 @@ static func add_fortress(world: Node3D, definition: FortressDefinition) -> Node3
 	return fort
 
 
-## Añade los puntos de reaparición: un campamento por reino (con el metadato de reino) y los del interior
-## del fuerte (con el metadato de fortaleza), en ese orden. Los índices: 0 Vardheim, 1 Solmarch, 2 y 3 el
-## fuerte.
+## Adds the respawn points: one camp per realm (with the realm metadata) and those inside the fort
+## (with the fort metadata), in that order. The indices: 0 Vardheim, 1 Solmarch, 2 and 3 the fort.
 static func add_respawn_points(world: Node3D) -> void:
 	_add_respawn(world, "CampamentoVardheim", VARDHEIM_CAMP, {&"realm": &"vardheim"})
 	_add_respawn(world, "CampamentoSolmarch", SOLMARCH_CAMP, {&"realm": &"solmarch"})
@@ -80,12 +81,12 @@ static func add_respawn_points(world: Node3D) -> void:
 				{&"fortress": FORTRESS_ID})
 
 
-## Posición mundial del centro del círculo.
+## World position of the circle's center.
 static func circle_center() -> Vector3:
 	return ORIGIN + CIRCLE_LOCAL
 
 
-## Posición mundial de la puerta (centro del vano a ras de suelo).
+## World position of the gate (center of the opening at ground level).
 static func gate_position() -> Vector3:
 	return ORIGIN + GATE_LOCAL
 
@@ -101,11 +102,11 @@ static func _add_respawn(world: Node3D, marker_name: String, position: Vector3,
 		marker.set_meta(key, meta[key])
 
 
-## Avanza un [ZoneServer] a mano y deprisa: en cada tick de física de Godot llama a su
-## [code]_physics_process[/code] [member per_frame] veces (el servidor ya sin proceso propio), así que los
-## ticks los corre «dentro» de la física, con su delta, y una prueba de 20 s de juego dura un par de
-## segundos. Para lo que depende del movimiento de verdad (cruzar la puerta) se deja al servidor a su
-## ritmo.
+## Advances a [ZoneServer] by hand and quickly: on each Godot physics tick it calls its
+## [code]_physics_process[/code] [member per_frame] times (the server already without its own
+## processing), so it runs the ticks "inside" physics, with its delta, and a test of 20 s of game
+## time takes a couple of seconds. For what depends on real movement (crossing the gate) the server
+## is left to run at its own pace.
 class Stepper:
 	extends Node
 

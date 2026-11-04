@@ -1,22 +1,22 @@
 extends SceneTree
-## Copia al repo, desde los paquetes originales de ../Eldmark-raw, solo los assets que usa la zona
-## del Vado Gris, con nombres en snake_case y las texturas reescaladas.
+## Copies into the repo, from the original packs in ../Eldmark-raw, only the assets the Vado Gris zone
+## uses, with snake_case names and the textures rescaled.
 ##
-## Uso (desde la raíz del proyecto, con el editor cerrado):
+## Usage (from the project root, with the editor closed):
 ## [codeblock]
-## godot --headless --path . -s res://tools/assets/copy_vado_gris_assets.gd [-- --raw=<carpeta>] [--only=models,terrain]
+## godot --headless --path . -s res://tools/assets/copy_vado_gris_assets.gd [-- --raw=<folder>] [--only=models,terrain]
 ## godot --headless --path . --import
 ## godot --headless --path . -s res://tools/assets/extract_kit_meshes.gd
 ## [/codeblock]
-## Por defecto la carpeta de paquetes es [code]../Eldmark-raw[/code] (junto al repo). Solo se
-## copian los glTF (nunca FBX/OBJ) y las imágenes que referencian. Reglas de tamaño (ver
-## docs/arte.md): texturas de modelos a 1024 px como mucho; terreno a 1024 px con la altura en
-## el alfa. El script es determinista: se puede repetir y deja los mismos archivos.
+## By default the packs folder is [code]../Eldmark-raw[/code] (next to the repo). Only the glTF files
+## (never FBX/OBJ) and the images they reference are copied. Size rules (see
+## docs/arte.md): model textures at 1024 px at most; terrain at 1024 px with the height in
+## the alpha. The script is deterministic: it can be repeated and leaves the same files.
 ## [br][br]
-## Al terminar fija los .import de todas las texturas de modelos (VRAM comprimida con mipmaps,
-## ver tools/assets/apply_texture_import_presets.gd) y de las del terreno, conservando su uid.
-## Con [code]--only=[/code] se limita a un grupo: [code]models[/code] (glTF y sus texturas) o
-## [code]terrain[/code] (texturas de Terrain3D).
+## When it finishes it sets the .import of all model textures (VRAM compressed with mipmaps,
+## see tools/assets/apply_texture_import_presets.gd) and of the terrain ones, preserving their uid.
+## With [code]--only=[/code] it is limited to one group: [code]models[/code] (glTF and their textures) or
+## [code]terrain[/code] (Terrain3D textures).
 
 const ImportPresets = preload("res://tools/assets/apply_texture_import_presets.gd")
 
@@ -34,7 +34,7 @@ const CASTLE_WALL_OUT: String = "res://assets/models/environment/castle_wall"
 const KENNEY_OUT: String = "res://assets/models/blockout/kenney_castle"
 const TERRAIN_OUT: String = "res://assets/textures/terrain/watercolor"
 
-## Lado máximo de las texturas de modelos (las de los packs vienen a 2048).
+## Maximum side of model textures (the packs' ones come at 2048).
 const MODEL_TEXTURE_MAX: int = 1024
 const TERRAIN_TEXTURE_SIZE: int = 1024
 const FLAT_NORMAL_SIZE: int = 256
@@ -52,12 +52,12 @@ const NATURE_PIECES: PackedStringArray = [
 	"Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3",
 	"Bush_Common_Flowers", "Grass_Common_Short", "Grass_Wispy_Short",
 	"RockPath_Square_Wide", "RockPath_Round_Wide",
-	# Sotobosque y detalle (ART-59): helecho, planta grande, hierba alta, guijarros y seta.
+	# Undergrowth and detail (ART-59): fern, big plant, tall grass, pebbles and mushroom.
 	"Fern_1", "Plant_1_Big", "Grass_Common_Tall", "Pebble_Round_2", "Pebble_Square_1",
 	"Mushroom_Common",
 ]
 const KENNEY_PIECES: PackedStringArray = ["flag-banner-long", "tree-log"]
-## Texturas del Castle Wall Kit (su glTF no referencia imágenes): [origen, destino].
+## Castle Wall Kit textures (its glTF does not reference images): [source, destination].
 const CASTLE_WALL_TEXTURES: Array[Array] = [
 	["Textures/BrickWall/Base Color_BrickWall.png", "brick_wall_albedo.png"],
 	["Textures/BrickWall/NORMAL_BrickWall.png", "brick_wall_normal.png"],
@@ -68,25 +68,25 @@ const CASTLE_WALL_TEXTURES: Array[Array] = [
 	["Textures/WoodWall/NORMAL_WoodWall.png", "wood_wall_normal.png"],
 	["Textures/DoorStickers/DoorSticker_DiffuseTransparent.png", "door_sticker_albedo.png"],
 ]
-## Texturas del terreno: [archivo original, nombre en el repo, corrección de color]. El orden
-## no importa aquí; los identificadores de Terrain3D se fijan en el generador del Vado Gris.
-## Corrección: giro de tono (grados), factor de saturación y factor de valor (HSV), por píxel.
-## La tierra de acuarela es un pardo rojizo muy saturado (media #4D3024) que en el juego se ve
-## casi negra; se lleva hacia la "tierra quemada" de Eldrun (#5A4A3E) de la paleta de mundo.md.
+## Terrain textures: [original file, name in the repo, color correction]. The order
+## does not matter here; the Terrain3D identifiers are set in the Vado Gris generator.
+## Correction: hue shift (degrees), saturation factor and value factor (HSV), per pixel.
+## The watercolor soil is a very saturated reddish brown (mean #4D3024) that looks almost
+## black in the game; it is shifted toward Eldrun's "scorched earth" (#5A4A3E) from the palette in mundo.md.
 const TERRAIN_TEXTURES: Array[Array] = [
 	["Grass_02", "grass_02", {}], ["Grass_03", "grass_03", {}], ["Grass_04", "grass_04", {}],
 	["Dirt_03", "dirt_03", {"hue": 9.0, "sat": 0.6, "val": 1.35}], ["Stone_01", "stone_01", {}],
 	["Stone_03", "stone_03", {}], ["Stone_04", "stone_04", {}],
 ]
 
-## Ajustes de importación de las texturas del terreno (albedo con altura en el alfa).
+## Import settings of the terrain textures (albedo with height in the alpha).
 const TERRAIN_IMPORT_PARAMS: Dictionary = {
 	"compress/mode": 2,
 	"compress/high_quality": false,
 	"mipmaps/generate": true,
 	"detect_3d/compress_to": 0,
 }
-## Ajustes de la normal plana compartida (sin compresión de normales: lleva rugosidad en el alfa).
+## Settings of the shared flat normal (no normal compression: it carries roughness in the alpha).
 const FLAT_NORMAL_IMPORT_PARAMS: Dictionary = {
 	"compress/mode": 2,
 	"compress/normal_map": 2,
@@ -132,9 +132,9 @@ func _initialize() -> void:
 	quit(1 if _failed else 0)
 
 
-# --- glTF con texturas sueltas (Quaternius) -------------------------------------------------
+# --- glTF with loose textures (Quaternius) --------------------------------------------------
 
-## Copia un .gltf, su .bin y sus imágenes con nombres en snake_case, reescribiendo las URI.
+## Copies a .gltf, its .bin and its images with snake_case names, rewriting the URIs.
 func _copy_gltf(src_dir: String, piece: String, out_dir: String) -> void:
 	var src_path: String = src_dir.path_join(piece + ".gltf")
 	var text: String = FileAccess.get_file_as_string(src_path)
@@ -177,7 +177,7 @@ func _copy_castle_wall() -> void:
 		_copy_texture(src_dir.path_join(pair[0]), tex_dir.path_join(pair[1]), MODEL_TEXTURE_MAX)
 
 
-## Los GLB de Kenney referencian "Textures/colormap.png": se copia con esa ruta relativa.
+## Kenney's GLBs reference "Textures/colormap.png": it is copied with that relative path.
 func _copy_kenney(piece: String) -> void:
 	var src_dir: String = _raw_dir.path_join(KENNEY_DIR)
 	_ensure_dir(KENNEY_OUT.path_join("Textures"))
@@ -187,10 +187,10 @@ func _copy_kenney(piece: String) -> void:
 		_copy_texture(src_dir.path_join("Textures/colormap.png"), colormap, MODEL_TEXTURE_MAX)
 
 
-# --- Terreno ---------------------------------------------------------------------------------
+# --- Terrain ---------------------------------------------------------------------------------
 
-## Albedo de Terrain3D: RGB del original y altura en el alfa (luminancia estirada a 0..1), todas
-## del mismo tamaño y formato (Terrain3D exige que coincidan). Más una normal plana compartida.
+## Terrain3D albedo: the original's RGB and the height in the alpha (luminance stretched to 0..1), all
+## of the same size and format (Terrain3D requires them to match). Plus a shared flat normal.
 func _build_terrain_textures() -> void:
 	_ensure_dir(TERRAIN_OUT)
 	for pair: Array in TERRAIN_TEXTURES:
@@ -202,14 +202,14 @@ func _build_terrain_textures() -> void:
 		image.convert(Image.FORMAT_RGBA8)
 		if image.get_width() != TERRAIN_TEXTURE_SIZE or image.get_height() != TERRAIN_TEXTURE_SIZE:
 			image.resize(TERRAIN_TEXTURE_SIZE, TERRAIN_TEXTURE_SIZE, Image.INTERPOLATE_LANCZOS)
-		# La altura se saca de la luminancia original, antes de la corrección de color.
+		# The height is taken from the original luminance, before the color correction.
 		var packed: Image = _pack_luminance_as_height(image)
 		_grade(packed, pair[2])
 		var dst: String = TERRAIN_OUT.path_join(pair[1] + "_alb_ht.png")
 		_save_png(packed, dst)
 		_write_import(dst, TERRAIN_IMPORT_PARAMS)
-	# Normal plana con la rugosidad en el alfa: evita que Terrain3D genere y guarde en el .tres
-	# una normal de 1024 px por textura (decenas de MB de texto).
+	# Flat normal with roughness in the alpha: it keeps Terrain3D from generating and saving in the .tres
+	# a 1024 px normal per texture (tens of MB of text).
 	var flat := Image.create_empty(FLAT_NORMAL_SIZE, FLAT_NORMAL_SIZE, false, Image.FORMAT_RGBA8)
 	flat.fill(Color(0.5, 0.5, 1.0, 0.85))
 	var flat_path: String = TERRAIN_OUT.path_join("flat_normal_rough_256.png")
@@ -217,8 +217,8 @@ func _build_terrain_textures() -> void:
 	_write_import(flat_path, FLAT_NORMAL_IMPORT_PARAMS)
 
 
-## Corrección HSV por píxel (deja el alfa): [code]hue[/code] en grados, [code]sat[/code] y
-## [code]val[/code] como factores.
+## Per-pixel HSV correction (leaves the alpha alone): [code]hue[/code] in degrees, [code]sat[/code] and
+## [code]val[/code] as factors.
 static func _grade(image: Image, grade: Dictionary) -> void:
 	if grade.is_empty():
 		return
@@ -251,10 +251,10 @@ func _pack_luminance_as_height(rgb: Image) -> Image:
 	return packed
 
 
-# --- Utilidades ------------------------------------------------------------------------------
+# --- Utilities -------------------------------------------------------------------------------
 
-## Reescala (si pasa de [param max_size]) y guarda como PNG de 8 bits por canal. Los PNG de 16
-## bits de algunos packs ocupan el doble sin ganar nada visible.
+## Rescales (if it exceeds [param max_size]) and saves as an 8-bit-per-channel PNG. The 16-bit
+## PNGs of some packs take twice the space without gaining anything visible.
 func _copy_texture(src: String, dst: String, max_size: int) -> void:
 	var image: Image = Image.load_from_file(src)
 	if image == null or image.is_empty():
@@ -269,9 +269,9 @@ func _copy_texture(src: String, dst: String, max_size: int) -> void:
 		var factor: float = float(max_size) / float(largest)
 		image.resize(maxi(1, roundi(image.get_width() * factor)),
 				maxi(1, roundi(image.get_height() * factor)), Image.INTERPOLATE_LANCZOS)
-	# La compresión por bloques (BPTC/S3TC) necesita lados múltiplos de 4: las que no lo son
-	# (flowers.png viene a 1008 x 981) se llevan a la potencia de dos más cercana. Las UV de los
-	# glTF están normalizadas, así que el cambio de proporción no se nota.
+	# Block compression (BPTC/S3TC) needs sides that are multiples of 4: those that are not
+	# (flowers.png comes at 1008 x 981) are brought to the nearest power of two. The glTF UVs
+	# are normalized, so the change in proportion is not noticeable.
 	if image.get_width() % 4 != 0 or image.get_height() % 4 != 0:
 		image.resize(mini(nearest_po2(image.get_width()), max_size),
 				mini(nearest_po2(image.get_height()), max_size), Image.INTERPOLATE_LANCZOS)
@@ -300,8 +300,8 @@ func _copy_bytes(src: String, dst: String) -> void:
 	_count(dst)
 
 
-## Escribe los [param params] en el .import de [param texture_path] conservando lo demás (uid,
-## rutas): así un uid ya asignado no cambia y las referencias por uid siguen valiendo.
+## Writes [param params] into the .import of [param texture_path] preserving the rest (uid,
+## paths): this way an already-assigned uid does not change and uid references stay valid.
 func _write_import(texture_path: String, params: Dictionary) -> void:
 	var import_path: String = texture_path + ".import"
 	var config := ConfigFile.new()

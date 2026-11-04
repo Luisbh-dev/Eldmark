@@ -1,5 +1,5 @@
-// Package httpx reúne lo común de las dos API HTTP (plataforma.md §4.1 y §6): el cuerpo de error,
-// el registro de cada petición con su id, los límites del cuerpo, /health y /ready.
+// Package httpx gathers what the two HTTP APIs have in common (plataforma.md §4.1 and §6): the error
+// body, the logging of each request with its id, the body limits, /health and /ready.
 package httpx
 
 import (
@@ -17,15 +17,15 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// Límites del cuerpo: 16 KB en la API pública (§4.1) y 1 MB en la interna (§6).
+// Body limits: 16 KB on the public API (§4.1) and 1 MB on the internal one (§6).
 const (
 	PublicBodyLimit   int64 = 16 << 10
 	InternalBodyLimit int64 = 1 << 20
 )
 
-// Error es una respuesta de error con el cuerpo de §4.1:
-// {"error": {"code": …, "message": …, "retry_after_s": …, "fields": {…}}}. Extra añade campos al
-// objeto error (el kind, until_unix y reason de account_blocked, §6.1).
+// Error is an error response with the §4.1 body:
+// {"error": {"code": ..., "message": ..., "retry_after_s": ..., "fields": {...}}}. Extra adds
+// fields to the error object (account_blocked's kind, until_unix and reason, §6.1).
 type Error struct {
 	Status     int
 	Code       string
@@ -37,7 +37,7 @@ type Error struct {
 
 func (e *Error) Error() string { return strconv.Itoa(e.Status) + " " + e.Code + ": " + e.Message }
 
-// MarshalJSON escribe el cuerpo de error entero.
+// MarshalJSON writes the whole error body.
 func (e *Error) MarshalJSON() ([]byte, error) {
 	inner := make(map[string]any, 4+len(e.Extra))
 	for k, v := range e.Extra {
@@ -52,23 +52,23 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any{"error": inner})
 }
 
-// Errores de uso general.
+// General-purpose errors.
 var (
 	ErrNotFound = &Error{Status: http.StatusNotFound, Code: "not_found", Message: "No encontrado"}
 	ErrInternal = &Error{Status: http.StatusInternalServerError, Code: "internal", Message: "Error del servidor"}
 )
 
-// BadRequest es el 400 de un JSON roto o con campos desconocidos.
+// BadRequest is the 400 for broken JSON or JSON with unknown fields.
 func BadRequest() *Error {
 	return &Error{Status: http.StatusBadRequest, Code: "bad_request", Message: "Datos no válidos"}
 }
 
-// TooLarge es el 413 de un cuerpo que pasa del límite.
+// TooLarge is the 413 for a body that exceeds the limit.
 func TooLarge() *Error {
 	return &Error{Status: http.StatusRequestEntityTooLarge, Code: "too_large", Message: "La petición es demasiado grande"}
 }
 
-// WriteJSON escribe v como JSON con el estado dado.
+// WriteJSON writes v as JSON with the given status.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	body, err := json.Marshal(v)
 	if err != nil {
@@ -82,7 +82,7 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	_, _ = w.Write(append(body, '\n'))
 }
 
-// WriteError escribe el cuerpo de error; con 429 y 503 añade Retry-After.
+// WriteError writes the error body; with 429 and 503 it adds Retry-After.
 func WriteError(w http.ResponseWriter, e *Error) {
 	if e.Status == http.StatusTooManyRequests || e.Status == http.StatusServiceUnavailable {
 		retry := e.RetryAfter
@@ -94,14 +94,14 @@ func WriteError(w http.ResponseWriter, e *Error) {
 	WriteJSON(w, e.Status, e)
 }
 
-// NotFound responde 404 not_found a toda ruta que no existe.
+// NotFound answers 404 not_found to every route that does not exist.
 func NotFound() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { WriteError(w, ErrNotFound) })
 }
 
-// DecodeJSON lee el cuerpo de la petición en v, estricto (jsonx.Decode), con el límite dado. Un
-// cuerpo que pasa del límite es 413; uno roto, con campos desconocidos o con tipos que no casan,
-// 400 bad_request.
+// DecodeJSON reads the request body into v, strictly (jsonx.Decode), with the given limit. A body
+// that exceeds the limit is 413; a broken one, with unknown fields or with mismatched types, 400
+// bad_request.
 func DecodeJSON(w http.ResponseWriter, r *http.Request, limit int64, v any) *Error {
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	if err := jsonx.Decode(r.Body, v); err != nil {
@@ -114,7 +114,7 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, limit int64, v any) *Err
 	return nil
 }
 
-// statusWriter recuerda el estado de la respuesta para el registro.
+// statusWriter remembers the response's status for the log.
 type statusWriter struct {
 	http.ResponseWriter
 	status int
@@ -136,10 +136,10 @@ func (s *statusWriter) Write(b []byte) (int, error) {
 
 func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
-// Middleware da a cada petición un id (campo req del registro y cabecera X-Request-Id), escribe
-// una línea de registro al terminarla (route, status, ms y, si se conocen, account y character;
-// nunca el cuerpo) y convierte un pánico en 500 internal. Las de /health y /ready que van bien se
-// registran solo en el nivel de depuración, y las que no, como aviso.
+// Middleware gives each request an id (the log's req field and the X-Request-Id header), writes a
+// log line when it finishes (route, status, ms and, if known, account and character; never the
+// body) and turns a panic into a 500 internal. Successful /health and /ready requests are logged
+// only at the debug level, and those that fail, as a warning.
 func Middleware(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -169,8 +169,8 @@ func Middleware(log *slog.Logger, next http.Handler) http.Handler {
 			case probe && status < 400:
 				level = slog.LevelDebug
 			case probe:
-				// Un /ready en 503 mientras la base o el esquema no están: el motivo ya lo registra
-				// el arranque, y los sondeos se repiten cada pocos segundos.
+				// A /ready at 503 while the database or the schema are not there: the startup already logs the
+				// reason, and the probes repeat every few seconds.
 				level = slog.LevelWarn
 			case status >= 500:
 				level = slog.LevelError
@@ -185,8 +185,8 @@ func Middleware(log *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// routeOf devuelve el patrón de la ruta («GET /v1/characters/{id}»), nunca la ruta con ids ni la
-// consulta. Sin patrón (404), el método y «?».
+// routeOf returns the route's pattern ("GET /v1/characters/{id}"), never the route with ids or the
+// query. Without a pattern (404), the method and "?".
 func routeOf(r *http.Request) string {
 	if r.Pattern != "" && r.Pattern != "/" {
 		return r.Pattern
@@ -194,15 +194,15 @@ func routeOf(r *http.Request) string {
 	return r.Method + " ?"
 }
 
-// Health responde 200 mientras el proceso vive, sin tocar la base.
+// Health answers 200 while the process lives, without touching the database.
 func Health() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 }
 
-// Ready responde 200 si check no da error y, si no, 503 con el motivo, que check escribe para
-// cualquiera: /ready es público, así que el motivo no lleva detalles de la base.
+// Ready answers 200 if check gives no error and, otherwise, 503 with the reason, which check writes
+// for anyone: /ready is public, so the reason carries no database details.
 func Ready(timeout time.Duration, check func(ctx context.Context) error) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)

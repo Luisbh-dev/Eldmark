@@ -1,21 +1,21 @@
 class_name CombatFixture
 extends RefCounted
-## Ayudantes de las pruebas del combate del servidor: luchadores montados a mano (personaje,
-## entidad, cola de entradas y [Combatant]) en un [SubViewport] con su propio mundo de física, y
-## cerebros de bot que ejecutan un guion de entradas.
+## Helpers for the server combat tests: hand-assembled fighters (character, entity, input queue and
+## [Combatant]) in a [SubViewport] with its own physics world, and bot brains that run an input
+## script.
 
-## Escena del personaje (el servidor le quita el nodo Visual).
+## Character scene (the server removes its Visual node).
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
 
 
-## Un [SubViewport] con su propio mundo (3D y física), la zona plana de [ZoneFixture] y los puntos de
-## aparición de la zona de pruebas. Devuelve el viewport; la zona es el metadato [code]world[/code].
+## A [SubViewport] with its own world (3D and physics), the flat zone of [ZoneFixture] and the test
+## zone's spawn points. Returns the viewport; the zone is the [code]world[/code] metadata.
 static func make_world(parent: Node) -> SubViewport:
 	return NetHarness.make_world_viewport(parent, "")
 
 
-## Personaje del servidor: la escena del jugador sin su nodo Visual y sin proceso propio, colgado de
-## [param parent] en [param position] mirando a [param yaw].
+## Server character: the player scene without its Visual node and without its own processing,
+## hung from [param parent] at [param position] facing [param yaw].
 static func make_character(parent: Node3D, position: Vector3, yaw: float) -> PlayerCharacter:
 	var character: PlayerCharacter = PLAYER_SCENE.instantiate() as PlayerCharacter
 	var visual: Node = character.get_node_or_null(^"Visual")
@@ -34,7 +34,7 @@ static func make_character(parent: Node3D, position: Vector3, yaw: float) -> Pla
 	return character
 
 
-## Una entidad de red ([param net_id], [param realm]) con su personaje en [param position] mirando a
+## A network entity ([param net_id], [param realm]) with its character at [param position] facing
 ## [param yaw].
 static func make_entity(parent: Node3D, net_id: int, realm: int, position: Vector3,
 		yaw: float) -> NetEntity:
@@ -47,25 +47,25 @@ static func make_entity(parent: Node3D, net_id: int, realm: int, position: Vecto
 	return entity
 
 
-## Una cola de entradas lista para una entidad que aparece mirando a [param yaw].
+## An input queue ready for an entity that spawns facing [param yaw].
 static func make_queue(yaw: float) -> InputQueue:
 	var queue := InputQueue.new()
 	queue.reset(0, NetProtocol.neutral_input(0, yaw))
 	return queue
 
 
-## Un luchador a mano: [Combatant] con su entidad ([param net_id], [param realm]), su personaje en
-## [param position] mirando a [param yaw] y su cola de entradas. [param peer] puede ser null (sin
-## rebobinado).
+## A hand-built fighter: [Combatant] with its entity ([param net_id], [param realm]), its
+## character at [param position] facing [param yaw] and its input queue. [param peer] can be null
+## (no rewind).
 static func make_fighter(parent: Node3D, net_id: int, realm: int, position: Vector3, yaw: float,
 		timing: CombatTiming, peer: ServerPeer = null) -> Combatant:
 	var entity: NetEntity = make_entity(parent, net_id, realm, position, yaw)
 	return Combatant.new(entity, make_queue(yaw), peer, timing, CombatCatalog.rules().health_max)
 
 
-## Lo que hace el servidor al colocar un cuerpo ([code]ZoneServer._place[/code]): velocidad 0,
-## estado pasado por encode/decode y contador de teletransporte +1. Sirve de [code]place[/code] del
-## [CombatDirector] en las pruebas.
+## What the server does when placing a body ([code]ZoneServer._place[/code]): velocity 0, state
+## passed through encode/decode and teleport counter +1. It serves as the [CombatDirector]'s
+## [code]place[/code] in tests.
 static func place(entity: NetEntity, position: Vector3, yaw: float) -> void:
 	var character: PlayerCharacter = entity.get_character()
 	var state: PlayerState = character.get_state()
@@ -79,8 +79,8 @@ static func place(entity: NetEntity, position: Vector3, yaw: float) -> void:
 	entity.teleport_counter = (entity.teleport_counter + 1) & EntityRecord.TELEPORT_MASK
 
 
-## Pone al luchador en el primer tick del golpe activo del ligero [param light_index] (0 a 2) en el
-## tick [param s].
+## Puts the fighter on the first tick of the active hit of light attack [param light_index] (0 to
+## 2) at tick [param s].
 static func start_light_active(fighter: Combatant, s: int, light_index: int = 0) -> void:
 	var weapon: WeaponTicks = CombatCatalog.weapon(fighter.get_character().combat.weapon_id)
 	var attack: AttackTicks = CombatCatalog.attack(weapon.light_ids[light_index])
@@ -90,8 +90,8 @@ static func start_light_active(fighter: Combatant, s: int, light_index: int = 0)
 	state.action_tick = s - attack.windup_ticks
 
 
-## Pone al luchador en el primer tick del golpe activo del fuerte en el tick [param s], lanzado con
-## [param charge_ticks] de carga.
+## Puts the fighter on the first tick of the active hit of the heavy attack at tick [param s],
+## launched with [param charge_ticks] of charge.
 static func start_heavy_active(fighter: Combatant, s: int, charge_ticks: int = 0) -> void:
 	var weapon: WeaponTicks = CombatCatalog.weapon(fighter.get_character().combat.weapon_id)
 	var attack: AttackTicks = CombatCatalog.attack(weapon.heavy_id)
@@ -102,8 +102,8 @@ static func start_heavy_active(fighter: Combatant, s: int, charge_ticks: int = 0
 	state.charge_ticks = charge_ticks
 
 
-## Pone al luchador bloqueando desde el tick [param since]. Con [param parry_open] abre la ventana
-## de parada en ese mismo tick (la deja como la máquina de acciones tras un flanco de BLOCK).
+## Puts the fighter blocking since tick [param since]. With [param parry_open] it opens the parry
+## window on that same tick (it leaves it as the action machine does after a BLOCK rising edge).
 static func start_block(fighter: Combatant, since: int, parry_open: bool = false) -> void:
 	var state: CombatState = fighter.get_character().combat
 	state.action = CombatState.Action.BLOCK
@@ -113,7 +113,7 @@ static func start_block(fighter: Combatant, since: int, parry_open: bool = false
 		state.parry_ready_tick = since + CombatCatalog.rules().parry_cooldown_ticks
 
 
-## Pone al luchador esquivando desde el tick [param since].
+## Puts the fighter dodging since tick [param since].
 static func start_dodge(fighter: Combatant, since: int) -> void:
 	var state: CombatState = fighter.get_character().combat
 	state.action = CombatState.Action.DODGE
@@ -121,8 +121,8 @@ static func start_dodge(fighter: Combatant, since: int) -> void:
 	state.action_tick = since
 
 
-## Graba en [param history] el estado del luchador tras el tick [param tick], con sus banderas
-## defensivas calculadas para ese tick (lo que haría el servidor en [code]_record_history[/code]).
+## Records in [param history] the fighter's state after tick [param tick], with its defensive flags
+## computed for that tick (what the server would do in [code]_record_history[/code]).
 static func record(history: StateHistory, fighter: Combatant, tick: int) -> void:
 	var character: PlayerCharacter = fighter.get_character()
 	var flags: int = (fighter.entity.teleport_counter & EntityRecord.TELEPORT_MASK) \
@@ -133,9 +133,9 @@ static func record(history: StateHistory, fighter: Combatant, tick: int) -> void
 	history.record(tick, fighter.get_id(), fighter.entity.get_position(), character.yaw, flags)
 
 
-## Cerebro de bot que ejecuta un guion: en cada tick llama a [member script]
-## ([code](tick: int, position: Vector3, yaw: float) -> PlayerInput[/code]) y, si no hay guion,
-## no hace nada.
+## Bot brain that runs a script: on each tick it calls [member script]
+## ([code](tick: int, position: Vector3, yaw: float) -> PlayerInput[/code]) and, if there is no
+## script, does nothing.
 class ScriptBrain:
 	extends BotBrain
 

@@ -1,33 +1,32 @@
 extends Node3D
-## Escena de prueba del personaje animado (herramienta de desarrollo, solo cliente).
+## Test scene for the animated character (development tool, client only).
 ##
-## Aparece un [PlayerCharacter] sobre un suelo a cuadros de 1 m, se le cuelga
-## [code]humanoid_visual.tscn[/code] bajo su nodo Visual (ocultando la cápsula) y se le conduce con
-## un guion fijo de [PlayerInput]: reposo, caminar, trotar, esprintar, frenar, desplazamiento
-## lateral, hacia atrás, salto parado y salto corriendo. La cámara sigue al personaje con un
-## desplazamiento fijo, sin girar, para que los cuadros del suelo delaten si los pies patinan.
+## A [PlayerCharacter] appears on a 1 m checkered floor, [code]humanoid_visual.tscn[/code] is attached
+## under its Visual node (hiding the capsule) and it is driven with a fixed [PlayerInput] script: idle,
+## walk, jog, sprint, brake, sideways movement, backward, standing jump and running jump. The camera
+## follows the character with a fixed offset, without turning, so that the floor squares reveal whether
+## the feet slide.
 ## [br][br]
-## Uso (ventana; [code]--fixed-fps[/code] hace la ejecución determinista):
+## Usage (window; [code]--fixed-fps[/code] makes execution deterministic):
 ## [codeblock]
 ## godot --path . res://scenes/tests/character_preview.tscn --fixed-fps 30 -- \
 ##     [--shots=build/char] [--every=6] [--range=0-200] \
 ##     [--view=three_quarter|side|front|back|close|close_back|feet] \
 ##     [--capsule] [--hood] [--no-quit]
 ## [/codeblock]
-## [br]- [code]--shots=<carpeta>[/code]: guarda un PNG cada [code]--every[/code] fotogramas y hojas
-## de contactos de 4x4 ([code]sheet_XX.png[/code]). Relativa a la raíz del proyecto o absoluta.
-## [br]- [code]--range=<desde>-<hasta>[/code]: solo captura esos fotogramas.
-## [br]Al terminar imprime, por tramo del guion, cuánto se mueve el tobillo del pie apoyado
-## (patinaje): con la zancada bien ajustada debe quedarse cerca de 0 aunque se corra.
-## [br]- [code]--capsule[/code]: deja la cápsula de colisión visible y translúcida para comparar la
-## escala.
-## [br]- [code]--hood[/code]: muestra la capucha del traje.
-## [br]- [code]--no-quit[/code]: no cierra al terminar el guion.
+## [br]- [code]--shots=<folder>[/code]: saves a PNG every [code]--every[/code] frames and 4x4 contact
+## sheets ([code]sheet_XX.png[/code]). Relative to the project root or absolute.
+## [br]- [code]--range=<from>-<to>[/code]: only captures those frames.
+## [br]When finished it prints, per script section, how much the planted foot's ankle moves (sliding):
+## with a well-tuned stride it should stay near 0 even when running.
+## [br]- [code]--capsule[/code]: leaves the collision capsule visible and translucent to compare the
+## scale.
+## [br]- [code]--hood[/code]: shows the outfit's hood.
+## [br]- [code]--no-quit[/code]: does not close when the script ends.
 
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
 
-## Por vista: desplazamiento de la cámara respecto a los pies (xyz) y altura del punto al que
-## mira (w).
+## Per view: camera offset relative to the feet (xyz) and height of the point it looks at (w).
 const VIEWS: Dictionary[String, Vector4] = {
 	"three_quarter": Vector4(3.2, 1.8, -3.6, 0.95),
 	"side": Vector4(5.0, 1.3, 0.0, 0.95),
@@ -37,12 +36,12 @@ const VIEWS: Dictionary[String, Vector4] = {
 	"close_back": Vector4(-0.9, 1.75, 1.5, 1.45),
 	"feet": Vector4(3.2, 0.8, 0.0, 0.45),
 }
-## Hojas de contactos: columnas, filas y tamaño de cada miniatura.
+## Contact sheets: columns, rows and size of each thumbnail.
 const SHEET_COLUMNS: int = 4
 const SHEET_ROWS: int = 4
 const THUMB_SIZE: Vector2i = Vector2i(480, 270)
 
-## Guion: [nombre, ticks, movimiento, botones, tick (relativo) en que empieza a pulsarse el salto].
+## Script: [name, ticks, movement, buttons, (relative) tick at which the jump starts being pressed].
 var _script_steps: Array[Dictionary] = [
 	{"name": "Reposo", "ticks": 60, "move": Vector2.ZERO},
 	{"name": "Caminar (1 m/s)", "ticks": 120, "move": Vector2(0.0, 0.2)},
@@ -113,8 +112,8 @@ func _ready() -> void:
 			_quit_when_done = false
 	if not _shots_dir.is_empty():
 		DirAccess.make_dir_recursive_absolute(_shots_dir)
-	# Después de todos los nodos (también del AnimationTree), para que la cámara, el texto y la
-	# medida de los pies usen la pose ya animada de este fotograma.
+	# After all the nodes (also the AnimationTree), so that the camera, the text and the foot measurement use
+	# this frame's already animated pose.
 	process_priority = 100
 
 	_camera = $Camera3D
@@ -128,7 +127,7 @@ func _ready() -> void:
 	_character.set_state(state)
 	_character.reset_physics_interpolation()
 
-	# Igual que lo haría el cliente: instala el visual y oculta la cápsula provisional.
+	# Just as the client would do: installs the visual and hides the placeholder capsule.
 	_visual = HumanoidVisual.install(_character)
 	_visual.hood_visible = hood
 	if show_capsule:
@@ -198,9 +197,9 @@ func _update_label() -> void:
 	]
 
 
-## Mide cuánto patinan los pies: velocidad horizontal en el mundo del tobillo más lento (el
-## apoyado) en cada fotograma, con la pose y la transformación que se dibujan. Con la zancada
-## bien ajustada, el pie apoyado casi no se mueve aunque el personaje corra.
+## Measures how much the feet slide: horizontal world velocity of the slower ankle (the planted one) on
+## each frame, with the pose and transform that are drawn. With a well-tuned stride, the planted foot
+## barely moves even when the character runs.
 func _measure_feet(delta: float) -> void:
 	if not is_instance_valid(_visual) or _finished or delta <= 0.0:
 		return
@@ -227,7 +226,7 @@ func _measure_feet(delta: float) -> void:
 	if not _slide_samples.has(step_name):
 		_slide_samples[step_name] = PackedFloat32Array()
 		_speed_samples[step_name] = PackedFloat32Array()
-	# Se ignora el primer tercio de cada tramo (aceleración y transición).
+	# The first third of each section is ignored (acceleration and transition).
 	if _step_tick > int(_script_steps[_step_index]["ticks"]) / 3:
 		_slide_samples[step_name].append(slowest)
 		_speed_samples[step_name].append(_character.get_horizontal_speed())

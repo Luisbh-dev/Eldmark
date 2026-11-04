@@ -1,53 +1,53 @@
 class_name PlatformApi
 extends Node
-## Cliente de la API pública de la plataforma (docs/plataforma.md §4 y §14.4): HTTPS y JSON con las cabeceras de
-## §4.1 ([code]Authorization[/code], [code]X-Eldmark-Protocol[/code] y [code]X-Eldmark-Build[/code]).
+## Client of the platform's public API (docs/plataforma.md §4 and §14.4): HTTPS and JSON with the headers from
+## §4.1 ([code]Authorization[/code], [code]X-Eldmark-Protocol[/code] and [code]X-Eldmark-Build[/code]).
 ## [br][br]
-## [method call_api] es una corrutina que devuelve un [ApiResult]:
+## [method call_api] is a coroutine that returns an [ApiResult]:
 ## [codeblock]
 ## var result: ApiResult = await api.call_api(HTTPClient.METHOD_POST, "/v1/sessions", {…}, false)
 ## [/codeblock]
-## [b]Sesión.[/b] Las llamadas con sesión ([param auth]) llevan el token de acceso de [member session]. Si caduca en
-## menos de un minuto se refresca antes; si la plataforma responde 401 [code]unauthorized[/code] se refresca una vez y
-## se repite la llamada. [b]Un solo refresco en vuelo[/b] (§4.2): las llamadas que lo necesitan a la vez esperan al
-## mismo (señal [signal refreshed]), así la plataforma nunca ve dos refrescos con el mismo token, que tomaría por
-## reutilización y cerraría la sesión. Si el refresco da 401, la sesión se olvida y sale [signal session_lost]: quien
-## muestra la interfaz vuelve al título.
+## [b]Session.[/b] Calls with a session ([param auth]) carry the access token from [member session]. If it expires in
+## less than a minute it is refreshed first; if the platform answers 401 [code]unauthorized[/code] it is refreshed once and
+## the call is repeated. [b]Only one refresh in flight[/b] (§4.2): calls that need it at the same time wait for the
+## same one ([signal refreshed] signal), so the platform never sees two refreshes with the same token, which it would take for
+## reuse and would close the session. If the refresh gives 401, the session is forgotten and [signal session_lost] is emitted: whoever
+## shows the UI returns to the title screen.
 ## [br][br]
-## [b]Transporte.[/b] Un [HTTPRequest] por llamada (en el árbol: este nodo tiene que estar en él), con
-## [member timeout_s] de plazo. Solo [code]https://[/code] o, hacia esta máquina, [code]http://[/code]
-## ([method ClientConfig.platform_url_error]); con el ajuste [constant CA_CERT_SETTING] (ruta a un PEM) se ancla ese
-## certificado (staging con certificado propio, §10.1). Un cuerpo que no es UTF-8 o JSON nunca registra errores del
-## motor. Los ids van siempre como cadena (§4.1): quien arma un cuerpo los pone con [code]str()[/code].
+## [b]Transport.[/b] One [HTTPRequest] per call (in the tree: this node must be in it), with a
+## [member timeout_s] timeout. Only [code]https://[/code] or, towards this machine, [code]http://[/code]
+## ([method ClientConfig.platform_url_error]); with the [constant CA_CERT_SETTING] setting (path to a PEM) that
+## certificate is pinned (staging with its own certificate, §10.1). A body that is not UTF-8 or JSON never logs engine
+## errors. Ids always go as strings (§4.1): whoever builds a body sets them with [code]str()[/code].
 ## [br][br]
-## [b]Pruebas.[/b] [member request_hook] sustituye al transporte: recibe [code](method, path, body)[/code] y devuelve un
-## [ApiResult] (puede ser una corrutina, para simular una respuesta lenta). Todo lo demás (refresco, reintento tras
-## el 401, [signal session_lost]) corre igual. Solo cliente.
+## [b]Tests.[/b] [member request_hook] replaces the transport: it receives [code](method, path, body)[/code] and returns an
+## [ApiResult] (it may be a coroutine, to simulate a slow response). Everything else (refresh, retry after
+## the 401, [signal session_lost]) runs the same. Client only.
 
-## El refresco es imposible (la sesión ya no vale): la interfaz vuelve al título. [param code] es el del error.
+## Refreshing is impossible (the session is no longer valid): the UI returns to the title screen. [param code] is the error's.
 signal session_lost(code: String)
-## Ha terminado un refresco ([param ok]: si salió bien). Interna: la esperan las llamadas que llegan mientras vuela.
+## A refresh has finished ([param ok]: whether it went well). Internal: calls that arrive while it is in flight wait for it.
 signal refreshed(ok: bool)
 
-## Plazo de cada petición (s).
+## Timeout of each request (s).
 const TIMEOUT_S: float = 15.0
-## Tamaño máximo de una respuesta (la exportación de datos es la más grande).
+## Maximum size of a response (the data export is the largest).
 const MAX_RESPONSE_BYTES: int = 8 * 1024 * 1024
 const REFRESH_PATH: String = "/v1/sessions/refresh"
-## Ajuste de proyecto con la ruta de un certificado PEM que anclar (vacío = los raíz de Godot).
+## Project setting with the path of a PEM certificate to pin (empty = Godot's roots).
 const CA_CERT_SETTING: String = "eldmark/platform/ca_cert"
 const PROTOCOL_HEADER: String = "X-Eldmark-Protocol"
 const BUILD_HEADER: String = "X-Eldmark-Build"
 
-## URL base de la API pública ([code]https://cuentas.eldmark.example[/code], sin barra final).
+## Base URL of the public API ([code]https://cuentas.eldmark.example[/code], without a trailing slash).
 var base_url: String = ""
-## Pruebas: [code](method: int, path: String, body: Variant) -> ApiResult[/code] en lugar de la red.
+## Tests: [code](method: int, path: String, body: Variant) -> ApiResult[/code] instead of the network.
 var request_hook: Callable = Callable()
-## La sesión de la cuenta (la pone [AccountFlow] al iniciar sesión).
+## The account session (set by [AccountFlow] on login).
 var session: AccountSession = AccountSession.new()
-## Plazo de cada petición (s).
+## Timeout of each request (s).
 var timeout_s: float = TIMEOUT_S
-## Pruebas: [code]() -> int[/code] con la hora en ms en lugar de [method Time.get_ticks_msec].
+## Tests: [code]() -> int[/code] with the time in ms instead of [method Time.get_ticks_msec].
 var clock: Callable = Callable()
 
 var _refreshing: bool = false
@@ -60,8 +60,8 @@ func _init() -> void:
 	name = "PlatformApi"
 
 
-## Llama a [param path] (con el prefijo [code]/v1[/code]) con [param method] y el cuerpo [param body] (un diccionario
-## que se manda como JSON; null = sin cuerpo). Con [param auth], con la sesión (y su refresco). Corrutina.
+## Calls [param path] (with the [code]/v1[/code] prefix) with [param method] and the body [param body] (a dictionary
+## sent as JSON; null = no body). With [param auth], with the session (and its refresh). Coroutine.
 func call_api(method: HTTPClient.Method, path: String, body: Variant = null, auth: bool = true) -> ApiResult:
 	_calls += 1
 	if auth:
@@ -74,7 +74,7 @@ func call_api(method: HTTPClient.Method, path: String, body: Variant = null, aut
 	var sent_token: String = session.access_token if auth else ""
 	var result: ApiResult = await _send(method, path, body, auth)
 	if auth and result.status == 401 and result.code == "unauthorized":
-		# Si otra llamada ya refrescó mientras esta volaba, basta con repetir con el token nuevo.
+		# If another call already refreshed while this one was in flight, it is enough to repeat with the new token.
 		if session.access_token == sent_token:
 			var refresh: ApiResult = await _refresh()
 			if not refresh.ok:
@@ -85,36 +85,36 @@ func call_api(method: HTTPClient.Method, path: String, body: Variant = null, aut
 	return result
 
 
-## Refrescos hechos desde que existe este nodo (pruebas: dos llamadas que caducan a la vez hacen uno).
+## Refreshes done since this node has existed (tests: two calls that expire at the same time make one).
 func get_refresh_count() -> int:
 	return _refresh_count
 
 
-## Llamadas a [method call_api] desde que existe este nodo.
+## Calls to [method call_api] since this node has existed.
 func get_call_count() -> int:
 	return _calls
 
 
-## true mientras vuela un refresco.
+## true while a refresh is in flight.
 func is_refreshing() -> bool:
 	return _refreshing
 
 
-## La hora (ms) con la que se miran los plazos de la sesión.
+## The time (ms) against which the session's deadlines are checked.
 func now_msec() -> int:
 	if clock.is_valid():
 		return int(clock.call())
 	return Time.get_ticks_msec()
 
 
-## Identificador de esta versión del cliente para [constant BUILD_HEADER]: [code]eldmark-<versión>-p<protocolo>[/code]
-## (el mismo formato que el registro de las zonas).
+## Identifier of this client version for [constant BUILD_HEADER]: [code]eldmark-<version>-p<protocol>[/code]
+## (the same format as the zones' registration).
 static func build_id() -> String:
 	var version: String = str(ProjectSettings.get_setting("application/config/version", "0"))
 	return ("eldmark-%s-p%d" % [version, NetProtocol.PROTOCOL_VERSION]).replace(" ", "_").left(64)
 
 
-## Las cabeceras de una petición con el token [param access_token] (vacío = sin sesión) y con o sin cuerpo.
+## The headers of a request with the token [param access_token] (empty = no session) and with or without a body.
 static func request_headers(access_token: String, has_body: bool) -> PackedStringArray:
 	var headers := PackedStringArray([
 		"Accept: application/json",
@@ -128,8 +128,8 @@ static func request_headers(access_token: String, has_body: bool) -> PackedStrin
 	return headers
 
 
-## Convierte lo que da [signal HTTPRequest.request_completed] en un [ApiResult] (sin registrar errores del motor con
-## un cuerpo roto o que no es UTF-8).
+## Converts what [signal HTTPRequest.request_completed] gives into an [ApiResult] (without logging engine errors with
+## a broken body or one that is not UTF-8).
 static func parse_response(result: int, response_code: int, response_headers: PackedStringArray,
 		body: PackedByteArray) -> ApiResult:
 	if result != HTTPRequest.RESULT_SUCCESS:
@@ -163,7 +163,7 @@ static func parse_response(result: int, response_code: int, response_headers: Pa
 	return parsed_result
 
 
-# Un refresco, o el que ya vuela.
+# A refresh, or the one already in flight.
 func _refresh() -> ApiResult:
 	if _refreshing:
 		await refreshed
@@ -187,7 +187,7 @@ func _refresh() -> ApiResult:
 	return result
 
 
-# Un intento: el gancho de las pruebas o la red.
+# One attempt: the tests' hook or the network.
 func _send(method: HTTPClient.Method, path: String, body: Variant, auth: bool) -> ApiResult:
 	if request_hook.is_valid():
 		var hooked: Variant = await request_hook.call(method, path, body)
@@ -223,7 +223,7 @@ func _send(method: HTTPClient.Method, path: String, body: Variant, auth: bool) -
 			response[3] as PackedByteArray)
 
 
-# El certificado anclado del ajuste CA_CERT_SETTING, o null (los raíz de Godot).
+# The pinned certificate from the CA_CERT_SETTING setting, or null (Godot's roots).
 static func _tls_options() -> TLSOptions:
 	var path: String = str(ProjectSettings.get_setting(CA_CERT_SETTING, "")).strip_edges()
 	if path.is_empty() or not FileAccess.file_exists(path):

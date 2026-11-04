@@ -1,21 +1,21 @@
 class_name TestCase
 extends RefCounted
-## Clase base de las pruebas automáticas.
+## Base class of the automated tests.
 ##
-## Cada archivo [code]res://tests/test_*.gd[/code] hereda de esta clase. El ejecutor
-## ([code]res://tests/run_tests.gd[/code]) crea una instancia nueva para cada prueba, rellena
-## [member tree] y llama, en este orden, a [code]before_each()[/code] (si existe), al método
-## [code]test_*[/code] y a [code]after_each()[/code] (si existe). Los tres pueden usar
+## Each [code]res://tests/test_*.gd[/code] file inherits from this class. The runner
+## ([code]res://tests/run_tests.gd[/code]) creates a fresh instance for each test, fills in
+## [member tree] and calls, in this order, [code]before_each()[/code] (if it exists), the
+## [code]test_*[/code] method and [code]after_each()[/code] (if it exists). All three may use
 ## [code]await[/code].
 ## [br][br]
-## Las comprobaciones no detienen la prueba: registran el fallo con su mensaje (y la línea donde
-## ocurrió) y devuelven [code]false[/code], para que la prueba pueda salir antes si lo necesita:
+## Assertions do not stop the test: they record the failure with its message (and the line where it
+## happened) and return [code]false[/code], so the test can exit early if it needs to:
 ## [codeblock]
-## if not assert_not_null(scene, "No se pudo cargar la escena"):
+## if not assert_not_null(scene, "Could not load the scene"):
 ##     return
 ## [/codeblock]
 
-## Árbol de escena en el que se ejecutan las pruebas.
+## Scene tree in which the tests run.
 var tree: SceneTree
 
 var _failures: PackedStringArray = PackedStringArray()
@@ -23,24 +23,24 @@ var _assertion_count: int = 0
 var _logged_errors_allowed: bool = false
 
 
-## Comprueba que [param condition] es verdadera.
+## Checks that [param condition] is true.
 func assert_true(condition: bool, message: String = "") -> bool:
 	return _check(condition, "se esperaba verdadero", message)
 
 
-## Comprueba que [param condition] es falsa.
+## Checks that [param condition] is false.
 func assert_false(condition: bool, message: String = "") -> bool:
 	return _check(not condition, "se esperaba falso", message)
 
 
-## Comprueba que [param actual] es igual a [param expected]. Los tipos deben coincidir, salvo
-## int/float y String/StringName, que se comparan por valor.
+## Checks that [param actual] equals [param expected]. Types must match, except
+## int/float and String/StringName, which are compared by value.
 func assert_eq(actual: Variant, expected: Variant, message: String = "") -> bool:
 	var detail: String = "se esperaba %s, se obtuvo %s" % [_repr(expected), _repr(actual)]
 	return _check(_values_equal(actual, expected), detail, message)
 
 
-## Comprueba que [code]|a - b| <= eps[/code]. Un NaN o un infinito siempre falla.
+## Checks that [code]|a - b| <= eps[/code]. A NaN or an infinity always fails.
 func assert_near(a: float, b: float, eps: float, message: String = "") -> bool:
 	var ok: bool = is_finite(a) and is_finite(b) and absf(a - b) <= eps
 	var detail: String = "%s no está a menos de %s de %s (diferencia %s)" % [
@@ -49,8 +49,8 @@ func assert_near(a: float, b: float, eps: float, message: String = "") -> bool:
 	return _check(ok, detail, message)
 
 
-## Comprueba que la distancia entre dos vectores ([Vector2], [Vector3] o [Vector4] del mismo
-## tipo) es [code]<= eps[/code]. Un componente NaN o infinito siempre falla.
+## Checks that the distance between two vectors ([Vector2], [Vector3] or [Vector4] of the same
+## type) is [code]<= eps[/code]. A NaN or infinite component always fails.
 func assert_vec_near(a: Variant, b: Variant, eps: float, message: String = "") -> bool:
 	var vector_types: Array[int] = [TYPE_VECTOR2, TYPE_VECTOR3, TYPE_VECTOR4]
 	if typeof(a) != typeof(b) or typeof(a) not in vector_types:
@@ -65,67 +65,67 @@ func assert_vec_near(a: Variant, b: Variant, eps: float, message: String = "") -
 	return _check(ok, detail, message)
 
 
-## Comprueba que [param value] es null (o un objeto ya liberado).
+## Checks that [param value] is null (or an already freed object).
 func assert_null(value: Variant, message: String = "") -> bool:
 	return _check(not _is_present(value), "se esperaba null, se obtuvo %s" % _repr(value), message)
 
 
-## Comprueba que [param value] no es null ni un objeto liberado.
+## Checks that [param value] is neither null nor a freed object.
 func assert_not_null(value: Variant, message: String = "") -> bool:
 	return _check(_is_present(value), "se esperaba un valor, se obtuvo null", message)
 
 
-## Registra un fallo sin condición.
+## Records a failure unconditionally.
 func fail(message: String) -> void:
 	_check(false, "", message)
 
 
-## Permite que la prueba actual registre errores del motor sin que el ejecutor la marque como
-## fallida, para las pruebas que provocan a propósito un error del motor (por ejemplo, cargar un
-## recurso que no existe). Los errores de script (llamadas a null, métodos inexistentes...)
-## siempre hacen fallar la prueba.
+## Allows the current test to log engine errors without the runner marking it as
+## failed, for tests that deliberately trigger an engine error (for example, loading a
+## resource that does not exist). Script errors (calls on null, nonexistent methods...)
+## always make the test fail.
 func allow_logged_errors() -> void:
 	_logged_errors_allowed = true
 
 
-## Espera [param count] pasos de física. Al volver, el código se ejecuta dentro del paso de
-## física ([method Engine.is_in_physics_frame] es true) hasta el siguiente [code]await[/code].
+## Waits [param count] physics steps. On return, the code runs inside the physics
+## step ([method Engine.is_in_physics_frame] is true) until the next [code]await[/code].
 func wait_physics_frames(count: int = 1) -> void:
 	for _i: int in count:
 		await tree.physics_frame
 
 
-## Espera [param count] fotogramas de proceso.
+## Waits [param count] process frames.
 func wait_process_frames(count: int = 1) -> void:
 	for _i: int in count:
 		await tree.process_frame
 
 
-# --- API para el ejecutor ---------------------------------------------------------------------
+# --- API for the runner ---------------------------------------------------------------------
 
-## Usado por el ejecutor: deja la instancia lista para empezar una prueba.
+## Used by the runner: leaves the instance ready to start a test.
 func reset_results() -> void:
 	_failures = PackedStringArray()
 	_assertion_count = 0
 	_logged_errors_allowed = false
 
 
-## Usado por el ejecutor: mensajes de las comprobaciones fallidas.
+## Used by the runner: messages of the failed assertions.
 func get_failures() -> PackedStringArray:
 	return _failures
 
 
-## Usado por el ejecutor: número de comprobaciones hechas.
+## Used by the runner: number of assertions made.
 func get_assertion_count() -> int:
 	return _assertion_count
 
 
-## Usado por el ejecutor: si la prueba aceptó errores del motor con [method allow_logged_errors].
+## Used by the runner: whether the test accepted engine errors with [method allow_logged_errors].
 func are_logged_errors_allowed() -> bool:
 	return _logged_errors_allowed
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ----------------------------------------------------------------------------------
 
 func _check(ok: bool, detail: String, message: String) -> bool:
 	_assertion_count += 1
@@ -142,9 +142,9 @@ func _check(ok: bool, detail: String, message: String) -> bool:
 	return ok
 
 
-# Primer marco de la pila que no pertenece a este archivo (la línea de la prueba que falló).
+# First stack frame that does not belong to this file (the line of the test that failed).
 func _caller_location() -> String:
-	# get_script() es el script de la prueba; el de esta clase es la base de la cadena.
+	# get_script() is the test's script; this class's is the base of the chain.
 	var base_script: Script = get_script() as Script
 	while base_script.get_base_script() != null:
 		base_script = base_script.get_base_script()

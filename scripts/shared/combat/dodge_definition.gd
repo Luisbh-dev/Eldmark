@@ -1,20 +1,20 @@
 class_name DodgeDefinition
 extends Resource
-## La esquiva de un arma (docs/combate.md, sección 2). Tiempos en segundos; el catálogo los
-## convierte a ticks y hornea [member speed_curve] en una tabla de velocidades por tick.
+## A weapon's dodge (docs/combate.md, section 2). Times in seconds; the catalog converts them
+## to ticks and bakes [member speed_curve] into a per-tick speed table.
 
-## Duración total (s).
+## Total duration (s).
 @export var duration_s: float = 0.45
-## Inicio de la invulnerabilidad (s desde el inicio de la esquiva), inclusive.
+## Start of invulnerability (s since the start of the dodge), inclusive.
 @export var invulnerable_from_s: float = 0.05
-## Fin de la invulnerabilidad (s), exclusivo.
+## End of invulnerability (s), exclusive.
 @export var invulnerable_to_s: float = 0.3
-## Distancia recorrida en suelo plano (m).
+## Distance covered on flat ground (m).
 @export var distance_m: float = 4.5
-## Forma del perfil de velocidad: x en [0, 1] (fracción de la duración), y velocidad relativa.
-## Se normaliza para que la distancia total sea [member distance_m].
+## Shape of the speed profile: x in [0, 1] (fraction of the duration), y relative speed.
+## Normalized so that the total distance is [member distance_m].
 @export var speed_curve: Curve
-## Coste de resistencia (0-1000).
+## Stamina cost (0-1000).
 @export_range(0, 1000) var stamina_cost: int = 300
-## Instante (s desde el inicio de la esquiva) a partir del cual se puede cancelar a ataque.
+## Moment (s since the start of the dodge) from which it can be canceled into an attack.
 @export var cancel_to_attack_from_s: float = 0.3

@@ -17,11 +17,11 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// Categorías de un reporte (reports.category).
+// Report categories (reports.category).
 var reportCategories = []string{"language", "harassment", "cheating", "bot", "offensive_name", "other"}
 
-// ReportRequest es el cuerpo de POST /internal/v1/reports (§9.4). No lleva world_id: el nombre se
-// resuelve en el mundo de la instancia.
+// ReportRequest is the body of POST /internal/v1/reports (§9.4). It has no world_id: the name is
+// resolved in the instance's world.
 type ReportRequest struct {
 	ZoneInstanceID      string          `json:"zone_instance_id"`
 	ReporterCharacterID jsonx.ID        `json:"reporter_character_id"`
@@ -32,7 +32,7 @@ type ReportRequest struct {
 	Evidence            []Evidence      `json:"evidence"`
 }
 
-// Evidence es un mensaje que recibió quien reporta (la prueba que la zona adjunta).
+// Evidence is a message that the reporter received (the evidence the zone attaches).
 type Evidence struct {
 	SenderName string    `json:"sender_name"`
 	Channel    jsonx.Int `json:"channel"`
@@ -72,10 +72,10 @@ func (req *ReportRequest) validate() map[string]string {
 	return fields
 }
 
-// Report guarda un reporte (§9.4): quien reporta tiene que tener arrendamiento en la instancia (si
-// no, 403); el objetivo se resuelve en el mundo de la instancia (404 si no hay nadie; 400 si es la
-// propia cuenta); 1 por objetivo cada 10 min y 10 por hora por cuenta (429); copia la prueba a
-// report_evidence. Devuelve el report_id.
+// Report stores a report (§9.4): the reporter must hold a lease on the instance (otherwise 403);
+// the target is resolved in the instance's world (404 if there is nobody; 400 if it is the
+// account itself); 1 per target every 10 min and 10 per hour per account (429); it copies the
+// evidence to report_evidence. It returns the report_id.
 func (s *Service) Report(ctx context.Context, inst *zones.Instance, req ReportRequest) (int64, error) {
 	now := s.clock.Now()
 	var reportID int64
@@ -98,7 +98,7 @@ func (s *Service) Report(ctx context.Context, inst *zones.Instance, req ReportRe
 		if target.AccountID == account {
 			return zones.Validation(map[string]string{"target_name": "self"})
 		}
-		// La fila de la cuenta pone en serie los reportes de la misma cuenta (los límites).
+		// The account row serializes the reports of the same account (the limits).
 		if _, err := tx.Exec(ctx, `select 1 from accounts where account_id = $1 for no key update`, account); err != nil {
 			return err
 		}

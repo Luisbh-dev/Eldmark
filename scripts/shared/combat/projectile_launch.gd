@@ -1,44 +1,44 @@
 class_name ProjectileLaunch
 extends RefCounted
-## El disparo de un ataque o una habilidad con proyectil en su compromiso (docs/habilidades.md, sección
-## 4.4, pasos 2 y 3), compartido por el servidor ([code]ProjectileSystem[/code]) y la flecha predicha
-## del cliente ([code]ProjectileWorld[/code], sección 6.2): para que las dos flechas sean la misma, los
-## dos lados calculan aquí qué sale, con qué fuente y velocidad, en qué dirección y cuantizado cómo.
+## The shot of an attack or an ability with a projectile at its commit (docs/habilidades.md, section
+## 4.4, steps 2 and 3), shared by the server ([code]ProjectileSystem[/code]) and the client's predicted
+## arrow ([code]ProjectileWorld[/code], section 6.2): so that the two arrows are the same, both
+## sides compute here what comes out, with what source and speed, in what direction and quantized how.
 ## [br][br]
-## [b]Qué sale[/b] ([method from_state]): en el tick del compromiso ([method ActionMachine.is_commit_tick])
-## de un LIGHT o HEAVY cuyo ataque lleva [member AttackTicks.projectile_id], o de una ABILITY con
-## [member AbilityTicks.projectile_id]. La velocidad es [code]projectile_speed_mps ·
-## lerp(1, charge_speed_scale, f)[/code] con la [code]f[/code] de la carga del daño (combate.md, sección
-## 4.4; 0 sin carga ni en las habilidades).
+## [b]What comes out[/b] ([method from_state]): on the commit tick ([method ActionMachine.is_commit_tick])
+## of a LIGHT or HEAVY whose attack has [member AttackTicks.projectile_id], or of an ABILITY with
+## [member AbilityTicks.projectile_id]. The speed is [code]projectile_speed_mps ·
+## lerp(1, charge_speed_scale, f)[/code] with the [code]f[/code] of the damage charge (combate.md, section
+## 4.4; 0 with no charge and in abilities).
 ## [br][br]
-## [b]Dirección[/b] ([method launch]): rayo canónico de la cámara ([method AimRay.canonical]) con la
-## entrada del tick, punto apuntado con la convergencia ([method AimRay.aim_point]) contra el mundo y las
-## cápsulas hostiles que da quien llama (el servidor, rebobinadas; el cliente, tal como se dibujan), salida
-## en el pecho ([method AimRay.muzzle]) y, en un abanico, la flecha [code]i[/code] girada en yaw
-## [code](i − (n − 1) / 2) · projectile_spread_deg[/code] grados. Origen y velocidad se cuantizan como
-## viajan en el SPAWN ([method Ballistics.quantize]): el servidor vuela con eso.
+## [b]Direction[/b] ([method launch]): canonical camera ray ([method AimRay.canonical]) with the
+## tick's input, point aimed with convergence ([method AimRay.aim_point]) against the world and the
+## hostile capsules given by the caller (the server, rewound; the client, as they are drawn), muzzle
+## at the chest ([method AimRay.muzzle]) and, in a fan, arrow [code]i[/code] rotated in yaw by
+## [code](i − (n − 1) / 2) · projectile_spread_deg[/code] degrees. Origin and velocity are quantized as
+## they travel in the SPAWN ([method Ballistics.quantize]): the server flies with that.
 ## [br][br]
-## Compartido y determinista (sin reloj ni azar): no depende del cliente ni del servidor.
+## Shared and deterministic (no clock or randomness): it depends on neither the client nor the server.
 
-## Por debajo de esta distancia (m) entre la boca y el punto apuntado no hay dirección: se dispara por el
-## rayo de la cámara.
+## Below this distance (m) between the muzzle and the aimed point there is no direction: it fires along the
+## camera ray.
 const MIN_AIM_DISTANCE: float = 0.01
 
-## Id del [ProjectileTicks] (0 = este compromiso no dispara).
+## Id of the [ProjectileTicks] (0 = this commit does not fire).
 var projectile_id: int = 0
-## Fuente del disparo ([CombatSource]): la del ataque o la habilidad.
+## Source of the shot ([CombatSource]): that of the attack or ability.
 var source: int = 0
-## Velocidad de salida (m/s), con la carga ya aplicada.
+## Launch speed (m/s), with the charge already applied.
 var speed: float = 0.0
-## Proyectiles del disparo (1 a 5) y grados entre dos seguidos del abanico.
+## Projectiles in the shot (1 to 5) and degrees between two consecutive ones in the fan.
 var count: int = 1
 var spread_deg: float = 0.0
-## Fracción de la carga ([code]f[/code], 0 a 1) con la que sale (0 sin carga).
+## Fraction of the charge ([code]f[/code], 0 to 1) with which it is released (0 with no charge).
 var charge_fraction: float = 0.0
 
 
-## El disparo que hace [param c] en el tick [param tick] si es el compromiso de un ataque o una habilidad
-## con proyectil; null si no dispara.
+## The shot [param c] makes on tick [param tick] if it is the commit of an attack or ability
+## with a projectile; null if it does not fire.
 static func from_state(c: CombatState, tick: int) -> ProjectileLaunch:
 	if c == null or not ActionMachine.is_commit_tick(c, tick):
 		return null
@@ -50,8 +50,8 @@ static func from_state(c: CombatState, tick: int) -> ProjectileLaunch:
 	return null
 
 
-## El disparo del ataque [param attack] lanzado con [param charge_ticks] de carga (null si no dispara).
-## Solo un fuerte se carga: en un ligero la carga no cuenta.
+## The shot of attack [param attack] released with [param charge_ticks] of charge (null if it does not fire).
+## Only a heavy attack is charged: on a light attack the charge does not count.
 static func for_attack(attack: AttackTicks, charge_ticks: int) -> ProjectileLaunch:
 	if attack == null or attack.projectile_id == 0:
 		return null
@@ -65,7 +65,7 @@ static func for_attack(attack: AttackTicks, charge_ticks: int) -> ProjectileLaun
 	return launch
 
 
-## El disparo de la habilidad [param ability] (null si no dispara).
+## The shot of ability [param ability] (null if it does not fire).
 static func for_ability(ability: AbilityTicks) -> ProjectileLaunch:
 	if ability == null or ability.projectile_id == 0:
 		return null
@@ -78,8 +78,8 @@ static func for_ability(ability: AbilityTicks) -> ProjectileLaunch:
 	return launch
 
 
-## La [code]f[/code] de la carga (combate.md, sección 4.4): [code](charge − min) / (max − min)[/code]
-## limitada a [0, 1]; 0 si el ataque no se carga.
+## The [code]f[/code] of the charge (combate.md, section 4.4): [code](charge − min) / (max − min)[/code]
+## clamped to [0, 1]; 0 if the attack is not charged.
 static func charge_progress(charge_ticks: int, charge_min_ticks: int, charge_max_ticks: int) -> float:
 	if charge_max_ticks <= charge_min_ticks:
 		return 0.0
@@ -87,11 +87,11 @@ static func charge_progress(charge_ticks: int, charge_min_ticks: int, charge_max
 			0.0, 1.0)
 
 
-## Origen y velocidad de cada proyectil del disparo ([code][p0, v0][/code] por índice del abanico, ya
-## cuantizados) de un personaje con los pies en [param feet] y la vista [param look_yaw],
-## [param look_pitch] y [param left_shoulder] de la entrada del tick. [param space] es el mundo
-## ([constant HitShapes.LINE_OF_SIGHT_MASK]; null = sin mundo) y [param hostile_feet], los pies de los
-## hostiles para la convergencia.
+## Origin and velocity of each projectile of the shot ([code][p0, v0][/code] per fan index, already
+## quantized) of a character with feet at [param feet] and the view [param look_yaw],
+## [param look_pitch] and [param left_shoulder] from the tick's input. [param space] is the world
+## ([constant HitShapes.LINE_OF_SIGHT_MASK]; null = no world) and [param hostile_feet], the feet of the
+## hostiles for convergence.
 func launch(feet: Vector3, look_yaw: float, look_pitch: float, left_shoulder: bool,
 		space: PhysicsDirectSpaceState3D, hostile_feet: PackedVector3Array) -> Array[PackedVector3Array]:
 	var ray: Array = AimRay.canonical(feet, look_yaw, look_pitch, left_shoulder)
@@ -99,10 +99,10 @@ func launch(feet: Vector3, look_yaw: float, look_pitch: float, left_shoulder: bo
 	return launch_toward(AimRay.muzzle(feet), point, ray[1])
 
 
-## Como [method launch], con el punto apuntado [param point] ya calculado y la salida en
-## [param muzzle]; el servidor ([method ProjectileSystem.fire]) llama aquí con sus candidatos rebobinados.
-## Una puntería degenerada (el punto a menos de [constant MIN_AIM_DISTANCE] de la boca) sale por
-## [param fallback], la dirección del rayo de la cámara (unitaria).
+## Like [method launch], with the aimed point [param point] already computed and the muzzle at
+## [param muzzle]; the server ([method ProjectileSystem.fire]) calls here with its rewound candidates.
+## A degenerate aim (the point less than [constant MIN_AIM_DISTANCE] from the muzzle) goes out along
+## [param fallback], the camera ray's direction (unit vector).
 func launch_toward(muzzle: Vector3, point: Vector3,
 		fallback: Vector3 = Vector3.FORWARD) -> Array[PackedVector3Array]:
 	var direction: Vector3 = point - muzzle

@@ -1,14 +1,14 @@
 extends TestCase
-## Pruebas del [StatusSystem] dentro del [CombatDirector] (docs/habilidades.md, secciones 4.1 y 4.3; CMB-20,
-## paquete H3a): un sangrado hace exactamente N pulsos en [code]anchor + 60k[/code], acumulación, renovación y
-## el más fuerte, la curación en el tiempo, un pulso no interrumpe, un pulso que derriba (o que mata, si el
-## autor no es un jugador de otro reino) a mitad de la lista no cambia lo que se recorre, limpieza al morir, al
-## quedar derribado, al reaparecer y al irse el autor, STATUS con su
-## [code]until_tick[/code], las ranuras de movimiento con el mismo fin y los modificadores de daño y de
-## mitigación.
+## Tests for the [StatusSystem] inside the [CombatDirector] (docs/habilidades.md, sections 4.1 and 4.3; CMB-20,
+## package H3a): a bleed does exactly N pulses at [code]anchor + 60k[/code], stacking, refreshing and
+## the strongest, healing over time, a pulse does not interrupt, a pulse that knocks down (or kills, if the
+## author is not a player of another realm) in the middle of the list does not change what is iterated, cleanup on death, on
+## being knocked down, on respawn and when the author leaves, STATUS with its
+## [code]until_tick[/code], movement slots with the same end and the damage and
+## mitigation modifiers.
 ## [br][br]
-## Sin red ni servidor: luchadores montados a mano y el director avanzado tick a tick con
-## [method CombatDirector.process_tick], como test_combat_director.
+## No network or server: fighters set up by hand and the director advanced tick by tick with
+## [method CombatDirector.process_tick], like test_combat_director.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -28,7 +28,7 @@ var _history: StateHistory
 var _director: CombatDirector
 var _events: Array[NetMessages.EntityEvent] = []
 var _involved: Array[PackedInt32Array] = []
-# Efectos de prueba añadidos a las tablas del catálogo (se quitan en after_each).
+# Test effects added to the catalog's tables (removed in after_each).
 var _injected: int = 0
 
 
@@ -61,14 +61,14 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _pick_spawn(realm: int) -> Transform3D:
 	return Transform3D(Basis.IDENTITY, Vector3(100.0 + float(realm), 0.0, 100.0))
 
 
-## Un luchador «en combate» desde S (hasta S + 600): sin la regeneración natural de vida, que
-## enturbiaría las cuentas de los pulsos.
+## A fighter "in combat" from S (until S + 600): without natural health regeneration, which would
+## muddy the pulse counts.
 func _body(net_id: int, realm: int, position: Vector3, yaw: float = 0.0) -> Combatant:
 	var entity: NetEntity = CombatFixture.make_entity(_world, net_id, realm, position, yaw)
 	_history.add_entity(net_id)
@@ -79,11 +79,11 @@ func _body(net_id: int, realm: int, position: Vector3, yaw: float = 0.0) -> Comb
 
 func _status_id(status_name: StringName) -> int:
 	var id: int = CombatCatalog.status_id(status_name)
-	assert_true(id > 0, "el efecto %s existe" % status_name)
+	assert_true(id > 0, "effect %s exists" % status_name)
 	return id
 
 
-## Avanza el director de [param from_tick] a [param to_tick], los dos incluidos.
+## Advances the director from [param from_tick] to [param to_tick], both included.
 func _run(from_tick: int, to_tick: int) -> void:
 	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
 	for tick: int in range(from_tick, to_tick + 1):
@@ -109,8 +109,8 @@ func _combat_of(combatant: Combatant) -> CombatState:
 	return combatant.get_character().combat
 
 
-## Añade a las tablas del catálogo un efecto de prueba de [param kind] con [param magnitude] y devuelve su
-## id (after_each lo quita).
+## Adds to the catalog's tables a test effect of [param kind] with [param magnitude] and returns its
+## id (after_each removes it).
 func _inject_status(kind: int, magnitude: float) -> int:
 	var statuses: Array[StatusTicks] = CombatCatalog.tables().statuses
 	var custom := StatusTicks.new()
@@ -127,46 +127,46 @@ func _inject_status(kind: int, magnitude: float) -> int:
 	return custom.id
 
 
-# --- Pulsos -----------------------------------------------------------------------------------
+# --- Pulses -----------------------------------------------------------------------------------
 
 func test_a_bleed_does_exactly_six_pulses_at_the_anchor_plus_sixty_k() -> void:
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
 	var victim: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
 	var bleed: int = _status_id(&"bleed")
 	var data: StatusTicks = CombatCatalog.status(bleed)
-	assert_eq([data.duration_ticks, data.pulse_ticks, data.pulse_amount], [360, 60, 15], "sangrado de 6 s")
-	assert_true(_director.status.apply(victim, bleed, author.get_id(), S), "se aplica")
+	assert_eq([data.duration_ticks, data.pulse_ticks, data.pulse_amount], [360, 60, 15], "6 s bleed")
+	assert_true(_director.status.apply(victim, bleed, author.get_id(), S), "it is applied")
 	var applied: Array[NetMessages.EntityEvent] = _events_of(STATUS, 2)
-	if assert_eq(applied.size(), 1, "STATUS 1 al aplicarlo"):
+	if assert_eq(applied.size(), 1, "STATUS 1 on applying it"):
 		assert_eq(applied[0].op, APPLIED)
 		assert_eq(applied[0].status_id, bleed)
-		assert_eq(applied[0].source_entity, 1, "con su autor")
+		assert_eq(applied[0].source_entity, 1, "with its author")
 		assert_eq(applied[0].stacks, 1)
-		assert_eq(applied[0].until_tick, S + 360, "y su fin")
+		assert_eq(applied[0].until_tick, S + 360, "and its end")
 		assert_eq(applied[0].tick, S)
-		assert_eq(_involved[0], PackedInt32Array([2, 1]), "el afectado y el autor")
+		assert_eq(_involved[0], PackedInt32Array([2, 1]), "the affected one and the author")
 	_run(S, S + 500)
 	var pulses: Array[NetMessages.EntityEvent] = _events_of(HIT, 2)
 	assert_eq(_ticks_of(pulses), [S + 60, S + 120, S + 180, S + 240, S + 300, S + 360],
-			"exactamente 6 pulsos, en anchor + 60k")
+			"exactly 6 pulses, at anchor + 60k")
 	var source: int = CombatSource.make(CombatSource.Kind.STATUS, bleed)
 	for pulse: NetMessages.EntityEvent in pulses:
-		assert_eq(pulse.amount, 15, "15 por pulso")
-		assert_eq(pulse.attacker, 1, "el autor del efecto es el atacante")
-		assert_eq(pulse.get_source(), source, "con la fuente del efecto")
-		assert_eq(pulse.damage_type, DamageFormula.DamageType.SLASH, "cortante")
-		assert_eq(pulse.hit_flags, 0, "sin crítico, bloqueo ni interrupción")
-	assert_eq(victim.health, 1000 - 90, "90 de vida en total")
-	assert_eq(victim.ledger.damage_by(1, S + 400), 90, "el registro de daño se lo apunta al autor")
-	assert_true(author.is_in_combat(S + 360) and victim.is_in_combat(S + 360), "los pulsos son combate")
-	# El último pulso y la caducidad caen en el mismo tick: primero el pulso.
+		assert_eq(pulse.amount, 15, "15 per pulse")
+		assert_eq(pulse.attacker, 1, "the effect's author is the attacker")
+		assert_eq(pulse.get_source(), source, "with the effect's source")
+		assert_eq(pulse.damage_type, DamageFormula.DamageType.SLASH, "slashing")
+		assert_eq(pulse.hit_flags, 0, "no crit, block or interruption")
+	assert_eq(victim.health, 1000 - 90, "90 health in total")
+	assert_eq(victim.ledger.damage_by(1, S + 400), 90, "the damage ledger credits it to the author")
+	assert_true(author.is_in_combat(S + 360) and victim.is_in_combat(S + 360), "the pulses are combat")
+	# The last pulse and the expiry fall on the same tick: the pulse first.
 	var statuses: Array[NetMessages.EntityEvent] = _events_of(STATUS, 2)
-	if assert_eq(statuses.size(), 2, "aplicado y quitado"):
+	if assert_eq(statuses.size(), 2, "applied and removed"):
 		assert_eq(statuses[1].op, REMOVED)
-		assert_eq(statuses[1].tick, S + 360, "se quita al caducar")
+		assert_eq(statuses[1].tick, S + 360, "it is removed on expiry")
 		assert_eq(statuses[1].stacks, 0)
-		assert_true(_events.find(pulses[5]) < _events.find(statuses[1]), "el último pulso antes que la caducidad")
-	assert_true(victim.effects.is_empty(), "ya no lo lleva")
+		assert_true(_events.find(pulses[5]) < _events.find(statuses[1]), "the last pulse before the expiry")
+	assert_true(victim.effects.is_empty(), "no longer carries it")
 	assert_eq(_director.stats[&"pulse_hits"], 6)
 
 
@@ -180,29 +180,29 @@ func test_a_pulse_goes_to_the_combat_log_with_the_name_of_its_effect() -> void:
 	_director.combat_log.close()
 	_director.combat_log = null
 	var lines: PackedStringArray = FileAccess.get_file_as_string(path).strip_edges().split("\n")
-	if assert_eq(lines.size(), 1, "una línea, la del pulso"):
+	if assert_eq(lines.size(), 1, "one line, the pulse's"):
 		assert_eq(lines[0], "%d,1,2,bleed,%d.00,0.00,pulse,15" % [S + 60, S + 60],
-				"tick, autor, afectado, nombre del efecto, resultado pulse y daño")
+				"tick, author, affected one, effect name, pulse result and damage")
 
 
 func test_stacking_refreshing_and_the_strongest() -> void:
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
 	var victim: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
 	var status: StatusSystem = _director.status
-	# STACK (sangrado, hasta 3): cada aplicación suma una y alarga el fin; el ancla no cambia.
+	# STACK (bleed, up to 3): each application adds one and extends the end; the anchor does not change.
 	var bleed: int = _status_id(&"bleed")
 	for tick: int in [S, S + 30, S + 45, S + 50]:
 		status.apply(victim, bleed, author.get_id(), tick)
 	var effect: StatusSystem.ActiveEffect = status.find(victim, bleed)
 	assert_eq([effect.stacks, effect.anchor_tick, effect.until_tick], [3, S, S + 50 + 360],
-			"tres acumulaciones como mucho, ancla del primero, fin del último")
+			"three stacks at most, anchor of the first, end of the last")
 	var stacked: Array[NetMessages.EntityEvent] = _events_of(STATUS, 2)
 	assert_eq(stacked.map(func(event: NetMessages.EntityEvent) -> int: return event.stacks), [1, 2, 3, 3])
 	_run(S + 51, S + 60)
 	var pulses: Array[NetMessages.EntityEvent] = _events_of(HIT, 2)
-	if assert_eq(pulses.size(), 1, "el primer pulso, en S + 60"):
-		assert_eq(pulses[0].amount, 45, "15 por acumulación")
-	# REFRESH (curación de la poción): renovar alarga el fin sin mover el ancla: más pulsos.
+	if assert_eq(pulses.size(), 1, "the first pulse, at S + 60"):
+		assert_eq(pulses[0].amount, 45, "15 per stack")
+	# REFRESH (potion healing): renewing extends the end without moving the anchor: more pulses.
 	var healed: Combatant = _body(3, VARDHEIM, Vector3(10.0, 0.0, 0.0))
 	healed.health = 100
 	var regen: int = _status_id(&"potion_regen")
@@ -212,24 +212,24 @@ func test_stacking_refreshing_and_the_strongest() -> void:
 	assert_eq([renewed.anchor_tick, renewed.until_tick, renewed.stacks], [S + 100, S + 200 + 180, 1])
 	_run(S + 61, S + 400)
 	var heals: Array[NetMessages.EntityEvent] = _events_of(HEAL, 3)
-	assert_eq(heals.size(), 9, "pulsos cada 30 ticks desde el ancla hasta el fin renovado")
+	assert_eq(heals.size(), 9, "pulses every 30 ticks from the anchor to the renewed end")
 	assert_eq(heals[0].tick, S + 130)
 	assert_eq(heals[8].tick, S + 370)
 	for heal: NetMessages.EntityEvent in heals:
 		assert_eq(heal.amount, 50)
-		assert_eq(heal.healer, 0, "se cura a sí mismo: healer 0")
+		assert_eq(heal.healer, 0, "it heals itself: healer 0")
 		assert_eq(heal.get_source(), CombatSource.make(CombatSource.Kind.STATUS, regen))
 	assert_eq(healed.health, 100 + 9 * 50)
-	# STRONGEST (ralentizar): un mismo efecto es igual de fuerte; se queda con el fin más tardío, y la
-	# ranura de movimiento con él.
+	# STRONGEST (slow): the same effect is equally strong; it keeps the later end, and the
+	# movement slot with it.
 	var slowed: int = _status_id(&"slowed")
 	status.apply(victim, slowed, author.get_id(), S + 500)
 	status.apply(victim, slowed, author.get_id(), S + 560)
 	var slow: StatusSystem.ActiveEffect = status.find(victim, slowed)
 	assert_eq([slow.stacks, slow.anchor_tick, slow.until_tick], [1, S + 500, S + 560 + 180])
 	var combat: CombatState = _combat_of(victim)
-	assert_eq(combat.move_effect_ids[0], slowed, "la ralentización ocupa una ranura de movimiento")
-	assert_eq(combat.move_effect_until[0], S + 740, "con el mismo fin que el efecto")
+	assert_eq(combat.move_effect_ids[0], slowed, "the slow takes a movement slot")
+	assert_eq(combat.move_effect_until[0], S + 740, "with the same end as the effect")
 
 
 func test_a_healing_pulse_never_goes_over_the_maximum() -> void:
@@ -237,10 +237,10 @@ func test_a_healing_pulse_never_goes_over_the_maximum() -> void:
 	drinker.health = 980
 	_director.status.apply(drinker, _status_id(&"potion_regen"), drinker.get_id(), S)
 	_run(S, S + 200)
-	assert_eq(drinker.health, 1000, "sin pasar del máximo")
+	assert_eq(drinker.health, 1000, "without exceeding the maximum")
 	var heals: Array[NetMessages.EntityEvent] = _events_of(HEAL, 1)
-	if assert_eq(heals.size(), 1, "solo el primer pulso cura algo"):
-		assert_eq(heals[0].amount, 20, "lo que cura de verdad")
+	if assert_eq(heals.size(), 1, "only the first pulse heals anything"):
+		assert_eq(heals[0].amount, 20, "what it actually heals")
 
 
 func test_a_pulse_does_not_interrupt_drinking() -> void:
@@ -252,17 +252,17 @@ func test_a_pulse_does_not_interrupt_drinking() -> void:
 	combat.action = CombatState.Action.ABILITY
 	combat.action_id = potion.id
 	combat.action_tick = S + 50
-	assert_true(CombatDirector.is_interruptible(combat, S + 60), "en S + 60 está bebiendo (lanzamiento)")
+	assert_true(CombatDirector.is_interruptible(combat, S + 60), "at S + 60 it is drinking (cast)")
 	_run(S + 1, S + 60)
 	var pulses: Array[NetMessages.EntityEvent] = _events_of(HIT, 2)
 	if assert_eq(pulses.size(), 1):
-		assert_false(pulses[0].has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_INTERRUPTED), "sin bit 5")
-	assert_eq(combat.action, CombatState.Action.ABILITY, "sigue bebiendo: un pulso no interrumpe")
+		assert_false(pulses[0].has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_INTERRUPTED), "without bit 5")
+	assert_eq(combat.action, CombatState.Action.ABILITY, "still drinking: a pulse does not interrupt")
 	assert_eq(_director.stats[&"interrupts"], 0)
 
 
-## H3c (docs/habilidades.md, sección 4.5): el pulso mortal de un jugador de otro reino derriba; los efectos se
-## quitan al quedar derribado (DOWNED los borra en el cliente) y la curación de ese tick ya no se aplica.
+## H3c (docs/habilidades.md, section 4.5): the lethal pulse of a player of another realm knocks down; effects are
+## removed on being knocked down (DOWNED clears them on the client) and that tick's healing is no longer applied.
 func test_a_pulse_that_downs_in_the_middle_of_the_list_does_not_change_what_is_walked() -> void:
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
 	var first: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
@@ -279,64 +279,64 @@ func test_a_pulse_that_downs_in_the_middle_of_the_list_does_not_change_what_is_w
 	first.health = 10
 	_events.clear()
 	_run(S + 60, S + 60)
-	assert_true(first.is_downed(), "el sangrado del jugador de otro reino lo derriba")
-	assert_false(first.is_dead() or first.is_alive(), "un derribado no es ni vivo ni muerto")
-	assert_eq(_events_of(HEAL, 2).size(), 0, "y su curación de ese mismo tick ya no se aplica")
-	assert_true(first.effects.is_empty(), "derribado, sin efectos")
-	assert_eq(_combat_of(first).move_effect_ids, PackedInt32Array([0, 0]), "ni ranuras de movimiento")
+	assert_true(first.is_downed(), "the bleed of the other realm's player knocks them down")
+	assert_false(first.is_dead() or first.is_alive(), "a knocked-down player is neither alive nor dead")
+	assert_eq(_events_of(HEAL, 2).size(), 0, "and their healing from that same tick is no longer applied")
+	assert_true(first.effects.is_empty(), "knocked down, with no effects")
+	assert_eq(_combat_of(first).move_effect_ids, PackedInt32Array([0, 0]), "nor movement slots")
 	assert_eq(_combat_of(first).action, CombatState.Action.DOWNED)
 	var pulses: Array[NetMessages.EntityEvent] = _events_of(HIT, 2)
-	if assert_eq(pulses.size(), 1, "el pulso"):
-		assert_eq(pulses[0].hit_flags, NetMessages.EntityEvent.HIT_FLAG_DOWNED, "con el bit 6 (derriba)")
+	if assert_eq(pulses.size(), 1, "the pulse"):
+		assert_eq(pulses[0].hit_flags, NetMessages.EntityEvent.HIT_FLAG_DOWNED, "with bit 6 (knocks down)")
 	var downs: Array[NetMessages.EntityEvent] = _events_of(NetMessages.EntityEvent.Kind.DOWNED, 2)
 	if assert_eq(downs.size(), 1, "DOWNED"):
-		assert_eq(downs[0].attacker, 1, "lo derriba el autor del sangrado")
+		assert_eq(downs[0].attacker, 1, "the bleed's author knocks them down")
 		assert_eq(downs[0].get_source(), CombatSource.make(CombatSource.Kind.STATUS, bleed))
-	assert_eq(_events_of(DEATH, 2).size(), 0, "sin DEATH")
-	assert_eq(_events_of(STATUS, 2).size(), 0, "sin STATUS sueltos: DOWNED los borra en el cliente")
-	assert_eq(_events_of(HIT, 3).size(), 1, "el siguiente de la lista recibe su pulso")
+	assert_eq(_events_of(DEATH, 2).size(), 0, "no DEATH")
+	assert_eq(_events_of(STATUS, 2).size(), 0, "no loose STATUS: DOWNED clears them on the client")
+	assert_eq(_events_of(HIT, 3).size(), 1, "the next one in the list gets its pulse")
 	assert_eq(second.health, 1000 - 15)
-	assert_false(_director.status.apply(first, bleed, author.get_id(), S + 61), "no se aplican efectos a un derribado")
+	assert_false(_director.status.apply(first, bleed, author.get_id(), S + 61), "no effects are applied to a knocked-down player")
 	_run(S + 61, S + 130)
-	assert_eq(_events_of(HIT, 2).size(), 1, "ni pulsa")
+	assert_eq(_events_of(HIT, 2).size(), 1, "nor does it pulse")
 
 
 func test_a_lethal_pulse_in_the_middle_of_the_list_does_not_change_what_is_walked() -> void:
-	# El autor es un PNJ: su pulso mortal mata sin derribar (docs/habilidades.md, sección 4.5).
+	# The author is an NPC: its lethal pulse kills without knocking down (docs/habilidades.md, section 4.5).
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
 	author.entity.kind = NetProtocol.EntityKind.NPC
 	var first: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
 	var second: Combatant = _body(3, SOLMARCH, Vector3(3.0, 0.0, -1.5), PI)
 	var bleed: int = _status_id(&"bleed")
 	var regen: int = _status_id(&"potion_regen")
-	assert_true(bleed < regen, "el sangrado va antes que la curación (por id)")
-	# El primero lleva sangrado y curación anclados en S: los dos pulsan en S + 60 y el sangrado, que va
-	# antes, lo mata.
+	assert_true(bleed < regen, "the bleed goes before the healing (by id)")
+	# The first carries bleed and healing anchored at S: both pulse at S + 60 and the bleed, which goes
+	# first, kills it.
 	first.health = 500
 	_director.status.apply(first, bleed, author.get_id(), S)
 	_director.status.apply(first, regen, first.get_id(), S)
 	_director.status.apply(second, bleed, author.get_id(), S)
 	_run(S + 1, S + 59)
-	assert_eq(_events_of(HEAL, 2).size(), 1, "la curación pulsa en S + 30")
+	assert_eq(_events_of(HEAL, 2).size(), 1, "the healing pulses at S + 30")
 	assert_eq(first.health, 550)
 	first.health = 10
 	_events.clear()
 	_run(S + 60, S + 60)
-	assert_true(first.is_dead(), "el sangrado lo mata")
-	assert_eq(_events_of(HEAL, 2).size(), 0, "y su curación de ese mismo tick ya no se aplica")
-	assert_true(first.effects.is_empty(), "muerto, sin efectos")
+	assert_true(first.is_dead(), "the bleed kills it")
+	assert_eq(_events_of(HEAL, 2).size(), 0, "and its healing from that same tick is no longer applied")
+	assert_true(first.effects.is_empty(), "dead, with no effects")
 	var deaths: Array[NetMessages.EntityEvent] = _events_of(DEATH, 2)
 	if assert_eq(deaths.size(), 1):
-		assert_eq(deaths[0].killer, 1, "lo mata el autor del sangrado")
+		assert_eq(deaths[0].killer, 1, "the bleed's author kills it")
 		assert_eq(deaths[0].get_source(), CombatSource.make(CombatSource.Kind.STATUS, bleed))
-	assert_eq(_events_of(KILL, 2).size(), 1, "con su KILL")
-	assert_eq(_events_of(STATUS, 2).size(), 0, "sin STATUS sueltos: DEATH los borra en el cliente")
+	assert_eq(_events_of(KILL, 2).size(), 1, "with its KILL")
+	assert_eq(_events_of(STATUS, 2).size(), 0, "no loose STATUS: DEATH clears them on the client")
 	var second_pulses: Array[NetMessages.EntityEvent] = _events_of(HIT, 3)
-	assert_eq(second_pulses.size(), 1, "el siguiente de la lista recibe su pulso")
+	assert_eq(second_pulses.size(), 1, "the next one in the list gets its pulse")
 	assert_eq(second.health, 1000 - 15)
 
 
-# --- Limpieza ---------------------------------------------------------------------------------
+# --- Cleanup ----------------------------------------------------------------------------------
 
 func test_effects_are_cleared_on_death_and_on_respawn_without_status_events() -> void:
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
@@ -347,15 +347,15 @@ func test_effects_are_cleared_on_death_and_on_respawn_without_status_events() ->
 	assert_eq(_combat_of(victim).move_effect_ids[0], slowed)
 	_events.clear()
 	_director.kill(victim, S + 10)
-	assert_true(victim.effects.is_empty(), "al morir se quitan todos")
-	assert_eq(_combat_of(victim).move_effect_ids, PackedInt32Array([0, 0]), "también las ranuras de movimiento")
-	assert_eq(_events_of(STATUS).size(), 0, "sin STATUS sueltos")
-	# Un efecto que no se aplica a un muerto.
-	assert_false(_director.status.apply(victim, slowed, author.get_id(), S + 20), "a un muerto no")
-	# Al reaparecer empieza limpio (y con las ranuras vacías).
+	assert_true(victim.effects.is_empty(), "on death all are removed")
+	assert_eq(_combat_of(victim).move_effect_ids, PackedInt32Array([0, 0]), "the movement slots too")
+	assert_eq(_events_of(STATUS).size(), 0, "no loose STATUS")
+	# An effect that is not applied to a dead player.
+	assert_false(_director.status.apply(victim, slowed, author.get_id(), S + 20), "not to a dead one")
+	# On respawn it starts clean (and with empty slots).
 	_director.request_respawn(2, 0, victim.respawn_tick)
 	_run(victim.respawn_tick, victim.respawn_tick)
-	assert_true(victim.is_alive(), "ha reaparecido")
+	assert_true(victim.is_alive(), "has respawned")
 	assert_true(victim.effects.is_empty())
 	assert_eq(_events_of(STATUS).size(), 0)
 
@@ -369,66 +369,66 @@ func test_effects_of_an_author_that_leaves_are_removed_with_status_two() -> void
 	_director.status.apply(victim, bleed, author.get_id(), S)
 	_director.status.apply(victim, slowed, author.get_id(), S)
 	_director.status.apply(victim, regen, victim.get_id(), S)
-	# El autor también lleva un efecto propio: se va con él, sin eventos.
+	# The author also carries an effect of its own: it goes away with them, without events.
 	_director.status.apply(author, regen, author.get_id(), S)
 	_events.clear()
 	_director.remove(author.get_id(), S + 10)
 	var removed: Array[NetMessages.EntityEvent] = _events_of(STATUS, 2)
-	assert_eq(removed.size(), 2, "STATUS 2 de los dos efectos que puso")
+	assert_eq(removed.size(), 2, "STATUS 2 for the two effects it applied")
 	for event: NetMessages.EntityEvent in removed:
 		assert_eq(event.op, REMOVED)
-		assert_eq(event.tick, S + 10, "en el tick de la baja")
+		assert_eq(event.tick, S + 10, "on the departure tick")
 		assert_eq(event.source_entity, 1)
 	assert_eq(removed.map(func(event: NetMessages.EntityEvent) -> int: return event.status_id), [bleed, slowed])
-	assert_eq(victim.effects.size(), 1, "la curación propia sigue")
+	assert_eq(victim.effects.size(), 1, "its own healing continues")
 	assert_eq(victim.effects[0].status_id, regen)
-	assert_eq(_combat_of(victim).move_effect_ids, PackedInt32Array([0, 0]), "y la ranura de la ralentización se vacía")
-	assert_eq(_events_of(STATUS, 1).size(), 0, "del que se va no sale nada")
-	# Ya no hay pulsos huérfanos.
+	assert_eq(_combat_of(victim).move_effect_ids, PackedInt32Array([0, 0]), "and the slow's slot is emptied")
+	assert_eq(_events_of(STATUS, 1).size(), 0, "nothing comes out for the one leaving")
+	# There are no more orphaned pulses.
 	_run(S + 11, S + 120)
 	assert_eq(_events_of(HIT, 2).size(), 0)
 
 
 
-## Revisión de la fase 4 (lente «habilidades»): un STRONGEST (ralentizar) renovado por otro autor con un fin
-## más tardío pasa a ser suyo, como REFRESH y STACK: el STATUS de la renovación lleva su source_entity (y le
-## llega como implicado), y la baja del primero ya no quita lo que sostiene el segundo; la del segundo, sí.
-## Renovar sin alargar el fin no cambia de autor.
+## Phase 4 review ("abilities" lens): a STRONGEST (slow) renewed by another author with a later end
+## becomes theirs, like REFRESH and STACK: the renewal's STATUS carries its source_entity (and reaches
+## them as involved), and the first one's departure no longer removes what the second sustains; the second's does.
+## Renewing without extending the end does not change the author.
 func test_a_strongest_renewed_by_another_author_belongs_to_whoever_holds_the_latest_end() -> void:
 	_body(1, VARDHEIM, Vector3.ZERO)
 	_body(3, VARDHEIM, Vector3(3.0, 0.0, 0.0))
 	var victim: Combatant = _body(20, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
 	var slowed: int = _status_id(&"slowed")
 	var data: StatusTicks = CombatCatalog.status(slowed)
-	assert_eq(data.stacking, StatusEffectDefinition.Stacking.STRONGEST, "ralentizar es STRONGEST")
+	assert_eq(data.stacking, StatusEffectDefinition.Stacking.STRONGEST, "slow is STRONGEST")
 	var until: int = S + 60 + data.duration_ticks
 	_director.status.apply(victim, slowed, 1, S)
 	_director.status.apply(victim, slowed, 3, S + 60)
 	var effect: StatusSystem.ActiveEffect = _director.status.find(victim, slowed)
-	assert_eq([effect.source_id, effect.until_tick], [3, until], "el segundo alarga el fin y pasa a ser el autor")
+	assert_eq([effect.source_id, effect.until_tick], [3, until], "the second extends the end and becomes the author")
 	var applied: Array[NetMessages.EntityEvent] = _events_of(STATUS, 20)
-	if assert_eq(applied.size(), 2, "STATUS 1 de las dos aplicaciones"):
-		assert_eq(applied[1].source_entity, 3, "el de la renovación lleva al segundo")
+	if assert_eq(applied.size(), 2, "STATUS 1 for both applications"):
+		assert_eq(applied[1].source_entity, 3, "the renewal's carries the second")
 		assert_eq(applied[1].until_tick, until)
-		assert_true(_involved[_events.find(applied[1])].has(3), "y le llega como implicado")
-	# Un fin que no es más tardío (el comando 14 con una duración corta) no cambia de autor.
+		assert_true(_involved[_events.find(applied[1])].has(3), "and reaches them as involved")
+	# An end that is not later (command 14 with a short duration) does not change the author.
 	_director.status.apply(victim, slowed, 1, S + 70, 30)
-	assert_eq([effect.source_id, effect.until_tick], [3, until], "sin alargar el fin, el autor no cambia")
+	assert_eq([effect.source_id, effect.until_tick], [3, until], "without extending the end, the author does not change")
 	_events.clear()
 	_director.remove(1, S + 100)
-	assert_eq(_director.status.find(victim, slowed), effect, "la baja del primero no quita lo que sostiene el segundo")
-	assert_eq(_events_of(STATUS, 20).size(), 0, "ni sale STATUS 2")
+	assert_eq(_director.status.find(victim, slowed), effect, "the first's departure does not remove what the second sustains")
+	assert_eq(_events_of(STATUS, 20).size(), 0, "nor does STATUS 2 go out")
 	var combat: CombatState = _combat_of(victim)
-	assert_eq([combat.move_effect_ids[0], combat.move_effect_until[0]], [slowed, until], "la ranura sigue")
+	assert_eq([combat.move_effect_ids[0], combat.move_effect_until[0]], [slowed, until], "the slot remains")
 	_director.remove(3, S + 110)
-	assert_null(_director.status.find(victim, slowed), "la baja del segundo, sí")
+	assert_null(_director.status.find(victim, slowed), "the second's departure does")
 	var removed: Array[NetMessages.EntityEvent] = _events_of(STATUS, 20)
-	if assert_eq(removed.size(), 1, "con STATUS 2"):
+	if assert_eq(removed.size(), 1, "with STATUS 2"):
 		assert_eq([removed[0].op, removed[0].source_entity, removed[0].tick], [REMOVED, 3, S + 110])
-	assert_eq(combat.move_effect_ids, PackedInt32Array([0, 0]), "y vacía la ranura")
+	assert_eq(combat.move_effect_ids, PackedInt32Array([0, 0]), "and empties the slot")
 
 
-# --- Ranuras y límites ------------------------------------------------------------------------
+# --- Slots and limits -------------------------------------------------------------------------
 
 func test_a_slow_and_a_root_write_their_movement_slots_and_the_ninth_effect_replaces_the_earliest() -> void:
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
@@ -440,10 +440,10 @@ func test_a_slow_and_a_root_write_their_movement_slots_and_the_ninth_effect_repl
 	var combat: CombatState = _combat_of(victim)
 	assert_eq(combat.move_effect_ids, PackedInt32Array([slowed, rooted]))
 	assert_eq(combat.move_effect_until, PackedInt64Array([S + 180, S + 35]),
-			"cada ranura con el fin de su efecto (el enraizado con la duración pedida)")
+			"each slot with its effect's end (the root with the requested duration)")
 	var events: Array[NetMessages.EntityEvent] = _events_of(STATUS, 2)
-	assert_eq(events[1].until_tick, S + 35, "STATUS con el until_tick de la duración pedida")
-	# Hasta 8 efectos: uno nuevo sustituye al que acaba antes (el enraizado), con STATUS 2.
+	assert_eq(events[1].until_tick, S + 35, "STATUS with the until_tick of the requested duration")
+	# Up to 8 effects: a new one replaces the one that ends earliest (the root), with STATUS 2.
 	for index: int in 6:
 		_inject_status(StatusEffectDefinition.Kind.DAMAGE_UP, 0.0)
 	var first_custom: int = CombatCatalog.tables().statuses.size() - 5
@@ -453,13 +453,13 @@ func test_a_slow_and_a_root_write_their_movement_slots_and_the_ninth_effect_repl
 	_events.clear()
 	var ninth: int = _inject_status(StatusEffectDefinition.Kind.DAMAGE_UP, 0.0)
 	_director.status.apply(victim, ninth, author.get_id(), S + 20)
-	assert_eq(victim.effects.size(), StatusSystem.MAX_EFFECTS, "sigue habiendo 8")
-	assert_null(_director.status.find(victim, rooted), "el que acababa antes se ha ido")
+	assert_eq(victim.effects.size(), StatusSystem.MAX_EFFECTS, "there are still 8")
+	assert_null(_director.status.find(victim, rooted), "the one that ended earliest is gone")
 	var removed: Array[NetMessages.EntityEvent] = _events_of(STATUS, 2)
-	if assert_eq(removed.size(), 2, "STATUS 2 del sustituido y STATUS 1 del nuevo"):
+	if assert_eq(removed.size(), 2, "STATUS 2 of the replaced one and STATUS 1 of the new one"):
 		assert_eq([removed[0].op, removed[0].status_id], [REMOVED, rooted])
 		assert_eq([removed[1].op, removed[1].status_id], [APPLIED, ninth])
-	assert_eq(combat.move_effect_ids, PackedInt32Array([slowed, 0]), "la ranura del enraizado se vacía")
+	assert_eq(combat.move_effect_ids, PackedInt32Array([slowed, 0]), "the root's slot is emptied")
 
 
 func test_damage_up_and_mitigation_down_change_the_damage() -> void:
@@ -469,17 +469,17 @@ func test_damage_up_and_mitigation_down_change_the_damage() -> void:
 	var mitigation_down: int = _inject_status(StatusEffectDefinition.Kind.MITIGATION_DOWN, -0.25)
 	_director.status.apply(attacker, damage_up, attacker.get_id(), S - 10)
 	assert_near(_director.status.damage_scale(attacker), 1.5, 0.0001, "1 + Σ DAMAGE_UP")
-	assert_near(_director.status.damage_scale(victim), 1.0, 0.0001, "sin efectos, 1")
+	assert_near(_director.status.damage_scale(victim), 1.0, 0.0001, "with no effects, 1")
 	CombatFixture.start_light_active(attacker, S)
 	_run(S, S)
-	assert_eq(victim.health, 1000 - 135, "el ligero de 90 hace 135 con +50 %")
-	# Bloqueando, con MITIGATION_DOWN de 0,25 el escudo solo absorbe el 75 %.
+	assert_eq(victim.health, 1000 - 135, "the 90 light attack does 135 with +50 %")
+	# While blocking, with MITIGATION_DOWN of 0.25 the shield only absorbs 75 %.
 	victim.heal_full()
 	_director.status.apply(victim, mitigation_down, attacker.get_id(), S + 90)
-	assert_near(_director.status.mitigation_penalty(victim), 0.25, 0.0001, "Σ MITIGATION_DOWN, en valor absoluto")
+	assert_near(_director.status.mitigation_penalty(victim), 0.25, 0.0001, "Σ MITIGATION_DOWN, in absolute value")
 	CombatFixture.start_block(victim, S + 50)
 	CombatFixture.start_light_active(attacker, S + 100)
 	attacker.forget_swing()
 	_run(S + 100, S + 100)
-	# Bruto 135; absorbe 135 × 0,75 = 101,25; pasan 33,75 → 34.
-	assert_eq(victim.health, 1000 - 34, "pasa lo que el escudo ya no absorbe")
+	# Gross 135; absorbs 135 × 0.75 = 101.25; 33.75 gets through → 34.
+	assert_eq(victim.health, 1000 - 34, "what the shield no longer absorbs gets through")

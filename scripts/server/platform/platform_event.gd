@@ -1,16 +1,16 @@
 class_name PlatformEvent
 extends RefCounted
-## El resultado de una petición de la zona a la API interna de la plataforma (docs/plataforma.md §14.3), con el
-## cuerpo ya leído. [ZonePlatform] los guarda al llegar y los entrega en el paso «poll» del tick con
-## [method ZonePlatform.take_events]; cada [member kind] tiene un solo consumidor:
+## The result of a zone request to the platform's internal API (docs/plataforma.md §14.3), with the
+## body already read. [ZonePlatform] stores them on arrival and delivers them in the tick's "poll" step with
+## [method ZonePlatform.take_events]; each [member kind] has a single consumer:
 ## [codeblock]
 ## claim                                    auth_provider (plataforma.md P4)
 ## save                                     CharacterSaver (P5)
-## heartbeat                                ZoneServer: revoked, mutes y maintenance
-## id_block, progress_op, progress_ledger   ProgressService (progresion.md P5a y P5d)
+## heartbeat                                ZoneServer: revoked, mutes and maintenance
+## id_block, progress_op, progress_ledger   ProgressService (progresion.md P5a and P5d)
 ## fortress                                 FortressPersistence (P6)
-## ignore, report, sanction                 ChatRouter y la moderación (P7b)
-## instance_closed                          ServerMain: el cierre de §6.1 (una vez)
+## ignore, report, sanction                 ChatRouter and moderation (P7b)
+## instance_closed                          ServerMain: the shutdown of §6.1 (once)
 ## [/codeblock]
 
 const KIND_CLAIM: StringName = &"claim"
@@ -24,41 +24,41 @@ const KIND_IGNORE: StringName = &"ignore"
 const KIND_REPORT: StringName = &"report"
 const KIND_SANCTION: StringName = &"sanction"
 const KIND_INSTANCE_CLOSED: StringName = &"instance_closed"
-## Código de [member error_code] de un cuerpo que no es JSON.
+## [member error_code] code of a body that is not JSON.
 const BAD_JSON: String = "bad_json"
-## Códigos de error que cierran la zona (§6.1).
+## Error codes that close the zone (§6.1).
 const CLOSING_CODES: Array[String] = ["instance_lost", "instance_replaced", "instance_stopped"]
 
 var kind: StringName = &""
-## Lo que pasó quien hizo la petición, tal cual.
+## What the requester passed, as is.
 var context: Variant = null
-## false si no hubo respuesta: sin conexión o plazo vencido.
+## false if there was no response: offline or deadline expired.
 var transport_ok: bool = false
-## Código HTTP (0 sin respuesta).
+## HTTP status code (0 without a response).
 var status: int = 0
-## El cuerpo leído con [JSON] (nunca [method JSON.parse_string]): null si está vacío, si el estado es 204 o
-## si no es JSON (entonces [member error_code] es [constant BAD_JSON]).
+## The body read with [JSON] (never [method JSON.parse_string]): null if it is empty, if the status is 204 or
+## if it is not JSON (then [member error_code] is [constant BAD_JSON]).
 var body: Variant = null
-## El [code]error.code[/code] del cuerpo de un error (§4.1), [constant BAD_JSON] o vacío.
+## The [code]error.code[/code] of an error body (§4.1), [constant BAD_JSON] or empty.
 var error_code: String = ""
 
 
-## true si la respuesta es un 2xx.
+## true if the response is a 2xx.
 func is_success() -> bool:
 	return transport_ok and status >= 200 and status < 300
 
 
-## El cuerpo como diccionario (vacío si no lo es).
+## The body as a dictionary (empty if it is not one).
 func body_dict() -> Dictionary:
 	return body if body is Dictionary else {}
 
 
-## El objeto [code]error[/code] de un cuerpo de error (§4.1), vacío si no lo trae.
+## The [code]error[/code] object of an error body (§4.1), empty if it does not carry one.
 func error_dict() -> Dictionary:
 	return PlatformJson.dict_in(body_dict(), "error")
 
 
-## Arma el evento de una respuesta: [param raw] son los bytes del cuerpo.
+## Builds the event from a response: [param raw] are the body's bytes.
 static func from_response(event_kind: StringName, event_context: Variant, ok: bool, http_status: int,
 		raw: PackedByteArray) -> PlatformEvent:
 	var event := PlatformEvent.new()

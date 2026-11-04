@@ -1,119 +1,119 @@
 class_name CombatRules
 extends Resource
-## Reglas generales del combate (docs/combate.md, sección 2), en
+## General combat rules (docs/combate.md, section 2), in
 ## [code]data/combat/combat_rules.tres[/code].
 ## [br][br]
-## Los campos «predichos» entran en [method CombatCatalog.prediction_hash] porque cambian lo que
-## simulan cliente y servidor; el resto solo los lee el servidor.
+## The "predicted" fields go into [method CombatCatalog.prediction_hash] because they change what
+## client and server simulate; the rest are read only by the server.
 
-# --- Predichas --------------------------------------------------------------------------------
+# --- Predicted --------------------------------------------------------------------------------
 
-## Resistencia máxima (0-65535: viaja en un u16).
+## Maximum stamina (0-65535: it travels in a u16).
 @export var stamina_max: int = 1000
-## Resistencia que se regenera cada tick (180/s con 3).
+## Stamina regenerated each tick (180/s with 3).
 @export var stamina_regen_per_tick: int = 3
-## Retardo (s) tras gastar resistencia antes de volver a regenerar.
+## Delay (s) after spending stamina before regenerating again.
 @export var stamina_regen_delay_s: float = 0.6
-## Regeneración por tick estando agotado.
+## Regeneration per tick while exhausted.
 @export var exhausted_regen_per_tick: int = 1
-## Se sale del agotamiento al superar esta resistencia.
+## Exhaustion ends once stamina exceeds this value.
 @export var exhausted_exit_threshold: int = 300
-## Ticks de PRIMARY mantenido para pasar de ataque ligero a carga del fuerte.
+## Ticks of PRIMARY held to go from a light attack to a heavy attack charge.
 @export var hold_to_heavy_ticks: int = 8
-## Ticks que una pulsación sin ejecutar espera en el búfer (como mucho 15: ocupa 4 bits).
+## Ticks an unexecuted press waits in the buffer (at most 15: it takes 4 bits).
 @export var input_buffer_ticks: int = 8
-## Ticks de la ventana de parada al pulsar bloquear.
+## Ticks of the parry window when block is pressed.
 @export var parry_window_ticks: int = 6
-## Ticks hasta que se puede abrir otra ventana de parada.
+## Ticks until another parry window can be opened.
 @export var parry_cooldown_ticks: int = 30
-## Duración (s) del cambio de arma (docs/habilidades.md, sección 3).
+## Duration (s) of the weapon swap (docs/habilidades.md, section 3).
 @export var swap_s: float = 0.4
-## Fracción de la velocidad de carrera permitida durante el cambio de arma.
+## Fraction of the run speed allowed during the weapon swap.
 @export var swap_move_scale: float = 0.8
-## Fracción de la velocidad de carrera de un derribado (se arrastra).
+## Fraction of the run speed of a knocked down character (they crawl).
 @export var downed_move_scale: float = 0.15
-## Giro hacia la cámara (rad/s) de un derribado.
+## Turn toward the camera (rad/s) of a knocked down character.
 @export var downed_turn_rate: float = 3.0
-## Duración (s) de levantar a un aliado derribado.
+## Duration (s) of reviving a knocked down ally.
 @export var revive_s: float = 3.0
-## Duración (s) de rematar a un enemigo derribado.
+## Duration (s) of executing a knocked down enemy.
 @export var execute_s: float = 1.0
-## Los dos consumibles (pociones), en orden de botón: CONSUMABLE_1 (R) y CONSUMABLE_2 (T). Sin
-## ninguno (catálogos de prueba) no hay pociones.
+## The two consumables (potions), in button order: CONSUMABLE_1 (R) and CONSUMABLE_2 (T). With
+## none (test catalogs) there are no potions.
 @export var consumables: Array[AbilityDefinition] = []
-## Reutilización compartida (s) de los consumibles.
+## Shared cooldown (s) of the consumables.
 @export var consumable_cooldown_s: float = 20.0
-## Puntería canónica (docs/habilidades.md, sección 4.4): altura del pivote de la cámara sobre los
-## pies, desplazamiento lateral del hombro y vertical de la cámara (el [code]h_offset[/code] y el
-## [code]v_offset[/code] de [code]camera_rig.tscn[/code]).
+## Canonical aiming (docs/habilidades.md, section 4.4): height of the camera pivot above the
+## feet, lateral shoulder offset and vertical camera offset (the [code]h_offset[/code] and
+## [code]v_offset[/code] of [code]camera_rig.tscn[/code]).
 @export var aim_pivot_height: float = 1.6
 @export var aim_shoulder_offset: float = 0.6
 @export var aim_camera_v_offset: float = 0.1
-## Alcance (m) del rayo de la mira cuando no toca nada.
+## Range (m) of the crosshair ray when it hits nothing.
 @export var aim_range_m: float = 150.0
-## Ángulo (grados) dentro del cual la flecha converge a la profundidad del hostil más cercano a la
-## mira.
+## Angle (degrees) within which the arrow converges to the depth of the hostile closest to the
+## crosshair.
 @export var aim_converge_deg: float = 12.0
-## Altura (m) sobre los pies desde la que salen los proyectiles (el pecho).
+## Height (m) above the feet from which projectiles are released (the chest).
 @export var muzzle_height: float = 1.4
 
-# --- Solo del servidor ------------------------------------------------------------------------
+# --- Server only ------------------------------------------------------------------------------
 
-## Vida máxima.
+## Maximum health.
 @export var health_max: int = 1000
-## Regeneración de vida por segundo fuera de combate.
+## Health regeneration per second out of combat.
 @export var health_regen_per_s: int = 20
-## Segundos «en combate» tras dar o recibir daño.
+## Seconds "in combat" after dealing or taking damage.
 @export var in_combat_s: float = 10.0
-## Segundos hasta poder reaparecer.
+## Seconds until respawning is possible.
 @export var respawn_s: float = 10.0
-## Segundos de protección tras reaparecer.
+## Seconds of protection after respawning.
 @export var respawn_protection_s: float = 3.0
-## Ventana (s) en la que se cuentan los controles encadenados.
+## Window (s) in which chained controls are counted.
 @export var cc_chain_window_s: float = 3.0
-## Inmunidad (s) a controles tras encadenar demasiados.
+## Immunity (s) to controls after chaining too many.
 @export var cc_immunity_s: float = 2.0
-## Velocidad de aterrizaje (m/s) a partir de la cual hay daño por caída.
+## Landing speed (m/s) from which there is fall damage.
 @export var fall_damage_threshold: float = 15.0
-## Daño por cada m/s por encima del umbral.
+## Damage per m/s above the threshold.
 @export var fall_damage_per_mps: int = 70
-## Tambaleo (s) que sufre el atacante al ser parado.
+## Stagger (s) suffered by the attacker when parried.
 @export var parry_stagger_s: float = 0.6
-## Aturdimiento (s) tras una rotura de guardia.
+## Stun (s) after a guard break.
 @export var guard_break_stun_s: float = 1.0
-## Ángulo respecto al yaw de la víctima a partir del cual un golpe es por la espalda.
+## Angle relative to the victim's yaw from which a hit counts as from behind.
 @export var backstab_angle_deg: float = 120.0
-## Multiplicador del daño por la espalda.
+## Damage multiplier for hits from behind.
 @export var crit_multiplier: float = 1.5
-## Multiplicadores del daño contra estructuras (la puerta de un fuerte, docs/fuerte.md, sección 3.3),
-## por tipo de daño: cortante, perforante, contundente y elemental. Solo los usa el servidor.
+## Damage multipliers against structures (a fort's gate, docs/fuerte.md, section 3.3),
+## by damage type: slashing, piercing, blunt and elemental. Used only by the server.
 @export var structure_slash_multiplier: float = 0.35
 @export var structure_pierce_multiplier: float = 0.2
 @export var structure_blunt_multiplier: float = 1.0
 @export var structure_elemental_multiplier: float = 0.6
-## Vida de derribado (docs/habilidades.md, sección 4.5).
+## Downed health (docs/habilidades.md, section 4.5).
 @export var downed_health: int = 400
-## Segundos que tarda en desangrarse un derribado.
+## Seconds a knocked down character takes to bleed out.
 @export var downed_s: float = 20.0
-## Vida con la que vuelve un derribado al que levantan.
+## Health with which a knocked down character returns when revived.
 @export var revived_health: int = 300
-## Distancia horizontal (m) a la que se empieza a levantar o rematar.
+## Horizontal distance (m) at which reviving or executing begins.
 @export var interact_range_m: float = 2.0
-## Distancia (m) a la que se corta levantar o rematar.
+## Distance (m) at which reviving or executing is cut off.
 @export var interact_keep_range_m: float = 2.5
-## Cono total (grados) del bloqueo de una canalización que bloquea (muro de escudos).
+## Total cone (degrees) of the block of a blocking channel (shield wall).
 @export var ability_block_angle_deg: float = 180.0
-## Resistencia por punto de daño que absorbe ese bloqueo.
+## Stamina per point of damage that this block absorbs.
 @export var ability_block_stamina_per_damage: float = 0.6
-## Proyectiles vivos como mucho por tirador y por zona (al pasar, sale el más viejo).
+## Maximum live projectiles per shooter and per zone (when exceeded, the oldest goes).
 @export var max_projectiles_per_shooter: int = 8
 @export var max_projectiles_per_zone: int = 64
-## Plantilla con la que aparece quien no ha elegido (el escudero).
+## Template a player who has not chosen spawns with (the squire).
 @export var default_template: EquipmentTemplate
 
 
-## Multiplicador del daño de tipo [param damage_type] ([enum DamageFormula.DamageType]) contra
-## una estructura. 1 para un tipo desconocido.
+## Damage multiplier of type [param damage_type] ([enum DamageFormula.DamageType]) against
+## a structure. 1 for an unknown type.
 func structure_multiplier(damage_type: int) -> float:
 	match damage_type:
 		DamageFormula.DamageType.SLASH:

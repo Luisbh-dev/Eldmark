@@ -1,31 +1,31 @@
 class_name FortKeepPreview
 extends Node3D
-## Escena de vista previa del torreón nuevo del fuerte (ART-57, herramienta de desarrollo).
+## Preview scene for the fort's new keep (ART-57, development tool).
 ##
-## Instancia el Vado Gris tal cual (hijo "Zona"), quita en la copia en memoria la torre y el asta
-## antiguas del fuerte (sin tocar vado_gris.tscn ni sus generadores) y pone en su sitio
-## [code]assets/models/environment/custom/fort_keep.glb[/code]: el mismo origen que la torre de
-## 6 x 6 m, a ras de suelo del patio. El torreón se dibuja con los materiales de reino de
-## [code]fort_keep/materials/<reino>/[/code] (mismo nombre que los materiales del glTF), con tres
-## niveles de detalle (ver [method apply_lods]) y la colisión de baja resolución en la capa del mundo.
+## It instantiates Vado Gris as is (child "Zona"), removes in the in-memory copy the fort's old tower and
+## flagpole (without touching vado_gris.tscn or its generators) and puts
+## [code]assets/models/environment/custom/fort_keep.glb[/code] in their place: the same origin as the
+## 6 x 6 m tower, at the courtyard's ground level. The keep is drawn with the realm materials from
+## [code]fort_keep/materials/<realm>/[/code] (same name as the glTF materials), with three levels of
+## detail (see [method apply_lods]) and the low-resolution collision on the world layer.
 ## [br][br]
-## El nodo [code]Estandarte[/code] del glTF sustituye al marcador del mismo nombre del fuerte: expone
-## los parámetros por instancia que mueve el controlador del fuerte (ver [method apply_banner]).
+## The glTF's [code]Estandarte[/code] node (banner) replaces the fort's marker of the same name: it
+## exposes the per-instance parameters that the fort controller drives (see [method apply_banner]).
 ## [br][br]
-## No se usa en el juego: nada en el servidor ni en las escenas del juego la referencia.
+## It is not used in the game: nothing on the server or in the game scenes references it.
 
-## Escena del glTF (el importador la convierte en una PackedScene).
+## glTF scene (the importer turns it into a PackedScene).
 const KEEP_SCENE_PATH: String = "res://assets/models/environment/custom/fort_keep.glb"
 const MATERIAL_DIR: String = "res://assets/models/environment/custom/fort_keep/materials/"
-## Distancias (m) del cambio de nivel de detalle: LOD0 hasta la primera, LOD1 hasta la segunda, LOD2
-## más allá. Con [constant LOD_FADE_MARGIN] de fundido (dither) a cada lado. La primera es corta a
-## propósito: a 30 y 60 m las juntas modeladas (2,4 cm) son subpíxel y centellean al moverse (el
-## LOD1 centellea la mitad, ver render_fort_keep_model.gd --shimmer).
+## Level-of-detail switch distances (m): LOD0 up to the first, LOD1 up to the second, LOD2 beyond. With
+## [constant LOD_FADE_MARGIN] of dither fade on each side. The first is short on purpose: at 30 and 60 m
+## the modeled joints (2.4 cm) are subpixel and shimmer when moving (LOD1 shimmers half as much, see
+## render_fort_keep_model.gd --shimmer).
 const LOD1_DISTANCE: float = 50.0
 const LOD2_DISTANCE: float = 250.0
 const LOD_FADE_MARGIN: float = 10.0
 
-## Color de bando y emblema (índice del atlas) de cada dueño, de docs/mundo.md ("Colores de bando").
+## Faction color and emblem (atlas index) of each owner, from docs/mundo.md ("Colores de bando").
 const FACTIONS: Dictionary = {
 	&"vardheim": [Color("#7ec8e8"), 0.0],
 	&"solmarch": [Color("#e9c341"), 1.0],
@@ -33,16 +33,16 @@ const FACTIONS: Dictionary = {
 	&"neutral": [Color("#bdb6a6"), 3.0],
 }
 
-## Reino cuya paleta usa el torreón: eldrun (frontera, la del Vado Gris), vardheim, solmarch o askarra.
+## Realm whose palette the keep uses: eldrun (frontier, Vado Gris's), vardheim, solmarch or askarra.
 @export var realm: StringName = &"eldrun"
-## Dueño del estandarte: vardheim, solmarch, askarra o neutral.
+## Owner of the banner: vardheim, solmarch, askarra or neutral.
 @export var banner_owner: StringName = &"neutral"
-## Atacante que está capturando (vacío = nadie) y avance de la captura (0 a 1).
+## Attacker that is capturing (empty = nobody) and capture progress (0 to 1).
 @export var contest_owner: StringName = &""
 @export_range(0.0, 1.0) var capture_progress: float = 0.0
-## Ruta (desde este nodo) del fuerte de la zona.
+## Path (from this node) of the zone's fort.
 @export var fort_path: NodePath = ^"Zona/Fuerte"
-## Quita la torre y el asta antiguas del fuerte.
+## Removes the fort's old tower and flagpole.
 @export var replace_old_keep: bool = true
 
 var _keep: Node3D = null
@@ -70,13 +70,13 @@ func _ready() -> void:
 	apply_banner(_keep, banner_owner, contest_owner, capture_progress)
 
 
-## Devuelve el torreón instanciado (null si no se pudo montar).
+## Returns the instantiated keep (null if it could not be assembled).
 func get_keep() -> Node3D:
 	return _keep
 
 
-## Cambia la paleta del torreón (sustituye los materiales del glTF por los del reino) y ajusta los
-## niveles de detalle y la colisión.
+## Changes the keep's palette (replaces the glTF materials with the realm's) and adjusts the levels of
+## detail and the collision.
 func apply_realm(realm_name: StringName) -> void:
 	realm = realm_name
 	if _keep == null:
@@ -89,8 +89,8 @@ func apply_realm(realm_name: StringName) -> void:
 		body.collision_mask = 0
 
 
-## Sustituye, en cada malla bajo [param keep], los materiales del glTF por los del reino (mismo
-## nombre de material: keep_stone, keep_trim, keep_cloth...).
+## Replaces, in each mesh under [param keep], the glTF materials with the realm's (same material name:
+## keep_stone, keep_trim, keep_cloth...).
 static func apply_materials(keep: Node, realm_name: StringName) -> void:
 	for node: Node in keep.find_children("*", "MeshInstance3D", true, false):
 		var instance: MeshInstance3D = node as MeshInstance3D
@@ -103,9 +103,9 @@ static func apply_materials(keep: Node, realm_name: StringName) -> void:
 				instance.set_surface_override_material(i, load(path) as Material)
 
 
-## Rangos de visibilidad de los tres niveles, con fundido por dither de 10 m: LOD0 (sillares
-## modelados) hasta 50 m, LOD1 (paños de sillería despiezada) de 50 a 250 m y LOD2 (silueta) más allá.
-## Los rangos los pone el código del juego: el glTF no los guarda.
+## Visibility ranges of the three levels, with a 10 m dither fade: LOD0 (modeled ashlar blocks) up to
+## 50 m, LOD1 (panels of cut-stone masonry) from 50 to 250 m and LOD2 (silhouette) beyond. The ranges
+## are set by the game code: the glTF does not store them.
 static func apply_lods(keep: Node) -> void:
 	for node: Node in keep.find_children("FortKeep_LOD*", "MeshInstance3D", true, false):
 		var instance: MeshInstance3D = node as MeshInstance3D
@@ -124,10 +124,10 @@ static func apply_lods(keep: Node) -> void:
 			instance.visibility_range_begin_margin = LOD_FADE_MARGIN
 
 
-## Pone el dueño, el atacante y la captura en el nodo [code]Estandarte[/code] del torreón: los mismos
-## parámetros por instancia que moverá el controlador del fuerte. [param owner_name] y
-## [param contest_name] son claves de [constant FACTIONS] (vacío = sin atacante); el viento va con
-## [param wind] (0 = quieto).
+## Sets the owner, the attacker and the capture on the keep's [code]Estandarte[/code] node (banner): the
+## same per-instance parameters that the fort controller will drive. [param owner_name] and
+## [param contest_name] are keys of [constant FACTIONS] (empty = no attacker); the wind is set with
+## [param wind] (0 = still).
 static func apply_banner(keep: Node, owner_name: StringName, contest_name: StringName, progress: float, wind: float = 1.0) -> void:
 	var banner: GeometryInstance3D = keep.get_node_or_null("Estandarte") as GeometryInstance3D
 	if banner == null:

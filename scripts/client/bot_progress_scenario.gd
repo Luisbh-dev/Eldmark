@@ -1,24 +1,27 @@
 class_name BotProgressScenario
 extends RefCounted
-## El escenario [code]progress[/code] del bot ([code]--bot-scenario=progress[/code], docs/progresion.md §15 P8): lo
-## que hace un jugador con su inventario y su cartera, por los mismos caminos que el cliente con ventana, para que
-## las pruebas de extremo a extremo comparen después lo que el bot vio con lo que guardó la plataforma
-## ([code]platform/e2e/progress_test.go[/code]). En orden:
-## [br]1. [b]equip[/b]: se equipa el arco del kit ([code]bow_vado[/code]) desde la bolsa, con la misma petición que el
-## doble clic de [InventoryWindow] ([method ClientInventory.equip_target]). Si ya lo lleva puesto, no hace nada.
-## [br]2. [b]gold[/b]: se da [constant GOLD_AMOUNT] de oro con DEBUG_COMMAND 41 y espera su WALLET_UPDATE.
-## [br]3. [b]potion[/b]: se da una poción de vida con DEBUG_COMMAND 40 y espera su INVENTORY_DELTA.
-## [br]Con plataforma, los dos comandos piden [code]--debug-commands[/code] en la zona y una cuenta [code]admin[/code]
-## (docs/progresion.md §10). Cada paso empieza [constant PAUSE_TICKS] ticks después de que acabe el anterior (así una
-## prueba puede actuar entre dos pasos: la de la caída mata la zona tras el oro y antes de la poción) y falla si no se
-## cumple en [member step_timeout_ticks]. Un equipo rechazado (en combate, con una acción) se reintenta cada
-## [constant RETRY_TICKS] ticks, [constant MAX_TRIES] veces como mucho.
+## The bot's [code]progress[/code] scenario ([code]--bot-scenario=progress[/code],
+## docs/progresion.md §15 P8): what a player does with their inventory and wallet, through the same
+## paths as the windowed client, so that end-to-end tests afterwards compare what the bot saw with
+## what the platform saved ([code]platform/e2e/progress_test.go[/code]). In order:
+## [br]1. [b]equip[/b]: the kit's bow ([code]bow_vado[/code]) is equipped from the bag, with the
+## same request as the double click in [InventoryWindow] ([method ClientInventory.equip_target]).
+## If it is already wearing it, it does nothing.
+## [br]2. [b]gold[/b]: [constant GOLD_AMOUNT] gold is given with DEBUG_COMMAND 41 and it waits for its WALLET_UPDATE.
+## [br]3. [b]potion[/b]: a health potion is given with DEBUG_COMMAND 40 and it waits for its INVENTORY_DELTA.
+## [br]With the platform, the two commands require [code]--debug-commands[/code] on the zone and an
+## [code]admin[/code] account (docs/progresion.md §10). Each step starts [constant PAUSE_TICKS]
+## ticks after the previous one ends (so a test can act between two steps: the crash test kills
+## the zone after the gold and before the potion) and fails if it is not completed within
+## [member step_timeout_ticks]. A rejected equip (in combat, with an action) is retried every
+## [constant RETRY_TICKS] ticks, [constant MAX_TRIES] times at most.
 ## [br][br]
-## No mueve al bot: quien lo lleva lo deja quieto ([OnlineMain] pone el cerebro en reposo al empezar). Lo avanza
-## [method step], una vez por tick de física; [signal phase_completed] sale al acabar cada paso (y con
-## [code]done[/code] al acabar todos) y [method to_report] es la clave [code]scenario[/code] del informe. Solo cliente.
+## It does not move the bot: whoever drives it leaves it standing still ([OnlineMain] puts the
+## brain at rest on startup). It is advanced by [method step], once per physics tick; [signal phase_completed] fires when each step ends (and with [code]done[/code] when all end) and
+## [method to_report] is the report's [code]scenario[/code] key. Client only.
 
-## Acabó el paso [param phase] ([code]equip[/code], [code]gold[/code], [code]potion[/code]) o todos ([code]done[/code]).
+## Step [param phase] ([code]equip[/code], [code]gold[/code], [code]potion[/code]) or all
+## ([code]done[/code]) finished.
 signal phase_completed(phase: String)
 
 enum Step { WAITING, EQUIP, GOLD, POTION, DONE, FAILED }
@@ -30,15 +33,15 @@ const PHASE_NAMES: Dictionary[int, String] = {
 const BOW: StringName = &"bow_vado"
 const POTION: StringName = &"potion_health"
 const GOLD_AMOUNT: int = 50
-## Ticks entre el final de un paso y el principio del siguiente.
+## Ticks between the end of one step and the start of the next.
 const PAUSE_TICKS: int = 60
-## Ticks entre dos intentos de equipar.
+## Ticks between two equip attempts.
 const RETRY_TICKS: int = 30
 const MAX_TRIES: int = 5
-## Ticks que puede durar un paso (sin contar la pausa) antes de darlo por fallido.
+## Ticks a step may last (not counting the pause) before being declared failed.
 const DEFAULT_STEP_TIMEOUT_TICKS: int = 600
 
-## Ticks que puede durar un paso; las pruebas lo bajan.
+## Ticks a step may last; tests lower it.
 var step_timeout_ticks: int = DEFAULT_STEP_TIMEOUT_TICKS
 
 var _client: NetClient = null
@@ -64,7 +67,7 @@ func _init(client: NetClient) -> void:
 	client.notice_received.connect(func(_code: int, text: String) -> void: _last_notice = text)
 
 
-## Avanza un tick. Empieza cuando el cliente está en el mundo con su inventario y sus saldos.
+## Advances one tick. It starts when the client is in the world with its inventory and balances.
 func step() -> void:
 	if _step == Step.DONE or _step == Step.FAILED:
 		return
@@ -93,7 +96,7 @@ func step() -> void:
 			_step_potion()
 
 
-## true al acabar (bien o mal).
+## true when finished (successfully or not).
 func is_finished() -> bool:
 	return _step == Step.DONE or _step == Step.FAILED
 
@@ -106,22 +109,23 @@ func is_failed() -> bool:
 	return _step == Step.FAILED
 
 
-## Por qué falló (vacío si no).
+## Why it failed (empty if it did not).
 func get_error() -> String:
 	return _error
 
 
-## El último paso acabado ([code]equip[/code], [code]gold[/code], [code]potion[/code] o [code]done[/code]); vacío
-## antes del primero.
+## The last finished step ([code]equip[/code], [code]gold[/code], [code]potion[/code] or
+## [code]done[/code]); empty before the first.
 func get_phase() -> String:
 	return _completed[_completed.size() - 1] if not _completed.is_empty() else ""
 
 
-## La clave [code]scenario[/code] del informe: [code]name[/code], [code]phase[/code] (el último paso acabado),
-## [code]completed[/code], [code]error[/code] (vacío si no falló), [code]bow_slot[/code] ([code][contenedor,
-## ranura][/code] del arco tras equiparlo), [code]already_equipped[/code], [code]gold_before[/code],
-## [code]potions_before[/code] (de vida, antes de darla) y [code]rejections[/code] (los textos de los rechazos del
-## servidor al equipar).
+## The report's [code]scenario[/code] key: [code]name[/code], [code]phase[/code] (the last
+## finished step), [code]completed[/code], [code]error[/code] (empty if it did not fail),
+## [code]bow_slot[/code] ([code][contenedor,
+## ranura][/code] of the bow after equipping it), [code]already_equipped[/code], [code]gold_before[/code],
+## [code]potions_before[/code] (health ones, before giving it) and [code]rejections[/code] (the
+## texts of the server's rejections on equipping).
 func to_report() -> Dictionary:
 	return {
 		"name": NAME, "phase": get_phase(), "completed": Array(_completed), "error": _error,
@@ -130,7 +134,7 @@ func to_report() -> Dictionary:
 	}
 
 
-# --- Pasos ---------------------------------------------------------------------------------------
+# --- Steps ---------------------------------------------------------------------------------------
 
 func _begin(next: Step, pause: int) -> void:
 	_step = next
@@ -162,7 +166,7 @@ func _fail(text: String) -> void:
 	_step = Step.FAILED
 
 
-# Equipar el arco: la petición del doble clic y esperar a que el servidor la confirme.
+# Equip the bow: the double-click request and wait for the server to confirm it.
 func _step_equip() -> void:
 	var inventory: ClientInventory = _client.get_inventory()
 	if inventory.get_pending_count() > 0:
@@ -176,8 +180,8 @@ func _step_equip() -> void:
 	if at.x < 0:
 		_fail("no hay ningún %s en el inventario" % BOW)
 		return
-	# Sin peticiones en vuelo y el arco aún en la bolsa: la anterior se rechazó (o se perdió en el plazo de 5 s de
-	# ClientInventory) y se vuelve a pedir.
+	# With no requests in flight and the bow still in the bag: the previous one was rejected (or lost
+	# within ClientInventory's 5 s window) and it is requested again.
 	_awaiting_answer = false
 	if _tries >= MAX_TRIES:
 		_fail("no se pudo equipar el arco tras %d intentos (%s)" % [_tries, ", ".join(_rejections)])
@@ -191,7 +195,7 @@ func _step_equip() -> void:
 		_sent = true
 		_awaiting_answer = true
 	else:
-		# Rechazada en local (en combate, con una acción…): se reintenta.
+		# Rejected locally (in combat, with an action…): it is retried.
 		_pause_left = RETRY_TICKS
 
 
@@ -219,7 +223,7 @@ func _step_potion() -> void:
 		_complete()
 
 
-# Un rechazo del servidor a la petición de equipar (los de en local llegan antes de enviarla y no cuentan).
+# A server rejection of the equip request (local ones arrive before it is sent and do not count).
 func _on_request_rejected(_result: int, text: String) -> void:
 	if not _awaiting_answer:
 		return
@@ -228,7 +232,7 @@ func _on_request_rejected(_result: int, text: String) -> void:
 	_pause_left = RETRY_TICKS
 
 
-# La primera ranura de [param def_id] en [param state] (la bolsa y después el equipo); (−1, −1) si no está.
+# The first slot of [param def_id] in [param state] (the bag and then the equipment); (−1, −1) if it is not there.
 static func _find(state: InventoryState, def_id: StringName) -> Vector2i:
 	if state == null:
 		return Vector2i(-1, -1)

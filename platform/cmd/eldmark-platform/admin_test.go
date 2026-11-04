@@ -13,8 +13,8 @@ import (
 	"eldmark/platform/internal/testdb"
 )
 
-// Errores de uso de admin: salen con 2 sin tocar la base (sin configuración). Una orden sin
-// --actor no se ejecuta (§9.1), y bootstrap no lo lleva.
+// Admin usage errors: they exit with 2 without touching the database (no configuration). A command
+// without --actor is not executed (§9.1), and bootstrap does not take one.
 func TestAdminUsage(t *testing.T) {
 	for _, args := range [][]string{
 		{"admin"}, {"admin", "frobnicar"}, {"admin", "--actor", "a@example.org"},
@@ -48,9 +48,9 @@ func TestAdminUsage(t *testing.T) {
 	}
 }
 
-// La orden admin de punta a punta contra una base: bootstrap, create-account, una lectura de un
-// moderador con su fila en la auditoría (con os_user), las órdenes de admin que un moderador no
-// puede usar (2), un --actor sin cuenta (2) y los errores de la orden (1).
+// The admin command end to end against a database: bootstrap, create-account, a moderator's read
+// with its audit row (with os_user), the admin commands a moderator cannot use (2), an --actor
+// without an account (2) and the command's errors (1).
 func TestAdminCommands(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
@@ -69,7 +69,7 @@ func TestAdminCommands(t *testing.T) {
 		return stdout + stderr
 	}
 	run(exitOK, "bootstrap", "jefa@example.org", "--password-file", passwordFile)
-	run(exitError, "bootstrap", "otra@example.org", "--password-file", passwordFile) // ya hay admin
+	run(exitError, "bootstrap", "otra@example.org", "--password-file", passwordFile) // there is already an admin
 	run(exitOK, "--actor", "jefa@example.org", "create-account", "mod@example.org", "--password-file", passwordFile,
 		"--role", "moderator")
 	run(exitOK, "--actor", "jefa@example.org", "create-account", "bran@example.org", "--password-file", passwordFile)
@@ -92,7 +92,8 @@ func TestAdminCommands(t *testing.T) {
 	}
 	id := strconv.FormatInt(report, 10)
 
-	// reports show: sin --actor no se ejecuta; con el del moderador, sale y queda su fila.
+	// reports show: without --actor it is not executed; with the moderator's, it succeeds and leaves its
+	// row.
 	run(exitUsage, "reports", "show", id)
 	out := run(exitOK, "--actor", "mod@example.org", "reports", "show", id)
 	if !strings.Contains(out, "Reporte "+id) || !strings.Contains(out, "palabrota") {
@@ -112,15 +113,15 @@ func TestAdminCommands(t *testing.T) {
 	if out := run(exitOK, "--actor", "mod@example.org", "reports", "list", "--status", "all"); !strings.Contains(out, "Reportes: 1.") {
 		t.Fatalf("reports list:\n%s", out)
 	}
-	// Lo que es de admin, con el moderador: 2; con un correo sin cuenta: 2.
+	// What is admin-only, with the moderator: 2; with an email without an account: 2.
 	run(exitUsage, "--actor", "mod@example.org", "reports", "close", id, "dismissed")
 	run(exitUsage, "--actor", "mod@example.org", "set-role", "bran@example.org", "gm")
 	run(exitUsage, "--actor", "nadie@example.org", "reports", "list")
-	// Errores de la orden: 1.
+	// Command errors: 1.
 	run(exitError, "--actor", "jefa@example.org", "reports", "show", "424242")
 	run(exitError, "--actor", "jefa@example.org", "set-role", "nadie@example.org", "gm")
 	run(exitError, "--actor", "jefa@example.org", "sanction", "add", "Nadie", "warning", "--reason", "x")
-	// Lo demás, por la orden de verdad.
+	// The rest, through the real command.
 	if out := run(exitOK, "--actor", "jefa@example.org", "set-role", "bran@example.org", "gm"); !strings.Contains(out, "player → gm") {
 		t.Fatalf("set-role:\n%s", out)
 	}
@@ -149,8 +150,8 @@ func TestAdminCommands(t *testing.T) {
 		status != "purged" {
 		t.Fatalf("purge-now: %q %v", status, err)
 	}
-	// reapply-purges sobre la misma base: lo de purge_log ya está purgado (nada cambia, 0); un
-	// purges.txt mal formado o que no existe, 1.
+	// reapply-purges on the same database: what is in purge_log is already purged (nothing changes, 0);
+	// a malformed purges.txt or one that does not exist, 1.
 	dir := t.TempDir()
 	purges := filepath.Join(dir, "purges.txt")
 	if err := os.WriteFile(purges, []byte("account\t"+strconv.FormatInt(bran, 10)+"\t2026-10-30 09:46:00.5+00\n"), 0o600); err != nil {
@@ -174,11 +175,11 @@ func TestAdminCommands(t *testing.T) {
 	}
 }
 
-// serve corre la retención del chat (chat_retention, cada hora y al arrancar): lo de más de 30 días
-// desaparece y lo demás se queda.
-// serve corre el trabajo de instancias perdidas (§5.3, §2.5): una instancia viva que deja de latir
-// pasa a lost y sus arrendamientos quedan libres, sin llamar a MarkLost a mano (con HEARTBEAT_S 1,
-// a los 3 s y el trabajo cada segundo).
+// serve runs the chat retention (chat_retention, every hour and at startup): anything older than 30
+// days disappears and the rest stays.
+// serve runs the lost-instances job (§5.3, §2.5): a live instance that stops heartbeating becomes
+// lost and its leases are freed, without calling MarkLost by hand (with HEARTBEAT_S 1, at 3 s and
+// the job every second).
 func TestServeRunsTheLostInstances(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
@@ -243,8 +244,8 @@ func TestServeRunsTheChatRetention(t *testing.T) {
 	}
 }
 
-// serve corre las retenciones de §11.1 (privacy_retention) al arrancar: un acceso de hace 31 días y una lápida
-// purgada hace más de un año sin libro desaparecen; el acceso de ayer se queda.
+// serve runs the retentions of §11.1 (privacy_retention) at startup: a login from 31 days ago and a
+// tombstone purged more than a year ago without a ledger entry disappear; yesterday's login stays.
 func TestServeRunsThePrivacyRetention(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()

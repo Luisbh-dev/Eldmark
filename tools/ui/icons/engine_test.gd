@@ -1,23 +1,23 @@
 extends SceneTree
-## Prueba en el motor de los iconos de la interfaz (ART-12), a la escala real del HUD y sin reescalar.
+## In-engine test of the interface icons (ART-12), at the real HUD scale and without rescaling.
 ##
-## Dibuja con las clases del juego, no con una imitación: [UIIconSlot] para las barras de acciones (casilla
-## de 52 px, glifo de tecla arriba a la izquierda, contador abajo a la derecha, reutilización y estado
-## apagado) y [StatusIcons.StatusIcon] para los efectos (30 px la fila propia, 18 px las placas de nombre).
-## Cada icono es una textura de dos capas ([LayeredIcon]): el fondo de su categoría y la figura encima, que es
-## como se entregan (assets/ui/icons/backgrounds y la figura suelta). Las casillas dibujan el icono con su
-## margen de siempre, así que se ve lo que pasaría al enchufarlos tal cual.
+## It draws with the game's classes, not an imitation: [UIIconSlot] for the action bars (52 px
+## slot, key glyph at the top left, counter at the bottom right, cooldown and greyed-out
+## state) and [StatusIcons.StatusIcon] for the effects (30 px for one's own row, 18 px for the nameplates).
+## Each icon is a two-layer texture ([LayeredIcon]): the background of its category and the shape on top, which is
+## how they are delivered (assets/ui/icons/backgrounds and the loose shape). The slots draw the icon with its usual
+## margin, so what is seen is what would happen when plugging them in as they are.
 ##
-## Hace falta un motor con ventana (no vale --headless) porque lee los píxeles de lo que dibuja la GPU:
-##   godot --path . -s res://tools/ui/icons/engine_test.gd -- <captura_hud.png> <carpeta_de_salida>
-## La captura (1920 x 1080, por ejemplo build/calidad/interfaz/hud_en_pelea_03.png) es el fondo. Escribe:
-##   motor_barra_espada.png, motor_barra_arco.png  la barra en su sitio sobre la captura, recorte 1:1
-##   motor_tablero.png                             todas las filas rotuladas sobre un panel oscuro, 1:1
+## An engine with a window is needed (--headless does not work) because it reads the pixels of what the GPU draws:
+##   godot --path . -s res://tools/ui/icons/engine_test.gd -- <hud_capture.png> <output_folder>
+## The capture (1920 x 1080, for example build/calidad/interfaz/hud_en_pelea_03.png) is the background. It writes:
+##   motor_barra_espada.png, motor_barra_arco.png  the bar in place over the capture, 1:1 crop
+##   motor_tablero.png                             all the labelled rows on a dark panel, 1:1
 
 const ICON_DIR: String = "res://assets/ui/icons"
 const MANIFEST: String = "res://build/iconos/capas/manifest.json"
 const VIEW_SIZE: Vector2i = Vector2i(1920, 1080)
-## Posición de la barra de acciones en hud_en_pelea_03.png (esquina de cada casilla de 52 px).
+## Position of the action bar in hud_en_pelea_03.png (corner of each 52 px slot).
 const BAR_X: Array[int] = [669, 727, 785, 865, 923, 981, 1061, 1119, 1199]
 const BAR_Y: int = 842
 const BAR_KEYS: Array[String] = ["Clic izq.", "Clic der.", "Ctrl", "1", "2", "3", "R", "T", "Q"]
@@ -28,7 +28,7 @@ const BOW_BAR: Array[String] = ["bow_quick", "bow_drawn", "dodge", "bow_volley",
 const COUNTS: Dictionary = {"potion_health": 6, "potion_stamina": 5}
 const STATES: Array[String] = ["bleed", "regen", "stun", "slowed", "knockback", "downed", "rooted"]
 const BENEFICIAL: Array[String] = ["regen"]
-## Recorte de la captura que se enseña en las muestras de la barra.
+## Crop of the capture shown in the bar samples.
 const BAR_CROP: Rect2i = Rect2i(600, 800, 720, 125)
 const BOARD_CROP: Rect2i = Rect2i(540, 696, 840, 352)
 
@@ -39,8 +39,8 @@ var _capture: ImageTexture = null
 var _out_dir: String = "res://build/iconos"
 
 
-## Icono de dos capas: el fondo estirado a todo el rectángulo y la figura encima. Es una [Texture2D], así
-## que entra en cualquier casilla y el tinte de «apagado» y el barrido de reutilización le valen igual.
+## Two-layer icon: the background stretched to the whole rectangle and the shape on top. It is a [Texture2D], so
+## it fits in any slot and the "greyed-out" tint and the cooldown sweep work on it just the same.
 class LayeredIcon extends Texture2D:
 	var background: Texture2D = null
 	var figure: Texture2D = null
@@ -116,7 +116,7 @@ func _figure_of(path: String) -> ImageTexture:
 	return _figures[path]
 
 
-## Icono grande de [param icon_id] (figura de 128 px sobre el fondo de su categoría).
+## Large icon of [param icon_id] (128 px shape over the background of its category).
 func _big_icon(icon_id: String) -> LayeredIcon:
 	var icon := LayeredIcon.new()
 	icon.background = _background_of(String(_categories.get(icon_id, "mundo")))
@@ -124,7 +124,7 @@ func _big_icon(icon_id: String) -> LayeredIcon:
 	return icon
 
 
-## Variante pequeña de un estado: la figura nativa de [param side] px sobre el fondo del estado.
+## Small variant of a state: the native [param side] px shape over the state's background.
 func _small_icon(state_id: String, side: int) -> LayeredIcon:
 	var icon := LayeredIcon.new()
 	var category: String = "estado_bueno" if BENEFICIAL.has(state_id) else "estado_malo"
@@ -159,7 +159,7 @@ func _render(builder: Callable, crop: Rect2i, file_name: String) -> void:
 	await process_frame
 
 
-# --- Piezas -------------------------------------------------------------------------------------
+# --- Pieces -------------------------------------------------------------------------------------
 
 func _add_slot(parent: Node, icon: Texture2D, pos: Vector2, key_text: String = "", count: int = 0) -> UIIconSlot:
 	var slot := UIIconSlot.new()

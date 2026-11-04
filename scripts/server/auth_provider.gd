@@ -1,44 +1,44 @@
 class_name AuthProvider
 extends RefCounted
-## Identidad y reino de un cliente que se conecta (docs/red.md, secciones 3 y 12; docs/plataforma.md §5.2 y §14.3).
+## Identity and realm of a connecting client (docs/red.md, sections 3 and 12; docs/plataforma.md §5.2 and §14.3).
 ## [br][br]
-## [ServerAuth] ya ha comprobado la versión, la huella de la simulación, el cupo y el tope por IP (y, sin
-## billetes, el reino y el nombre); el proveedor decide si acepta la identidad que declara el HELLO. Esta clase es
-## la base de [DevAuthProvider] (sin plataforma) y de [TicketAuthProvider] (con el billete de la plataforma). La
-## base no autentica a nadie: rechaza con [constant NetProtocol.Result.TICKET], así que un proveedor sin
-## implementar nunca deja pasar.
+## [ServerAuth] has already checked the version, the simulation fingerprint, the capacity and the per-IP cap (and, without
+## tickets, the realm and the name); the provider decides whether to accept the identity the HELLO declares. This class is
+## the base of [DevAuthProvider] (no platform) and of [TicketAuthProvider] (with the platform's ticket). The
+## base authenticates nobody: it rejects with [constant NetProtocol.Result.TICKET], so an unimplemented provider
+## never lets anyone through.
 ## [br][br]
-## Un proveedor puede no decidir en el acto: [method authenticate] devuelve [constant PENDING], el peer espera en
-## [constant ServerPeer.State.VERIFYING] y el final llega por [method take_completed] en el paso «poll» del tick,
-## tras repartir los [PlatformEvent] ([method on_platform_event]).
+## A provider may not decide on the spot: [method authenticate] returns [constant PENDING], the peer waits in
+## [constant ServerPeer.State.VERIFYING] and the outcome arrives through [method take_completed] in the tick's "poll" step,
+## after dispatching the [PlatformEvent]s ([method on_platform_event]).
 
-## [method authenticate] no decide aún: el final llega por [method take_completed].
+## [method authenticate] does not decide yet: the outcome arrives through [method take_completed].
 const PENDING: int = -1
 
 
-## [constant NetProtocol.Result.OK], [constant PENDING] o el motivo del REJECT (por defecto
-## [constant NetProtocol.Result.TICKET]: billete ausente, no válido o caducado).
+## [constant NetProtocol.Result.OK], [constant PENDING] or the REJECT reason (by default
+## [constant NetProtocol.Result.TICKET]: ticket missing, invalid or expired).
 func authenticate(_peer_id: int, _hello: NetMessages.Hello) -> int:
 	return NetProtocol.Result.TICKET
 
 
-## Atiende [param event] si es suyo (kind [code]claim[/code]) y devuelve true; si no, false.
+## Handles [param event] if it is its own (kind [code]claim[/code]) and returns true; otherwise, false.
 func on_platform_event(_event: PlatformEvent) -> bool:
 	return false
 
 
-## Los [constant PENDING] resueltos desde la última llamada, en orden de llegada.
+## The [constant PENDING] ones resolved since the last call, in order of arrival.
 func take_completed() -> Array[AuthOutcome]:
 	return []
 
 
-## El peer [param peer_id] se fue en [constant ServerPeer.State.VERIFYING] (o venció su plazo): si su reclamación
-## llega después, se libera.
+## Peer [param peer_id] left while in [constant ServerPeer.State.VERIFYING] (or its deadline expired): if its claim
+## arrives later, it is released.
 func cancel(_peer_id: int) -> void:
 	pass
 
 
-## true si la identidad sale del billete: [ServerAuth] no mira el reino ni el nombre del HELLO (los de la
-## reclamación mandan) y no hay REJECT NAME (docs/plataforma.md §5.4).
+## true if the identity comes from the ticket: [ServerAuth] does not look at the HELLO's realm or name (the claim's
+## take precedence) and there is no REJECT NAME (docs/plataforma.md §5.4).
 func uses_tickets() -> bool:
 	return false

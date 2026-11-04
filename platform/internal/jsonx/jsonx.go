@@ -1,12 +1,13 @@
-// Package jsonx lee y escribe los enteros y los ids del JSON de las dos API (plataforma.md §4.1).
+// Package jsonx reads and writes the integers and ids of the two APIs' JSON (plataforma.md §4.1).
 //
-// Godot lee todo número JSON como float y, al volver a serializar lo que leyó, escribe 820.0: por
-// eso un campo entero usa [Int], que acepta 4 y 4.0 y rechaza 4.5 y lo que no cabe exacto en un
-// float64. Todo id bigint viaja como cadena decimal y usa [ID], que rechaza un número sin
-// comillas: así un error falla en voz alta en lugar de corromper el id en silencio.
+// Godot reads every JSON number as a float and, when re-serializing what it read, writes 820.0:
+// that is why an integer field uses [Int], which accepts 4 and 4.0 and rejects 4.5 and anything that
+// does not fit exactly in a float64. Every bigint id travels as a decimal string and uses [ID],
+// which rejects an unquoted number: that way an error fails loudly instead of silently corrupting
+// the id.
 //
-// [Decode] y [DecodeBytes] decodifican estricto: campos desconocidos, datos sobrantes tras el
-// valor y tipos que no casan son errores.
+// [Decode] and [DecodeBytes] decode strictly: unknown fields, leftover data after the value and
+// mismatched types are errors.
 package jsonx
 
 import (
@@ -18,30 +19,30 @@ import (
 	"strconv"
 )
 
-// MaxSafeInt es el mayor entero que un float64 representa sin perder precisión junto a sus
-// vecinos (2^53 − 1): lo que pasa de ahí, Godot lo corrompe sin avisar.
+// MaxSafeInt is the largest integer that a float64 represents without losing precision relative to
+// its neighbors (2^53 - 1): anything beyond that, Godot corrupts without warning.
 const MaxSafeInt int64 = 1<<53 - 1
 
-// maxNumberLen acota la longitud de un número JSON antes de analizarlo: ninguno de los que valen
-// se acerca y así un exponente desmesurado no cuesta nada.
+// maxNumberLen bounds the length of a JSON number before parsing it: none of the valid ones comes
+// close, so an oversized exponent costs nothing.
 const maxNumberLen = 64
 
-// Int es un entero de las API que acepta también la forma con decimales nulos que escribe Godot
-// (4.0, 4e0) y rechaza la que tiene parte fraccionaria (4.5), null, una cadena y lo que pasa de
-// ±[MaxSafeInt].
+// Int is an integer of the APIs that also accepts the form with null decimals that Godot writes
+// (4.0, 4e0) and rejects the one with a fractional part (4.5), null, a string and anything beyond
+// +/-[MaxSafeInt].
 type Int int64
 
-// ID es un id bigint de las API: una cadena con su valor decimal, de 0 a 2^63 − 1, sin signo, sin
-// espacios y sin ceros a la izquierda. Un número sin comillas es un error.
+// ID is a bigint id of the APIs: a string with its decimal value, from 0 to 2^63 - 1, without sign,
+// without spaces and without leading zeros. An unquoted number is an error.
 type ID int64
 
-// ErrInt y ErrID son las causas de los errores de [Int] y de [ID] (errors.Is).
+// ErrInt and ErrID are the causes of the errors of [Int] and [ID] (errors.Is).
 var (
 	ErrInt = errors.New("se esperaba un número entero")
 	ErrID  = errors.New("se esperaba un id: una cadena con un entero de 0 a 2^63 − 1")
 )
 
-// UnmarshalJSON lee un número JSON entero.
+// UnmarshalJSON reads an integer JSON number.
 func (i *Int) UnmarshalJSON(b []byte) error {
 	v, err := parseIntNumber(b)
 	if err != nil {
@@ -51,7 +52,7 @@ func (i *Int) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// MarshalJSON escribe el entero sin decimales.
+// MarshalJSON writes the integer without decimals.
 func (i Int) MarshalJSON() ([]byte, error) {
 	if int64(i) > MaxSafeInt || int64(i) < -MaxSafeInt {
 		return nil, fmt.Errorf("jsonx: %d no cabe exacto en un número JSON: %w", int64(i), ErrInt)
@@ -59,7 +60,7 @@ func (i Int) MarshalJSON() ([]byte, error) {
 	return strconv.AppendInt(nil, int64(i), 10), nil
 }
 
-// UnmarshalJSON lee una cadena con un id decimal.
+// UnmarshalJSON reads a string with a decimal id.
 func (id *ID) UnmarshalJSON(b []byte) error {
 	b = bytes.TrimSpace(b)
 	if len(b) == 0 || b[0] != '"' {
@@ -77,7 +78,7 @@ func (id *ID) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// MarshalJSON escribe el id como cadena decimal.
+// MarshalJSON writes the id as a decimal string.
 func (id ID) MarshalJSON() ([]byte, error) {
 	if id < 0 {
 		return nil, fmt.Errorf("jsonx: id negativo %d: %w", int64(id), ErrID)
@@ -88,11 +89,11 @@ func (id ID) MarshalJSON() ([]byte, error) {
 	return append(out, '"'), nil
 }
 
-// String devuelve el id en decimal, como viaja en el JSON y en las rutas.
+// String returns the id in decimal, as it travels in the JSON and in routes.
 func (id ID) String() string { return strconv.FormatInt(int64(id), 10) }
 
-// ParseID lee un id decimal (el de una ruta como /v1/characters/{id} o el de un cuerpo): solo
-// dígitos, sin signo ni ceros a la izquierda, de 0 a 2^63 − 1.
+// ParseID reads a decimal id (from a route like /v1/characters/{id} or from a body): digits only,
+// without sign or leading zeros, from 0 to 2^63 - 1.
 func ParseID(s string) (ID, error) {
 	if len(s) == 0 || len(s) > 19 || (len(s) > 1 && s[0] == '0') {
 		return 0, ErrID
@@ -109,8 +110,8 @@ func ParseID(s string) (ID, error) {
 	return ID(v), nil
 }
 
-// parseIntNumber analiza un número JSON exacto: parte entera, decimales y exponente, sin pasar por
-// float64 (que redondearía 9007199254740993 a 9007199254740992).
+// parseIntNumber parses an exact JSON number: integer part, decimals and exponent, without going
+// through float64 (which would round 9007199254740993 to 9007199254740992).
 func parseIntNumber(b []byte) (int64, error) {
 	b = bytes.TrimSpace(b)
 	if len(b) == 0 || len(b) > maxNumberLen {
@@ -126,7 +127,7 @@ func parseIntNumber(b []byte) (int64, error) {
 	for intEnd < len(s) && isDigit(s[intEnd]) {
 		intEnd++
 	}
-	// Gramática de JSON: al menos un dígito y sin ceros a la izquierda (salvo el propio 0).
+	// JSON grammar: at least one digit and no leading zeros (except 0 itself).
 	if intEnd == 0 || (intEnd > 1 && s[0] == '0') {
 		return 0, ErrInt
 	}
@@ -160,7 +161,7 @@ func parseIntNumber(b []byte) (int64, error) {
 			if !isDigit(c) {
 				return 0, ErrInt
 			}
-			// Con maxNumberLen el exponente no pasa de 62 dígitos; se satura para no desbordar.
+			// With maxNumberLen the exponent does not exceed 62 digits; it saturates so as not to overflow.
 			if e < 1_000_000 {
 				e = e*10 + int(c-'0')
 			}
@@ -174,7 +175,7 @@ func parseIntNumber(b []byte) (int64, error) {
 	if len(rest) != 0 {
 		return 0, ErrInt
 	}
-	// Quita los ceros a la izquierda (de «0.5») y normaliza los de la derecha al exponente.
+	// Strip the leading zeros (from "0.5") and normalize the trailing ones into the exponent.
 	for len(digits) > 1 && digits[0] == '0' {
 		digits = digits[1:]
 	}
@@ -186,7 +187,7 @@ func parseIntNumber(b []byte) (int64, error) {
 		exp++
 	}
 	if exp < 0 {
-		// Quedan cifras significativas detrás de la coma: 4.5, 0.1.
+		// Significant digits remain after the decimal point: 4.5, 0.1.
 		return 0, ErrInt
 	}
 	if len(digits)+exp > 16 {
@@ -210,8 +211,8 @@ func parseIntNumber(b []byte) (int64, error) {
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
-// Decode lee de r un único valor JSON en v, estricto: un campo desconocido, un tipo que no casa o
-// algo detrás del valor (salvo espacios) son errores.
+// Decode reads a single JSON value from r into v, strictly: an unknown field, a mismatched type or
+// anything after the value (except whitespace) are errors.
 func Decode(r io.Reader, v any) error {
 	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
@@ -228,7 +229,7 @@ func Decode(r io.Reader, v any) error {
 	return nil
 }
 
-// DecodeBytes es [Decode] sobre un cuerpo ya leído.
+// DecodeBytes is [Decode] over a body that has already been read.
 func DecodeBytes(b []byte, v any) error {
 	return Decode(bytes.NewReader(b), v)
 }

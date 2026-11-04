@@ -1,37 +1,39 @@
 class_name ProgressionRulesExport
 extends RefCounted
-## Las reglas del juego que necesita la plataforma en Go, en un solo archivo:
+## The game rules the Go platform needs, in a single file:
 ## [code]platform/internal/gamedata/progression_rules.json[/code] (docs/progresion.md §13.4,
-## docs/plataforma.md §4.4). La plataforma lo incrusta con [code]//go:embed[/code] y valida con él lo
-## mismo que la simulación: los nombres de personaje (con [NameRules]) y, con progresion.md, razas,
-## apariencia, plantillas de inicio, objetos, curva de niveles, monedas, motivos y contenedores.
+## docs/plataforma.md §4.4). The platform embeds it with [code]//go:embed[/code] and uses it to
+## validate the same things as the simulation: character names (with [NameRules]) and, with
+## progresion.md, races, appearance, starter templates, items, level curve, currencies, reasons and
+## containers.
 ## [br][br]
-## [method build] es el único generador; [code]tools/progression/export_rules.gd[/code] escribe el
-## archivo y [code]tests/test_progression_rules_export.gd[/code] comprueba que el del repositorio
-## coincide con [method build]. Si una regla cambia, se vuelve a exportar y el archivo nuevo se sube
-## con el cambio.
+## [method build] is the only generator; [code]tools/progression/export_rules.gd[/code] writes the
+## file and [code]tests/test_progression_rules_export.gd[/code] checks that the one in the
+## repository matches [method build]. If a rule changes, it is re-exported and the new file is
+## committed with the change.
 ## [br][br]
-## Secciones de docs/plataforma.md: [code]protocol_version[/code] (el
-## [code]ELDMARK_MIN_PROTOCOL[/code] por defecto en dev y test) y [code]names[/code]. De
-## docs/progresion.md: [code]races[/code] y [code]appearance[/code] ([AppearanceCatalog]),
-## [code]level_curve[/code] ([LevelCurve]), [code]currencies[/code] ([Currency]), [code]reasons[/code]
-## ([EconomyReason] y [constant OP_KINDS]), [code]containers[/code] ([InventoryState]) y [code]combat[/code]
-## ([CombatRules]), de P3 (P2 las hizo leer de sus clases sin cambiar el archivo); [code]items[/code]
-## ([ItemDatabase]) y [code]starter_templates[/code] (las [EquipmentTemplate] elegibles), de P1.
-## Sin estado, reloj ni azar: dos llamadas dan lo mismo.
+## Sections from docs/plataforma.md: [code]protocol_version[/code] (the default
+## [code]ELDMARK_MIN_PROTOCOL[/code] in dev and test) and [code]names[/code]. From
+## docs/progresion.md: [code]races[/code] and [code]appearance[/code] ([AppearanceCatalog]),
+## [code]level_curve[/code] ([LevelCurve]), [code]currencies[/code] ([Currency]),
+## [code]reasons[/code] ([EconomyReason] and [constant OP_KINDS]), [code]containers[/code]
+## ([InventoryState]) and [code]combat[/code] ([CombatRules]), from P3 (P2 made them read from
+## their classes without changing the file); [code]items[/code] ([ItemDatabase]) and
+## [code]starter_templates[/code] (the selectable [EquipmentTemplate]s), from P1. No state, clock
+## or randomness: two calls give the same result.
 
-## Ruta del archivo, relativa a la raíz del proyecto.
+## Path of the file, relative to the project root.
 const OUTPUT_PATH: String = "res://platform/internal/gamedata/progression_rules.json"
 
-## Tipos de operación ([code]economy_ops.kind[/code], [code]EconomyOp.Kind[/code] del servidor, §5.3);
-## del 9 al 15, reservados. [code]EconomyOp[/code] (progresion.md P5a) tiene que dar los mismos números.
+## Operation kinds ([code]economy_ops.kind[/code], server-side [code]EconomyOp.Kind[/code], §5.3);
+## 9 to 15, reserved. [code]EconomyOp[/code] (progresion.md P5a) must give the same numbers.
 const OP_KINDS: Dictionary = {
 	"player": 1, "gameplay": 2, "starter_kit": 3, "gm": 4, "reversal": 5, "migration": 6, "trade": 7,
 	"mail": 8,
 }
 
 
-## Las reglas exportadas, una clave por sección.
+## The exported rules, one key per section.
 static func build() -> Dictionary:
 	return {
 		"protocol_version": NetProtocol.PROTOCOL_VERSION,
@@ -48,15 +50,14 @@ static func build() -> Dictionary:
 	}
 
 
-## El texto del archivo: [method build] en JSON con las claves ordenadas, tabuladores y un salto de
-## línea al final.
+## The text of the file: [method build] as JSON with sorted keys, tabs and a trailing newline.
 static func to_json() -> String:
 	return JSON.stringify(build(), "\t", true) + "\n"
 
 
-## Sección [code]names[/code]: lo que [NameRules] necesita para [method NameRules.validate] y
-## [method NameRules.normalize_key]. [code]reserved[/code] va tal como está escrito en
-## [constant NameRules.RESERVED]: la plataforma lo normaliza con la misma regla.
+## [code]names[/code] section: what [NameRules] needs for [method NameRules.validate] and
+## [method NameRules.normalize_key]. [code]reserved[/code] goes exactly as written in
+## [constant NameRules.RESERVED]: the platform normalizes it with the same rule.
 static func _names() -> Dictionary:
 	var folded: Dictionary = {}
 	for letter: String in NameRules.FOLDED:
@@ -73,9 +74,9 @@ static func _names() -> Dictionary:
 	}
 
 
-## Sección [code]races[/code] (§7.1, §7.2): los pueblos en el orden del catálogo (la posición es el byte
-## 0 − 1), con su reino en el código de [enum NetProtocol.Realm] (1–3), los índices permitidos de cada
-## lista y [code]allows_no_hair[/code] y [code]allows_no_beard[/code].
+## [code]races[/code] section (§7.1, §7.2): the peoples in catalog order (the position is byte
+## 0 − 1), with their realm as an [enum NetProtocol.Realm] code (1–3), the allowed indices of each
+## list and [code]allows_no_hair[/code] and [code]allows_no_beard[/code].
 static func _races() -> Array:
 	var result: Array = []
 	for race: RaceDefinition in AppearanceCatalog.shared().races:
@@ -91,9 +92,10 @@ static func _races() -> Array:
 	return result
 
 
-## Sección [code]appearance[/code] (§7.2): de cada lista de piezas con forma (cabezas, peinados, barbas y
-## marcas), sus ids y cuerpos compatibles (vacío = todos); de los cuerpos y los colores, cuántos hay. Con
-## esto y [code]races[/code], Go aplica la regla entera de [method CharacterAppearance.validate].
+## [code]appearance[/code] section (§7.2): for each list of shaped parts (heads, hairstyles, beards
+## and marks), their ids and compatible bodies (empty = all); for bodies and colors, how many there
+## are. With this and [code]races[/code], Go applies the whole rule of
+## [method CharacterAppearance.validate].
 static func _appearance() -> Dictionary:
 	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
 	var result: Dictionary = {
@@ -110,7 +112,7 @@ static func _appearance() -> Dictionary:
 	return result
 
 
-## Sección [code]level_curve[/code] (§6.1): la tabla tal cual.
+## [code]level_curve[/code] section (§6.1): the table as is.
 static func _level_curve() -> Dictionary:
 	var curve: LevelCurve = LevelCurve.shared()
 	return {
@@ -120,7 +122,7 @@ static func _level_curve() -> Dictionary:
 	}
 
 
-## Sección [code]currencies[/code] (§5.1): código, id y tope de cada moneda ([Currency]).
+## [code]currencies[/code] section (§5.1): code, id and cap of each currency ([Currency]).
 static func _currencies() -> Array:
 	var result: Array = []
 	for code: int in Currency.codes():
@@ -128,7 +130,7 @@ static func _currencies() -> Array:
 	return result
 
 
-## Sección [code]reasons[/code] (§5.3): rangos y motivos ([EconomyReason]) y tipos de operación
+## [code]reasons[/code] section (§5.3): ranges and reasons ([EconomyReason]) and operation kinds
 ## ([constant OP_KINDS]).
 static func _reasons() -> Dictionary:
 	var codes: Dictionary = {}
@@ -141,7 +143,7 @@ static func _reasons() -> Dictionary:
 	}
 
 
-## Sección [code]containers[/code] (§4.1): la bolsa, el equipo y los contenedores abiertos en la fase 5
+## [code]containers[/code] section (§4.1): the bag, equipment and the containers open in phase 5
 ## ([InventoryState]).
 static func _containers() -> Dictionary:
 	var open: Array = []
@@ -162,14 +164,14 @@ static func _containers() -> Dictionary:
 	}
 
 
-## Sección [code]combat[/code]: la vida máxima, para la comprobación S6 de [code]health[/code].
+## [code]combat[/code] section: the maximum health, for the S6 check of [code]health[/code].
 static func _combat() -> Dictionary:
 	return {"health_max": CombatCatalog.rules().health_max}
 
 
-## Sección [code]items[/code] (§2.1, §13.4): por definición, en orden de net id (alfabético), lo que la
-## plataforma comprueba en un guardado (S5): id, categoría y ranura (los números de [ItemDefinition]), pila,
-## durabilidad y nivel requerido.
+## [code]items[/code] section (§2.1, §13.4): per definition, in net id order (alphabetical), what
+## the platform checks in a save (S5): id, category and slot (the numbers from [ItemDefinition]),
+## stack, durability and required level.
 static func _items() -> Array:
 	var db: ItemDatabase = ItemDatabase.shared()
 	var result: Array = []
@@ -186,10 +188,11 @@ static func _items() -> Array:
 	return result
 
 
-## Sección [code]starter_templates[/code] (§2.5, §13.4): las [EquipmentTemplate] con
-## [code]selectable = true[/code], en el orden de su id, con los objetos de sus armas en orden de ranura
-## ([method ItemDatabase.for_ref]; un arma sin objeto sale como cadena vacía, y la plataforma rechaza el
-## archivo). Con ellas la plataforma valida [code]starter_template_id[/code] al crear el personaje.
+## [code]starter_templates[/code] section (§2.5, §13.4): the [EquipmentTemplate]s with
+## [code]selectable = true[/code], in id order, with the items of their weapons in slot order
+## ([method ItemDatabase.for_ref]; a weapon without an item comes out as an empty string, and the
+## platform rejects the file). With them the platform validates [code]starter_template_id[/code]
+## when creating the character.
 static func _starter_templates() -> Array:
 	var db: ItemDatabase = ItemDatabase.shared()
 	var result: Array = []
@@ -204,7 +207,7 @@ static func _starter_templates() -> Array:
 	return result
 
 
-## Un [PackedInt32Array] como [Array] de enteros (JSON con números enteros).
+## A [PackedInt32Array] as an [Array] of integers (JSON with whole numbers).
 static func _ints(values: PackedInt32Array) -> Array:
 	var result: Array = []
 	for value: int in values:

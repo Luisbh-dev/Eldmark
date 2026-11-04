@@ -1,30 +1,30 @@
 class_name CombatDemoScript
 extends RefCounted
-## Guion de combate de la demo del sandbox (CMB-06) y de la vista previa del animador de combate:
-## el combo de tres golpes ligeros, un golpe fuerte cargado, un bloqueo y una esquiva, pulsados en el
-## tick justo para que cada golpe enlace con el siguiente.
+## Combat script for the sandbox demo (CMB-06) and the combat animator preview:
+## the three-hit light combo, a charged heavy attack, a block and a dodge, pressed on the
+## exact tick so that each hit chains into the next.
 ## [br][br]
-## Todo sale de los datos de combate ([CombatCatalog]): las duraciones, la ventana de enlace del combo
-## y la carga mínima del fuerte, así que el guion sigue valiendo si se ajustan los [code].tres[/code].
-## Los ticks son relativos al principio del guion (el 0 es el primero). [method buttons_at] devuelve los
-## botones de [PlayerInput] de cada tick.
+## Everything comes from the combat data ([CombatCatalog]): the durations, the combo chain window
+## and the heavy attack's minimum charge, so the script remains valid if the [code].tres[/code] files are tuned.
+## Ticks are relative to the start of the script (0 is the first). [method buttons_at] returns the
+## [PlayerInput] buttons of each tick.
 ## [br][br]
-## Guion (la espera entre golpes es la mínima, salvo donde se dice):
-## [br]1. Ligero 1, ligero 2 y ligero 3: se pulsa PRIMARY en medio de la ventana de enlace de cada uno.
-## [br]2. Fuerte: PRIMARY mantenido ([constant HEAVY_EXTRA_HOLD_TICKS] ticks más allá de la carga mínima) y soltado.
-## [br]3. Bloqueo: BLOCK mantenido [constant BLOCK_HOLD_TICKS] ticks.
-## [br]4. Esquiva: DODGE sin dirección (hacia atrás).
+## Script (the wait between hits is the minimum, except where stated):
+## [br]1. Light 1, light 2 and light 3: PRIMARY is pressed in the middle of each one's chain window.
+## [br]2. Heavy: PRIMARY held ([constant HEAVY_EXTRA_HOLD_TICKS] ticks beyond the minimum charge) and released.
+## [br]3. Block: BLOCK held [constant BLOCK_HOLD_TICKS] ticks.
+## [br]4. Dodge: DODGE with no direction (backwards).
 
-## Ticks que se mantiene PRIMARY tras la carga mínima del fuerte.
+## Ticks PRIMARY is held after the heavy attack's minimum charge.
 const HEAVY_EXTRA_HOLD_TICKS: int = 12
-## Ticks de bloqueo.
+## Block ticks.
 const BLOCK_HOLD_TICKS: int = 30
-## Ticks que dura cada pulsación de PRIMARY del combo (menos que la carga: no la convierte).
+## Ticks each PRIMARY press of the combo lasts (less than the charge: it does not turn it into one).
 const TAP_TICKS: int = 3
-## Ticks de espera entre un tramo y el siguiente.
+## Ticks to wait between one segment and the next.
 const GAP_TICKS: int = 5
 
-# Tramos [desde, hasta) -> botones.
+# Segments [from, to) -> buttons.
 var _spans: Array[Vector3i] = []
 var _length: int = 0
 var _heavy_release_tick: int = 0
@@ -34,9 +34,9 @@ var _dodge_tick: int = 0
 func _init() -> void:
 	var weapon: WeaponTicks = CombatCatalog.weapon(CombatCatalog.default_weapon_id())
 	var cursor: int = 0
-	# Combo: el primer ligero se pulsa al empezar; cada uno de los demás empieza solo, al acabar la
-	# recuperación del anterior, porque se pulsa PRIMARY dentro de su ventana de enlace (el último
-	# tercio de la ventana).
+	# Combo: the first light attack is pressed at the start; each of the others starts by itself, when the
+	# previous one's recovery ends, because PRIMARY is pressed within its chain window (the last
+	# third of the window).
 	_spans.append(Vector3i(cursor, cursor + TAP_TICKS, PlayerInput.PRIMARY))
 	for index: int in weapon.light_ids.size():
 		var attack: AttackTicks = CombatCatalog.attack(weapon.light_ids[index])
@@ -45,23 +45,23 @@ func _init() -> void:
 			_spans.append(Vector3i(press, press + TAP_TICKS, PlayerInput.PRIMARY))
 		cursor += attack.total_ticks
 	cursor += GAP_TICKS
-	# Fuerte cargado.
+	# Charged heavy attack.
 	var heavy: AttackTicks = CombatCatalog.attack(weapon.heavy_id)
 	var hold: int = heavy.charge_min_ticks + HEAVY_EXTRA_HOLD_TICKS
 	_spans.append(Vector3i(cursor, cursor + hold, PlayerInput.PRIMARY))
 	_heavy_release_tick = cursor + hold
 	cursor += hold + heavy.total_ticks + GAP_TICKS
-	# Bloqueo.
+	# Block.
 	_spans.append(Vector3i(cursor, cursor + BLOCK_HOLD_TICKS, PlayerInput.BLOCK))
 	cursor += BLOCK_HOLD_TICKS + GAP_TICKS
-	# Esquiva.
+	# Dodge.
 	_dodge_tick = cursor
 	_spans.append(Vector3i(cursor, cursor + 1, PlayerInput.DODGE))
 	cursor += weapon.dodge.duration_ticks + GAP_TICKS
 	_length = cursor
 
 
-## Botones de [PlayerInput] que se pulsan en el tick [param tick] del guion (0 fuera de él).
+## [PlayerInput] buttons pressed at tick [param tick] of the script (0 outside it).
 func buttons_at(tick: int) -> int:
 	var buttons: int = 0
 	for span: Vector3i in _spans:
@@ -70,21 +70,21 @@ func buttons_at(tick: int) -> int:
 	return buttons
 
 
-## Ticks del guion entero.
+## Ticks of the whole script.
 func get_length() -> int:
 	return _length
 
 
-## Tick en el que se suelta el golpe fuerte (el primero tras la carga).
+## Tick at which the heavy attack is released (the first after the charge).
 func get_heavy_release_tick() -> int:
 	return _heavy_release_tick
 
 
-## Tick en el que se pulsa la esquiva.
+## Tick at which the dodge is pressed.
 func get_dodge_tick() -> int:
 	return _dodge_tick
 
 
-## true cuando ya se ha ejecutado el último tick del guion.
+## true once the script's last tick has been executed.
 func is_finished(tick: int) -> bool:
 	return tick >= _length

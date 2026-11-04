@@ -28,7 +28,7 @@ func TestCreateAndList(t *testing.T) {
 	if len(chars) != 1 || chars[0].(map[string]any)["name"] != "Aneira" {
 		t.Fatalf("lista: %s", list.raw)
 	}
-	// La identidad en la base, la clave del nombre, el reino de la cuenta y el apunte del límite.
+	// The identity in the database, the name's key, the account's realm and the limit entry.
 	if h.count(`select count(*) from characters where character_id = $1 and name_key = 'aneira' and realm = 1
 		and account_id = $2`, id, p.id) != 1 ||
 		h.count(`select count(*) from character_names where world_id = 1 and name_key = 'aneira' and status = 'active'
@@ -45,7 +45,7 @@ func TestCreateAndList(t *testing.T) {
 	if realms, _ := account.body["realms"].(map[string]any); realms["1"] != "vardheim" {
 		t.Errorf("GET /v1/account: %s", account.raw)
 	}
-	// Otra cuenta no ve los personajes de esta.
+	// Another account does not see this one's characters.
 	other := h.newPlayer("otra@example.org")
 	if l := h.list(other); l.body["used"] != 0.0 || l.body["realm"] != nil {
 		t.Errorf("lista de otra cuenta: %s", l.raw)
@@ -65,11 +65,11 @@ func TestUnknownWorldAndBadIDs(t *testing.T) {
 		"/v1/characters/99999/enter"} {
 		h.expect(h.do(call{method: "POST", path: path, token: p.token}), http.StatusNotFound, "not_found")
 	}
-	// Sin sesión, 401; sin protocolo… (lo prueba accounts).
+	// Without a session, 401; without a protocol... (accounts tests that).
 	h.expect(h.do(call{method: "GET", path: "/v1/worlds/1/characters"}), http.StatusUnauthorized, "unauthorized")
 }
 
-// «Anéira» frente a «ANEIRA» y «Aneira»: el mismo nombre por tildes y mayúsculas (SOC-13).
+// "Anéira" against "ANEIRA" and "Aneira": the same name by accents and capitalization (SOC-13).
 func TestNameCollisionsByAccentAndCase(t *testing.T) {
 	h := newHarness(t)
 	a := h.newPlayer("a@example.org")
@@ -82,7 +82,7 @@ func TestNameCollisionsByAccentAndCase(t *testing.T) {
 			t.Errorf("name-check %s: %s", name, res.raw)
 		}
 	}
-	// La misma cuenta tampoco.
+	// The same account neither.
 	h.expect(h.create(a, "Aneira", "vardheim"), http.StatusConflict, "name_taken")
 	res := h.nameCheck(b, "Bruno")
 	if res.body["available"] != true || res.body["code"] != "" {
@@ -91,8 +91,8 @@ func TestNameCollisionsByAccentAndCase(t *testing.T) {
 	h.mustCreate(b, "Bruno", "solmarch")
 }
 
-// Dos creaciones a la vez con el mismo nombre: una gana y las demás reciben name_taken, nunca un
-// 500 (SOC-13).
+// Two simultaneous creations with the same name: one wins and the others receive name_taken, never
+// a 500 (SOC-13).
 func TestConcurrentCreationsWithTheSameName(t *testing.T) {
 	h := newHarness(t)
 	const n = 8
@@ -149,7 +149,7 @@ func TestNameInvalidAndBlacklist(t *testing.T) {
 			t.Errorf("name-check %s: %s", name, check.raw)
 		}
 	}
-	// La lista negra (la edita admin names block, P7a) se compara con la clave.
+	// The blacklist (edited by admin names block, P7a) is compared against the key.
 	h.exec(`insert into name_blacklist (name_key, reason) values ('malnombre', 'ofensivo')`)
 	for _, name := range []string{"Malnombre", "MALNOMBRE", "Málnombre"} {
 		res := h.create(p, name, "vardheim")
@@ -158,12 +158,12 @@ func TestNameInvalidAndBlacklist(t *testing.T) {
 			t.Errorf("%s: %s", name, res.raw)
 		}
 	}
-	// Ninguno gastó el límite diario ni dejó filas.
+	// None spent the daily limit or left rows.
 	if h.count(`select count(*) from characters`) != 0 || h.count(`select count(*) from character_names`) != 0 {
 		t.Error("una creación rechazada dejó filas")
 	}
 	h.mustCreate(p, "Valido", "vardheim")
-	// name-check sin nombre: 400.
+	// name-check without a name: 400.
 	h.expect(h.do(call{method: "GET", path: "/v1/worlds/1/name-check", token: p.token}), http.StatusBadRequest, "validation")
 }
 
@@ -182,7 +182,7 @@ func TestRealmLockedClosedAndUnlocked(t *testing.T) {
 	if res.errField("realm") != "invalid" {
 		t.Errorf("reino desconocido: %s", res.raw)
 	}
-	// Borrar el último vivo: el reino se libera a los 30 días.
+	// Deleting the last living one: the realm is freed after 30 days.
 	h.expect(h.remove(p, id, "aneira"), http.StatusOK, "")
 	res = h.create(p, "Brenna", "solmarch")
 	h.expect(res, http.StatusConflict, "realm_locked")
@@ -193,7 +193,7 @@ func TestRealmLockedClosedAndUnlocked(t *testing.T) {
 	if l := h.list(p); l.body["unlock_at"] != float64(unlock) {
 		t.Errorf("la lista dice unlock_at: %s", l.raw)
 	}
-	// Otro de Vardheim sí se puede crear, y deja de estar por liberarse.
+	// Another one from Vardheim can be created, and it is no longer about to be freed.
 	h.advance(day, p)
 	other := h.mustCreate(p, "Corvo", "vardheim")
 	if l := h.list(p); l.body["unlock_at"] != nil || l.body["realm"] != "vardheim" {
@@ -210,7 +210,8 @@ func TestRealmLockedClosedAndUnlocked(t *testing.T) {
 	}
 }
 
-// Huecos: 6 más los derechos; un borrado en plazo ocupa hueco y uno fuera de plazo no.
+// Slots: 6 plus the entitlements; a deletion within the window occupies a slot and one outside the
+// window does not.
 func TestSlots(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -218,39 +219,40 @@ func TestSlots(t *testing.T) {
 	var ids []int64
 	for i := range 6 {
 		if i == 5 {
-			h.advance(day, p) // el límite de 5 creaciones al día
+			h.advance(day, p) // the limit of 5 creations per day
 		}
 		ids = append(ids, h.mustCreate(p, names[i], "vardheim"))
 	}
 	h.expect(h.create(p, "Siete", "vardheim"), http.StatusConflict, "slots_full")
-	h.advance(2*day, p) // más de 24 h de vida: el nombre se reserva 30 días más
+	h.advance(2*day, p) // more than 24 h of life: the name is reserved 30 days more
 	h.expect(h.remove(p, ids[0], "Uno"), http.StatusOK, "")
 	res := h.create(p, "Siete", "vardheim")
 	h.expect(res, http.StatusConflict, "slots_full")
 	if l := h.list(p); l.body["used"] != 6.0 || len(l.body["characters"].([]any)) != 6 {
 		t.Fatalf("el borrado en plazo ocupa hueco y sale en la lista: %s", l.raw)
 	}
-	// Un derecho de un hueco más (PRG-41).
+	// An entitlement for one more slot (PRG-41).
 	h.exec(`insert into entitlements (account_id, world_id, kind, quantity, source) values ($1, 1, 'character_slots', 1, 'grant')`, p.id)
 	h.mustCreate(p, "Siete", "vardheim")
 	if l := h.list(p); l.body["slots"] != 7.0 || l.body["used"] != 7.0 {
 		t.Fatalf("huecos con el derecho: %s", l.raw)
 	}
 	h.expect(h.create(p, "Ocho", "vardheim"), http.StatusConflict, "slots_full")
-	// Pasado el plazo de restaurar, el borrado deja de ocupar (aunque aún no se haya purgado).
+	// Once the restore window has passed, the deletion stops occupying a slot (even if it has not yet
+	// been purged).
 	h.advance(7*day+time.Second, p)
 	h.mustCreate(p, "Ocho", "vardheim")
 	if l := h.list(p); l.body["used"] != 7.0 {
 		t.Fatalf("el borrado fuera de plazo no ocupa ni sale: %s", l.raw)
 	}
-	// Un derecho caducado o revocado no cuenta.
+	// An expired or revoked entitlement does not count.
 	h.exec(`update entitlements set revoked_at = $1 where account_id = $2`, h.clock.Now(), p.id)
 	if l := h.list(p); l.body["slots"] != 6.0 {
 		t.Errorf("derecho revocado: %s", l.raw)
 	}
 }
 
-// El sexto personaje creado en un día: 429 con lo que falta.
+// The sixth character created in a day: 429 with the time remaining.
 func TestDailyCreateLimit(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -261,7 +263,7 @@ func TestDailyCreateLimit(t *testing.T) {
 	}
 	res := h.create(p, "Seis", "vardheim")
 	h.expect(res, http.StatusTooManyRequests, "rate_limited")
-	// La primera salió hace 4 h: faltan 20 h.
+	// The first one was 4 h ago: 20 h remain.
 	if res.errValue("retry_after_s") != float64(20*3600) || res.header.Get("Retry-After") != "72000" {
 		t.Fatalf("retry_after_s: %s %v", res.raw, res.header)
 	}
@@ -271,8 +273,8 @@ func TestDailyCreateLimit(t *testing.T) {
 	h.mustCreate(p, "Seis", "vardheim")
 }
 
-// Raza de otro reino, plantilla que no vale y apariencia que no son 8 B: 400 validation con sus
-// campos (la validación provisional, §4.4 paso 5).
+// Race from another realm, template that is not valid and appearance that is not 8 B: 400
+// validation with their fields (the provisional validation, §4.4 step 5).
 func TestCreateValidation(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -309,7 +311,7 @@ func TestCreateValidation(t *testing.T) {
 	body["world_id"] = 1
 	h.expect(h.do(call{method: "POST", path: "/v1/worlds/1/characters", token: p.token, body: body}),
 		http.StatusBadRequest, "bad_request")
-	// Nada de esto creó filas ni gastó el límite.
+	// None of this created rows or spent the limit.
 	if h.count(`select count(*) from characters`) != 0 || h.count(`select count(*) from auth_events where kind = 'character_create'`) != 0 {
 		t.Error("una creación rechazada dejó filas")
 	}
@@ -329,7 +331,7 @@ func TestPendingDeletionAndSanctionedAccounts(t *testing.T) {
 	h.expect(h.do(call{method: "DELETE", path: "/v1/account/deletion", token: p.token}), http.StatusNoContent, "")
 	h.mustCreate(p, "Aneira", "vardheim")
 
-	// Una cuenta suspendida solo tiene la sesión de privacidad: las rutas de personajes dan 403.
+	// A suspended account only has the privacy session: the character routes give 403.
 	s := h.newPlayer("sancionada@example.org")
 	h.exec(`insert into sanctions (account_id, kind, reason, starts_at, ends_at) values ($1, 'suspension', 'insultos', $2, $3)`,
 		s.id, h.clock.Now(), h.clock.Now().Add(day))
@@ -359,8 +361,8 @@ func TestNameCheckRateLimit(t *testing.T) {
 	h.expect(h.nameCheck(p, "Ana"), http.StatusOK, "")
 }
 
-// Cuentas distintas que crean a la vez con nombres distintos no se estorban: ningún 503 por
-// conflictos de serialización.
+// Different accounts creating at the same time with different names do not get in each other's way:
+// no 503 from serialization conflicts.
 func TestConcurrentCreationsOfDifferentAccounts(t *testing.T) {
 	h := newHarness(t)
 	const n = 8

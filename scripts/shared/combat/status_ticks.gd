@@ -1,41 +1,41 @@
 class_name StatusTicks
 extends RefCounted
-## Un [StatusEffectDefinition] ya convertido a ticks por [CombatCatalog] (docs/habilidades.md,
-## secciones 2.1 y 4.3).
+## A [StatusEffectDefinition] already converted to ticks by [CombatCatalog] (docs/habilidades.md,
+## sections 2.1 and 4.3).
 
-## ID u8 del catálogo (1..n por orden alfabético del nombre; 0 = ninguno).
+## Catalog u8 ID (1..n in alphabetical order of the name; 0 = none).
 var id: int = 0
-## El [member StatusEffectDefinition.id] original.
+## The original [member StatusEffectDefinition.id].
 var name: StringName = &""
 ## [enum StatusEffectDefinition.Kind].
 var kind: int = 0
-## Predicho: escala de la velocidad (SLOW y ROOT; 1 en los demás).
+## Predicted: speed scale (SLOW and ROOT; 1 in the others).
 var move_speed_scale: float = 1.0
 
-# Solo servidor (no entran en la huella).
+# Server only (not part of the fingerprint).
 var duration_ticks: int = 0
 ## [enum StatusEffectDefinition.Stacking].
 var stacking: int = 0
 var max_stacks: int = 1
-## Ticks entre pulsos (≥ 1).
+## Ticks between pulses (≥ 1).
 var pulse_ticks: int = 0
 var pulse_amount: int = 0
 var damage_type: int = 0
 var magnitude: float = 0.0
 
 
-## true si cambia la velocidad (ocupa una ranura de efecto de movimiento en [CombatState]).
+## true if it changes speed (it occupies a movement effect slot in [CombatState]).
 func is_movement() -> bool:
 	return kind == StatusEffectDefinition.Kind.SLOW or kind == StatusEffectDefinition.Kind.ROOT
 
 
-## true si hace daño o cura a pulsos.
+## true if it deals damage or heals in pulses.
 func has_pulses() -> bool:
 	return pulse_amount > 0 and (kind == StatusEffectDefinition.Kind.DAMAGE_OVER_TIME \
 			or kind == StatusEffectDefinition.Kind.HEAL_OVER_TIME)
 
 
-## true si perjudica a quien lo lleva (para el borde de los iconos y el orden de las placas).
+## true if it harms whoever carries it (for the icon border and the nameplate order).
 func is_harmful() -> bool:
 	match kind:
 		StatusEffectDefinition.Kind.HEAL_OVER_TIME, StatusEffectDefinition.Kind.DAMAGE_UP:

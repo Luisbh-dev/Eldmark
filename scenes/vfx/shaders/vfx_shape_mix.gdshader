@@ -1,15 +1,16 @@
 shader_type spatial;
-// Chorro de salpicadura en secuencia (impacto en carne) sobre un quad, con mezcla NORMAL.
+// Splash jet in sequence (flesh impact) on a quad, with NORMAL blending.
 //
-// La textura es un atlas de [variants] filas (variantes del chorro) por [frames] columnas (los
-// fotogramas de la secuencia): R es el sombreado, G el brillo especular y A la silueta. El chorro sale del
-// centro de la casilla hacia +X del nodo (la dirección del golpe: [VfxEffect.play_at]); el quad se
-// desplaza [pivot] metros para que el arranque del chorro caiga en el punto de impacto. Gira alrededor de
-// su eje X para mirar a la cámara (billboard cilíndrico), así se ve desde cualquier lado.
+// The texture is an atlas of [variants] rows (jet variants) by [frames] columns (the sequence's
+// frames): R is the shading, G the specular highlight and A the silhouette. The jet leaves from
+// the center of the cell toward the node's +X (the hit direction: [VfxEffect.play_at]); the quad
+// is shifted by [pivot] meters so that the start of the jet falls on the impact point. It rotates
+// around its X axis to face the camera (cylindrical billboard), so it is seen from any side.
 //
-// El fotograma sale de [progress], el parámetro de instancia que mueve el [VfxEffect]. [variant] y [flip]
-// (la fila y si el chorro se refleja) los pone el [VfxEffect] en cada disparo: con cuatro filas y el
-// reflejo salen ocho chorros distintos. [fade_start] es la fracción de la vida en la que se apaga.
+// The frame comes from [progress], the instance parameter that [VfxEffect] drives. [variant] and
+// [flip] (the row and whether the jet is mirrored) are set by [VfxEffect] on each shot: with four
+// rows and the mirroring, eight distinct jets result. [fade_start] is the fraction of its life at
+// which it fades out.
 render_mode blend_mix, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
@@ -23,7 +24,7 @@ uniform float spec_strength = 0.7;
 uniform vec3 spec_color : source_color = vec3(1.0, 0.82, 0.78);
 uniform float fade_start = 0.7;
 uniform float opacity = 0.95;
-// Cuánto se mezclan dos fotogramas contiguos (0 = a saltos, 1 = fundido completo).
+// How much two adjacent frames blend (0 = stepped, 1 = full crossfade).
 uniform float frame_blend = 0.3;
 instance uniform float progress : hint_range(0.0, 1.0) = 0.0;
 instance uniform vec4 tint : source_color = vec4(1.0);

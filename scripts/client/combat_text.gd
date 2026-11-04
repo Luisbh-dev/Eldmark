@@ -1,17 +1,17 @@
 class_name CombatText
 extends RefCounted
-## Textos en español del combate para la interfaz (pantalla de muerte, registro de bajas, barra de
-## acciones, iconos de estados, avisos de derribado, selector de plantillas): cómo se llama cada
-## ataque, habilidad, efecto, arma y plantilla del catálogo y la frase de «quién te derrotó y con qué».
+## Spanish combat texts for the UI (death screen, kill feed, action bar,
+## status icons, knockdown notices, template selector): what each attack, ability, effect,
+## weapon and template in the catalog is called, and the "who defeated you and with what" sentence.
 ## [br][br]
-## Desde el protocolo 6 los eventos traen una [b]fuente[/b] ([CombatSource]: ataque, habilidad, efecto,
-## remate o desangrado) en lugar de un id de ataque; [method source_label] la nombra. Los ataques
-## conservan su número (su fuente es su id), así que [method attack_label] sigue valiendo para ellos.
+## Since protocol 6 events carry a [b]source[/b] ([CombatSource]: attack, ability, effect,
+## execution or bleed-out) instead of an attack id; [method source_label] names it. Attacks
+## keep their number (their source is their id), so [method attack_label] still works for them.
 ## [br][br]
-## Las tablas van por el [b]nombre[/b] del recurso ([code]id[/code] de su [code].tres[/code]): los ids
-## numéricos del catálogo no son fijos (docs/habilidades.md, sección 2.2).
+## The tables go by the resource [b]name[/b] (the [code]id[/code] of its [code].tres[/code]): the
+## catalog's numeric ids are not fixed (docs/habilidades.md, section 2.2).
 
-## Nombre de cada ataque del catálogo ([member AttackDefinition.id]) tal como se lee tras «con».
+## Name of each catalog attack ([member AttackDefinition.id]) as read after "con" (with).
 const ATTACK_LABELS: Dictionary[StringName, String] = {
 	&"sword_light_1": "un tajo ligero",
 	&"sword_light_2": "un tajo ligero",
@@ -20,7 +20,7 @@ const ATTACK_LABELS: Dictionary[StringName, String] = {
 	&"bow_quick": "un disparo rápido",
 	&"bow_drawn": "un disparo tensado",
 }
-## Nombre de cada habilidad (y poción) tal como se lee tras «con».
+## Name of each ability (and potion) as read after "con" (with).
 const ABILITY_LABELS: Dictionary[StringName, String] = {
 	&"shield_bash": "un golpe de escudo",
 	&"shield_rush": "una embestida",
@@ -31,14 +31,14 @@ const ABILITY_LABELS: Dictionary[StringName, String] = {
 	&"potion_health": "una poción de vida",
 	&"potion_stamina": "una poción de resistencia",
 }
-## Nombre de cada efecto tal como se lee tras «con» (el daño de sus pulsos).
+## Name of each effect as read after "con" (with) (the damage of its pulses).
 const STATUS_LABELS: Dictionary[StringName, String] = {
 	&"bleed": "un sangrado",
 	&"slowed": "una ralentización",
 	&"rooted": "un enraizamiento",
 	&"potion_regen": "una curación",
 }
-## Título de cada habilidad (barra de acciones y su tooltip).
+## Title of each ability (action bar and its tooltip).
 const ABILITY_TITLES: Dictionary[StringName, String] = {
 	&"shield_bash": "Golpe de escudo",
 	&"shield_rush": "Embestida",
@@ -49,7 +49,7 @@ const ABILITY_TITLES: Dictionary[StringName, String] = {
 	&"potion_health": "Poción de vida",
 	&"potion_stamina": "Poción de resistencia",
 }
-## Descripción corta de cada habilidad para el tooltip.
+## Short description of each ability for the tooltip.
 const ABILITY_DESCRIPTIONS: Dictionary[StringName, String] = {
 	&"shield_bash": "Golpe imbloqueable que aturde al que tienes delante.",
 	&"shield_rush": "Avanzas 6 m y empujas a quien encuentres.",
@@ -60,44 +60,44 @@ const ABILITY_DESCRIPTIONS: Dictionary[StringName, String] = {
 	&"potion_health": "Recupera vida durante unos segundos. Un golpe mientras bebes la interrumpe sin gastarla.",
 	&"potion_stamina": "Recupera resistencia al acabar de beber. Un golpe mientras bebes la interrumpe sin gastarla.",
 }
-## Título de cada efecto (iconos de estados y su tooltip).
+## Title of each effect (status icons and their tooltip).
 const STATUS_TITLES: Dictionary[StringName, String] = {
 	&"bleed": "Sangrado",
 	&"slowed": "Ralentizado",
 	&"rooted": "Enraizado",
 	&"potion_regen": "Regeneración",
 }
-## Descripción corta de cada efecto para el tooltip.
+## Short description of each effect for the tooltip.
 const STATUS_DESCRIPTIONS: Dictionary[StringName, String] = {
 	&"bleed": "Pierdes vida cada segundo.",
 	&"slowed": "Te mueves más despacio.",
 	&"rooted": "No puedes moverte, saltar ni esquivar.",
 	&"potion_regen": "Recuperas vida cada medio segundo.",
 }
-## Nombre de cada arma.
+## Name of each weapon.
 const WEAPON_TITLES: Dictionary[StringName, String] = {
 	&"sword_shield": "Espada y escudo",
 	&"bow": "Arco",
 }
-## Nombre de cada plantilla de equipo.
+## Name of each equipment template.
 const TEMPLATE_TITLES: Dictionary[StringName, String] = {
 	&"squire": "Escudero",
 	&"marksman": "Tirador",
 }
-## Quién mató cuando el servidor no da un autor (el entorno) o no se le conoce.
+## Who killed when the server gives no author (the environment) or they are not known.
 const TEXT_ENVIRONMENT: String = "el entorno"
 const TEXT_UNKNOWN_KILLER: String = "un enemigo"
 const TEXT_UNKNOWN_ATTACK: String = "un ataque"
-## Frase cuando se muere sin que haya llegado el evento con el autor.
+## Sentence for dying when the event with the author has not arrived.
 const TEXT_FALLEN: String = "Has caído en combate."
-## Fuentes especiales tras «con».
+## Special sources after "con" (with).
 const TEXT_EXECUTE: String = "un remate"
 const TEXT_BLEED_OUT: String = "el desangrado"
-## Frases de la pantalla de muerte con las fuentes especiales.
+## Death screen sentences with the special sources.
 const TEXT_EXECUTED_BY: String = "Te ha rematado %s."
 const TEXT_BLED_OUT: String = "Te has desangrado."
 const TEXT_BLED_OUT_BY: String = "Te has desangrado: te derribó %s."
-## Avisos de derribado (docs/habilidades.md, sección 6.5).
+## Knockdown notices (docs/habilidades.md, section 6.5).
 const TEXT_DOWNED: String = "Derribado"
 const TEXT_DOWNED_COUNTDOWN: String = "Te desangras en %d s"
 const TEXT_BEING_REVIVED: String = "Te están levantando"
@@ -106,7 +106,7 @@ const TEXT_BEING_EXECUTED: String = "¡Te rematan!"
 const TEXT_REVIVE_PROMPT: String = "Mantén %s para levantar a %s"
 const TEXT_REVIVING: String = "Levantando a %s"
 const TEXT_ALLY: String = "un aliado"
-## Textos de la barra de acciones.
+## Action bar texts.
 const TEXT_LIGHT: String = "Ataque ligero"
 const TEXT_HEAVY: String = "Ataque fuerte (mantener)"
 const TEXT_QUICK_SHOT: String = "Disparo rápido"
@@ -119,15 +119,15 @@ const TEXT_NO_SECOND_WEAPON: String = "Sin segunda arma"
 const TEXT_CHARGES: String = "%d cargas"
 const TEXT_COOLDOWN: String = "Reutilización: %s s"
 const TEXT_EMPTY_SLOT: String = "Ranura vacía"
-## Selector de plantillas.
+## Template selector.
 const TEXT_TEMPLATE_TITLE: String = "Equipo para la próxima aparición"
 const TEXT_TEMPLATE_CHARGES: String = "Pociones: %d de vida y %d de resistencia"
 const TEXT_TEMPLATE_PENDING: String = "Se aplicará al reaparecer"
 
 
-## Nombre (tras «con») de la fuente [param source] ([CombatSource]) de un HIT, DEATH, KILL o HEAL: un
-## ataque, una habilidad, el pulso de un efecto, un remate o el desangrado. 0 (el entorno) da una cadena
-## vacía; una fuente desconocida o sin texto, «un ataque».
+## Name (after "con", with) of the source [param source] ([CombatSource]) of a HIT, DEATH, KILL or HEAL: an
+## attack, an ability, an effect's pulse, an execution or bleed-out. 0 (the environment) gives an empty
+## string; an unknown source or one without text gives "un ataque" (an attack).
 static func source_label(source: int) -> String:
 	if source == CombatSource.NONE:
 		return ""
@@ -152,18 +152,19 @@ static func source_label(source: int) -> String:
 	return TEXT_UNKNOWN_ATTACK
 
 
-## Nombre del ataque con id [param attack_id] del catálogo (0 = ninguno -> cadena vacía; id
-## desconocido o sin texto -> «un ataque»). Como la fuente de un ataque es su id, vale también para
-## cualquier fuente ([method source_label]).
+## Name of the attack with id [param attack_id] in the catalog (0 = none -> empty string; unknown
+## or textless id -> "un ataque", an attack). Since an attack's source is its id, it also works for
+## any source ([method source_label]).
 static func attack_label(attack_id: int) -> String:
 	return source_label(attack_id)
 
 
-## Frase de la pantalla de muerte: «Te ha derrotado Ana con un golpe pesado.»,
-## «Has muerto por el entorno.», «Te ha derrotado un enemigo.», «Te ha rematado Ana.» o «Te has
-## desangrado: te derribó Ana.». [param killer_name] es el nombre de quien dio el golpe de gracia (vacío
-## si no se le conoce), [param killer_id] su id de red (0 = el entorno) y [param source] la fuente del
-## DEATH ([CombatSource]).
+## Death screen sentence: "Te ha derrotado Ana con un golpe pesado." (Ana defeated you with a heavy blow),
+## "Has muerto por el entorno." (you died to the environment), "Te ha derrotado un enemigo." (an enemy defeated
+## you), "Te ha rematado Ana." (Ana executed you) or "Te has desangrado: te derribó Ana." (you bled out:
+## Ana knocked you down). [param killer_name] is the name of whoever dealt the killing blow (empty
+## if unknown), [param killer_id] their network id (0 = the environment) and [param source] the source of
+## the DEATH ([CombatSource]).
 static func death_text(killer_id: int, killer_name: String, source: int) -> String:
 	var who: String = killer_name if not killer_name.is_empty() else TEXT_UNKNOWN_KILLER
 	if source == CombatSource.BLEED_OUT:
@@ -178,8 +179,8 @@ static func death_text(killer_id: int, killer_name: String, source: int) -> Stri
 	return "Te ha derrotado %s con %s." % [who, with_what]
 
 
-## Título de la habilidad [param ability_id] del catálogo («Golpe de escudo»); el nombre del recurso
-## si no tiene texto y vacío si no existe.
+## Title of ability [param ability_id] in the catalog ("Golpe de escudo", Shield bash); the resource name
+## if it has no text and empty if it does not exist.
 static func ability_title(ability_id: int) -> String:
 	var ability: AbilityTicks = CombatCatalog.ability(ability_id)
 	if ability == null:
@@ -187,13 +188,13 @@ static func ability_title(ability_id: int) -> String:
 	return ABILITY_TITLES.get(ability.name, String(ability.name).capitalize())
 
 
-## Descripción corta de la habilidad [param ability_id] (vacía si no tiene).
+## Short description of ability [param ability_id] (empty if it has none).
 static func ability_description(ability_id: int) -> String:
 	var ability: AbilityTicks = CombatCatalog.ability(ability_id)
 	return ABILITY_DESCRIPTIONS.get(ability.name, "") if ability != null else ""
 
 
-## Título del efecto [param status_id] del catálogo («Sangrado»).
+## Title of effect [param status_id] in the catalog ("Sangrado", Bleeding).
 static func status_title(status_id: int) -> String:
 	var status: StatusTicks = CombatCatalog.status(status_id)
 	if status == null:
@@ -201,13 +202,13 @@ static func status_title(status_id: int) -> String:
 	return STATUS_TITLES.get(status.name, String(status.name).capitalize())
 
 
-## Descripción corta del efecto [param status_id] (vacía si no tiene).
+## Short description of effect [param status_id] (empty if it has none).
 static func status_description(status_id: int) -> String:
 	var status: StatusTicks = CombatCatalog.status(status_id)
 	return STATUS_DESCRIPTIONS.get(status.name, "") if status != null else ""
 
 
-## Nombre del arma [param weapon_id] del catálogo («Arco»).
+## Name of weapon [param weapon_id] in the catalog ("Arco", Bow).
 static func weapon_title(weapon_id: int) -> String:
 	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id)
 	if weapon == null:
@@ -215,7 +216,7 @@ static func weapon_title(weapon_id: int) -> String:
 	return WEAPON_TITLES.get(weapon.name, String(weapon.name).capitalize())
 
 
-## Nombre de la plantilla [param template_id] del catálogo («Tirador»).
+## Name of template [param template_id] in the catalog ("Tirador", Marksman).
 static func template_title(template_id: int) -> String:
 	var template: EquipmentTemplate = CombatCatalog.template(template_id)
 	if template == null:
@@ -223,8 +224,8 @@ static func template_title(template_id: int) -> String:
 	return TEMPLATE_TITLES.get(template.id, String(template.id).capitalize())
 
 
-## «Arco y Espada y escudo · Pociones: 2 de vida y 3 de resistencia»: lo que lleva la plantilla
-## [param template_id].
+## "Arco y Espada y escudo · Pociones: 2 de vida y 3 de resistencia" (Bow and Sword and shield · Potions: 2 health and
+## 3 stamina): what template [param template_id] carries.
 static func template_summary(template_id: int) -> String:
 	var names: PackedStringArray = PackedStringArray()
 	for weapon: int in CombatCatalog.template_weapons(template_id):

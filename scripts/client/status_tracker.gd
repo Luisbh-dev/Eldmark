@@ -1,39 +1,39 @@
 class_name StatusTracker
 extends RefCounted
-## Efectos de estado activos de una entidad tal como los cuenta el servidor (UI-45, docs/habilidades.md,
-## sección 6.4): uno por entidad, lo alimenta [NetClient] con los ENTITY_EVENT ya temporizados (los de la
-## entidad del jugador local al llegar; los de un remoto en su tick de dibujo, también los propios, para
-## que lleguen en el orden de ticks del servidor: este tracker los aplica en el orden en que le llegan).
+## Active status effects of an entity as the server counts them (UI-45, docs/habilidades.md, section
+## 6.4): one per entity, fed by [NetClient] with the already-timed ENTITY_EVENTs (the local player
+## entity's on arrival; a remote's at its draw tick, also the player's own, so they arrive in the
+## server's tick order: this tracker applies them in the order they reach it).
 ## [br][br]
-## Un STATUS 1 (aplicado o renovado) guarda o actualiza el efecto con sus acumulaciones y su
-## [code]until_tick[/code]; un STATUS 2 lo quita. DEATH, DOWNED y RESPAWN de la entidad los quitan todos
-## (el servidor los borra sin mandar STATUS sueltos, sección 4.3); el ENTITY_DESPAWN lo atiende quien
-## guarda los trackers ([NetClient]), que tira el de esa entidad.
+## A STATUS 1 (applied or refreshed) stores or updates the effect with its stacks and its
+## [code]until_tick[/code]; a STATUS 2 removes it. The entity's DEATH, DOWNED and RESPAWN remove them all
+## (the server clears them without sending individual STATUS messages, section 4.3); the ENTITY_DESPAWN is
+## handled by whoever keeps the trackers ([NetClient]), which drops that entity's.
 ## [br][br]
-## La caducidad no necesita evento: [method get_active] solo da los que siguen vivos en el tick que se
-## le pase (el del servidor estimado para el jugador local, el de dibujo para un remoto) y
-## [method prune] olvida los que ya acabaron. Solo cliente.
+## Expiry needs no event: [method get_active] only returns those still alive at the tick passed to it (the
+## estimated server tick for the local player, the draw tick for a remote) and [method prune] forgets
+## those that have already ended. Client only.
 
-## Un efecto activo.
+## An active effect.
 class Entry:
-	## Id del efecto en el catálogo de combate ([method CombatCatalog.status]).
+	## Id of the effect in the combat catalog ([method CombatCatalog.status]).
 	var status_id: int = 0
-	## Acumulaciones (al menos 1).
+	## Stacks (at least 1).
 	var stacks: int = 1
-	## Tick del servidor en que acaba (exclusivo).
+	## Server tick at which it ends (exclusive).
 	var until_tick: int = 0
-	## Tick del servidor del último STATUS 1 (aplicado o renovado).
+	## Server tick of the last STATUS 1 (applied or refreshed).
 	var applied_tick: int = 0
-	## Quién lo puso (net_id; 0 = sin autor).
+	## Who applied it (net_id; 0 = no source).
 	var source_entity: int = 0
 
-	## true si el efecto perjudica a quien lo lleva ([method StatusTicks.is_harmful]; uno desconocido
-	## cuenta como perjudicial).
+	## true if the effect harms whoever carries it ([method StatusTicks.is_harmful]; an unknown one counts as
+	## harmful).
 	func is_harmful() -> bool:
 		var status: StatusTicks = CombatCatalog.status(status_id)
 		return status == null or status.is_harmful()
 
-	## Ticks que le quedan en [param tick] (0 si ya acabó).
+	## Ticks it has left at [param tick] (0 if it has already ended).
 	func ticks_left(tick: int) -> int:
 		return maxi(until_tick - tick, 0)
 
@@ -42,8 +42,8 @@ var _entries: Array[Entry] = []
 var _events: int = 0
 
 
-## Atiende un ENTITY_EVENT de esta entidad: STATUS (aplicar, renovar o quitar) y DEATH, DOWNED y
-## RESPAWN (quitan todos). Los demás no cambian nada. Devuelve true si algo cambió.
+## Handles an ENTITY_EVENT of this entity: STATUS (apply, refresh or remove) and DEATH, DOWNED and
+## RESPAWN (remove all). The others change nothing. Returns true if something changed.
 func handle_event(event: NetMessages.EntityEvent) -> bool:
 	if event == null:
 		return false
@@ -64,8 +64,8 @@ func handle_event(event: NetMessages.EntityEvent) -> bool:
 	return false
 
 
-## Guarda (o actualiza, si ya estaba) el efecto [param status_id] con [param stacks] acumulaciones hasta
-## [param until_tick] (exclusivo). Conserva el orden en que llegó cada efecto la primera vez.
+## Stores (or updates, if already present) effect [param status_id] with [param stacks] stacks until
+## [param until_tick] (exclusive). Keeps the order in which each effect first arrived.
 func apply(status_id: int, stacks: int, until_tick: int, applied_tick: int = 0,
 		source_entity: int = 0) -> void:
 	var entry: Entry = _find(status_id)
@@ -79,7 +79,7 @@ func apply(status_id: int, stacks: int, until_tick: int, applied_tick: int = 0,
 	entry.source_entity = source_entity
 
 
-## Quita el efecto [param status_id]. Devuelve true si estaba.
+## Removes effect [param status_id]. Returns true if it was there.
 func remove(status_id: int) -> bool:
 	for index: int in _entries.size():
 		if _entries[index].status_id == status_id:
@@ -88,12 +88,12 @@ func remove(status_id: int) -> bool:
 	return false
 
 
-## Quita todos.
+## Removes all of them.
 func clear() -> void:
 	_entries.clear()
 
 
-## Olvida los efectos que ya han acabado en [param tick]. Devuelve cuántos quitó.
+## Forgets the effects that have already ended at [param tick]. Returns how many it removed.
 func prune(tick: int) -> int:
 	var kept: Array[Entry] = []
 	for entry: Entry in _entries:
@@ -104,8 +104,8 @@ func prune(tick: int) -> int:
 	return removed
 
 
-## Los efectos vivos en [param tick] ([code]until_tick > tick[/code]), en el orden en que llegaron o,
-## con [param harmful_first], primero los perjudiciales (y dentro de cada grupo, el que acaba antes).
+## The effects alive at [param tick] ([code]until_tick > tick[/code]), in the order they arrived or,
+## with [param harmful_first], the harmful ones first (and within each group, the one ending soonest).
 func get_active(tick: int, harmful_first: bool = false) -> Array[Entry]:
 	var active: Array[Entry] = []
 	for entry: Entry in _entries:
@@ -120,17 +120,17 @@ func get_active(tick: int, harmful_first: bool = false) -> Array[Entry]:
 	return active
 
 
-## El efecto [param status_id] si se conoce (aunque ya haya caducado), o null.
+## Effect [param status_id] if known (even if it has already expired), or null.
 func get_entry(status_id: int) -> Entry:
 	return _find(status_id)
 
 
-## Efectos guardados (también los ya caducados que no se han podado).
+## Stored effects (also already expired ones that have not been pruned).
 func size() -> int:
 	return _entries.size()
 
 
-## STATUS recibidos desde que existe.
+## STATUS messages received since it was created.
 func get_event_count() -> int:
 	return _events
 

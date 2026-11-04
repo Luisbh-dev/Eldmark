@@ -1,68 +1,63 @@
 class_name StateHistory
 extends RefCounted
-## Historial de posiciones para la compensación de latencia (docs/red.md, sección 10).
+## Position history for lag compensation (docs/red.md, section 10).
 ## [br][br]
-## Guarda, por entidad, una pista de [constant LENGTH_TICKS] ticks (~1 s) en arrays empaquetados:
-## posición, yaw, flags y la etiqueta del tick de cada hueco, indexados por
-## [code]tick % LENGTH_TICKS[/code]. La pista se crea al dar de alta la entidad y se escribe en
-## el sitio cada tick, sin asignar memoria. Los valores se guardan sin cuantizar y se graban tras
-## cada tick, haya interés o no.
+## It stores, per entity, a track of [constant LENGTH_TICKS] ticks (~1 s) in packed arrays: position, yaw, flags and the
+## tick label of each slot, indexed by [code]tick % LENGTH_TICKS[/code]. The track is created when the entity is
+## registered and is written in place every tick, without allocating memory. Values are stored unquantized and recorded
+## after every tick, whether or not there is interest.
 ## [br][br]
-## [method sample] reconstruye cualquier instante (también entre dos ticks) para que la fase 3
-## compruebe los golpes contra donde el atacante veía a su objetivo. Nunca se mueven cuerpos hacia
-## atrás: se calcula con las muestras.
+## [method sample] reconstructs any instant (also between two ticks) so that phase 3 checks hits against where the
+## attacker saw their target. Bodies are never moved backwards: it is computed from the samples.
 ## [br][br]
-## [b]Banderas.[/b] Los flags de cada hueco son los bits 0-2 del registro de red (bit 0 suelo, bits 1-2
-## contador de teletransporte; [constant EntityRecord.HISTORY_FLAGS_MASK]) más las banderas defensivas de
-## [method ActionMachine.defense_flags] (bit 3 bloqueando, bit 4 ventana de parada, bit 5 invulnerable,
-## bit 6 muerto, bit 7 bloqueo ancho del muro de escudos), que usa el [CombatResolver] para decidir si un
-## golpe rebobinado se bloquea, se para o se esquiva. El bit 3 del registro de red (ranura de arma 2,
-## docs/habilidades.md, sección 5.2) [b]no[/b] entra nunca: aquí el bit 3 es
-## [constant ActionMachine.DEFENSE_BLOCKING]; quien graba enmascara los flags del registro.
+## [b]Flags.[/b] The flags of each slot are bits 0-2 of the network record (bit 0 ground, bits 1-2 teleport counter;
+## [constant EntityRecord.HISTORY_FLAGS_MASK]) plus the defensive flags of [method ActionMachine.defense_flags] (bit 3
+## blocking, bit 4 parry window, bit 5 invulnerable, bit 6 dead, bit 7 shield wall's wide block), used by the
+## [CombatResolver] to decide whether a rewound hit is blocked, parried or dodged. Bit 3 of the network record (weapon
+## slot 2, docs/habilidades.md, section 5.2) [b]never[/b] goes in: here bit 3 is [constant ActionMachine.DEFENSE_BLOCKING];
+## whoever records masks the record's flags.
 ## [br][br]
-## [b]Proyectiles[/b] (docs/habilidades.md, sección 4.4): [method position_at] lee la posición de un tick
-## exacto sin crear objetos (el rebobinado de los proyectiles es de ticks enteros) y cada pista mantiene al
-## grabar [constant SWEPT_BLOCKS] cajas de [constant SWEPT_BLOCK_TICKS] ticks con las posiciones de los
-## pies: [method swept_box] es su unión, la criba barata de los candidatos de una flecha.
+## [b]Projectiles[/b] (docs/habilidades.md, section 4.4): [method position_at] reads the position of an exact tick
+## without creating objects (projectile rewind is in whole ticks) and each track maintains, when recording,
+## [constant SWEPT_BLOCKS] boxes of [constant SWEPT_BLOCK_TICKS] ticks with the feet positions: [method swept_box] is
+## their union, the cheap screening of an arrow's candidates.
 
-## Ticks que recuerda cada pista. Potencia de 2 para indexar con una máscara.
+## Ticks each track remembers. A power of 2 to index with a mask.
 const LENGTH_TICKS: int = 64
-## Ticks de cada bloque de la caja barrida (potencia de 2: el bloque de un tick es
-## [code]tick >> 3[/code]).
+## Ticks in each swept box block (a power of 2: a tick's block is [code]tick >> 3[/code]).
 const SWEPT_BLOCK_TICKS: int = 8
-## Bloques que guarda cada pista (potencia de 2): el del último tick grabado y los tres anteriores
-## cubren al menos sus 25 ticks anteriores, más que el tope de rebobinado (24).
+## Blocks each track keeps (a power of 2): that of the last recorded tick and the three before cover at least its
+## previous 25 ticks, more than the rewind cap (24).
 const SWEPT_BLOCKS: int = 4
 const _SWEPT_BLOCK_SHIFT: int = 3
 
-# net_id -> pista.
+# net_id -> track.
 var _tracks: Dictionary[int, Track] = {}
 
 
-## Resultado de [method sample]: posición, yaw y flags de la entidad en ese instante.
+## Result of [method sample]: position, yaw and flags of the entity at that instant.
 class Sample:
 	var position: Vector3
 	var yaw: float
-	## Bits 0-2 del registro de red (bit 0 grounded; bits 1-2 contador de teletransporte) y bits 3-7
-	## defensivos ([method ActionMachine.defense_flags]).
+	## Bits 0-2 of the network record (bit 0 grounded; bits 1-2 teleport counter) and defensive bits 3-7
+	## ([method ActionMachine.defense_flags]).
 	var flags: int
 
 
-## Pista de una entidad.
+## Track of an entity.
 class Track:
 	var positions: PackedVector3Array = PackedVector3Array()
 	var yaws: PackedFloat32Array = PackedFloat32Array()
 	var flags: PackedByteArray = PackedByteArray()
-	# Tick que guarda cada hueco; -1 si está vacío. De 64 bits: los ticks del servidor son u32 y
-	# pasan de 2^31 a los 414 días de proceso.
+	# Tick stored in each slot; -1 if empty. 64-bit: server ticks are u32 and exceed 2^31 after 414 days of process uptime.
 	var ticks: PackedInt64Array = PackedInt64Array()
-	# Cajas barridas por bloques de SWEPT_BLOCK_TICKS ticks: el bloque que guarda cada hueco (-1 vacío)
-	# y la esquina mínima y máxima de las posiciones grabadas en él.
+	# Swept boxes by blocks of SWEPT_BLOCK_TICKS ticks: the block each slot holds (-1 empty) and the minimum and maximum
+	# corner of the positions recorded in it.
 	var block_ids: PackedInt64Array = PackedInt64Array()
 	var block_min: PackedVector3Array = PackedVector3Array()
 	var block_max: PackedVector3Array = PackedVector3Array()
-	# Bloque del último tick grabado (-1 = ninguno) y la unión de las cajas de los bloques que cuentan (el
-	# último y los SWEPT_BLOCKS - 1 anteriores), al día en cada grabación: swept_box no recorre nada.
+	# Block of the last recorded tick (-1 = none) and the union of the boxes of the blocks that count (the last one and the
+	# SWEPT_BLOCKS - 1 before it), kept up to date on each recording: swept_box walks nothing.
 	var last_block: int = -1
 	var union_min: Vector3 = Vector3.ZERO
 	var union_max: Vector3 = Vector3.ZERO
@@ -80,8 +75,8 @@ class Track:
 		block_max.resize(SWEPT_BLOCKS)
 
 
-	# Escribe un hueco en el sitio y amplía la caja de su bloque. Va dentro de la pista (y no en
-	# StateHistory) para que los arrays se modifiquen directamente y no a través de una copia temporal.
+	# Writes a slot in place and extends its block's box. It lives inside the track (and not in StateHistory) so that the
+	# arrays are modified directly and not through a temporary copy.
 	func write(slot: int, tick: int, position: Vector3, yaw: float, flags_byte: int) -> void:
 		positions[slot] = position
 		yaws[slot] = yaw
@@ -97,7 +92,7 @@ class Track:
 			block_min[block_slot] = block_min[block_slot].min(position)
 			block_max[block_slot] = block_max[block_slot].max(position)
 		if block > last_block:
-			# Bloque nuevo: la unión se rehace con él y los anteriores que aún cuentan (cada 8 ticks).
+			# New block: the union is rebuilt with it and the previous ones that still count (every 8 ticks).
 			last_block = block
 			union_min = position
 			union_max = position
@@ -111,19 +106,18 @@ class Track:
 			union_max = union_max.max(position)
 
 
-## Crea la pista de [param net_id] (vacía). Si ya existía, la borra.
+## Creates the track of [param net_id] (empty). If it already existed, it is erased.
 func add_entity(net_id: int) -> void:
 	_tracks[net_id] = Track.new()
 
 
-## Borra la pista de [param net_id].
+## Deletes the track of [param net_id].
 func forget(net_id: int) -> void:
 	_tracks.erase(net_id)
 
 
-## Anota el estado de [param net_id] tras simular [param tick]. Sobrescribe el hueco del tick
-## [code]tick - LENGTH_TICKS[/code]. Si la entidad no tenía pista, se la crea. No hace nada con
-## un tick negativo.
+## Records the state of [param net_id] after simulating [param tick]. Overwrites the slot of tick
+## [code]tick - LENGTH_TICKS[/code]. If the entity had no track, it is created. Does nothing with a negative tick.
 func record(tick: int, net_id: int, position: Vector3, yaw: float, flags: int) -> void:
 	if tick < 0:
 		return
@@ -134,14 +128,14 @@ func record(tick: int, net_id: int, position: Vector3, yaw: float, flags: int) -
 	track.write(tick & (LENGTH_TICKS - 1), tick, position, yaw, flags & 0xFF)
 
 
-## true si la pista de [param net_id] guarda exactamente el tick [param tick].
+## true if the track of [param net_id] stores exactly tick [param tick].
 func has_tick(net_id: int, tick: int) -> bool:
 	var track: Track = _tracks.get(net_id)
 	return track != null and tick >= 0 and track.ticks[tick & (LENGTH_TICKS - 1)] == tick
 
 
-## Flags de [param net_id] en el tick exacto [param tick], o -1 si ese tick no está grabado (la
-## entidad no tiene pista, el tick es más viejo que el anillo o más nuevo que el último grabado).
+## Flags of [param net_id] at the exact tick [param tick], or -1 if that tick is not recorded (the entity has no track,
+## the tick is older than the ring or newer than the last recorded).
 func get_flags(net_id: int, tick: int) -> int:
 	var track: Track = _tracks.get(net_id)
 	if track == null or tick < 0:
@@ -152,9 +146,9 @@ func get_flags(net_id: int, tick: int) -> int:
 	return track.flags[slot]
 
 
-## Posición (los pies) de [param net_id] en el tick exacto [param tick], o [constant Vector3.INF] si ese
-## tick no está grabado. No crea ningún objeto: es la lectura de los proyectiles, que rebobinan ticks
-## enteros (docs/habilidades.md, sección 4.4).
+## Position (the feet) of [param net_id] at the exact tick [param tick], or [constant Vector3.INF] if that tick is not
+## recorded. It creates no object: it is the projectiles' read, which rewind whole ticks (docs/habilidades.md, section
+## 4.4).
 func position_at(net_id: int, tick: int) -> Vector3:
 	var track: Track = _tracks.get(net_id)
 	if track == null or tick < 0:
@@ -165,11 +159,11 @@ func position_at(net_id: int, tick: int) -> Vector3:
 	return track.positions[slot]
 
 
-## Caja barrida de [param net_id]: la unión de las cajas de los [constant SWEPT_BLOCKS] bloques de
-## [constant SWEPT_BLOCK_TICKS] ticks que acaban en el del último tick grabado (los más viejos no
-## cuentan). Si ese tick es [code]s − 1[/code], cubre todas las posiciones grabadas de
-## [code][s − 25, s − 1][/code] (y alguna más antigua). Son los pies: quien la usa la ensancha con la
-## cápsula. Sin nada grabado, una caja de tamaño negativo ([code]size.x < 0[/code]).
+## Swept box of [param net_id]: the union of the boxes of the [constant SWEPT_BLOCKS] blocks of
+## [constant SWEPT_BLOCK_TICKS] ticks ending at the last recorded tick's (older ones do not count). If that tick is
+## [code]s − 1[/code], it covers all recorded positions from [code][s − 25, s − 1][/code] (and some older one). These
+## are the feet: whoever uses it widens it with the capsule. With nothing recorded, a box of negative size
+## ([code]size.x < 0[/code]).
 func swept_box(net_id: int) -> AABB:
 	var track: Track = _tracks.get(net_id)
 	if track == null or track.last_block < 0:
@@ -177,11 +171,10 @@ func swept_box(net_id: int) -> AABB:
 	return AABB(track.union_min, track.union_max - track.union_min)
 
 
-## Estado de [param net_id] en el instante [param tick] (puede ser fraccionario): interpola
-## linealmente entre los dos ticks que lo rodean (posición con lerp, yaw con lerp_angle y flags
-## del más cercano). Si el contador de teletransporte cambia entre los dos, devuelve la muestra
-## anterior sin interpolar. null si la entidad no tiene pista o el instante está fuera de lo
-## grabado (más viejo que el anillo, o más nuevo que el último tick).
+## State of [param net_id] at the instant [param tick] (may be fractional): interpolates linearly between the two
+## surrounding ticks (position with lerp, yaw with lerp_angle and flags from the nearest). If the teleport counter
+## changes between the two, it returns the earlier sample without interpolating. null if the entity has no track or the
+## instant is outside what was recorded (older than the ring, or newer than the last tick).
 func sample(net_id: int, tick: float) -> StateHistory.Sample:
 	var track: Track = _tracks.get(net_id)
 	if track == null or not is_finite(tick) or tick < 0.0:

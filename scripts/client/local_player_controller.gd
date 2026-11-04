@@ -1,32 +1,32 @@
 class_name LocalPlayerController
 extends Node
-## Controla el personaje del jugador local en el cliente.
+## Controls the local player's character on the client.
 ##
-## En cada tick de física lee teclado, ratón y cámara (o un [DemoInput]
-## guionizado, o un [BotBrain]), construye un [PlayerInput], lo cuantiza
-## exactamente igual que viajará por la red, lo guarda en el historial, emite
-## [signal input_generated] y llama a [method PlayerCharacter.simulate].
-## [br][br]Fase 4 (docs/habilidades.md, secciones 0 y 3.2): Q cambia de arma, R y T beben las
-## pociones, y el bit [constant PlayerInput.AIM_LEFT] (hombro izquierdo de la puntería) sale del hombro
-## efectivo de la cámara en cada entrada del dispositivo.
-## [br][br]Fase 2: con [member auto_step] en false el controlador no avanza solo.
-## [method ClientPrediction.step] llama a [method build_input] (que construye la
-## entrada del tick pedido sin simular) y simula el personaje él mismo, y las
-## repeticiones de la reconciliación vuelven a simular las entradas guardadas.
-## Como el cliente simula la entrada ya cuantizada, su predicción usa los mismos
-## datos que el servidor.
+## On every physics tick it reads keyboard, mouse and camera (or a scripted [DemoInput],
+## or a [BotBrain]), builds a [PlayerInput], quantizes it
+## exactly as it will travel over the network, stores it in the history, emits
+## [signal input_generated] and calls [method PlayerCharacter.simulate].
+## [br][br]Phase 4 (docs/habilidades.md, sections 0 and 3.2): Q swaps weapons, R and T drink the
+## potions, and the [constant PlayerInput.AIM_LEFT] bit (left shoulder of the aim) comes from the camera's
+## effective shoulder on every device input.
+## [br][br]Phase 2: with [member auto_step] set to false the controller does not advance on its own.
+## [method ClientPrediction.step] calls [method build_input] (which builds the
+## input of the requested tick without simulating) and simulates the character itself, and the
+## replays of reconciliation simulate the stored inputs again.
+## Since the client simulates the already quantized input, its prediction uses the same
+## data as the server.
 
-## Se emite con cada entrada generada, ya cuantizada. En el sandbox ([member auto_step] en true) se
-## emite justo antes de simularla.
+## Emitted with every generated input, already quantized. In the sandbox ([member auto_step] true) it is
+## emitted just before simulating it.
 signal input_generated(input: PlayerInput)
 
-## Entradas que guarda el historial (algo más de 4 s a 60 ticks/s).
+## Inputs the history keeps (a bit over 4 s at 60 ticks/s).
 const HISTORY_SIZE: int = 256
 
-## Botones del ratón que se ignoran mientras el cursor está libre.
+## Mouse buttons that are ignored while the cursor is free.
 const CURSOR_BLOCKED_BUTTONS: int = PlayerInput.PRIMARY | PlayerInput.BLOCK
 
-## Acción del InputMap -> bit de [member PlayerInput.buttons].
+## InputMap action -> bit of [member PlayerInput.buttons].
 const BUTTON_ACTIONS: Dictionary[StringName, int] = {
 	&"jump": PlayerInput.JUMP,
 	&"sprint": PlayerInput.SPRINT,
@@ -42,9 +42,9 @@ const BUTTON_ACTIONS: Dictionary[StringName, int] = {
 	&"consumable_2": PlayerInput.CONSUMABLE_2,
 }
 
-## true (sandbox): el controlador avanza un tick por paso de física, como en la fase 1. false:
-## lo avanza [ClientPrediction] llamando a [method build_input], y [method _physics_process] no
-## hace nada.
+## true (sandbox): the controller advances one tick per physics step, as in phase 1. false:
+## [ClientPrediction] advances it by calling [method build_input], and [method _physics_process] does
+## nothing.
 var auto_step: bool = true
 
 var _character: PlayerCharacter = null
@@ -52,18 +52,18 @@ var _camera_rig: CameraRig = null
 var _demo: DemoInput = null
 var _bot: BotBrain = null
 var _tick: int = 0
-## Anillo de las últimas entradas generadas: la más antigua está en _history_start.
+## Ring of the last generated inputs: the oldest is at _history_start.
 var _history: Array[PlayerInput] = []
 var _history_start: int = 0
-## Botones pulsados en ticks sin paso (ver [method accumulate_presses]): se suman a la entrada
-## del siguiente [method build_input].
+## Buttons pressed on ticks with no step (see [method accumulate_presses]): they are added to the input
+## of the next [method build_input].
 var _pending_presses: int = 0
-## Botones del ratón pulsados con el cursor libre: se ignoran hasta soltarlos,
-## para que el clic que recaptura el ratón (o un clic en la interfaz) no ataque.
+## Mouse buttons pressed with the cursor free: they are ignored until released,
+## so that the click that recaptures the mouse (or a click on the UI) does not attack.
 var _suppressed_buttons: int = 0
 var _cursor_was_free: bool = false
-## Quién tiene la entrada de juego suspendida (la caja de chat mientras se escribe): id de instancia ->
-## true. Mientras haya alguno, la entrada del dispositivo es neutra (sin movimiento ni botones).
+## Who has game input suspended (the chat box while typing): instance id ->
+## true. While there is any, device input is neutral (no movement or buttons).
 var _input_blockers: Dictionary = {}
 
 
@@ -71,8 +71,8 @@ func _ready() -> void:
 	InputBindings.ensure_defaults()
 
 
-## Conecta el controlador con el personaje que simula y la cámara de la que
-## toma la dirección de la vista.
+## Connects the controller to the character it simulates and the camera from which it
+## takes the view direction.
 func setup(character: PlayerCharacter, camera_rig: CameraRig) -> void:
 	_character = character
 	_camera_rig = camera_rig
@@ -80,25 +80,25 @@ func setup(character: PlayerCharacter, camera_rig: CameraRig) -> void:
 		_camera_rig.set_scripted_look(true)
 
 
-## Modo demo: tanto la entrada como la vista de la cámara salen de [param demo]
-## en lugar del teclado y el ratón.
+## Demo mode: both the input and the camera view come from [param demo]
+## instead of the keyboard and mouse.
 func enable_demo(demo: DemoInput) -> void:
 	_demo = demo
 	if _demo != null and is_instance_valid(_camera_rig):
 		_camera_rig.set_scripted_look(true)
 
 
-## Modo bot: las entradas salen de [code]brain.next_input(tick, posición, yaw)[/code] en lugar del
-## teclado o de la demo. Con null vuelve al dispositivo (o a la demo, si está activada).
+## Bot mode: inputs come from [code]brain.next_input(tick, position, yaw)[/code] instead of
+## the keyboard or the demo. With null it returns to the device (or to the demo, if enabled).
 func set_bot(brain: BotBrain) -> void:
 	_bot = brain
 
 
-## Suspende (o devuelve) la entrada de juego del dispositivo en nombre de [param holder]: mientras alguno
-## la tenga suspendida, el personaje no se mueve ni usa botones aunque se pulsen las teclas, y la vista
-## sigue la de la cámara (que el solicitante suele tener con el cursor libre). Cada solicitante cuenta una
-## sola vez. Lo usa la caja de chat mientras el jugador escribe (SOC-05). La entrada de un bot o de una demo
-## no se ve afectada.
+## Suspends (or restores) the device's game input on behalf of [param holder]: while any
+## holder has it suspended, the character does not move or use buttons even if keys are pressed, and the view
+## follows the camera's (which the requester usually has with the cursor free). Each requester counts only
+## once. Used by the chat box while the player types (SOC-05). The input of a bot or a demo
+## is not affected.
 func set_input_blocked(blocked: bool, holder: Object) -> void:
 	var key: int = holder.get_instance_id()
 	if blocked:
@@ -107,7 +107,7 @@ func set_input_blocked(blocked: bool, holder: Object) -> void:
 		_input_blockers.erase(key)
 
 
-## true si algún solicitante vivo tiene suspendida la entrada de juego ([method set_input_blocked]).
+## true if any live requester has game input suspended ([method set_input_blocked]).
 func is_input_blocked() -> bool:
 	for key: int in _input_blockers.keys():
 		if not is_instance_id_valid(key):
@@ -115,9 +115,9 @@ func is_input_blocked() -> bool:
 	return not _input_blockers.is_empty()
 
 
-## Últimas entradas generadas (como mucho [constant HISTORY_SIZE]), de la más
-## antigua a la más reciente. Es una copia: modificar el array no afecta al
-## historial.
+## Last generated inputs (at most [constant HISTORY_SIZE]), from the oldest to the
+## most recent. It is a copy: modifying the array does not affect the
+## history.
 func get_input_history() -> Array[PlayerInput]:
 	var copy: Array[PlayerInput] = []
 	copy.resize(_history.size())
@@ -126,7 +126,7 @@ func get_input_history() -> Array[PlayerInput]:
 	return copy
 
 
-## Tick de la última entrada generada (0 si todavía no se ha generado ninguna).
+## Tick of the last generated input (0 if none has been generated yet).
 func get_tick() -> int:
 	return _tick
 
@@ -135,15 +135,15 @@ func _physics_process(delta: float) -> void:
 	if not auto_step or not is_instance_valid(_character):
 		return
 	var input: PlayerInput = build_input(_tick + 1)
-	# delta es el paso fijo de física (1 / Engine.physics_ticks_per_second), el
-	# mismo que usa move_and_slide() por dentro.
+	# delta is the fixed physics step (1 / Engine.physics_ticks_per_second), the
+	# same one move_and_slide() uses internally.
 	_character.simulate(input, delta)
 
 
-## Construye la entrada del tick [param tick] a partir del bot, la demo o el dispositivo (en ese
-## orden de prioridad), le suma las pulsaciones que guardó [method accumulate_presses], la
-## cuantiza como viajará por la red, la guarda en el historial, emite [signal input_generated] y
-## la devuelve. No simula: lo hace quien llama ([ClientPrediction] o, en el sandbox,
+## Builds the input of tick [param tick] from the bot, the demo or the device (in that
+## priority order), adds the presses stored by [method accumulate_presses], quantizes it
+## as it will travel over the network, stores it in the history, emits [signal input_generated] and
+## returns it. It does not simulate: the caller does ([ClientPrediction] or, in the sandbox,
 ## [method _physics_process]).
 func build_input(tick: int) -> PlayerInput:
 	_tick = tick
@@ -162,9 +162,9 @@ func build_input(tick: int) -> PlayerInput:
 	return input
 
 
-## En los ticks sin paso de predicción (0 pasos): guarda las acciones pulsadas en este tick de
-## física para que el siguiente [method build_input] las sume y no se pierda ningún toque corto.
-## Con un bot o una demo no hace nada, porque su entrada no depende del dispositivo.
+## On ticks with no prediction step (0 steps): stores the actions pressed in this physics tick
+## so that the next [method build_input] adds them and no short tap is lost.
+## With a bot or a demo it does nothing, because their input does not depend on the device.
 func accumulate_presses() -> void:
 	if _bot != null or _demo != null or is_input_blocked():
 		return
@@ -174,7 +174,7 @@ func accumulate_presses() -> void:
 	for action: StringName in BUTTON_ACTIONS:
 		if Input.is_action_just_pressed(action):
 			var button: int = BUTTON_ACTIONS[action]
-			# Un clic con el cursor libre no ataca (ver _device_input).
+			# A click with the cursor free does not attack (see _device_input).
 			if cursor_free and (button & CURSOR_BLOCKED_BUTTONS) != 0:
 				continue
 			_pending_presses |= button
@@ -203,8 +203,8 @@ func _device_input() -> PlayerInput:
 
 	var buttons: int = 0
 	for action: StringName in BUTTON_ACTIONS:
-		# just_pressed recoge pulsaciones más cortas que un tick, para que un
-		# toque rápido de salto o esquiva no se pierda entre dos ticks.
+		# just_pressed catches presses shorter than a tick, so that a quick
+		# jump or dodge tap is not lost between two ticks.
 		if Input.is_action_pressed(action) or Input.is_action_just_pressed(action):
 			buttons |= BUTTON_ACTIONS[action]
 
@@ -214,14 +214,14 @@ func _device_input() -> PlayerInput:
 	_suppressed_buttons &= held_mouse
 	_cursor_was_free = cursor_free
 	input.buttons = buttons & ~_suppressed_buttons
-	# Con la entrada suspendida (escribiendo en el chat) el personaje se queda quieto y sin botones; los
-	# botones del ratón que se mantienen siguen suprimidos hasta soltarlos (arriba).
+	# With input suspended (typing in chat) the character stays still with no buttons; mouse
+	# buttons that are held stay suppressed until released (above).
 	if is_input_blocked():
 		input.move = Vector2.ZERO
 		input.buttons = 0
-	# Hombro de la puntería (docs/habilidades.md, sección 3.2): un nivel que describe la vista, no una
-	# pulsación. Sale del hombro efectivo de la cámara (tras el cambio automático por una pared), que es
-	# el que da el rayo canónico de las flechas ([method AimRay.canonical]).
+	# Aim shoulder (docs/habilidades.md, section 3.2): a level that describes the view, not a
+	# press. It comes from the camera's effective shoulder (after the automatic switch because of a wall), which is
+	# the one that gives the canonical ray of the arrows ([method AimRay.canonical]).
 	if is_instance_valid(_camera_rig) and _camera_rig.get_effective_shoulder() < 0:
 		input.buttons |= PlayerInput.AIM_LEFT
 	return input

@@ -1,30 +1,30 @@
 class_name AccountFlow
 extends RefCounted
-## El camino de la cuenta sin interfaz (docs/plataforma.md §13.3 y §14.4): iniciar sesión, asegurar el personaje y
-## entrar al mundo, que devuelve el [ClientConfig] con billete para [OnlineMain]. Lo usan [FrontMain] (las pantallas)
-## y [OnlineMain] en modo BOT con [code]--platform[/code] (el bot con cuenta, §5.5).
+## The UI-less account path (docs/plataforma.md §13.3 and §14.4): logging in, ensuring the character and
+## entering the world, which returns the [ClientConfig] with a ticket for [OnlineMain]. It is used by [FrontMain] (the screens)
+## and by [OnlineMain] in BOT mode with [code]--platform[/code] (the bot with an account, §5.5).
 ## [br][br]
-## Todas las llamadas son corrutinas sobre [PlatformApi] y devuelven un [ApiResult]:
-## [br]- [method login] guarda la [AccountSession] en [member PlatformApi.session].
-## [br]- [method ensure_character] busca el personaje por nombre (con la clave de [NameRules]: «Anéira» es «aneira»)
-## en el mundo y, si no está, lo crea con el pueblo de su reino, [method CharacterAppearance.default_for] y la
-## plantilla de inicio que se pida (el [code]--loadout[/code] del bot) o, sin ella, la primera por id
-## ([method first_starter_template]); uno borrado que aún se puede restaurar se restaura.
-## [code]data.character[/code] es el personaje y [code]data.created[/code] si se acaba de crear.
-## [br]- [method enter] pide [code]enter[/code] y devuelve en [code]data.config[/code] un [ClientConfig] nuevo (copia
-## del de partida) con la zona, el billete, el personaje y el certificado DTLS. Con [code]character_busy[/code] (el
-## personaje aún sale del mundo, §5.3) reintenta cada [member busy_retry_s] s durante [member busy_timeout_s] s y
-## avisa de cada espera con [signal busy_waiting]; [method cancel_enter] deja de esperar.
+## All calls are coroutines on [PlatformApi] and return an [ApiResult]:
+## [br]- [method login] stores the [AccountSession] in [member PlatformApi.session].
+## [br]- [method ensure_character] looks for the character by name (using the [NameRules] key: "Anéira" is "aneira")
+## in the world and, if absent, creates it with its realm's people, [method CharacterAppearance.default_for] and the
+## requested starter template (the bot's [code]--loadout[/code]) or, without one, the first by id
+## ([method first_starter_template]); a deleted one that can still be restored is restored.
+## [code]data.character[/code] is the character and [code]data.created[/code] whether it was just created.
+## [br]- [method enter] requests [code]enter[/code] and returns in [code]data.config[/code] a new [ClientConfig] (a copy
+## of the starting one) with the zone, ticket, character and DTLS certificate. With [code]character_busy[/code] (the
+## character is still leaving the world, §5.3) it retries every [member busy_retry_s] s for [member busy_timeout_s] s and
+## reports each wait with [signal busy_waiting]; [method cancel_enter] stops waiting.
 ## [br][br]
-## Los ids van como cadena en los cuerpos y se leen con [method parse_id] (§4.1). Solo cliente.
+## Ids go as strings in the bodies and are read with [method parse_id] (§4.1). Client only.
 
-## El personaje aún está en el mundo: se volverá a pedir la entrada; quedan [param seconds_left] s de espera.
+## The character is still in the world: entry will be requested again; [param seconds_left] s of waiting remain.
 signal busy_waiting(seconds_left: int)
 
-## Espera entre dos intentos de entrar con [code]character_busy[/code] (§5.3: cada 3 s durante 30 s).
+## Wait between two attempts to enter with [code]character_busy[/code] (§5.3: every 3 s for 30 s).
 const BUSY_RETRY_S: float = 3.0
 const BUSY_TIMEOUT_S: float = 30.0
-## Cifras de un id como mucho (2^63 − 1 tiene 19; con 18 nunca desborda [method String.to_int]).
+## Maximum digits of an id (2^63 − 1 has 19; with 18 it never overflows [method String.to_int]).
 const MAX_ID_DIGITS: int = 18
 const _BASE64_PATTERN: String = "^[A-Za-z0-9+/]+={0,2}$"
 
@@ -45,14 +45,14 @@ func get_api() -> PlatformApi:
 	return _api
 
 
-## La sesión de la cuenta ([member PlatformApi.session]).
+## The account session ([member PlatformApi.session]).
 func get_session() -> AccountSession:
 	return _api.session
 
 
-## Inicia sesión con [param email] (sin espacios alrededor y en minúsculas, como lo guarda la plataforma) y
-## [param password]. Si va bien, la sesión queda en [member PlatformApi.session] (también la de privacidad de una
-## cuenta sancionada: [method AccountSession.is_privacy]). Corrutina.
+## Logs in with [param email] (without surrounding spaces and in lowercase, as the platform stores it) and
+## [param password]. If it goes well, the session is stored in [member PlatformApi.session] (also the privacy session of a
+## sanctioned account: [method AccountSession.is_privacy]). Coroutine.
 func login(email: String, password: String) -> ApiResult:
 	var body: Dictionary = {"email": email.strip_edges().to_lower(), "password": password}
 	var result: ApiResult = await _api.call_api(HTTPClient.METHOD_POST, "/v1/sessions", body, false)
@@ -61,7 +61,7 @@ func login(email: String, password: String) -> ApiResult:
 	return result
 
 
-## Cierra la sesión en la plataforma y la olvida aquí (aunque la llamada falle). Corrutina.
+## Closes the session on the platform and forgets it here (even if the call fails). Coroutine.
 func logout() -> ApiResult:
 	var result: ApiResult = ApiResult.success({}, 204)
 	if _api.session.is_active():
@@ -70,7 +70,7 @@ func logout() -> ApiResult:
 	return result
 
 
-## [code]GET /v1/account[/code]; si va bien, la cuenta queda en [member AccountSession.account]. Corrutina.
+## [code]GET /v1/account[/code]; if it goes well, the account is stored in [member AccountSession.account]. Coroutine.
 func fetch_account() -> ApiResult:
 	var result: ApiResult = await _api.call_api(HTTPClient.METHOD_GET, "/v1/account", null, true)
 	if result.ok:
@@ -78,13 +78,13 @@ func fetch_account() -> ApiResult:
 	return result
 
 
-## Los personajes de la cuenta en [param world_id] ([code]{realm, unlock_at, slots, used, characters}[/code]).
-## Corrutina.
+## The account's characters in [param world_id] ([code]{realm, unlock_at, slots, used, characters}[/code]).
+## Coroutine.
 func list_characters(world_id: int) -> ApiResult:
 	return await _api.call_api(HTTPClient.METHOD_GET, "/v1/worlds/%d/characters" % world_id, null, true)
 
 
-## Crea un personaje (§4.4): [param appearance] son los 8 B de [CharacterAppearance]. Corrutina.
+## Creates a character (§4.4): [param appearance] is the 8 B of [CharacterAppearance]. Coroutine.
 func create_character(world_id: int, display_name: String, realm: StringName, race_id: StringName,
 		appearance: PackedByteArray, starter_template_id: StringName) -> ApiResult:
 	var body: Dictionary = {
@@ -97,10 +97,10 @@ func create_character(world_id: int, display_name: String, realm: StringName, ra
 	return await _api.call_api(HTTPClient.METHOD_POST, "/v1/worlds/%d/characters" % world_id, body, true)
 
 
-## El personaje [param display_name] de la cuenta en [param world_id]; si no existe, lo crea en [param realm] (id de
-## [RealmCatalog]; vacío = el reino de la cuenta en ese mundo o, si aún no tiene, Vardheim) con la plantilla de inicio
-## [param starter_template] (vacía, o una que no se puede elegir = [method first_starter_template]; docs/progresion.md
-## §2.5). Uno que ya existe se queda con la suya. Corrutina.
+## The account's character [param display_name] in [param world_id]; if it does not exist, creates it in [param realm] (id from
+## [RealmCatalog]; empty = the account's realm in that world or, if it has none yet, Vardheim) with the starter template
+## [param starter_template] (empty, or a non-selectable one = [method first_starter_template]; docs/progresion.md
+## §2.5). One that already exists keeps its own. Coroutine.
 func ensure_character(world_id: int, display_name: String, realm: StringName,
 		starter_template: StringName = &"") -> ApiResult:
 	var listed: ApiResult = await list_characters(world_id)
@@ -138,8 +138,8 @@ func ensure_character(world_id: int, display_name: String, realm: StringName,
 	return ApiResult.success({"character": created.data.get("character", {}), "created": true}, created.status)
 
 
-## Pide entrar al mundo con [param character_id] y devuelve en [code]data.config[/code] la configuración de
-## [OnlineMain] (una copia de [param base] con el billete). Reintenta [code]character_busy[/code] (§5.3). Corrutina.
+## Asks to enter the world with [param character_id] and returns in [code]data.config[/code] the
+## [OnlineMain] configuration (a copy of [param base] with the ticket). Retries [code]character_busy[/code] (§5.3). Coroutine.
 func enter(character_id: int, base: ClientConfig) -> ApiResult:
 	_cancel_enter = false
 	var deadline_msec: int = _api.now_msec() + int(busy_timeout_s * 1000.0)
@@ -165,15 +165,15 @@ func enter(character_id: int, base: ClientConfig) -> ApiResult:
 	return ApiResult.no_response()
 
 
-## Deja de reintentar la entrada de [method enter] (la respuesta que espera es la última recibida).
+## Stops retrying the entry of [method enter] (the response it awaits is the last one received).
 func cancel_enter() -> void:
 	_cancel_enter = true
 
 
-## La configuración de [OnlineMain] de la respuesta de [code]enter[/code] ([param data], §4.5): copia de
-## [param base] con la dirección y el puerto de la zona, el billete, el personaje (id, nombre y reino) y el
-## certificado DTLS (o ninguno), sin plantilla de equipo ([member ClientConfig.loadout]: el kit lo decide la
-## plataforma). Un modo sin red pasa a [constant ClientConfig.Mode.ONLINE]. Null si la respuesta no se entiende.
+## The [OnlineMain] configuration from the response of [code]enter[/code] ([param data], §4.5): a copy of
+## [param base] with the zone's address and port, the ticket, the character (id, name and realm) and the
+## DTLS certificate (or none), without an equipment template ([member ClientConfig.loadout]: the platform decides the kit). A mode without a network becomes
+## [constant ClientConfig.Mode.ONLINE]. Null if the response is not understood.
 static func config_from_enter(data: Dictionary, base: ClientConfig) -> ClientConfig:
 	var zone: Variant = data.get("zone")
 	var character: Variant = data.get("character")
@@ -215,7 +215,7 @@ static func config_from_enter(data: Dictionary, base: ClientConfig) -> ClientCon
 	return config
 
 
-## Los bytes de un texto en base64 estándar (vacío si no lo es; sin registrar errores del motor).
+## The bytes of a standard base64 text (empty if it is not; without logging engine errors).
 static func decode_base64(text: Variant) -> PackedByteArray:
 	if not text is String:
 		return PackedByteArray()
@@ -227,7 +227,7 @@ static func decode_base64(text: Variant) -> PackedByteArray:
 	return Marshalls.base64_to_raw(clean)
 
 
-## Un id de la API (§4.1: cadena decimal sin signo ni ceros a la izquierda) como entero; 0 si no lo es.
+## An API id (§4.1: a decimal string with no sign or leading zeros) as an integer; 0 if it is not.
 static func parse_id(value: Variant) -> int:
 	if not value is String:
 		return 0
@@ -241,14 +241,14 @@ static func parse_id(value: Variant) -> int:
 	return text.to_int()
 
 
-## El pueblo de [param realm_id] (id de [RealmCatalog]) en el catálogo de apariencia; [code]race_<reino>[/code] si
-## el catálogo no lo tiene.
+## The people of [param realm_id] (id from [RealmCatalog]) in the appearance catalog; [code]race_<realm>[/code] if
+## the catalog does not have it.
 static func race_id_for(realm_id: StringName) -> StringName:
 	var race: RaceDefinition = AppearanceCatalog.shared().race_for_realm(realm_id)
 	return race.id if race != null else StringName("race_%s" % realm_id)
 
 
-## Los 8 B de la apariencia por defecto del pueblo de [param realm_id] (8 ceros si no hay pueblo).
+## The 8 B of the default appearance of the people of [param realm_id] (8 zeros if there is no people).
 static func default_appearance(realm_id: StringName) -> PackedByteArray:
 	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
 	var race: RaceDefinition = catalog.race_for_realm(realm_id)
@@ -261,8 +261,8 @@ static func default_appearance(realm_id: StringName) -> PackedByteArray:
 	return appearance.encode()
 
 
-## Las plantillas de inicio que se pueden elegir al crear (las [EquipmentTemplate] con
-## [member EquipmentTemplate.selectable], la sección [code]starter_templates[/code] de las reglas exportadas), por id.
+## The starter templates that can be chosen on creation (the [EquipmentTemplate]s with
+## [member EquipmentTemplate.selectable], the [code]starter_templates[/code] section of the exported rules), by id.
 static func starter_templates() -> Array[EquipmentTemplate]:
 	var result: Array[EquipmentTemplate] = []
 	for template: EquipmentTemplate in CombatCatalog.tables().templates:
@@ -272,7 +272,7 @@ static func starter_templates() -> Array[EquipmentTemplate]:
 	return result
 
 
-## La primera plantilla de inicio por id (la del bot y la que se marca al crear); [code]&""[/code] si no hay.
+## The first starter template by id (the bot's and the one marked on creation); [code]&""[/code] if there is none.
 static func first_starter_template() -> StringName:
 	var templates: Array[EquipmentTemplate] = starter_templates()
 	return templates[0].id if not templates.is_empty() else &""

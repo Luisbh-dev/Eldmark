@@ -1,9 +1,9 @@
 extends TestCase
-## La reunión y la formación del patrón de asedio de [BotBrain] (GUE-44; docs/fuerte.md, secciones 7 y 8.3) sin física:
-## puntos que se mueven donde dicen las entradas ([Walker]), el fuerte del Vado Gris ([SiegeView] con la puerta y el
-## círculo) y sus rutas. Un atacante que empieza o reaparece en su campamento espera a los suyos en el punto de reunión y
-## sale con ellos cuando son bastantes, cuando los suyos ya pelean en el fuerte o en la siguiente salida del reloj común,
-## todos por la misma ruta; el dueño no espera; y, en grupo, cada uno lleva su hueco para no apilarse.
+## The rally and formation of [BotBrain]'s siege pattern (GUE-44; docs/fuerte.md, sections 7 and 8.3) without physics:
+## points that move where the inputs say ([Walker]), the Vado Gris fort ([SiegeView] with the gate and the
+## circle) and its routes. An attacker that starts or respawns at its camp waits for its side at the rally point and
+## leaves with them when there are enough, when its side is already fighting in the fort or on the next tick of the shared clock,
+## all by the same route; the owner does not wait; and, in a group, each one takes its own slot so they do not pile up.
 
 const V: int = NetProtocol.Realm.VARDHEIM
 const S: int = NetProtocol.Realm.SOLMARCH
@@ -14,7 +14,7 @@ const CIRCLE_RADIUS: float = 5.0
 const WALK_SPEED: float = 5.0
 const SPRINT_SPEED: float = 7.5
 const TICKS_PER_SECOND: float = 60.0
-## Puntos de reaparición del campamento de Vardheim (z = -138) y la salida del campamento (el primer punto de sus rutas).
+## Respawn points of Vardheim's camp (z = -138) and the camp exit (the first point of its routes).
 const CAMP_SPAWN: Vector3 = Vector3(-7.5, 0.0, -138.0)
 const RALLY_V: Vector3 = Vector3(-2.5, 0.0, -132.0)
 const RALLY_S: Vector3 = Vector3(-2.5, 0.0, 132.0)
@@ -23,8 +23,8 @@ var _routes: ApproachRoutes = null
 var _view: SiegeView = null
 
 
-## Un punto que obedece a las entradas (como el de test_bot_brain_siege), con su cerebro. Mientras no está
-## [member present] (no ha aparecido aún) no piensa ni cuenta para los demás.
+## A point that obeys the inputs (like the one in test_bot_brain_siege), with its brain. While it is not
+## [member present] (has not appeared yet) it neither thinks nor counts for the others.
 class Walker:
 	extends RefCounted
 
@@ -54,7 +54,7 @@ class Walker:
 		return input
 
 
-## Varios bots en el mismo mundo: el contador de aliados de cada uno cuenta a los demás de su reino que están presentes.
+## Several bots in the same world: each one's ally counter counts the others of its realm that are present.
 class Squad:
 	extends RefCounted
 
@@ -66,8 +66,8 @@ class Squad:
 		var index: int = walkers.size()
 		walkers.append(walker)
 		realms.append(realm)
-		# Un método enlazado y no una lambda: la lambda guardaría al Squad y el ciclo Squad -> cerebro -> lambda no se
-		# liberaría al acabar.
+		# A bound method and not a lambda: the lambda would hold the Squad and the Squad -> brain -> lambda cycle
+		# would not be freed at the end.
 		walker.brain.set_ally_counter(count.bind(index))
 		return walker
 
@@ -83,8 +83,8 @@ class Squad:
 		return found
 
 
-	# Un tick para todos: piensan todos con las posiciones de antes (como los falsos del servidor, que cuentan con la
-	# lista del tick) y luego se mueven.
+	# One tick for all: they all think with the earlier positions (like the server's fake ones, which count with the
+	# tick's list) and then move.
 	func step(tick: int) -> void:
 		var before: Array[Vector3] = []
 		for walker: Walker in walkers:
@@ -111,8 +111,8 @@ func before_each() -> void:
 	_view.gate_max = 9000
 
 
-## Un cerebro de asedio sin el papel de la pasarela (GUE-45): estos puntos no tienen altura y no pueden subir a ella;
-## la pasarela se prueba en test_bot_brain_walkway.
+## A siege brain without the walkway role (GUE-45): these points have no height and cannot climb to it;
+## the walkway is tested in test_bot_brain_walkway.
 func _brain(realm: int, rng_seed: int) -> BotBrain:
 	var brain := BotBrain.new(rng_seed, BotBrain.Pattern.SIEGE)
 	brain.set_siege(_view, _routes, realm)
@@ -125,43 +125,43 @@ func _alone(brain: BotBrain) -> void:
 
 
 func test_the_rally_point_is_the_way_out_of_the_camp() -> void:
-	assert_vec_near(_brain(V, 1).get_siege_rally_point(), RALLY_V, 0.01, "Vardheim: el primer punto de sus rutas")
-	assert_vec_near(_brain(S, 1).get_siege_rally_point(), RALLY_S, 0.01, "Solmarch: el suyo")
+	assert_vec_near(_brain(V, 1).get_siege_rally_point(), RALLY_V, 0.01, "Vardheim: the first point of its routes")
+	assert_vec_near(_brain(S, 1).get_siege_rally_point(), RALLY_S, 0.01, "Solmarch: its own")
 	var routes_point: Vector2 = _routes.get_points(ApproachRoutes.FORD, RealmCatalog.VARDHEIM)[0]
-	assert_eq(Vector2(RALLY_V.x, RALLY_V.z), routes_point, "las dos rutas empiezan en el mismo sitio")
+	assert_eq(Vector2(RALLY_V.x, RALLY_V.z), routes_point, "both routes start in the same place")
 	var lost := BotBrain.new(1, BotBrain.Pattern.SIEGE)
 	lost.set_siege(_view, null, V)
-	assert_null(lost.get_siege_rally_point(), "sin rutas no hay punto de reunión")
+	assert_null(lost.get_siege_rally_point(), "without routes there is no rally point")
 	assert_true(CAMP_SPAWN.distance_to(RALLY_V) < BotBrain.SIEGE_RALLY_RADIUS,
-			"los puntos de reaparición del campamento quedan dentro del radio de la reunión")
+			"the camp's respawn points fall within the rally radius")
 
 
 func test_the_departure_clock_is_shared_and_the_group_route_alternates() -> void:
 	var period: int = BotBrain.SIEGE_RALLY_PERIOD_TICKS
 	var offset: int = BotBrain.SIEGE_RALLY_OFFSET_TICKS
-	assert_eq(BotBrain.next_rally_departure(0), offset, "la primera salida, 5 s después del principio")
+	assert_eq(BotBrain.next_rally_departure(0), offset, "the first departure, 5 s after the start")
 	assert_eq(BotBrain.next_rally_departure(offset - 1), offset)
-	assert_eq(BotBrain.next_rally_departure(offset), offset + period, "siempre después del tick dado")
+	assert_eq(BotBrain.next_rally_departure(offset), offset + period, "always after the given tick")
 	assert_eq(BotBrain.next_rally_departure(offset + 1), offset + period)
-	assert_eq(BotBrain.next_rally_departure(4000, 600), 4500, "con otra vuelta del reloj")
-	# Dos bots que empiezan a esperar en ticks distintos de la misma vuelta salen en el mismo.
+	assert_eq(BotBrain.next_rally_departure(4000, 600), 4500, "with another turn of the clock")
+	# Two bots that start waiting on different ticks of the same turn leave on the same one.
 	assert_eq(BotBrain.next_rally_departure(700), BotBrain.next_rally_departure(2000))
-	# La ruta del grupo alterna de una vuelta a la siguiente y no cambia por unos ticks alrededor de una salida.
+	# The group's route alternates from one turn to the next and does not change for a few ticks around a departure.
 	assert_eq(BotBrain.rally_route_index(offset, 2), 0)
 	assert_eq(BotBrain.rally_route_index(offset + period, 2), 1)
 	assert_eq(BotBrain.rally_route_index(offset + 2 * period, 2), 0)
 	assert_eq(BotBrain.rally_route_index(offset + period - 5, 2), BotBrain.rally_route_index(offset + period + 5, 2),
-			"unos ticks antes o después de una salida, la misma ruta")
-	assert_eq(BotBrain.rally_route_index(100, 0), -1, "sin rutas, ninguna")
+			"a few ticks before or after a departure, the same route")
+	assert_eq(BotBrain.rally_route_index(100, 0), -1, "without routes, none")
 
 
 func test_without_an_ally_counter_it_marches_at_once() -> void:
 	var brain: BotBrain = _brain(V, 3)
 	var walker := Walker.new(brain, CAMP_SPAWN)
 	walker.step(1)
-	assert_false(brain.is_rallying(), "sin contador de aliados no espera (como antes de GUE-44)")
+	assert_false(brain.is_rallying(), "with no ally counter it does not wait (as before GUE-44)")
 	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.MARCH)
-	assert_true(brain.get_siege_route() != &"", "y ha elegido su ruta")
+	assert_true(brain.get_siege_route() != &"", "and has chosen its route")
 
 
 func test_alone_at_the_camp_it_waits_for_the_clock_and_then_marches() -> void:
@@ -171,23 +171,23 @@ func test_alone_at_the_camp_it_waits_for_the_clock_and_then_marches() -> void:
 	var departure: int = BotBrain.next_rally_departure(1)
 	for tick: int in range(1, departure):
 		walker.step(tick)
-		if not assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.RALLY, "tick %d: espera" % tick):
+		if not assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.RALLY, "tick %d: waits" % tick):
 			return
 	assert_true(brain.is_rallying())
-	assert_eq(brain.get_rally_deadline(), departure, "como mucho hasta la siguiente salida del reloj")
-	assert_eq(brain.get_siege_route(), &"", "aún sin ruta")
+	assert_eq(brain.get_rally_deadline(), departure, "at most until the next departure of the clock")
+	assert_eq(brain.get_siege_route(), &"", "still without a route")
 	var spot: Vector3 = RALLY_V + Vector3(brain.get_siege_slot().x, 0.0, brain.get_siege_slot().y) \
 			* BotBrain.SIEGE_SLOT_RALLY_SPREAD
 	assert_true(walker.position.distance_to(spot) <= BotBrain.SIEGE_SLOT_REACHED + 0.2,
-			"quieto en su sitio del punto de reunión (%.2f m)" % walker.position.distance_to(spot))
-	assert_false(walker.last_input.has(PlayerInput.PRIMARY), "sin atacar a nadie")
+			"standing still at its place at the rally point (%.2f m)" % walker.position.distance_to(spot))
+	assert_false(walker.last_input.has(PlayerInput.PRIMARY), "without attacking anyone")
 	walker.step(departure)
-	assert_false(brain.is_rallying(), "sale con el reloj")
+	assert_false(brain.is_rallying(), "leaves with the clock")
 	assert_eq(brain.get_last_rally_departure(), departure)
 	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.MARCH)
 	var candidates: Array[StringName] = _routes.get_route_ids()
 	assert_eq(brain.get_siege_route(), candidates[BotBrain.rally_route_index(departure, candidates.size())],
-			"por la ruta de esa vuelta del reloj")
+			"by the route of that turn of the clock")
 
 
 func test_a_group_leaves_together_by_the_same_route_once_enough_have_gathered() -> void:
@@ -196,7 +196,7 @@ func test_a_group_leaves_together_by_the_same_route_once_enough_have_gathered() 
 	for index: int in size:
 		var walker: Walker = squad.add(Walker.new(_brain(V, 100 + index), CAMP_SPAWN), V)
 		walker.brain.set_rally(size)
-		# Llegan de uno en uno (como si reaparecieran): uno cada 40 ticks.
+		# They arrive one at a time (as if respawning): one every 40 ticks.
 		walker.present = index == 0
 	var arrival_of_last: int = 1 + 40 * (size - 1)
 	for tick: int in range(1, arrival_of_last + 3):
@@ -207,17 +207,17 @@ func test_a_group_leaves_together_by_the_same_route_once_enough_have_gathered() 
 		if tick < arrival_of_last:
 			for index: int in size:
 				if squad.walkers[index].present and not squad.walkers[index].brain.is_rallying():
-					assert_true(false, "tick %d: el %d no debería haber salido aún" % [tick, index])
+					assert_true(false, "tick %d: number %d should not have left yet" % [tick, index])
 					return
 	var departures: Dictionary = {}
 	var routes: Dictionary = {}
 	for walker: Walker in squad.walkers:
-		assert_false(walker.brain.is_rallying(), "ya no espera")
+		assert_false(walker.brain.is_rallying(), "no longer waits")
 		departures[walker.brain.get_last_rally_departure()] = true
 		routes[walker.brain.get_siege_route()] = true
-	assert_eq(departures.keys(), [arrival_of_last], "salen todos en el tick en que llega el cuarto, sin esperar al reloj")
+	assert_eq(departures.keys(), [arrival_of_last], "they all leave on the tick the fourth arrives, without waiting for the clock")
 	assert_true(arrival_of_last < BotBrain.next_rally_departure(1))
-	assert_eq(routes.size(), 1, "y por la misma ruta: %s" % [routes.keys()])
+	assert_eq(routes.size(), 1, "and by the same route: %s" % [routes.keys()])
 
 
 func test_bots_that_arrive_at_different_times_leave_together_on_the_clock() -> void:
@@ -227,7 +227,7 @@ func test_bots_that_arrive_at_different_times_leave_together_on_the_clock() -> v
 		var walker: Walker = squad.add(Walker.new(_brain(S, 200 + index * 7), Vector3(-7.5, 0.0, 138.0)), S)
 		walker.present = false
 	var departure: int = BotBrain.next_rally_departure(arrivals[0])
-	assert_eq(departure, BotBrain.next_rally_departure(arrivals[2]), "los tres caen en la misma vuelta del reloj")
+	assert_eq(departure, BotBrain.next_rally_departure(arrivals[2]), "all three fall in the same turn of the clock")
 	for tick: int in range(1, departure + 2):
 		for index: int in arrivals.size():
 			if tick == arrivals[index]:
@@ -235,9 +235,9 @@ func test_bots_that_arrive_at_different_times_leave_together_on_the_clock() -> v
 		squad.step(tick)
 	var routes: Dictionary = {}
 	for walker: Walker in squad.walkers:
-		assert_eq(walker.brain.get_last_rally_departure(), departure, "salen juntos con el reloj (grupo de 3 de 8)")
+		assert_eq(walker.brain.get_last_rally_departure(), departure, "they leave together with the clock (group of 3 of 8)")
 		routes[walker.brain.get_siege_route()] = true
-	assert_eq(routes.size(), 1, "por la misma ruta")
+	assert_eq(routes.size(), 1, "by the same route")
 
 
 func test_after_a_respawn_at_the_camp_it_waits_again() -> void:
@@ -252,18 +252,18 @@ func test_after_a_respawn_at_the_camp_it_waits_again() -> void:
 	for _i: int in 900:
 		walker.step(tick)
 		tick += 1
-	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.MARCH, "marcha")
-	assert_true(walker.position.distance_to(RALLY_V) > 30.0, "lejos del campamento")
-	# Muere y reaparece en el campamento (un salto de más de 5 m).
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.MARCH, "march")
+	assert_true(walker.position.distance_to(RALLY_V) > 30.0, "far from the camp")
+	# Dies and respawns at the camp (a jump of more than 5 m).
 	walker.position = CAMP_SPAWN
 	walker.step(tick)
-	assert_true(brain.is_rallying(), "vuelve a esperar a los suyos")
+	assert_true(brain.is_rallying(), "waits for its side again")
 	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.RALLY)
 	assert_eq(brain.get_rally_deadline(), BotBrain.next_rally_departure(tick, 600))
 
 
 func test_a_respawn_far_from_the_camp_or_the_owner_never_waits() -> void:
-	# Un salto que no acaba en el campamento (lo colocan delante de la puerta) no es una reaparición en él.
+	# A jump that does not end at the camp (it is placed in front of the gate) is not a respawn there.
 	var brain: BotBrain = _brain(V, 6)
 	_alone(brain)
 	brain.set_rally(BotBrain.SIEGE_RALLY_GROUP_SIZE, 600)
@@ -272,22 +272,22 @@ func test_a_respawn_far_from_the_camp_or_the_owner_never_waits() -> void:
 	assert_true(brain.is_rallying())
 	walker.position = Vector3(-27.0, 0.0, 0.0)
 	walker.step(2)
-	assert_false(brain.is_rallying(), "delante de la puerta no espera a nadie")
+	assert_false(brain.is_rallying(), "in front of the gate it waits for no one")
 	for tick: int in range(3, 120):
 		walker.step(tick)
-	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.ASSAULT, "golpea la puerta")
-	# El dueño defiende en cuanto puede.
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.ASSAULT, "hits the gate")
+	# The owner defends as soon as it can.
 	_view.owner = V
 	var owner: BotBrain = _brain(V, 7)
 	_alone(owner)
 	var owner_walker := Walker.new(owner, CAMP_SPAWN)
 	owner_walker.step(1)
-	assert_false(owner.is_rallying(), "el dueño no espera")
+	assert_false(owner.is_rallying(), "the owner does not wait")
 	assert_eq(owner.get_siege_task(), BotBrain.SiegeTask.MARCH)
 
 
 func test_it_does_not_wait_if_its_people_are_already_fighting_at_the_fort() -> void:
-	# Tres de los suyos en el patio: el asalto sigue y va a ayudarlos sin esperar al grupo ni al reloj.
+	# Three of its side in the courtyard: the assault is ongoing and it goes to help them without waiting for the group or the clock.
 	var at_fort: Array[int] = [BotBrain.SIEGE_RALLY_JOIN_COUNT - 1]
 	var brain: BotBrain = _brain(V, 12)
 	brain.set_ally_counter(func(center: Vector3, _radius: float) -> int:
@@ -295,10 +295,10 @@ func test_it_does_not_wait_if_its_people_are_already_fighting_at_the_fort() -> v
 	var walker := Walker.new(brain, CAMP_SPAWN)
 	for tick: int in range(1, 30):
 		walker.step(tick)
-	assert_true(brain.is_rallying(), "con %d en el fuerte, espera" % at_fort[0])
+	assert_true(brain.is_rallying(), "with %d in the fort, it waits" % at_fort[0])
 	at_fort[0] = BotBrain.SIEGE_RALLY_JOIN_COUNT
 	walker.step(30)
-	assert_false(brain.is_rallying(), "con %d, sale" % at_fort[0])
+	assert_false(brain.is_rallying(), "with %d, it leaves" % at_fort[0])
 	assert_eq(brain.get_last_rally_departure(), 30)
 	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.MARCH)
 
@@ -312,7 +312,7 @@ func test_it_stops_waiting_when_its_realm_takes_the_fort() -> void:
 	assert_true(brain.is_rallying())
 	_view.owner = S
 	walker.step(60)
-	assert_false(brain.is_rallying(), "ahora es el dueño: a defender")
+	assert_false(brain.is_rallying(), "now it is the owner: to defend")
 	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.MARCH)
 
 
@@ -322,14 +322,14 @@ func test_a_group_of_one_or_less_never_waits() -> void:
 	brain.set_rally(1)
 	var walker := Walker.new(brain, CAMP_SPAWN)
 	walker.step(1)
-	assert_false(brain.is_rallying(), "con el grupo a 1 sale solo")
+	assert_false(brain.is_rallying(), "with the group at 1 it leaves alone")
 	var other: BotBrain = _brain(V, 10)
 	_alone(other)
 	var other_walker := Walker.new(other, CAMP_SPAWN)
 	other_walker.step(1)
 	assert_true(other.is_rallying())
 	other.set_rally(0)
-	assert_false(other.is_rallying(), "quitar la reunión mientras espera la acaba")
+	assert_false(other.is_rallying(), "removing the rally while it waits ends the wait")
 	other_walker.step(2)
 	assert_eq(other.get_siege_task(), BotBrain.SiegeTask.MARCH)
 
@@ -346,12 +346,12 @@ func test_it_fights_an_enemy_that_comes_to_the_rally_and_then_waits_again() -> v
 	enemy[0] = walker.position + Vector3(3.0, 0.0, 0.0)
 	for tick: int in range(40, 80):
 		walker.step(tick)
-	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "pelea con quien llega")
-	assert_true(brain.is_rallying(), "sin dejar de ser de los que esperan")
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "fights whoever arrives")
+	assert_true(brain.is_rallying(), "without ceasing to be one of those waiting")
 	enemy[0] = null
 	for tick: int in range(80, 100):
 		walker.step(tick)
-	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.RALLY, "y vuelve a esperar")
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.RALLY, "and waits again")
 
 
 func test_the_rally_is_deterministic() -> void:
@@ -375,28 +375,28 @@ func test_the_rally_is_deterministic() -> void:
 					bytes.append_array(walker.last_input.encode())
 		runs.append(bytes)
 	assert_true(runs[0].size() > 0)
-	assert_true(runs[0] == runs[1], "mismas entradas en las dos ejecuciones")
+	assert_true(runs[0] == runs[1], "same inputs in both runs")
 
 
 func test_slots_of_consecutive_seeds_are_spread_over_the_unit_disk() -> void:
 	var slots: Array[Vector2] = []
 	for rng_seed: int in range(2000, 2020):
 		var slot: Vector2 = BotBrain.slot_for_seed(rng_seed)
-		assert_true(slot.length() <= 1.0001, "dentro del disco unidad (%s)" % slot)
+		assert_true(slot.length() <= 1.0001, "within the unit disc (%s)" % slot)
 		slots.append(slot)
-	assert_eq(BotBrain.slot_for_seed(2000), BotBrain.slot_for_seed(2000), "siempre el mismo para la misma semilla")
-	assert_eq(_brain(V, 2005).get_siege_slot(), BotBrain.slot_for_seed(2005), "el del cerebro")
+	assert_eq(BotBrain.slot_for_seed(2000), BotBrain.slot_for_seed(2000), "always the same for the same seed")
+	assert_eq(_brain(V, 2005).get_siege_slot(), BotBrain.slot_for_seed(2005), "the brain's one")
 	var closest: float = INF
 	for i: int in slots.size():
 		for j: int in range(i + 1, slots.size()):
 			closest = minf(closest, slots[i].distance_to(slots[j]))
-	assert_true(closest > 0.1, "veinte semillas seguidas, veinte huecos distintos (el par más cercano a %.2f)" % closest)
+	assert_true(closest > 0.1, "twenty consecutive seeds, twenty different slots (the closest pair at %.2f)" % closest)
 	var left: int = 0
 	for slot: Vector2 in slots:
 		left += 1 if slot.x < 0.0 else 0
-	assert_true(left >= 6 and left <= 14, "repartidos a los dos lados (%d de 20 a la izquierda)" % left)
-	# Lo que dicen slot_for_seed y docs/fuerte.md (revisión de F6b): con cualquier base de 0 a 6000, el par más cercano de
-	# veinte semillas seguidas queda a 0,1 o más (a menos de 0,18 en una de cada diez bases).
+	assert_true(left >= 6 and left <= 14, "spread to both sides (%d of 20 on the left)" % left)
+	# What slot_for_seed and docs/fuerte.md say (F6b review): with any base from 0 to 6000, the closest pair of
+	# twenty consecutive seeds is 0.1 or more apart (under 0.18 in one of every ten bases).
 	var worst: float = INF
 	var below: int = 0
 	for base: int in range(0, 6001):
@@ -410,12 +410,12 @@ func test_slots_of_consecutive_seeds_are_spread_over_the_unit_disk() -> void:
 		nearest = sqrt(nearest)
 		worst = minf(worst, nearest)
 		below += 1 if nearest < 0.18 else 0
-	assert_true(worst >= 0.1, "con cualquier base, a 0,1 o más (el peor, %.3f)" % worst)
-	assert_true(below > 0 and below < 900, "a menos de 0,18 en una de cada diez bases, no en ninguna (%d de 6001)" % below)
+	assert_true(worst >= 0.1, "with any base, 0.1 or more (the worst, %.3f)" % worst)
+	assert_true(below > 0 and below < 900, "under 0.18 in one of every ten bases, not in none (%d of 6001)" % below)
 
 
 func test_in_a_group_they_hit_the_gate_and_hold_the_circle_each_from_its_own_spot() -> void:
-	# Sin hueco, los que llegan por el mismo sitio acaban uno encima de otro (los personajes no chocan entre sí).
+	# Without a slot, those who arrive by the same place end up on top of one another (characters do not collide with each other).
 	var squad := Squad.new()
 	for index: int in 6:
 		var walker: Walker = squad.add(Walker.new(_brain(V, 400 + index), Vector3(-26.0, 0.0, -1.0)), V)
@@ -425,26 +425,26 @@ func test_in_a_group_they_hit_the_gate_and_hold_the_circle_each_from_its_own_spo
 	var across := Vector3(0.0, 0.0, 1.0)
 	var laterals: Array[float] = []
 	for walker: Walker in squad.walkers:
-		assert_eq(walker.brain.get_siege_task(), BotBrain.SiegeTask.ASSAULT, "golpean la puerta")
+		assert_eq(walker.brain.get_siege_task(), BotBrain.SiegeTask.ASSAULT, "hit the gate")
 		assert_true(walker.position.distance_to(GATE) <= BotBrain.SIEGE_GATE_ATTACK_DISTANCE + 2.0,
-				"al alcance de la puerta (%.2f m)" % walker.position.distance_to(GATE))
+				"within reach of the gate (%.2f m)" % walker.position.distance_to(GATE))
 		var lateral: float = (walker.position - GATE).dot(across)
-		assert_true(absf(lateral) <= BotBrain.SIEGE_SLOT_GATE_SPREAD + 0.6, "dentro del ancho de la puerta (%.2f)" % lateral)
-		assert_near(walker.yaw, fposmod(atan2(-1.0, 0.0), TAU), 0.05, "mirándola de frente")
+		assert_true(absf(lateral) <= BotBrain.SIEGE_SLOT_GATE_SPREAD + 0.6, "within the width of the gate (%.2f)" % lateral)
+		assert_near(walker.yaw, fposmod(atan2(-1.0, 0.0), TAU), 0.05, "facing it head-on")
 		laterals.append(lateral)
 	laterals.sort()
-	assert_true(laterals[laterals.size() - 1] - laterals[0] > 1.5, "repartidos a lo largo de la puerta: %s" % [laterals])
-	# Con la puerta rota, cada uno a su sitio del círculo.
+	assert_true(laterals[laterals.size() - 1] - laterals[0] > 1.5, "spread along the gate: %s" % [laterals])
+	# With the gate broken, each to their place in the circle.
 	_view.gate_health = 0
 	for tick: int in range(400, 1000):
 		squad.step(tick)
 	var spots: Array[Vector3] = []
 	for walker: Walker in squad.walkers:
 		assert_eq(walker.brain.get_siege_task(), BotBrain.SiegeTask.HOLD)
-		assert_true(_view.is_in_circle(walker.position), "dentro del círculo (%s)" % walker.position)
+		assert_true(_view.is_in_circle(walker.position), "inside the circle (%s)" % walker.position)
 		spots.append(walker.position)
 	var closest: float = INF
 	for i: int in spots.size():
 		for j: int in range(i + 1, spots.size()):
 			closest = minf(closest, spots[i].distance_to(spots[j]))
-	assert_true(closest > 0.3, "sin apilarse (los dos más cercanos a %.2f m)" % closest)
+	assert_true(closest > 0.3, "without piling up (the two closest at %.2f m)" % closest)

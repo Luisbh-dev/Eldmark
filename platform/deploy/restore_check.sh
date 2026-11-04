@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
-# Restauración de prueba de una copia (docs/plataforma.md §11.2 y §12, TEC-28): la restaura en un
-# clúster de PostgreSQL efímero, aplica las migraciones que le falten, vuelve a aplicar las purgas
-# con el purges.txt más reciente (eldmark-platform admin reapply-purges) y hace las consultas de
-# integridad. No toca la base de verdad ni deja nada: el clúster se borra al salir.
+# Test restore of a backup (docs/plataforma.md §11.2 and §12, TEC-28): it restores it into an
+# ephemeral PostgreSQL cluster, applies any missing migrations, reapplies the purges with the most
+# recent purges.txt (eldmark-platform admin reapply-purges) and runs the integrity queries. It does
+# not touch the real database or leave anything behind: the cluster is deleted on exit.
 #
-# Uso:
-#   restore_check.sh <copia.dump> <purges.txt>
-#   restore_check.sh --dir <carpeta de backup.sh>   la copia más reciente (daily/ o weekly/) y el
-#                                                   purges.txt más reciente de esa carpeta
+# Usage:
+#   restore_check.sh <backup.dump> <purges.txt>
+#   restore_check.sh --dir <backup.sh folder>   the most recent copy (daily/ or weekly/) and the
+#                                               most recent purges.txt in that folder
 #
-# Sale con 0 si todo cuadra, 1 si algo falla (para alertar, TEC-31) y 2 si el uso no vale.
+# Exits 0 if everything adds up, 1 if something fails (to alert, TEC-31) and 2 if the usage is
+# invalid.
 #
 # Variables:
-#   ELDMARK_PLATFORM_BIN    el binario eldmark-platform (por defecto, el del PATH)
-#   ELDMARK_RESTORE_ACTOR   correo de una cuenta admin de la copia para el --actor de reapply-purges
-#                           (por defecto, la primera admin activa que no está en purges.txt; si la
-#                           copia no tiene ninguna, se crea una de usar y tirar con bootstrap)
-#   ELDMARK_PG_BIN, ELDMARK_PG_USER   como en internal/testdb (pglib.sh)
-#   TMPDIR                  dónde va el clúster (corto: la ruta del socket no puede pasar de 107 B)
+#   ELDMARK_PLATFORM_BIN    the eldmark-platform binary (by default, the one on the PATH)
+#   ELDMARK_RESTORE_ACTOR   email of an admin account in the backup for reapply-purges' --actor
+#                           (by default, the first active admin not in purges.txt; if the backup
+#                           has none, a throwaway one is created with bootstrap)
+#   ELDMARK_PG_BIN, ELDMARK_PG_USER   as in internal/testdb (pglib.sh)
+#   TMPDIR                  where the cluster goes (short: the socket path cannot exceed 107 B)
 set -euo pipefail
 
 ELD_SCRIPT=restore_check
@@ -81,7 +82,8 @@ eld_pg_start "$data" "$work/postgres.log" "-k '$work' -c listen_addresses= $ELD_
 conn="host=$work port=5432 user=$ELD_PG_SUPERUSER dbname=eldmark sslmode=disable"
 eld_psql "host=$work port=5432 user=$ELD_PG_SUPERUSER dbname=postgres" -c "create database eldmark"
 
-# 1. pg_restore de la copia entera (sin dueños ni permisos: el clúster es de otro usuario).
+# 1. pg_restore of the whole backup (without owners or permissions: the cluster belongs to another
+#    user).
 t0="$(eld_ms)"
 "$PG_BIN/pg_restore" --no-owner --no-privileges --exit-on-error -d "$conn" "$dump" ||
 	eld_die "pg_restore no ha podido restaurar la copia"
@@ -89,9 +91,9 @@ restore_ms=$(($(eld_ms) - t0))
 counts="$(eld_psql "$conn" -F ' ' -c "select (select count(*) from accounts), (select count(*) from characters)")"
 eld_log "restaurada en $restore_ms ms: ${counts% *} cuentas y ${counts#* } personajes"
 
-# 2. purges.txt en un esquema aparte del clúster de prueba, y los correos que la copia aún tiene de
-#    las cuentas purgadas después de tomarla (antes de reapply-purges, que los borra): con ellos se
-#    mira que la auditoría no guarde ninguno (§11.2).
+# 2. purges.txt in a separate schema of the test cluster, and the emails the backup still has for
+#    accounts purged after it was taken (before reapply-purges, which deletes them): with them we
+#    check that the audit stores none (§11.2).
 eld_psql "$conn" -c "create schema restore_check" \
 	-c "create table restore_check.purges (kind text not null, id bigint not null, purged_at timestamptz not null)"
 eld_psql "$conn" -c "copy restore_check.purges (kind, id, purged_at) from stdin" < "$purges" ||
@@ -106,7 +108,7 @@ purge_counts="$(eld_psql "$conn" -F ' ' -c "select count(*) filter (where kind =
 read -r purge_accounts purge_characters purge_emails <<< "$purge_counts"
 eld_log "purges.txt: $purge_accounts cuentas y $purge_characters personajes; la copia aún tiene el correo de $purge_emails"
 
-# 3. La orden de la plataforma, con una configuración de usar y tirar: solo ve la base de prueba.
+# 3. The platform command, with a throwaway configuration: it only sees the test database.
 platform() {
 	env -i PATH="$PATH" HOME="${HOME:-/tmp}" USER="${USER:-restore_check}" TMPDIR="${TMPDIR:-/tmp}" \
 		ELDMARK_ENV=dev \
@@ -117,13 +119,13 @@ platform() {
 		"$bin" "$@"
 }
 
-# 4. Las migraciones que falten (una copia de antes de un despliegue; expandir y contraer, §2.4).
+# 4. Any missing migrations (a backup from before a deployment; expand and contract, §2.4).
 if ! platform migrate status > "$work/status.txt" 2>&1; then
 	eld_log "a la copia le faltan migraciones del binario: migrate up"
 	platform migrate up >&2 || eld_die "migrate up falla sobre la copia"
 fi
 
-# 5. reapply-purges con una cuenta admin de la copia (o una de usar y tirar si no tiene ninguna).
+# 5. reapply-purges with an admin account from the backup (or a throwaway one if it has none).
 actor="${ELDMARK_RESTORE_ACTOR:-}"
 if [ -z "$actor" ]; then
 	actor="$(eld_psql "$conn" -c "select email from accounts a
@@ -147,11 +149,11 @@ t0="$(eld_ms)"
 platform admin --actor "$actor" reapply-purges "$purges" >&2 || eld_die "reapply-purges falla sobre la copia"
 reapply_ms=$(($(eld_ms) - t0))
 
-# 6. El esquema, al día con el binario.
+# 6. The schema, up to date with the binary.
 platform migrate status > "$work/status.txt" 2>&1 ||
 	{ cat "$work/status.txt" >&2; eld_die "migrate status: la base restaurada no está al día con el binario"; }
 
-# 7. Integridad: cada consulta tiene que dar 0.
+# 7. Integrity: each query has to return 0.
 checks="$(eld_psql "$conn" -F '|' <<'SQL'
 -- Todo por conjuntos (una pasada por tabla): con miles de purgas y tablas grandes, un exists por
 -- fila sobre columnas sin índice (chat_messages.sender_account_id) tarda minutos.

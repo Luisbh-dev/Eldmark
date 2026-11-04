@@ -1,27 +1,26 @@
 class_name ChatPreview
 extends Control
-## Vista previa de la caja de chat (SOC-05; herramienta de desarrollo, solo cliente): la [ChatBox] sobre un
-## fondo plano, con mensajes de ejemplo de todos los canales, y un cliente falso que devuelve como si fuera
-## el servidor lo que se escribe, para probar a mano los comandos, las pestañas, el historial y el
-## desvanecimiento sin lanzar un servidor.
+## Chat box preview (SOC-05; development tool, client only): the [ChatBox] over a flat background, with
+## sample messages from all the channels, and a fake client that echoes back what is typed as if it were
+## the server, to try out the commands, tabs, history and fade-out by hand without launching a server.
 ## [br][br]
-## Uso (necesita ventana: el renderizador de [code]--headless[/code] no dibuja nada):
+## Usage (needs a window: the [code]--headless[/code] renderer draws nothing):
 ## [codeblock]
-## godot --path . res://scenes/tests/chat_preview.tscn -- [--shots=<carpeta>]
-## xvfb-run -a godot --path . res://scenes/tests/chat_preview.tscn -- --shots=/ruta/absoluta/build/chat
+## godot --path . res://scenes/tests/chat_preview.tscn -- [--shots=<folder>]
+## xvfb-run -a godot --path . res://scenes/tests/chat_preview.tscn -- --shots=/absolute/path/build/chat
 ## [/codeblock]
-## Con [code]--shots=<carpeta>[/code] guarda tres capturas ([code]chat_closed.png[/code], con los mensajes
-## en reposo; [code]chat_open.png[/code], con la línea abierta y un comando a medio escribir, y
-## [code]chat_whispers.png[/code], con la pestaña de susurros), una hoja con la zona de la caja de las tres
-## ([code]chat_demo.png[/code]) y cierra. Sin ella se queda abierta: Intro
-## abre la línea, [code]/[/code] la abre con la barra, Esc la cierra, flecha arriba recorre el historial y
-## [code]/ayuda[/code] lista los comandos.
+## With [code]--shots=<folder>[/code] it saves three screenshots ([code]chat_closed.png[/code], with the
+## messages at rest; [code]chat_open.png[/code], with the line open and a command half typed; and
+## [code]chat_whispers.png[/code], with the whispers tab), a sheet with the chat box area of the three
+## ([code]chat_demo.png[/code]) and quits. Without it, it stays open: Enter opens the line, [code]/[/code]
+## opens it with the slash, Esc closes it, up arrow walks through the history and
+## [code]/ayuda[/code] lists the commands.
 
-## Nombre del jugador de la vista previa.
+## Name of the preview player.
 const OWN_NAME: String = "Ana"
-## Color del fondo: un verde de prado apagado, como el mundo detrás del HUD.
+## Background color: a muted meadow green, like the world behind the HUD.
 const BACKGROUND_COLOR: Color = Color(0.2, 0.27, 0.24, 1.0)
-## Fotogramas que se esperan antes de cada captura, para que el interfaz se dibuje.
+## Frames to wait before each screenshot, so that the interface gets drawn.
 const SETTLE_FRAMES: int = 6
 
 var _chat: ChatBox = null
@@ -30,8 +29,8 @@ var _shots_dir: String = ""
 var _shots: Array[Image] = []
 
 
-## Cliente falso: lo que se envía vuelve como un mensaje del servidor con el nombre del jugador, y un
-## susurro además recibe una respuesta de su destinatario.
+## Fake client: what is sent comes back as a server message with the player's name, and a whisper
+## additionally gets a reply from its recipient.
 class PreviewClient:
 	extends NetClient
 
@@ -94,18 +93,18 @@ func _ready() -> void:
 		_run_shots.call_deferred()
 
 
-## La caja de chat de la vista previa.
+## The preview's chat box.
 func get_chat() -> ChatBox:
 	return _chat
 
 
-## El cliente falso.
+## The fake client.
 func get_client() -> NetClient:
 	return _client
 
 
-# Una conversación de ejemplo que enseña todos los canales, el color del reino de cada nombre y que el
-# BBCode de otro jugador se ve tal cual.
+# A sample conversation showing all the channels, the realm color of each name and that another
+# player's BBCode is shown as-is.
 func _fill_sample_messages() -> void:
 	var samples: Array[Dictionary] = [
 		{"channel": ChatChannel.Id.SYSTEM, "sender": "", "text": "Bienvenida a Eldmark, %s." % OWN_NAME},
@@ -131,7 +130,7 @@ func _fill_sample_messages() -> void:
 		_chat.add_message(message)
 
 
-# Las tres capturas y cierre.
+# The three screenshots and quit.
 func _run_shots() -> void:
 	DirAccess.make_dir_recursive_absolute(_shots_dir)
 	await _settle()
@@ -165,12 +164,12 @@ func _capture(file_name: String) -> void:
 		push_warning("[ChatPreview] No se pudo guardar %s (%s)" % [path, error_string(error)])
 
 
-# Una hoja con la zona de la caja de cada captura, una al lado de otra.
+# A sheet with each screenshot's chat box area, side by side.
 func _save_sheet() -> void:
 	if _shots.is_empty():
 		return
 	var first: Image = _shots[0]
-	# Los controles están en coordenadas del lienzo base; la imagen, en las de la ventana.
+	# The controls are in base canvas coordinates; the image, in window coordinates.
 	var scale_factor: Vector2 = Vector2(first.get_size()) / get_viewport().get_visible_rect().size
 	var area: Rect2 = _chat.get_global_rect().grow(8.0)
 	var region := Rect2i(Vector2i(area.position * scale_factor), Vector2i(area.size * scale_factor))

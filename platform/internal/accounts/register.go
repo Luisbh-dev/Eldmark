@@ -13,7 +13,7 @@ import (
 	"eldmark/platform/legal"
 )
 
-// RegisterRequest es el cuerpo de POST /v1/accounts.
+// RegisterRequest is the body of POST /v1/accounts.
 type RegisterRequest struct {
 	Email        *string       `json:"email"`
 	Password     *string       `json:"password"`
@@ -22,12 +22,12 @@ type RegisterRequest struct {
 	Consents     Consents      `json:"consents"`
 }
 
-// Register crea una cuenta sin delatar cuáles existen (§4.2): con el cuerpo válido, la respuesta
-// es siempre la misma (202 {}). Un correo nuevo crea la cuenta y recibe verify_email; uno que ya
-// tiene cuenta, o que reserva el revert_email vivo de una (§4.3), no crea nada y recibe
-// register_existing; uno de sanctioned_email_hashes no crea nada
-// y recibe register_blocked. Los tres caminos gastan del mismo límite de correos y calculan el hash
-// de la contraseña, así que tardan lo mismo.
+// Register creates an account without revealing which ones exist (§4.2): with a valid body, the
+// response is always the same (202 {}). A new email creates the account and receives verify_email;
+// one that already has an account, or that reserves the live revert_email of one (§4.3), creates
+// nothing and receives register_existing; one from sanctioned_email_hashes creates nothing and
+// receives register_blocked. The three paths spend from the same email limit and compute the
+// password hash, so they take the same time.
 func (s *Service) Register(ctx context.Context, req RegisterRequest, meta ClientMeta) error {
 	fields := map[string]string{}
 	email := ""
@@ -62,7 +62,8 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest, meta Client
 	}
 	tpl, data, err := s.register(ctx, email, phc, req.Consents, meta, now)
 	if db.SQLState(err) == "23505" && db.Constraint(err) == "accounts_email_key" {
-		// Dos registros a la vez con el mismo correo: el segundo es el de un correo con cuenta.
+		// Two simultaneous registrations with the same email: the second is that of an email with an
+		// account.
 		tpl, data, err = s.register(ctx, email, phc, req.Consents, meta, now)
 	}
 	if err != nil {
@@ -86,7 +87,7 @@ func (s *Service) register(ctx context.Context, email, phc string, consents Cons
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		// Un correo reservado por un revert_email vivo es de su dueño (§4.3): como uno con cuenta.
+		// An email reserved by a live revert_email belongs to its owner (§4.3): like one with an account.
 		err = tx.QueryRow(ctx, `select account_id from account_tokens where purpose = 'revert_email' and used_at is null
 			and expires_at > $2 and email = $1 limit 1`, email, now).Scan(&existing)
 		if err == nil {

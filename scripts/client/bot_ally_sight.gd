@@ -1,11 +1,12 @@
 class_name BotAllySight
 extends RefCounted
-## Cuántos de los suyos ve un bot del cliente cerca de un punto (el [code]ally_counter[/code] del cerebro de asedio,
-## [method BotBrain.set_ally_counter]; GUE-44): los jugadores remotos de su reino que dibuja su [RemoteWorld], vivos
-## ([method RemotePlayerView.get_drawn_health_q] mayor que 0), en pie (la acción dibujada no es DOWNED: un derribado
-## publica su vida de derribado, que nunca es 0; revisión de la integración de las habilidades) y a menos del radio en
-## horizontal, como [code]ZoneServer._count_allies[/code] para los falsos. Él no es un remoto, así que no se cuenta. Los
-## PNJ (de su reino o no) tampoco cuentan.
+## How many of its own a client bot sees near a point (the siege brain's [code]ally_counter[/code],
+## [method BotBrain.set_ally_counter]; GUE-44): the remote players of its realm that its
+## [RemoteWorld] draws, alive ([method RemotePlayerView.get_drawn_health_q] greater than 0),
+## standing (the drawn action is not DOWNED: a knocked-down player publishes its knocked-down
+## health, which is never 0; skills integration review) and within the radius horizontally, like
+## [code]ZoneServer._count_allies[/code] for the fake players. It is not a remote itself, so it is
+## not counted. NPCs (of its realm or not) do not count either.
 
 var _client: NetClient
 
@@ -14,8 +15,8 @@ func _init(client: NetClient) -> void:
 	_client = client
 
 
-## Cuántos jugadores de su reino, sin contarle a él, dibuja a menos de [param radius] metros (en horizontal) de
-## [param center].
+## How many players of its realm, not counting itself, it draws within [param radius] meters
+## (horizontally) of [param center].
 func count(center: Vector3, radius: float) -> int:
 	var config: ClientConfig = _client.get_config()
 	var welcome: NetMessages.Welcome = _client.get_welcome()
@@ -25,9 +26,9 @@ func count(center: Vector3, radius: float) -> int:
 	return count_in(_client.get_remote_world(), realm, center, radius)
 
 
-## Cuántos jugadores remotos del reino [param realm] dibuja [param world], vivos, en pie y a menos de [param radius]
-## metros (en horizontal) de [param center]. Los PNJ, los de otros reinos, los muertos, los derribados y los que aún no
-## se dibujan no cuentan.
+## How many remote players of realm [param realm] [param world] draws, alive, standing and within
+## [param radius] meters (horizontally) of [param center]. NPCs, those of other realms, the dead,
+## the knocked down and those not yet drawn do not count.
 static func count_in(world: RemoteWorld, realm: int, center: Vector3, radius: float) -> int:
 	if world == null:
 		return 0

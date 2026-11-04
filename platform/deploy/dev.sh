@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# La plataforma en local para desarrollar (docs/plataforma.md §12): un PostgreSQL propio en
-# build/dev_pg (initdb, como internal/testdb, pero se conserva entre arranques), las migraciones,
-# claves de billete y un token por zona de desarrollo (1:vado_gris:0 y 1:test_world:0) en
-# build/dev_secrets, el entorno en build/dev_platform.env, una cuenta admin (admin@eldmark.test,
-# para --actor) y una de prueba (prueba@eldmark.test), y la orden de la zona con --platform.
+# The platform locally for development (docs/plataforma.md §12): its own PostgreSQL in
+# build/dev_pg (initdb, like internal/testdb, but kept between runs), the migrations, ticket keys
+# and a token per development zone (1:vado_gris:0 and 1:test_world:0) in build/dev_secrets, the
+# environment in build/dev_platform.env, an admin account (admin@eldmark.test, for --actor) and a
+# test one (prueba@eldmark.test), and the zone command with --platform.
 #
-# Uso (desde cualquier carpeta):
-#   dev.sh [up]     lo prepara todo y arranca serve en primer plano; Ctrl-C para serve y PostgreSQL
-#   dev.sh prepare  lo prepara todo y deja PostgreSQL en marcha, sin serve
-#   dev.sh env      las variables para usar eldmark-platform a mano: eval "$(platform/deploy/dev.sh env)"
-#   dev.sh stop     para PostgreSQL
-#   dev.sh reset    lo para y borra la base, las claves y el entorno de desarrollo
+# Usage (from any folder):
+#   dev.sh [up]     prepares everything and starts serve in the foreground; Ctrl-C stops serve and PostgreSQL
+#   dev.sh prepare  prepares everything and leaves PostgreSQL running, without serve
+#   dev.sh env      the variables to use eldmark-platform by hand: eval "$(platform/deploy/dev.sh env)"
+#   dev.sh stop     stops PostgreSQL
+#   dev.sh reset    stops it and deletes the development database, keys and environment
 #
 # Variables:
-#   ELDMARK_DEV_DIR        carpeta de trabajo (por defecto, build/ en la raíz del repositorio)
-#   ELDMARK_DEV_PG_PORT    puerto de PostgreSQL, solo en 127.0.0.1 (24682)
-#   ELDMARK_DEV_PUBLIC_ADDR · ELDMARK_DEV_INTERNAL_ADDR   las API (127.0.0.1:24680 · 127.0.0.1:24681),
-#                          leídas al crear dev_platform.env (reset para cambiarlas)
-#   ELDMARK_PLATFORM_BIN   un binario ya compilado (si no, go build a <carpeta>/eldmark-platform)
-#   ELDMARK_PG_BIN, ELDMARK_PG_USER   como en internal/testdb (pglib.sh)
+#   ELDMARK_DEV_DIR        working folder (by default, build/ at the repository root)
+#   ELDMARK_DEV_PG_PORT    PostgreSQL port, on 127.0.0.1 only (24682)
+#   ELDMARK_DEV_PUBLIC_ADDR · ELDMARK_DEV_INTERNAL_ADDR   the APIs (127.0.0.1:24680 · 127.0.0.1:24681),
+#                          read when dev_platform.env is created (reset to change them)
+#   ELDMARK_PLATFORM_BIN   an already compiled binary (otherwise, go build to <folder>/eldmark-platform)
+#   ELDMARK_PG_BIN, ELDMARK_PG_USER   as in internal/testdb (pglib.sh)
 #
-# Necesita bash, los binarios de PostgreSQL 16 y Go 1.24 (Linux, macOS o WSL). Nada de esto vale
-# para staging ni producción: la base no tiene contraseña y las claves son de usar y tirar.
+# Needs bash, the PostgreSQL 16 binaries and Go 1.24 (Linux, macOS or WSL). None of this is valid
+# for staging or production: the database has no password and the keys are throwaway.
 set -euo pipefail
 
 ELD_SCRIPT=dev
@@ -38,7 +38,7 @@ env_file="$dir/dev_platform.env"
 port="${ELDMARK_DEV_PG_PORT:-24682}"
 admin_email="admin@eldmark.test"
 test_email="prueba@eldmark.test"
-# Contraseñas fijas de desarrollo (también en build/dev_secrets/*.password): se teclean en el título.
+# Fixed development passwords (also in build/dev_secrets/*.password): they are typed into the title.
 admin_password="eldmark-admin-dev"
 test_password="eldmark-prueba-dev"
 dev_zones=(vado_gris test_world)
@@ -47,7 +47,7 @@ usage() {
 	eld_usage "${BASH_SOURCE[0]}"
 }
 
-# platform_bin: el binario (compilado si hace falta) en $bin.
+# platform_bin: the binary (compiled if needed) in $bin.
 platform_bin() {
 	if [ -n "${ELDMARK_PLATFORM_BIN:-}" ]; then
 		bin="$ELDMARK_PLATFORM_BIN"
@@ -61,7 +61,7 @@ platform_bin() {
 		eld_die "no compila la plataforma"
 }
 
-# write_env: las claves, los tokens y dev_platform.env, solo la primera vez (se conservan).
+# write_env: the keys, the tokens and dev_platform.env, only the first time (they are kept).
 write_env() {
 	[ -f "$env_file" ] && return 0
 	mkdir -p "$secrets"
@@ -98,7 +98,7 @@ load_env() {
 	set +a
 }
 
-# start_pg: crea el clúster la primera vez y lo arranca si no está en marcha.
+# start_pg: creates the cluster the first time and starts it if it is not running.
 start_pg() {
 	eld_find_pg_bin initdb
 	eld_pg_runas
@@ -120,7 +120,7 @@ start_pg() {
 	fi
 }
 
-# accounts: la cuenta admin (bootstrap, si no hay ninguna) y la de prueba, si faltan.
+# accounts: the admin account (bootstrap, if there is none) and the test one, if missing.
 accounts() {
 	local db="host=127.0.0.1 port=$port user=$ELD_PG_SUPERUSER dbname=eldmark sslmode=disable" actor
 	actor="$(eld_psql "$db" -c "select email from accounts where email = '$admin_email' and role = 'admin' and status = 'active'")"
@@ -177,7 +177,7 @@ up)
 	trap 'kill -TERM "$serve_pid" 2> /dev/null || true' INT TERM
 	status=0
 	wait "$serve_pid" || status=$?
-	# Un INT o un TERM corta el primer wait: se espera a que serve termine de verdad.
+	# An INT or a TERM cuts the first wait short: we wait for serve to actually finish.
 	if kill -0 "$serve_pid" 2> /dev/null; then
 		status=0
 		wait "$serve_pid" || status=$?

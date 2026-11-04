@@ -1,57 +1,56 @@
 class_name ClientSettings
 extends RefCounted
-## Ajustes del jugador (UI-16): gráficos, audio por bus, cámara e interfaz, guardados en
-## [code]user://settings.cfg[/code], aplicados en vivo y al arrancar.
+## Player settings (UI-16): graphics, per-bus audio, camera and interface, stored in
+## [code]user://settings.cfg[/code], applied live and at startup.
 ## [br][br]
-## [b]Datos.[/b] Cada ajuste tiene una definición en [method get_schema]: identificador, pestaña,
-## sección y clave del archivo, texto en español, valor por defecto y su tipo ([enum Kind]): un
-## interruptor, una lista de valores permitidos o un rango con paso. [method set_value] valida y
-## normaliza (limita a rango, ajusta al paso, rechaza lo que no está en la lista) y emite
-## [signal changed] solo si el valor cambia. [SettingsMenu] se construye leyendo esta tabla.
+## [b]Data.[/b] Each setting has a definition in [method get_schema]: identifier, tab, section and file
+## key, Spanish text, default value and its type ([enum Kind]): a toggle, a list of allowed values or a
+## range with a step. [method set_value] validates and normalizes (clamps to range, snaps to the step,
+## rejects what is not in the list) and emits [signal changed] only if the value changes.
+## [SettingsMenu] is built by reading this table.
 ## [br][br]
-## [b]Archivo.[/b] [method save] escribe solo los ajustes que el jugador ha tocado
-## ([method is_stored]) y conserva las demás secciones que hubiera en el archivo; [method load] lee
-## lo que haya y deja el valor por defecto en lo que falte o esté mal (un archivo a mano con basura no
-## rompe nada). Los volúmenes usan las mismas claves que [AudioBuses].
+## [b]File.[/b] [method save] writes only the settings the player has touched ([method is_stored]) and
+## preserves any other sections in the file; [method load] reads whatever is there and leaves the default
+## value for whatever is missing or wrong (a hand-edited file with garbage breaks nothing). The volumes
+## use the same keys as [AudioBuses].
 ## [br][br]
-## [b]Aplicación.[/b] [method apply_value] aplica un ajuste al motor y a la escena y
-## [method apply_all] los aplica todos; con [param stored_only] solo los que el jugador ha guardado,
-## que es lo que se hace al arrancar para que el cliente sin ajustes guardados arranque exactamente
-## igual que siempre (la ventana, el vsync o el suavizado del proyecto no se pisan con los valores
-## por defecto). Gráficos: modo de ventana, resolución, vsync, límite de FPS, escala de render,
-## calidad de sombras (también apaga las luces con sombras si se desactivan), distancia de la hierba
-## (el último nivel de LOD de los [code]Terrain3DMeshAsset[/code] de hierba) y suavizado. Audio:
-## [AudioBuses]. Cámara: sensibilidad, invertir Y, campo de visión y hombro por defecto en cada
-## [CameraRig] (grupo [constant CameraRig.GROUP]). Interfaz: los controles enlazados con
-## [method bind_visibility] ([DamageNumbers], [Nameplates], la línea de ayuda del [HUD]) se muestran u ocultan solos y las pistas
-## ([HintToasts]) leen [constant HINTS] al mostrarse.
+## [b]Application.[/b] [method apply_value] applies one setting to the engine and the scene and
+## [method apply_all] applies them all; with [param stored_only] only those the player has saved, which is
+## what happens at startup so that a client with no saved settings starts exactly as it always has (the
+## project's window, vsync or antialiasing are not overridden with default values). Graphics: window mode,
+## resolution, vsync, FPS limit, render scale, shadow quality (it also turns off shadow-casting lights if
+## disabled), grass distance (the last LOD level of the grass [code]Terrain3DMeshAsset[/code]s) and
+## antialiasing. Audio: [AudioBuses]. Camera: sensitivity, invert Y, field of view and default shoulder on
+## every [CameraRig] (group [constant CameraRig.GROUP]). Interface: controls bound with
+## [method bind_visibility] ([DamageNumbers], [Nameplates], the [HUD]'s help line) show or hide
+## themselves and the hints ([HintToasts]) read [constant HINTS] when shown.
 ## [br][br]
-## El modo de ventana, la resolución y el vsync no se tocan en modo headless (no hay ventana):
-## sus tablas de conversión ([method window_mode_for], [method vsync_mode_for],
-## [method parse_resolution]) son funciones puras que prueban las pruebas.
+## Window mode, resolution and vsync are not touched in headless mode (there is no window): their
+## conversion tables ([method window_mode_for], [method vsync_mode_for], [method parse_resolution]) are
+## pure functions exercised by the tests.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Un ajuste cambió de valor (también al restaurar). [param value] ya está normalizado.
+## A setting changed value (also on restore). [param value] is already normalized.
 signal changed(id: StringName, value: Variant)
 
-## Tipos de ajuste.
+## Setting types.
 enum Kind { BOOL, CHOICE, RANGE }
 
 const PATH: String = "user://settings.cfg"
 
-# Pestañas.
+# Tabs.
 const TAB_GRAPHICS: StringName = &"graphics"
 const TAB_AUDIO: StringName = &"audio"
 const TAB_CAMERA: StringName = &"camera"
 const TAB_INTERFACE: StringName = &"interface"
-## Pestañas en orden, con su texto en español.
+## Tabs in order, with their Spanish text.
 const TABS: Array[StringName] = [TAB_GRAPHICS, TAB_AUDIO, TAB_CAMERA, TAB_INTERFACE]
 const TAB_NAMES: Dictionary = {
 	TAB_GRAPHICS: "Gráficos", TAB_AUDIO: "Audio", TAB_CAMERA: "Cámara", TAB_INTERFACE: "Interfaz",
 }
 
-# Identificadores de los ajustes (la clave del archivo es la misma, salvo los volúmenes).
+# Setting identifiers (the file key is the same, except for the volumes).
 const WINDOW_MODE: StringName = &"window_mode"
 const RESOLUTION: StringName = &"resolution"
 const VSYNC: StringName = &"vsync"
@@ -66,42 +65,42 @@ const FOV: StringName = &"fov"
 const DEFAULT_SHOULDER: StringName = &"default_shoulder"
 const DAMAGE_NUMBERS: StringName = &"damage_numbers"
 const NAMEPLATES: StringName = &"nameplates"
-## Pistas del juego (UI-42): consejos que salen una sola vez por jugador ([HintToasts]).
+## Game hints (UI-42): tips that appear only once per player ([HintToasts]).
 const HINTS: StringName = &"hints"
-## Línea de ayuda con las teclas, abajo en el centro del HUD (UI-49): oculta por defecto, F1 la muestra y la oculta.
+## Help line with the keys, at the bottom center of the HUD (UI-49): hidden by default, F1 shows and hides it.
 const HELP_BAR: StringName = &"help_bar"
-## Ajustes de cámara, de gráficos que recorren la escena y de interfaz.
+## Camera settings, graphics settings that walk the scene, and interface settings.
 const CAMERA_IDS: Array[StringName] = [MOUSE_SENSITIVITY, INVERT_Y, FOV, DEFAULT_SHOULDER]
 const INTERFACE_IDS: Array[StringName] = [DAMAGE_NUMBERS, NAMEPLATES, HINTS, HELP_BAR]
 
-## Resoluciones de ventana que se ofrecen (texto «ancho x alto» sin espacios).
+## Window resolutions on offer (text "width x height" without spaces).
 const RESOLUTIONS: Array[String] = ["1280x720", "1600x900", "1920x1080", "2560x1440"]
-## Límites de FPS que se ofrecen (0 = sin límite).
+## FPS limits on offer (0 = no limit).
 const FPS_LIMITS: Array[int] = [0, 30, 60, 90, 120, 144, 165, 240]
-## Valores de [constant WINDOW_MODE]: ventana, pantalla completa sin bordes y exclusiva.
+## Values of [constant WINDOW_MODE]: windowed, borderless fullscreen and exclusive fullscreen.
 const MODE_WINDOWED: int = 0
 const MODE_FULLSCREEN: int = 1
 const MODE_EXCLUSIVE: int = 2
-## Niveles de [constant SHADOWS]: desactivadas, bajas, medias y altas.
+## Levels of [constant SHADOWS]: off, low, medium and high.
 const SHADOWS_OFF: int = 0
 const SHADOWS_HIGH: int = 3
-## Valores de [constant ANTIALIASING]: ninguno, FXAA, MSAA 2x y MSAA 4x (el del proyecto).
+## Values of [constant ANTIALIASING]: none, FXAA, MSAA 2x and MSAA 4x (the project's).
 const AA_NONE: int = 0
 const AA_FXAA: int = 1
 const AA_MSAA_2X: int = 2
 const AA_MSAA_4X: int = 3
-## Metadato de una luz con su [member Light3D.shadow_enabled] original.
+## Metadata of a light with its original [member Light3D.shadow_enabled].
 const LIGHT_SHADOW_META: StringName = &"client_settings_shadow_default"
 const SUN_SPLITS_META: StringName = &"client_settings_sun_splits_default"
-## Metadato de un recurso de hierba con sus valores originales.
+## Metadata of a grass resource with its original values.
 const GRASS_META: StringName = &"client_settings_grass_default"
-## Un [code]Terrain3DMeshAsset[/code] es hierba si su nombre empieza así.
+## A [code]Terrain3DMeshAsset[/code] is grass if its name starts like this.
 const GRASS_ASSET_PREFIXES: Array[String] = ["Hierba", "Grass"]
 
 static var _schema: Array[Dictionary] = []
 static var _current: ClientSettings = null
 
-## Archivo donde se guarda ([method save_if_dirty]); el de [method load_from].
+## File where it is saved ([method save_if_dirty]); the one from [method load_from].
 var path: String = PATH
 
 var _values: Dictionary = {}
@@ -109,21 +108,21 @@ var _stored: Dictionary = {}
 var _dirty: bool = false
 
 
-# --- La tabla de ajustes ----------------------------------------------------------------------
+# --- The settings table -----------------------------------------------------------------------
 
-## Definición de todos los ajustes, en el orden en que los muestran los ajustes. Cada diccionario:
-## [code]id[/code], [code]tab[/code], [code]section[/code], [code]key[/code] (archivo),
-## [code]label[/code] (español), [code]kind[/code] ([enum Kind]), [code]default[/code] y, según el tipo,
-## [code]values[/code] y [code]labels[/code] (lista) o [code]min[/code], [code]max[/code],
-## [code]step[/code] y [code]format[/code] ([code]percent[/code], [code]multiplier[/code],
-## [code]degrees[/code] o [code]meters[/code]).
+## Definition of all the settings, in the order the settings menu shows them. Each dictionary:
+## [code]id[/code], [code]tab[/code], [code]section[/code], [code]key[/code] (file),
+## [code]label[/code] (Spanish), [code]kind[/code] ([enum Kind]), [code]default[/code] and, depending on
+## the type, [code]values[/code] and [code]labels[/code] (list) or [code]min[/code], [code]max[/code],
+## [code]step[/code] and [code]format[/code] ([code]percent[/code], [code]multiplier[/code],
+## [code]degrees[/code] or [code]meters[/code]).
 static func get_schema() -> Array[Dictionary]:
 	if _schema.is_empty():
 		_schema = _build_schema()
 	return _schema
 
 
-## Identificadores de todos los ajustes, en orden.
+## Identifiers of all the settings, in order.
 static func get_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for spec: Dictionary in get_schema():
@@ -131,7 +130,7 @@ static func get_ids() -> Array[StringName]:
 	return ids
 
 
-## Definición del ajuste [param id] (vacía si no existe).
+## Definition of setting [param id] (empty if it does not exist).
 static func get_spec(id: StringName) -> Dictionary:
 	for spec: Dictionary in get_schema():
 		if spec["id"] == id:
@@ -139,18 +138,18 @@ static func get_spec(id: StringName) -> Dictionary:
 	return {}
 
 
-## Identificador del volumen del bus [param bus] ([code]volume_sfx[/code]...).
+## Identifier of the volume of bus [param bus] ([code]volume_sfx[/code]...).
 static func volume_id(bus: StringName) -> StringName:
 	return StringName(AudioBuses.volume_key(bus))
 
 
-## Valor por defecto del ajuste [param id] (null si no existe).
+## Default value of setting [param id] (null if it does not exist).
 static func get_default(id: StringName) -> Variant:
 	return get_spec(id).get("default", null)
 
 
-## Texto de [param value] para mostrarlo junto al control de [param id] («75 %», «x1,25», «90°»,
-## «60 m», «Desactivada»...). Para las listas, la etiqueta del valor.
+## Text of [param value] to show next to the control of [param id] ("75 %", "x1,25", "90°", "60 m",
+## "Desactivada" (Disabled)...). For lists, the value's label.
 static func format_value(id: StringName, value: Variant) -> String:
 	var spec: Dictionary = get_spec(id)
 	if spec.is_empty():
@@ -247,21 +246,21 @@ static func _range(tab: StringName, id: StringName, label: String, default: floa
 	return spec
 
 
-# --- El ajuste en uso --------------------------------------------------------------------------
+# --- The setting in use ------------------------------------------------------------------------
 
-## Los ajustes del cliente: se cargan de [constant PATH] la primera vez que se piden.
+## The client's settings: loaded from [constant PATH] the first time they are requested.
 static func current() -> ClientSettings:
 	if _current == null:
 		_current = load_from(PATH)
 	return _current
 
 
-## Sustituye los ajustes en uso (null los olvida y se vuelven a cargar del archivo al pedirlos).
+## Replaces the settings in use (null forgets them and they are reloaded from the file when requested).
 static func set_current(settings: ClientSettings) -> void:
 	_current = settings
 
 
-## Ajustes cargados de [param file_path] (valores por defecto si no existe o está mal).
+## Settings loaded from [param file_path] (default values if it does not exist or is malformed).
 static func load_from(file_path: String) -> ClientSettings:
 	var settings: ClientSettings = ClientSettings.new()
 	settings.path = file_path
@@ -275,16 +274,16 @@ func _init() -> void:
 	_dirty = false
 
 
-# --- Valores ----------------------------------------------------------------------------------
+# --- Values -----------------------------------------------------------------------------------
 
-## Valor actual del ajuste [param id] (null si no existe).
+## Current value of setting [param id] (null if it does not exist).
 func get_value(id: StringName) -> Variant:
 	return _values.get(id, null)
 
 
-## Fija el ajuste [param id] a [param value], normalizado. Devuelve false (sin cambiar nada) si el
-## ajuste no existe o el valor no es válido. Marca el ajuste como del jugador ([method is_stored]) y
-## emite [signal changed] si el valor cambió.
+## Sets setting [param id] to [param value], normalized. Returns false (changing nothing) if the setting
+## does not exist or the value is not valid. Marks the setting as the player's ([method is_stored]) and
+## emits [signal changed] if the value changed.
 func set_value(id: StringName, value: Variant) -> bool:
 	var spec: Dictionary = get_spec(id)
 	if spec.is_empty():
@@ -303,12 +302,12 @@ func set_value(id: StringName, value: Variant) -> bool:
 	return true
 
 
-## true si el jugador ha fijado este ajuste (se guarda y se aplica al arrancar).
+## true if the player has set this setting (it is saved and applied at startup).
 func is_stored(id: StringName) -> bool:
 	return _stored.has(id)
 
 
-## Vuelve [param id] a su valor por defecto y deja de contarlo como del jugador.
+## Returns [param id] to its default value and stops counting it as the player's.
 func reset(id: StringName) -> void:
 	var spec: Dictionary = get_spec(id)
 	if spec.is_empty():
@@ -322,8 +321,8 @@ func reset(id: StringName) -> void:
 		changed.emit(id, default)
 
 
-## Vuelve a su valor por defecto todos los ajustes (o los de [param emit_changes] a false sin avisar:
-## es lo que usa la construcción).
+## Returns all the settings to their default value (or, with [param emit_changes] false, without
+## notifying: this is what construction uses).
 func reset_all(emit_changes: bool = true) -> void:
 	for spec: Dictionary in get_schema():
 		if emit_changes:
@@ -335,26 +334,26 @@ func reset_all(emit_changes: bool = true) -> void:
 	_dirty = true
 
 
-## Vuelve a su valor por defecto los ajustes de la pestaña [param tab].
+## Returns the settings of tab [param tab] to their default value.
 func reset_tab(tab: StringName) -> void:
 	for spec: Dictionary in get_schema():
 		if spec["tab"] == tab:
 			reset(spec["id"])
 
 
-## Todos los valores: id -> valor.
+## All the values: id -> value.
 func to_dictionary() -> Dictionary:
 	return _values.duplicate()
 
 
-## true si hay cambios sin guardar.
+## true if there are unsaved changes.
 func is_dirty() -> bool:
 	return _dirty
 
 
-## Valor válido que representa [param value] para [param spec], o null si no vale: un interruptor
-## admite un booleano (o 0 y 1); una lista, uno de sus valores (un número entero que llegue como
-## decimal se acepta); un rango, un número que se limita al rango y se ajusta al paso.
+## Valid value that [param value] represents for [param spec], or null if it is not valid: a toggle
+## accepts a boolean (or 0 and 1); a list, one of its values (an integer number that arrives as a float
+## is accepted); a range, a number that is clamped to the range and snapped to the step.
 static func normalize(spec: Dictionary, value: Variant) -> Variant:
 	match int(spec["kind"]):
 		Kind.BOOL:
@@ -380,16 +379,16 @@ static func normalize(spec: Dictionary, value: Variant) -> Variant:
 	var step: float = float(spec["step"])
 	if step > 0.0:
 		number = clampf(snappedf(number, step), float(spec["min"]), float(spec["max"]))
-		# Sin el ruido de coma flotante de los pasos (0,7 y no 0,7000000000000001), para que el
-		# valor por defecto vuelva a ser él mismo al normalizarlo.
+		# Without the floating-point noise of the steps (0.7 and not 0.7000000000000001), so that the default
+		# value is itself again when normalized.
 		number = ("%.6f" % number).to_float()
 	return number
 
 
-# --- Archivo ----------------------------------------------------------------------------------
+# --- File -------------------------------------------------------------------------------------
 
-## Lee [param file_path]. Lo que falte o no sea válido queda a su valor por defecto. Devuelve el error
-## de [method ConfigFile.load] ([constant ERR_FILE_NOT_FOUND] si el archivo no existe).
+## Reads [param file_path]. Whatever is missing or invalid stays at its default value. Returns the error
+## of [method ConfigFile.load] ([constant ERR_FILE_NOT_FOUND] if the file does not exist).
 func load_file(file_path: String = PATH) -> Error:
 	reset_all(false)
 	_stored.clear()
@@ -409,11 +408,11 @@ func load_file(file_path: String = PATH) -> Error:
 	return error
 
 
-## Guarda en [param file_path] los ajustes del jugador (los demás se quitan del archivo) y conserva el
-## resto de lo que hubiera en él. Devuelve el error de [method ConfigFile.save].
+## Saves the player's settings to [param file_path] (the others are removed from the file) and preserves
+## the rest of what was in it. Returns the error of [method ConfigFile.save].
 func save_file(file_path: String = PATH) -> Error:
 	var config: ConfigFile = ConfigFile.new()
-	# Si el archivo no existe o está roto se empieza de cero.
+	# If the file does not exist or is broken, start from scratch.
 	config.load(file_path)
 	for spec: Dictionary in get_schema():
 		var section: String = spec["section"]
@@ -431,16 +430,16 @@ func save_file(file_path: String = PATH) -> Error:
 	return error
 
 
-## Guarda en [member path] si hay cambios sin guardar.
+## Saves to [member path] if there are unsaved changes.
 func save_if_dirty() -> void:
 	if _dirty:
 		save_file(path)
 
 
-# --- Aplicación -------------------------------------------------------------------------------
+# --- Application ------------------------------------------------------------------------------
 
-## Aplica los ajustes al motor y a la escena de [param tree]. Con [param stored_only] solo los del
-## jugador (lo que se hace al arrancar).
+## Applies the settings to the engine and to the scene of [param tree]. With [param stored_only] only the
+## player's (what happens at startup).
 func apply_all(tree: SceneTree, stored_only: bool = false) -> void:
 	for spec: Dictionary in get_schema():
 		if stored_only and not _stored.has(spec["id"]):
@@ -448,7 +447,7 @@ func apply_all(tree: SceneTree, stored_only: bool = false) -> void:
 		apply_value(spec["id"], tree)
 
 
-## Aplica el ajuste [param id] con su valor actual.
+## Applies setting [param id] with its current value.
 func apply_value(id: StringName, tree: SceneTree) -> void:
 	var value: Variant = _values.get(id)
 	if value == null:
@@ -480,10 +479,10 @@ func apply_value(id: StringName, tree: SceneTree) -> void:
 			elif CAMERA_IDS.has(id):
 				for node: Node in tree.get_nodes_in_group(CameraRig.GROUP):
 					_apply_camera_value(node as CameraRig, id)
-			# Los de interfaz los aplican solos los controles enlazados con bind_visibility().
+			# The interface ones are applied by the controls bound with bind_visibility().
 
 
-## Aplica los ajustes de cámara a [param rig]. Con [param stored_only] solo los del jugador.
+## Applies the camera settings to [param rig]. With [param stored_only] only the player's.
 func apply_to_camera(rig: CameraRig, stored_only: bool = false) -> void:
 	for id: StringName in CAMERA_IDS:
 		if not stored_only or _stored.has(id):
@@ -502,10 +501,10 @@ func _apply_camera_value(rig: CameraRig, id: StringName) -> void:
 			rig.set_default_shoulder(int(_values[id]))
 
 
-## Muestra u oculta [param control] según el ajuste de interfaz [param id] ([constant DAMAGE_NUMBERS],
-## [constant NAMEPLATES] o [constant HELP_BAR]): ahora, si el jugador lo ha fijado, y cada vez que cambie. Con
-## [param apply_default] también ahora aunque el jugador no lo haya fijado (el valor por defecto manda: para lo que
-## empieza oculto). Se desenlaza al salir del árbol.
+## Shows or hides [param control] according to the interface setting [param id]
+## ([constant DAMAGE_NUMBERS], [constant NAMEPLATES] or [constant HELP_BAR]): now, if the player has set
+## it, and every time it changes. With [param apply_default] also now even if the player has not set it
+## (the default value rules: for what starts hidden). It unbinds when leaving the tree.
 static func bind_visibility(control: Control, id: StringName, apply_default: bool = false) -> void:
 	var settings: ClientSettings = current()
 	if apply_default or settings.is_stored(id):
@@ -519,9 +518,9 @@ static func bind_visibility(control: Control, id: StringName, apply_default: boo
 			settings.changed.disconnect(handler))
 
 
-# --- Conversiones (funciones puras) ------------------------------------------------------------
+# --- Conversions (pure functions) --------------------------------------------------------------
 
-## [enum DisplayServer.WindowMode] de un valor de [constant WINDOW_MODE].
+## [enum DisplayServer.WindowMode] for a [constant WINDOW_MODE] value.
 static func window_mode_for(value: int) -> DisplayServer.WindowMode:
 	match value:
 		MODE_FULLSCREEN:
@@ -531,8 +530,7 @@ static func window_mode_for(value: int) -> DisplayServer.WindowMode:
 	return DisplayServer.WINDOW_MODE_WINDOWED
 
 
-## [enum DisplayServer.VSyncMode] de un valor de [constant VSYNC] (0 desactivada, 1 activada, 2
-## adaptativa).
+## [enum DisplayServer.VSyncMode] for a [constant VSYNC] value (0 disabled, 1 enabled, 2 adaptive).
 static func vsync_mode_for(value: int) -> DisplayServer.VSyncMode:
 	match value:
 		0:
@@ -542,7 +540,7 @@ static func vsync_mode_for(value: int) -> DisplayServer.VSyncMode:
 	return DisplayServer.VSYNC_ENABLED
 
 
-## Tamaño de una resolución «1600x900» ([constant Vector2i.ZERO] si el texto no vale).
+## Size of a resolution "1600x900" ([constant Vector2i.ZERO] if the text is not valid).
 static func parse_resolution(text: String) -> Vector2i:
 	var parts: PackedStringArray = text.split("x")
 	if parts.size() != 2 or not parts[0].is_valid_int() or not parts[1].is_valid_int():
@@ -551,7 +549,7 @@ static func parse_resolution(text: String) -> Vector2i:
 	return size if size.x > 0 and size.y > 0 else Vector2i.ZERO
 
 
-## Suavizado de un valor de [constant ANTIALIASING]: [code]msaa[/code] ([enum Viewport.MSAA]) y
+## Antialiasing for an [constant ANTIALIASING] value: [code]msaa[/code] ([enum Viewport.MSAA]) and
 ## [code]screen_space[/code] ([enum Viewport.ScreenSpaceAA]).
 static func antialiasing_for(value: int) -> Dictionary:
 	match value:
@@ -564,9 +562,9 @@ static func antialiasing_for(value: int) -> Dictionary:
 	return {"msaa": Viewport.MSAA_DISABLED, "screen_space": Viewport.SCREEN_SPACE_AA_DISABLED}
 
 
-## Perfil de sombras de un nivel de [constant SHADOWS]: [code]enabled[/code] (false solo el nivel 0),
-## [code]atlas[/code] (lado, en píxeles, de los atlas de sombras) y [code]filter[/code]
-## ([enum RenderingServer.ShadowQuality]). El nivel alto es lo que usa el proyecto por defecto.
+## Shadow profile for a [constant SHADOWS] level: [code]enabled[/code] (false only for level 0),
+## [code]atlas[/code] (side, in pixels, of the shadow atlases) and [code]filter[/code]
+## ([enum RenderingServer.ShadowQuality]). The high level is what the project uses by default.
 static func shadow_profile_for(level: int) -> Dictionary:
 	match level:
 		0:
@@ -579,9 +577,9 @@ static func shadow_profile_for(level: int) -> Dictionary:
 	return {"enabled": true, "atlas": 4096, "filter": RenderingServer.SHADOW_QUALITY_SOFT_LOW, "splits": 4}
 
 
-# --- Aplicación a la escena -------------------------------------------------------------------
+# --- Application to the scene -----------------------------------------------------------------
 
-## Aplica el nivel de sombras [param level] a los atlas del motor y a las luces bajo [param root].
+## Applies shadow level [param level] to the engine's atlases and to the lights under [param root].
 static func apply_shadows(root: Node, level: int) -> void:
 	var profile: Dictionary = shadow_profile_for(level)
 	RenderingServer.directional_shadow_atlas_set_size(int(profile["atlas"]), true)
@@ -595,8 +593,8 @@ static func apply_shadows(root: Node, level: int) -> void:
 			apply_sun_splits(node as DirectionalLight3D, int(profile["splits"]))
 
 
-## Cortes de sombra del sol: los niveles bajo y medio usan 2 cortes y 120 m como máximo (menos llamadas de dibujo);
-## el alto, lo que traiga la escena. Guarda el valor original de la escena para poder volver a él.
+## Sun shadow splits: the low and medium levels use 2 splits and 120 m at most (fewer draw calls); the
+## high one, whatever the scene has. Stores the scene's original value so it can be restored.
 static func apply_sun_splits(sun: DirectionalLight3D, splits: int) -> void:
 	if not sun.has_meta(SUN_SPLITS_META):
 		sun.set_meta(SUN_SPLITS_META, [sun.directional_shadow_mode, sun.directional_shadow_max_distance])
@@ -609,16 +607,16 @@ static func apply_sun_splits(sun: DirectionalLight3D, splits: int) -> void:
 		sun.directional_shadow_max_distance = minf(float(original[1]), 120.0)
 
 
-## Enciende o apaga las sombras de [param light] respetando si en la escena las tenía: nunca las
-## enciende si la escena las tenía apagadas.
+## Turns the shadows of [param light] on or off, respecting whether the scene had them: it never turns
+## them on if the scene had them off.
 static func apply_light_shadow(light: Light3D, enabled: bool) -> void:
 	if not light.has_meta(LIGHT_SHADOW_META):
 		light.set_meta(LIGHT_SHADOW_META, light.shadow_enabled)
 	light.shadow_enabled = bool(light.get_meta(LIGHT_SHADOW_META)) and enabled
 
 
-## Aplica la distancia de la hierba [param distance] (m; 0 la quita) a los [code]Terrain3D[/code]
-## bajo [param root]. Devuelve cuántos recursos de hierba tocó.
+## Applies the grass distance [param distance] (m; 0 removes it) to the [code]Terrain3D[/code] nodes
+## under [param root]. Returns how many grass resources it touched.
 static func apply_grass_distance(root: Node, distance: float) -> int:
 	var touched: int = 0
 	for node: Node in root.find_children("*", "Terrain3D", true, false):
@@ -626,10 +624,9 @@ static func apply_grass_distance(root: Node, distance: float) -> int:
 	return touched
 
 
-## Aplica [param distance] a los recursos de hierba de [param assets] (un
-## [code]Terrain3DAssets[/code]): su último nivel de LOD pasa a esa distancia (la distancia a la que se
-## dejan de ver) o, con 0, se desactivan. Guarda los valores originales para poder restaurarlos.
-## Devuelve cuántos tocó.
+## Applies [param distance] to the grass resources of [param assets] (a [code]Terrain3DAssets[/code]):
+## their last LOD level is set to that distance (the distance at which they stop being seen) or, with 0,
+## they are disabled. Stores the original values so they can be restored. Returns how many it touched.
 static func apply_grass_to_assets(assets: Object, distance: float) -> int:
 	if assets == null or not assets.has_method("get_mesh_count"):
 		return 0

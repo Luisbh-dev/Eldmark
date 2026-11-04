@@ -1,93 +1,94 @@
 class_name PlayerProgress
 extends RefCounted
-## El estado autoritativo del progreso de un personaje en la zona (docs/progresion.md §4, §5, §6 y §9): su
-## [ProgressRecord] (inventario, monedas, nivel, temporizadores…), el diario de operaciones que aún no ha confirmado
-## un guardado y lo agregado de las ganancias y gastos de juego. Lo crea [method ProgressService.prepare] (con
-## plataforma) o el alta de un efímero (P5b) y lo descarta [method ProgressService.on_departure].
+## The authoritative progress state of a character in the zone (docs/progresion.md §4, §5, §6 and §9): its
+## [ProgressRecord] (inventory, currencies, level, timers…), the journal of operations that no save has confirmed
+## yet, and the aggregate of in-game gains and spends. It is created by [method ProgressService.prepare] (with a
+## platform) or by the registration of an ephemeral character (P5b), and discarded by [method ProgressService.on_departure].
 ## [br][br]
-## [b]Operaciones[/b] (§5.2): las sueltas ([method begin_op]: DESTROY del jugador, kit, GM, reversión) van al diario
-## con sus apuntes y eventos, y antes de cada una se cierra lo agregado como una GAMEPLAY, así que el diario va
-## siempre en orden de aplicación y cada [code]balance_after[/code] sale del saldo ya apuntado. Las de juego
-## ([method gain_currency], [method gain_items], [method lose_items], [method camp_refill]) cambian el saldo o la
-## bolsa al momento y se apuntan al construir el guardado: un apunte por (moneda, motivo, [code]ref_kind[/code],
-## [code]ref_id[/code]) y un evento sin [code]uid[/code] por (definición, motivo).
+## [b]Operations[/b] (§5.2): standalone ones ([method begin_op]: player DESTROY, kit, GM, reversal) go to the journal
+## with their ledger entries and events, and before each one the aggregate is closed as a GAMEPLAY operation, so the
+## journal is always in application order and each [code]balance_after[/code] comes from the balance already recorded.
+## Gameplay ones ([method gain_currency], [method gain_items], [method lose_items], [method camp_refill]) change the
+## balance or the bag immediately and are recorded when the save is built: one entry per (currency, reason,
+## [code]ref_kind[/code], [code]ref_id[/code]) and one event without [code]uid[/code] per (definition, reason).
 ## [br][br]
-## [b]La sección [code]progress[/code][/b] (§9.2): [method build_section] cierra lo agregado con un id del tramo de
-## los guardados (sin él devuelve [code]{}[/code] sin tocar nada), toma la foto y devuelve solo las operaciones con
-## [member EconomyOp.save_seq] 0, a las que pone el [code]seq[/code]; [method acknowledge] quita del diario las de
-## [code]save_seq ≤ seq[/code]; [method is_dirty] dice si hay algo que guardar en el punto de control.
+## [b]The [code]progress[/code] section[/b] (§9.2): [method build_section] closes the aggregate with an id from the
+## saves range (without one it returns [code]{}[/code] and touches nothing), takes the snapshot and returns only the
+## operations with [member EconomyOp.save_seq] 0, to which it assigns the [code]seq[/code]; [method acknowledge]
+## removes from the journal those with [code]save_seq ≤ seq[/code]; [method is_dirty] tells whether there is anything
+## to save at the checkpoint.
 ## [br][br]
-## [b]Ids[/b] ([IdAllocator], §4.5): las peticiones del cliente toman del tramo de los clientes, los cambios del
-## servidor del suyo y el cierre de lo agregado al construir, del de los guardados. Solo servidor: sin reloj (la
-## hora Unix llega en [member Live.now_unix], de [method ZonePlatform.now_unix]).
+## [b]Ids[/b] ([IdAllocator], §4.5): client requests take from the clients range, server changes from the server's
+## own, and closing the aggregate when building takes from the saves range. Server only: no clock (Unix time arrives
+## in [member Live.now_unix], from [method ZonePlatform.now_unix]).
 
-## Operaciones del diario sin confirmar a partir de las que un DESTROY da NOT_NOW (con plataforma, §4.2); sin ella,
-## el diario guarda las últimas (§9.4).
+## Unconfirmed journal operations from which a DESTROY returns NOT_NOW (with a platform, §4.2); without a platform,
+## the journal keeps the latest ones (§9.4).
 const JOURNAL_LIMIT: int = 256
-## Lo que hay que moverse para que la posición cuente como cambio en [method is_dirty] (m).
+## How far the position must move to count as a change in [method is_dirty] (m).
 const MOVE_EPSILON_M: float = 0.1
-## Ticks por segundo de los temporizadores (§8).
+## Ticks per second of the timers (§8).
 const TICKS_PER_SECOND: int = 60
 
 
-## Lo que el cuerpo en el mundo aporta a la foto: lo da [member live_source] (lo pone
-## [method ProgressService.on_arrival]; las pruebas, a mano).
+## What the in-world body contributes to the snapshot: provided by [member live_source] (set by
+## [method ProgressService.on_arrival]; by hand in tests).
 class Live:
 	extends RefCounted
 	## [code]zone_id[/code], [code]channel[/code], [code]x[/code], [code]y[/code], [code]z[/code],
-	## [code]yaw[/code] e [code]in_combat[/code] (§3.4); vacío = sin posición.
+	## [code]yaw[/code] and [code]in_combat[/code] (§3.4); empty = no position.
 	var location: Dictionary = {}
-	## Vida del [Combatant]; −1 = llena.
+	## Health of the [Combatant]; −1 = full.
 	var health: int = -1
-	## Bit0 de [code]combat_flags2[/code] (la única fuente de la ranura activa, §4.1).
+	## Bit0 of [code]combat_flags2[/code] (the only source of the active slot, §4.1).
 	var active_weapon_slot: int = 0
-	## El cargado más lo jugado desde el alta.
+	## The loaded time plus the time played since registration.
 	var played_seconds: int = 0
-	## Hora Unix de la plataforma (0 = sin reloj: los temporizadores no se tocan).
+	## Unix time from the platform (0 = no clock: timers are left untouched).
 	var now_unix: int = 0
 
 
-## El registro vivo: lo que cambian las operaciones y lo que sale en cada foto.
+## The live record: what operations change and what goes into each snapshot.
 var record: ProgressRecord
-## true con plataforma (se guarda); false en un efímero (§9.4).
+## true with a platform (it is saved); false for an ephemeral character (§9.4).
 var persistent: bool = false
-## 0 en un efímero.
+## 0 for an ephemeral character.
 var character_id: int = 0
 var account_id: int = 0
-## Tick del alta ([method ProgressService.on_arrival]); −1 antes.
+## Tick of registration ([method ProgressService.on_arrival]); −1 before that.
 var arrival_tick: int = -1
-## El tiempo jugado cargado (el del registro en el alta): lo jugado se suma a este, no al de la última foto.
+## The loaded played time (the record's at registration): time played is added to this, not to that of the last snapshot.
 var played_base: int = 0
-## [code]() -> Live[/code] (o null sin cuerpo): lo que aporta el cuerpo a la foto. Sin él, la foto usa lo del
-## registro.
+## [code]() -> Live[/code] (or null without a body): what the body contributes to the snapshot. Without it, the snapshot
+## uses the record's values.
 var live_source: Callable = Callable()
-## Revisión del inventario de esta sesión (§4.6): empieza en 1 y sube con cada cambio aplicado. No se guarda.
+## Inventory revision of this session (§4.6): starts at 1 and increases with every applied change. It is not saved.
 var revision: int = 1
-## XP ganada desde el último PROGRESS_UPDATE y su fuente ([enum ProgressMessages.XpSource]; P5c los manda y los
-## pone a 0).
+## XP gained since the last PROGRESS_UPDATE and its source ([enum ProgressMessages.XpSource]; P5c sends them and
+## resets them to 0).
 var pending_xp_gain: int = 0
 var pending_xp_source: int = 0
-## Motivo ([EconomyReason]) del último cambio de cada moneda (índice = moneda; 0 = ninguno): el de WALLET_UPDATE
+## Reason ([EconomyReason]) of the last change of each currency (index = currency; 0 = none): the one for WALLET_UPDATE
 ## ([method ProgressService.flush]).
 var last_currency_reasons: PackedInt32Array = PackedInt32Array()
 
 var _ids: IdAllocator = null
 var _db: ItemDatabase = null
 var _journal: Array[EconomyOp] = []
-## Saldo de cada moneda tras el último apunte del diario (lo que la plataforma verá apuntado).
+## Balance of each currency after the last journal entry (what the platform will see recorded).
 var _ledger_balance: PackedInt64Array = PackedInt64Array()
-## Lo agregado sin cerrar: clave → apunte (su balance_after se calcula al cerrar) y clave → evento sin uid.
+## The unclosed aggregate: key → ledger entry (its balance_after is computed on closing) and key → event without uid.
 var _pending_ledger: Dictionary[String, LedgerEntry] = {}
 var _pending_items: Dictionary[String, ItemEvent] = {}
-## Reutilizaciones de un arma que no está puesta (§4.1), por id de [CombatCatalog].
+## Cooldowns of a weapon that is not equipped (§4.1), by [CombatCatalog] id.
 var _stashed: Dictionary[int, PackedInt64Array] = {}
-## La foto del último guardado confirmado (o la del alta) y las de los cuerpos construidos sin confirmar, por seq.
+## The snapshot of the last confirmed save (or of registration) and those of bodies built but not yet confirmed, by seq.
 var _confirmed: Dictionary = {}
 var _built: Dictionary[int, Dictionary] = {}
-## Lo de la última operación abierta con [method begin_op], para [method abort_op].
+## What was in place at the last operation opened with [method begin_op], for [method abort_op].
 var _open_mark: Dictionary = {}
-## Los uids vivos (uid → def_id) que tendrá la plataforma cuando le llegue el cuerpo siguiente: los del registro
-## cargado y, tras cada [method build_section], los de su foto (los cuerpos de un personaje se aplican en orden).
+## The live uids (uid → def_id) the platform will have when the next body reaches it: those of the loaded record
+## and, after each [method build_section], those of its snapshot (a character's bodies are applied in order).
 var _saved_uids: Dictionary[int, StringName] = {}
 
 
@@ -102,24 +103,25 @@ func _init(p_record: ProgressRecord, p_persistent: bool, ids: IdAllocator, db: I
 	_saved_uids = _live_uids()
 
 
-## El generador de ids que usa.
+## The id generator it uses.
 func get_ids() -> IdAllocator:
 	return _ids
 
 
-## La foto del cuerpo de ahora es la confirmada: lo llama el alta (entrar sin cambiar nada no ensucia, §9.2).
+## The snapshot of the current body is the confirmed one: called by registration (entering without changing anything
+## does not make it dirty, §9.2).
 func confirm_current() -> void:
 	_confirmed = _snapshot(_live())
 
 
-# --- Peticiones del cliente ----------------------------------------------------------------------
+# --- Client requests ----------------------------------------------------------------------------
 
-## Una petición del cliente ([InventoryOps.Request]) con [param context], del que el servidor ya ha puesto la
-## ranura activa del [CombatState], [code]can_touch_equipment[/code] y [code]drinking[/code]; aquí se ponen el
-## nivel, las definiciones y los ids del tramo de los clientes. Antes, el tope de DESTROY: con plataforma y
-## [constant JOURNAL_LIMIT] operaciones o más sin confirmar, NOT_NOW (la plataforma no responde: el cuerpo no crece
-## sin límite, §4.2). Un DESTROY aplicado crea su operación PLAYER con el evento PLAYER_DESTROY y el
-## [member InventoryOps.Outcome.new_id] como [code]op_id[/code] (tras cerrar lo agregado).
+## A client request ([InventoryOps.Request]) with [param context], where the server has already set the active slot
+## of the [CombatState], [code]can_touch_equipment[/code] and [code]drinking[/code]; here the level, the definitions
+## and the ids from the clients range are set. First, the DESTROY cap: with a platform and [constant JOURNAL_LIMIT]
+## or more unconfirmed operations, NOT_NOW (the platform is not responding: the body must not grow without limit,
+## §4.2). An applied DESTROY creates its PLAYER operation with the PLAYER_DESTROY event and
+## [member InventoryOps.Outcome.new_id] as [code]op_id[/code] (after closing the aggregate).
 func apply_request(request: InventoryOps.Request, context: InventoryOps.Context) -> InventoryOps.Outcome:
 	if request.op == InventoryOps.Op.DESTROY and persistent and unconfirmed_count() >= JOURNAL_LIMIT:
 		var refused := InventoryOps.Outcome.new()
@@ -135,8 +137,8 @@ func apply_request(request: InventoryOps.Request, context: InventoryOps.Context)
 		return outcome
 	revision += 1
 	if request.op == InventoryOps.Op.DESTROY:
-		# El cierre de lo agregado va antes en el diario (§5.2); si no hubiera id del servidor (no pasa: quedaba uno
-		# de los clientes), lo agregado se cierra después, y DESTROY no lleva apuntes que ordenar.
+		# Closing the aggregate goes first in the journal (§5.2); if there were no server id (does not happen: one from the
+		# clients range was left), the aggregate is closed afterwards, and DESTROY carries no entries to order.
 		_close_aggregate(_ids.next_for_server)
 		var op: EconomyOp = EconomyOp.create(outcome.new_id, EconomyOp.Kind.PLAYER)
 		op.items.assign(outcome.events)
@@ -144,13 +146,13 @@ func apply_request(request: InventoryOps.Request, context: InventoryOps.Context)
 	return outcome
 
 
-# --- Operaciones sueltas ---------------------------------------------------------------------------
+# --- Standalone operations ---------------------------------------------------------------------
 
-## Abre una operación suelta de [param kind] (kit, GM, reversión) con el actor, la [param note] y el
-## [param detail] del rastro (§10), tras cerrar lo agregado como una GAMEPLAY. Va al diario ya: lo que se le añada
-## ([method add_items], [method remove_items], [method change_currency]) sale con ella. null si no hay ids del tramo
-## del servidor (para cerrar o para ella; lo cerrado se queda en el diario). Guarda el estado de justo después de
-## cerrar lo agregado para [method abort_op] (P5d: «todo o nada» de §10).
+## Opens a standalone operation of [param kind] (kit, GM, reversal) with the actor, the [param note] and the
+## [param detail] of the trail (§10), after closing the aggregate as a GAMEPLAY operation. It goes into the journal
+## right away: whatever is added to it ([method add_items], [method remove_items], [method change_currency]) goes out
+## with it. null if there are no ids in the server range (to close or for it; what was closed stays in the journal).
+## Saves the state from right after closing the aggregate for [method abort_op] (P5d: "all or nothing" from §10).
 func begin_op(kind: int, actor_account_id: int, note: String, detail: Dictionary) -> EconomyOp:
 	if not _close_aggregate(_ids.next_for_server):
 		return null
@@ -168,8 +170,9 @@ func begin_op(kind: int, actor_account_id: int, note: String, detail: Dictionary
 	return op
 
 
-## Quita del diario [param op] si es la última, aún no ha salido en ningún cuerpo y no lleva nada (una operación que
-## no se pudo completar: «todo o nada» de §10). Su id se pierde (un hueco no importa, §4.5). true si la quita.
+## Removes [param op] from the journal if it is the last one, has not yet gone out in any body and carries nothing (an
+## operation that could not be completed: "all or nothing" from §10). Its id is lost (a gap does not matter, §4.5).
+## true if it removes it.
 func discard_op(op: EconomyOp) -> bool:
 	if op == null or _journal.is_empty() or _journal[-1] != op or op.save_seq != 0 or not op.is_empty():
 		return false
@@ -177,10 +180,10 @@ func discard_op(op: EconomyOp) -> bool:
 	return true
 
 
-## Deshace [param op] entera (P5d, «todo o nada» de §10): si es la última del diario, aún no ha salido en ningún
-## cuerpo y es la última abierta con [method begin_op], vuelven el inventario, los saldos, los puntos de reino, el
-## nivel y la XP de justo después de abrirla y la operación sale del diario (lo agregado que cerró se queda). Su id
-## y los de las pilas que creó se pierden. true si la deshace.
+## Undoes [param op] entirely (P5d, "all or nothing" from §10): if it is the last one in the journal, has not yet gone
+## out in any body and is the last one opened with [method begin_op], the inventory, balances, realm points, level and
+## XP from right after opening it are restored and the operation leaves the journal (the aggregate it closed stays).
+## Its id and those of the stacks it created are lost. true if it undoes it.
 func abort_op(op: EconomyOp) -> bool:
 	if op == null or _open_mark.get("op") != op or _journal.is_empty() or _journal[-1] != op or op.save_seq != 0:
 		return false
@@ -199,14 +202,14 @@ func abort_op(op: EconomyOp) -> bool:
 	return true
 
 
-## Crea [param count] unidades de [param def_id] en la bolsa dentro de [param op] (fuente o interno): a las pilas
-## con hueco y el resto en pilas nuevas con ids del tramo del servidor. false si no cabe, faltan ids o la
-## operación ya salió en un cuerpo: entonces nada cambia.
+## Creates [param count] units of [param def_id] in the bag within [param op] (source or internal): into stacks with
+## room first and the rest into new stacks with ids from the server range. false if it does not fit, ids are missing or
+## the operation has already gone out in a body: then nothing changes.
 func add_items(op: EconomyOp, def_id: StringName, count: int, reason: int) -> bool:
 	return op_add_items(op, def_id, count, reason).is_ok()
 
 
-## [method add_items] con su [InventoryOps.Outcome] (las ranuras del INVENTORY_DELTA). Una operación cerrada da
+## [method add_items] with its [InventoryOps.Outcome] (the slots of the INVENTORY_DELTA). A closed operation returns
 ## NOT_NOW.
 func op_add_items(op: EconomyOp, def_id: StringName, count: int, reason: int) -> InventoryOps.Outcome:
 	if not _is_open(op):
@@ -214,9 +217,9 @@ func op_add_items(op: EconomyOp, def_id: StringName, count: int, reason: int) ->
 	return _record_in(op, InventoryOps.add_items(record.inventory, def_id, count, reason, _server_context()))
 
 
-## Crea [param count] unidades de [param def_id] dentro de [param op] en pilas nuevas en las primeras ranuras libres
-## de la bolsa, sin juntar ([method InventoryOps.create_items]: el [code]item_give[/code] de GM y lo que recrea una
-## reversión), copiando los campos de [param template] si la hay.
+## Creates [param count] units of [param def_id] within [param op] in new stacks in the first free slots of the bag,
+## without merging ([method InventoryOps.create_items]: the GM [code]item_give[/code] and what a reversal recreates),
+## copying the fields of [param template] if there is one.
 func op_create_items(op: EconomyOp, def_id: StringName, count: int, reason: int,
 		template: ItemInstance = null) -> InventoryOps.Outcome:
 	if not _is_open(op):
@@ -225,16 +228,16 @@ func op_create_items(op: EconomyOp, def_id: StringName, count: int, reason: int,
 			template))
 
 
-## Quita [param count] unidades de [param def_id] dentro de [param op] (sumidero o interno), primero de
-## [param prefer_uid]. false si no hay tantas o la operación ya salió en un cuerpo: entonces nada cambia. No mira la
-## ranura activa (I10): quitar un arma equipada es cosa de quien llama.
+## Removes [param count] units of [param def_id] within [param op] (sink or internal), first from
+## [param prefer_uid]. false if there are not that many or the operation has already gone out in a body: then nothing
+## changes. It does not look at the active slot (I10): removing an equipped weapon is the caller's business.
 func remove_items(op: EconomyOp, def_id: StringName, count: int, reason: int,
 		prefer_uid: int = 0) -> bool:
 	return op_remove_items(op, def_id, count, reason, prefer_uid).is_ok()
 
 
-## [method remove_items] con su [InventoryOps.Outcome], sin tocar las ranuras de [param protected] (la activa del
-## equipo en una reversión, §10).
+## [method remove_items] with its [InventoryOps.Outcome], without touching the slots of [param protected] (the equipment's
+## active one in a reversal, §10).
 func op_remove_items(op: EconomyOp, def_id: StringName, count: int, reason: int, prefer_uid: int = 0,
 		protected: Array[Vector2i] = []) -> InventoryOps.Outcome:
 	if not _is_open(op):
@@ -242,9 +245,9 @@ func op_remove_items(op: EconomyOp, def_id: StringName, count: int, reason: int,
 	return _record_in(op, InventoryOps.remove_items(record.inventory, def_id, count, reason, prefer_uid, protected))
 
 
-## Un apunte de [param delta] en [param currency] dentro de [param op], con su [code]balance_after[/code]. Entero o
-## nada (§5.4): false si la moneda no existe, el signo no cuadra con el motivo, el saldo quedaría fuera de 0 … tope o
-## la operación ya salió en un cuerpo. Los méritos de motivo 3–5 suben los puntos de reino (I9).
+## A ledger entry of [param delta] in [param currency] within [param op], with its [code]balance_after[/code]. All or
+## nothing (§5.4): false if the currency does not exist, the sign does not match the reason, the balance would fall
+## outside 0 … cap or the operation has already gone out in a body. Merit entries with reason 3–5 raise realm points (I9).
 func change_currency(op: EconomyOp, currency: int, delta: int, reason: int, ref_kind: int,
 		ref_id: int) -> bool:
 	if not _is_open(op) or not Currency.is_valid(currency) or not EconomyReason.sign_matches(reason, delta):
@@ -261,11 +264,11 @@ func change_currency(op: EconomyOp, currency: int, delta: int, reason: int, ref_
 	return true
 
 
-# --- Lo agregado -------------------------------------------------------------------------------------
+# --- The aggregate -----------------------------------------------------------------------------------
 
-## Una ganancia de juego (méritos, oro de PNJ y capturas): cambia el saldo al momento, recortada al tope (§5.4), y
-## se apunta al construir el guardado. Los méritos de motivo 3–5 suben los puntos de reino. Devuelve lo aplicado
-## (0 si la moneda no existe, el motivo no es una fuente o el saldo ya está en el tope).
+## An in-game gain (merits, NPC gold and captures): changes the balance immediately, clamped to the cap (§5.4), and is
+## recorded when the save is built. Merits with reason 3–5 raise realm points. Returns what was applied (0 if the
+## currency does not exist, the reason is not a source or the balance is already at the cap).
 func gain_currency(currency: int, amount: int, reason: int, ref_kind: int, ref_id: int) -> int:
 	if not Currency.is_valid(currency) or not EconomyReason.is_source(reason):
 		return 0
@@ -284,8 +287,8 @@ func gain_currency(currency: int, amount: int, reason: int, ref_kind: int, ref_i
 	return applied
 
 
-## Suma [param count] unidades de [param def_id] a la bolsa por el juego (agregado, con ids del tramo del servidor
-## para las pilas nuevas). false si no cabe o faltan ids: nada cambia.
+## Adds [param count] units of [param def_id] to the bag from gameplay (aggregate, with ids from the server range for
+## new stacks). false if it does not fit or ids are missing: nothing changes.
 func gain_items(def_id: StringName, count: int, reason: int) -> bool:
 	var outcome: InventoryOps.Outcome = InventoryOps.add_items(record.inventory, def_id, count, reason,
 			_server_context())
@@ -296,14 +299,13 @@ func gain_items(def_id: StringName, count: int, reason: int) -> bool:
 	return true
 
 
-## Quita [param count] unidades de [param def_id] por el juego (CONSUME: de la pila de la bolsa con la ranura más
-## baja), agregado. false si no hay tantas: nada cambia.
+## Removes [param count] units of [param def_id] from gameplay (CONSUME: from the bag stack with the lowest slot),
+## aggregate. false if there are not that many: nothing changes.
 func lose_items(def_id: StringName, count: int, reason: int) -> bool:
 	return take_items(def_id, count, reason).is_ok()
 
 
-## [method lose_items] con su [InventoryOps.Outcome]: las ranuras que cambiaron, para el INVENTORY_DELTA del
-## servidor (P5b).
+## [method lose_items] with its [InventoryOps.Outcome]: the slots that changed, for the server's INVENTORY_DELTA (P5b).
 func take_items(def_id: StringName, count: int, reason: int) -> InventoryOps.Outcome:
 	var outcome: InventoryOps.Outcome = InventoryOps.remove_items(record.inventory, def_id, count, reason)
 	if outcome.is_ok():
@@ -312,10 +314,10 @@ func take_items(def_id: StringName, count: int, reason: int) -> InventoryOps.Out
 	return outcome
 
 
-## CAMP_REFILL (§4.4) agregado: repone el total de cada definición con [member ItemDefinition.camp_refill]; una
-## pila nueva toma un id del tramo del servidor y, sin él, esa parte espera al siguiente intento. Devuelve el
-## resultado de [method InventoryOps.camp_refill] ([code]changed[/code] y [code]bag_full[/code], para el delta y el
-## aviso de P5b).
+## Aggregate CAMP_REFILL (§4.4): restocks the total of each definition with [member ItemDefinition.camp_refill]; a new
+## stack takes an id from the server range and, without one, that part waits for the next attempt. Returns the result of
+## [method InventoryOps.camp_refill] ([code]changed[/code] and [code]bag_full[/code], for the delta and the P5b
+## notice).
 func camp_refill() -> InventoryOps.Outcome:
 	var outcome: InventoryOps.Outcome = InventoryOps.camp_refill(record.inventory, _server_context())
 	if not outcome.events.is_empty():
@@ -324,18 +326,18 @@ func camp_refill() -> InventoryOps.Outcome:
 	return outcome
 
 
-## Apuntes y eventos agregados sin cerrar (pruebas y métricas).
+## Unclosed aggregate entries and events (tests and metrics).
 func pending_aggregate_count() -> int:
 	return _pending_ledger.size() + _pending_items.size()
 
 
-# --- Kit, XP y combate -------------------------------------------------------------------------------
+# --- Kit, XP and combat -----------------------------------------------------------------------------
 
-## El kit de inicio (§2.5) de [param template_id] en una operación STARTER_KIT (ids del tramo del servidor), si
-## [member ProgressRecord.starter_granted] es false; quien llama marca el guardado como crítico. false si ya se dio,
-## si el inventario no está vacío o si faltan ids: entonces nada cambia ([code]starter_granted[/code] sigue false y
-## llega en la siguiente entrada, §4.5). Una plantilla que no existe o que no se puede elegir usa la primera elegible
-## por id, con aviso ([method StarterKit.template_for]).
+## The starter kit (§2.5) of [param template_id] in a STARTER_KIT operation (ids from the server range), if
+## [member ProgressRecord.starter_granted] is false; the caller marks the save as critical. false if it was already
+## given, if the inventory is not empty or if ids are missing: then nothing changes ([code]starter_granted[/code]
+## stays false and arrives on the next entry, §4.5). A template that does not exist or cannot be chosen uses the first
+## eligible one by id, with a warning ([method StarterKit.template_for]).
 func grant_starter_kit(template_id: StringName) -> bool:
 	if record.starter_granted:
 		return false
@@ -356,8 +358,8 @@ func grant_starter_kit(template_id: StringName) -> bool:
 	return true
 
 
-## Suma [param amount] de XP ([method ProgressionRules.add_xp], I8) desde [param source]
-## ([enum ProgressMessages.XpSource]); lo aplicado se acumula en [member pending_xp_gain] para PROGRESS_UPDATE.
+## Adds [param amount] of XP ([method ProgressionRules.add_xp], I8) from [param source]
+## ([enum ProgressMessages.XpSource]); what is applied accumulates in [member pending_xp_gain] for PROGRESS_UPDATE.
 func add_xp(amount: int, source: int) -> ProgressionRules.XpResult:
 	var result: ProgressionRules.XpResult = ProgressionRules.add_xp(LevelCurve.shared(), record.level,
 			record.xp_total, amount)
@@ -369,8 +371,8 @@ func add_xp(amount: int, source: int) -> ProgressionRules.XpResult:
 	return result
 
 
-## Las cargas de los consumibles (§4.4): [code]min(15, count_of(def))[/code] de cada uno de
-## [method ItemDatabase.consumable_definition], empaquetadas como [member CombatState.consumable_charges].
+## The consumable charges (§4.4): [code]min(15, count_of(def))[/code] of each one from
+## [method ItemDatabase.consumable_definition], packed as [member CombatState.consumable_charges].
 func charges() -> int:
 	var counts: Array[int] = [0, 0]
 	for index: int in range(CombatState.CONSUMABLE_SLOTS):
@@ -380,12 +382,12 @@ func charges() -> int:
 	return CombatState.pack_charges(counts[0], counts[1])
 
 
-## La ranura activa con la que entra (§8): la del registro y, si no tiene arma y la otra sí, la otra (I10).
+## The active slot it enters with (§8): the record's and, if it has no weapon and the other slot does, the other (I10).
 func saved_active_slot() -> int:
 	return _effective_active_slot(record.active_weapon_slot)
 
 
-## Las armas del equipo (ranuras 0 y 1) como ids de [CombatCatalog]; 0 = vacía.
+## The equipment's weapons (slots 0 and 1) as [CombatCatalog] ids; 0 = empty.
 func weapons() -> PackedInt32Array:
 	var result := PackedInt32Array([0, 0])
 	for slot: int in range(InventoryState.OPEN_EQUIPMENT_SLOTS):
@@ -396,46 +398,46 @@ func weapons() -> PackedInt32Array:
 	return result
 
 
-## Guarda en memoria las reutilizaciones (ticks absolutos) del arma [param weapon_id] que se quita (§4.1).
+## Stores in memory the cooldowns (absolute ticks) of the weapon [param weapon_id] being removed (§4.1).
 func stash_ready(weapon_id: int, ready: PackedInt64Array) -> void:
 	if weapon_id != 0:
 		_stashed[weapon_id] = ready.duplicate()
 
 
-## Las reutilizaciones guardadas del arma [param weapon_id] (vacío si no hay).
+## The stored cooldowns of the weapon [param weapon_id] (empty if there are none).
 func stashed_ready(weapon_id: int) -> PackedInt64Array:
 	return (_stashed.get(weapon_id, PackedInt64Array()) as PackedInt64Array).duplicate()
 
 
-## El fin en hora Unix de una reutilización que acaba en el tick [param ready_tick], vista en el tick [param s] con
-## la hora [param now_unix] (§8): [code]now_unix + ceili((ready_tick − s) / 60.0)[/code], entero y redondeado hacia
-## arriba (nunca vence antes); una ya vencida da [param now_unix].
+## The end in Unix time of a cooldown that finishes at tick [param ready_tick], seen at tick [param s] with the time
+## [param now_unix] (§8): [code]now_unix + ceili((ready_tick − s) / 60.0)[/code], an integer rounded up (it never
+## expires early); one already expired gives [param now_unix].
 static func ends_at_unix_for(ready_tick: int, s: int, now_unix: int,
 		ticks_per_second: int = TICKS_PER_SECOND) -> int:
 	return now_unix + maxi(ceili(float(ready_tick - s) / float(ticks_per_second)), 0)
 
 
-## El tick en que acaba, vista en el tick [param s] con la hora [param now_unix], una reutilización guardada con fin
-## [param ends_at_unix] (§8): [code]s + max(0, ends_at_unix − now_unix) · 60[/code].
+## The tick at which a stored cooldown with end [param ends_at_unix] finishes, seen at tick [param s] with the time
+## [param now_unix] (§8): [code]s + max(0, ends_at_unix − now_unix) · 60[/code].
 static func ready_tick_for(ends_at_unix: int, now_unix: int, s: int,
 		ticks_per_second: int = TICKS_PER_SECOND) -> int:
 	return s + maxi(ends_at_unix - now_unix, 0) * ticks_per_second
 
 
-# --- La sección progress ------------------------------------------------------------------------------
+# --- The progress section ----------------------------------------------------------------------------
 
-## La sección [code]progress[/code] del guardado [param seq] (§9.3): cierra lo agregado como una GAMEPLAY con un id
-## del tramo de los guardados, toma la foto (posición, giro, vida, «en combate», tiempo jugado y ranura activa del
-## cuerpo; los temporizadores vencidos fuera) y devuelve el registro sin los campos de solo lectura con
-## [code]ops[/code]: solo las operaciones con [member EconomyOp.save_seq] 0, a las que pone [param seq]. Sin id para
-## cerrar lo agregado devuelve [code]{}[/code] sin tocar nada (§4.5).
+## The [code]progress[/code] section of save [param seq] (§9.3): closes the aggregate as a GAMEPLAY operation with an id
+## from the saves range, takes the snapshot (position, yaw, health, "in combat", played time and the body's active
+## slot; expired timers dropped) and returns the record without the read-only fields with
+## [code]ops[/code]: only the operations with [member EconomyOp.save_seq] 0, to which it assigns [param seq]. Without an
+## id to close the aggregate it returns [code]{}[/code] and touches nothing (§4.5).
 ## [br][br]
-## [b]Uids de los eventos[/b] (S4, §13.3: un evento con [code]uid[/code] que suma es de uno que no estaba vivo en la
-## base, y uno que resta, de uno que sí): el cuerpo lleva el [code]uid[/code] de un evento solo si cumple eso con lo
-## que tendrá la base al recibirlo (la foto del cuerpo anterior o el registro cargado); si no, [code]null[/code],
-## como un evento agregado. Pasa al destruir o quitar una pila que aún no se ha guardado (la mitad de un SPLIT) o al
-## sumar a una que ya estaba guardada (el 16 de GM, que junta). Las cantidades no cambian, y el diario conserva el
-## [code]uid[/code] de verdad.
+## [b]Event uids[/b] (S4, §13.3: an event with a [code]uid[/code] that adds belongs to one that was not alive in the
+## base, and one that subtracts, to one that was): the body carries an event's [code]uid[/code] only if it meets that
+## with what the base will have on receiving it (the previous body's snapshot or the loaded record); otherwise,
+## [code]null[/code], like an aggregate event. This happens when destroying or removing a stack that has not been saved
+## yet (half of a SPLIT) or when adding to one that was already saved (the GM 16, which merges). Quantities do not
+## change, and the journal keeps the real [code]uid[/code].
 func build_section(seq: int) -> Dictionary:
 	if not _close_aggregate(_ids.next_for_build):
 		return {}
@@ -453,9 +455,9 @@ func build_section(seq: int) -> Dictionary:
 	return data
 
 
-## Tras un 200 [code]applied[/code] o [code]duplicate[/code] del guardado [param seq]: quita del diario las
-## operaciones con [code]save_seq ≤ seq[/code] y su foto pasa a ser la confirmada. Las de un cuerpo posterior en
-## vuelo se quedan.
+## After a 200 [code]applied[/code] or [code]duplicate[/code] for save [param seq]: removes from the journal the
+## operations with [code]save_seq ≤ seq[/code] and its snapshot becomes the confirmed one. Those of a later in-flight
+## body stay.
 func acknowledge(seq: int) -> void:
 	var kept: Array[EconomyOp] = []
 	for op: EconomyOp in _journal:
@@ -469,10 +471,10 @@ func acknowledge(seq: int) -> void:
 			_built.erase(built_seq)
 
 
-## true si hay algo que guardar en el punto de control (§9.2): una operación con [code]save_seq[/code] 0 o algo
-## agregado, un campo del registro distinto del último confirmado (nivel, XP, puntos de reino, monedas, inventario,
-## ranura activa, temporizadores…), la posición movida al menos [constant MOVE_EPSILON_M] o la vida distinta. El
-## tiempo jugado solo no ensucia: va con el siguiente guardado.
+## true if there is anything to save at the checkpoint (§9.2): an operation with [code]save_seq[/code] 0 or something
+## aggregated, a record field different from the last confirmed one (level, XP, realm points, currencies, inventory,
+## active slot, timers…), the position moved at least [constant MOVE_EPSILON_M] or a different health. Played time
+## alone does not make it dirty: it goes with the next save.
 func is_dirty() -> bool:
 	if not _pending_ledger.is_empty() or not _pending_items.is_empty():
 		return true
@@ -482,18 +484,18 @@ func is_dirty() -> bool:
 	return _differs(_snapshot(_live()), _confirmed)
 
 
-## El diario: con plataforma, las operaciones sin confirmar (en orden de aplicación); sin ella, las últimas
+## The journal: with a platform, the unconfirmed operations (in application order); without one, the latest
 ## [constant JOURNAL_LIMIT] (§9.4).
 func journal() -> Array[EconomyOp]:
 	return _journal.duplicate()
 
 
-## Operaciones del diario sin confirmar (con plataforma, el tope de DESTROY).
+## Unconfirmed journal operations (with a platform, the DESTROY cap).
 func unconfirmed_count() -> int:
 	return _journal.size()
 
 
-# --- Interno -------------------------------------------------------------------------------------
+# --- Internal -----------------------------------------------------------------------------------
 
 func _server_context() -> InventoryOps.Context:
 	var context := InventoryOps.Context.new()
@@ -503,12 +505,12 @@ func _server_context() -> InventoryOps.Context:
 	return context
 
 
-# Una operación del diario que aún no ha salido en ningún cuerpo (lo enviado no cambia).
+# A journal operation that has not yet gone out in any body (what was already sent does not change).
 func _is_open(op: EconomyOp) -> bool:
 	return op != null and op.save_seq == 0 and _journal.has(op)
 
 
-# Los uids vivos del inventario (uid → def_id).
+# The inventory's live uids (uid → def_id).
 func _live_uids() -> Dictionary[int, StringName]:
 	var uids: Dictionary[int, StringName] = {}
 	for item: ItemInstance in record.inventory.all_items():
@@ -516,8 +518,8 @@ func _live_uids() -> Dictionary[int, StringName]:
 	return uids
 
 
-# La entrada de ops de [param op] en el cuerpo: sin el uid de los eventos que S4 no admitiría con lo guardado
-# (ver build_section).
+# The ops entry of [param op] in the body: without the uid of events that S4 would not accept given what is saved
+# (see build_section).
 func _saved_form(op: EconomyOp) -> Dictionary:
 	var data: Dictionary = op.to_dictionary()
 	var events: Array = data["items"]
@@ -537,7 +539,7 @@ static func _refused(result: int) -> InventoryOps.Outcome:
 	return outcome
 
 
-# Los eventos de [param outcome], si se aplicó, pasan a [param op] y la revisión sube.
+# The events of [param outcome], if it was applied, pass to [param op] and the revision increases.
 func _record_in(op: EconomyOp, outcome: InventoryOps.Outcome) -> InventoryOps.Outcome:
 	if outcome.is_ok():
 		op.items.append_array(outcome.events)
@@ -561,8 +563,8 @@ func _aggregate(events: Array[ItemEvent]) -> void:
 			_pending_items[key] = ItemEvent.create(0, event.def_id, event.count_delta, event.reason)
 
 
-# Cierra lo agregado en una GAMEPLAY con un id de [param take]. true si no había nada o se ha cerrado; false (sin
-# tocar nada) si no hay id.
+# Closes the aggregate into a GAMEPLAY operation with an id from [param take]. true if there was nothing or it was
+# closed; false (touching nothing) if there is no id.
 func _close_aggregate(take: Callable) -> bool:
 	if _pending_ledger.is_empty() and _pending_items.is_empty():
 		return true
@@ -592,7 +594,7 @@ func _live() -> Live:
 	return value as Live if value is Live else null
 
 
-# Lo del cuerpo pasa al registro (la foto de este guardado).
+# What the body holds goes into the record (the snapshot of this save).
 func _apply_live(live: Live) -> void:
 	if live != null:
 		if not live.location.is_empty():
@@ -607,7 +609,7 @@ func _apply_live(live: Live) -> void:
 	record.active_weapon_slot = _effective_active_slot(record.active_weapon_slot)
 
 
-# La ranura activa que se guarda (§8): la del cuerpo y, si no tiene arma y la otra sí, la otra (I10).
+# The active slot that is saved (§8): the body's and, if it has no weapon and the other slot does, the other (I10).
 func _effective_active_slot(slot: int) -> int:
 	slot = clampi(slot, 0, InventoryState.OPEN_EQUIPMENT_SLOTS - 1)
 	var equipment: int = InventoryState.ContainerId.EQUIPMENT
@@ -616,7 +618,7 @@ func _effective_active_slot(slot: int) -> int:
 	return slot
 
 
-# Lo que is_dirty compara: los campos del registro, la revisión del inventario y lo del cuerpo.
+# What is_dirty compares: the record's fields, the inventory revision and the body's values.
 func _snapshot(live: Live) -> Dictionary:
 	var location: Dictionary = record.location
 	var health: int = record.health

@@ -1,79 +1,76 @@
 class_name ProjectileSystem
 extends RefCounted
-## Proyectiles del servidor (docs/habilidades.md, sección 4.4; CMB-22): las flechas del arco, con la
-## balística de datos ([ProjectileTicks]), el rebobinado de los golpes fijado para todo el vuelo y la
-## caja del muro de escudos.
+## Server projectiles (docs/habilidades.md, section 4.4; CMB-22): bow arrows, with data-driven ballistics
+## ([ProjectileTicks]), hit rewind fixed for the whole flight and the shield wall's box.
 ## [br][br]
-## [b]Disparo[/b] ([method fire], paso 3 del tick, por net_id): cada proyectil del ataque o la habilidad que
-## compromete en [code]s[/code] sale del pecho ([method AimRay.muzzle]) hacia el punto apuntado
-## ([method AimRay.aim_point]) por el rayo canónico de la cámara ([method AimRay.canonical] con el yaw, el
-## pitch y el hombro de la entrada simulada en [code]s[/code], [method InputQueue.get_applied]), con la
-## convergencia a la profundidad del hostil más cercano a la mira en [code]s − rewind[/code]. El abanico
-## gira la dirección en yaw. El origen y la velocidad se cuantizan como viajan en el ENTITY_SPAWN
-## ([method Ballistics.quantize]) y el servidor vuela con eso. Qué sale, su velocidad, el abanico y la
-## cuantización son los de [ProjectileLaunch], compartido con la flecha predicha del cliente. El rebobinado
-## ([method CombatResolver.compute_rewind]) se fija una vez por disparo, en ticks enteros; si se rechaza,
-## la flecha es [b]inofensiva[/b] (vuela y choca con el mundo, no prueba a nadie), con sospecha + 1 y
-## registro; también lo es la de quien dispara desde la zona segura de su reino. El proyectil guarda una
-## copia del autor (reino, si es jugador, fuente, rebobinado, carga y más daño): el daño no vuelve a mirar
-## el estado del tirador. [b]Un disparo nunca se rechaza[/b]: con [member CombatRules.max_projectiles_per_shooter]
-## vivos del tirador sale la más vieja suya y con [member CombatRules.max_projectiles_per_zone] en la zona,
-## la más vieja de la zona (empate por id), con DESPAWN 5 en ese tick.
+## [b]Firing[/b] ([method fire], tick step 3, by net_id): each projectile of the attack or ability that commits at
+## [code]s[/code] leaves the chest ([method AimRay.muzzle]) towards the aimed point ([method AimRay.aim_point]) along
+## the camera's canonical ray ([method AimRay.canonical] with the yaw, pitch and shoulder of the input simulated at
+## [code]s[/code], [method InputQueue.get_applied]), with convergence at the depth of the hostile closest to the
+## crosshair at [code]s − rewind[/code]. The fan rotates the direction in yaw. The origin and velocity are quantized as
+## they travel in the ENTITY_SPAWN ([method Ballistics.quantize]) and the server flies with that. What leaves, its
+## velocity, the fan and the quantization are those of [ProjectileLaunch], shared with the client's predicted arrow. The
+## rewind ([method CombatResolver.compute_rewind]) is fixed once per shot, in whole ticks; if it is rejected, the
+## arrow is [b]harmless[/b] (it flies and collides with the world, tests nobody), with suspicion + 1 and a log entry;
+## so is that of someone who fires from their realm's safe zone. The projectile keeps a copy of the author (realm,
+## whether a player, source, rewind, charge and bonus damage): damage never looks at the shooter's state again. [b]A shot
+## is never rejected[/b]: with [member CombatRules.max_projectiles_per_shooter] alive for the shooter, their oldest one
+## goes out, and with [member CombatRules.max_projectiles_per_zone] in the zone, the oldest of the zone (ties by id),
+## with DESPAWN 5 on that tick.
 ## [br][br]
-## [b]Vuelo[/b] ([method resolve], paso 4, sin tocar estado de combate): en el tick [code]k[/code], con
-## [code]n = k − spawn_tick[/code], el segmento [code][pos(n), pos(n + 1)][/code] de
-## [method Ballistics.position] (en el tick del disparo, el primero) contra el mundo y las puertas
-## ([constant HitShapes.LINE_OF_SIGHT_MASK]; el primer segmento con [code]hit_from_inside[/code]: desde el
-## vano de la puerta cerrada se clava en el origen), las cajas de los muros de escudos de los hostiles al
-## tirador en [code]k[/code] (solo a las flechas que llegan de frente) y las cápsulas (radio 0,4 + el del
-## proyectil) de los candidatos en [code]k − rewind[/code] ([method StateHistory.position_at]), cribados
-## con su caja barrida ([method StateHistory.swept_box] más la posición congelada), calculada una vez por
-## tick. Gana la fracción menor. Un personaje invulnerable en [code][k − defense_rewind, k][/code] no la
-## para (no vuelve a probarlo); uno bloqueando de cara a la flecha (el cono del arma o el ancho del muro,
-## en la muestra de [code]k[/code] o en la de [code]k − defense_rewind[/code] si aún cuenta) la bloquea;
-## nunca hay parada. La caja del muro bloquea por quien lo sostiene (sin daño). El mundo la clava; una
-## puerta que el tirador puede dañar recibe el golpe. Sin impacto, caduca en
-## [code]n + 1 ≥ lifetime_ticks[/code] o por debajo de [constant VOID_LIMIT_Y] (DESPAWN 5).
+## [b]Flight[/b] ([method resolve], step 4, without touching combat state): on tick [code]k[/code], with
+## [code]n = k − spawn_tick[/code], the segment [code][pos(n), pos(n + 1)][/code] of
+## [method Ballistics.position] (on the firing tick, the first one) against the world and the doors
+## ([constant HitShapes.LINE_OF_SIGHT_MASK]; the first segment with [code]hit_from_inside[/code]: from the doorway of
+## the closed door it sticks into the origin), the boxes of the shield walls hostile to the shooter at [code]k[/code]
+## (only to arrows arriving head-on) and the capsules (radius 0.4 + the projectile's) of the candidates at
+## [code]k − rewind[/code] ([method StateHistory.position_at]), screened with their swept box
+## ([method StateHistory.swept_box] plus the frozen position), computed once per tick. The smaller fraction wins. A
+## character that is invulnerable in [code][k − defense_rewind, k][/code] does not stop it (it does not test it again);
+## one blocking facing the arrow (the weapon's cone or the wall's width, in the sample of [code]k[/code] or of
+## [code]k − defense_rewind[/code] if it still counts) blocks it; there is never a parry. The wall's box blocks on
+## behalf of whoever holds it (no damage). The world sticks it; a door that the shooter can damage receives the hit.
+## Without an impact, it expires at [code]n + 1 ≥ lifetime_ticks[/code] or below [constant VOID_LIMIT_Y] (DESPAWN 5).
 ## [br][br]
-## No toca la red ni el reloj: avisa de las altas y bajas con [signal spawned] y [signal despawned] (el
-## [ZoneServer] las manda a quien tiene relevante al tirador y a él) y devuelve los golpes para que los
-## aplique el [CombatDirector], que es quien sabe de daño, controles y muertes.
+## It touches neither the network nor the clock: it reports spawns and despawns with [signal spawned] and
+## [signal despawned] (the [ZoneServer] sends them to whoever has the shooter relevant, and to the shooter) and returns
+## the hits for the [CombatDirector] to apply, since it is the one that knows about damage, controls and deaths.
 ## [br][br]
-## [b]Coste[/b] (docs/habilidades.md, sección 8): los candidatos del tick viven en arrays empaquetados
-## (sin objetos por tick) y cada flecha guarda el extremo de su segmento, que es el origen del siguiente
-## (la misma [method Ballistics.position] con el mismo [code]n[/code]): un tick de vuelo es un rayo contra el
-## mundo, una criba por cajas y, casi nunca, una prueba exacta.
+## [b]Cost[/b] (docs/habilidades.md, section 8): the tick's candidates live in packed arrays (no objects per tick) and
+## each arrow stores the end of its segment, which is the origin of the next (the same [method Ballistics.position] with
+## the same [code]n[/code]): a flight tick is one ray against the world, one screening by boxes and, almost never, an
+## exact test.
 
-## Alta de un proyectil: el ENTITY_SPAWN de kind 3 y los net_id implicados (el tirador): su dueño y quien
-## lo tenga relevante lo reciben.
+## Spawn of a projectile: the ENTITY_SPAWN of kind 3 and the net_ids involved (the shooter): its owner and whoever has
+## it relevant receive it.
 signal spawned(spawn: NetMessages.EntitySpawn, recipients: PackedInt32Array)
-## Baja de un proyectil en el tick [param tick] con el motivo [param reason] (4 impacto, 5 caducado o
-## retirado) y los net_id implicados (el tirador). El [ZoneServer] la manda a quien recibió su alta.
+## Despawn of a projectile at tick [param tick] with reason [param reason] (4 impact, 5 expired or withdrawn) and the
+## net_ids involved (the shooter). The [ZoneServer] sends it to whoever received its spawn.
 signal despawned(projectile_id: int, tick: int, reason: int, recipients: PackedInt32Array)
 
-## Por debajo de esta altura el proyectil caduca (cae fuera del mundo).
+## Below this height the projectile expires (it falls out of the world).
 const VOID_LIMIT_Y: float = -100.0
 
 const _IMPACT: int = NetProtocol.DespawnReason.IMPACT
 const _EXPIRED: int = NetProtocol.DespawnReason.EXPIRED
-# Clases de lo que toca un segmento, en orden de preferencia con la misma fracción.
+# Classes of what a segment touches, in order of preference at the same fraction.
 const _TOUCH_WORLD: int = 0
 const _TOUCH_WALL: int = 1
 const _TOUCH_CHARACTER: int = 2
-# Barrido en x de los candidatos: el borde izquierdo de cada caja en centímetros (desplazado para que sea
-# positivo) por encima de _SWEEP_INDEX_BITS bits con su índice, ordenado; las cajas más anchas que
-# _SWEEP_WIDE_M (un teletransporte en los últimos ticks) van aparte y se prueban siempre.
+# X sweep of the candidates: the left edge of each box in centimeters (shifted to be positive) above
+# _SWEEP_INDEX_BITS bits with its index, sorted; boxes wider than _SWEEP_WIDE_M (a teleport in the last ticks) go
+# separately and are always tested.
 const _SWEEP_INDEX_BITS: int = 12
 const _SWEEP_INDEX_MASK: int = (1 << _SWEEP_INDEX_BITS) - 1
 const _SWEEP_OFFSET_CM: int = 1 << 30
 const _SWEEP_WIDE_M: float = 12.0
 
-## Registro del que salen los ids de los proyectiles ([method NetEntityRegistry.allocate_transient_id]).
-## El [ZoneServer] pone el de la zona; sin él (pruebas), uno propio.
+## Registry that projectile ids come from ([method NetEntityRegistry.allocate_transient_id]). The [ZoneServer] sets
+## the zone's; without it (tests), its own.
 var registry: NetEntityRegistry = NetEntityRegistry.new()
-## Efectos de estado de la zona, para copiar el más daño del tirador al disparar (null = sin efectos).
+## The zone's status effects, to copy the shooter's bonus damage when firing (null = no effects).
 var status: StatusSystem = null
-## Contadores de la ejecución (para el informe).
+## Counters for the run (for the report).
 var stats: Dictionary[StringName, int] = {
 	&"projectiles_fired": 0, &"projectiles_harmless": 0, &"projectile_world_hits": 0,
 	&"projectile_gate_hits": 0, &"projectile_wall_blocks": 0, &"projectile_character_hits": 0,
@@ -84,15 +81,15 @@ var stats: Dictionary[StringName, int] = {
 
 var _history: StateHistory
 var _resolver: CombatResolver
-# Proyectiles vivos, en orden de alta.
+# Live projectiles, in spawn order.
 var _live: Array[Projectile] = []
-# Golpes rechazados por rebobinado en los disparos de este tick (para el registro del director).
+# Hits rejected by rewind in this tick's shots (for the director's log).
 var _rejected: Array[CombatResolver.Hit] = []
-# Rayo contra el mundo, reutilizado en cada segmento.
+# Ray against the world, reused for each segment.
 var _query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.new()
-# Los combatientes del tick (begin_tick) y, calculados una vez por tick y solo si hacen falta, sus
-# candidatos (vivos) en arrays paralelos: el combatiente, su id, su reino, si está abierto (ni protegido ni
-# en la zona segura de su reino) y su caja barrida ensanchada con la cápsula; y los muros de escudos.
+# The tick's combatants (begin_tick) and, computed once per tick and only if needed, their (alive) candidates in
+# parallel arrays: the combatant, its id, its realm, whether it is open (neither protected nor in its realm's safe
+# zone) and its swept box widened with the capsule; and the shield walls.
 var _combatants: Array[Combatant] = []
 var _prepared_tick: int = -1
 var _candidate_count: int = 0
@@ -102,69 +99,68 @@ var _candidate_realms: PackedInt32Array = PackedInt32Array()
 var _candidate_open: PackedByteArray = PackedByteArray()
 var _candidate_low: PackedVector3Array = PackedVector3Array()
 var _candidate_high: PackedVector3Array = PackedVector3Array()
-# Los candidatos estrechos ordenados por el borde izquierdo de su caja (ver _SWEEP_INDEX_BITS), la anchura
-# en x de la más ancha de ellos y los anchos.
+# The narrow candidates sorted by the left edge of their box (see _SWEEP_INDEX_BITS), the x width of the widest one
+# among them, and the wide ones.
 var _sweep: PackedInt64Array = PackedInt64Array()
 var _sweep_width: float = 0.0
 var _wide: PackedInt32Array = PackedInt32Array()
 var _walls: Array[_Wall] = []
 
 
-## Lo que comparten los proyectiles de un mismo disparo (un abanico): si alguno ya ha dado en algo, para
-## contar un acierto por disparo.
+## What the projectiles of one shot (a fan) share: whether any has already hit something, to count one hit per shot.
 class Shot:
 	extends RefCounted
 	var landed: bool = false
 
 
-## Un proyectil vivo, con la copia del autor que guardó al salir.
+## A live projectile, with the copy of the author that it saved on leaving.
 class Projectile:
 	extends RefCounted
-	## Id de red (del espacio de [NetEntityRegistry], sin entidad).
+	## Network id (from the [NetEntityRegistry] space, without an entity).
 	var id: int = 0
-	## El tirador (para los contadores y el registro de daño) y su net_id, reino y si es jugador, copiados
-	## al salir.
+	## The shooter (for the counters and the damage log) and its net_id, realm and whether it is a player, copied on
+	## leaving.
 	var owner: Combatant = null
 	var owner_id: int = 0
 	var realm: int = 0
 	var is_player: bool = false
-	## Fuente del ataque o la habilidad ([CombatSource]) y el golpe con su daño, controles y efecto al
-	## objetivo (el ataque o el golpe sintetizado de la habilidad).
+	## Source of the attack or ability ([CombatSource]) and the hit with its damage, controls and effect on the target (the
+	## attack or the ability's synthesized hit).
 	var source: int = 0
 	var attack: AttackTicks = null
 	var definition: ProjectileTicks = null
 	var volley_index: int = 0
-	## Inofensiva: vuela y choca con el mundo, no prueba a nadie.
+	## Harmless: it flies and collides with the world, tests nobody.
 	var harmless: bool = false
-	## Ticks que ve atrás y los que se miran atrás para las defensas (fijados al salir).
+	## Ticks it looks back and those looked back for defenses (fixed on leaving).
 	var rewind: int = 0
 	var defense_rewind: int = 0
-	## Carga con la que salió y el más daño del tirador en el disparo.
+	## Charge it left with and the shooter's bonus damage at the shot.
 	var charge_ticks: int = 0
 	var damage_scale: float = 1.0
 	var spawn_tick: int = 0
-	## Origen y velocidad cuantizados: los del ENTITY_SPAWN.
+	## Quantized origin and velocity: those of the ENTITY_SPAWN.
 	var origin: Vector3 = Vector3.ZERO
 	var velocity: Vector3 = Vector3.ZERO
 	var shot: Shot = null
-	## Personajes que no vuelve a probar (eran invulnerables cuando los tocó).
+	## Characters it does not test again (they were invulnerable when it touched them).
 	var ignored: PackedInt32Array = PackedInt32Array()
-	## Ticks de vuelo en los que acaba el último segmento probado y su posición: el origen del siguiente.
+	## Flight ticks at which the last tested segment ends, and its position: the origin of the next.
 	var reached_ticks: int = 0
 	var reached: Vector3 = Vector3.ZERO
 
 
-	## Posición tras [param ticks] ticks de vuelo (entero o fraccionario).
+	## Position after [param ticks] flight ticks (whole or fractional).
 	func position_after(ticks: float) -> Vector3:
 		return Ballistics.position(origin, velocity, definition.gravity, ticks)
 
 
-	## Velocidad (m/s) tras [param ticks] ticks de vuelo.
+	## Velocity (m/s) after [param ticks] flight ticks.
 	func velocity_after(ticks: float) -> Vector3:
 		return velocity - Vector3(0.0, definition.gravity * ticks / Ballistics.TICK_RATE, 0.0)
 
 
-# La caja de un muro de escudos en este tick.
+# The box of a shield wall in this tick.
 class _Wall:
 	var holder: Combatant
 	var realm: int = 0
@@ -173,48 +169,48 @@ class _Wall:
 	var forward: Vector3 = Vector3.FORWARD
 
 
-# Lo que toca un segmento.
+# What a segment touches.
 class _Touch:
 	var fraction: float = 0.0
 	var kind: int = 0
-	## Índice del candidato tocado (en los arrays del tick).
+	## Index of the touched candidate (in the tick's arrays).
 	var candidate: int = -1
 	var wall: _Wall = null
 	var structure: StructureTarget = null
 
 
-## [param history] es el historial del servidor y [param resolver] el resolutor de la zona (rebobinado,
-## hostilidad, invulnerabilidad, zonas seguras y puertas).
+## [param history] is the server's history and [param resolver] the zone's resolver (rewind, hostility, invulnerability,
+## safe zones and doors).
 func _init(history: StateHistory, resolver: CombatResolver) -> void:
 	_history = history
 	_resolver = resolver
 	_query.collision_mask = HitShapes.LINE_OF_SIGHT_MASK
 
 
-## Empieza un tick con los combatientes de la zona [param combatants] (por net_id): sus candidatos y muros
-## se calculan la primera vez que hacen falta en el tick.
+## Starts a tick with the zone's combatants [param combatants] (by net_id): their candidates and walls are computed the
+## first time they are needed in the tick.
 func begin_tick(_s: int, combatants: Array[Combatant]) -> void:
 	_combatants = combatants
 	_prepared_tick = -1
 
 
-## Proyectiles vivos.
+## Live projectiles.
 func live_count() -> int:
 	return _live.size()
 
 
-## true si algún disparo de este tick tiene un golpe que entregar en [method resolve] (el rechazo de su
-## rebobinado, para el registro) aunque no quede ningún proyectil vivo.
+## true if any shot of this tick has a hit to deliver in [method resolve] (the rejection of its rewind, for the log)
+## even if no live projectile remains.
 func has_pending() -> bool:
 	return not _rejected.is_empty()
 
 
-## Los proyectiles vivos, en orden de alta (no hay que modificarlos).
+## The live projectiles, in spawn order (they must not be modified).
 func get_live() -> Array[Projectile]:
 	return _live
 
 
-## El proyectil vivo [param projectile_id], o null.
+## The live projectile [param projectile_id], or null.
 func get_projectile(projectile_id: int) -> Projectile:
 	for projectile: Projectile in _live:
 		if projectile.id == projectile_id:
@@ -222,18 +218,17 @@ func get_projectile(projectile_id: int) -> Projectile:
 	return null
 
 
-# --- Disparo ----------------------------------------------------------------------------------
+# --- Firing -----------------------------------------------------------------------------------
 
-## Dispara los proyectiles del ataque o la habilidad de la fuente [param source] ([CombatSource]) que
-## [param shooter] compromete en el tick [param s] (ya congelado), contra el mundo [param space]. No hace
-## nada si la fuente no lleva proyectil.
+## Fires the projectiles of the attack or ability of source [param source] ([CombatSource]) that [param shooter] commits
+## at tick [param s] (already frozen), against the world [param space]. Does nothing if the source carries no
+## projectile.
 func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceState3D) -> void:
-	# Un GM invisible no dispara (docs/plataforma.md §9.1): no hace daño a nadie.
+	# An invisible GM does not fire (docs/plataforma.md §9.1): it does no damage to anyone.
 	if shooter.is_gm_invisible():
 		return
 	var frame: Combatant.Frozen = shooter.frozen
-	# Qué sale, con qué velocidad y en qué abanico: lo mismo que la flecha predicha del cliente
-	# (ProjectileLaunch, compartido).
+	# What leaves, at what velocity and in what fan: the same as the client's predicted arrow (ProjectileLaunch, shared).
 	var attack: AttackTicks = null
 	var launch: ProjectileLaunch = null
 	var charge_ticks: int = 0
@@ -254,7 +249,7 @@ func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceStat
 	if definition == null:
 		return
 	var rules: CombatRules = CombatCatalog.rules()
-	# Rebobinado, fijado para todo el vuelo en ticks enteros.
+	# Rewind, fixed for the whole flight in whole ticks.
 	var harmless: bool = false
 	var rewind: int = 0
 	var defense_rewind: int = 0
@@ -268,7 +263,7 @@ func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceStat
 	if not shooter.ignores_safe_area \
 			and _resolver.get_safe_areas().contains_own(shooter.get_realm(), frame.position):
 		harmless = true
-	# Puntería con la entrada simulada en s (sin ella, la del cuerpo: yaw del personaje, pitch 0).
+	# Aim with the input simulated at s (without it, the body's: character yaw, pitch 0).
 	var input: PlayerInput = shooter.queue.get_applied(s) if shooter.queue != null else null
 	var look_yaw: float = input.look_yaw if input != null else frame.yaw
 	var look_pitch: float = input.look_pitch if input != null else 0.0
@@ -322,8 +317,8 @@ func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceStat
 				projectile.velocity), PackedInt32Array([projectile.owner_id]))
 
 
-# Un disparo con el rebobinado rechazado: sospecha + 1 y una línea del registro (el director la recibe en
-# resolve como REWIND_REJECTED).
+# A shot with the rewind rejected: suspicion + 1 and a log line (the director receives it in resolve as
+# REWIND_REJECTED).
 func _reject(shooter: Combatant, attack: AttackTicks, s: int) -> void:
 	_resolver.note_rewind_rejected(shooter)
 	stats[&"projectile_rewind_rejected"] += 1
@@ -338,8 +333,8 @@ func _reject(shooter: Combatant, attack: AttackTicks, s: int) -> void:
 	_rejected.append(hit)
 
 
-# Los pies, en el tick [param view_tick], de los hostiles de [param shooter] cuya caja barrida (como esfera)
-# toca el cono de convergencia de la mira o su rayo: los que pueden decidir el punto apuntado, por net_id.
+# The feet, at tick [param view_tick], of [param shooter]'s hostiles whose swept box (as a sphere) touches the
+# crosshair's convergence cone or its ray: those that can decide the aimed point, by net_id.
 func _aim_candidates(shooter: Combatant, camera: Vector3, forward: Vector3, view_tick: int,
 		s: int) -> PackedVector3Array:
 	var rules: CombatRules = CombatCatalog.rules()
@@ -362,7 +357,7 @@ func _aim_candidates(shooter: Combatant, camera: Vector3, forward: Vector3, view
 		var depth: float = to_center.dot(forward)
 		if depth <= -radius or depth - radius >= reach:
 			continue
-		# Distancia de la esfera al cono de la mira (por delante): perpendicular · cos − profundidad · sen.
+		# Distance from the sphere to the crosshair's cone (ahead): perpendicular · cos − depth · sin.
 		var perpendicular: float = sqrt(maxf(to_center.length_squared() - depth * depth, 0.0))
 		if perpendicular > radius and perpendicular * cone_cos - depth * cone_sin > radius:
 			continue
@@ -374,8 +369,8 @@ func _aim_candidates(shooter: Combatant, camera: Vector3, forward: Vector3, view
 	return feet
 
 
-# Con el tope del tirador o el de la zona lleno, retira el proyectil más viejo (del tirador o de la zona;
-# empate por id) con DESPAWN 5: el disparo nuevo nunca se rechaza.
+# With the shooter's cap or the zone's full, it withdraws the oldest projectile (the shooter's or the zone's; ties by
+# id) with DESPAWN 5: the new shot is never rejected.
 func _make_room(owner_id: int, s: int, rules: CombatRules) -> void:
 	var own_count: int = 0
 	var own_oldest: Projectile = null
@@ -404,13 +399,12 @@ func _evict(projectile: Projectile, s: int) -> void:
 	_end(projectile, s, _EXPIRED)
 
 
-# --- Vuelo ------------------------------------------------------------------------------------
+# --- Flight ------------------------------------------------------------------------------------
 
-## El vuelo del tick [param s] de todos los proyectiles vivos (también los que acaban de salir) contra
-## [param combatants] (por net_id, ya congelados en [param s]) y el mundo [param space]. Devuelve los
-## golpes por net_id del tirador y por id de proyectil (antes, los disparos de este tick con el rebobinado
-## rechazado) para que los aplique el [CombatDirector]; las bajas (DESPAWN 4 y 5) ya han salido por
-## [signal despawned].
+## The flight of tick [param s] of all live projectiles (also those that have just left) against [param combatants] (by
+## net_id, already frozen at [param s]) and the world [param space]. Returns the hits by shooter net_id and by projectile
+## id (first, the shots of this tick with the rewind rejected) for the [CombatDirector] to apply; despawns (DESPAWN 4 and
+## 5) have already gone out through [signal despawned].
 func resolve(s: int, combatants: Array[Combatant],
 		space: PhysicsDirectSpaceState3D) -> Array[CombatResolver.Hit]:
 	var rejected: Array[CombatResolver.Hit] = _rejected
@@ -436,9 +430,9 @@ func resolve(s: int, combatants: Array[Combatant],
 	return merge_by_attacker(rejected, hits)
 
 
-## Mezcla dos listas de golpes ordenadas por net_id del atacante sin deshacer su orden: con el mismo
-## atacante, primero los de [param first]. Es como el director junta los golpes cuerpo a cuerpo y los de
-## los proyectiles (docs/habilidades.md, sección 4.1, paso 5).
+## Merges two hit lists sorted by attacker net_id without undoing their order: with the same attacker, those of
+## [param first] come first. It is how the director joins melee hits and projectile hits (docs/habilidades.md, section
+## 4.1, step 5).
 static func merge_by_attacker(first: Array[CombatResolver.Hit],
 		second: Array[CombatResolver.Hit]) -> Array[CombatResolver.Hit]:
 	if first.is_empty():
@@ -459,12 +453,12 @@ static func merge_by_attacker(first: Array[CombatResolver.Hit],
 	return merged
 
 
-# Vuela un tick [param projectile]: prueba su segmento y deja en [param hits] lo que toca. Devuelve el
-# motivo de su baja (4 impacto, 5 caducado) o -1 si sigue en el aire.
+# Flies [param projectile] one tick: tests its segment and leaves in [param hits] what it touches. Returns the reason
+# for its despawn (4 impact, 5 expired) or -1 if it is still in the air.
 func _fly(projectile: Projectile, s: int, space: PhysicsDirectSpaceState3D,
 		hits: Array[CombatResolver.Hit]) -> int:
 	var flown: int = s - projectile.spawn_tick
-	# El extremo del segmento anterior es el origen de este: la misma función con el mismo n.
+	# The end of the previous segment is the origin of this one: the same function with the same n.
 	var from: Vector3 = projectile.reached if projectile.reached_ticks == flown \
 			else projectile.position_after(float(flown))
 	var to: Vector3 = projectile.position_after(float(flown + 1))
@@ -505,7 +499,7 @@ func _fly(projectile: Projectile, s: int, space: PhysicsDirectSpaceState3D,
 		var victim: Combatant = _candidates[touch.candidate]
 		var hit: CombatResolver.Hit = _hit_on(projectile, victim, s, flown, touch)
 		if _resolver.was_invulnerable(victim, float(s - projectile.defense_rewind), s):
-			# Sigue volando (lo siguiente del mismo segmento aún puede pararla) y no vuelve a probarlo.
+			# It keeps flying (what comes next in the same segment can still stop it) and does not test it again.
 			stats[&"projectile_invulnerable"] += 1
 			projectile.ignored.append(victim.get_id())
 			hit.outcome = CombatResolver.Outcome.INVULNERABLE
@@ -521,8 +515,8 @@ func _fly(projectile: Projectile, s: int, space: PhysicsDirectSpaceState3D,
 	return -1
 
 
-# El mundo y las puertas en el segmento [param from]-[param to]: el primer choque (con
-# [param from_inside], también uno que empieza dentro de un cuerpo, en su origen), o null.
+# The world and doors on the segment [param from]-[param to]: the first collision (with [param from_inside], also one
+# that starts inside a body, at its origin), or null.
 func _touch_world(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3,
 		from_inside: bool) -> _Touch:
 	if space == null:
@@ -547,8 +541,8 @@ func _touch_world(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3,
 	return touch
 
 
-# Las cajas de los muros de escudos de los hostiles al tirador que la flecha cruza de frente (contra el
-# mirar de quien lo sostiene): las que llegan por detrás no las paran (el muro cubre de frente).
+# The boxes of shield walls hostile to the shooter that the arrow crosses head-on (against the facing of whoever holds
+# it): those arriving from behind do not stop it (the wall covers the front).
 func _touch_walls(projectile: Projectile, from: Vector3, to: Vector3, touches: Array[_Touch]) -> void:
 	var travel: Vector3 = to - from
 	var radius: float = projectile.definition.radius_m
@@ -567,9 +561,9 @@ func _touch_walls(projectile: Projectile, from: Vector3, to: Vector3, touches: A
 		touches.append(touch)
 
 
-# Las cápsulas de los candidatos en [code]s − rewind[/code] que toca el segmento, cribadas con sus cajas
-# barridas: solo se miran las cajas cuyo borde izquierdo cae en la ventana en x que puede solapar el
-# segmento (búsqueda binaria en el barrido del tick) y las anchas.
+# The capsules of the candidates at [code]s − rewind[/code] that the segment touches, screened with their swept boxes:
+# only boxes whose left edge falls in the x window that the segment can overlap (binary search in the tick's sweep)
+# and the wide ones are examined.
 func _touch_characters(projectile: Projectile, from: Vector3, to: Vector3, s: int,
 		touches: Array[_Touch]) -> void:
 	if _candidate_count == 0:
@@ -590,9 +584,9 @@ func _touch_characters(projectile: Projectile, from: Vector3, to: Vector3, s: in
 		_touch_candidate(projectile, index, from, to, low, high, s, touches, true)
 
 
-## Para las pruebas: los net_id de los candidatos del tick [param s] cuya cápsula toca el segmento
-## [param from]-[param to] de [param projectile], con la criba del vuelo (cajas barridas y barrido en x) o,
-## con [param full_scan], probando la cápsula de todos sin criba. Los dos deben coincidir siempre.
+## For tests: the net_ids of the tick's candidates [param s] whose capsule touches the segment [param from]-[param to] of
+## [param projectile], with the flight's screening (swept boxes and x sweep) or, with [param full_scan], testing every
+## capsule without screening. The two must always match.
 func touched_ids(projectile: Projectile, from: Vector3, to: Vector3, s: int,
 		full_scan: bool = false) -> PackedInt32Array:
 	_prepare(s)
@@ -609,13 +603,13 @@ func touched_ids(projectile: Projectile, from: Vector3, to: Vector3, s: int,
 	return ids
 
 
-# Borde (m) en centímetros enteros del barrido, siempre positivo y redondeado hacia abajo.
+# Edge (m) in whole sweep centimeters, always positive and rounded down.
 static func _sweep_key(x: float) -> int:
 	return floori(x * 100.0) + _SWEEP_OFFSET_CM
 
 
-# El candidato [param index] contra el segmento [param from]-[param to] (de caja [param low]-[param high],
-# ya ensanchada con el radio del proyectil; con [param check_box], primero contra su caja barrida).
+# Candidate [param index] against the segment [param from]-[param to] (with box [param low]-[param high], already
+# widened with the projectile's radius; with [param check_box], first against its swept box).
 func _touch_candidate(projectile: Projectile, index: int, from: Vector3, to: Vector3, low: Vector3,
 		high: Vector3, s: int, touches: Array[_Touch], check_box: bool) -> void:
 	if check_box:
@@ -647,22 +641,22 @@ func _touch_candidate(projectile: Projectile, index: int, from: Vector3, to: Vec
 	touches.append(touch)
 
 
-# Pies de [param combatant] en el tick [param tick] (el congelado en [param s] o después; si no, el
-# historial), o [constant Vector3.INF] si no se conocen.
+# Feet of [param combatant] at tick [param tick] (the one frozen at [param s] or later; otherwise, the history), or
+# [constant Vector3.INF] if unknown.
 func _position_of(combatant: Combatant, tick: int, s: int) -> Vector3:
 	if tick >= s:
 		return combatant.frozen.position
 	return _history.position_at(combatant.get_id(), tick)
 
 
-# true si [param combatant] tenía el bit «muerto» en el tick [param tick].
+# true if [param combatant] had the "dead" bit at tick [param tick].
 func _was_dead(combatant: Combatant, tick: int, s: int) -> bool:
 	var flags: int = combatant.frozen.defense if tick >= s else _history.get_flags(combatant.get_id(), tick)
 	return flags >= 0 and (flags & ActionMachine.DEFENSE_DEAD) != 0
 
 
-# Defensa de [param victim] ante la flecha: bloqueo de cara a ella (el cono del arma o, con el muro, el
-# ancho de las reglas) en la muestra de s o en la de s − defense_rewind si aún cuenta; nunca parada.
+# Defense of [param victim] against the arrow: block facing it (the weapon's cone or, with the wall, the rules' width)
+# in the sample of s or of s − defense_rewind if it still counts; never a parry.
 func _defense(projectile: Projectile, victim: Combatant, hit: CombatResolver.Hit, s: int) -> int:
 	var frame: Combatant.Frozen = victim.frozen
 	var weapon: WeaponTicks = CombatCatalog.weapon(frame.weapon_id)
@@ -672,7 +666,7 @@ func _defense(projectile: Projectile, victim: Combatant, hit: CombatResolver.Hit
 	var rules: CombatRules = CombatCatalog.rules()
 	var cone: float = weapon.block_angle_deg
 	var wide_cone: float = rules.ability_block_angle_deg
-	# De dónde viene la flecha: un punto detrás de la víctima, contra su velocidad.
+	# Where the arrow comes from: a point behind the victim, against its velocity.
 	var back := Vector3(-hit.direction.x, 0.0, -hit.direction.z)
 	if CombatResolver.blocks_sample(frame, frame.defense, cone, wide_cone, frame.position + back):
 		hit.wide_block = (frame.defense & ActionMachine.DEFENSE_WIDE_BLOCK) != 0
@@ -686,8 +680,7 @@ func _defense(projectile: Projectile, victim: Combatant, hit: CombatResolver.Hit
 	return CombatResolver.Outcome.IMPACT
 
 
-# Un golpe de [param projectile] sobre [param victim] en el tick [param s] (el resultado lo pone quien
-# llama).
+# A hit of [param projectile] on [param victim] at tick [param s] (the result is set by the caller).
 func _hit_on(projectile: Projectile, victim: Combatant, s: int, flown: int,
 		touch: _Touch) -> CombatResolver.Hit:
 	var hit: CombatResolver.Hit = _base_hit(projectile, s)
@@ -716,11 +709,11 @@ func _base_hit(projectile: Projectile, s: int) -> CombatResolver.Hit:
 	return hit
 
 
-# --- Candidatos y muros del tick --------------------------------------------------------------
+# --- Candidates and walls of the tick --------------------------------------------------------------
 
-# Calcula una vez por tick los candidatos (vivos, con su caja barrida ensanchada con la cápsula) y los muros
-# de escudos de [member _combatants] (solo de quien está sin protección y fuera de la zona segura de su
-# reino), en los arrays del tick (sin crear objetos salvo los muros).
+# Computes once per tick the candidates (alive, with their swept box widened with the capsule) and the shield walls of
+# [member _combatants] (only of those without protection and outside their realm's safe zone), in the tick's arrays
+# (without creating objects except the walls).
 func _prepare(s: int) -> void:
 	if _prepared_tick == s:
 		return
@@ -740,7 +733,7 @@ func _prepare(s: int) -> void:
 		_candidate_high.resize(total)
 	var count: int = 0
 	for combatant: Combatant in _combatants:
-		# Un GM invisible no es blanco: una flecha lo atraviesa (docs/plataforma.md §9.1).
+		# An invisible GM is not a target: an arrow passes through it (docs/plataforma.md §9.1).
 		if combatant.is_dead() or combatant.is_gm_invisible():
 			continue
 		var frame: Combatant.Frozen = combatant.frozen
@@ -761,9 +754,9 @@ func _prepare(s: int) -> void:
 		_candidate_low[count] = low - reach
 		_candidate_high[count] = high + top
 		count += 1
-		# Solo el muro de quien está «abierto»: el de quien tiene protección o está en la zona segura de su
-		# reino no para flechas (pasan como por su cápsula), así no gasta resistencia, ni se le rompe la
-		# guardia, ni queda en combate dentro de su campamento (docs/combate.md §5).
+		# Only the wall of whoever is "open": that of someone with protection or in their realm's safe zone does not stop
+		# arrows (they pass as through their capsule), so it spends no stamina, their guard is not broken, and they do not end
+		# up in combat inside their camp (docs/combate.md §5).
 		if open and frame.wall_half_extents != Vector3.ZERO:
 			var wall := _Wall.new()
 			wall.holder = combatant
@@ -773,10 +766,10 @@ func _prepare(s: int) -> void:
 			wall.forward = frame.wall.basis * Vector3.FORWARD
 			_walls.append(wall)
 	_candidate_count = count
-	# Sin referencias colgadas a quien ya no está.
+	# No dangling references to whoever is no longer there.
 	for index: int in range(count, _candidates.size()):
 		_candidates[index] = null
-	# El barrido en x: los estrechos ordenados por su borde izquierdo; los anchos, aparte.
+	# The x sweep: the narrow ones sorted by their left edge; the wide ones, separately.
 	_sweep.resize(count)
 	_wide.clear()
 	_sweep_width = 0.0
@@ -791,15 +784,14 @@ func _prepare(s: int) -> void:
 		narrow += 1
 	_sweep.resize(narrow)
 	_sweep.sort()
-	# El redondeo del borde a centímetros (hacia abajo) nunca deja fuera una caja: la ventana se abre un
-	# centímetro más.
+	# Rounding the edge to centimeters (downwards) never leaves a box out: the window is opened one centimeter wider.
 	_sweep_width += 0.01
 
 
-# --- Bajas ------------------------------------------------------------------------------------
+# --- Despawns ------------------------------------------------------------------------------------
 
-## Retira en el tick [param s], con DESPAWN 5, todos los proyectiles vivos de [param owner_id] (el tirador se
-## da de baja: salida, [code]--fake-churn[/code], un PNJ retirado).
+## Withdraws at tick [param s], with DESPAWN 5, all live projectiles of [param owner_id] (the shooter is removed:
+## departure, [code]--fake-churn[/code], a withdrawn NPC).
 func forget_owner(owner_id: int, s: int) -> void:
 	var leaving: Array[Projectile] = []
 	for projectile: Projectile in _live:
@@ -809,11 +801,11 @@ func forget_owner(owner_id: int, s: int) -> void:
 		stats[&"projectiles_forgotten"] += 1
 		_live.erase(projectile)
 		_end(projectile, s, _EXPIRED)
-	# Ni los candidatos del tick ni los muros guardan ya a quien se va.
+	# Neither the tick's candidates nor the walls hold on to whoever leaves anymore.
 	_prepared_tick = -1
 
 
-## Quita todos los proyectiles sin avisar (cierre del servidor).
+## Removes all projectiles without notice (server shutdown).
 func clear() -> void:
 	for projectile: Projectile in _live:
 		registry.release_transient_id(projectile.id, projectile.spawn_tick)
@@ -833,7 +825,7 @@ func clear() -> void:
 	_prepared_tick = -1
 
 
-# Baja de [param projectile] (ya fuera de la lista): DESPAWN y su id a la cuarentena.
+# Despawn of [param projectile] (already out of the list): DESPAWN and its id to quarantine.
 func _end(projectile: Projectile, s: int, reason: int) -> void:
 	registry.release_transient_id(projectile.id, s)
 	despawned.emit(projectile.id, s, reason, PackedInt32Array([projectile.owner_id]))

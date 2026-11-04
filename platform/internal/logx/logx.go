@@ -1,9 +1,9 @@
-// Package logx monta el registro de la plataforma (plataforma.md §2.3): log/slog con JSONHandler a
-// la salida estándar, con los campos time, level, msg, req, route, status, ms y, cuando se
-// conocen, account y character.
+// Package logx sets up the platform's log (plataforma.md §2.3): log/slog with a JSONHandler to
+// standard output, with the fields time, level, msg, req, route, status, ms and, when known,
+// account and character.
 //
-// Nunca se registran contraseñas, tokens, billetes, cuerpos ni texto del chat; el correo va
-// enmascarado con [MaskEmail].
+// Passwords, tokens, tickets, bodies and chat text are never logged; the email goes masked with
+// [MaskEmail].
 package logx
 
 import (
@@ -16,18 +16,18 @@ import (
 	"sync"
 )
 
-// New devuelve un registro JSON sobre w con el nivel dado.
+// New returns a JSON logger over w with the given level.
 func New(w io.Writer, level slog.Leveler) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level}))
 }
 
-// Discard devuelve un registro que no escribe nada (pruebas).
+// Discard returns a logger that writes nothing (tests).
 func Discard() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
 
-// MaskEmail enmascara un correo para el registro: «aneira@example.org» → «a***@example.org». Sin
-// arroba devuelve «***»: nunca escribe un correo entero.
+// MaskEmail masks an email for the log: "aneira@example.org" -> "a***@example.org". Without an at
+// sign it returns "***": it never writes a whole email.
 func MaskEmail(email string) string {
 	if email == "" {
 		return ""
@@ -38,22 +38,22 @@ func MaskEmail(email string) string {
 	}
 	first := email[:1]
 	if first[0] >= 0x80 {
-		// Un primer carácter no ASCII no se corta a medias.
+		// A non-ASCII first character is not cut in half.
 		first = ""
 	}
 	return first + "***" + email[at:]
 }
 
-// NewRequestID devuelve un id de petición aleatorio (16 caracteres hexadecimales), el que va en
-// el campo req del registro y en la cabecera X-Request-Id.
+// NewRequestID returns a random request id (16 hexadecimal characters), the one that goes in the
+// log's req field and in the X-Request-Id header.
 func NewRequestID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
 }
 
-// Request son los datos de una petición que el registro escribe al terminarla. Los manejadores
-// rellenan Account y Character cuando los conocen, con [SetAccount] y [SetCharacter].
+// Request is the data of a request that the log writes when it finishes. The handlers fill in
+// Account and Character when they know them, with [SetAccount] and [SetCharacter].
 type Request struct {
 	ID string
 
@@ -64,18 +64,18 @@ type Request struct {
 
 type requestKey struct{}
 
-// WithRequest guarda en el contexto los datos de la petición.
+// WithRequest stores the request's data in the context.
 func WithRequest(ctx context.Context, r *Request) context.Context {
 	return context.WithValue(ctx, requestKey{}, r)
 }
 
-// RequestFrom devuelve los datos de la petición del contexto, o nil.
+// RequestFrom returns the request's data from the context, or nil.
 func RequestFrom(ctx context.Context) *Request {
 	r, _ := ctx.Value(requestKey{}).(*Request)
 	return r
 }
 
-// RequestID devuelve el id de la petición del contexto, o "".
+// RequestID returns the request's id from the context, or "".
 func RequestID(ctx context.Context) string {
 	if r := RequestFrom(ctx); r != nil {
 		return r.ID
@@ -83,7 +83,7 @@ func RequestID(ctx context.Context) string {
 	return ""
 }
 
-// SetAccount anota la cuenta de la petición para su línea del registro.
+// SetAccount records the request's account for its log line.
 func SetAccount(ctx context.Context, accountID int64) {
 	if r := RequestFrom(ctx); r != nil {
 		r.mu.Lock()
@@ -92,7 +92,7 @@ func SetAccount(ctx context.Context, accountID int64) {
 	}
 }
 
-// SetCharacter anota el personaje de la petición para su línea del registro.
+// SetCharacter records the request's character for its log line.
 func SetCharacter(ctx context.Context, characterID int64) {
 	if r := RequestFrom(ctx); r != nil {
 		r.mu.Lock()
@@ -101,7 +101,7 @@ func SetCharacter(ctx context.Context, characterID int64) {
 	}
 }
 
-// Attrs devuelve req y, si se conocen, account y character.
+// Attrs returns req and, if known, account and character.
 func (r *Request) Attrs() []slog.Attr {
 	r.mu.Lock()
 	defer r.mu.Unlock()

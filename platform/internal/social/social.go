@@ -1,11 +1,10 @@
-// Package social es la parte de la API interna de lo social y la moderación (plataforma.md §6,
-// §9, SOC-14 a SOC-18): los lotes de chat y de auditoría de la zona (con rechazo por entrada y
-// validados contra la instancia que los manda), los ignorados, los reportes y las sanciones que
-// pide un GM desde la zona, que la plataforma autoriza.
+// Package social is the part of the internal API for social features and moderation
+// (plataforma.md §6, §9, SOC-14 to SOC-18): the zone's chat and audit batches (with per-entry
+// rejection and validated against the instance that sends them), ignores, reports and the
+// sanctions that a GM requests from the zone, which the platform authorizes.
 //
-// El mundo lo pone siempre la instancia: los cuerpos no traen world_id (un campo desconocido, 400)
-// y los nombres se resuelven en el mundo de la instancia, así que una zona no alcanza a nadie de
-// otro mundo.
+// The world is always set by the instance: bodies carry no world_id (an unknown field, 400) and
+// names are resolved in the instance's world, so a zone cannot reach anyone in another world.
 package social
 
 import (
@@ -25,7 +24,7 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// Topes de §9.3 y §9.4.
+// Caps from §9.3 and §9.4.
 const (
 	MaxIgnores         = 100
 	MaxEvidence        = 20
@@ -37,17 +36,17 @@ const (
 	maxChatText        = 255
 )
 
-// Options son las dependencias del servicio.
+// Options are the service's dependencies.
 type Options struct {
 	Pool  *pgxpool.Pool
 	Guard *zones.Guard
 	Clock clock.Clock
 	Log   *slog.Logger
-	// Names son las reglas de los nombres (la clave normalizada); nil: las de progression_rules.json.
+	// Names are the name rules (the normalized key); nil: those from progression_rules.json.
 	Names *names.Rules
 }
 
-// Service es el servicio de lo social de la API interna.
+// Service is the internal API's social service.
 type Service struct {
 	pool  *pgxpool.Pool
 	guard *zones.Guard
@@ -56,7 +55,7 @@ type Service struct {
 	names *names.Rules
 }
 
-// New prepara el servicio.
+// New prepares the service.
 func New(o Options) (*Service, error) {
 	if o.Pool == nil || o.Guard == nil {
 		return nil, errors.New("social: faltan dependencias")
@@ -73,7 +72,7 @@ func New(o Options) (*Service, error) {
 	return &Service{pool: o.Pool, guard: o.Guard, clock: o.Clock, log: o.Log, names: o.Names}, nil
 }
 
-// Mount monta las rutas, todas con el token de zona.
+// Mount mounts the routes, all with the zone token.
 func (s *Service) Mount(r zones.Router) {
 	zone := func(pattern string, h http.HandlerFunc) { r.HandleInternal(pattern, s.guard.Zone(h)) }
 	zone("POST /internal/v1/chat", s.chatBatch)
@@ -88,7 +87,7 @@ func (s *Service) fail(w http.ResponseWriter, r *http.Request, err error) {
 	zones.Fail(w, r, s.log, err)
 }
 
-// character es un personaje resuelto por su nombre en un mundo.
+// character is a character resolved by its name in a world.
 type character struct {
 	ID        int64
 	AccountID int64
@@ -96,8 +95,8 @@ type character struct {
 	Role      string
 }
 
-// resolve busca el personaje vivo (ni borrado ni purgado) con ese nombre en el mundo, por la clave
-// de NameRules; nil si no hay ninguno.
+// resolve looks up the live character (neither deleted nor purged) with that name in the world,
+// by the NameRules key; nil if there is none.
 func (s *Service) resolve(ctx context.Context, q zones.Querier, worldID int16, name string) (*character, error) {
 	key := s.names.NormalizeKey(name)
 	if key == "" {
@@ -117,8 +116,8 @@ func (s *Service) resolve(ctx context.Context, q zones.Querier, worldID int16, n
 	return c, nil
 }
 
-// inside devuelve la cuenta y el rol del personaje si tiene arrendamiento en la instancia
-// (character_leases.zone_instance_id, §9.3–§9.5); si no, ok es false.
+// inside returns the character's account and role if it has a lease on the instance
+// (character_leases.zone_instance_id, §9.3–§9.5); otherwise, ok is false.
 func inside(ctx context.Context, q zones.Querier, characterID int64, inst *zones.Instance) (accountID int64,
 	role string, ok bool, err error) {
 	err = q.QueryRow(ctx, `select c.account_id, a.role from character_leases l join characters c using (character_id)

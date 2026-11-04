@@ -17,7 +17,7 @@ import (
 	"eldmark/platform/internal/ratelimit"
 )
 
-// Propósitos de account_tokens.
+// Purposes of account_tokens.
 const (
 	purposeVerify = "verify_email"
 	purposeReset  = "reset_password"
@@ -25,7 +25,7 @@ const (
 	purposeRevert = "revert_email"
 )
 
-// issueToken guarda un enlace de un solo uso y devuelve su token.
+// issueToken stores a single-use link and returns its token.
 func issueToken(ctx context.Context, q execer, accountID int64, purpose, email string, expires, now time.Time) (string, error) {
 	token, hash := newToken()
 	_, err := q.Exec(ctx, `insert into account_tokens (token_hash, account_id, purpose, email, expires_at, created_at)
@@ -33,17 +33,17 @@ func issueToken(ctx context.Context, q execer, accountID int64, purpose, email s
 	return token, err
 }
 
-// linkToken es un enlace consumido.
+// linkToken is a consumed link.
 type linkToken struct {
 	accountID int64
 	purpose   string
-	email     string    // change_email: el nuevo; revert_email: el viejo; verify y reset: al que se mandó
-	createdAt time.Time // revert_email: su orden entre los de la cuenta (§4.3)
+	email     string    // change_email: the new one; revert_email: the old one; verify and reset: the one it was sent to
+	createdAt time.Time // revert_email: its order among the account's (§4.3)
 }
 
-// consumeToken marca como usado un enlace de alguno de los propósitos dados. Usado o caducado:
-// 400 validation con fields.token = "used" o "expired" (y, como la transacción se deshace, nada
-// cambia); desconocido o de otro propósito, "invalid".
+// consumeToken marks a link of any of the given purposes as used. Used or expired: 400 validation
+// with fields.token = "used" or "expired" (and, since the transaction is rolled back, nothing
+// changes); unknown or of another purpose, "invalid".
 func consumeToken(ctx context.Context, tx pgx.Tx, token string, now time.Time, purposes ...string) (linkToken, error) {
 	if !ValidToken(token) {
 		return linkToken{}, errLink("invalid")
@@ -76,29 +76,30 @@ func consumeToken(ctx context.Context, tx pgx.Tx, token string, now time.Time, p
 	return t, nil
 }
 
-// invalidateLinks invalida los enlaces pendientes de la cuenta, en la misma transacción que el
-// cambio (§4.3). Los revert_email no: quien robó la cuenta no puede quitarle al dueño la vuelta atrás
-// cambiando el correo otra vez. Solo los anula gastar otro más antiguo ([invalidateLaterReverts]).
+// invalidateLinks invalidates the account's pending links, in the same transaction as the change
+// (§4.3). Not the revert_email ones: whoever stole the account cannot take away the owner's way back
+// by changing the email again. They are only voided by spending an older one
+// ([invalidateLaterReverts]).
 func invalidateLinks(ctx context.Context, tx pgx.Tx, accountID int64, now time.Time) error {
 	_, err := tx.Exec(ctx, `update account_tokens set used_at = $2
 		where account_id = $1 and used_at is null and purpose <> 'revert_email'`, accountID, now)
 	return err
 }
 
-// invalidateLaterReverts anula los revert_email de la cuenta emitidos después de uno que se acaba
-// de gastar (§4.3): los de los correos que vinieron detrás. En una cadena de cambios A→B→C, el
-// enlace del dueño (el que llegó a A) es siempre el más antiguo, así que gastarlo deja muerto el que
-// llegó a B; el de B, gastado antes, no toca el de A. El orden es created_at, que en una cuenta no
-// se repite ([revertCreatedAt]).
+// invalidateLaterReverts voids the account's revert_email links issued after one that has just been
+// spent (§4.3): those of the emails that came after. In a chain of changes A->B->C, the owner's link
+// (the one that went to A) is always the oldest, so spending it kills the one that went to B; B's,
+// spent earlier, does not touch A's. The order is created_at, which is never repeated within an
+// account ([revertCreatedAt]).
 func invalidateLaterReverts(ctx context.Context, tx pgx.Tx, accountID int64, after, now time.Time) error {
 	_, err := tx.Exec(ctx, `update account_tokens set used_at = $3
 		where account_id = $1 and purpose = 'revert_email' and used_at is null and created_at > $2`, accountID, after, now)
 	return err
 }
 
-// revertCreatedAt es el created_at de un revert_email nuevo de la cuenta: now (en µs, la precisión
-// de la base) o, si la cuenta ya tiene uno igual o posterior (el mismo instante, un reloj que
-// retrocede), 1 µs después del último. Así el orden de §4.3 nunca tiene empates.
+// revertCreatedAt is the created_at of a new revert_email of the account: now (in µs, the
+// database's precision) or, if the account already has one equal or later (the same instant, a clock
+// going backwards), 1 µs after the last one. That way the §4.3 order never has ties.
 func revertCreatedAt(ctx context.Context, tx pgx.Tx, accountID int64, now time.Time) (time.Time, error) {
 	created := now.Truncate(time.Microsecond)
 	var last *time.Time
@@ -112,9 +113,9 @@ func revertCreatedAt(ctx context.Context, tx pgx.Tx, accountID int64, now time.T
 	return created, nil
 }
 
-// emailReserved dice si el correo está reservado por un revert_email vivo (sin usar y sin caducar)
-// de una cuenta distinta de except (§4.3): mientras el dueño pueda volver a su correo viejo, nadie
-// más lo toma. Un registro o un cambio de correo hacia él se tratan como hacia un correo con cuenta.
+// emailReserved says whether the email is reserved by a live revert_email (unused and unexpired) of
+// an account other than except (§4.3): while the owner can go back to their old email, nobody else
+// takes it. A registration or an email change to it is treated as to an email with an account.
 func emailReserved(ctx context.Context, q querier, email string, except int64, now time.Time) (bool, error) {
 	var reserved bool
 	err := q.QueryRow(ctx, `select exists (select 1 from account_tokens where purpose = 'revert_email'
@@ -122,8 +123,8 @@ func emailReserved(ctx context.Context, q querier, email string, except int64, n
 	return reserved, err
 }
 
-// lockAccount bloquea la fila de la cuenta (for no key update, el orden de §5.3) y devuelve su
-// correo y su estado. Una cuenta purgada no existe.
+// lockAccount locks the account's row (for no key update, the order of §5.3) and returns its email
+// and its status. A purged account does not exist.
 func lockAccount(ctx context.Context, tx pgx.Tx, accountID int64) (email, status string, err error) {
 	var e *string
 	err = tx.QueryRow(ctx, `select email, status from accounts where account_id = $1 for no key update`, accountID).
@@ -137,17 +138,17 @@ func lockAccount(ctx context.Context, tx pgx.Tx, accountID int64) (email, status
 	return *e, status, nil
 }
 
-// LinkResult dice qué hizo un enlace de /verify: verificar el correo o confirmar el cambio.
+// LinkResult says what a /verify link did: verify the email or confirm the change.
 type LinkResult string
 
-// Resultados de [Service.ConfirmLink].
+// Results of [Service.ConfirmLink].
 const (
 	LinkVerified LinkResult = "verified"
 	LinkChanged  LinkResult = "changed"
 )
 
-// ConfirmLink atiende el enlace de la página /verify, que vale para verify_email y para
-// change_email (los dos confirman un correo).
+// ConfirmLink handles the link of the /verify page, which is valid for verify_email and for
+// change_email (both confirm an email).
 func (s *Service) ConfirmLink(ctx context.Context, token string) (LinkResult, error) {
 	if !ValidToken(token) {
 		return "", errLink("invalid")
@@ -169,7 +170,7 @@ func (s *Service) ConfirmLink(ctx context.Context, token string) (LinkResult, er
 	return "", errLink("invalid")
 }
 
-// VerifyEmail verifica el correo con un enlace verify_email.
+// VerifyEmail verifies the email with a verify_email link.
 func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 	now := s.clock.Now()
 	return db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -179,7 +180,7 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 		}
 		email, _, err := lockAccount(ctx, tx, t.accountID)
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && t.email != "" && t.email != email) {
-			// La cuenta ya no existe o cambió de correo después del enlace.
+			// The account no longer exists or changed email after the link.
 			return errLink("invalid")
 		}
 		if err != nil {
@@ -191,8 +192,8 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 	})
 }
 
-// ResendVerification manda otro enlace verify_email; los anteriores dejan de valer. Con el correo
-// ya verificado no hace nada (la respuesta es la misma).
+// ResendVerification sends another verify_email link; the previous ones stop being valid. With the
+// email already verified it does nothing (the response is the same).
 func (s *Service) ResendVerification(ctx context.Context, sess *Session, meta ClientMeta) error {
 	now := s.clock.Now()
 	var verified bool
@@ -226,15 +227,15 @@ func (s *Service) ResendVerification(ctx context.Context, sess *Session, meta Cl
 	return nil
 }
 
-// resetTimeout acota lo que sigue en segundo plano de una petición de recuperación.
+// resetTimeout bounds what continues in the background of a recovery request.
 const resetTimeout = 30 * time.Second
 
-// RequestPasswordReset manda un enlace de recuperación si el correo tiene cuenta. La respuesta es
-// siempre la misma (202), exista o no, y no espera a la base: tras validar el correo y gastar la
-// ficha del límite, buscar la cuenta, guardar el enlace y mandarlo siguen en segundo plano
-// ([Service.Wait]). Antes, con cuenta se confirmaba una escritura (y su fsync) y sin ella solo se
-// leía: el tiempo de la respuesta delataba qué correos tienen cuenta (§4.2). Un fallo de la base ya
-// no da 503: se registra.
+// RequestPasswordReset sends a recovery link if the email has an account. The response is always
+// the same (202), whether it exists or not, and does not wait for the database: after validating the
+// email and spending the limit token, looking up the account, storing the link and sending it
+// continue in the background ([Service.Wait]). Before, with an account a write (and its fsync) was
+// committed and without one it was only read: the response time revealed which emails have an
+// account (§4.2). A database failure no longer gives 503: it is logged.
 func (s *Service) RequestPasswordReset(ctx context.Context, email string, meta ClientMeta) error {
 	email = NormalizeEmail(email)
 	if !ValidEmail(email) {
@@ -254,9 +255,9 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string, meta C
 	return nil
 }
 
-// passwordReset es la parte en segundo plano de [Service.RequestPasswordReset]: los dos caminos
-// escriben su fila password_reset en auth_events (sin cuenta, con account_id nulo, como
-// register_blocked); con cuenta, además el enlace y el correo.
+// passwordReset is the background part of [Service.RequestPasswordReset]: both paths write their
+// password_reset row in auth_events (without an account, with a null account_id, like
+// register_blocked); with an account, also the link and the email.
 func (s *Service) passwordReset(ctx context.Context, email string, meta ClientMeta, now time.Time) {
 	var token string
 	err := db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -284,12 +285,12 @@ func (s *Service) passwordReset(ctx context.Context, email string, meta ClientMe
 	}
 }
 
-// Wait espera a que termine lo que sigue en segundo plano (las recuperaciones de contraseña): serve
-// lo llama al parar, antes de cerrar la cola de correo, y las pruebas antes de mirar la base.
+// Wait waits for what continues in the background (the password recoveries) to finish: serve calls
+// it on shutdown, before closing the mail queue, and the tests before looking at the database.
 func (s *Service) Wait() { s.background.Wait() }
 
-// ConfirmPasswordReset cambia la contraseña con un enlace reset_password: revoca todas las
-// sesiones (password_changed) e invalida los enlaces.
+// ConfirmPasswordReset changes the password with a reset_password link: it revokes all sessions
+// (password_changed) and invalidates the links.
 func (s *Service) ConfirmPasswordReset(ctx context.Context, token, newPassword string) error {
 	if problem := PasswordProblem(newPassword, ""); problem != "" {
 		return errValidation(map[string]string{"new_password": problem})
@@ -334,8 +335,8 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, newPassword s
 	return nil
 }
 
-// ChangePassword cambia la contraseña con la actual (CheckPassword): revoca las demás sesiones
-// (password_changed) e invalida los enlaces.
+// ChangePassword changes the password with the current one (CheckPassword): it revokes the other
+// sessions (password_changed) and invalidates the links.
 func (s *Service) ChangePassword(ctx context.Context, sess *Session, current, newPassword string, meta ClientMeta) error {
 	fields := map[string]string{}
 	if current == "" || len(current) > maxPasswordBytes {
@@ -370,8 +371,8 @@ func (s *Service) ChangePassword(ctx context.Context, sess *Session, current, ne
 	})
 }
 
-// RequestEmailChange pide cambiar el correo (con la contraseña). La respuesta es siempre 202: al
-// correo nuevo va change_email o, si ya tiene cuenta, register_existing.
+// RequestEmailChange requests changing the email (with the password). The response is always 202:
+// the new email gets change_email or, if it already has an account, register_existing.
 func (s *Service) RequestEmailChange(ctx context.Context, sess *Session, newEmail, password string, meta ClientMeta) error {
 	newEmail = NormalizeEmail(newEmail)
 	fields := map[string]string{}
@@ -389,8 +390,8 @@ func (s *Service) RequestEmailChange(ctx context.Context, sess *Session, newEmai
 		return err
 	}
 	now := s.clock.Now()
-	// El límite de correos cuenta el destinatario, la IP y también la cuenta que lo pide: con
-	// una sesión no se puede escribir a muchos correos distintos.
+	// The email limit counts the recipient, the IP and also the account that requests it: with one
+	// session it is not possible to write to many different emails.
 	if ok, wait := ratelimit.AllowAll(now,
 		ratelimit.Key{Limiter: s.limits.mailAccount, Key: emailHash(newEmail)},
 		ratelimit.Key{Limiter: s.limits.mailAccount, Key: accountKey(sess.AccountID, "")},
@@ -406,7 +407,7 @@ func (s *Service) RequestEmailChange(ctx context.Context, sess *Session, newEmai
 			return err
 		}
 		if !taken {
-			// Un correo reservado por el revert_email de otra cuenta cuenta como con cuenta (§4.3).
+			// An email reserved by another account's revert_email counts as having an account (§4.3).
 			var err error
 			if taken, err = emailReserved(ctx, tx, newEmail, sess.AccountID, now); err != nil {
 				return err
@@ -432,9 +433,9 @@ func (s *Service) RequestEmailChange(ctx context.Context, sess *Session, newEmai
 	return nil
 }
 
-// ConfirmEmailChange cambia el correo con un enlace change_email y lo da por verificado: revoca
-// las sesiones (email_changed), invalida los enlaces y manda al correo viejo un aviso con un
-// enlace revert_email de 7 días.
+// ConfirmEmailChange changes the email with a change_email link and marks it as verified: it
+// revokes the sessions (email_changed), invalidates the links and sends the old email a notice with
+// a 7-day revert_email link.
 func (s *Service) ConfirmEmailChange(ctx context.Context, token string) error {
 	now := s.clock.Now()
 	var oldEmail, newEmail, revert string
@@ -477,9 +478,9 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, token string) error {
 	return nil
 }
 
-// setEmail cambia el correo de la cuenta y lo da por verificado; clearPassword deja la cuenta sin
-// contraseña (revert_email). Si otra cuenta tiene ya ese correo, o lo reserva con un revert_email
-// vivo (§4.3), el enlace no vale (fields.token = "unavailable").
+// setEmail changes the account's email and marks it as verified; clearPassword leaves the account
+// without a password (revert_email). If another account already has that email, or reserves it with
+// a live revert_email (§4.3), the link is not valid (fields.token = "unavailable").
 func setEmail(ctx context.Context, tx pgx.Tx, accountID int64, email string, now time.Time, clearPassword bool) error {
 	var taken bool
 	if err := tx.QueryRow(ctx, `select exists (select 1 from accounts where email = $1 and account_id <> $2)`,
@@ -503,10 +504,10 @@ func setEmail(ctx context.Context, tx pgx.Tx, accountID int64, email string, now
 	return err
 }
 
-// RevertEmail vuelve al correo viejo con un enlace revert_email: anula los revert_email de la cuenta
-// emitidos después ([invalidateLaterReverts]), revoca todas las sesiones (email_reverted), deja la
-// cuenta sin contraseña (password_hash = null), invalida los enlaces y manda al correo recuperado un
-// enlace para elegir contraseña.
+// RevertEmail goes back to the old email with a revert_email link: it voids the account's
+// revert_email links issued afterwards ([invalidateLaterReverts]), revokes all sessions
+// (email_reverted), leaves the account without a password (password_hash = null), invalidates the
+// links and sends the recovered email a link to choose a password.
 func (s *Service) RevertEmail(ctx context.Context, token string) error {
 	now := s.clock.Now()
 	var email, reset string
@@ -549,9 +550,9 @@ func (s *Service) RevertEmail(ctx context.Context, token string) error {
 	return nil
 }
 
-// RequestDeletion pide el borrado de la cuenta (con la contraseña; también con la sesión de
-// privacidad): la purga llega a los 14 días y revoca las demás sesiones (deletion). Si ya estaba
-// pedido, devuelve la fecha que tenía.
+// RequestDeletion requests the account's deletion (with the password; also with the privacy
+// session): the purge arrives after 14 days and revokes the other sessions (deletion). If it was
+// already requested, it returns the date it had.
 func (s *Service) RequestDeletion(ctx context.Context, sess *Session, password string, meta ClientMeta) (time.Time, error) {
 	if password == "" || len(password) > maxPasswordBytes {
 		return time.Time{}, errValidation(map[string]string{"password": "required"})
@@ -580,8 +581,9 @@ func (s *Service) RequestDeletion(ctx context.Context, sess *Session, password s
 	return purgeAt, err
 }
 
-// CancelDeletion cancela el borrado en plazo. Sin borrado pedido no hace nada; con el plazo
-// vencido (la purga horaria aún no ha pasado) responde 409 deletion_expired.
+// CancelDeletion cancels the deletion within the period. Without a requested deletion it does
+// nothing; with the period elapsed (the hourly purge has not yet run) it answers 409
+// deletion_expired.
 func (s *Service) CancelDeletion(ctx context.Context, sess *Session) error {
 	now := s.clock.Now()
 	return db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {

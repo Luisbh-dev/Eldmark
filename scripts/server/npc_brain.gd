@@ -1,25 +1,24 @@
 class_name NpcBrain
 extends BotBrain
-## Cerebro de un PNJ humanoide muy sencillo (docs/combate.md, sección 7): el del maniquí de
-## entrenamiento. Genera entradas de jugador que entran en la [InputQueue] del PNJ como las de un
-## jugador falso, así que su cuerpo es un [PlayerCharacter] simulado en el mismo bucle.
+## Brain of a very simple humanoid NPC (docs/combate.md, section 7): the training dummy's. It generates player inputs that enter the NPC's [InputQueue] like those of a
+## fake player, so its body is a [PlayerCharacter] simulated in the same loop.
 ## [br][br]
-## Modos ([enum Mode]):
-## [br]- [constant STILL]: quieto, mirando hacia donde mira.
-## [br]- [constant BLOCK]: con el escudo en alto (BLOCK pulsado) mirando hacia donde mira.
-## [br]- [constant SPIN]: gira despacio sobre sí mismo (una vuelta cada
-## [constant SPIN_PERIOD_TICKS] ticks) para que se le pueda golpear de lado y por la espalda.
+## Modes ([enum Mode]):
+## [br]- [constant STILL]: standing still, facing the direction it faces.
+## [br]- [constant BLOCK]: with the shield raised (BLOCK pressed) facing the direction it faces.
+## [br]- [constant SPIN]: turns slowly on itself (one turn every
+## [constant SPIN_PERIOD_TICKS] ticks) so it can be hit from the side and from behind.
 
 enum Mode { STILL, BLOCK, SPIN }
 
-## Ticks que tarda en dar una vuelta completa en el modo [constant SPIN].
+## Ticks it takes to make a full turn in [constant SPIN] mode.
 const SPIN_PERIOD_TICKS: int = 360
-## Movimiento (adelante, de 0 a 1) con el que gira en el modo [constant SPIN]: el personaje solo
-## gira hacia la cámara si se mueve más de [constant PlayerCharacter.FACING_MIN_WISH]; esto lo
-## deja a unos 0,6 m/s, es decir, dando vueltas en un círculo de menos de un metro.
+## Movement (forward, from 0 to 1) with which it turns in [constant SPIN] mode: the character only
+## turns toward the camera if it moves more than [constant PlayerCharacter.FACING_MIN_WISH]; this
+## leaves it at about 0.6 m/s, that is, going around in a circle of less than one meter.
 const SPIN_MOVE: float = 0.115
 
-## Modo del PNJ (se puede cambiar en marcha).
+## The NPC's mode (can be changed on the fly).
 var mode: int = Mode.STILL
 
 var _spin_origin_tick: int = -1
@@ -31,7 +30,7 @@ func _init(new_mode: int = Mode.STILL, rng_seed: int = 1) -> void:
 	mode = new_mode
 
 
-## Nombre del modo en español ([code]quieto[/code], [code]bloqueando[/code], [code]girando[/code]).
+## Name of the mode in Spanish ([code]quieto[/code], [code]bloqueando[/code], [code]girando[/code]).
 static func mode_name(mode_value: int) -> String:
 	match mode_value:
 		Mode.BLOCK:
@@ -41,9 +40,9 @@ static func mode_name(mode_value: int) -> String:
 	return "quieto"
 
 
-## Modo con ese nombre ([code]quieto[/code], [code]bloqueando[/code] o [code]girando[/code]; también
-## sus nombres en inglés [code]still[/code], [code]block[/code], [code]spin[/code]), o -1 si no
-## existe.
+## Mode with that name ([code]quieto[/code], [code]bloqueando[/code] or [code]girando[/code]; also
+## their English names [code]still[/code], [code]block[/code], [code]spin[/code]), or -1 if it
+## does not exist.
 static func mode_from_name(text: String) -> int:
 	match text.strip_edges().to_lower():
 		"quieto", "still":

@@ -1,26 +1,28 @@
 class_name Currency
 extends RefCounted
-## Las monedas (docs/progresion.md §5.1, PRG-12): saldos [code]int64[/code] por personaje, nunca negativos ni
-## por encima de [constant CAP]. Las reglas de los saldos están en [CurrencyRules]; la sección
-## [code]currencies[/code] de las reglas exportadas ([ProgressionRulesExport]) sale de aquí.
+## The currencies (docs/progresion.md §5.1, PRG-12): [code]int64[/code] balances per character,
+## never negative nor above [constant CAP]. The balance rules are in [CurrencyRules]; the
+## [code]currencies[/code] section of the exported rules ([ProgressionRulesExport]) comes from
+## here.
 ## [br][br]
-## Los puntos de reino no son una moneda: suben con los méritos de juego (I9,
-## [method EconomyReason.gives_realm_points]). Compartido: sin reloj ni azar.
+## Realm points are not a currency: they rise with in-game merits (I9,
+## [method EconomyReason.gives_realm_points]). Shared: no clock, no randomness.
 
-## Código de cada moneda (en la base de datos, en el libro y en el cable, este número).
+## Code of each currency (in the database, in the ledger and on the wire, this number).
 enum Code { GOLD = 1, MERITS = 2 }
 
-## Tope de cualquier saldo: mil millones. En GDScript, [code]^[/code] es XOR ([code]10^9[/code] valdría 3).
+## Cap of any balance: one billion. In GDScript, [code]^[/code] is XOR ([code]10^9[/code] would be
+## 3).
 const CAP: int = 1_000_000_000
-## Tamaño de un monedero indexado por código ([code]PackedInt64Array[/code]; el índice 0 no se usa).
+## Size of a wallet indexed by code ([code]PackedInt64Array[/code]; index 0 is unused).
 const WALLET_SIZE: int = 3
-## Id de texto de cada moneda (las reglas exportadas y la plataforma).
+## Text id of each currency (the exported rules and the platform).
 const IDS: Dictionary[int, String] = {Code.GOLD: "gold", Code.MERITS: "merits"}
-## Nombre en español de cada moneda (interfaz y avisos).
+## Spanish name of each currency (interface and notices).
 const DISPLAY_NAMES: Dictionary[int, String] = {Code.GOLD: "Oro", Code.MERITS: "Méritos"}
 
 
-## Los códigos de todas las monedas, en orden.
+## The codes of all currencies, in order.
 static func codes() -> Array[int]:
 	var result: Array[int] = []
 	for code: int in IDS:
@@ -29,17 +31,17 @@ static func codes() -> Array[int]:
 	return result
 
 
-## true si [param code] es el código de una moneda.
+## true if [param code] is the code of a currency.
 static func is_valid(code: int) -> bool:
 	return IDS.has(code)
 
 
-## Id de texto de [param code] ([code]gold[/code], [code]merits[/code]), o vacío si no existe.
+## Text id of [param code] ([code]gold[/code], [code]merits[/code]), or empty if it does not exist.
 static func id_of(code: int) -> String:
 	return IDS.get(code, "")
 
 
-## Código de la moneda con id [param id], o 0 si no existe.
+## Code of the currency with id [param id], or 0 if it does not exist.
 static func code_of(id: String) -> int:
 	for code: int in IDS:
 		if IDS[code] == id:
@@ -47,11 +49,11 @@ static func code_of(id: String) -> int:
 	return 0
 
 
-## Tope del saldo de [param code] (el mismo para todas en la fase 5), o 0 si no existe.
+## Balance cap of [param code] (the same for all in phase 5), or 0 if it does not exist.
 static func cap_of(code: int) -> int:
 	return CAP if is_valid(code) else 0
 
 
-## Nombre en español de [param code], o vacío si no existe.
+## Spanish name of [param code], or empty if it does not exist.
 static func display_name(code: int) -> String:
 	return DISPLAY_NAMES.get(code, "")

@@ -1,32 +1,32 @@
 extends TestCase
-## Flechas de punta a punta con ENet real sobre 127.0.0.1 y red mala (H5; docs/habilidades.md, secciones 4.4 y
-## 7.3; CMB-22): un [ZoneServer] con un [NetSim] de 150 ms de RTT y 30 ms de jitter, un arquero (bot con la
-## plantilla del tirador, elegida con [code]--loadout[/code] antes de CLIENT_READY) y un objetivo que corre en
-## lateral a 30 m, cada uno en su [SubViewport] con su propio mundo de física.
+## Arrows end to end with real ENet over 127.0.0.1 and a bad network (H5; docs/habilidades.md, sections 4.4 and
+## 7.3; CMB-22): a [ZoneServer] with a [NetSim] of 150 ms RTT and 30 ms jitter, an archer (a bot with the
+## marksman template, chosen with [code]--loadout[/code] before CLIENT_READY) and a target that runs
+## sideways at 30 m, each in its own [SubViewport] with its own physics world.
 ## [br][br]
-## El arquero apunta como un bot ([method BotBrain.lead_look]: [method Ballistics.solve_lead] y
-## [method AimRay.look_for]) a lo que dibuja del objetivo, con su velocidad dibujada, y suelta 20 tensados. El
-## servidor vuela cada flecha contra las posiciones rebobinadas a lo que veía el arquero: al menos 18 deben
-## acertar (HIT confirmado). [b]Control en la misma ejecución[/b], como en test_combat_loopback: la misma
-## trayectoria de cada flecha (la del SPAWN, que es con la que vuela el servidor) contra la posición
-## [i]presente[/i] del objetivo en cada tick (sin rebobinar) habría acertado menos de 10.
+## The archer aims like a bot ([method BotBrain.lead_look]: [method Ballistics.solve_lead] and
+## [method AimRay.look_for]) at what it draws of the target, with its drawn velocity, and releases 20 draws. The
+## server flies each arrow against the positions rewound to what the archer saw: at least 18 must
+## hit (HIT confirmed). [b]Control in the same run[/b], as in test_combat_loopback: the same
+## trajectory of each arrow (the one from the SPAWN, which is the one the server flies) against the target's
+## [i]present[/i] position at each tick (without rewinding) would have hit fewer than 10.
 ## [br][br]
-## El objetivo corre en círculo alrededor del arquero (siempre de lado y siempre a 30 m, sin darse la vuelta en
-## mitad de un vuelo).
+## The target runs in a circle around the archer (always sideways and always at 30 m, without turning around
+## in the middle of a flight).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ZONE_ID: String = "test_world"
-## 150 ms de RTT y 30 ms de jitter en el servidor (el criterio de CMB-22, como TEC-14).
+## 150 ms RTT and 30 ms jitter on the server (the CMB-22 criterion, like TEC-14).
 const NET_SIM: String = "rtt=150,jitter=30,seed=5"
-## Distancia (m) del objetivo al arquero y número de tensados.
+## Distance (m) from the target to the archer and number of draws.
 const RANGE_M: float = 30.0
 const SHOTS: int = 20
-## Ticks que mantiene PRIMARY cada tensado (carga 30: 46,9 m/s) y ticks entre dos pulsaciones (la carga, los 22
-## del tensado y un margen).
+## Ticks that each draw holds PRIMARY (charge 30: 46.9 m/s) and ticks between two presses (the charge, the 22
+## of the draw and a margin).
 const DRAW_TICKS: int = 30
 const CYCLE_TICKS: int = 56
-## Mínimos del criterio y del control.
+## Minimums for the criterion and for the control.
 const MIN_CONFIRMED: int = 18
 const MAX_CONTROL_HITS: int = 9
 const WAIT_FRAMES: int = 900
@@ -36,12 +36,12 @@ var _server_viewport: SubViewport
 var _server: ZoneServer
 var _clients: Array[NetClient] = []
 var _viewports: Array[SubViewport] = []
-# Disparos del arquero según el servidor: id del proyectil -> [p0, v0, spawn_tick].
+# The archer's shots according to the server: projectile id -> [p0, v0, spawn_tick].
 var _shots: Dictionary[int, Array] = {}
 var _shot_order: Array[int] = []
 var _confirmed: int = 0
 var _hits_by_shot_tick: Dictionary[int, int] = {}
-# Control: id del proyectil -> true si habría tocado la posición presente; último tick comprobado de cada uno.
+# Control: projectile id -> true if it would have hit the present position; last tick checked for each one.
 var _control_hit: Dictionary[int, bool] = {}
 var _control_checked: Dictionary[int, int] = {}
 var _archer_id: int = 0
@@ -97,8 +97,8 @@ func _set_script(client: NetClient, script: Callable) -> void:
 	(client.get_meta(&"controller") as LocalPlayerController).set_bot(brain)
 
 
-## Guion del objetivo: corre (sin esprintar) en círculo de [constant RANGE_M] m alrededor del origen, con la
-## tangente más una corrección hacia la circunferencia.
+## Target script: runs (without sprinting) in a circle of [constant RANGE_M] m around the origin, with the
+## tangent plus a correction toward the circumference.
 func _runner_script() -> Callable:
 	return func(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 		var input := PlayerInput.new()
@@ -116,9 +116,9 @@ func _runner_script() -> Callable:
 		return input
 
 
-## Guion del arquero: apunta en cada tick al objetivo que dibuja con el tiro adelantado de un tensado de
-## [constant DRAW_TICKS] ticks; pulsa cada [constant CYCLE_TICKS] ticks y mantiene PRIMARY esos ticks, hasta
-## [constant SHOTS] tensados. [param state] guarda el tick de la última pulsación, los disparos y si está armado.
+## Archer script: aims on every tick at the target it draws with the lead shot of a draw of
+## [constant DRAW_TICKS] ticks; presses every [constant CYCLE_TICKS] ticks and holds PRIMARY for those ticks, up to
+## [constant SHOTS] draws. [param state] holds the tick of the last press, the shots and whether it is armed.
 func _archer_script(client: NetClient, target_id: int, state: Dictionary) -> Callable:
 	var heavy: AttackTicks = CombatCatalog.attack(CombatCatalog.weapon(CombatCatalog.weapon_id(&"bow")).heavy_id)
 	var speed: float = ProjectileLaunch.for_attack(heavy, DRAW_TICKS).speed
@@ -161,8 +161,8 @@ func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Arra
 		_confirmed += 1
 
 
-## Control: cada segmento de las flechas del arquero contra la posición presente del objetivo (la del tick, sin
-## rebobinar), tick a tick mientras el historial la tiene.
+## Control: each segment of the archer's arrows against the target's present position (the tick's own, without
+## rewinding), tick by tick while the history has it.
 func _check_control() -> void:
 	var arrow: ProjectileTicks = CombatCatalog.projectile(CombatCatalog.projectile_id(&"arrow"))
 	var history: StateHistory = _server.get_history()
@@ -201,21 +201,21 @@ func test_twenty_drawn_shots_at_30_m_on_a_running_target_with_150_ms_of_rtt() ->
 		var viewport: SubViewport = NetHarness.make_world_viewport(_root, "")
 		_viewports.append(viewport)
 		_clients.append(NetHarness.start_bot(viewport, port, entry[0], entry[1], "", "", "", entry[2]))
-	if not assert_true(await _wait_until(_all_in_world), "entran el arquero y el objetivo"):
+	if not assert_true(await _wait_until(_all_in_world), "the archer and the target enter"):
 		return
 	var archer: NetClient = _clients[0]
 	var runner: NetClient = _clients[1]
 	_archer_id = archer.get_net_id()
 	_target_id = runner.get_net_id()
-	# Sin plataforma, un personaje efímero con inventario (progresion.md §9.4, P5b): la plantilla elegida antes de
-	# CLIENT_READY es su kit de inicio, con el arco en la ranura 1, y lo equipa su inventario (plantilla vigente 0).
+	# Without a platform, an ephemeral character with an inventory (progresion.md §9.4, P5b): the template chosen before
+	# CLIENT_READY is its starter kit, with the bow in slot 1, and its inventory equips it (current template 0).
 	var archer_combatant: Combatant = _server.get_combat().get_combatant(_archer_id)
-	assert_eq(archer_combatant.template_id, 0, "el equipo de su inventario")
+	assert_eq(archer_combatant.template_id, 0, "its inventory's equipment")
 	var archer_weapon: ItemInstance = _server.get_progress().get_player(_archer_id).record.inventory.get_item(
 			InventoryState.ContainerId.EQUIPMENT, 0)
 	assert_true(archer_weapon != null and archer_weapon.def_id == &"bow_vado",
-			"la plantilla elegida antes de CLIENT_READY vale ya para la primera aparición: el kit del tirador")
-	assert_eq(archer.get_character().combat.weapon_id, CombatCatalog.weapon_id(&"bow"), "con el arco en la mano")
+			"the template chosen before CLIENT_READY already applies to the first spawn: the marksman kit")
+	assert_eq(archer.get_character().combat.weapon_id, CombatCatalog.weapon_id(&"bow"), "with the bow in hand")
 	_server.get_combat().get_combatant(_target_id).immortal = true
 	_server.get_combat().projectiles.spawned.connect(_on_spawned)
 	_server.get_combat().event_emitted.connect(_on_combat_event)
@@ -239,21 +239,21 @@ func test_twenty_drawn_shots_at_30_m_on_a_running_target_with_150_ms_of_rtt() ->
 	var arrows: Dictionary = archer.get_projectile_world().get_stats()
 	print("[flechas] %d tensados, %d confirmados, %d habrían acertado sin rebobinar; predichas %s" % [
 			_shots.size(), _confirmed, control, arrows])
-	if not assert_true(done, "el arquero suelta sus %d tensados (%d)" % [SHOTS, _shots.size()]):
+	if not assert_true(done, "the archer releases its %d draws (%d)" % [SHOTS, _shots.size()]):
 		return
-	assert_eq(_shots.size(), SHOTS, "ni uno más")
-	assert_true(_confirmed >= MIN_CONFIRMED, "al menos %d de %d confirmados: %d" % [MIN_CONFIRMED, SHOTS,
+	assert_eq(_shots.size(), SHOTS, "not one more")
+	assert_true(_confirmed >= MIN_CONFIRMED, "at least %d of %d confirmed: %d" % [MIN_CONFIRMED, SHOTS,
 			_confirmed])
 	assert_true(control <= MAX_CONTROL_HITS,
-			"contra la posición presente habrían acertado menos de 10: %d" % control)
-	assert_eq(_server.get_combat().stats[&"rewind_rejected"], 0, "ningún rebobinado pasa del tope")
+			"against the present position fewer than 10 would have hit: %d" % control)
+	assert_eq(_server.get_combat().stats[&"rewind_rejected"], 0, "no rewind exceeds the cap")
 	var peer: ServerPeer = null
 	for peer_id: int in _server.get_peer_ids():
 		if _server.get_peer(peer_id).entity != null and _server.get_peer(peer_id).entity.net_id == _archer_id:
 			peer = _server.get_peer(peer_id)
 	if assert_not_null(peer):
-		assert_eq(peer.suspicion_score, 0, "y ninguna sospecha")
+		assert_eq(peer.suspicion_score, 0, "and no suspicion")
 	assert_true(int(arrows.get("substituted", 0)) >= SHOTS - 1,
-			"las flechas predichas se sustituyen por las del servidor (%s)" % [arrows])
-	assert_eq(int(arrows.get("rejected", -1)), 0, "ninguna predicha se queda sin la del servidor")
-	assert_eq(archer.get_stats()["unexplained_diffs"], 0, "el arquero predice sin fallos")
+			"predicted arrows are replaced by the server's (%s)" % [arrows])
+	assert_eq(int(arrows.get("rejected", -1)), 0, "no predicted arrow is left without the server's")
+	assert_eq(archer.get_stats()["unexplained_diffs"], 0, "the archer predicts without misses")

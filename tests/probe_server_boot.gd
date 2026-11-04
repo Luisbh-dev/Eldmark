@@ -1,23 +1,23 @@
 extends SceneTree
-## Proceso auxiliar de [code]test_architecture.gd[/code] (no es una prueba: el ejecutor solo descubre
-## [code]test_*.gd[/code]). Arranca el proyecto como lo hace la escena principal: instancia
-## [code]res://scenes/boot.tscn[/code] con los argumentos de usuario (los que van tras [code]--[/code];
-## con [code]--server[/code], el servidor dedicado de una zona), espera a que el servidor esté en marcha
-## ([code]ZoneServer[/code] más unos pasos de física) y entonces informa, con líneas que empiezan por
-## [code]LOADED <ruta>[/code], de cada script de [code]res://scripts/client/[/code] que ha quedado
-## cargado en el proceso, y cierra con [code]DONE total=<n> loaded=<n>[/code]. Si el servidor no
-## arranca en [constant TIMEOUT_MSEC] ms, escribe [code]TIMEOUT[/code] y sale con código 2.
+## Helper process for [code]test_architecture.gd[/code] (not a test: the runner only discovers
+## [code]test_*.gd[/code]). Boots the project the way the main scene does: instantiates
+## [code]res://scenes/boot.tscn[/code] with the user arguments (those after [code]--[/code]; with
+## [code]--server[/code], the dedicated server of a zone), waits for the server to be running
+## ([code]ZoneServer[/code] plus a few physics steps) and then reports, with lines starting with
+## [code]LOADED <path>[/code], every script under [code]res://scripts/client/[/code] that ended up
+## loaded in the process, and closes with [code]DONE total=<n> loaded=<n>[/code]. If the server does
+## not start within [constant TIMEOUT_MSEC] ms, it writes [code]TIMEOUT[/code] and exits with code 2.
 ## [br][br]
-## Con [code]--probe-control=<ruta>[/code], tras el informe carga ese script y escribe
-## [code]CONTROL <ruta> true|false[/code] según haya quedado en la caché: así la prueba sabe que este
-## detector ve de verdad lo que se carga.
+## With [code]--probe-control=<path>[/code], after the report it loads that script and writes
+## [code]CONTROL <path> true|false[/code] depending on whether it ended up in the cache: this way the
+## test knows this detector really sees what gets loaded.
 
 const BOOT_SCENE: String = "res://scenes/boot.tscn"
 const CLIENT_DIR: String = "res://scripts/client"
 const CONTROL_PREFIX: String = "--probe-control="
-## Espera máxima (ms) a que arranque el servidor.
+## Maximum wait (ms) for the server to start.
 const TIMEOUT_MSEC: int = 20000
-## Pasos de física que se dejan correr al servidor una vez en marcha.
+## Physics steps the server is left running once it is up.
 const SETTLE_PHYSICS_FRAMES: int = 30
 
 var _started_msec: int = 0

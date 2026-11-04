@@ -1,26 +1,26 @@
-// Tela de los estandartes del torreón (ART-57): gallardete del asta y pendones del cadalso.
+// Cloth of the keep banners (ART-57): the pole pennant and the scaffold hangings.
 //
-// Todo lo que decide el controlador del fuerte son parámetros por instancia (instance uniform) del
-// nodo Estandarte, así que capturar un fuerte no cambia ni mallas ni materiales:
-//   faction_color     color del dueño: tiñe la tela (mismo nombre que en realm_surface)
-//   emblem_index      emblema del dueño en el atlas: 0 Vardheim, 1 Solmarch, 2 Askarra, 3 Huecos.
-//                     Un valor negativo deja la tela lisa (frontera sin dueño)
-//   capture_progress  0..1: la franja del atacante (contest_color) avanza por la tela, desde la
-//                     punta (gallardete) o desde abajo (pendón)
-//   contest_color     color del atacante
-//   wind_strength     0 = tela quieta; 1 = viento normal
+// Everything the fort controller decides is a per-instance parameter (instance uniform) of the
+// Banner node, so capturing a fort changes neither meshes nor materials:
+//   faction_color     owner color: tints the cloth (same name as in realm_surface)
+//   emblem_index      owner emblem in the atlas: 0 Vardheim, 1 Solmarch, 2 Askarra, 3 the Hollow.
+//                     A negative value leaves the cloth plain (unowned frontier)
+//   capture_progress  0..1: the attacker's stripe (contest_color) advances across the cloth, from
+//                     the tip (pennant) or from the bottom (hanging)
+//   contest_color     attacker color
+//   wind_strength     0 = still cloth; 1 = normal wind
 //
-// El color de vértice lleva el viento: el alfa es el peso (0 donde la tela está sujeta, 1 en la punta
-// libre) y RGB la dirección del vaivén codificada (0..1 -> -1..1, en el espacio del modelo).
-// El atlas lleva en RGB la tela gris clara (se tiñe con faction_color) y los emblemas con sus
-// colores, y en el alfa dónde manda el emblema (disco oscuro con el emblema encima).
+// The vertex color carries the wind: alpha is the weight (0 where the cloth is fastened, 1 at the
+// free tip) and RGB the encoded sway direction (0..1 -> -1..1, in model space).
+// The atlas carries in RGB the light gray cloth (tinted with faction_color) and the emblems in their
+// colors, and in alpha where the emblem rules (dark disc with the emblem on top).
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2D atlas : source_color, filter_linear_mipmap_anisotropic, repeat_disable, hint_default_white;
-// Casillas del atlas: (1, 4) el gallardete (apiladas), (4, 1) los pendones (en fila).
+// Atlas cells: (1, 4) the pennant (stacked), (4, 1) the hangings (in a row).
 uniform vec2 atlas_cells = vec2(1.0, 4.0);
-// Hacia dónde crece capture_progress: (1, 0) a lo largo de u (gallardete), (0, 1) hacia abajo (pendón).
+// Direction in which capture_progress grows: (1, 0) along u (pennant), (0, 1) downwards (hanging).
 uniform vec2 progress_axis = vec2(1.0, 0.0);
 uniform float wind_amplitude : hint_range(0.0, 1.0) = 0.35;
 uniform float wind_speed : hint_range(0.0, 6.0) = 1.7;
@@ -37,8 +37,8 @@ void vertex() {
 	vec3 p = VERTEX;
 	float phase = TIME * wind_speed + dot(p.xz, vec2(1.15, 0.85)) + p.y * 0.55;
 	float wave = sin(phase) + 0.45 * sin(phase * 2.3 + 1.7) + 0.2 * sin(phase * 4.1);
-	// La direccion del vaiven va en COLOR.rgb (comun a toda la pieza): con la normal de cada cara,
-	// las caras sueltas del gallardete se separaban al moverse.
+	// The sway direction goes in COLOR.rgb (shared by the whole piece): with each face's normal, the
+	// loose faces of the pennant separated as they moved.
 	vec3 dir = COLOR.rgb * 2.0 - 1.0;
 	dir = length(dir) > 0.1 ? normalize(dir) : NORMAL;
 	VERTEX += dir * wave * w * wind_amplitude;

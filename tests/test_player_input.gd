@@ -1,24 +1,24 @@
 extends TestCase
-## Pruebas de PlayerInput: formato de red (12 bytes little-endian) y cuantización.
+## Tests of PlayerInput: network format (12 little-endian bytes) and quantization.
 ##
-## En la fase 2 el cliente predice con [method PlayerInput.quantized] y el servidor simula con
-## [method PlayerInput.decode]; si no coinciden bit a bit, la predicción diverge del servidor.
+## In phase 2 the client predicts with [method PlayerInput.quantized] and the server simulates with
+## [method PlayerInput.decode]; if they do not match bit for bit, the prediction diverges from the server.
 
 const ENCODED_SIZE: int = 12
 const MOVE_STEP: float = 1.0 / 127.0
-## Error máximo admitido al cuantizar un movimiento de longitud >= 1: redondear puede dejar la
-## longitud un pelo por encima de 1 y la implementación puede truncar un paso para evitarlo.
+## Maximum error allowed when quantizing a movement of length >= 1: rounding can leave the
+## length slightly above 1 and the implementation may truncate a step to avoid it.
 const CLAMPED_MOVE_TOLERANCE: float = MOVE_STEP * 1.5
-## Longitud máxima admitida tras cuantizar (1 más un paso de cuantización).
+## Maximum length allowed after quantizing (1 plus one quantization step).
 const MAX_QUANTIZED_MOVE_LENGTH: float = 1.0 + MOVE_STEP
 const YAW_STEP: float = TAU / 65536.0
 const PITCH_STEP: float = (PI / 2.0) / 32767.0
-## Semilla fija: las entradas "aleatorias" son siempre las mismas.
+## Fixed seed: the "random" inputs are always the same.
 const RANDOM_SEED: int = 20261027
 
 
 func test_button_constants_match_wire_format() -> void:
-	# El orden de bits es parte del protocolo: cambiarlo rompe la compatibilidad cliente/servidor.
+	# The bit order is part of the protocol: changing it breaks client/server compatibility.
 	assert_eq(PlayerInput.JUMP, 1 << 0, "JUMP")
 	assert_eq(PlayerInput.SPRINT, 1 << 1, "SPRINT")
 	assert_eq(PlayerInput.DODGE, 1 << 2, "DODGE")
@@ -28,7 +28,7 @@ func test_button_constants_match_wire_format() -> void:
 	assert_eq(PlayerInput.ABILITY_2, 1 << 6, "ABILITY_2")
 	assert_eq(PlayerInput.ABILITY_3, 1 << 7, "ABILITY_3")
 	assert_eq(PlayerInput.INTERACT, 1 << 8, "INTERACT")
-	# Fase 4 (docs/habilidades.md, sección 3.2); 13-14 reservados y 15 es SUBSTITUTED.
+	# Phase 4 (docs/habilidades.md, section 3.2); 13-14 reserved and 15 is SUBSTITUTED.
 	assert_eq(PlayerInput.SWAP_WEAPON, 1 << 9, "SWAP_WEAPON")
 	assert_eq(PlayerInput.AIM_LEFT, 1 << 10, "AIM_LEFT")
 	assert_eq(PlayerInput.CONSUMABLE_1, 1 << 11, "CONSUMABLE_1")
@@ -40,9 +40,9 @@ func test_encode_has_documented_layout() -> void:
 	var input: PlayerInput = _make(0x01020304, Vector2(0.0, -1.0), PI, PI / 2.0,
 			PlayerInput.JUMP | PlayerInput.INTERACT)
 	var bytes: PackedByteArray = input.encode()
-	if not assert_eq(bytes.size(), ENCODED_SIZE, "tamaño de la entrada codificada"):
+	if not assert_eq(bytes.size(), ENCODED_SIZE, "size of the encoded input"):
 		return
-	# u32 tick little-endian.
+	# u32 little-endian tick.
 	assert_eq(bytes[0], 0x04, "byte 0 (tick, little-endian)")
 	assert_eq(bytes[1], 0x03, "byte 1 (tick)")
 	assert_eq(bytes[2], 0x02, "byte 2 (tick)")
@@ -58,16 +58,16 @@ func test_encode_has_documented_layout() -> void:
 	assert_eq(other_bytes.decode_u32(0), 0, "tick 0")
 	assert_eq(other_bytes.decode_s8(4), 127, "s8 move.x (1 -> 127)")
 	assert_eq(other_bytes.decode_s8(5), 0, "s8 move.y")
-	assert_eq(other_bytes.decode_u16(6), 49152, "u16 yaw (-PI/2 envuelto a 3PI/2 -> 49152)")
+	assert_eq(other_bytes.decode_u16(6), 49152, "u16 yaw (-PI/2 wrapped to 3PI/2 -> 49152)")
 	assert_eq(other_bytes.decode_s16(8), -32767, "s16 pitch (-PI/2 -> -32767)")
-	assert_eq(other_bytes.decode_u16(10), 0, "u16 buttons vacío")
+	assert_eq(other_bytes.decode_u16(10), 0, "u16 empty buttons")
 
 
 func test_roundtrip_preserves_values_within_quantization() -> void:
 	var input: PlayerInput = _make(123456, Vector2(0.25, -0.5), 1.2345, -0.4,
 			PlayerInput.SPRINT | PlayerInput.BLOCK | PlayerInput.ABILITY_3)
 	var decoded: PlayerInput = PlayerInput.decode(input.encode())
-	if not assert_not_null(decoded, "decode() de 12 bytes válidos"):
+	if not assert_not_null(decoded, "decode() of 12 valid bytes"):
 		return
 	assert_eq(decoded.tick, 123456, "tick")
 	assert_vec_near(decoded.move, input.move, MOVE_STEP, "move")
@@ -85,11 +85,11 @@ func test_quantized_equals_decode_of_encode_and_keeps_original() -> void:
 	var decoded: PlayerInput = PlayerInput.decode(input.encode())
 	if not assert_not_null(quantized, "quantized()") or not assert_not_null(decoded, "decode()"):
 		return
-	assert_false(is_same(quantized, input), "quantized() debe devolver un objeto nuevo")
+	assert_false(is_same(quantized, input), "quantized() must return a new object")
 	assert_true(_inputs_identical(quantized, decoded),
-			"quantized() debe ser igual a decode(encode()): %s frente a %s" % [quantized, decoded])
-	assert_eq(input.move, original_move, "quantized() no debe modificar el original (move)")
-	assert_eq(input.look_yaw, original_yaw, "quantized() no debe modificar el original (look_yaw)")
+			"quantized() must equal decode(encode()): %s versus %s" % [quantized, decoded])
+	assert_eq(input.move, original_move, "quantized() must not modify the original (move)")
+	assert_eq(input.look_yaw, original_yaw, "quantized() must not modify the original (look_yaw)")
 
 
 func test_quantization_is_idempotent_for_random_inputs() -> void:
@@ -109,7 +109,7 @@ func test_quantization_is_idempotent_for_random_inputs() -> void:
 
 
 func test_quantization_is_idempotent_on_unit_circle() -> void:
-	# El caso delicado: redondear un vector de longitud 1 puede dejarlo un poco por encima de 1.
+	# The delicate case: rounding a length-1 vector can leave it slightly above 1.
 	for i: int in 3600:
 		var angle: float = TAU * i / 3600.0
 		for radius: float in [1.0, 1.3]:
@@ -126,16 +126,16 @@ func test_negative_and_large_yaw_wraps() -> void:
 	for yaw: float in cases:
 		var bytes: PackedByteArray = _make(1, Vector2.ZERO, yaw, 0.0, 0).encode()
 		var decoded: PlayerInput = PlayerInput.decode(bytes)
-		if not assert_not_null(decoded, "decode() con yaw %s" % yaw):
+		if not assert_not_null(decoded, "decode() with yaw %s" % yaw):
 			continue
-		assert_true(is_finite(decoded.look_yaw), "yaw %s decodificado debe ser finito" % yaw)
+		assert_true(is_finite(decoded.look_yaw), "decoded yaw %s must be finite" % yaw)
 		assert_near(absf(angle_difference(decoded.look_yaw, yaw)), 0.0, YAW_STEP * 0.5 + 1e-6,
-				"yaw %s debe representar el mismo ángulo" % yaw)
-	# Justo por debajo de TAU redondea a 65536, que debe volver a 0 (no desbordar ni saturar).
+				"yaw %s must represent the same angle" % yaw)
+	# Just below TAU rounds to 65536, which must wrap back to 0 (neither overflow nor saturate).
 	var near_tau: PackedByteArray = _make(1, Vector2.ZERO, TAU - 1e-7, 0.0, 0).encode()
-	assert_eq(near_tau.decode_u16(6), 0, "yaw TAU - 1e-7 -> 65536 debe envolverse a 0")
+	assert_eq(near_tau.decode_u16(6), 0, "yaw TAU - 1e-7 -> 65536 must wrap to 0")
 	var tiny_negative: PackedByteArray = _make(1, Vector2.ZERO, -1e-9, 0.0, 0).encode()
-	assert_eq(tiny_negative.decode_u16(6), 0, "yaw -1e-9 debe envolverse a 0")
+	assert_eq(tiny_negative.decode_u16(6), 0, "yaw -1e-9 must wrap to 0")
 
 
 func test_pitch_is_clamped_to_half_pi() -> void:
@@ -143,10 +143,10 @@ func test_pitch_is_clamped_to_half_pi() -> void:
 	var down: PlayerInput = _make(1, Vector2.ZERO, 0.0, -3.0, 0).quantized()
 	if not assert_not_null(up, "quantized()") or not assert_not_null(down, "quantized()"):
 		return
-	assert_near(up.look_pitch, PI / 2.0, PITCH_STEP, "pitch 3.0 se limita a PI/2")
-	assert_near(down.look_pitch, -PI / 2.0, PITCH_STEP, "pitch -3.0 se limita a -PI/2")
+	assert_near(up.look_pitch, PI / 2.0, PITCH_STEP, "pitch 3.0 is clamped to PI/2")
+	assert_near(down.look_pitch, -PI / 2.0, PITCH_STEP, "pitch -3.0 is clamped to -PI/2")
 	assert_eq(_make(1, Vector2.ZERO, 0.0, 3.0, 0).encode().decode_s16(8), 32767,
-			"s16 pitch máximo")
+			"maximum s16 pitch")
 
 
 func test_buttons_roundtrip_and_has() -> void:
@@ -162,20 +162,20 @@ func test_buttons_roundtrip_and_has() -> void:
 	var everything: PlayerInput = _make(1, Vector2.ZERO, 0.0, 0.0, mask).quantized()
 	if not assert_not_null(everything, "quantized()"):
 		return
-	assert_eq(everything.buttons, mask, "todos los botones sobreviven (INTERACT necesita u16)")
+	assert_eq(everything.buttons, mask, "all the buttons survive (INTERACT needs u16)")
 	for button: int in all_buttons:
-		assert_true(everything.has(button), "has(%d) con todos pulsados" % button)
+		assert_true(everything.has(button), "has(%d) with all pressed" % button)
 
 	for button: int in all_buttons:
 		var single: PlayerInput = _make(1, Vector2.ZERO, 0.0, 0.0, button).quantized()
-		assert_eq(single.buttons, button, "solo el botón %d" % button)
+		assert_eq(single.buttons, button, "only button %d" % button)
 		for other: int in all_buttons:
 			assert_eq(single.has(other), other == button,
-					"has(%d) con solo %d pulsado" % [other, button])
+					"has(%d) with only %d pressed" % [other, button])
 
 	var none: PlayerInput = _make(1, Vector2.ZERO, 0.0, 0.0, 0)
 	for button: int in all_buttons:
-		assert_false(none.has(button), "has(%d) sin botones" % button)
+		assert_false(none.has(button), "has(%d) without buttons" % button)
 
 
 func test_move_longer_than_one_is_clamped() -> void:
@@ -185,7 +185,7 @@ func test_move_longer_than_one_is_clamped() -> void:
 		[Vector2(0.0, -9.0), Vector2(0.0, -1.0)],
 		[Vector2(-5.0, -5.0), Vector2(-sqrt(0.5), -sqrt(0.5))],
 		[Vector2(1.0, 1.0), Vector2(sqrt(0.5), sqrt(0.5))],
-		# Por debajo de 1 no se reescala.
+		# Below 1 it is not rescaled.
 		[Vector2(0.3, 0.4), Vector2(0.3, 0.4)],
 		[Vector2(-0.05, 0.02), Vector2(-0.05, 0.02)],
 	]
@@ -197,7 +197,7 @@ func test_move_longer_than_one_is_clamped() -> void:
 			return
 		assert_vec_near(quantized.move, expected, CLAMPED_MOVE_TOLERANCE, "move %s" % raw)
 		assert_true(quantized.move.length() <= MAX_QUANTIZED_MOVE_LENGTH,
-				"move %s cuantizado debe tener longitud <= 1 (tiene %s)" % [
+				"quantized %s move must have length <= 1 (it has %s)" % [
 					raw, quantized.move.length(),
 				])
 
@@ -206,15 +206,15 @@ func test_tick_uses_full_u32() -> void:
 	for tick: int in [0, 1, 65537, 0x7FFFFFFF, 0x80000000, 4000000000, 0xFFFFFFFF]:
 		var bytes: PackedByteArray = _make(tick, Vector2.ZERO, 0.0, 0.0, 0).encode()
 		var decoded: PlayerInput = PlayerInput.decode(bytes)
-		if assert_not_null(decoded, "decode() con tick %d" % tick):
-			assert_eq(decoded.tick, tick, "tick %d (u32 sin signo)" % tick)
+		if assert_not_null(decoded, "decode() with tick %d" % tick):
+			assert_eq(decoded.tick, tick, "tick %d (unsigned u32)" % tick)
 
 
 func test_wrong_size_decode_returns_null() -> void:
 	for size: int in [0, 1, 11, 13, 24]:
 		var bytes := PackedByteArray()
 		bytes.resize(size)
-		assert_null(PlayerInput.decode(bytes), "decode() de %d bytes debe devolver null" % size)
+		assert_null(PlayerInput.decode(bytes), "decode() of %d bytes must return null" % size)
 
 
 func test_duplicate_input_is_independent_copy() -> void:
@@ -223,9 +223,9 @@ func test_duplicate_input_is_independent_copy() -> void:
 	var copy: PlayerInput = input.duplicate_input()
 	if not assert_not_null(copy, "duplicate_input()"):
 		return
-	assert_false(is_same(copy, input), "duplicate_input() debe devolver un objeto nuevo")
+	assert_false(is_same(copy, input), "duplicate_input() must return a new object")
 	assert_true(_inputs_identical(copy, input),
-			"la copia debe ser exacta, sin cuantizar: %s frente a %s" % [copy, input])
+			"the copy must be exact, unquantized: %s versus %s" % [copy, input])
 	copy.tick = 10
 	copy.move = Vector2.ZERO
 	copy.look_yaw = 2.0
@@ -237,7 +237,7 @@ func test_duplicate_input_is_independent_copy() -> void:
 	assert_eq(input.buttons, PlayerInput.BLOCK, "%s (buttons)" % unchanged)
 
 
-# --- Utilidades -------------------------------------------------------------------------------
+# --- Utilities --------------------------------------------------------------------------------
 
 func _make(tick: int, move: Vector2, look_yaw: float, look_pitch: float,
 		buttons: int) -> PlayerInput:
@@ -255,8 +255,8 @@ func _inputs_identical(a: PlayerInput, b: PlayerInput) -> bool:
 			and a.look_pitch == b.look_pitch and a.buttons == b.buttons)
 
 
-## Comprueba que quantized().quantized() es exactamente igual a quantized(), campo a campo y byte
-## a byte, y que coincide con decode(encode()). Devuelve false (con un solo fallo) si no.
+## Checks that quantized().quantized() is exactly equal to quantized(), field by field and byte
+## by byte, and that it matches decode(encode()). Returns false (with a single failure) if not.
 func _check_idempotent(input: PlayerInput, label: String) -> bool:
 	var once: PlayerInput = input.quantized()
 	if not assert_not_null(once, "%s: quantized()" % label):
@@ -264,15 +264,15 @@ func _check_idempotent(input: PlayerInput, label: String) -> bool:
 	var twice: PlayerInput = once.quantized()
 	var decoded: PlayerInput = PlayerInput.decode(input.encode())
 	if not assert_true(_inputs_identical(once, twice),
-			"%s: la cuantización no es idempotente\n      original: %s\n      una vez:  %s"
-			% [label, input, once] + "\n      dos veces: %s" % twice):
+			"%s: the quantization is not idempotent\n      original: %s\n      once:  %s"
+			% [label, input, once] + "\n      twice: %s" % twice):
 		return false
-	if not assert_eq(once.encode(), twice.encode(), "%s: bytes distintos al recuantizar" % label):
+	if not assert_eq(once.encode(), twice.encode(), "%s: different bytes on requantizing" % label):
 		return false
 	if not assert_true(_inputs_identical(once, decoded),
-			"%s: quantized() distinto de decode(encode()): %s frente a %s" % [
+			"%s: quantized() differs from decode(encode()): %s versus %s" % [
 				label, once, decoded,
 			]):
 		return false
 	return assert_true(once.move.length() <= MAX_QUANTIZED_MOVE_LENGTH,
-			"%s: move cuantizado con longitud %s > 1" % [label, once.move.length()])
+			"%s: quantized move with length %s > 1" % [label, once.move.length()])

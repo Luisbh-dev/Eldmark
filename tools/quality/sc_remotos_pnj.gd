@@ -1,15 +1,15 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área combate: tiras de los PNJ vistos desde otro cliente de verdad.
+## Quality capture bench (TEC-50), combat area: strips of the NPCs seen from another real client.
 ##
-## Cuatro fases, una por tipo de PNJ, con el servidor por defecto (PNJ del Vado Gris, sin bots):
-## [br]- [code]hueco[/code]: los Huecos de la guarnición neutral del fuerte.
-## [br]- [code]capitan[/code]: el Capitán del Vado (su muerte la fuerza el comando de depuración «matar al capitán»).
-## [br]- [code]guardia[/code]: los guardias de reino y el capitán de reino; para tenerlos enemigos se da el fuerte al
-## reino contrario con el comando de depuración (la guarnición aparece al momento).
-## [br]- [code]guardian[/code]: los Guardianes de la Puerta del campamento enemigo (atacan a quien entra en él).
-## En cada fase se elige el PNJ más alejado de los demás, el cliente se coloca al lado contrario de sus compañeros y
-## hace de compañero de entrenamiento ([code]spar.gd[/code]); [code]strip_recorder.gd[/code] graba las tiras con el clip de
-## la capa de animación del PNJ en cada fotograma. Con [code]--phases=hueco,guardia[/code] se eligen las fases.
+## Four phases, one per NPC type, with the default server (Vado Gris NPCs, no bots):
+## [br]- [code]hueco[/code]: the Hollow of the fort's neutral garrison.
+## [br]- [code]capitan[/code]: the Ford Captain (his death is forced by the debug command "matar al capitán" (kill the captain)).
+## [br]- [code]guardia[/code]: the realm guards and the realm captain; to have them as enemies the fort is given to the
+## opposing realm with the debug command (the garrison appears at once).
+## [br]- [code]guardian[/code]: the Gate Guardians of the enemy camp (they attack whoever enters it).
+## In each phase the NPC furthest from the others is chosen, the client positions itself on the opposite side from its companions and
+## acts as a sparring partner ([code]spar.gd[/code]); [code]strip_recorder.gd[/code] records the strips with the clip of
+## the NPC's animation layer in each frame. The phases are chosen with [code]--phases=hueco,guardia[/code].
 
 const Recorder = preload("res://tools/quality/strip_recorder.gd")
 const Spar = preload("res://tools/quality/spar.gd")
@@ -17,7 +17,7 @@ const Specs = preload("res://tools/quality/strip_specs.gd")
 
 const FORT_GATE_SPOT: Vector3 = Vector3(-26.0, 0.0, 0.0)
 const ENEMY_CAMP_SPOT: Vector3 = Vector3(0.0, 0.0, 128.0)
-## Tiempo máximo (ms) de cada fase y de toda la ejecución.
+## Maximum time (ms) of each phase and of the whole run.
 const PHASE_BUDGET_MS: int = 150000
 const TIMEOUT_MS: int = 700000
 const MODES: Array = [["fight", 9000], ["observe", 3000], ["heavy", 6000], ["kite", 4000], ["fight", 20000]]
@@ -59,7 +59,7 @@ func run(drv: Variant) -> void:
 	d.note("tiras de PNJ que no se vieron en las fases pedidas: %s (tomas descartadas por validación: %s)" % [missing, specs.rejected])
 
 
-# --- Fases -------------------------------------------------------------------------------------
+# --- Phases -------------------------------------------------------------------------------------
 
 func _phase(key: String, phase_end: int) -> void:
 	d.note("fase %s" % key)
@@ -110,7 +110,7 @@ func _matches(key: String, npc_name: String) -> bool:
 	return false
 
 
-# El PNJ de la fase más alejado de los demás PNJ (para que ninguno lo rodee), vivo y a la vista.
+# The phase's NPC furthest from the other NPCs (so that none surrounds it), alive and in view.
 func _pick_target(key: String) -> Dictionary:
 	var all: Array = d.remotes()
 	var best: Dictionary = {}
@@ -121,11 +121,11 @@ func _pick_target(key: String) -> Dictionary:
 			continue
 		if (int(r["action"]) & 0x0F) == CombatState.Action.DEAD:
 			continue
-		# Los PNJ de reino (guardias, Guardianes) tienen que ser del reino contrario: los propios no atacan.
+		# Realm NPCs (guards, Guardians) must be from the opposing realm: your own do not attack.
 		if int(r["realm"]) == my_realm:
 			continue
 		if key == "guardian":
-			# Los dos Guardianes de una puerta están juntos: vale el más cercano.
+			# The two Guardians of a gate stand together: the nearest one will do.
 			if best.is_empty() or float(r["dist"]) < float(best["dist"]):
 				best = r
 			continue
@@ -140,7 +140,7 @@ func _pick_target(key: String) -> Dictionary:
 	return best
 
 
-# Un punto a 6 m del PNJ por el lado contrario al de su vecino más cercano (así los demás quedan a su espalda).
+# A point 6 m from the NPC on the side opposite its nearest neighbour (so the others end up behind it).
 func _spot_for(target: Dictionary) -> Vector3:
 	var p: Vector3 = target["pos"]
 	var away := Vector3.ZERO
@@ -195,7 +195,7 @@ func _approach_and_spar(target: Dictionary, key: String, phase_end: int) -> void
 	spar.stop()
 
 
-# Con el resto de tiras del capitán hechas, se le mata con el comando de depuración para ver su muerte desde lejos.
+# With the captain's other strips done, he is killed with the debug command to watch his death from afar.
 func _maybe_kill_captain(key: String) -> void:
 	if key != "capitan" or _captain_killed:
 		return
@@ -219,7 +219,7 @@ func _choose_mode(now: int) -> void:
 		_mode_end_ms = now + int(entry[1])
 
 
-# --- Tiras ------------------------------------------------------------------------------------
+# --- Strips ------------------------------------------------------------------------------------
 
 func _walk_cond() -> Callable:
 	return func(cur: Dictionary, prev: Dictionary) -> bool:
@@ -237,12 +237,12 @@ func _walk_valid(weapon: String) -> Callable:
 				return false
 			if float(m["speed"]) >= 0.8:
 				moving += 1
-		# Se mueve en la mayor parte de la toma (al llegar al jugador frena en los últimos fotogramas).
+		# It moves for most of the take (on reaching the player it slows down in the last frames).
 		return moving >= 8
 
 
 func _define_specs() -> void:
-	# Hueco (weapon npc_hollow).
+	# Hollow (weapon npc_hollow).
 	var hollow: String = "npc_hollow"
 	specs.add("rem_hueco_ataque", "Hueco visto desde otro cliente: ataque", "hueco", Specs.edge(["LIGHT"]), 12, 100, 150,
 			"Un ataque ligero del Hueco, desde el principio del golpe.",
@@ -255,7 +255,7 @@ func _define_specs() -> void:
 			"El Hueco tambaleándose tras un golpe del jugador.", Specs.has_action(["STAGGER"], 3, [], hollow))
 	specs.add("rem_hueco_muerte", "Hueco visto desde otro cliente: muerte", "hueco", Specs.edge(["DEAD"]), 12, 200, 200,
 			"El Hueco muriendo.", Specs.has_action(["DEAD"], 4, [], hollow), true)
-	# Capitán (weapon npc_captain).
+	# Captain (weapon npc_captain).
 	var captain: String = "npc_captain"
 	specs.add("rem_capitan_ataque", "Capitán visto desde otro cliente: ataque", "capitan", Specs.edge(["LIGHT"]), 12, 120, 150,
 			"Ataque ligero (barrido) del Capitán.", Specs.has_action(["LIGHT"], 3, ["CHARGE", "HEAVY"], captain))
@@ -265,7 +265,7 @@ func _define_specs() -> void:
 			"El Capitán desplazándose.", _walk_valid(captain))
 	specs.add("rem_capitan_muerte", "Capitán visto desde otro cliente: muerte", "capitan", Specs.edge(["DEAD"]), 12, 200, 200,
 			"El Capitán muriendo.", Specs.has_action(["DEAD"], 4, [], captain), true)
-	# Guardia de reino (weapon npc_guard).
+	# Realm guard (weapon npc_guard).
 	var guard: String = "npc_guard"
 	specs.add("rem_guardia_ataque", "Guardia de reino visto desde otro cliente: ataque", "guardia", Specs.edge(["LIGHT"]), 12, 100, 150,
 			"Ataque ligero del guardia de reino.", Specs.has_action(["LIGHT"], 3, ["CHARGE", "HEAVY"], guard))
@@ -277,7 +277,7 @@ func _define_specs() -> void:
 			"El guardia de reino desplazándose.", _walk_valid(guard))
 	specs.add("rem_guardia_muerte", "Guardia de reino visto desde otro cliente: muerte", "guardia", Specs.edge(["DEAD"]), 12, 200, 200,
 			"El guardia de reino muriendo.", Specs.has_action(["DEAD"], 4, [], guard), true)
-	# Guardián de la Puerta (weapon npc_guardian).
+	# Gate Guardian (weapon npc_guardian).
 	var guardian: String = "npc_guardian"
 	specs.add("rem_guardian_ataque", "Guardián de la Puerta visto desde otro cliente: ataque", "guardian", Specs.edge(["LIGHT"]), 12, 100, 150,
 			"Ataque de alabarda del Guardián de la Puerta.", Specs.has_action(["LIGHT"], 3, ["CHARGE", "HEAVY"], guardian))

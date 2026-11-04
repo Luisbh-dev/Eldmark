@@ -1,31 +1,32 @@
-// Package testdb da a las pruebas una base PostgreSQL real y efímera (plataforma.md §2.6), sin
+// Package testdb gives tests a real, ephemeral PostgreSQL database (plataforma.md §2.6), without
 // Docker.
 //
-// Uso:
+// Usage:
 //
 //	func TestMain(m *testing.M) { os.Exit(testdb.Main(m)) }
 //
-//	func TestAlgo(t *testing.T) {
-//		pool := testdb.New(t) // base nueva con todas las migraciones
+//	func TestSomething(t *testing.T) {
+//		pool := testdb.New(t) // fresh database with all the migrations
 //		…
 //	}
 //
-// La primera prueba que pide una base levanta un clúster con initdb en una carpeta temporal
-// (os.MkdirTemp("", "eldpg-")) y crea la plantilla tmpl con todas las migraciones; cada prueba
-// recibe «create database t_<n> template tmpl», que se borra al terminar. Main para el clúster y
-// borra la carpeta; si el proceso muere antes de llegar ahí (un pánico, el plazo de go test, un
-// Ctrl-C), lo hace un vigilante (en Unix, un sh aparte que espera en una tubería). El servidor escucha solo en un socket Unix dentro de esa carpeta, así que dos
-// paquetes que corren a la vez no chocan; si la ruta del socket pasa de los 107 B que admite el
-// sistema (un TMPDIR largo), escucha en 127.0.0.1 con un puerto libre.
+// The first test that asks for a database brings up a cluster with initdb in a temporary folder
+// (os.MkdirTemp("", "eldpg-")) and creates the template tmpl with all the migrations; each test
+// receives "create database t_<n> template tmpl", which is dropped when it finishes. Main stops
+// the cluster and deletes the folder; if the process dies before getting there (a panic, the go
+// test deadline, a Ctrl-C), a watchdog does it (on Unix, a separate sh waiting on a pipe). The
+// server listens only on a Unix socket inside that folder, so two packages running at the same
+// time do not collide; if the socket path exceeds the 107 B the system allows (a long TMPDIR), it
+// listens on 127.0.0.1 with a free port.
 //
 // Variables:
-//   - ELDMARK_PG_BIN: carpeta de los binarios (si no, pg_config --bindir; si no, el mayor
+//   - ELDMARK_PG_BIN: folder of the binaries (otherwise pg_config --bindir; otherwise the highest
 //     /usr/lib/postgresql/*/bin).
-//   - ELDMARK_PG_USER: usuario con el que corren initdb y pg_ctl cuando las pruebas corren como
-//     root, que initdb no admite (por defecto postgres, con runuser -u <usuario> --).
-//   - ELDMARK_TEST_DATABASE_URL: usa un servidor ya levantado en lugar del clúster efímero.
-//   - ELDMARK_REQUIRE_PG=1 (la CI): sin binarios ni servidor, las pruebas fallan en lugar de
-//     saltarse.
+//   - ELDMARK_PG_USER: user that initdb and pg_ctl run as when the tests run as root, which
+//     initdb does not allow (postgres by default, with runuser -u <user> --).
+//   - ELDMARK_TEST_DATABASE_URL: use an already running server instead of the ephemeral cluster.
+//   - ELDMARK_REQUIRE_PG=1 (CI): with no binaries or server, the tests fail instead of being
+//     skipped.
 package testdb
 
 import (
@@ -53,30 +54,30 @@ import (
 	"eldmark/platform/internal/migrate"
 )
 
-// Longitud máxima de la ruta de un socket Unix (sun_path tiene 108 B con el nulo final).
+// Maximum length of a Unix socket path (sun_path is 108 B with the trailing null).
 const maxSocketPath = 107
 
-// Usuario de la base en el clúster efímero (initdb -U).
+// Database user in the ephemeral cluster (initdb -U).
 const superuser = "eldmark"
 
 type cluster struct {
 	binDir  string
-	runAs   string // usuario para runuser, o "" si no hace falta
-	dir     string // carpeta temporal, "" con ELDMARK_TEST_DATABASE_URL
-	host    string // carpeta del socket o 127.0.0.1
+	runAs   string // user for runuser, or "" if not needed
+	dir     string // temporary folder, "" with ELDMARK_TEST_DATABASE_URL
+	host    string // socket folder or 127.0.0.1
 	port    int
-	baseURL string // con ELDMARK_TEST_DATABASE_URL
-	prefix  string // prefijo de las bases de este proceso
-	tmpl    string // nombre de la plantilla
+	baseURL string // with ELDMARK_TEST_DATABASE_URL
+	prefix  string // prefix of this process's databases
+	tmpl    string // template name
 	admin   *pgxpool.Pool
 	created []string
 	mu      sync.Mutex
 
-	watchdog     *exec.Cmd // el vigilante (startWatchdog), o nil
-	watchdogPipe *os.File  // su entrada: «done» al acabar bien; cerrada al morir el proceso
+	watchdog     *exec.Cmd // the watchdog (startWatchdog), or nil
+	watchdogPipe *os.File  // its input: "done" on a clean finish; closed when the process dies
 }
 
-// state es el clúster del paquete, que levanta la primera prueba que pide una base.
+// state is the package's cluster, brought up by the first test that asks for a database.
 var state struct {
 	once    sync.Once
 	c       *cluster
@@ -86,8 +87,8 @@ var state struct {
 	counter atomic.Int64
 }
 
-// Main ejecuta las pruebas del paquete y, al acabar, para el clúster y borra su carpeta. Se llama
-// desde TestMain: os.Exit(testdb.Main(m)).
+// Main runs the package's tests and, when done, stops the cluster and deletes its folder. It is
+// called from TestMain: os.Exit(testdb.Main(m)).
 func Main(m *testing.M) int {
 	state.inMain = true
 	code := m.Run()
@@ -102,14 +103,14 @@ func Main(m *testing.M) int {
 	return code
 }
 
-// New devuelve un pool sobre una base nueva con todas las migraciones embebidas, que se borra al
-// terminar la prueba. Sin PostgreSQL, salta la prueba (o la falla con ELDMARK_REQUIRE_PG=1).
+// New returns a pool on a fresh database with all the embedded migrations, which is dropped when
+// the test finishes. Without PostgreSQL, it skips the test (or fails it with ELDMARK_REQUIRE_PG=1).
 func New(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	return newDatabase(t, true)
 }
 
-// NewEmpty es como [New] pero sin ninguna migración (para probar el propio migrate).
+// NewEmpty is like [New] but with no migrations (to test migrate itself).
 func NewEmpty(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	return newDatabase(t, false)
@@ -161,16 +162,15 @@ func newDatabase(t testing.TB, migrated bool) *pgxpool.Pool {
 	return pool
 }
 
-// testPoolConns es el tamaño del pool de cada base de prueba: los cuatro trabajos periódicos de
-// serve tienen cada uno dos conexiones a la vez (la del bloqueo y la del trabajo) y aún quedan para
-// las peticiones.
+// testPoolConns is the size of each test database's pool: serve's four periodic jobs each hold
+// two connections at once (the lock's and the job's) and there are still some left for requests.
 const testPoolConns = 10
 
-// ConnString devuelve la cadena de conexión de un pool de [New] (para pasarla a una orden).
+// ConnString returns the connection string of a pool from [New] (to pass it to a command).
 func ConnString(pool *pgxpool.Pool) string { return pool.Config().ConnString() }
 
-// DumpSchema devuelve el esquema de la base del pool con pg_dump -s, sin dueños, privilegios ni
-// las líneas \restrict que cambian en cada volcado.
+// DumpSchema returns the pool's database schema with pg_dump -s, without owners, privileges or
+// the \restrict lines that change on every dump.
 func DumpSchema(t testing.TB, pool *pgxpool.Pool) string {
 	t.Helper()
 	c := get(t)
@@ -205,7 +205,7 @@ func (c *cluster) pool(ctx context.Context, database string, maxConns int32) (*p
 	if c.baseURL != "" {
 		conn = withDatabase(c.baseURL, database)
 	}
-	// La cadena lleva la base, así ConnString del pool sirve para pasarla a una orden.
+	// The string carries the database, so the pool's ConnString can be passed to a command.
 	cfg, err := pgxpool.ParseConfig(conn)
 	if err != nil {
 		return nil, errors.New("testdb: ELDMARK_TEST_DATABASE_URL no se entiende")
@@ -215,8 +215,8 @@ func (c *cluster) pool(ctx context.Context, database string, maxConns int32) (*p
 	return pgxpool.NewWithConfig(ctx, cfg)
 }
 
-// withDatabase cambia la base de una cadena de conexión, en forma de URL (postgres://…/base) o de
-// pares clave=valor (donde el último dbname manda).
+// withDatabase changes the database in a connection string, in URL form (postgres://…/db) or as
+// key=value pairs (where the last dbname wins).
 func withDatabase(base, database string) string {
 	if strings.HasPrefix(base, "postgres://") || strings.HasPrefix(base, "postgresql://") {
 		if u, err := url.Parse(base); err == nil {
@@ -227,8 +227,8 @@ func withDatabase(base, database string) string {
 	return base + " dbname=" + database
 }
 
-// start levanta el clúster (o se conecta al servidor de ELDMARK_TEST_DATABASE_URL) y crea la
-// plantilla. Devuelve skip si no hay PostgreSQL.
+// start brings up the cluster (or connects to the ELDMARK_TEST_DATABASE_URL server) and creates
+// the template. It returns skip if there is no PostgreSQL.
 func start() (*cluster, string, error) {
 	c := &cluster{prefix: fmt.Sprintf("eldt%d", os.Getpid())}
 	c.binDir = findBinDir()
@@ -283,7 +283,7 @@ func (c *cluster) close() error {
 	var errs []error
 	if c.admin != nil {
 		if c.baseURL != "" {
-			// En un servidor ajeno se borran las bases de este proceso.
+			// On a foreign server, this process's databases are dropped.
 			c.mu.Lock()
 			names := append([]string(nil), c.created...)
 			c.mu.Unlock()
@@ -312,7 +312,7 @@ func (c *cluster) removeDir() {
 	c.stopWatchdog()
 }
 
-// stopWatchdog despide al vigilante cuando ya se ha limpiado: «done» y espera a que salga.
+// stopWatchdog dismisses the watchdog once cleanup is done: "done" and wait for it to exit.
 func (c *cluster) stopWatchdog() {
 	if c.watchdog == nil {
 		return
@@ -323,7 +323,7 @@ func (c *cluster) stopWatchdog() {
 	c.watchdog, c.watchdogPipe = nil, nil
 }
 
-// initCluster crea el clúster con initdb y lo arranca con pg_ctl.
+// initCluster creates the cluster with initdb and starts it with pg_ctl.
 func (c *cluster) initCluster() error {
 	dir, err := os.MkdirTemp("", "eldpg-")
 	if err != nil {
@@ -348,7 +348,7 @@ func (c *cluster) initCluster() error {
 			return err
 		}
 	}
-	// El vigilante, antes de initdb: limpia también si el proceso muere arrancando el clúster.
+	// The watchdog, before initdb: it also cleans up if the process dies while starting the cluster.
 	if err := c.startWatchdog(); err != nil {
 		return fmt.Errorf("vigilante del clúster: %w", err)
 	}
@@ -368,8 +368,8 @@ func (c *cluster) initCluster() error {
 		}
 		return nil
 	}
-	// Ruta demasiado larga para un socket: TCP en loopback con un puerto libre (se reintenta si
-	// otro proceso lo toma entre medias).
+	// Path too long for a socket: TCP on loopback with a free port (retried if another process takes
+	// it in between).
 	for attempt := 0; attempt < 5; attempt++ {
 		port, perr := freePort()
 		if perr != nil {
@@ -396,7 +396,7 @@ func (c *cluster) serverLog() string {
 	return "\n" + string(data)
 }
 
-// argv es la orden de un binario de PostgreSQL, con runuser si hace falta.
+// argv is the command line of a PostgreSQL binary, with runuser if needed.
 func (c *cluster) argv(bin string, args ...string) []string {
 	path := filepath.Join(c.binDir, bin)
 	if c.runAs != "" {
@@ -405,7 +405,7 @@ func (c *cluster) argv(bin string, args ...string) []string {
 	return append([]string{path}, args...)
 }
 
-// run ejecuta un binario de PostgreSQL, con runuser si hace falta, desde la carpeta temporal.
+// run executes a PostgreSQL binary, with runuser if needed, from the temporary folder.
 func (c *cluster) run(bin string, args ...string) (string, error) {
 	argv := c.argv(bin, args...)
 	cmd := exec.Command(argv[0], argv[1:]...)
@@ -425,16 +425,16 @@ func freePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-// BinDir devuelve la carpeta de los binarios de PostgreSQL que usan las pruebas (la de [Main]:
-// ELDMARK_PG_BIN, pg_config --bindir o el mayor /usr/lib/postgresql/*/bin), o "" si no hay. Para
-// las pruebas que corren pg_dump, pg_restore o los scripts de platform/deploy.
+// BinDir returns the folder of the PostgreSQL binaries used by the tests (the one from [Main]:
+// ELDMARK_PG_BIN, pg_config --bindir or the highest /usr/lib/postgresql/*/bin), or "" if there is
+// none. For tests that run pg_dump, pg_restore or the platform/deploy scripts.
 func BinDir() string { return findBinDir() }
 
-// findBinDir busca los binarios: ELDMARK_PG_BIN, pg_config --bindir o el mayor
+// findBinDir looks for the binaries: ELDMARK_PG_BIN, pg_config --bindir or the highest
 // /usr/lib/postgresql/*/bin.
 func findBinDir() string {
 	if dir := os.Getenv("ELDMARK_PG_BIN"); dir != "" {
-		// La dada manda: sin initdb en ella no se busca en otro sitio.
+		// The given one wins: without initdb in it, nowhere else is searched.
 		if _, err := os.Stat(filepath.Join(dir, "initdb")); err != nil {
 			return ""
 		}
@@ -461,8 +461,8 @@ func versionOf(initdb string) int {
 	return v
 }
 
-// reapStale para y borra los clústeres que dejó un proceso de pruebas que murió sin llegar al
-// final de Main (un plazo vencido, un kill).
+// reapStale stops and deletes the clusters left by a test process that died without reaching the
+// end of Main (an expired deadline, a kill).
 func reapStale() {
 	dirs, _ := filepath.Glob(filepath.Join(os.TempDir(), "eldpg-*"))
 	for _, dir := range dirs {
@@ -488,8 +488,8 @@ func reapStale() {
 	}
 }
 
-// Exec ejecuta una sentencia sin argumentos (varias, con el protocolo simple) en la base del pool;
-// falla la prueba si hay error.
+// Exec runs a statement with no arguments (several, with the simple protocol) on the pool's
+// database; it fails the test on error.
 func Exec(t testing.TB, pool *pgxpool.Pool, sql string) {
 	t.Helper()
 	if _, err := pool.Exec(context.Background(), sql); err != nil {
@@ -497,7 +497,7 @@ func Exec(t testing.TB, pool *pgxpool.Pool, sql string) {
 	}
 }
 
-// Tables devuelve las tablas del esquema public, sin schema_migrations, en orden.
+// Tables returns the tables of the public schema, without schema_migrations, in order.
 func Tables(t testing.TB, pool *pgxpool.Pool) []string {
 	t.Helper()
 	rows, err := pool.Query(context.Background(),

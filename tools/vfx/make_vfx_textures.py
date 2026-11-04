@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Genera las texturas de los efectos de golpe (ART-09) en scenes/vfx/textures/.
+"""Generates the hit effect textures (ART-09) in scenes/vfx/textures/.
 
-Todo sale de código (numpy y PIL), con semillas fijas: volver a ejecutarlo da los mismos píxeles.
-No hay nada de terceros. Cada textura es RGBA de 8 bits y se importa SIN compresión de VRAM (las
-curvas suaves de chispas y humo se rompen en bloques con S3TC), con mipmaps. Convenciones:
+Everything comes from code (numpy and PIL), with fixed seeds: running it again gives the same pixels.
+There is nothing third-party. Each texture is 8-bit RGBA and is imported WITHOUT VRAM compression (the smooth
+curves of sparks and smoke break into blocks with S3TC), with mipmaps. Conventions:
 
-    - Las máscaras de luz (destellos, rayos, chispas) llevan el valor en RGB y en alfa, así sirven
-      tanto para mezcla aditiva (se lee R) como para mezcla normal (se lee A).
-    - Las de forma con volumen (humo, astillas, gotas, salpicadura) llevan en alfa la silueta y en RGB
-      el sombreado (1 = claro), para que el sombreador las tiña sin perder relieve.
-    - Los atlas son de 2 x 2 casillas (h_frames = 2, v_frames = 2 en los sombreadores).
+    - Light masks (flashes, rays, sparks) carry the value in RGB and in alpha, so they work
+      both for additive blending (R is read) and for normal blending (A is read).
+    - Shapes with volume (smoke, splinters, drops, splash) carry the silhouette in alpha and the shading in RGB
+      (1 = light), so that the shader can tint them without losing relief.
+    - Atlases are 2 x 2 cells (h_frames = 2, v_frames = 2 in the shaders).
 
-Uso, desde la raíz del proyecto (después, importar con Godot para que cree los .ctex):
+Usage, from the project root (afterwards, import with Godot so that it creates the .ctex files):
 
     python tools/vfx/make_vfx_textures.py
 """
@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scenes", "vfx",
 		"textures")
 
-# Texto de los .import que se escriben junto a cada PNG nuevo: sin compresión de VRAM y con mipmaps.
+# Text of the .import files written next to each new PNG: no VRAM compression and with mipmaps.
 IMPORT_TEMPLATE = """[remap]
 
 importer="texture"
@@ -45,7 +45,7 @@ detect_3d/compress_to=0
 """
 
 
-# --- Utilidades --------------------------------------------------------------------------------
+# --- Utilities ---------------------------------------------------------------------------------
 
 def smoothstep(a, b, x):
 	t = np.clip((x - a) / (b - a), 0.0, 1.0)
@@ -53,15 +53,15 @@ def smoothstep(a, b, x):
 
 
 def grid(height, width=None):
-	"""Coordenadas normalizadas (x, y) del centro de cada píxel, en [0, 1)."""
+	"""Normalised coordinates (x, y) of the centre of each pixel, in [0, 1)."""
 	width = width or height
 	yy, xx = np.mgrid[0:height, 0:width]
 	return (xx + 0.5) / width, (yy + 0.5) / height
 
 
 def fbm_tile(size, beta, seed, stretch=1.0):
-	"""Ruido de color 1/f^beta que se repite en los bordes (por FFT), normalizado a [0, 1].
-	[stretch] > 1 lo alarga a lo largo de x (vetas)."""
+	"""1/f^beta colour noise that tiles at the edges (via FFT), normalised to [0, 1].
+	[stretch] > 1 lengthens it along x (streaks)."""
 	rng = np.random.default_rng(seed)
 	white = rng.standard_normal((size, size if isinstance(size, int) else size[1]))
 	spectrum = np.fft.fft2(white)
@@ -77,13 +77,13 @@ def fbm_tile(size, beta, seed, stretch=1.0):
 
 
 def save(name, rgba):
-	"""Guarda un array float (h, w, 4) en [0, 1] como PNG y escribe su .import."""
+	"""Saves a float array (h, w, 4) in [0, 1] as a PNG and writes its .import."""
 	os.makedirs(OUT_DIR, exist_ok=True)
 	data = (np.clip(rgba, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
 	path = os.path.join(OUT_DIR, name)
 	Image.fromarray(data, "RGBA").save(path, optimize=True)
-	# El .import solo se escribe si no existe: Godot le añade un uid propio al importar y reescribirlo en cada
-	# ejecución se lo cambiaría a la textura (y a todo lo que la referencia por uid).
+	# The .import is only written if it does not exist: Godot adds its own uid to it on import and rewriting it on every
+	# run would change it for the texture (and for everything that references it by uid).
 	if not os.path.exists(path + ".import"):
 		with open(path + ".import", "w", newline="\n") as handle:
 			handle.write(IMPORT_TEMPLATE)
@@ -91,19 +91,19 @@ def save(name, rgba):
 
 
 def mask_rgba(mask):
-	"""Máscara de luz: valor en RGB y en alfa."""
+	"""Light mask: value in RGB and in alpha."""
 	mask = np.clip(mask, 0.0, 1.0)
 	return np.stack([mask, mask, mask, mask], axis=-1)
 
 
 def shaded_rgba(alpha, shade):
-	"""Silueta en alfa y sombreado en RGB."""
+	"""Silhouette in alpha and shading in RGB."""
 	shade = np.clip(shade, 0.0, 1.0)
 	return np.stack([shade, shade, shade, np.clip(alpha, 0.0, 1.0)], axis=-1)
 
 
 def blur(field, passes=2):
-	"""Desenfoque barato de caja (con repetición en los bordes)."""
+	"""Cheap box blur (wrapping at the edges)."""
 	for _ in range(passes):
 		field = (field + np.roll(field, 1, 0) + np.roll(field, -1, 0)
 				+ np.roll(field, 1, 1) + np.roll(field, -1, 1)) / 5.0
@@ -111,16 +111,16 @@ def blur(field, passes=2):
 
 
 def atlas(frames):
-	"""Une 4 casillas del mismo tamaño en un atlas de 2 x 2."""
+	"""Joins 4 cells of the same size into a 2 x 2 atlas."""
 	top = np.concatenate([frames[0], frames[1]], axis=1)
 	bottom = np.concatenate([frames[2], frames[3]], axis=1)
 	return np.concatenate([top, bottom], axis=0)
 
 
-# --- Texturas ----------------------------------------------------------------------------------
+# --- Textures ----------------------------------------------------------------------------------
 
 def make_soft_dot():
-	"""Punto de luz: núcleo caliente y caída suave."""
+	"""Dot of light: hot core and soft falloff."""
 	x, y = grid(64)
 	r = np.hypot(x - 0.5, y - 0.5) * 2.0
 	core = np.exp(-(r / 0.22) ** 2)
@@ -130,8 +130,8 @@ def make_soft_dot():
 
 
 def make_flare_star():
-	"""Destello de cuatro puntas: núcleo, halo, cruz larga (horizontal más que vertical) y dos
-	diagonales cortas."""
+	"""Four-pointed flash: core, halo, long cross (more horizontal than vertical) and two short
+	diagonals."""
 	size = 256
 	x, y = grid(size)
 	x = (x - 0.5) * 2.0
@@ -151,14 +151,14 @@ def make_flare_star():
 
 
 def make_spark_streak():
-	"""Chispa con cola, 64 x 256. La cabeza (lo que va delante) está ARRIBA, que es hacia donde el
-	motor apunta el eje Y de la partícula cuando la alinea con su velocidad."""
+	"""Spark with a tail, 64 x 256. The head (what leads) is at the TOP, which is where the
+	engine points the particle's Y axis when it aligns it with its velocity."""
 	width, height = 64, 256
 	x, y = grid(height, width)
 	x = (x - 0.5) * 2.0
 	t = y
 	fall = np.clip(1.0 - t, 0.0, 1.0)
-	# Cuerpo fino que se estrecha hacia la cola, con un hilo de núcleo blanco y una cabeza pequeña.
+	# Thin body that narrows towards the tail, with a thread of white core and a small head.
 	taper = 0.05 + 0.2 * fall ** 1.8
 	body = np.exp(-(x / taper) ** 2) * fall ** 1.25 * smoothstep(0.0, 0.05, t)
 	core = np.exp(-(x / (taper * 0.4)) ** 2) * np.clip(1.0 - t * 1.15, 0.0, 1.0) ** 1.5
@@ -169,7 +169,7 @@ def make_spark_streak():
 
 
 def make_rays():
-	"""Rayos radiales para la parada perfecta: delgados, de distinto largo, con halo y núcleo."""
+	"""Radial rays for the perfect block: thin, of different lengths, with halo and core."""
 	size = 512
 	x, y = grid(size)
 	x = (x - 0.5) * 2.0
@@ -197,7 +197,7 @@ def make_rays():
 
 
 def make_noise():
-	"""Tres ruidos que se repiten, uno por canal (nubes suaves, nubes finas y vetas largas), 256 px."""
+	"""Three tiling noises, one per channel (soft clouds, fine clouds and long streaks), 256 px."""
 	soft = fbm_tile(256, 1.7, 21)
 	fine = fbm_tile(256, 1.0, 22)
 	streak = fbm_tile(256, 1.3, 23, stretch=7.0)
@@ -206,7 +206,7 @@ def make_noise():
 
 
 def make_shards():
-	"""Cuatro esquirlas de metal (astillas facetadas con un lado claro y otro oscuro), 4 x 64 px."""
+	"""Four metal shards (faceted splinters with a light side and a dark one), 4 x 64 px."""
 	rng = np.random.default_rng(31)
 	frames = []
 	for index in range(4):
@@ -233,7 +233,7 @@ def make_shards():
 		mid_a = pt(length * 0.1, -half * 1.1)
 		mid_b = pt(length * 0.0, half * 1.2)
 		alpha_draw.polygon([tip, mid_a, tail_a, tail_b, mid_b], fill=255)
-		# Faceta clara: de la punta a la mitad de la arista inferior.
+		# Light facet: from the tip to the middle of the lower edge.
 		ridge_tail = pt(-length * 0.8, 0.0)
 		light_draw.polygon([tip, mid_a, ridge_tail], fill=255)
 		light_draw.polygon([tip, mid_b, ridge_tail], fill=110)
@@ -245,29 +245,29 @@ def make_shards():
 
 
 def make_droplets():
-	"""Cuatro gotas estilizadas (redonda, lágrima, alargada y doble), 4 x 64 px."""
+	"""Four stylised drops (round, teardrop, elongated and double), 4 x 64 px."""
 	frames = []
 	size = 64
 	x, y = grid(size)
 	x = (x - 0.5) * 2.0
 	y = (y - 0.5) * 2.0
-	# 1) Redonda con brillo.
+	# 1) Round with a highlight.
 	r = np.hypot(x, y)
 	round_alpha = smoothstep(0.62, 0.56, r)
 	shade = 0.7 + 0.3 * smoothstep(0.35, 0.0, np.hypot(x + 0.2, y + 0.2))
 	frames.append(shaded_rgba(round_alpha, shade))
-	# 2) Lágrima con la punta ABAJO: la gota va hacia arriba (eje Y siguiendo la velocidad) y la punta
-	# queda detrás.
+	# 2) Teardrop with the tip DOWN: the drop travels upward (Y axis following the velocity) and the tip
+	# ends up behind.
 	flipped = -y
 	t = np.clip((flipped + 0.78) / 1.5, 0.0, 1.0)
 	half = 0.5 * np.sin(np.pi * np.clip(t, 0.0, 1.0) ** 0.62) ** 1.1 * (0.2 + 0.8 * t)
 	tear = smoothstep(0.03, -0.03, np.abs(x) - half) * smoothstep(0.0, 0.03, t) * smoothstep(1.0, 0.97, t)
 	frames.append(shaded_rgba(tear, 0.68 + 0.3 * smoothstep(0.4, 0.0, np.hypot(x + 0.18, y + 0.25))))
-	# 3) Alargada (rayita).
+	# 3) Elongated (a little streak).
 	long_half = 0.2 * np.sin(np.pi * np.clip((y + 0.9) / 1.8, 0.0, 1.0)) ** 0.8
 	flick = smoothstep(0.03, -0.03, np.abs(x) - long_half)
 	frames.append(shaded_rgba(flick, 0.78 - 0.15 * np.abs(x) * 3.0))
-	# 4) Doble: dos gotas pegadas.
+	# 4) Double: two drops stuck together.
 	a = smoothstep(0.34, 0.3, np.hypot(x + 0.28, y + 0.12))
 	b = smoothstep(0.22, 0.18, np.hypot(x - 0.32, y - 0.3))
 	frames.append(shaded_rgba(np.maximum(a, b), 0.72 + 0.25 * smoothstep(0.3, 0.0, np.hypot(x + 0.4, y + 0.2))))
@@ -275,13 +275,13 @@ def make_droplets():
 
 
 def make_puffs():
-	"""Cuatro bocanadas de polvo con volumen, en un atlas de 2 x 2 casillas de 256 px (512 x 512).
+	"""Four puffs of dust with volume, in a 2 x 2 atlas of 256 px cells (512 x 512).
 
-	No llevan el color cocinado: son datos para el sombreador con luz (vfx_particle_lit):
-	    R = altura del relieve (0 fuera de la bocanada, 1 en la cima de los lóbulos); de ella sale la
-	        normal, así el sol la modela y la sombra la oscurece;
-	    G = ruido fino (la erosión: la bocanada se deshace desde el borde, no baja el alfa de golpe);
-	    B = ruido de remolino, que desplaza la erosión para que cada copia se rompa distinta;
+	They do not carry baked colour: they are data for the lit shader (vfx_particle_lit):
+	    R = relief height (0 outside the puff, 1 at the top of the lobes); the
+	        normal comes from it, so the sun shapes it and the shadow darkens it;
+	    G = fine noise (the erosion: the puff dissolves from the edge, the alpha does not drop all at once);
+	    B = swirl noise, which displaces the erosion so that each copy breaks up differently;
 	    A = 1."""
 	size = 256
 	frames = []
@@ -299,10 +299,10 @@ def make_puffs():
 			dist = 0.0 if lobe == 0 else rng.uniform(0.2, 0.52)
 			radius = rng.uniform(0.28, 0.42) if lobe else 0.5
 			cx, cy = dist * math.cos(angle), dist * math.sin(angle) * 0.8
-			# Cada lóbulo es una media esfera: el borde arrugado con ruido de dos escalas.
+			# Each lobe is a hemisphere: the edge wrinkled with noise at two scales.
 			d = np.hypot(x - cx, y - cy) / radius + (coarse - 0.5) * 0.3 + (fine - 0.5) * 0.12
 			domes.append(np.sqrt(np.clip(1.0 - d * d, 0.0, 1.0)))
-		# Máximo suave de las medias esferas: entre lóbulo y lóbulo queda un pliegue, como en una coliflor.
+		# Soft maximum of the hemispheres: a crease is left between one lobe and the next, as in a cauliflower.
 		smooth = np.log(np.sum([np.exp(7.0 * dome) for dome in domes], axis=0)) / 7.0 - math.log(lobes) / 7.0
 		height = smooth / smooth.max()
 		height = height * (0.88 + 0.24 * (fine - 0.5)) * smoothstep(1.0, 0.82, np.hypot(x, y))
@@ -314,17 +314,17 @@ def make_puffs():
 
 
 def make_splat_jets():
-	"""Chorros de salpicadura en secuencia, para el golpe en carne: 4 variantes (filas) por 5 fotogramas
-	(columnas), casillas de 128 px, 640 x 512. El chorro sale del centro de la casilla hacia +X (el
-	sombreador la gira hacia la dirección del golpe).
+	"""Splash jets in sequence, for the hit on flesh: 4 variants (rows) by 5 frames
+	(columns), 128 px cells, 640 x 512. The jet leaves the centre of the cell towards +X (the
+	shader rotates it towards the direction of the hit).
 
-	    R = sombreado (1 = claro; el centro del chorro es más claro, da grosor de líquido);
-	    G = brillo especular (un reflejo alargado en el chorro y un punto en cada gota);
-	    A = silueta.
-	Cada fotograma es un instante del chorro: nace como una mancha gorda, se estira, se estrecha y se
-	rompe en gotas alargadas por delante."""
+	    R = shading (1 = light; the centre of the jet is lighter, giving the thickness of a liquid);
+	    G = specular highlight (an elongated reflection on the jet and a dot on each drop);
+	    A = silhouette.
+	Each frame is an instant of the jet: it is born as a fat blob, stretches, narrows and
+	breaks into elongated drops at the front."""
 	cell = 128
-	X0 = -0.72  # el chorro nace cerca del borde izquierdo de la casilla (el sombreador la desplaza)
+	X0 = -0.72  # the jet is born near the left edge of the cell (the shader displaces it)
 	frames_n, variants = 5, 4
 	sheet = np.zeros((cell * variants, cell * frames_n, 4))
 	x, y = grid(cell)
@@ -375,13 +375,13 @@ def make_splat_jets():
 				m, c, _, _ = jet(X0, angle, length * factor, width * w_factor, bend * 0.6)
 				alpha = np.maximum(alpha, m * smoothstep(0.1, 0.35, t))
 				shade = np.maximum(shade, c * m * 0.9)
-			# Mancha del impacto, que se encoge y se aclara con el tiempo.
+			# Impact blob, which shrinks and lightens over time.
 			blob_r = 0.15 * (1.0 - 0.55 * t) * thick
 			blob = smoothstep(blob_r, blob_r * 0.55, np.hypot(x - X0, y * 1.1))
 			blob *= 1.0 - 0.7 * smoothstep(0.5, 1.0, t)
 			alpha = np.maximum(alpha, blob)
 			shade = np.maximum(shade, blob * 0.8)
-			# Gotas por delante: aparecen según avanza el chorro, alargadas en el sentido del movimiento.
+			# Drops at the front: they appear as the jet advances, elongated along the direction of motion.
 			for pos, side, radius in drops:
 				if pos > grow * 1.05 - 0.03:
 					continue
@@ -394,7 +394,7 @@ def make_splat_jets():
 				shade = np.maximum(shade, drop * 0.85)
 				spec = np.maximum(spec, drop * np.exp(-(np.hypot((x - dx + ex * 0.3) / (ex * 0.35),
 						(y - dy + radius * 0.3) / (radius * 0.35))) ** 2))
-			# Se apaga por los bordes de la casilla.
+			# Fades out at the edges of the cell.
 			window = smoothstep(1.0, 0.86, np.hypot(x, y))
 			alpha = alpha * window
 			rgba = np.stack([0.5 + 0.5 * shade, spec, np.zeros_like(shade), alpha], axis=-1)
@@ -403,13 +403,13 @@ def make_splat_jets():
 
 
 def make_planks():
-	"""Cuatro tablillas de madera planas, atlas de 2 x 2 casillas de 128 px (256 x 256). Cada una es un
-	trozo plano de tabla: un extremo cortado en bisel, el otro roto en dientes, con veta a lo largo.
+	"""Four flat wooden planks, a 2 x 2 atlas of 128 px cells (256 x 256). Each one is a
+	flat piece of board: one end cut at a bevel, the other broken into teeth, with grain along its length.
 
-	    R = sombreado (veta, borde oscuro);
-	    G = madera fresca (1 en la rotura, donde la madera sin curtir es clara); el sombreador la tiñe con
-	        un segundo tono ([accent]), así la tabla tiene dos tonos de madera;
-	    A = silueta."""
+	    R = shading (grain, dark edge);
+	    G = fresh wood (1 at the break, where untanned wood is light); the shader tints it with
+	        a second tone ([accent]), so the plank has two wood tones;
+	    A = silhouette."""
 	rng = np.random.default_rng(17)
 	frames = []
 	for index in range(4):
@@ -431,7 +431,7 @@ def make_planks():
 
 		half_l, half_w = length / 2.0, width / 2.0
 		bevel = rng.uniform(0.3, 0.7) * width
-		# Extremo izquierdo cortado en bisel; derecho roto en dientes.
+		# Left end cut at a bevel; right end broken into teeth.
 		outline = [pt(-half_l + bevel, -half_w), pt(half_l * 0.9, -half_w)]
 		teeth = int(rng.integers(3, 6))
 		for tooth in range(teeth + 1):
@@ -441,7 +441,7 @@ def make_planks():
 		outline.append(pt(-half_l, half_w))
 		outline.append(pt(-half_l, half_w - bevel * 0.5))
 		draw_a.polygon(outline, fill=255)
-		# Madera fresca: el extremo roto y una franja del bisel.
+		# Fresh wood: the broken end and a strip of the bevel.
 		draw_f.polygon([pt(half_l * 0.38, -half_w * 1.2), pt(half_l * 1.1, -half_w * 1.2),
 				pt(half_l * 1.1, half_w * 1.2), pt(half_l * 0.38, half_w * 1.2)], fill=255)
 		draw_f.polygon([pt(-half_l * 1.05, half_w * 1.1), pt(-half_l + bevel * 1.3, half_w * 1.1),
@@ -451,11 +451,11 @@ def make_planks():
 		fresh = blur(fresh, 2) * (alpha > 0.02)
 		gx, gy = grid(size)
 		noise = fbm_tile(size, 1.1, 400 + index)
-		# Veta a lo largo de la tabla (el eje del plano es x girado por [angle]).
+		# Grain along the plank (the plane's axis is x rotated by [angle]).
 		v = -(gx - 0.5) * sa + (gy - 0.5) * ca
 		grain = 0.5 + 0.5 * np.sin(v * 70.0 + noise * 10.0)
 		grain = 0.7 + 0.22 * grain + 0.12 * (noise - 0.5)
-		# Borde oscuro: el contorno de la tabla se hunde en sombra.
+		# Dark edge: the outline of the plank sinks into shadow.
 		inner = blur(alpha, 4)
 		edge = 0.62 + 0.38 * smoothstep(0.55, 0.98, inner)
 		shade = grain * edge
@@ -464,8 +464,8 @@ def make_planks():
 
 
 def make_fibers():
-	"""Cuatro hilachas de tela (hebras finas y rizadas), atlas de 2 x 2 casillas de 128 px (256 x 256).
-	R = sombreado, A = silueta."""
+	"""Four wisps of cloth (fine, curly strands), a 2 x 2 atlas of 128 px cells (256 x 256).
+	R = shading, A = silhouette."""
 	rng = np.random.default_rng(23)
 	frames = []
 	for index in range(4):
@@ -499,7 +499,7 @@ def make_fibers():
 
 
 def make_ring_dust():
-	"""Anillo de polvo bajo para el suelo (solo caídas fuertes): estrecho, sin borde duro, con grumos."""
+	"""Low dust ring for the ground (hard landings only): narrow, no hard edge, with clumps."""
 	size = 256
 	x, y = grid(size)
 	x = (x - 0.5) * 2.0
@@ -515,7 +515,7 @@ def make_ring_dust():
 
 def main():
 	print("Texturas de efectos de golpe en", os.path.normpath(OUT_DIR))
-	# Las que ya no se usan se borran para que la carpeta sea justo lo que genera este script.
+	# Those no longer in use are deleted so that the folder is exactly what this script generates.
 	for stale in ("wisp.png", "splat.png", "splinters.png"):
 		for suffix in ("", ".import"):
 			path = os.path.join(OUT_DIR, stale + suffix)

@@ -33,7 +33,7 @@ import (
 
 var ctx = context.Background()
 
-// binDir guarda el binario de la plataforma que compilan las pruebas (una vez por paquete).
+// binDir holds the platform binary that the tests compile (once per package).
 var (
 	binOnce sync.Once
 	binPath string
@@ -49,8 +49,8 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// requireTool da la ruta de una herramienta del sistema; si falta, la prueba se salta, salvo con
-// ELDMARK_REQUIRE_DEPLOY_TOOLS=1 (la CI), que falla.
+// requireTool returns the path of a system tool; if it is missing, the test is skipped, except with
+// ELDMARK_REQUIRE_DEPLOY_TOOLS=1 (CI), which fails.
 func requireTool(t *testing.T, name string) string {
 	t.Helper()
 	path, err := exec.LookPath(name)
@@ -63,8 +63,8 @@ func requireTool(t *testing.T, name string) string {
 	return path
 }
 
-// requirePG salta (o falla con ELDMARK_REQUIRE_PG=1) si no están los binarios de PostgreSQL que
-// usan los scripts (initdb, pg_ctl, pg_dump…).
+// requirePG skips (or fails with ELDMARK_REQUIRE_PG=1) if the PostgreSQL binaries the scripts use
+// (initdb, pg_ctl, pg_dump...) are not there.
 func requirePG(t *testing.T) string {
 	t.Helper()
 	dir := testdb.BinDir()
@@ -77,7 +77,7 @@ func requirePG(t *testing.T) string {
 	return dir
 }
 
-// platformBinary compila eldmark-platform una vez para los scripts.
+// platformBinary compiles eldmark-platform once for the scripts.
 func platformBinary(t *testing.T) string {
 	t.Helper()
 	binOnce.Do(func() {
@@ -103,8 +103,8 @@ func platformBinary(t *testing.T) string {
 	return binPath
 }
 
-// sharedDir es una carpeta temporal en la que también puede entrar el usuario postgres (cuando las
-// pruebas corren como root, los scripts levantan PostgreSQL con él).
+// sharedDir is a temporary folder that the postgres user can also enter (when the tests run as
+// root, the scripts bring up PostgreSQL with that user).
 func sharedDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "eldtest-")
@@ -118,8 +118,8 @@ func sharedDir(t *testing.T) string {
 	return dir
 }
 
-// script ejecuta un script de esta carpeta con bash y el entorno dado (sobre el del proceso, con
-// ELDMARK_PG_BIN) y devuelve el código de salida y la salida (las dos juntas).
+// script runs a script from this folder with bash and the given environment (on top of the
+// process's, with ELDMARK_PG_BIN) and returns the exit code and the output (both together).
 func script(t *testing.T, env map[string]string, name string, args ...string) (int, string) {
 	t.Helper()
 	cmd := scriptCmd(t, env, name, args...)
@@ -168,7 +168,7 @@ func mustContain(t *testing.T, out string, want ...string) {
 	}
 }
 
-// files lista los nombres de una carpeta que casan con el patrón, en orden.
+// files lists the names in a folder that match the pattern, in order.
 func files(t *testing.T, dir, pattern string) []string {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join(dir, pattern))
@@ -188,7 +188,7 @@ func lines(t *testing.T, path string) int {
 	return len(strings.Split(strings.TrimSpace(string(data)), "\n"))
 }
 
-// Los scripts pasan bash -n y, si está, shellcheck (sin avisos).
+// The scripts pass bash -n and, if present, shellcheck (no warnings).
 func TestScriptsPassShellcheck(t *testing.T) {
 	scripts := files(t, ".", "*.sh")
 	if len(scripts) != 5 {
@@ -211,13 +211,13 @@ func TestScriptsPassShellcheck(t *testing.T) {
 	}
 }
 
-// Copias, purges.txt y restauración de prueba (§11.2, §12, la prueba de P9b): una copia tomada
-// antes de purgar, restaurada con el purges.txt más reciente, queda purgada y pasa las
-// comprobaciones; la más reciente (--dir) no tiene nada que volver a purgar; una copia cuya
-// auditoría guarda el correo de una cuenta purgada después no pasa; y la rotación deja las diarias
-// que tocan sin perder el purges.txt más reciente. La plataforma usa el almacén del progreso de
-// verdad (progresion.md P7, como serve y la orden admin): la copia lleva el progreso de los
-// personajes y reapply-purges lo vuelve a borrar.
+// Backups, purges.txt and test restore (§11.2, §12, the P9b test): a copy taken before purging,
+// restored with the most recent purges.txt, ends up purged and passes the checks; the most recent
+// one (--dir) has nothing left to purge again; a copy whose audit stores the email of an account
+// purged afterwards does not pass; and the rotation keeps the daily copies that apply without losing
+// the most recent purges.txt. The platform uses the real progression store (progresion.md P7, like
+// serve and the admin command): the copy carries the characters' progress and reapply-purges deletes
+// it again.
 func TestBackupAndRestoreCheck(t *testing.T) {
 	requirePG(t)
 	bin := platformBinary(t)
@@ -252,8 +252,8 @@ func TestBackupAndRestoreCheck(t *testing.T) {
 		t.Fatalf("copias: %v", first)
 	}
 
-	// Tras la copia, b borra a Dairine y pide la supresión ya (purge-now): Corwin, que nunca se
-	// borró, también queda como lápida.
+	// After the copy, b deletes Dairine and requests erasure right away (purge-now): Corwin, who was
+	// never deleted, also ends up as a tombstone.
 	platformtest.Expect(t, p.PublicDo("DELETE", "/v1/characters/"+strconv.FormatInt(dairine, 10), b.Token,
 		map[string]any{"confirm_name": "Dairine"}), http.StatusOK, "")
 	if _, err := p.Admin.PurgeNow(ctx, jefa, "b@example.org", 0); err != nil {
@@ -275,19 +275,19 @@ func TestBackupAndRestoreCheck(t *testing.T) {
 		t.Fatal("purges.txt lleva correos")
 	}
 
-	// La copia de antes de purgar, con el purges.txt más reciente.
+	// The copy from before purging, with the most recent purges.txt.
 	rc := map[string]string{"ELDMARK_PLATFORM_BIN": bin}
 	out = mustScript(t, rc, "restore_check.sh", first[0], latest)
 	mustContain(t, out, "Borrados de la copia: 1 arrendamientos y 1 billetes",
 		"Purgados ahora: 1 cuentas y 2 personajes", "bien: filas de audit_log con el correo de una cuenta purgada: 0",
 		"bien: personajes purgados con datos personales: 0",
 		"bien: purged_at distinto del de purges.txt: 0", "Restauración de prueba correcta")
-	// La más reciente, con --dir: ya está todo purgado.
+	// The most recent one, with --dir: everything is already purged.
 	out = mustScript(t, rc, "restore_check.sh", "--dir", dir)
 	mustContain(t, out, "ya purgados o sin fila en la copia: 3", "Restauración de prueba correcta")
 
-	// Una copia cuya auditoría guarda el correo de c (una fila que no debería existir, §9.1), y c
-	// purgada después: restore_check.sh falla y lo dice.
+	// A copy whose audit stores the email of c (a row that should not exist, §9.1), and c purged
+	// afterwards: restore_check.sh fails and says so.
 	p.Exec(`insert into audit_log (source, command, args) values ('platform', 'prueba', '{"email": "c@example.org"}')`)
 	mustScript(t, env, "backup.sh")
 	withEmail := files(t, filepath.Join(dir, "daily"), "*.dump")
@@ -301,7 +301,7 @@ func TestBackupAndRestoreCheck(t *testing.T) {
 	}
 	mustContain(t, out, "MAL: filas de audit_log con el correo de una cuenta purgada: 1")
 
-	// Rotación: con 2 diarias se quedan las 2 más recientes, cada una con su purges.txt.
+	// Rotation: with 2 daily copies, the 2 most recent stay, each with its purges.txt.
 	env["ELDMARK_BACKUP_DAILY"] = "2"
 	mustContain(t, mustScript(t, env, "backup.sh"), "rotada:")
 	dumps := files(t, filepath.Join(dir, "daily"), "*.dump")
@@ -325,7 +325,7 @@ func readFile(t *testing.T, path string) []byte {
 	return data
 }
 
-// Usos que no valen: 2; archivos que no existen: 1.
+// Invalid usages: 2; files that do not exist: 1.
 func TestRestoreCheckUsage(t *testing.T) {
 	for _, args := range [][]string{{}, {"solo-uno"}, {"--dir"}, {"a", "b", "c"}} {
 		if code, out := script(t, nil, "restore_check.sh", args...); code != 2 {
@@ -341,7 +341,7 @@ func TestRestoreCheckUsage(t *testing.T) {
 	}
 }
 
-// La recuperación a un instante (pitr_check.sh): recupera las filas de antes del borrado.
+// Point-in-time recovery (pitr_check.sh): it recovers the rows from before the deletion.
 func TestPitrCheck(t *testing.T) {
 	requirePG(t)
 	mustContain(t, mustScript(t, nil, "pitr_check.sh"), "Recuperación a un instante correcta: 1500 filas")
@@ -357,9 +357,9 @@ func freeAddr(t *testing.T) string {
 	return l.Addr().String()
 }
 
-// dev.sh: prepara la base, el entorno y las dos cuentas (y una segunda vez no repite nada); env da
-// las variables; up arranca serve, que llega a /ready, y un TERM lo para con PostgreSQL; reset lo
-// borra todo.
+// dev.sh: prepares the database, the environment and the two accounts (and a second time repeats
+// nothing); env gives the variables; up starts serve, which reaches /ready, and a TERM stops it
+// along with PostgreSQL; reset deletes everything.
 func TestDevScript(t *testing.T) {
 	requirePG(t)
 	dir := sharedDir(t)
@@ -443,7 +443,7 @@ func TestDevScript(t *testing.T) {
 	}
 }
 
-// composeConfig es lo que se mira de «docker compose config --format json».
+// composeConfig is what gets inspected from "docker compose config --format json".
 type composeConfig struct {
 	Services map[string]struct {
 		Environment map[string]*string `json:"environment"`
@@ -466,9 +466,10 @@ type composeConfig struct {
 	} `json:"secrets"`
 }
 
-// El compose se valida sin demonio (docker compose config -q) con los dos ejemplos y no sin ellos;
-// todo va a journald; solo Caddy y las zonas publican puertos; la base no sale de su red interna;
-// la plataforma lee cada secreto de su archivo; y X-Real-IP solo se acepta desde la IP de Caddy.
+// The compose file is validated without a daemon (docker compose config -q) with the two examples
+// and not without them; everything goes to journald; only Caddy and the zones publish ports; the
+// database does not leave its internal network; the platform reads each secret from its file; and
+// X-Real-IP is only accepted from Caddy's IP.
 func TestComposeConfig(t *testing.T) {
 	docker := requireTool(t, "docker")
 	if out, err := exec.Command(docker, "compose", "version").CombinedOutput(); err != nil {
@@ -547,8 +548,8 @@ func TestComposeConfig(t *testing.T) {
 	}
 }
 
-// El Caddyfile pone X-Real-IP con la IP de quien conecta, pasa a platform:24680 y no escribe
-// registro de accesos (§10.1); si está caddy, se adapta y la configuración no lleva «logs».
+// The Caddyfile sets X-Real-IP to the IP of whoever connects, passes to platform:24680 and writes
+// no access log (§10.1); if caddy is present, it is adapted and the configuration has no "logs".
 func TestCaddyfile(t *testing.T) {
 	text := string(readFile(t, "Caddyfile"))
 	for _, want := range []string{"reverse_proxy platform:24680", "header_up X-Real-IP {remote_host}",
@@ -560,7 +561,7 @@ func TestCaddyfile(t *testing.T) {
 	if regexp.MustCompile(`(?m)^\s*log(\s|$|\{)`).MatchString(text) {
 		t.Error("el Caddyfile tiene una directiva log")
 	}
-	// caddy no viene en las máquinas de la CI: sin él, solo lo de arriba.
+	// caddy does not come on the CI machines: without it, only the above.
 	caddy, err := exec.LookPath("caddy")
 	if err != nil {
 		t.Skip("falta caddy: no se adapta el Caddyfile")
@@ -576,9 +577,9 @@ func TestCaddyfile(t *testing.T) {
 	}
 }
 
-// La comprobación de secretos de la CI (tools/check_secrets.sh, §10.3): los ejemplos de verdad
-// pasan; un staging.env de prueba en el índice, un archivo bajo secrets/ o un ejemplo con el valor
-// de un secreto, no (y el valor no sale en la salida). El índice de este repositorio, tampoco.
+// The CI secrets check (tools/check_secrets.sh, §10.3): the real examples pass; a test staging.env
+// in the index, a file under secrets/ or an example with the value of a secret do not (and the
+// value does not appear in the output). Neither does this repository's index.
 func TestCheckSecrets(t *testing.T) {
 	git := requireTool(t, "git")
 	bash := requireTool(t, "bash")
@@ -643,7 +644,7 @@ func TestCheckSecrets(t *testing.T) {
 		strings.Contains(out, "c2VjcmV0") {
 		t.Fatalf("ejemplo con un secreto: %d\n%s", code, out)
 	}
-	// El índice de este repositorio (si se prueba desde un clon).
+	// This repository's index (if tested from a clone).
 	if err := exec.Command(git, "-C", "../..", "rev-parse", "--git-dir").Run(); err == nil {
 		if out, err := exec.Command(bash, check, "../..").CombinedOutput(); err != nil {
 			t.Fatalf("el repositorio no pasa la comprobación de secretos: %v\n%s", err, out)

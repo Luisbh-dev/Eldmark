@@ -1,15 +1,15 @@
 class_name ZoneFixture
 extends RefCounted
-## Zona de prueba para las pruebas del servidor: un suelo plano de 400 x 400 m con tres puntos de
-## aparición (dos de Vardheim y uno de Solmarch). El suelo es un [StaticBody3D] en la capa del
-## mundo, así que sirve igual en un [SubViewport] con su propio mundo de física.
+## Test zone for the server tests: a flat 400 x 400 m floor with three spawn points (two for Vardheim and
+## one for Solmarch). The floor is a [StaticBody3D] on the world layer, so it works the same in a
+## [SubViewport] with its own physics world.
 
-## Puntos de aparición de Vardheim y de Solmarch (en el suelo, mirando hacia -Z).
+## Spawn points for Vardheim and Solmarch (on the ground, facing -Z).
 const VARDHEIM_SPAWNS: Array[Vector3] = [Vector3(-20.0, 0.0, 0.0), Vector3(-18.0, 0.0, 4.0)]
 const SOLMARCH_SPAWN: Vector3 = Vector3(20.0, 0.0, 0.0)
 
 
-## Crea la zona como hija de [param parent] (que debe estar en el árbol) y la devuelve.
+## Creates the zone as a child of [param parent] (which must be in the tree) and returns it.
 static func build_flat_zone(parent: Node) -> Node3D:
 	var world := Node3D.new()
 	world.name = "ZonaDePrueba"
@@ -31,7 +31,7 @@ static func build_flat_zone(parent: Node) -> Node3D:
 	return world
 
 
-## Añade un punto de aparición del reino [param realm] a [param world].
+## Adds a spawn point for realm [param realm] to [param world].
 static func add_spawn(world: Node3D, marker_name: String, position: Vector3,
 		realm: StringName) -> Marker3D:
 	var marker := Marker3D.new()

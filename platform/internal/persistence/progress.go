@@ -1,11 +1,11 @@
-// Package persistence es la persistencia del personaje en la plataforma (plataforma.md §7, TEC-25).
+// Package persistence is the character's persistence in the platform (plataforma.md §7, TEC-25).
 //
-// Este archivo es la frontera con docs/progresion.md (plataforma.md §7.5, progresion.md §13.2): la
-// interfaz [ProgressStore] con sus tipos y errores, y la validación de la creación
-// ([CreateValidator], [ValidationError]) con su implementación provisional
-// ([ProvisionalValidator]). Las implementa internal/progress (progresion.md P7), que importa este
-// paquete (nunca al revés: no hay ciclo), y serve las usa en todos los entornos; el falso
-// ([MemoryProgressStore]) y la provisional quedan para las pruebas.
+// This file is the boundary with docs/progresion.md (plataforma.md §7.5, progresion.md §13.2): the
+// [ProgressStore] interface with its types and errors, and the creation validation
+// ([CreateValidator], [ValidationError]) with its provisional implementation
+// ([ProvisionalValidator]). They are implemented by internal/progress (progresion.md P7), which
+// imports this package (never the other way around: there is no cycle), and serve uses them in all
+// environments; the fake ([MemoryProgressStore]) and the provisional one remain for tests.
 package persistence
 
 import (
@@ -21,25 +21,26 @@ import (
 	"eldmark/platform/internal/config"
 )
 
-// InvalidSaveError es un guardado que no pasa S1–S7 (progresion.md §13.3): la respuesta es 400
-// invalid_save con fields.check y fields.detail. Se devuelve siempre como puntero (errors.As con
-// *InvalidSaveError).
+// InvalidSaveError is a save that does not pass S1-S7 (progresion.md §13.3): the response is 400
+// invalid_save with fields.check and fields.detail. It is always returned as a pointer (errors.As
+// with *InvalidSaveError).
 type InvalidSaveError struct{ Check, Detail string }
 
 func (e *InvalidSaveError) Error() string { return "invalid_save " + e.Check + ": " + e.Detail }
 
-// ErrNotFound es lo que no existe o no se puede ver (Op y Ledger): 404 not_found.
+// ErrNotFound is what does not exist or cannot be seen (Op and Ledger): 404 not_found.
 var ErrNotFound = errors.New("not_found")
 
-// CreateParams es lo que el personaje recibe al crearlo, ya validado (plataforma.md §4.4 paso 5).
+// CreateParams is what the character receives on creation, already validated (plataforma.md §4.4
+// step 5).
 type CreateParams struct {
 	RaceID            string
 	Appearance        [8]byte
 	StarterTemplateID string
 }
 
-// SaveKey identifica un guardado: el mundo y la zona salen de la instancia que reclamó
-// (InstanceID es character_leases.claimed_by).
+// SaveKey identifies a save: the world and the zone come from the instance that claimed
+// (InstanceID is character_leases.claimed_by).
 type SaveKey struct {
 	WorldID     int16
 	CharacterID int64
@@ -47,9 +48,9 @@ type SaveKey struct {
 	ZoneID      string
 }
 
-// Summary es lo que la plataforma lee del progreso fuera del guardado: la lista de personajes,
-// enter y la excepción de la reserva del nombre (plataforma.md §4.4 y §4.5). LastZoneID vacío:
-// nunca ha entrado.
+// Summary is what the platform reads from the progression outside the save: the character list,
+// enter and the name reservation exception (plataforma.md §4.4 and §4.5). Empty LastZoneID: it has
+// never entered.
 type Summary struct {
 	RaceID        string
 	Appearance    [8]byte
@@ -59,48 +60,48 @@ type Summary struct {
 	PlayedSeconds int64
 }
 
-// Querier es una consulta dentro de la transacción o la conexión de quien llama: lo cumplen
-// pgx.Tx y *pgxpool.Pool.
+// Querier is a query inside the caller's transaction or connection: pgx.Tx and *pgxpool.Pool
+// satisfy it.
 type Querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// ProgressStore es el almacén del progreso (progresion.md §13.2). Todo va dentro de la transacción
-// o la conexión de quien llama; en la frontera viaja JSON crudo.
+// ProgressStore is the progression store (progresion.md §13.2). Everything goes inside the caller's
+// transaction or connection; at the boundary, raw JSON travels.
 type ProgressStore interface {
-	// Create guarda el progreso inicial de un personaje recién creado (§4.4 paso 6).
+	// Create stores the initial progression of a newly created character (§4.4 step 6).
 	Create(ctx context.Context, tx pgx.Tx, worldID int16, characterID int64, p CreateParams) error
-	// Load devuelve el ProgressRecord de la reclamación (progresion.md §3.4).
+	// Load returns the claim's ProgressRecord (progresion.md §3.4).
 	Load(ctx context.Context, q Querier, characterID int64) (json.RawMessage, error)
-	// Apply aplica la sección progress de un guardado con S1–S8 y devuelve el save_version nuevo.
+	// Apply applies a save's progress section with S1-S8 and returns the new save_version.
 	Apply(ctx context.Context, tx pgx.Tx, key SaveKey, progress json.RawMessage) (saveVersion int64, err error)
-	// Summaries devuelve el resumen de cada personaje que tenga progreso.
+	// Summaries returns the summary of each character that has progression.
 	Summaries(ctx context.Context, q Querier, characterIDs []int64) (map[int64]Summary, error)
-	// Purge borra el estado del progreso y deja lo de solo añadir (progresion.md §3.5).
+	// Purge deletes the progression state and leaves the append-only part (progresion.md §3.5).
 	Purge(ctx context.Context, tx pgx.Tx, characterID int64) error
-	// PurgeRetention borra el libro retenido más de un año; emptied son las lápidas que se han
-	// quedado sin libro, que la plataforma borra (progresion.md §3.5).
+	// PurgeRetention deletes the ledger retained for more than a year; emptied are the tombstones that
+	// have been left without a ledger, which the platform deletes (progresion.md §3.5).
 	PurgeRetention(ctx context.Context, tx pgx.Tx) (deleted int64, emptied []int64, err error)
-	// Export da el progreso de un personaje para la exportación de datos (progresion.md §3.5).
+	// Export gives a character's progression for the data export (progresion.md §3.5).
 	Export(ctx context.Context, q Querier, characterID int64) (json.RawMessage, error)
-	// Op devuelve una operación si alguno de sus participantes tiene arrendamiento en instance;
-	// si no, [ErrNotFound].
+	// Op returns an operation if any of its participants has a lease on instance; otherwise,
+	// [ErrNotFound].
 	Op(ctx context.Context, q Querier, opID int64, instance [16]byte) (json.RawMessage, error)
-	// Ledger devuelve los apuntes de un personaje, los más recientes primero (limit de 1 a 100).
+	// Ledger returns a character's entries, most recent first (limit from 1 to 100).
 	Ledger(ctx context.Context, q Querier, characterID int64, limit int, beforeEntryID int64) (json.RawMessage, error)
 }
 
-// CreateValidator valida la raza, la apariencia y la plantilla de inicio de un personaje nuevo
-// (plataforma.md §4.4 paso 5, progresion.md §13.2). realm es el código de NetProtocol.Realm.
-// Devuelve nil o un *[ValidationError].
+// CreateValidator validates a new character's race, appearance and starting template (plataforma.md
+// §4.4 step 5, progresion.md §13.2). realm is the NetProtocol.Realm code. It returns nil or a
+// *[ValidationError].
 type CreateValidator interface {
 	ValidateCreate(realm int16, raceID string, appearance [8]byte, templateID string) error
 }
 
-// ValidationError es una creación que no vale: la respuesta es 400 validation con estos fields tal
-// cual ({"race_id": "wrong_realm"}, {"appearance": "invalid"},
-// {"starter_template_id": "not_selectable"}). Se devuelve siempre como puntero.
+// ValidationError is a creation that is not valid: the response is 400 validation with these fields
+// as is ({"race_id": "wrong_realm"}, {"appearance": "invalid"},
+// {"starter_template_id": "not_selectable"}). It is always returned as a pointer.
 type ValidationError struct{ Fields map[string]string }
 
 func (e *ValidationError) Error() string {
@@ -112,18 +113,18 @@ func (e *ValidationError) Error() string {
 	return "validation: " + strings.Join(keys, ", ")
 }
 
-// templatePattern es la plantilla que admite la validación provisional.
+// templatePattern is the template that the provisional validation admits.
 var templatePattern = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
 
-// ProvisionalValidator es la validación de la creación de antes de progresion.md P7 (plataforma.md
-// §4.4 paso 5): race_id = "race_" + el id de texto del reino, 8 B de apariencia cualesquiera (la
-// zona corrige al cargar una que no valga, progresion.md §7.2) y una plantilla que cumple
-// ^[a-z0-9_]{1,32}$. serve usa *progress.Rules; esta queda para las pruebas que crean personajes
-// sin las reglas exportadas.
+// ProvisionalValidator is the creation validation from before progresion.md P7 (plataforma.md §4.4
+// step 5): race_id = "race_" + the realm's text id, any 8 B of appearance (the zone corrects an
+// invalid one on load, progresion.md §7.2) and a template that satisfies ^[a-z0-9_]{1,32}$. serve
+// uses *progress.Rules; this one remains for tests that create characters without the exported
+// rules.
 type ProvisionalValidator struct{}
 
-// ValidateCreate implementa [CreateValidator]. Una raza de otro reino es wrong_realm; un id que
-// no es de ninguna raza, unknown.
+// ValidateCreate implements [CreateValidator]. A race from another realm is wrong_realm; an id that
+// is not any race's, unknown.
 func (ProvisionalValidator) ValidateCreate(realm int16, raceID string, _ [8]byte, templateID string) error {
 	fields := map[string]string{}
 	if raceID != "race_"+config.Realm(realm).String() {

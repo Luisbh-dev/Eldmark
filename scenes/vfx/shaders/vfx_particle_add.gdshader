@@ -1,16 +1,15 @@
 shader_type spatial;
-// Partícula de luz con mezcla ADITIVA (chispas, destellos, motas de energía) para GPUParticles3D.
-// Con [cover] > 0 la luz también tapa un poco el fondo (mezcla premultiplicada): sobre un cielo claro un
-// brillo puramente aditivo se lava, y así mantiene el color y el contraste.
+// Light particle with ADDITIVE blending (sparks, flashes, energy motes) for GPUParticles3D.
+// With [cover] > 0 the light also covers the background a little (premultiplied blend): against
+// a bright sky a purely additive glow washes out, and this keeps color and contrast.
 //
-// La textura es una máscara de luz (se lee el canal rojo). El color sale del color de la partícula
-// (la rampa del material de proceso) por el tinte de instancia y por [intensity], que puede pasar de
-// 1 (HDR) para que el brillo del entorno la haga florecer. Con [aligned_by_engine] el motor ya orienta
-// la partícula (transform_align del nodo, por ejemplo eje Y siguiendo la velocidad en las chispas);
-// sin él, el sombreador la gira hacia la cámara y la rota con el ángulo de la partícula.
+// The texture is a light mask (the red channel is read). The color comes from the particle's
+// color (the process material's ramp) times the instance tint and [intensity], which can exceed
+// 1 (HDR) so the environment's glow makes it bloom. With [aligned_by_engine] the engine already
+// orients the particle (the node's transform_align, for example Y axis following the velocity in
+// sparks); without it, the shader turns it toward the camera and rotates it by the particle's angle.
 //
-// Datos por partícula: INSTANCE_CUSTOM.x ángulo, .y fase de vida (0 al nacer, 1 al morir), .z casilla
-// del atlas.
+// Per-particle data: INSTANCE_CUSTOM.x angle, .y life phase (0 at birth, 1 at death), .z atlas cell.
 render_mode blend_premul_alpha, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
@@ -20,15 +19,15 @@ uniform sampler2D depth_tex : hint_depth_texture, repeat_disable, filter_nearest
 uniform int h_frames = 1;
 uniform int v_frames = 1;
 uniform float intensity = 2.0;
-// 0 = aditivo puro; 1 = la luz tapa el fondo como una mezcla normal.
+// 0 = pure additive; 1 = the light covers the background like a normal blend.
 uniform float cover = 0.0;
-// Metros de atenuación contra la geometría (0 = sin partículas blandas).
+// Meters of fade against geometry (0 = no soft particles).
 uniform float soft_distance = 0.0;
 uniform bool aligned_by_engine = false;
-// Fracción de la vida que tarda en aparecer y fracción en la que empieza a apagarse.
+// Fraction of its life it takes to appear and fraction at which it starts to fade out.
 uniform float fade_in = 0.03;
 uniform float fade_out_start = 0.45;
-// Cuánto crece (+) o encoge (-) la partícula a lo largo de su vida, además de su curva de escala.
+// How much the particle grows (+) or shrinks (-) over its life, in addition to its scale curve.
 uniform float grow = 0.0;
 instance uniform vec4 tint : source_color = vec4(1.0);
 

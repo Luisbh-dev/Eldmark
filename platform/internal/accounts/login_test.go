@@ -11,8 +11,8 @@ import (
 	"eldmark/platform/internal/passwords"
 )
 
-// Contraseña buena, mala y correo inexistente: los dos fallos dan el mismo código y el mismo cuerpo
-// (plataforma.md §15 P1).
+// Good password, bad password and nonexistent email: the two failures give the same code and the
+// same body (plataforma.md §15 P1).
 func TestLoginDoesNotRevealAccounts(t *testing.T) {
 	h := newHarness(t)
 	h.register("aneira@example.org")
@@ -40,7 +40,7 @@ func TestLoginDoesNotRevealAccounts(t *testing.T) {
 	if kinds != "login_ok,login_fail,login_fail" {
 		t.Fatalf("auth_events: %s", kinds)
 	}
-	// Ni contraseñas ni tokens en el registro.
+	// No passwords or tokens in the log.
 	for _, secret := range []string{password, "otra contraseña", ok.str("access_token"), ok.str("refresh_token")} {
 		if strings.Contains(h.logs.String(), secret) {
 			t.Fatalf("el registro lleva un secreto: %q", secret)
@@ -48,8 +48,8 @@ func TestLoginDoesNotRevealAccounts(t *testing.T) {
 	}
 }
 
-// 5 fallos desde la IP B → 429 en B; el dueño entra desde A (tras el freno de 30 s de la cuenta);
-// al 5.º fallo, un correo login_failures.
+// 5 failures from IP B -> 429 on B; the owner gets in from A (after the account's 30 s brake); on
+// the 5th failure, a login_failures email.
 func TestFailuresLockTheGroupNotTheOwner(t *testing.T) {
 	h := newHarness(t)
 	h.register("dueno@example.org")
@@ -65,14 +65,14 @@ func TestFailuresLockTheGroupNotTheOwner(t *testing.T) {
 	if res.header.Get("Retry-After") == "" || res.body["error"].(map[string]any)["retry_after_s"].(float64) < 1 {
 		t.Fatalf("429 con espera: %s", res.raw)
 	}
-	// La cuenta, desde cualquier IP: un intento cada 30 s.
+	// The account, from any IP: one attempt every 30 s.
 	h.expect(h.loginFrom("dueno@example.org", password, ipA), 429, "rate_limited")
 	h.clock.Advance(31 * time.Second)
 	h.expect(h.loginFrom("dueno@example.org", password, ipB), 429, "rate_limited") // B, 15 min
 	if res := h.loginFrom("dueno@example.org", password, ipA); res.status != 200 {
 		t.Fatalf("el dueño entra desde A: %d %s", res.status, res.raw)
 	}
-	// Acertar reinicia las dos: B ya puede.
+	// A success resets both: B can already try.
 	if res := h.loginFrom("dueno@example.org", password, ipB); res.status != 200 {
 		t.Fatalf("tras acertar, B: %d %s", res.status, res.raw)
 	}
@@ -81,7 +81,7 @@ func TestFailuresLockTheGroupNotTheOwner(t *testing.T) {
 	}
 }
 
-// 10 fallos seguidos desde un grupo: 1 h sin intentos desde él.
+// 10 consecutive failures from a group: 1 h without attempts from it.
 func TestTenFailuresLockForAnHour(t *testing.T) {
 	h := newHarness(t)
 	h.register("diez@example.org")
@@ -92,7 +92,7 @@ func TestTenFailuresLockForAnHour(t *testing.T) {
 			h.expect(res, 401, "invalid_credentials")
 		} else {
 			h.expect(res, 429, "rate_limited")
-			h.clock.Advance(16 * time.Minute) // pasa el bloqueo de 15 min y vuelve a fallar
+			h.clock.Advance(16 * time.Minute) // the 15 min block passes and it fails again
 			h.expect(h.loginFrom("diez@example.org", "contraseña mala", ip), 401, "invalid_credentials")
 		}
 	}
@@ -104,8 +104,8 @@ func TestTenFailuresLockForAnHour(t *testing.T) {
 	}
 }
 
-// 5 fallos con el correo inexistente A desde X; después el inexistente B y el existente C desde X
-// reciben lo mismo (invalid_credentials, no 429): cada correo tiene su contador.
+// 5 failures with nonexistent email A from X; afterwards nonexistent B and existing C from X get the
+// same (invalid_credentials, not 429): each email has its own counter.
 func TestUnknownEmailsHaveTheirOwnCounters(t *testing.T) {
 	h := newHarness(t)
 	h.register("c@example.org")
@@ -122,8 +122,8 @@ func TestUnknownEmailsHaveTheirOwnCounters(t *testing.T) {
 	}
 }
 
-// burst lanza n inicios de sesión a la vez con la contraseña mala (cada uno desde ip()) y cuenta
-// las respuestas por estado.
+// burst launches n logins at once with the bad password (each from ip()) and counts the responses by
+// status.
 func (h *harness) burst(email string, n int, ip func() string) map[int]int {
 	h.t.Helper()
 	codes := make([]int, n)
@@ -144,9 +144,10 @@ func (h *harness) burst(email string, n int, ip func() string) map[int]int {
 	return got
 }
 
-// Intentos a la vez no se saltan el freno (§4.2): comprobar el freno, mirar la contraseña y anotar el
-// fallo van en una sola sección por cuenta. Tras 5 fallos y los 30 s, 30 intentos simultáneos desde
-// 30 IP miran la contraseña una sola vez; con una cuenta nueva, 10 a la vez desde un grupo, cinco.
+// Simultaneous attempts do not skip the brake (§4.2): checking the brake, looking at the password
+// and recording the failure all go in a single section per account. After 5 failures and the 30 s,
+// 30 simultaneous attempts from 30 IPs look at the password only once; with a new account, 10 at
+// once from one group, five.
 func TestConcurrentAttemptsRespectTheThrottle(t *testing.T) {
 	h := newHarness(t)
 	h.register("rafaga@example.org")
@@ -162,13 +163,13 @@ func TestConcurrentAttemptsRespectTheThrottle(t *testing.T) {
 	if got := h.burst("grupo@example.org", 10, func() string { return ip }); got[401] != 5 || got[429] != 5 {
 		t.Fatalf("bloqueo del grupo con 10 a la vez: %v", got)
 	}
-	// Un correo sin cuenta tiene el mismo freno.
+	// An email without an account has the same brake.
 	if got := h.burst("nadie@example.org", 10, func() string { return h.nextIP() }); got[401] != 5 || got[429] != 5 {
 		t.Fatalf("correo sin cuenta: %v", got)
 	}
 }
 
-// Los fallos por /v1/account/password cuentan igual que los del inicio de sesión (el sexto → 429).
+// Failures through /v1/account/password count the same as those of login (the sixth -> 429).
 func TestSessionRoutesSharePasswordCounters(t *testing.T) {
 	h := newHarness(t)
 	h.register("cambia@example.org")
@@ -188,7 +189,7 @@ func TestSessionRoutesSharePasswordCounters(t *testing.T) {
 	}
 }
 
-// 11 inicios de sesión desde una IP en un minuto → 429 (10/min, ráfaga 10).
+// 11 logins from one IP in a minute -> 429 (10/min, burst 10).
 func TestLoginRateLimitPerIP(t *testing.T) {
 	h := newHarness(t)
 	ip := h.nextIP()
@@ -200,7 +201,7 @@ func TestLoginRateLimitPerIP(t *testing.T) {
 	h.expect(h.loginFrom("n11@example.org", "contraseña mala", ip), 401, "invalid_credentials")
 }
 
-// X-Forwarded-For y un X-Real-IP desde un origen no fiable no cambian la IP del límite.
+// X-Forwarded-For and an X-Real-IP from an untrusted origin do not change the limit's IP.
 func TestSpoofedHeadersDoNotChangeTheIP(t *testing.T) {
 	h := newHarness(t)
 	for i := 0; i < 10; i++ {
@@ -213,14 +214,14 @@ func TestSpoofedHeadersDoNotChangeTheIP(t *testing.T) {
 		body:    map[string]any{"email": "y@example.org", "password": "mala"},
 		headers: map[string]string{"X-Real-IP": "192.0.2.200", "X-Forwarded-For": "192.0.2.201"}})
 	h.expect(res, 429, "rate_limited")
-	// Desde el proxy de confianza, X-Real-IP sí manda: otra IP, otro cubo.
+	// From the trusted proxy, X-Real-IP does rule: another IP, another bucket.
 	h.expect(h.do(call{method: "POST", path: "/v1/sessions", ip: "203.0.113.50",
 		body: map[string]any{"email": "z@example.org", "password": "mala"}}), 429, "rate_limited")
 	h.expect(h.do(call{method: "POST", path: "/v1/sessions", ip: "192.0.2.200",
 		body: map[string]any{"email": "z@example.org", "password": "mala"}}), 401, "invalid_credentials")
 }
 
-// Acceso caducado → 401 y refresco; el acceso viejo deja de valer.
+// Expired access -> 401 and refresh; the old access stops being valid.
 func TestExpiredAccessAndRefresh(t *testing.T) {
 	h := newHarness(t)
 	h.register("refresco@example.org")
@@ -242,7 +243,7 @@ func TestExpiredAccessAndRefresh(t *testing.T) {
 	h.expect(h.do(call{method: "GET", path: "/v1/account", token: "x"}), 401, "unauthorized")
 }
 
-// Reutilizar el refresco anterior revoca la sesión (refresh_reuse).
+// Reusing the previous refresh revokes the session (refresh_reuse).
 func TestRefreshReuseRevokesTheSession(t *testing.T) {
 	h := newHarness(t)
 	h.register("robo@example.org")
@@ -268,7 +269,7 @@ func TestRefreshReuseRevokesTheSession(t *testing.T) {
 	}
 }
 
-// Un refresco de hace dos rotaciones da 401 sin revocar.
+// A refresh from two rotations ago gives 401 without revoking.
 func TestRefreshFromTwoRotationsAgo(t *testing.T) {
 	h := newHarness(t)
 	h.register("dos@example.org")
@@ -291,7 +292,7 @@ func TestRefreshFromTwoRotationsAgo(t *testing.T) {
 	}
 }
 
-// Las 12 h no se alargan al rotar.
+// The 12 h are not extended on rotation.
 func TestRotationDoesNotExtendTheSession(t *testing.T) {
 	h := newHarness(t)
 	h.register("doce@example.org")
@@ -318,7 +319,7 @@ func TestRotationDoesNotExtendTheSession(t *testing.T) {
 		401, "unauthorized")
 }
 
-// Una segunda sesión revoca la primera (replaced).
+// A second session revokes the first (replaced).
 func TestSecondLoginRevokesTheFirst(t *testing.T) {
 	h := newHarness(t)
 	h.register("una@example.org")
@@ -333,16 +334,16 @@ func TestSecondLoginRevokesTheFirst(t *testing.T) {
 	if reason != "replaced" {
 		t.Fatal(reason)
 	}
-	// Cerrar sesión: 204 y el acceso deja de valer.
+	// Logging out: 204 and the access stops being valid.
 	if res := h.do(call{method: "DELETE", path: "/v1/sessions/current", token: second.access}); res.status != 204 {
 		t.Fatal(res.raw)
 	}
 	h.expect(h.do(call{method: "GET", path: "/v1/account", token: second.access}), 401, "unauthorized")
 }
 
-// Suspendida con contraseña mala → invalid_credentials; con buena → sesión privacy con el motivo.
-// Con la de una expulsada valen la cuenta, la exportación, la supresión, el refresco y cerrar
-// sesión; las demás (también enter) dan 403 account_banned.
+// Suspended with a bad password -> invalid_credentials; with a good one -> privacy session with the
+// reason. With a banned account's, the account, the export, the deletion, the refresh and logout
+// are valid; the others (including enter) give 403 account_banned.
 func TestPrivacySessionForSanctionedAccounts(t *testing.T) {
 	h := newHarness(t)
 	suspended := h.register("suspendida@example.org")
@@ -405,7 +406,7 @@ func TestPrivacySessionForSanctionedAccounts(t *testing.T) {
 	}
 	h.expect(h.do(call{method: "GET", path: "/v1/account", token: access}), 401, "unauthorized")
 
-	// Una sesión de juego de una cuenta que se suspende después: 403 en las rutas de juego.
+	// A gameplay session of an account that is suspended afterwards: 403 on the gameplay routes.
 	h.register("luego@example.org")
 	g := h.login("luego@example.org", password)
 	h.exec(`insert into sanctions (account_id, kind, reason, starts_at, ends_at) values ($1, 'suspension', 'acoso', $2, $3)`,
@@ -415,7 +416,7 @@ func TestPrivacySessionForSanctionedAccounts(t *testing.T) {
 	if !strings.Contains(res.body["error"].(map[string]any)["message"].(string), "suspendida hasta el") {
 		t.Fatal(res.raw)
 	}
-	// Si la sanción termina, la sesión de privacidad ya no sirve: hay que volver a entrar.
+	// If the sanction ends, the privacy session is no longer valid: you have to log in again.
 	h.exec(`update sanctions set revoked_at = $2 where account_id = $1`, suspended, now)
 	h.expect(h.do(call{method: "POST", path: "/v1/characters/1/enter", token: s.access}), 401, "unauthorized")
 	if g2 := h.login("suspendida@example.org", password); g2.res.str("scope") != "game" {
@@ -423,7 +424,7 @@ func TestPrivacySessionForSanctionedAccounts(t *testing.T) {
 	}
 }
 
-// needsRehash: con otros parámetros, el inicio de sesión reescribe la cadena.
+// needsRehash: with other parameters, login rewrites the string.
 func TestLoginRehashes(t *testing.T) {
 	h := newHarness(t)
 	id := h.register("rehash@example.org")
@@ -440,7 +441,7 @@ func TestLoginRehashes(t *testing.T) {
 	h.login("rehash@example.org", password)
 }
 
-// Sin X-Eldmark-Protocol o por debajo del mínimo, 426 (§4.1); /v1/status con la carga de cada mundo.
+// Without X-Eldmark-Protocol or below the minimum, 426 (§4.1); /v1/status with each world's load.
 func TestStatusAndProtocol(t *testing.T) {
 	h := newHarness(t)
 	res := h.do(call{method: "GET", path: "/v1/status", noProtocol: true})
@@ -480,7 +481,8 @@ func TestLegalEndpoints(t *testing.T) {
 	h.expect(h.do(call{method: "GET", path: "/v1/legal/otro"}), 404, "not_found")
 }
 
-// Con el reloj parado, el freno de la cuenta sigue en pie sin intentos: CheckPassword directo.
+// With the clock stopped, the account's brake stays in place without attempts: CheckPassword
+// directly.
 func TestCheckPasswordDirect(t *testing.T) {
 	h := newHarness(t)
 	id := h.register("directa@example.org")

@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
-"""Comprueba y dibuja los sonidos de assets/audio/sfx para revisarlos sin oírlos (ART-11).
+"""Checks and plots the sounds in assets/audio/sfx so they can be reviewed without listening (ART-11).
 
-Decodifica cada OGG con ffmpeg (lo que oirá el juego, no la señal antes de codificar) y:
+Decodes each OGG with ffmpeg (what the game will play, not the signal before encoding) and:
 
-  1. Mide duración, canales, frecuencia de muestreo, pico de muestra y real, sonoridad K de la parte activa,
-     RMS de la parte activa, muestras saturadas, continua, clics sueltos, centroide, ataque, caída, el tramo a
-     menos de 6 dB del pico, la subida desde el arranque, la energía de los primeros 80 ms y el reparto de
-     energía por bandas.
-  2. Falla (código de salida 1) si algo se sale de lo que pide el catálogo, de las reglas generales (duración,
-     techo de pico, sonoridad igualada, clics, variaciones casi idénticas, niveles.json desfasado, reverberación
-     horneada en un sonido en 3D) o del listón de calidad de cada familia: las cifras de la crítica del director
-     de arte (envolvente y pico fijo de los barridos, cuerpo grave de barridos y golpes, cola inarmónica de la
-     parada, chasquido de los pasos en piedra, impactos de la caída...). Es lo más cerca de «oírlo» que se llega
-     sin altavoces: un sonido que pasa las cifras puede seguir sonando mal, uno que no las pasa suena mal seguro.
-  3. Dibuja un espectrograma por archivo (forma de onda arriba, espectrograma en frecuencia logarítmica de 40 Hz
-     a 20 kHz debajo), hojas resumen por familia y, con `--antes`, hojas de comparación con la versión anterior.
+  1. Measures duration, channels, sample rate, sample and true peak, K loudness of the active part,
+     RMS of the active part, clipped samples, DC offset, stray clicks, centroid, attack, decay, the stretch
+     within 6 dB of the peak, the rise from the start, the energy of the first 80 ms and the energy
+     distribution across bands.
+  2. Fails (exit code 1) if anything falls outside what the catalog asks for, the general rules (duration,
+     peak ceiling, matched loudness, clicks, nearly identical variations, stale niveles.json, reverb
+     baked into a 3D sound) or the quality bar of each family: the numbers from the art director's critique
+     (envelope and fixed peak of the swings, low body of swings and hits, inharmonic tail of the
+     parry, snap of footsteps on stone, impacts of the fall...). It is as close to "hearing it" as you can get
+     without speakers: a sound that passes the numbers can still sound bad, one that fails them surely sounds bad.
+  3. Plots one spectrogram per file (waveform on top, spectrogram on a logarithmic frequency axis from 40 Hz
+     to 20 kHz below), summary sheets per family and, with `--antes`, comparison sheets with the previous version.
 
-Salida en build/audio/ (ignorada por Git): espectrogramas/<categoría>/<nombre>.png, hojas/<grupo>.png,
-comparativa/<grupo>.png, informe.txt y muestrario.wav (todos los sonidos seguidos, con su recorte de volumen,
-para oírlos de una vez). Uso, desde la raíz del proyecto (necesita numpy, Pillow y ffmpeg/ffprobe en el PATH):
+Output in build/audio/ (ignored by Git): espectrogramas/<category>/<name>.png, hojas/<group>.png,
+comparativa/<group>.png, informe.txt and muestrario.wav (all the sounds in a row, with their volume trim,
+to hear them all at once). Usage, from the project root (needs numpy, Pillow and ffmpeg/ffprobe on the PATH):
 
     python tools/audio/analyze_sfx.py
     python tools/audio/analyze_sfx.py --sfx assets/audio/sfx --out build/audio --no-images
-    python tools/audio/analyze_sfx.py --antes build/antes/sfx      # además, comparativas antes y después
+    python tools/audio/analyze_sfx.py --antes build/antes/sfx      # also, before-and-after comparisons
 """
 
 import argparse
@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SR = dsp.SR
 TARGET_PEAK_DB = dsp.PEAK_DB
 TARGET_LOUD_DB = dsp.LOUD_DB
-MIN_COUNT = {  # variaciones mínimas de cada cosa (críticas: 8-10 pasos, 5-6 barridos ligeros, 4-6 golpes, 3 caídas)
+MIN_COUNT = {  # minimum variations of each thing (critical: 8-10 footsteps, 5-6 light swings, 4-6 hits, 3 falls)
     "sword_swing_light": 5, "sword_swing_heavy": 2, "hit_flesh": 4, "hit_leather": 4, "hit_gambeson": 4, "hit_mail": 4,
     "hit_shield_wood": 4, "hit_shield_metal": 3, "clash_metal": 3, "step_dirt": 8, "step_stone": 8, "body_fall": 3,
     "dodge_roll": 3, "dodge_step": 2, "bow_draw": 2, "bow_release": 3, "arrow_hit_flesh": 3, "arrow_hit_wood": 2,
@@ -50,7 +50,7 @@ MIN_COUNT = {  # variaciones mínimas de cada cosa (críticas: 8-10 pasos, 5-6 b
     "horn_fort_won_vardheim": 1, "horn_fort_won_solmarch": 1, "horn_fort_won_askarra": 1,
     "horn_fort_lost_vardheim": 1, "horn_fort_lost_solmarch": 1, "horn_fort_lost_askarra": 1,
 }
-GROUPS = {  # hoja de espectrogramas -> categorías
+GROUPS = {  # spectrogram sheet -> categories
     "barridos": ("swing",),
     "golpes": ("hit_flesh", "hit_leather", "hit_gambeson", "hit_mail"),
     "escudo_y_parada": ("hit_shield", "parry"),
@@ -59,9 +59,9 @@ GROUPS = {  # hoja de espectrogramas -> categorías
     "arco": ("bow", "arrow"),
     "voces_y_mundo": ("hollow", "potion", "ui", "alert"),
 }
-# Parejas de comparación con la versión anterior cuando el nombre cambió: nuevo -> viejo.
+# Comparison pairs with the previous version when the name changed: new -> old.
 RENAMED = {"alert/horn_fort_won_askarra_01": "alert/horn_fort_capture_01"}
-# Orden de las hojas de comparación: (nombre, [archivos nuevos]).
+# Order of the comparison sheets: (name, [new files]).
 COMPARE = {
     "barridos": ["swing/sword_swing_light_01", "swing/sword_swing_light_02", "swing/sword_swing_heavy_01",
                  "swing/sword_swing_heavy_02"],
@@ -74,11 +74,11 @@ COMPARE = {
 
 
 # ---------------------------------------------------------------------------
-# Decodificación y medidas
+# Decoding and measurements
 # ---------------------------------------------------------------------------
 
 def decode(path):
-    """Devuelve (señal float64 [n] o [n, canales], frecuencia de muestreo)."""
+    """Returns (float64 signal [n] or [n, channels], sample rate)."""
     probe = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels,sample_rate",
          "-of", "json", str(path)], capture_output=True, check=True)
@@ -108,14 +108,14 @@ def measure(x, rate):
     lv = dsp.measure_levels(x)
     spec = np.abs(np.fft.rfft(mono * np.hanning(n))) ** 2
     freqs = np.fft.rfftfreq(n, 1.0 / rate)
-    # Envolvente suavizada (2 ms) para el ataque y la caída.
+    # Smoothed envelope (2 ms) for the attack and decay.
     win = max(1, int(rate * 0.002))
     sm = np.convolve(env, np.ones(win) / win, mode="same")
     ipk = int(np.argmax(sm))
     first = int(np.argmax(sm > sm[ipk] * 0.05))
     reach90 = int(np.argmax(sm > sm[ipk] * 0.9))
     after = np.nonzero(sm[ipk:] < sm[ipk] * 10 ** (-40 / 20))[0]
-    # Clics: saltos aislados entre muestras (7 veces el de su entorno de ±4 ms), pasados los primeros 12 ms.
+    # Clicks: isolated jumps between samples (7 times that of their ±4 ms neighborhood), after the first 12 ms.
     d = np.diff(mono)
     w = int(rate * 0.004)
     local = np.sqrt(np.convolve(d * d, np.ones(2 * w + 1) / (2 * w + 1), mode="same") + 1e-12)
@@ -144,7 +144,7 @@ def measure(x, rate):
 
 
 def band_spectrum(x, rate):
-    """Espectro medio en bandas de tercio de octava (dB relativos al total), para comparar variaciones."""
+    """Mean spectrum in third-octave bands (dB relative to the total), to compare variations."""
     mono = x if x.ndim == 1 else x.mean(axis=1)
     spec = np.abs(np.fft.rfft(mono)) ** 2
     freqs = np.fft.rfftfreq(len(mono), 1.0 / rate)
@@ -159,7 +159,7 @@ def band_spectrum(x, rate):
 
 
 def centroid_window(x, t0, t1, f_min=500.0):
-    """Centroide espectral (Hz, por encima de `f_min`: el cuerpo grave no sube ni baja) entre t0 y t1 s."""
+    """Spectral centroid (Hz, above `f_min`: the low body goes neither up nor down) between t0 and t1 s."""
     mono = x if x.ndim == 1 else x.mean(axis=1)
     seg = mono[max(0, int(t0 * SR)):int(t1 * SR)]
     if len(seg) < 64:
@@ -171,8 +171,8 @@ def centroid_window(x, t0, t1, f_min=500.0):
 
 
 def tail_peaks(x, t0, k=2, half_width=25.0):
-    """Fracción de la energía de la cola (desde t0 s) que cae en los `k` picos más fuertes del espectro
-    (±`half_width` Hz) y en la banda de 2 a 9 kHz: un timbre de puerta tiene casi todo en dos senos."""
+    """Fraction of the tail's energy (from t0 s) that falls in the `k` strongest spectrum peaks
+    (±`half_width` Hz) and in the 2 to 9 kHz band: a door timbre has almost everything in two sines."""
     mono = x if x.ndim == 1 else x.mean(axis=1)
     tail = mono[int(t0 * SR):]
     nfft = 1 << 17
@@ -193,8 +193,8 @@ def tail_peaks(x, t0, k=2, half_width=25.0):
 
 
 def count_impacts(x, min_gap=0.05, floor_db=-14.0, valley_db=4.0):
-    """Cuenta los impactos claros: máximos de la envolvente de 4 ms a menos de `floor_db` del pico, separados
-    `min_gap` s y con un valle de al menos `valley_db` entre uno y el siguiente."""
+    """Counts the clear impacts: maxima of the 4 ms envelope within `floor_db` of the peak, separated by
+    `min_gap` s and with a valley of at least `valley_db` between one and the next."""
     mono = x if x.ndim == 1 else x.mean(axis=1)
     h = max(1, int(SR * 0.004))
     e = np.sqrt(np.convolve(mono * mono, np.ones(h) / h, mode="same") + 1e-18)
@@ -214,7 +214,7 @@ def count_impacts(x, min_gap=0.05, floor_db=-14.0, valley_db=4.0):
 
 
 # ---------------------------------------------------------------------------
-# El listón: lo que pide la crítica del director de arte, familia por familia
+# The bar: what the art director's critique asks for, family by family
 # ---------------------------------------------------------------------------
 
 def rule_swing(light):
@@ -232,8 +232,8 @@ def rule_swing(light):
             out.append("cuerpo grave de %d-%d Hz: %.0f %% de la energía (mínimo 20 %%)" % (band_lo, band_hi, frac * 100))
         if not light and band(x, 1000, 4000) > 0.60:
             out.append("el fuerte no pesa: %.0f %% de la energía entre 1 y 4 kHz (máximo 60 %%)" % (band(x, 1000, 4000) * 100))
-        # Doppler de verdad: el centroide por encima de 500 Hz sube hacia el pico y baja después. Se mide en
-        # ventanas de 30 ms; el máximo ha de caer cerca del pico y superar en un 25 % al arranque y al final.
+        # True Doppler: the centroid above 500 Hz rises toward the peak and falls afterwards. It is measured in
+        # 30 ms windows; the maximum must fall near the peak and exceed the start and the end by 25 %.
         t = m["peak_t"]
         starts = np.arange(0.0, m["dur"] - 0.03, 0.015)
         cs = np.array([centroid_window(x, t0, t0 + 0.03) for t0 in starts])
@@ -354,7 +354,7 @@ for _name in synth.SOUNDS:
 
 
 # ---------------------------------------------------------------------------
-# Espectrogramas
+# Spectrograms
 # ---------------------------------------------------------------------------
 
 _CMAP = np.array([
@@ -363,7 +363,7 @@ _CMAP = np.array([
 
 
 def colormap(v):
-    """Mapa de color tipo inferno para valores en 0..1; devuelve uint8 [..., 3]."""
+    """Inferno-style color map for values in 0..1; returns uint8 [..., 3]."""
     v = np.clip(v, 0.0, 1.0)
     out = np.empty(v.shape + (3,))
     for c in range(3):
@@ -372,9 +372,9 @@ def colormap(v):
 
 
 def spectrogram_db(mono, rate, width, rows, f_lo=40.0, f_hi=20000.0, floor_db=-85.0):
-    """Matriz [rows, width] en 0..1: dB relativos al máximo, filas en frecuencia logarítmica (arriba, agudos)."""
+    """Matrix [rows, width] in 0..1: dB relative to the maximum, rows on a logarithmic frequency axis (top, treble)."""
     dur = len(mono) / rate
-    n_fft = 512 if dur < 0.12 else 1024  # los sonidos cortos pierden resolución grave, pero ganan tiempo
+    n_fft = 512 if dur < 0.12 else 1024  # short sounds lose low-frequency resolution, but gain time resolution
     hop = max(1, int(len(mono) / width))
     pad = np.concatenate([np.zeros(n_fft // 2), mono, np.zeros(n_fft)])
     window = np.hanning(n_fft)
@@ -388,7 +388,7 @@ def spectrogram_db(mono, rate, width, rows, f_lo=40.0, f_hi=20000.0, floor_db=-8
     d = 10 * np.log10(sample + 1e-14)
     d -= d.max()
     img = (np.clip(d, floor_db, 0.0) - floor_db) / -floor_db
-    return img.T[::-1]  # agudos arriba
+    return img.T[::-1]  # treble on top
 
 
 def _font(size):
@@ -405,7 +405,7 @@ def _font(size):
 
 
 def render_spectrogram(x, rate, title, subtitle, compact=False):
-    """PNG con forma de onda y espectrograma. Devuelve una imagen PIL."""
+    """PNG with waveform and spectrogram. Returns a PIL image."""
     from PIL import Image, ImageDraw
     w_plot, h_wave, h_spec = (520, 56, 200) if compact else (1000, 130, 380)
     ml, mr, mt, mb = (46, 8, 38, 20) if compact else (66, 24, 62, 34)
@@ -423,7 +423,7 @@ def render_spectrogram(x, rate, title, subtitle, compact=False):
     mono = x if x.ndim == 1 else x.mean(axis=1)
     dur = len(mono) / rate
 
-    # Forma de onda (mínimo y máximo por columna; si es estéreo, el canal con más amplitud).
+    # Waveform (minimum and maximum per column; if stereo, the channel with the most amplitude).
     wave_src = x if x.ndim == 1 else x[:, int(np.argmax(np.max(np.abs(x), axis=0)))]
     edges = np.linspace(0, len(wave_src), w_plot + 1).astype(int)
     y0 = mt
@@ -439,7 +439,7 @@ def render_spectrogram(x, rate, title, subtitle, compact=False):
     d.text((6, y0), "+1", fill=dim, font=small)
     d.text((6, y0 + h_wave - fs_small - 2), "-1", fill=dim, font=small)
 
-    # Espectrograma.
+    # Spectrogram.
     y1 = y0 + h_wave + 8
     spec = spectrogram_db(mono, rate, w_plot, h_spec)
     img.paste(Image.fromarray(colormap(spec)), (ml, y1))
@@ -451,7 +451,7 @@ def render_spectrogram(x, rate, title, subtitle, compact=False):
         d.line([ml, yy, ml + w_plot, yy], fill=(70, 60, 70))
         d.text((ml - 6 - d.textlength(label, font=small), yy - fs_small / 2 - 1), label, fill=dim, font=small)
 
-    # Eje de tiempo.
+    # Time axis.
     step = 0.02 if dur < 0.2 else 0.05 if dur < 0.45 else 0.1 if dur < 1.0 else 0.25 if dur < 2.2 else 0.5
     k = 0
     while k * step <= dur + 1e-9:
@@ -464,7 +464,7 @@ def render_spectrogram(x, rate, title, subtitle, compact=False):
 
 
 def make_sheet(entries, title, path, cols=3):
-    """Hoja con una miniatura por archivo, en filas de `cols`."""
+    """Sheet with one thumbnail per file, in rows of `cols`."""
     from PIL import Image, ImageDraw
     thumbs = [render_spectrogram(x, r, name, sub, compact=True) for (name, sub, x, r) in entries]
     cw, ch = thumbs[0].size
@@ -479,7 +479,7 @@ def make_sheet(entries, title, path, cols=3):
 
 
 def make_comparison(pairs, title, path):
-    """Hoja de dos columnas: a la izquierda la versión anterior, a la derecha la nueva, fila por sonido."""
+    """Two-column sheet: the previous version on the left, the new one on the right, one row per sound."""
     from PIL import Image, ImageDraw
     thumbs = []
     for name, old, new in pairs:
@@ -498,12 +498,12 @@ def make_comparison(pairs, title, path):
 
 
 # ---------------------------------------------------------------------------
-# Muestrario
+# Sampler
 # ---------------------------------------------------------------------------
 
 def write_reel(loaded, path):
-    """WAV de 16 bits con todos los sonidos seguidos (con el recorte `volume_db` del catálogo y 0,45 s de
-    silencio entre ellos) para escucharlos de una tacada."""
+    """16-bit WAV with all the sounds in a row (with the catalog's `volume_db` trim and 0.45 s of
+    silence between them) to listen to them in one go."""
     import wave
     gap = np.zeros((int(SR * 0.45), 2))
     parts = []
@@ -522,11 +522,11 @@ def write_reel(loaded, path):
 
 
 # ---------------------------------------------------------------------------
-# Programa principal
+# Main program
 # ---------------------------------------------------------------------------
 
 def check_levels_file(sfx, loaded, problems):
-    """niveles.json debe decir lo mismo que se mide en los OGG (la primera versión daba -10,98 y -9,46)."""
+    """niveles.json must say the same thing that is measured in the OGGs (the first version gave -10.98 and -9.46)."""
     path = sfx / "niveles.json"
     if not path.exists():
         problems.append("niveles.json: no existe")
@@ -588,7 +588,7 @@ def main():
             problems.append("%s: pico real %.2f dBTP, por encima del techo %.1f" % (key, m["true_peak_db"], TARGET_PEAK_DB))
         if m["peak_db"] > -1.0:
             problems.append("%s: pico de muestra %.2f dBFS, por encima de -1,0" % (key, m["peak_db"]))
-        limited = m["true_peak_db"] > TARGET_PEAK_DB - 0.4  # manda el techo, no la sonoridad
+        limited = m["true_peak_db"] > TARGET_PEAK_DB - 0.4  # the ceiling rules, not the loudness
         if abs(m["loud_db"] - TARGET_LOUD_DB) > 0.4 and not (limited and m["loud_db"] < TARGET_LOUD_DB):
             problems.append("%s: sonoridad %.2f dB, lejos de la igualada (%.1f)" % (key, m["loud_db"], TARGET_LOUD_DB))
         if m["clipped"] > 0:
@@ -623,7 +623,7 @@ def main():
 
     check_levels_file(sfx, loaded, problems)
 
-    # Variaciones: que no sean la misma cosa con otro ruido.
+    # Variations: they should not be the same thing with different noise.
     lines_var = []
     var_summary = []
     for base, keys in names_by_base.items():

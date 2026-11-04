@@ -1,10 +1,10 @@
 extends TestCase
-## Pruebas de [TickSync] (docs/red.md, secciones 4.2 y 16): margen objetivo según el jitter,
-## secuencias de márgenes y los pasos que se deben dar, deuda proporcional, espera hasta el ack
-## posterior al ajuste, retraso con pasos nulos, resincronización dura hacia delante y que nunca
-## se salta hacia atrás.
+## Tests for [TickSync] (docs/red.md, sections 4.2 and 16): target margin according to jitter,
+## margin sequences and the steps to take, proportional debt, waiting for the ack
+## after the adjustment, delay with null steps, hard forward resync and that it never
+## jumps backward.
 ## [br][br]
-## Los números esperados salen a mano del pseudocódigo de la sección 4.2.
+## The expected numbers come by hand from the pseudocode in section 4.2.
 
 const RANDOM_SEED: int = 20261029
 const NO_MARGIN: int = NetProtocol.NO_MARGIN
@@ -12,7 +12,7 @@ const NO_MARGIN: int = NetProtocol.NO_MARGIN
 
 func test_target_margin_follows_jitter() -> void:
 	var sync := TickSync.new()
-	assert_eq(sync.get_target_margin(), 1, "sin jitter medido, margen 1")
+	assert_eq(sync.get_target_margin(), 1, "without measured jitter, margin 1")
 	var cases: Array[Array] = [
 		[0.0, 1], [0.1, 2], [0.5, 2], [0.51, 3], [1.0, 3], [1.01, 4], [1.5, 4], [5.0, 4],
 		[-3.0, 1],
@@ -20,45 +20,45 @@ func test_target_margin_follows_jitter() -> void:
 	for case: Array in cases:
 		sync.set_jitter(case[0])
 		assert_eq(sync.get_target_margin(), case[1],
-				"jitter %s -> margen 1 + ceil(2 * jitter) acotado a [1, 4]" % case[0])
+				"jitter %s -> margin 1 + ceil(2 * jitter) clamped to [1, 4]" % case[0])
 
 
 func test_start_returns_first_real_tick() -> void:
 	var sync := TickSync.new()
-	assert_eq(sync.start(100, 5), 107, "P0 = spawn_tick + rtt + margen (1) + 1")
+	assert_eq(sync.start(100, 5), 107, "P0 = spawn_tick + rtt + margin (1) + 1")
 	sync.set_jitter(1.0)
-	assert_eq(sync.start(100, 5), 109, "con margen 3: P0 = 100 + 5 + 3 + 1")
+	assert_eq(sync.start(100, 5), 109, "with margin 3: P0 = 100 + 5 + 3 + 1")
 	assert_eq(sync.start(100, 0), 104, "RTT 0")
-	assert_eq(sync.start(100, -4), 104, "un RTT negativo cuenta como 0")
+	assert_eq(sync.start(100, -4), 104, "a negative RTT counts as 0")
 
 
 func test_start_resets_previous_session() -> void:
 	var sync := TickSync.new()
 	_feed(sync, 10, 0, 1)
-	assert_eq(sync.next_steps(50), 2, "se adelanta")
-	assert_eq(sync.adjustments, 1, "un ajuste")
+	assert_eq(sync.next_steps(50), 2, "moves ahead")
+	assert_eq(sync.adjustments, 1, "one adjustment")
 	_feed(sync, 100, 5, 3)
 	sync.start(1, 1)
-	assert_eq(sync.adjustments, 0, "start() reinicia los ajustes")
-	assert_eq(sync.get_window_min(), NO_MARGIN, "start() vacía la ventana")
+	assert_eq(sync.adjustments, 0, "start() resets the adjustments")
+	assert_eq(sync.get_window_min(), NO_MARGIN, "start() empties the window")
 	_feed(sync, 0, 1, 1)
-	assert_eq(sync.next_steps(10), 1, "sin deuda ni espera tras start()")
+	assert_eq(sync.next_steps(10), 1, "no debt or wait after start()")
 
 
 func test_steady_margin_keeps_one_step() -> void:
 	var sync := TickSync.new()
-	# Entre el objetivo (1) y el objetivo + 2 (3) no se toca nada, ni siquiera con la ventana llena.
+	# Between the target (1) and target + 2 (3) nothing is touched, not even with the window full.
 	for i: int in 60:
 		sync.on_snapshot(i, 1 + (i % 3))
-		assert_eq(sync.next_steps(100 + i), 1, "paso %d" % i)
-	assert_eq(sync.adjustments, 0, "ningún ajuste")
+		assert_eq(sync.next_steps(100 + i), 1, "step %d" % i)
+	assert_eq(sync.adjustments, 0, "no adjustment")
 
 
 func test_no_data_margin_is_ignored() -> void:
 	var sync := TickSync.new()
 	sync.on_snapshot(5, NO_MARGIN)
-	assert_eq(sync.get_window_min(), NO_MARGIN, "un snapshot sin datos no entra en la ventana")
-	assert_eq(sync.next_steps(10), 1, "y no cambia el ritmo")
+	assert_eq(sync.get_window_min(), NO_MARGIN, "a snapshot with no data does not enter the window")
+	assert_eq(sync.next_steps(10), 1, "and does not change the pace")
 
 
 func test_window_keeps_the_last_samples_and_uses_the_minimum() -> void:
@@ -66,39 +66,39 @@ func test_window_keeps_the_last_samples_and_uses_the_minimum() -> void:
 	_feed(sync, 1, 3, 1)
 	_feed(sync, 2, 1, 1)
 	_feed(sync, 3, 2, 1)
-	assert_eq(sync.get_window_min(), 1, "mínimo de todas las muestras")
-	# Una muestra baja antigua sale de la ventana tras WINDOW_SAMPLES muestras más.
+	assert_eq(sync.get_window_min(), 1, "minimum of all samples")
+	# An old low sample leaves the window after WINDOW_SAMPLES more samples.
 	var other := TickSync.new()
 	_feed(other, 1, -5, 1)
 	_feed(other, 2, 4, TickSync.WINDOW_SAMPLES)
-	assert_eq(other.get_window_min(), 4, "la ventana solo recuerda las últimas %d muestras" %
+	assert_eq(other.get_window_min(), 4, "the window only remembers the last %d samples" %
 			TickSync.WINDOW_SAMPLES)
 
 
 func test_behind_pays_a_debt_proportional_to_the_shortfall_with_double_steps() -> void:
 	var sync := TickSync.new()
 	sync.set_jitter(1.0)
-	assert_eq(sync.get_target_margin(), 3, "margen objetivo 3")
+	assert_eq(sync.get_target_margin(), 3, "target margin 3")
 	_feed(sync, 10, 0, 1)
-	assert_eq(sync.get_window_min(), 0, "mínimo 0")
-	# Deuda 3 - 0: tres pasos dobles seguidos y luego el ritmo normal.
+	assert_eq(sync.get_window_min(), 0, "minimum 0")
+	# Debt 3 - 0: three consecutive double steps and then the normal pace.
 	var steps: Array[int] = []
 	var predicted: int = 100
 	for _i: int in 6:
 		var count: int = sync.next_steps(predicted)
 		steps.append(count)
 		predicted += count
-	assert_eq(steps, [2, 2, 2, 1, 1, 1] as Array[int], "pasos tras un margen 0 con objetivo 3")
-	assert_eq(sync.adjustments, 1, "un ajuste")
-	assert_eq(sync.get_window_min(), NO_MARGIN, "el ajuste vacía la ventana")
+	assert_eq(steps, [2, 2, 2, 1, 1, 1] as Array[int], "steps after a margin 0 with target 3")
+	assert_eq(sync.adjustments, 1, "one adjustment")
+	assert_eq(sync.get_window_min(), NO_MARGIN, "the adjustment empties the window")
 
 
 func test_small_shortfall_pays_a_single_double_step() -> void:
 	var sync := TickSync.new()
 	_feed(sync, 10, 0, 1)
-	assert_eq(sync.next_steps(100), 2, "margen 0 con objetivo 1: un paso doble")
-	assert_eq(sync.next_steps(102), 1, "y vuelta al ritmo normal")
-	assert_eq(sync.adjustments, 1, "un ajuste")
+	assert_eq(sync.next_steps(100), 2, "margin 0 with target 1: one double step")
+	assert_eq(sync.next_steps(102), 1, "and back to the normal pace")
+	assert_eq(sync.adjustments, 1, "one adjustment")
 
 
 func test_waits_for_an_ack_after_the_adjustment() -> void:
@@ -108,27 +108,27 @@ func test_waits_for_an_ack_after_the_adjustment() -> void:
 	var predicted: int = 100
 	for _i: int in 3:
 		predicted += sync.next_steps(predicted)
-	# El último paso doble se dio con predicted_tick = 104: el primer tick nuevo es 106 y se espera
-	# un ack de 108 (primer tick posterior al ajuste + 2).
-	assert_eq(sync.adjustments, 1, "ajuste hecho")
+	# The last double step was taken with predicted_tick = 104: the first new tick is 106 and an ack
+	# of 108 is awaited (first tick after the adjustment + 2).
+	assert_eq(sync.adjustments, 1, "adjustment done")
 	sync.on_snapshot(107, 0)
-	assert_eq(sync.get_window_min(), NO_MARGIN, "ack 107: aún refleja entradas anteriores al ajuste")
+	assert_eq(sync.get_window_min(), NO_MARGIN, "ack 107: still reflects inputs from before the adjustment")
 	sync.on_snapshot(108, 0)
-	assert_eq(sync.get_window_min(), 0, "ack 108: el servidor ya ha visto entradas posteriores")
+	assert_eq(sync.get_window_min(), 0, "ack 108: the server has already seen later inputs")
 	sync.on_snapshot(200, 7)
-	assert_eq(sync.get_window_min(), 0, "las siguientes entran sin más espera")
+	assert_eq(sync.get_window_min(), 0, "the following ones enter with no further wait")
 
 
 func test_ahead_slows_down_with_a_null_step_every_other_tick() -> void:
 	var sync := TickSync.new()
-	# Con la ventana a medias no se retrasa nunca.
+	# With the window half full it never delays.
 	_feed(sync, 1, 6, TickSync.WINDOW_SAMPLES - 1)
 	for i: int in 10:
-		assert_eq(sync.next_steps(100 + i), 1, "ventana incompleta: ritmo normal")
-	assert_eq(sync.adjustments, 0, "sin ajustes")
+		assert_eq(sync.next_steps(100 + i), 1, "incomplete window: normal pace")
+	assert_eq(sync.adjustments, 0, "no adjustments")
 
 	_feed(sync, 2, 6, 1)
-	# Margen 6 con objetivo 1: deuda -(6 - 1) = -5 -> cinco pasos nulos, uno de cada dos ticks.
+	# Margin 6 with target 1: debt -(6 - 1) = -5 -> five null steps, one every two ticks.
 	var steps: Array[int] = []
 	var predicted: int = 100
 	for _i: int in 12:
@@ -136,34 +136,34 @@ func test_ahead_slows_down_with_a_null_step_every_other_tick() -> void:
 		steps.append(count)
 		predicted += count
 	assert_eq(steps, [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1] as Array[int],
-			"cinco pasos nulos alternados con pasos normales")
-	assert_eq(sync.adjustments, 1, "un ajuste")
+			"five null steps alternating with normal steps")
+	assert_eq(sync.adjustments, 1, "one adjustment")
 
 
 func test_margin_just_above_the_target_does_not_slow_down() -> void:
 	var sync := TickSync.new()
 	_feed(sync, 1, 3, TickSync.WINDOW_SAMPLES + 5)
 	for i: int in 20:
-		assert_eq(sync.next_steps(100 + i), 1, "objetivo 1 + 2 = 3 todavía vale")
+		assert_eq(sync.next_steps(100 + i), 1, "target 1 + 2 = 3 is still fine")
 	_feed(sync, 2, 4, TickSync.WINDOW_SAMPLES)
-	assert_eq(sync.next_steps(200), 0, "con 4 (> objetivo + 2) y la ventana llena sí se retrasa")
+	assert_eq(sync.next_steps(200), 0, "with 4 (> target + 2) and the window full it does delay")
 
 
 func test_hard_resync_forward_takes_all_the_steps_at_once() -> void:
 	var sync := TickSync.new()
 	_feed(sync, 1, -10, 1)
-	# Mínimo -10 con objetivo 1: 1 + (1 - -10) = 12 pasos en el mismo tick.
-	assert_eq(sync.next_steps(100), 12, "resincronización dura")
-	assert_eq(sync.adjustments, 1, "un ajuste")
-	assert_eq(sync.next_steps(112), 1, "y el ritmo normal después")
+	# Minimum -10 with target 1: 1 + (1 - -10) = 12 steps on the same tick.
+	assert_eq(sync.next_steps(100), 12, "hard resync")
+	assert_eq(sync.adjustments, 1, "one adjustment")
+	assert_eq(sync.next_steps(112), 1, "and the normal pace afterward")
 
 	var limit := TickSync.new()
 	_feed(limit, 1, -100, 1)
-	assert_eq(limit.next_steps(100), TickSync.MAX_RESYNC_STEPS, "30 pasos como mucho")
+	assert_eq(limit.next_steps(100), TickSync.MAX_RESYNC_STEPS, "30 steps at most")
 
 	var edge := TickSync.new()
 	_feed(edge, 1, TickSync.RESYNC_BEHIND, 1)
-	assert_eq(edge.next_steps(100), 10, "-8 ya es resincronización: 1 + (1 + 8)")
+	assert_eq(edge.next_steps(100), 10, "-8 is already a resync: 1 + (1 + 8)")
 
 	var proportional := TickSync.new()
 	_feed(proportional, 1, TickSync.RESYNC_BEHIND + 1, 1)
@@ -174,7 +174,7 @@ func test_hard_resync_forward_takes_all_the_steps_at_once() -> void:
 		steps.append(count)
 		predicted += count
 	assert_eq(steps, [2, 2, 2, 2, 2, 2, 2, 2, 1] as Array[int],
-			"-7 se paga con ocho pasos dobles en ticks seguidos")
+			"-7 is paid with eight double steps on consecutive ticks")
 
 
 func test_never_steps_backwards() -> void:
@@ -192,57 +192,57 @@ func test_never_steps_backwards() -> void:
 			sync.on_snapshot(predicted - rng.randi_range(0, 3), margin)
 		var steps: int = sync.next_steps(predicted)
 		assert_true(steps >= 0 and steps <= TickSync.MAX_RESYNC_STEPS,
-				"pasos fuera de [0, 30]: %d" % steps)
-		assert_false(steps == 0 and previous == 0, "nunca dos ticks seguidos sin paso")
+				"steps outside [0, 30]: %d" % steps)
+		assert_false(steps == 0 and previous == 0, "never two consecutive ticks without a step")
 		previous = steps
 		predicted += steps
 		total_steps += steps
-	assert_true(predicted >= 1000, "el tick predicho nunca retrocede")
-	assert_true(total_steps > 1500, "avanza de forma sostenida (%d pasos en 3000 ticks)" %
+	assert_true(predicted >= 1000, "the predicted tick never goes backward")
+	assert_true(total_steps > 1500, "advances steadily (%d steps in 3000 ticks)" %
 			total_steps)
 
 
-# --- Bucle cerrado con un servidor mínimo ---------------------------------------------------------
+# --- Closed loop with a minimal server ------------------------------------------------------------
 
 func test_closed_loop_recovers_when_the_start_estimate_is_too_late() -> void:
-	# RTT supuesto 0 con 3 + 3 ticks reales: las primeras entradas llegan 4 ticks tarde.
+	# Assumed RTT 0 with 3 + 3 real ticks: the first inputs arrive 4 ticks late.
 	var loop: Dictionary = _run_loop(3, 3, 0, 0, 0.0, 400)
 	var leads: Array[Vector2i] = loop["leads"]
-	assert_true(_min_lead_after(leads, 0) < 0, "al principio las entradas llegan tarde")
+	assert_true(_min_lead_after(leads, 0) < 0, "at the start the inputs arrive late")
 	assert_true(_min_lead_after(leads, 100) >= 0,
-			"a los 100 ticks ya no llega ninguna tarde (antelación mínima %d)"
+			"after 100 ticks none arrives late any more (minimum lead %d)"
 			% _min_lead_after(leads, 100))
 	assert_true(_max_lead_after(leads, 100) <= TickSync.MIN_TARGET + 2,
-			"y la antelación queda a menos de objetivo + 2 (%d)" % _max_lead_after(leads, 100))
+			"and the lead stays under target + 2 (%d)" % _max_lead_after(leads, 100))
 	assert_true(loop["adjustments"] >= 1 and loop["adjustments"] <= 3,
-			"con pocos ajustes (%d)" % loop["adjustments"])
+			"with few adjustments (%d)" % loop["adjustments"])
 
 
 func test_closed_loop_hard_resync_when_the_estimate_is_very_wrong() -> void:
-	# Seis ticks de ida y otros seis de vuelta, y se supone un RTT de 0: -9 de margen.
+	# Six ticks out and another six back, and an RTT of 0 is assumed: margin of -9.
 	var loop: Dictionary = _run_loop(6, 6, 0, 0, 0.0, 400)
 	var leads: Array[Vector2i] = loop["leads"]
 	assert_true(_min_lead_after(leads, 0) <= TickSync.RESYNC_BEHIND,
-			"las primeras entradas llegan muy tarde (%d)" % _min_lead_after(leads, 0))
-	assert_true(_min_lead_after(leads, 100) >= 0, "y a los 100 ticks ya no hay tardías")
-	assert_true(_max_lead_after(leads, 100) <= TickSync.MIN_TARGET + 2, "con la antelación acotada")
-	assert_true(loop["adjustments"] <= 4, "sin oscilar (%d ajustes)" % loop["adjustments"])
+			"the first inputs arrive very late (%d)" % _min_lead_after(leads, 0))
+	assert_true(_min_lead_after(leads, 100) >= 0, "and after 100 ticks there are no late ones")
+	assert_true(_max_lead_after(leads, 100) <= TickSync.MIN_TARGET + 2, "with the lead bounded")
+	assert_true(loop["adjustments"] <= 4, "without oscillating (%d adjustments)" % loop["adjustments"])
 
 
 func test_closed_loop_slows_down_when_the_estimate_is_too_early() -> void:
-	# RTT supuesto 20 con 3 + 3 reales: las entradas llegan 15 ticks antes de lo necesario.
+	# Assumed RTT 20 with 3 + 3 real: the inputs arrive 15 ticks earlier than needed.
 	var loop: Dictionary = _run_loop(3, 3, 0, 20, 0.0, 900)
 	var leads: Array[Vector2i] = loop["leads"]
-	assert_true(_max_lead_after(leads, 0) >= 10, "al principio sobra antelación (%d)"
+	assert_true(_max_lead_after(leads, 0) >= 10, "at the start there is surplus lead (%d)"
 			% _max_lead_after(leads, 0))
-	assert_true(_min_lead_after(leads, 500) >= 0, "nunca tarde, ni retrasándose")
+	assert_true(_min_lead_after(leads, 500) >= 0, "never late, not even when delaying")
 	assert_true(_max_lead_after(leads, 500) <= TickSync.MIN_TARGET + 2,
-			"y acaba con la antelación en el objetivo (%d)" % _max_lead_after(leads, 500))
-	assert_true(loop["adjustments"] <= 4, "sin oscilar (%d ajustes)" % loop["adjustments"])
+			"and it ends with the lead at the target (%d)" % _max_lead_after(leads, 500))
+	assert_true(loop["adjustments"] <= 4, "without oscillating (%d adjustments)" % loop["adjustments"])
 
 
 func test_closed_loop_with_jitter_keeps_inputs_on_time() -> void:
-	# Ida con entre 3 y 6 ticks de retardo (jitter 3 en la ida) y jitter de snapshots medido de 1,5.
+	# Upstream with between 3 and 6 ticks of delay (jitter 3 upstream) and measured snapshot jitter of 1.5.
 	var loop: Dictionary = _run_loop(3, 3, 3, 6, 1.5, 1800)
 	var leads: Array[Vector2i] = loop["leads"]
 	var late: int = 0
@@ -253,17 +253,17 @@ func test_closed_loop_with_jitter_keeps_inputs_on_time() -> void:
 		total += 1
 		if entry.y < 0:
 			late += 1
-	assert_true(total > 1000, "hay entradas que medir (%d)" % total)
+	assert_true(total > 1000, "there are inputs to measure (%d)" % total)
 	assert_true(float(late) / float(total) < 0.02,
-			"menos de un 2 %% de entradas tardías en régimen (%d de %d)" % [late, total])
-	assert_true(loop["adjustments"] <= 12, "pocos ajustes (%d)" % loop["adjustments"])
+			"fewer than 2 %% of inputs late in steady state (%d of %d)" % [late, total])
+	assert_true(loop["adjustments"] <= 12, "few adjustments (%d)" % loop["adjustments"])
 
 
-## Bucle cerrado sin física: un cliente con [TickSync] y un servidor mínimo que mide la antelación
-## de la primera copia de cada entrada (sección 4.1) y devuelve el mínimo y el ack en snapshots
-## cada 2 ticks. Las entradas tardan [param up] ticks en llegar (más entre 0 y [param up_jitter]
-## de jitter) y los snapshots [param down]. [param assumed_rtt] es el RTT con el que se calcula P0.
-## Devuelve {"leads": Array[Vector2i] (fotograma, antelación), "adjustments": int}.
+## Closed loop without physics: a client with [TickSync] and a minimal server that measures the lead
+## of the first copy of each input (section 4.1) and returns the minimum and the ack in snapshots
+## every 2 ticks. Inputs take [param up] ticks to arrive (plus between 0 and [param up_jitter]
+## of jitter) and snapshots [param down]. [param assumed_rtt] is the RTT with which P0 is computed.
+## Returns {"leads": Array[Vector2i] (frame, lead), "adjustments": int}.
 func _run_loop(up: int, down: int, up_jitter: int, assumed_rtt: int, jitter_ticks: float,
 		frames: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
@@ -272,7 +272,7 @@ func _run_loop(up: int, down: int, up_jitter: int, assumed_rtt: int, jitter_tick
 	sync.set_jitter(jitter_ticks)
 	var spawn_tick: int = 100
 	var predicted: int = sync.start(spawn_tick, assumed_rtt) - 1
-	# Cuando el cliente recibe el alta, el servidor ya va por spawn_tick + down.
+	# When the client receives the join, the server is already at spawn_tick + down.
 	var server_tick: int = spawn_tick + down - 1
 	var uplink: Dictionary = {}
 	var downlink: Dictionary = {}
@@ -281,7 +281,7 @@ func _run_loop(up: int, down: int, up_jitter: int, assumed_rtt: int, jitter_tick
 	var min_lead: int = 0
 	var has_lead: bool = false
 	for frame: int in frames:
-		# Servidor: recibir, simular el tick siguiente y, cada 2 ticks, enviar el snapshot.
+		# Server: receive, simulate the next tick and, every 2 ticks, send the snapshot.
 		for tick: int in uplink.get(frame, []):
 			var lead: int = tick - (server_tick + 1)
 			if tick <= server_tick or received.has(tick):
@@ -306,7 +306,7 @@ func _run_loop(up: int, down: int, up_jitter: int, assumed_rtt: int, jitter_tick
 			if not downlink.has(arrival):
 				downlink[arrival] = []
 			(downlink[arrival] as Array).append(Vector2i(ack, margin))
-		# Cliente: llegan los snapshots, se decide cuántos pasos dar y se envían las entradas.
+		# Client: snapshots arrive, it decides how many steps to take and the inputs are sent.
 		for snapshot: Vector2i in downlink.get(frame, []):
 			sync.on_snapshot(snapshot.x, snapshot.y)
 		var steps: int = sync.next_steps(predicted)

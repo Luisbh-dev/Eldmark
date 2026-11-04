@@ -1,46 +1,49 @@
 class_name BotCheatBrain
 extends BotBrain
-## Cerebro de los modos de combate del bot tramposo ([BotCheater], docs/combate.md, sección 4.5).
+## Brain of the cheating bot's combat modes ([BotCheater], docs/combate.md, section 4.5).
 ## [br][br]
-## Busca al enemigo más cercano (lo da [method BotBrain.set_enemy_finder]) y, según su [enum Style]:
-## [br]- [constant Style.REACH]: se queda a [constant REACH_DISTANCE] m, mirándolo, y lanza un ligero
-## cada [constant SWING_GAP_TICKS] ticks. Las entradas son legítimas; el servidor tiene que dejarlo sin
-## golpe porque el sector del arma no llega (2,6 m más el radio de la cápsula).
-## [br]- [constant Style.RATE]: se pega al enemigo y machaca PRIMARY, pulsado un tick de cada dos
-## (un flanco cada dos ticks, lo máximo que se puede pulsar). El servidor tiene que dejarlo pegar solo
-## al ritmo del combo de los datos.
-## [br]- [constant Style.REUSE] (CMB-19; docs/habilidades.md, sección 4.7): se pega al enemigo y machaca la
-## habilidad 1 (el golpe de escudo) un tick de cada dos, también mientras está en reutilización. El servidor
-## tiene que dejarlo usarla solo cuando vuelve a valer: un golpe cada [code]cooldown + cast[/code] ticks.
-## [br]- [constant Style.POTION]: machaca las dos pociones (R y T, alternas, un flanco cada dos ticks) esté
-## donde esté. El servidor solo deja beber con cargas y fuera de la reutilización compartida.
-## [br]- [constant Style.INTERACT]: machaca INTERACT un tick de cada dos sin moverse, lejos de nadie. Sin un
-## derribado a su alcance, el servidor no empieza ni levantar ni rematar.
-## [br]Sin enemigo a la vista, [constant Style.REACH], [constant Style.RATE] y [constant Style.REUSE] pasean
-## como [constant BotBrain.Pattern.WANDER]; [constant Style.POTION] y [constant Style.INTERACT] no necesitan
-## enemigo y se quedan quietos.
+## It looks for the nearest enemy (provided by [method BotBrain.set_enemy_finder]) and, depending
+## on its [enum Style]:
+## [br]- [constant Style.REACH]: it stays at [constant REACH_DISTANCE] m, facing it, and throws a
+## light attack every [constant SWING_GAP_TICKS] ticks. The inputs are legitimate; the server
+## must leave it without a hit because the weapon's sector does not reach (2.6 m plus the
+## capsule's radius).
+## [br]- [constant Style.RATE]: it sticks to the enemy and mashes PRIMARY, pressed one tick out of
+## two (one edge every two ticks, the most that can be pressed). The server must let it hit only at
+## the combo rate in the data.
+## [br]- [constant Style.REUSE] (CMB-19; docs/habilidades.md, section 4.7): it sticks to the enemy
+## and mashes ability 1 (the shield strike) one tick out of two, also while it is on cooldown. The
+## server must let it use it only when it becomes valid again: one hit every [code]cooldown +
+## cast[/code] ticks.
+## [br]- [constant Style.POTION]: it mashes both potions (R and T, alternating, one edge every two
+## ticks) wherever it is. The server only lets it drink with charges and outside the shared cooldown.
+## [br]- [constant Style.INTERACT]: it mashes INTERACT one tick out of two without moving, away
+## from everyone. Without a knocked-down player within reach, the server neither starts a revive
+## nor a finishing blow.
+## [br]With no enemy in sight, [constant Style.REACH], [constant Style.RATE] and [constant Style.REUSE] wander like [constant BotBrain.Pattern.WANDER]; [constant Style.POTION] and
+## [constant Style.INTERACT] need no enemy and stand still.
 
 enum Style {
-	## Ataca desde [constant REACH_DISTANCE] m.
+	## Attacks from [constant REACH_DISTANCE] m.
 	REACH,
-	## Machaca PRIMARY pegado al enemigo.
+	## Mashes PRIMARY stuck to the enemy.
 	RATE,
-	## Machaca la habilidad 1 pegado al enemigo.
+	## Mashes ability 1 stuck to the enemy.
 	REUSE,
-	## Machaca las pociones.
+	## Mashes the potions.
 	POTION,
-	## Machaca INTERACT lejos de nadie.
+	## Mashes INTERACT away from everyone.
 	INTERACT,
 }
 
-## Distancia (m) a la que se queda el modo [constant Style.REACH] y holgura antes de moverse.
+## Distance (m) at which [constant Style.REACH] mode stays, and the slack before moving.
 const REACH_DISTANCE: float = 5.0
 const REACH_TOLERANCE: float = 0.3
-## Distancia (m) a la que se pega el modo [constant Style.RATE] (el sector del arma llega a 2,6 m).
+## Distance (m) at which [constant Style.RATE] mode sticks to the enemy (the weapon's sector reaches 2.6 m).
 const MELEE_DISTANCE: float = 1.8
-## Distancia (m) a partir de la cual esprinta para alcanzar al enemigo.
+## Distance (m) beyond which it sprints to reach the enemy.
 const SPRINT_DISTANCE: float = 9.0
-## Ticks entre los ligeros del modo [constant Style.REACH] y ticks que se mantiene pulsado cada uno.
+## Ticks between the light attacks of [constant Style.REACH] mode and ticks each one is held down.
 const SWING_GAP_TICKS: int = 40
 const TAP_TICKS: int = 2
 
@@ -48,7 +51,7 @@ var _style: Style = Style.REACH
 var _last_swing_tick: int = -1000
 
 
-## [param rng_seed], [param home] y [param radius] son los de [BotBrain] (paseo sin enemigo).
+## [param rng_seed], [param home] and [param radius] are those of [BotBrain] (wandering with no enemy).
 func _init(rng_seed: int, style: Style, home: Vector3 = Vector3.ZERO, radius: float = 30.0) -> void:
 	super(rng_seed, BotBrain.Pattern.WANDER, home, radius)
 	_style = style
@@ -82,8 +85,8 @@ func next_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	return input
 
 
-# POTION e INTERACT: quieto, mirando adonde mira, machacando sus botones un tick de cada dos (las pociones,
-# alternas: R en los múltiplos de 4 y T en los demás pares).
+# POTION and INTERACT: standing still, facing where it faces, mashing their buttons one tick out
+# of two (the potions alternate: R on multiples of 4 and T on the other even ticks).
 func _mash_in_place(tick: int, yaw: float) -> PlayerInput:
 	var input := PlayerInput.new()
 	input.tick = tick
@@ -97,7 +100,8 @@ func _mash_in_place(tick: int, yaw: float) -> PlayerInput:
 	return input
 
 
-# Se coloca a REACH_DISTANCE del enemigo y, quieto, lanza un ligero cada SWING_GAP_TICKS.
+# It positions itself at REACH_DISTANCE from the enemy and, standing still, throws a light attack
+# every SWING_GAP_TICKS.
 func _reach(input: PlayerInput, tick: int, distance: float) -> void:
 	if distance > REACH_DISTANCE + REACH_TOLERANCE:
 		input.move = Vector2(0.0, 1.0)
@@ -111,7 +115,7 @@ func _reach(input: PlayerInput, tick: int, distance: float) -> void:
 		input.buttons |= PlayerInput.PRIMARY
 
 
-# Se pega al enemigo y pulsa [param button] un tick de cada dos.
+# It sticks to the enemy and presses [param button] one tick out of two.
 func _rate(input: PlayerInput, tick: int, distance: float, button: int) -> void:
 	if distance > MELEE_DISTANCE:
 		input.move = Vector2(0.0, 1.0)

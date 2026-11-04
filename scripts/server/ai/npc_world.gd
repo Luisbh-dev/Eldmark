@@ -1,59 +1,59 @@
 class_name NpcWorld
 extends RefCounted
-## Lo que ve y puede hacer el cerebro de un PNJ en el servidor (docs/fuerte.md, sección 4.2): quién es un
-## objetivo posible, si hay línea de visión, rutas de navegación, las fichas de ataque, los grupos de alerta y
-## los avisos al sistema de generadores. Lo monta el [NpcSpawnerSystem] con las piezas del [ZoneServer] y se lo
-## pasa a cada [HfsmBrain].
+## What an NPC's brain sees and can do on the server (docs/fuerte.md, section 4.2): who is a possible
+## target, whether there is line of sight, navigation routes, attack tokens, alert groups and
+## warnings to the spawner system. It is assembled by the [NpcSpawnerSystem] from the [ZoneServer]'s pieces and handed
+## to each [HfsmBrain].
 ## [br][br]
-## Todo se calcula con el estado «tras s − 1» porque los cerebros piensan en el paso 0 del tick
-## (docs/fuerte.md, sección 1.7), antes de simular a nadie. La lista de posibles objetivos se arma una vez por tick
-## y se reutiliza.
+## Everything is computed with the state "after s − 1" because the brains think in step 0 of the tick
+## (docs/fuerte.md, section 1.7), before anyone is simulated. The list of possible targets is built once per tick
+## and reused.
 
-## Zona (para las reglas de hostilidad).
+## Zone (for the hostility rules).
 var zone_id: StringName = &""
 var combat: CombatDirector = null
 var safe_areas: SafeAreas = null
-## Navegación (null = sin malla: los PNJ van en línea recta).
+## Navigation (null = no mesh: NPCs go in a straight line).
 var navigation: NpcNavigation = null
 var tokens: AttackTokens = AttackTokens.new()
-## [code]() -> PhysicsDirectSpaceState3D[/code]: el espacio de física para la línea de visión.
+## [code]() -> PhysicsDirectSpaceState3D[/code]: the physics space for line of sight.
 var space_provider: Callable = Callable()
-## [code](net_id: int, position: Vector3) -> void[/code]: teletransporta a un PNJ (el regreso atascado).
+## [code](net_id: int, position: Vector3) -> void[/code]: teleports an NPC (the stuck return).
 var teleporter: Callable = Callable()
-## [code](brain: HfsmBrain, definition_id: StringName, count: int) -> int[/code]: crea refuerzos junto al
-## PNJ y devuelve cuántos ha creado.
+## [code](brain: HfsmBrain, definition_id: StringName, count: int) -> int[/code]: creates reinforcements next to the
+## NPC and returns how many it created.
 var reinforcer: Callable = Callable()
-## Tick que se está pensando (el estado de los cuerpos es el de después del tick anterior).
+## Tick being thought about (the state of the bodies is that after the previous tick).
 var tick: int = 0
 
-# Posibles objetivos de este tick: vivos, sin protección de reaparición y que no son maniquíes.
+# Possible targets for this tick: alive, without respawn protection and not dummies.
 var _candidates: Array[Combatant] = []
 var _candidates_tick: int = -1
-# (bando del PNJ · 16 + bando del otro) -> si hay daño entre ellos en la zona.
+# (NPC's side · 16 + the other's side) -> whether there is damage between them in the zone.
 var _hostile_cache: Dictionary[int, bool] = {}
-# Grupo de alerta -> cerebros que lo forman.
+# Alert group -> brains that make it up.
 var _groups: Dictionary[StringName, Array] = {}
 var _results: Array[Combatant] = []
-# Consultas hechas desde que existe (para medir).
+# Queries made since it came into existence (for measuring).
 var queries: int = 0
 var line_of_sight_checks: int = 0
 
 
-## Empieza el tick [param new_tick]: los posibles objetivos se vuelven a armar la primera vez que se pidan.
+## Starts tick [param new_tick]: the possible targets are rebuilt the first time they are requested.
 func begin_tick(new_tick: int) -> void:
 	tick = new_tick
 
 
-## El [Combatant] de [param net_id], o null.
+## The [Combatant] of [param net_id], or null.
 func find_combatant(net_id: int) -> Combatant:
 	return combat.get_combatant(net_id) if combat != null else null
 
 
-## Los combatientes que un PNJ del bando [param realm] puede atacar a menos de [param radius] m (en horizontal)
-## de [param position]: vivos, hostiles según [FactionRules], fuera de la protección de reaparición y que no
-## son maniquíes. Quien está a salvo en la zona segura de su propio reino no cuenta (el resolutor no le haría
-## daño); con [param ignores_safe_area] (los Guardianes) ocurre lo contrario: solo cuentan los que están dentro
-## de la zona segura del reino del PNJ. El array es el mismo en cada llamada: hay que usarlo antes de pedir otro.
+## The combatants that an NPC on side [param realm] can attack within [param radius] m (horizontally)
+## of [param position]: alive, hostile according to [FactionRules], outside respawn protection and not
+## dummies. Whoever is safe in their own realm's safe zone does not count (the resolver would not damage them);
+## with [param ignores_safe_area] (the Guardians) the opposite happens: only those inside the NPC's realm's
+## safe zone count. The array is the same on every call: use it before requesting another.
 func query_targets(position: Vector3, radius: float, realm: int, ignores_safe_area: bool) -> Array[Combatant]:
 	queries += 1
 	_results.clear()
@@ -80,8 +80,8 @@ func query_targets(position: Vector3, radius: float, realm: int, ignores_safe_ar
 	return _results
 
 
-## true si [param candidate] sigue siendo un objetivo válido para un PNJ del bando [param realm]. Más barato que
-## [method query_targets] cuando ya se sabe a quién se persigue.
+## true if [param candidate] is still a valid target for an NPC on side [param realm]. Cheaper than
+## [method query_targets] when you already know whom you are chasing.
 func is_valid_target(candidate: Combatant, realm: int, ignores_safe_area: bool) -> bool:
 	if candidate == null or candidate.is_dead() or candidate.is_protected(tick) or candidate.immortal \
 			or candidate.is_gm_invisible():
@@ -94,8 +94,8 @@ func is_valid_target(candidate: Combatant, realm: int, ignores_safe_area: bool) 
 	return safe_areas == null or not safe_areas.contains_own(candidate.get_realm(), position)
 
 
-## true si hay línea de visión entre los pies [param from_feet] y [param to_feet] (del pecho al centro del otro,
-## contra el mundo y las estructuras).
+## true if there is line of sight between the feet [param from_feet] and [param to_feet] (from the chest to the
+## other's center, against the world and structures).
 func line_of_sight(from_feet: Vector3, to_feet: Vector3) -> bool:
 	line_of_sight_checks += 1
 	if not space_provider.is_valid():
@@ -104,35 +104,35 @@ func line_of_sight(from_feet: Vector3, to_feet: Vector3) -> bool:
 	return space == null or HitShapes.has_line_of_sight(space, from_feet, to_feet)
 
 
-## Ruta de [param from] a [param to] para un agente del bando [param realm] (vacía si no hay navegación lista).
+## Route from [param from] to [param to] for an agent on side [param realm] (empty if there is no navigation ready).
 func get_path(from: Vector3, to: Vector3, realm: int) -> PackedVector3Array:
 	if navigation == null:
 		return PackedVector3Array()
 	return navigation.get_path(from, to, realm)
 
 
-## true si la navegación está montada y da rutas de verdad.
+## true if navigation is set up and gives real routes.
 func has_navigation() -> bool:
 	return navigation != null and navigation.is_ready()
 
 
-## Teletransporta al PNJ [param net_id] a [param position].
+## Teleports NPC [param net_id] to [param position].
 func teleport(net_id: int, position: Vector3) -> void:
 	if teleporter.is_valid():
 		teleporter.call(net_id, position)
 
 
-## Pide refuerzos del tipo [param definition_id] ([param count]) junto a [param brain]. Devuelve cuántos se
-## han creado.
+## Requests reinforcements of type [param definition_id] ([param count]) next to [param brain]. Returns how many
+## were created.
 func request_reinforcements(brain: HfsmBrain, definition_id: StringName, count: int) -> int:
 	if reinforcer.is_valid():
 		return int(reinforcer.call(brain, definition_id, count))
 	return 0
 
 
-# --- Grupos de alerta -------------------------------------------------------------------------------
+# --- Alert groups -------------------------------------------------------------------------------
 
-## Mete a [param brain] en el grupo de alerta [param group].
+## Puts [param brain] in alert group [param group].
 func join_group(group: StringName, brain: HfsmBrain) -> void:
 	if group.is_empty():
 		return
@@ -142,7 +142,7 @@ func join_group(group: StringName, brain: HfsmBrain) -> void:
 	_groups[group] = members
 
 
-## Saca a [param brain] de su grupo.
+## Takes [param brain] out of its group.
 func leave_group(group: StringName, brain: HfsmBrain) -> void:
 	var members: Array = _groups.get(group, [])
 	members.erase(brain)
@@ -150,7 +150,7 @@ func leave_group(group: StringName, brain: HfsmBrain) -> void:
 		_groups.erase(group)
 
 
-## Cuántos miembros vivos tiene [param group] sin contar a [param except].
+## How many living members [param group] has, not counting [param except].
 func count_alive_in_group(group: StringName, except: HfsmBrain) -> int:
 	var total: int = 0
 	for member: HfsmBrain in _groups.get(group, []):
@@ -159,8 +159,8 @@ func count_alive_in_group(group: StringName, except: HfsmBrain) -> int:
 	return total
 
 
-## Avisa a los miembros del grupo [param group] que no están combatiendo y están a menos de [param radius] m de
-## [param source] de que hay un enemigo ([param target_id]). Devuelve a cuántos ha avisado.
+## Warns the members of group [param group] that are not fighting and are within [param radius] m of
+## [param source] that there is an enemy ([param target_id]). Returns how many it warned.
 func alert_group(group: StringName, source: HfsmBrain, radius: float, target_id: int) -> int:
 	var alerted: int = 0
 	var origin: Vector3 = source.get_position()
@@ -176,7 +176,7 @@ func alert_group(group: StringName, source: HfsmBrain, radius: float, target_id:
 	return alerted
 
 
-## Quita los grupos y las fichas (al cerrar el servidor).
+## Removes the groups and tokens (on server shutdown).
 func clear() -> void:
 	_groups.clear()
 	tokens.clear()
@@ -188,7 +188,7 @@ func _rebuild_candidates() -> void:
 	_candidates_tick = tick
 	_candidates.clear()
 	for candidate: Combatant in combat.get_sorted():
-		# Un GM invisible no es blanco de los PNJ (docs/plataforma.md §9.1).
+		# An invisible GM is not a target for NPCs (docs/plataforma.md §9.1).
 		if candidate.is_dead() or candidate.immortal or candidate.is_protected(tick) or candidate.is_gm_invisible():
 			continue
 		_candidates.append(candidate)

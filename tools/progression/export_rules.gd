@@ -1,16 +1,16 @@
 extends SceneTree
-## Escribe [code]platform/internal/gamedata/progression_rules.json[/code] con
-## [method ProgressionRulesExport.build] (docs/progresion.md §13.4, docs/plataforma.md §4.4). Es la
-## única forma de cambiar ese archivo: [code]tests/test_progression_rules_export.gd[/code] falla si no
-## coincide con las reglas del código.
+## Writes [code]platform/internal/gamedata/progression_rules.json[/code] with
+## [method ProgressionRulesExport.build] (docs/progresion.md §13.4, docs/plataforma.md §4.4). It is the
+## only way to change that file: [code]tests/test_progression_rules_export.gd[/code] fails if it
+## does not match the rules in the code.
 ## [br][br]
-## [b]Uso[/b], desde la raíz del proyecto (el [code]godot[/code] de consola):
+## [b]Usage[/b], from the project root (the console [code]godot[/code]):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/progression/export_rules.gd
 ## godot --headless --path . -s res://tools/progression/export_rules.gd -- --check
 ## [/codeblock]
-## Con [code]--check[/code] no escribe nada: sale con código 0 si el archivo está al día y 1 si no.
-## Sin él, escribe el archivo (si ha cambiado) y sale con 0, o con 1 si no puede escribirlo.
+## With [code]--check[/code] it writes nothing: it exits with code 0 if the file is up to date and 1 if not.
+## Without it, it writes the file (if it changed) and exits with 0, or with 1 if it cannot write it.
 
 
 func _initialize() -> void:

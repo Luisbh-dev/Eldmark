@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""Hoja de contactos: junta las PNG de una carpeta en una sola imagen con su nombre, para revisarlas de un vistazo.
+"""Contact sheet: joins the PNGs of a folder into a single image with their names, to review them at a glance.
 
-Uso: python contact_sheet.py <carpeta> <salida.png> [columnas=4] [ancho_celda=480] [desde-hasta]
+Usage: python contact_sheet.py <folder> <output.png> [columns=4] [cell_width=480] [from-to]
 """
 import os
 import sys

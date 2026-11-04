@@ -1,8 +1,8 @@
 class_name DevAuthProvider
 extends AuthProvider
-## Proveedor sin plataforma (fase 2 y [code]--server[/code] sin [code]--platform[/code]): acepta en el acto el
-## reino y el nombre que declara el cliente, sin cuentas ni billetes (docs/red.md, sección 12). Los personajes son
-## efímeros y nada se guarda (docs/progresion.md §9.4). Con la plataforma, [TicketAuthProvider].
+## Provider without a platform (phase 2 and [code]--server[/code] without [code]--platform[/code]): it immediately accepts the
+## realm and name the client declares, with no accounts or tickets (docs/red.md, section 12). Characters are
+## ephemeral and nothing is saved (docs/progresion.md §9.4). With the platform, [TicketAuthProvider].
 
 
 func authenticate(_peer_id: int, _hello: NetMessages.Hello) -> int:

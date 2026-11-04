@@ -1,14 +1,14 @@
 class_name RenameDialog
 extends Control
-## Renombrado forzado (docs/plataforma.md §4.4, §9.5 y §13.2): cuando [code]enter[/code] responde
-## [code]rename_required[/code] (una sanción de moderación), un diálogo modal pide el nombre nuevo, validado con
-## [NameRules] al escribir. «Cambiar» emite [signal rename_requested]; la plataforma responde y [FrontMain] cierra el
-## diálogo o enseña el motivo ([method set_error]). El nombre viejo queda reservado 30 días. Esc cancela. Solo
-## cliente.
+## Forced rename (docs/plataforma.md §4.4, §9.5 and §13.2): when [code]enter[/code] responds
+## [code]rename_required[/code] (a moderation sanction), a modal dialog asks for the new name, validated
+## with [NameRules] as it is typed. "Cambiar" (Change) emits [signal rename_requested]; the platform
+## responds and [FrontMain] closes the dialog or shows the reason ([method set_error]). The old name stays
+## reserved for 30 days. Esc cancels. Client only.
 
-## Pulsó «Cambiar» con un nombre válido.
+## Pressed "Cambiar" (Change) with a valid name.
 signal rename_requested(character_id: int, display_name: String)
-## Canceló (botón o Esc).
+## Canceled (button or Esc).
 signal canceled
 
 const TEXT_TITLE: String = "Cambia el nombre de tu personaje"
@@ -70,7 +70,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Abre el diálogo para el personaje [param character_id], que hoy se llama [param current_name].
+## Opens the dialog for character [param character_id], which is currently named [param current_name].
 func open(character_id: int, current_name: String) -> void:
 	_character_id = character_id
 	_help.text = TEXT_HELP % current_name
@@ -95,7 +95,7 @@ func get_character_id() -> int:
 	return _character_id
 
 
-## Enseña el motivo por el que la plataforma no aceptó el nombre (y deja volver a intentarlo).
+## Shows the reason the platform did not accept the name (and allows trying again).
 func set_error(text: String) -> void:
 	_busy = false
 	_reason.text = text
@@ -107,7 +107,7 @@ func set_busy(busy: bool) -> void:
 	_refresh()
 
 
-## Emite [signal rename_requested] si el nombre vale. Devuelve true si lo emitió.
+## Emits [signal rename_requested] if the name is valid. Returns true if it emitted it.
 func try_rename() -> bool:
 	var display_name: String = _edit.text.strip_edges()
 	if not visible or _busy or not NameRules.is_valid(display_name):

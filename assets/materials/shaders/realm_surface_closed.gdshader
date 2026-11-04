@@ -1,6 +1,6 @@
-// Superficie de reino para mallas cerradas (troncos de la empalizada, lonas de las tiendas,
-// brasas): se descartan las caras traseras, que nunca se ven y en las sombras costaban el doble.
-// El cuerpo está en realm_surface.gdshaderinc.
+// Realm surface for closed meshes (palisade logs, tent canvas, embers): back faces are discarded,
+// since they are never seen and in shadows they cost double. The body is in
+// realm_surface.gdshaderinc.
 shader_type spatial;
 render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 

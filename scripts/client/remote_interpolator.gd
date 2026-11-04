@@ -1,35 +1,35 @@
 class_name RemoteInterpolator
 extends RefCounted
-## Interpolación de un jugador remoto (docs/red.md, sección 7).
+## Interpolation of a remote player (docs/red.md, section 7).
 ##
-## Guarda las últimas [constant BUFFER_SIZE] muestras [code](tick, EntityRecord)[/code] ordenadas
-## por tick, sin duplicados ni muestras más antiguas que la ventana, y [method sample] devuelve
-## el registro que hay que dibujar en un instante dado (en ticks, con fracción):
-## [br]- [b]Entre dos muestras[/b] con el mismo contador de teletransporte: [code]lerp[/code] de
-## posición y velocidad, [code]lerp_angle[/code] del yaw (correcto al cruzar ±PI) y los flags
-## (grounded) de la muestra más cercana.
-## [br]- [b]Si el contador de teletransporte cambia[/b] entre las dos, no se interpola: se queda en
-## la primera hasta que el instante alcanza la segunda.
-## [br]- [b]Por detrás de la primera muestra[/b] se queda en ella.
-## [br]- [b]Por delante de la última[/b] extrapola en horizontal con su velocidad hasta
-## [constant MAX_EXTRAPOLATION_TICKS] ticks (100 ms) y después se queda quieto: extrapolar más
-## engañaría al apuntar.
+## Keeps the last [constant BUFFER_SIZE] samples [code](tick, EntityRecord)[/code] ordered by tick,
+## without duplicates or samples older than the window, and [method sample] returns the record to draw
+## at a given instant (in ticks, with fraction):
+## [br]- [b]Between two samples[/b] with the same teleport counter: [code]lerp[/code] of position and
+## velocity, [code]lerp_angle[/code] of the yaw (correct when crossing ±PI) and the flags (grounded)
+## from the nearest sample.
+## [br]- [b]If the teleport counter changes[/b] between the two, there is no interpolation: it stays on
+## the first until the instant reaches the second.
+## [br]- [b]Behind the first sample[/b] it stays on it.
+## [br]- [b]Ahead of the last one[/b] it extrapolates horizontally with its velocity up to
+## [constant MAX_EXTRAPOLATION_TICKS] ticks (100 ms) and then stands still: extrapolating further
+## would mislead aiming.
 ## [br][br]
-## Los registros que se guardan no se modifican ni se copian: quien los empuja no debe tocarlos
-## después. [method sample] siempre devuelve un registro nuevo.
+## The records that are stored are neither modified nor copied: whoever pushes them must not touch them
+## afterwards. [method sample] always returns a new record.
 
-## Muestras que se guardan.
+## Samples that are kept.
 const BUFFER_SIZE: int = 32
-## Ticks máximos que se extrapola por delante de la última muestra.
+## Maximum ticks to extrapolate ahead of the last sample.
 const MAX_EXTRAPOLATION_TICKS: int = 6
 
 var _ticks: PackedInt64Array = PackedInt64Array()
 var _records: Array[EntityRecord] = []
 
 
-## Guarda la muestra de [param tick]. Se descartan las repetidas (gana la primera) y las más
-## antiguas que la ventana cuando el búfer está lleno. Las que llegan desordenadas se insertan en
-## su sitio.
+## Stores the sample for [param tick]. Duplicates are discarded (the first wins) and so are those older
+## than the window when the buffer is full. Samples that arrive out of order are inserted in their
+## place.
 func push(tick: int, record: EntityRecord) -> void:
 	if record == null:
 		return
@@ -48,8 +48,8 @@ func push(tick: int, record: EntityRecord) -> void:
 	_records.insert(index, record)
 
 
-## Registro que se dibuja en el instante [param render_time] (ticks con fracción), o null si no
-## hay muestras.
+## Record to draw at instant [param render_time] (ticks with fraction), or null if there are no
+## samples.
 func sample(render_time: float) -> EntityRecord:
 	var count: int = _ticks.size()
 	if count == 0:
@@ -60,7 +60,7 @@ func sample(render_time: float) -> EntityRecord:
 	if render_time >= float(_ticks[last]):
 		return _extrapolate(_records[last], render_time - float(_ticks[last]))
 
-	# Última muestra con tick <= render_time; hay una siguiente porque render_time < la última.
+	# Last sample with tick <= render_time; there is a next one because render_time < the last.
 	var a: int = last - 1
 	while a > 0 and float(_ticks[a]) > render_time:
 		a -= 1
@@ -73,27 +73,27 @@ func sample(render_time: float) -> EntityRecord:
 	return EntityRecord.interpolate(from, to, weight)
 
 
-## Tick de la muestra más nueva, o 0 si no hay ninguna.
+## Tick of the newest sample, or 0 if there is none.
 func get_newest_tick() -> int:
 	if _ticks.is_empty():
 		return 0
 	return _ticks[_ticks.size() - 1]
 
 
-## Tick de la muestra más antigua, o 0 si no hay ninguna.
+## Tick of the oldest sample, or 0 if there is none.
 func get_oldest_tick() -> int:
 	if _ticks.is_empty():
 		return 0
 	return _ticks[0]
 
 
-## Número de muestras guardadas.
+## Number of stored samples.
 func get_sample_count() -> int:
 	return _ticks.size()
 
 
-## Posición de cada muestra guardada, tal como llegó (sin interpolar), de la más antigua a la más
-## nueva. La usa la depuración de red para marcar las muestras.
+## Position of each stored sample, as it arrived (not interpolated), from oldest to newest. Network
+## debugging uses it to mark the samples.
 func get_sample_positions() -> PackedVector3Array:
 	var positions := PackedVector3Array()
 	positions.resize(_records.size())
@@ -102,14 +102,14 @@ func get_sample_positions() -> PackedVector3Array:
 	return positions
 
 
-## Descarta todas las muestras.
+## Discards all the samples.
 func clear() -> void:
 	_ticks.clear()
 	_records.clear()
 
 
-# Extrapola en horizontal con la velocidad de la última muestra hasta MAX_EXTRAPOLATION_TICKS;
-# pasado ese tiempo se queda quieto.
+# Extrapolates horizontally with the last sample's velocity up to MAX_EXTRAPOLATION_TICKS; after that
+# time it stands still.
 func _extrapolate(newest: EntityRecord, ticks_ahead: float) -> EntityRecord:
 	var record: EntityRecord = _copy(newest)
 	if ticks_ahead <= 0.0:

@@ -1,29 +1,29 @@
 class_name ItemEvent
 extends RefCounted
-## Un evento de objeto (docs/progresion.md §3.3, §5.2 y §9.3, I4): lo único que cambia la cantidad total de
-## una definición. Lo dan las fuentes, los sumideros, la reversión y la migración (§5.3); mover, dividir,
-## juntar, intercambiar y equipar no dan ninguno. Pertenece a una operación ([code]EconomyOp[/code], del
-## servidor), que lo lleva en su [code]items[/code].
+## An item event (docs/progresion.md §3.3, §5.2 and §9.3, I4): the only thing that changes the
+## total quantity of a definition. It is given by sources, sinks, reversal and migration (§5.3);
+## moving, splitting, merging, swapping and equipping give none. It belongs to an operation
+## ([code]EconomyOp[/code], server-side), which carries it in its [code]items[/code].
 ## [br][br]
 ## [b]JSON[/b] ([method to_dictionary], §9.3): [code]{"uid": "1027", "def_id": "potion_health",
-## "count_delta": -1, "reason": 65}[/code], con [code]uid[/code] null en un evento agregado (CAMP_REFILL,
-## CONSUME). Compartido: sin reloj ni azar.
+## "count_delta": -1, "reason": 65}[/code], with [code]uid[/code] null in an aggregated event
+## (CAMP_REFILL, CONSUME). Shared: no clock, no randomness.
 
-## Claves de [method to_dictionary], en orden alfabético.
+## Keys of [method to_dictionary], in alphabetical order.
 const DICTIONARY_KEYS: Array[String] = ["count_delta", "def_id", "reason", "uid"]
-## Mayor [member count_delta] en valor absoluto (la columna es [code]int[/code]).
+## Largest [member count_delta] in absolute value (the column is [code]int[/code]).
 const MAX_COUNT_DELTA: int = 0x7FFFFFFF
 
-## La instancia de la que es (kit, GM, DESTROY del jugador); 0 = agregado (null en JSON).
+## The instance it belongs to (kit, GM, player DESTROY); 0 = aggregated (null in JSON).
 var uid: int = 0
 var def_id: StringName = &""
-## Unidades que entran (> 0) o salen (< 0); nunca 0.
+## Units that come in (> 0) or go out (< 0); never 0.
 var count_delta: int = 0
-## Motivo ([EconomyReason]); su signo cuadra con [member count_delta].
+## Reason ([EconomyReason]); its sign matches [member count_delta].
 var reason: int = 0
 
 
-## Un evento con esos valores.
+## An event with those values.
 static func create(event_uid: int, event_def_id: StringName, delta: int, event_reason: int) -> ItemEvent:
 	var event := ItemEvent.new()
 	event.uid = event_uid
@@ -33,7 +33,8 @@ static func create(event_uid: int, event_def_id: StringName, delta: int, event_r
 	return event
 
 
-## La entrada de [code]items[/code] de una operación (§9.3): [code]uid[/code] como cadena decimal o null.
+## The [code]items[/code] entry of an operation (§9.3): [code]uid[/code] as a decimal string or
+## null.
 func to_dictionary() -> Dictionary:
 	return {
 		"uid": null if uid == 0 else ProgressJson.id_text(uid),
@@ -43,11 +44,12 @@ func to_dictionary() -> Dictionary:
 	}
 
 
-## Lee una entrada de [method to_dictionary]; null si no cuadra: una clave que falta o que no conoce, un
-## [code]uid[/code] que no es null ni un id de 1 a 2^53 − 1 en cadena, un [code]def_id[/code] sin el formato
-## de [constant ItemDefinition.ID_PATTERN], un [code]count_delta[/code] de 0 o fuera de rango, o un motivo
-## cuyo signo no cuadra ([method EconomyReason.sign_matches]). No mira si la definición existe: un evento
-## antiguo puede nombrar una que ya no está.
+## Reads an entry from [method to_dictionary]; null if it does not fit: a missing or unknown key, a
+## [code]uid[/code] that is neither null nor an id from 1 to 2^53 − 1 as a string, a
+## [code]def_id[/code] without the format of [constant ItemDefinition.ID_PATTERN], a
+## [code]count_delta[/code] of 0 or out of range, or a reason whose sign does not match
+## ([method EconomyReason.sign_matches]). It does not check whether the definition exists: an old
+## event may name one that is no longer there.
 static func from_dictionary(data: Dictionary) -> ItemEvent:
 	if data.size() != DICTIONARY_KEYS.size():
 		return null
@@ -76,7 +78,7 @@ static func from_dictionary(data: Dictionary) -> ItemEvent:
 	return create(event_uid, StringName(def_value), delta, event_reason)
 
 
-## true si [param other] tiene los mismos valores.
+## true if [param other] has the same values.
 func equals(other: ItemEvent) -> bool:
 	return other != null and uid == other.uid and def_id == other.def_id \
 			and count_delta == other.count_delta and reason == other.reason

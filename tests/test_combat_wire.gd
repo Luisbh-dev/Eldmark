@@ -1,17 +1,17 @@
 extends TestCase
-## El combate del servidor por la red, con clientes que hablan el protocolo a mano sobre ENet en
-## 127.0.0.1 (docs/combate.md, secciones 5 y 6; docs/red.md, 5.5 y 5.6): a quién se envía cada
-## ENTITY_EVENT (HIT, DOWNED, DEATH, KILL y RESPAWN), el bloque extra del snapshot con la vida, el PNJ en
-## los snapshots, RESPAWN_REQUEST (en plazo, fuera de plazo y con un índice que ya no vale) y los
-## comandos de depuración (con y sin [code]--debug-commands[/code]).
+## Server combat over the network, with clients that speak the protocol by hand over ENet on
+## 127.0.0.1 (docs/combate.md, sections 5 and 6; docs/red.md, 5.5 and 5.6): who each
+## ENTITY_EVENT is sent to (HIT, DOWNED, DEATH, KILL and RESPAWN), the extra snapshot block with health, the NPC in
+## the snapshots, RESPAWN_REQUEST (on time, past the deadline and with an index that is no longer valid) and the
+## debug commands (with and without [code]--debug-commands[/code]).
 ## [br][br]
-## Desde la fase 4 (docs/habilidades.md, secciones 4.5 y 4.6) cada jugador recibe al entrar su LOADOUT (y
-## la pública de los que entran después y tiene relevantes), así que las pruebas esperan los eventos por
-## su clase; y en una zona RVR («test_world») el golpe mortal de otro reino derriba: la DEATH y el KILL
-## llegan con el remate.
+## Since phase 4 (docs/habilidades.md, sections 4.5 and 4.6) each player receives their LOADOUT on entering (and
+## the public one of those who enter later and are relevant to them), so the tests wait for events by
+## their class; and in an RVR zone (\"test_world\") the killing blow from another realm knocks down: the DEATH and the KILL
+## arrive with the finishing blow.
 ## [br][br]
-## Los clientes son [RawClient]: sin predicción ni interpolación, mandan las entradas que dice cada
-## prueba (con botones) en los ticks del servidor.
+## The clients are [RawClient]: no prediction or interpolation, they send the inputs each test says
+## (with buttons) on the server ticks.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -30,7 +30,7 @@ var _client_tick: int = 0
 var _next_client_index: int = 0
 
 
-## Un cliente que habla el protocolo a mano y guarda lo que recibe del servidor, con los eventos.
+## A client that speaks the protocol by hand and stores what it receives from the server, with the events.
 class RawClient:
 	extends RefCounted
 
@@ -86,8 +86,8 @@ class RawClient:
 	func send_raw(channel: int, bytes: PackedByteArray) -> Error:
 		return transport.send(1, channel, bytes)
 
-	## INPUT_BATCH con las entradas de los ticks [param first_tick] a [param last_tick]; los botones
-	## de cada tick los da [param buttons_of] ([code](tick: int) -> int[/code]).
+	## INPUT_BATCH with the inputs of ticks [param first_tick] to [param last_tick]; the buttons
+	## of each tick are given by [param buttons_of] ([code](tick: int) -> int[/code]).
 	func send_inputs(first_tick: int, last_tick: int, look_yaw: float, buttons_of: Callable) -> void:
 		var batch := NetMessages.InputBatch.new()
 		if not snapshots.is_empty():
@@ -114,8 +114,8 @@ class RawClient:
 		return found
 
 
-## Política de interés que esconde a algunos jugadores a otros: net_id del observador -> net_id
-## que no ve.
+## Interest policy that hides some players from others: observer's net_id -> net_id
+## it does not see.
 class HidingPolicy:
 	extends InterestPolicy
 
@@ -147,7 +147,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _start_server(configure: Callable = Callable()) -> void:
 	_viewport = SubViewport.new()
@@ -170,7 +170,7 @@ func _start_server(configure: Callable = Callable()) -> void:
 	if configure.is_valid():
 		configure.call(config)
 	assert_eq(_server.start(config, _world, _server_transport, DevAuthProvider.new()), OK,
-			"el servidor abre el puerto %d" % _port)
+			"the server opens port %d" % _port)
 
 
 func _hello(realm: int, player_name: String) -> PackedByteArray:
@@ -193,7 +193,7 @@ func _find_free_port() -> int:
 	return -1
 
 
-## Un paso de física de los clientes: poll, ganchos y flush.
+## One physics step of the clients: poll, hooks and flush.
 func _step() -> void:
 	await tree.physics_frame
 	_client_tick += 1
@@ -218,7 +218,7 @@ func _run_until(condition: Callable, max_frames: int = MAX_FRAMES) -> bool:
 	return condition.call()
 
 
-## Entra un cliente y espera a su alta.
+## A client joins and waits for its registration.
 func _join(player_name: String, realm: int) -> RawClient:
 	var transport := NetTransport.new()
 	transport.name = "ClientTransport%d" % _next_client_index
@@ -226,9 +226,9 @@ func _join(player_name: String, realm: int) -> RawClient:
 	_viewport.add_child(transport)
 	var client := RawClient.new(transport, _hello(realm, player_name))
 	_clients.append(client)
-	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "%s conecta" % player_name)
+	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "%s connects" % player_name)
 	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null)
-	if not assert_true(joined, "%s entra en el mundo" % player_name):
+	if not assert_true(joined, "%s enters the world" % player_name):
 		return null
 	return client
 
@@ -241,24 +241,24 @@ func _combatant_of(client: RawClient) -> Combatant:
 	return _server.get_combat().get_combatant(client.own_spawn.net_id)
 
 
-## Hace que [param client] mande, en cada paso, las entradas de los próximos ticks del servidor con
-## [param look_yaw] y esos botones ([param buttons_of] recibe el tick del servidor).
+## Makes [param client] send, on each step, the inputs of the next server ticks with
+## [param look_yaw] and those buttons ([param buttons_of] receives the server tick).
 func _drive(client: RawClient, look_yaw: float, buttons_of: Callable = Callable()) -> void:
 	_hooks.append(func(_tick: int) -> void:
 		var next: int = _server.get_tick() + 1
 		client.send_inputs(next, next + 3, look_yaw, buttons_of))
 
 
-## Coloca a [param client] en [param position] mirando a [param yaw] (en el servidor).
+## Places [param client] at [param position] facing [param yaw] (on the server).
 func _place(client: RawClient, position: Vector3, yaw: float) -> void:
 	_server.teleport(client.own_spawn.net_id, position)
 	_entity_of(client).get_character().yaw = yaw
 
 
-# --- Lo que no viaja ---------------------------------------------------------------------------
+# --- What does not travel ----------------------------------------------------------------------
 
-## R4: quien entra en la zona recibe un ENTITY_SPAWN por cada entidad que ya estaba, y el de las ajenas no
-## lleva su resistencia, agotamiento, enfriamiento de parada ni controles; el propio sí lo lleva todo.
+## R4: whoever enters the zone receives an ENTITY_SPAWN for each entity that was already there, and that of the others does not
+## carry their stamina, exhaustion, parry cooldown or controls; the own one does carry everything.
 func test_the_spawn_of_other_players_does_not_leak_their_private_combat_state() -> void:
 	await _start_server()
 	var ana: RawClient = await _join("Ana", VARDHEIM)
@@ -276,19 +276,19 @@ func test_the_spawn_of_other_players_does_not_leak_their_private_combat_state() 
 	for spawn: NetMessages.EntitySpawn in bea.spawns:
 		if spawn.net_id == ana.own_spawn.net_id:
 			seen = spawn
-	if not assert_not_null(seen, "Bea recibe el SPAWN de Ana"):
+	if not assert_not_null(seen, "Bea receives Ana's SPAWN"):
 		return
-	assert_false(seen.is_yours, "ajeno")
+	assert_false(seen.is_yours, "foreign")
 	var neutral: CombatState = CombatState.initial(CombatCatalog.rules(), combat.weapon_id)
-	assert_eq(seen.state.combat.stamina, neutral.stamina, "sin la resistencia exacta")
-	assert_eq(seen.state.combat.combat_flags, 0, "ni el agotamiento")
-	assert_eq(seen.state.combat.parry_ready_tick, 0, "ni el enfriamiento de la parada")
+	assert_eq(seen.state.combat.stamina, neutral.stamina, "without the exact stamina")
+	assert_eq(seen.state.combat.combat_flags, 0, "nor the exhaustion")
+	assert_eq(seen.state.combat.parry_ready_tick, 0, "nor the parry cooldown")
 	assert_eq(seen.state.combat.stamina_regen_tick, 0)
-	assert_eq(seen.state.combat.weapon_id, combat.weapon_id, "el arma sí")
-	assert_true(ana.own_spawn.is_yours, "el SPAWN propio sigue marcado como tuyo")
+	assert_eq(seen.state.combat.weapon_id, combat.weapon_id, "the weapon does")
+	assert_true(ana.own_spawn.is_yours, "the own SPAWN is still marked as yours")
 
 
-# --- Eventos ----------------------------------------------------------------------------------
+# --- Events -----------------------------------------------------------------------------------
 
 func test_a_hit_reaches_attacker_victim_and_a_third_player_with_the_same_content() -> void:
 	await _start_server()
@@ -309,29 +309,29 @@ func test_a_hit_reaches_attacker_victim_and_a_third_player_with_the_same_content
 	var delivered: bool = await _run_until(func() -> bool:
 		return not attacker.events_of(hit_kind).is_empty() and not victim.events_of(hit_kind).is_empty() \
 				and not third.events_of(hit_kind).is_empty())
-	if not assert_true(delivered, "los tres reciben el evento"):
+	if not assert_true(delivered, "all three receive the event"):
 		return
 	var first: NetMessages.EntityEvent = attacker.events_of(NetMessages.EntityEvent.Kind.HIT)[0]
 	for client: RawClient in [victim, third]:
 		var copy: NetMessages.EntityEvent = client.events_of(NetMessages.EntityEvent.Kind.HIT)[0]
-		assert_eq(copy.encode(), first.encode(), "el mismo HIT, byte a byte")
+		assert_eq(copy.encode(), first.encode(), "the same HIT, byte for byte")
 	assert_eq(first.attacker, attacker.own_spawn.net_id)
 	assert_eq(first.net_id, victim.own_spawn.net_id)
 	assert_eq(first.amount, 90)
-	# La vida de la víctima baja en su bloque extra y en el registro que ven los demás.
+	# The victim's health drops in its extra block and in the ledger that the others see.
 	await _run_frames(6)
 	var own: NetMessages.Snapshot = victim.last_snapshot()
-	assert_eq(own.health, 910, "bloque extra propio de la víctima")
+	assert_eq(own.health, 910, "the victim's own extra block")
 	assert_eq(own.max_health, 1000)
-	assert_true(own.is_in_combat(), "en combate")
+	assert_true(own.is_in_combat(), "in combat")
 	var seen_by_third: EntityRecord = null
 	for record: EntityRecord in third.last_snapshot().records:
 		if record.net_id == victim.own_spawn.net_id:
 			seen_by_third = record
-	if assert_not_null(seen_by_third, "el tercero ve a la víctima"):
+	if assert_not_null(seen_by_third, "the third party sees the victim"):
 		assert_eq(seen_by_third.health_q, EntityRecord.quantize_health(910, 1000),
-				"y su vida cuantizada en el registro")
-	assert_eq(attacker.last_snapshot().health, 1000, "el atacante no pierde vida")
+				"and its quantized health in the ledger")
+	assert_eq(attacker.last_snapshot().health, 1000, "the attacker loses no health")
 
 
 func test_events_only_go_to_players_who_own_or_see_the_entities() -> void:
@@ -343,7 +343,7 @@ func test_events_only_go_to_players_who_own_or_see_the_entities() -> void:
 	var blind: RawClient = await _join("Cleo", VARDHEIM)
 	if attacker == null or victim == null or blind == null:
 		return
-	# Cleo no ve ni a Ana ni a Bea.
+	# Cleo sees neither Ana nor Bea.
 	policy.hidden[blind.own_spawn.net_id] = [attacker.own_spawn.net_id, victim.own_spawn.net_id]
 	_place(attacker, Vector3(0.0, 0.05, 0.0), 0.0)
 	_place(victim, Vector3(0.0, 0.05, -1.5), PI)
@@ -354,19 +354,19 @@ func test_events_only_go_to_players_who_own_or_see_the_entities() -> void:
 	_drive(blind, 0.0)
 	var hit_kind: int = NetMessages.EntityEvent.Kind.HIT
 	assert_true(await _run_until(func() -> bool: return not victim.events_of(hit_kind).is_empty()),
-			"la víctima recibe el golpe")
+			"the victim receives the hit")
 	await _run_frames(20)
-	assert_false(attacker.events_of(hit_kind).is_empty(), "el atacante también")
-	# Solo su propio LOADOUT de la entrada: nada de Ana ni de Bea.
+	assert_false(attacker.events_of(hit_kind).is_empty(), "the attacker too")
+	# Only its own LOADOUT from joining: nothing of Ana or Bea.
 	var foreign: Array[NetMessages.EntityEvent] = []
 	for event: NetMessages.EntityEvent in blind.events:
 		if event.net_id != blind.own_spawn.net_id:
 			foreign.append(event)
-	assert_eq(foreign.size(), 0, "quien no ve a ninguno de los dos no recibe nada")
+	assert_eq(foreign.size(), 0, "whoever sees neither of the two receives nothing")
 
 
-## En RVR el golpe mortal de Ana derriba a Bea (HIT con el bit 6 y DOWNED a los tres) y Ana la remata
-## manteniendo E: la DEATH y el KILL nombran al asesino, la fuente del remate y a Cleo, que asistió.
+## In RVR Ana's killing blow knocks Bea down (HIT with bit 6 and DOWNED to all three) and Ana finishes her
+## by holding E: the DEATH and the KILL name the killer, the finishing blow source and Cleo, who assisted.
 func test_kill_and_death_events_name_the_killer_and_the_assistants() -> void:
 	await _start_server()
 	var attacker: RawClient = await _join("Ana", VARDHEIM)
@@ -377,13 +377,13 @@ func test_kill_and_death_events_name_the_killer_and_the_assistants() -> void:
 	_place(attacker, Vector3(0.0, 0.05, 0.0), 0.0)
 	_place(victim, Vector3(0.0, 0.05, -1.5), PI)
 	_place(helper, Vector3(8.0, 0.05, 8.0), 0.0)
-	# Cleo ya había hecho la mitad del daño; a Bea le quedan 60.
+	# Cleo had already done half the damage; Bea has 60 left.
 	var combatant: Combatant = _combatant_of(victim)
 	combatant.health = 60
 	combatant.mark_combat(_server.get_tick())
 	combatant.ledger.record(_server.get_tick(), helper.own_spawn.net_id, 500)
 	var press: int = _server.get_tick() + 10
-	# Acabado el ligero, Ana mantiene E para rematar (60 ticks).
+	# After the light attack ends, Ana holds E to finish (60 ticks).
 	var hold_from: int = press + 90
 	_drive(attacker, 0.0, func(tick: int) -> int:
 		if tick >= press and tick < press + 2:
@@ -395,37 +395,37 @@ func test_kill_and_death_events_name_the_killer_and_the_assistants() -> void:
 		return not helper.events_of(NetMessages.EntityEvent.Kind.KILL).is_empty() \
 				and not attacker.events_of(NetMessages.EntityEvent.Kind.KILL).is_empty() \
 				and not victim.events_of(NetMessages.EntityEvent.Kind.DEATH).is_empty())
-	if not assert_true(delivered, "asesino, víctima y asistente reciben su evento"):
+	if not assert_true(delivered, "killer, victim and assister receive their event"):
 		return
 	var kill: NetMessages.EntityEvent = attacker.events_of(NetMessages.EntityEvent.Kind.KILL)[0]
 	assert_eq(kill.killer, attacker.own_spawn.net_id)
 	assert_eq(kill.net_id, victim.own_spawn.net_id)
-	assert_eq(kill.assistants, PackedInt32Array([helper.own_spawn.net_id]), "Cleo asistió")
-	assert_eq(kill.get_source(), CombatSource.EXECUTE, "con la fuente del remate")
+	assert_eq(kill.assistants, PackedInt32Array([helper.own_spawn.net_id]), "Cleo assisted")
+	assert_eq(kill.get_source(), CombatSource.EXECUTE, "with the finishing blow source")
 	var death: NetMessages.EntityEvent = victim.events_of(NetMessages.EntityEvent.Kind.DEATH)[0]
 	assert_eq(death.killer, attacker.own_spawn.net_id)
 	assert_eq(death.get_source(), CombatSource.EXECUTE)
 	var hit: NetMessages.EntityEvent = victim.events_of(NetMessages.EntityEvent.Kind.HIT)[0]
 	assert_eq(hit.get_source(), CombatSource.make(CombatSource.Kind.ATTACK,
-			CombatCatalog.attack_id(&"sword_light_1")), "el golpe es el ligero")
-	assert_true(hit.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_DOWNED), "el golpe derriba")
-	assert_false(hit.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL), "no mata")
-	assert_eq(hit.amount, 60, "lo que le quedaba")
+			CombatCatalog.attack_id(&"sword_light_1")), "the hit is the light attack")
+	assert_true(hit.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_DOWNED), "the hit knocks down")
+	assert_false(hit.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL), "it does not kill")
+	assert_eq(hit.amount, 60, "what was left")
 	for client: RawClient in [attacker, victim, helper]:
 		var downed: Array[NetMessages.EntityEvent] = client.events_of(NetMessages.EntityEvent.Kind.DOWNED)
-		if assert_eq(downed.size(), 1, "DOWNED a toda la zona"):
+		if assert_eq(downed.size(), 1, "DOWNED to the whole zone"):
 			assert_eq(downed[0].net_id, victim.own_spawn.net_id)
 	await _run_frames(10)
-	assert_eq(victim.events_of(NetMessages.EntityEvent.Kind.DEATH).size(), 1, "una sola DEATH")
-	assert_eq(attacker.events_of(NetMessages.EntityEvent.Kind.KILL).size(), 1, "un solo KILL")
-	# Y el snapshot propio de la víctima la da por muerta con su tick de reaparición.
+	assert_eq(victim.events_of(NetMessages.EntityEvent.Kind.DEATH).size(), 1, "a single DEATH")
+	assert_eq(attacker.events_of(NetMessages.EntityEvent.Kind.KILL).size(), 1, "a single KILL")
+	# And the victim's own snapshot reports her as dead with her respawn tick.
 	var own: NetMessages.Snapshot = victim.last_snapshot()
-	assert_true(own.is_dead(), "muerta")
+	assert_true(own.is_dead(), "dead")
 	assert_eq(own.health, 0)
 	assert_eq(own.respawn_tick, combatant.respawn_tick)
 
 
-# --- Reaparición pedida -----------------------------------------------------------------------
+# --- Requested respawn ------------------------------------------------------------------------
 
 func test_respawn_request_flow_and_its_warnings() -> void:
 	await _start_server()
@@ -437,46 +437,46 @@ func test_respawn_request_flow_and_its_warnings() -> void:
 	var timing: CombatTiming = _server.get_combat_timing()
 	timing.respawn = 60
 	timing.auto_respawn = 600
-	# Vivo: pedir reaparecer está fuera de plazo.
+	# Alive: requesting a respawn is past the deadline.
 	client.send_raw(NetProtocol.CH_RELIABLE, _respawn_request(0))
 	await _run_frames(10)
-	assert_eq(peer.strikes_total, 1, "vivo: un aviso")
-	# Muerto, pero mucho antes de poder: otro aviso.
+	assert_eq(peer.strikes_total, 1, "alive: a notice")
+	# Dead, but long before it can: another notice.
 	_server.get_combat().kill(_combatant_of(client), _server.get_tick() + 1)
 	await _run_frames(5)
 	client.send_raw(NetProtocol.CH_RELIABLE, _respawn_request(0))
 	await _run_frames(5)
-	assert_eq(peer.strikes_total, 2, "demasiado pronto: un aviso")
-	assert_true(_combatant_of(client).is_dead(), "sigue muerta")
-	# A su hora, con un índice que ya no vale: no es un aviso y reaparece en el primer punto.
+	assert_eq(peer.strikes_total, 2, "too early: a notice")
+	assert_true(_combatant_of(client).is_dead(), "still dead")
+	# At its time, with an index that is no longer valid: it is not a notice and it respawns at the first point.
 	var respawn_tick: int = client.last_snapshot().respawn_tick
-	assert_eq(respawn_tick, _combatant_of(client).respawn_tick, "el snapshot da el tick de reaparición")
+	assert_eq(respawn_tick, _combatant_of(client).respawn_tick, "the snapshot gives the respawn tick")
 	assert_true(await _run_until(func() -> bool: return _server.get_tick() >= respawn_tick - 6),
-			"llega la hora")
+			"the time arrives")
 	client.send_raw(NetProtocol.CH_RELIABLE, _respawn_request(200))
 	var back: bool = await _run_until(func() -> bool: return _combatant_of(client).is_alive())
-	if not assert_true(back, "reaparece"):
+	if not assert_true(back, "respawns"):
 		return
-	assert_eq(peer.strikes_total, 2, "un índice que ya no vale no suma avisos")
+	assert_eq(peer.strikes_total, 2, "an index that is no longer valid adds no notices")
 	assert_vec_near(_entity_of(client).get_position(), ZoneFixture.SOLMARCH_SPAWN, 0.1,
-			"en el primer punto de su reino")
+			"at the first point of its realm")
 	await _run_frames(8)
 	var own: NetMessages.Snapshot = client.last_snapshot()
 	assert_false(own.is_dead())
-	assert_true(own.is_protected(), "con la protección de reaparición")
+	assert_true(own.is_protected(), "with respawn protection")
 	assert_eq(own.health, 1000)
-	assert_eq(own.own_teleport, 1, "con teletransporte")
+	assert_eq(own.own_teleport, 1, "with teleport")
 	var respawns: Array[NetMessages.EntityEvent] = client.events_of(NetMessages.EntityEvent.Kind.RESPAWN)
-	if assert_eq(respawns.size(), 1, "recibe su RESPAWN"):
-		# Desde la fase 4 el índice es el de la lista estática de la zona (Vardheim0, Vardheim1,
-		# Solmarch0), no el de la lista del reino.
-		assert_eq(respawns[0].point, 2, "el índice del primer punto de Solmarch en la lista de la zona")
+	if assert_eq(respawns.size(), 1, "receives its RESPAWN"):
+		# Since phase 4 the index is that of the zone's static list (Vardheim0, Vardheim1,
+		# Solmarch0), not that of the realm's list.
+		assert_eq(respawns[0].point, 2, "the index of Solmarch's first point in the zone list")
 		assert_eq(respawns[0].net_id, client.own_spawn.net_id)
-	# Ya viva, otra petición es un aviso más.
+	# Already alive, another request is one more notice.
 	client.send_raw(NetProtocol.CH_RELIABLE, _respawn_request(0))
 	await _run_frames(8)
 	assert_eq(peer.strikes_total, 3)
-	# Un mensaje mal formado también.
+	# A malformed message too.
 	client.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([NetProtocol.MSG_RESPAWN_REQUEST]))
 	await _run_frames(8)
 	assert_eq(peer.strikes_total, 4)
@@ -488,7 +488,7 @@ func _respawn_request(point_index: int) -> PackedByteArray:
 	return request.encode()
 
 
-# --- Comandos de depuración -------------------------------------------------------------------
+# --- Debug commands ---------------------------------------------------------------------------
 
 func _command(id: int, payload: PackedByteArray = PackedByteArray()) -> PackedByteArray:
 	var command := NetMessages.DebugCommand.new()
@@ -508,9 +508,9 @@ func test_debug_commands_without_the_flag_are_warnings() -> void:
 	client.send_raw(NetProtocol.CH_RELIABLE, _command(NetProtocol.DEBUG_HEAL))
 	client.send_raw(NetProtocol.CH_RELIABLE, _command(NetProtocol.DEBUG_KILL))
 	await _run_frames(10)
-	assert_eq(peer.strikes_total, 2, "sin --debug-commands, cada uno es un aviso")
-	assert_eq(_combatant_of(client).health, 600, "y no hacen nada")
-	assert_eq(_server.get_commands().audit_total, 0, "ni se auditan")
+	assert_eq(peer.strikes_total, 2, "without --debug-commands, each one is a notice")
+	assert_eq(_combatant_of(client).health, 600, "and they do nothing")
+	assert_eq(_server.get_commands().audit_total, 0, "nor are they audited")
 
 
 func test_debug_commands_with_the_flag_act_on_the_sender_and_are_audited() -> void:
@@ -524,54 +524,54 @@ func test_debug_commands_with_the_flag_act_on_the_sender_and_are_audited() -> vo
 	# heal
 	combatant.take_damage(400, 1)
 	client.send_raw(NetProtocol.CH_RELIABLE, _command(NetProtocol.DEBUG_HEAL))
-	assert_true(await _run_until(func() -> bool: return combatant.health == 1000), "heal cura")
-	# stamina_inf: sin datos alterna y con un byte fija el valor.
+	assert_true(await _run_until(func() -> bool: return combatant.health == 1000), "heal heals")
+	# stamina_inf: with no data it toggles and with a byte it sets the value.
 	client.send_raw(NetProtocol.CH_RELIABLE, _command(NetProtocol.DEBUG_STAMINA_INF))
 	assert_true(await _run_until(func() -> bool:
 		return (_entity_of(client).get_character().combat.combat_flags
-				& CombatState.FLAG_INFINITE_STAMINA) != 0), "stamina_inf activa la resistencia infinita")
+				& CombatState.FLAG_INFINITE_STAMINA) != 0), "stamina_inf turns on infinite stamina")
 	client.send_raw(NetProtocol.CH_RELIABLE,
 			_command(NetProtocol.DEBUG_STAMINA_INF, PackedByteArray([0])))
 	assert_true(await _run_until(func() -> bool:
 		return (_entity_of(client).get_character().combat.combat_flags
-				& CombatState.FLAG_INFINITE_STAMINA) == 0), "y con 0 la quita")
-	# set_weapon con el id del catálogo.
+				& CombatState.FLAG_INFINITE_STAMINA) == 0), "and with 0 it turns it off")
+	# set_weapon with the catalog id.
 	var weapon_payload := PackedByteArray([0, 0])
 	weapon_payload.encode_u16(0, CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON))
 	client.send_raw(NetProtocol.CH_RELIABLE, _command(NetProtocol.DEBUG_SET_WEAPON, weapon_payload))
-	# spawn_dummy delante del jugador, bloqueando.
+	# spawn_dummy in front of the player, blocking.
 	client.send_raw(NetProtocol.CH_RELIABLE,
 			_command(NetProtocol.DEBUG_SPAWN_DUMMY, PackedByteArray([NpcBrain.Mode.BLOCK])))
-	assert_true(await _run_until(func() -> bool: return _server.get_dummy_count() == 1), "aparece el maniquí")
+	assert_true(await _run_until(func() -> bool: return _server.get_dummy_count() == 1), "the dummy appears")
 	var dummy_spawns: Array[NetMessages.EntitySpawn] = []
 	assert_true(await _run_until(func() -> bool:
 		for spawn: NetMessages.EntitySpawn in client.spawns:
 			if spawn.kind == NetProtocol.EntityKind.NPC and not dummy_spawns.has(spawn):
 				dummy_spawns.append(spawn)
-		return not dummy_spawns.is_empty()), "el jugador recibe el SPAWN del PNJ")
+		return not dummy_spawns.is_empty()), "the player receives the NPC's SPAWN")
 	if dummy_spawns.is_empty():
 		return
 	var dummy_spawn: NetMessages.EntitySpawn = dummy_spawns[0]
 	assert_eq(dummy_spawn.display_name, ZoneServer.DUMMY_NAME)
 	assert_eq(dummy_spawn.realm, RealmCatalog.NEUTRAL_CODE)
-	# El PNJ viaja en su propia sección del snapshot.
+	# The NPC travels in its own section of the snapshot.
 	assert_true(await _run_until(func() -> bool:
 		for record: EntityRecord in client.last_snapshot().records:
 			if record.net_id == dummy_spawn.net_id:
 				return record.kind == NetProtocol.EntityKind.NPC
-		return false), "y en el snapshot, como PNJ")
-	# kill: el último; después de morir no sirve ni heal.
+		return false), "and in the snapshot, as an NPC")
+	# kill: the last one; after dying not even heal works.
 	client.send_raw(NetProtocol.CH_RELIABLE, _command(NetProtocol.DEBUG_KILL))
-	assert_true(await _run_until(func() -> bool: return combatant.is_dead()), "kill mata")
+	assert_true(await _run_until(func() -> bool: return combatant.is_dead()), "kill kills")
 	client.send_raw(NetProtocol.CH_RELIABLE, _command(NetProtocol.DEBUG_HEAL))
 	await _run_frames(10)
-	assert_true(combatant.is_dead(), "un muerto no se cura con heal")
-	assert_eq(peer.strikes_total, 0, "ninguno de estos usos es un aviso")
-	# Cada uso queda auditado con quién y qué.
+	assert_true(combatant.is_dead(), "a dead player is not healed by heal")
+	assert_eq(peer.strikes_total, 0, "none of these uses is a notice")
+	# Each use is audited with who and what.
 	var audit: PackedStringArray = _server.get_commands().audit
-	assert_true(audit.size() >= 6, "seis usos auditados (%d)" % audit.size())
+	assert_true(audit.size() >= 6, "six audited uses (%d)" % audit.size())
 	assert_true(audit[0].contains("Ana") and audit[0].contains("heal"), audit[0])
-	assert_true(audit[audit.size() - 1].contains("rechazado"), "el último heal fue rechazado")
+	assert_true(audit[audit.size() - 1].contains("rechazado"), "the last heal was rejected")
 
 
 func test_bad_debug_commands_are_warnings() -> void:
@@ -590,5 +590,5 @@ func test_bad_debug_commands_are_warnings() -> void:
 	client.send_raw(NetProtocol.CH_RELIABLE,
 			_command(NetProtocol.DEBUG_SPAWN_DUMMY, PackedByteArray([9])))
 	await _run_frames(15)
-	assert_eq(peer.strikes_total, 5, "id desconocido, arma mal formada, arma inexistente, datos de más y modo inválido")
+	assert_eq(peer.strikes_total, 5, "unknown id, malformed weapon, nonexistent weapon, extra data and invalid mode")
 	assert_eq(_server.get_dummy_count(), 0)

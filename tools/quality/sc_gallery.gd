@@ -1,7 +1,7 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área interfaz (escenario de online_driver.gd).
+## Quality capture bench (TEC-50), interfaz area (scenario of online_driver.gd).
 ##
-## Galería de la interfaz (scenes/tests/ui_gallery.tscn): una captura por pantalla de contenido al desplazar el scroll.
+## Interface gallery (scenes/tests/ui_gallery.tscn): one capture per screen of content as the scroll is moved.
 
 var d: Variant
 

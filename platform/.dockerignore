@@ -1,4 +1,4 @@
-# Contexto de deploy/Dockerfile (platform/): nada de secretos, copias ni binarios locales.
+# Context of deploy/Dockerfile (platform/): no secrets, backups or local binaries.
 deploy/secrets
 deploy/backups
 deploy/*.env

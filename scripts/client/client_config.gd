@@ -1,156 +1,162 @@
 class_name ClientConfig
 extends RefCounted
-## Configuración del cliente en red (docs/red.md, secciones 1.2 y 17.5).
+## Networked client configuration (docs/red.md, sections 1.2 and 17.5).
 ## [br][br]
-## Se rellena con [method from_args] a partir de los argumentos de usuario (los que van tras
+## It is filled in by [method from_args] from the user arguments (those after
 ## [code]--[/code]):
 ## [codeblock]
-## --connect=<host>[:<puerto>]  --local  --bot  --bots=N  --realm=<reino>  --name=<nombre>
-## --port=<puerto>  --net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1  --bot-seed=N
-## --bot-cheat=<modo>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --quit-at-server-tick=N
-## --report=<ruta.json>  --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>  --loadout=<plantilla>
-## --title  --platform=<url>  --login=<correo>  --password-file=<ruta>  --character=<nombre>  --world=N
-## --dtls-cert=<pem>  --dtls-name=<cn>  --bot-scenario=<escenario>
+## --connect=<host>[:<port>]  --local  --bot  --bots=N  --realm=<realm>  --name=<name>
+## --port=<port>  --net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1  --bot-seed=N
+## --bot-cheat=<mode>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --quit-at-server-tick=N
+## --report=<path.json>  --state-log=<path.csv>  --dev-lock-path=<path.json>  --loadout=<template>
+## --title  --platform=<url>  --login=<email>  --password-file=<path>  --character=<name>  --world=N
+## --dtls-cert=<pem>  --dtls-name=<cn>  --bot-scenario=<scenario>
 ## [/codeblock]
-## [br]El modo ([enum Mode]) sale de ellos con esta prioridad (docs/plataforma.md §13.3): [code]--bots[/code]
-## ([constant SWARM]) > [code]--bot[/code] ([constant BOT]) > [code]--local[/code] ([constant LOCAL]) >
-## [code]--connect[/code] ([constant ONLINE]) > [code]--title[/code] o [code]--platform[/code] ([constant TITLE], la
-## pantalla de título con cuenta) > nada: el sandbox de la fase 1 ([constant OFFLINE]) desde el editor y el título en
-## una exportación ([param exported] de [method from_args]). [code]--server[/code] lo resuelve antes
-## [code]boot.gd[/code] y no es un modo de cliente.
+## [br]The mode ([enum Mode]) comes from them with this priority (docs/plataforma.md §13.3):
+## [code]--bots[/code] ([constant SWARM]) > [code]--bot[/code] ([constant BOT]) > [code]--local[/code]
+## ([constant LOCAL]) > [code]--connect[/code] ([constant ONLINE]) > [code]--title[/code] or
+## [code]--platform[/code] ([constant TITLE], the title screen with an account) > nothing: the phase 1
+## sandbox ([constant OFFLINE]) from the editor and the title screen in an export ([param exported] of
+## [method from_args]). [code]--server[/code] is resolved earlier by [code]boot.gd[/code] and is not a
+## client mode.
 ## [br][br]
-## [b]Con cuenta[/b] (docs/plataforma.md §5.5 y §13.3): [code]--platform=<url>[/code] es la API pública de la
-## plataforma (sin él, el título usa el ajuste de proyecto [constant PLATFORM_URL_SETTING]); [code]--bot
-## --platform[/code] inicia sesión con [code]--login[/code] y la contraseña de [code]--password-file[/code], crea el
-## personaje [code]--character[/code] si falta y entra con billete. [member character_id], [member ticket] y
-## [member dtls_cert_pem] no salen de los argumentos: los rellena [AccountFlow] con la respuesta de
-## [code]enter[/code] para [OnlineMain] ([member from_front] si viene de [FrontMain]).
+## [b]With an account[/b] (docs/plataforma.md §5.5 and §13.3): [code]--platform=<url>[/code] is the
+## platform's public API (without it, the title screen uses the project setting
+## [constant PLATFORM_URL_SETTING]); [code]--bot --platform[/code] logs in with [code]--login[/code]
+## and the password from [code]--password-file[/code], creates the character [code]--character[/code]
+## if missing and enters with a ticket. [member character_id], [member ticket] and
+## [member dtls_cert_pem] do not come from the arguments: [AccountFlow] fills them in from the response
+## of [code]enter[/code] for [OnlineMain] ([member from_front] if it comes from [FrontMain]).
 ## [br][br]
-## Un valor que no es válido (un puerto fuera de rango, un número mal escrito, un reino que no existe)
-## se ignora, se queda el valor por defecto y se anota en [member warnings]: el cliente nunca
-## arranca con una configuración absurda por un error al teclear. La zona no se elige aquí: la dicta
-## el servidor en el WELCOME.
+## A value that is not valid (a port out of range, a mistyped number, a realm that does not exist) is
+## ignored, the default value is kept and it is recorded in [member warnings]: the client never starts
+## with an absurd configuration because of a typing mistake. The zone is not chosen here: the server
+## dictates it in the WELCOME.
 
-## Modo de arranque del cliente.
+## Client start-up mode.
 enum Mode {
-	## Sandbox sin red de la fase 1 ([ClientMain]).
+	## Phase 1 offline sandbox ([ClientMain]).
 	OFFLINE,
-	## Cliente en red contra [member address]:[member port].
+	## Networked client against [member address]:[member port].
 	ONLINE,
-	## Cliente contra un servidor local, que se lanza si no hay ninguno.
+	## Client against a local server, which is launched if there is none.
 	LOCAL,
-	## Cliente que predice sin cámara ni HUD, guiado por [BotBrain].
+	## Client that predicts without a camera or HUD, driven by [BotBrain].
 	BOT,
-	## Enjambre de [member bot_count] clientes ligeros que no simulan.
+	## Swarm of [member bot_count] lightweight clients that do not simulate.
 	SWARM,
-	## Pantalla de título con cuenta ([FrontMain], docs/plataforma.md §13): inicio de sesión, personajes y entrada
-	## con billete.
+	## Title screen with an account ([FrontMain], docs/plataforma.md §13): login, characters and entering
+	## with a ticket.
 	TITLE,
 }
 
-## Cerebros de los bots ([member bot_brain], [code]--bot-brain[/code]): pasear (por defecto), pelear o
-## asediar un fuerte. Valen para [code]--bot[/code] y para [code]--bots[/code].
+## Bot brains ([member bot_brain], [code]--bot-brain[/code]): wander (default), fight or
+## besiege a fort. They work for [code]--bot[/code] and for [code]--bots[/code].
 const BOT_BRAIN_WANDER: String = "wander"
 const BOT_BRAIN_COMBAT: String = "combat"
 const BOT_BRAIN_SIEGE: String = "siege"
 const BOT_BRAINS: Array[String] = [BOT_BRAIN_WANDER, BOT_BRAIN_COMBAT, BOT_BRAIN_SIEGE]
-## Escenarios del bot ([member bot_scenario], [code]--bot-scenario[/code]): [code]progress[/code] equipa el arco, se da
-## 50 de oro y una poción por DEBUG_COMMAND y sale ([BotProgressScenario], docs/progresion.md §15 P8).
+## Bot scenarios ([member bot_scenario], [code]--bot-scenario[/code]): [code]progress[/code] equips the
+## bow, gives itself 50 gold and a potion through DEBUG_COMMAND and exits ([BotProgressScenario],
+## docs/progresion.md §15 P8).
 const BOT_SCENARIO_PROGRESS: String = "progress"
 const BOT_SCENARIOS: Array[String] = [BOT_SCENARIO_PROGRESS]
-## Prefijo de los nombres por defecto: «Jugadorabcd» (ver [method NameRules.default_name]).
+## Prefix of the default names: "Jugadorabcd" (see [method NameRules.default_name]).
 const DEFAULT_NAME_PREFIX: String = NameRules.DEFAULT_PREFIX
-## Máximo de ticks, bots y semilla que se aceptan.
+## Maximum accepted ticks, bots and seed.
 const _MAX_INT: int = 2147483647
 const _MAX_PORT: int = 65535
 const _MAX_BOTS: int = 4096
 const _MAX_WORLD: int = 65535
-## Ajuste de proyecto con la URL de la API pública de la plataforma (la que usa el título sin
+## Project setting with the URL of the platform's public API (the one the title screen uses without
 ## [code]--platform[/code]).
 const PLATFORM_URL_SETTING: String = "eldmark/platform/url"
-## URL por defecto si el ajuste no existe: la plataforma de desarrollo en esta máquina.
+## Default URL if the setting does not exist: the development platform on this machine.
 const DEFAULT_PLATFORM_URL: String = "http://127.0.0.1:24680"
-## Mundo por defecto (el único al lanzar, docs/plataforma.md §0).
+## Default world (the only one at launch, docs/plataforma.md §0).
 const DEFAULT_WORLD_ID: int = 1
 
 var mode: Mode = Mode.OFFLINE
 var address: String = "127.0.0.1"
 var port: int = NetProtocol.DEFAULT_PORT
-## Código de [enum NetProtocol.Realm]. [constant NetProtocol.Realm.NONE] si no se indicó.
+## Code of [enum NetProtocol.Realm]. [constant NetProtocol.Realm.NONE] if none was given.
 var realm: int = NetProtocol.Realm.NONE
 var display_name: String = ""
 var net_sim_spec: String = ""
 var bot_seed: int = 1
 var bot_count: int = 0
-## Modo del bot tramposo ([code]--bot-cheat=<modo>[/code], [constant BotCheater.MODES]): de tráfico
-## ([code]version[/code], [code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o de
-## combate ([code]rewind[/code], [code]reach[/code], [code]rate[/code] y, desde la fase 4, [code]reuse[/code],
-## [code]potion[/code] e [code]interact[/code]). Vacío = honrado. Lo valida [NetClient] al arrancar.
+## Cheating bot mode ([code]--bot-cheat=<mode>[/code], [constant BotCheater.MODES]): traffic
+## ([code]version[/code], [code]future[/code], [code]dupes[/code], [code]garbage[/code],
+## [code]flood[/code]) or combat ([code]rewind[/code], [code]reach[/code], [code]rate[/code] and, since
+## phase 4, [code]reuse[/code], [code]potion[/code] and [code]interact[/code]). Empty = honest.
+## Validated by [NetClient] on start-up.
 var bot_cheat: String = ""
-## Cerebro de los bots ([constant BOT_BRAINS]): vacío o [constant BOT_BRAIN_WANDER] pasea;
-## [constant BOT_BRAIN_COMBAT] busca al enemigo más cercano y pelea ([constant BotBrain.Pattern.COMBAT]);
-## [constant BOT_BRAIN_SIEGE] sigue la ruta de su reino hasta el fuerte, rompe la puerta, captura el círculo y
-## lo defiende ([constant BotBrain.Pattern.SIEGE]).
+## Bot brain ([constant BOT_BRAINS]): empty or [constant BOT_BRAIN_WANDER] strolls;
+## [constant BOT_BRAIN_COMBAT] looks for the nearest enemy and fights ([constant BotBrain.Pattern.COMBAT]);
+## [constant BOT_BRAIN_SIEGE] follows its realm's route to the fort, breaks the gate, captures the
+## circle and defends it ([constant BotBrain.Pattern.SIEGE]).
 var bot_brain: String = ""
-## Escenario guionizado del bot ([constant BOT_SCENARIOS], [code]--bot-scenario=<escenario>[/code]; solo en
-## [constant Mode.BOT]): vacío = ninguno. Con uno, el bot lo corre al aparecer y, si no hay
-## [member quit_after_ticks], sale al terminarlo; con él, sigue hasta esos ticks. Si falla, sale con código 1.
+## Scripted bot scenario ([constant BOT_SCENARIOS], [code]--bot-scenario=<scenario>[/code]; only in
+## [constant Mode.BOT]): empty = none. With one, the bot runs it on spawning and, if there is no
+## [member quit_after_ticks], exits when it finishes; with it, it keeps going until those ticks. If it
+## fails, it exits with code 1.
 var bot_scenario: String = ""
 var quit_after_ticks: int = 0
-## Solo el enjambre ([constant Mode.SWARM]): sale cuando alguno de sus bots ha recibido un snapshot de este tick del
-## servidor o posterior ([code]--quit-at-server-tick=N[/code]; 0 = no). Las pruebas de carga cierran así el enjambre
-## por el reloj del servidor, que con muchos jugadores va más despacio que el tiempo real; [member quit_after_ticks]
-## queda como cota.
+## Swarm only ([constant Mode.SWARM]): exits when any of its bots has received a snapshot from this
+## server tick or later ([code]--quit-at-server-tick=N[/code]; 0 = no). Load tests close the swarm this
+## way by the server's clock, which with many players runs slower than real time;
+## [member quit_after_ticks] remains as an upper bound.
 var quit_at_server_tick: int = 0
 var report_path: String = ""
 var state_log_path: String = ""
-## Archivo de bloqueo del servidor local que consulta el modo [constant Mode.LOCAL] en lugar de
-## [constant LocalServerLauncher.LOCK_PATH] ([code]--dev-lock-path=<ruta>[/code]); se reenvía al
-## servidor que se lanza. Vacío = el de siempre. Lo usan las pruebas de procesos.
+## Lock file of the local server that [constant Mode.LOCAL] mode checks instead of
+## [constant LocalServerLauncher.LOCK_PATH] ([code]--dev-lock-path=<path>[/code]); it is forwarded to
+## the server that gets launched. Empty = the usual one. Used by the process tests.
 var dev_lock_path: String = ""
-## Plantilla de equipo para la siguiente aparición ([code]--loadout=<plantilla>[/code], el
-## [member EquipmentTemplate.id] de una que se pueda elegir, como [code]marksman[/code]; docs/habilidades.md,
-## sección 4.6): [NetClient] la manda en un LOADOUT_SELECT nada más llegar el WELCOME. Vacía = la de por
-## defecto (no se manda nada). La cambian también la elección de reino y la pantalla de muerte. Un bot con
-## [code]--platform[/code] no la manda: es la plantilla de inicio del personaje que crea si aún no existe
-## ([method AccountFlow.ensure_character], docs/progresion.md §2.5).
+## Equipment template for the next spawn ([code]--loadout=<template>[/code], the
+## [member EquipmentTemplate.id] of a selectable one, such as [code]marksman[/code]; docs/habilidades.md,
+## section 4.6): [NetClient] sends it in a LOADOUT_SELECT as soon as the WELCOME arrives. Empty = the
+## default one (nothing is sent). It is also changed by the realm choice and the death screen. A bot with
+## [code]--platform[/code] does not send it: it is the starting template of the character it creates if
+## it does not exist yet ([method AccountFlow.ensure_character], docs/progresion.md §2.5).
 var loadout: String = ""
-## Avisos para el usuario sobre argumentos de red que no se han podido interpretar.
+## Warnings for the user about network arguments that could not be interpreted.
 var warnings: PackedStringArray = PackedStringArray()
 
-# --- Cuenta y plataforma (docs/plataforma.md §13.3) ---
-## URL de la API pública de la plataforma ([code]--platform=<url>[/code]). Vacía = sin plataforma (los modos de
-## siempre); en [constant Mode.TITLE] nunca está vacía (sin la opción, el ajuste [constant PLATFORM_URL_SETTING]).
+# --- Account and platform (docs/plataforma.md §13.3) ---
+## URL of the platform's public API ([code]--platform=<url>[/code]). Empty = no platform (the usual
+## modes); in [constant Mode.TITLE] it is never empty (without the option, the
+## [constant PLATFORM_URL_SETTING] setting).
 var platform_url: String = ""
-## Correo con el que inicia sesión el bot ([code]--login=<correo>[/code]).
+## Email the bot logs in with ([code]--login=<email>[/code]).
 var login: String = ""
-## Archivo con la contraseña del bot ([code]--password-file=<ruta>[/code]): nunca en la línea de órdenes.
+## File with the bot's password ([code]--password-file=<path>[/code]): never on the command line.
 var password_file: String = ""
-## Personaje del bot ([code]--character=<nombre>[/code]); vacío = [method NameRules.bot_name] de la semilla.
+## Bot character ([code]--character=<name>[/code]); empty = [method NameRules.bot_name] of the seed.
 var character_name: String = ""
-## Mundo ([code]--world=N[/code], 1 por defecto).
+## World ([code]--world=N[/code], 1 by default).
 var world_id: int = DEFAULT_WORLD_ID
-## [code]--title[/code]: la pantalla de título aunque haya otras opciones de cliente sin modo.
+## [code]--title[/code]: the title screen even if there are other client options with no mode.
 var title: bool = false
-## Certificado DTLS de la zona en PEM ([code]--dtls-cert=<ruta>[/code], contra zonas sin plataforma; §10.2).
+## The zone's DTLS certificate in PEM ([code]--dtls-cert=<path>[/code], against zones without a platform; §10.2).
 var dtls_cert_path: String = ""
-## Nombre (CN) del certificado DTLS de la zona ([code]--dtls-name=<cn>[/code]).
+## Name (CN) of the zone's DTLS certificate ([code]--dtls-name=<cn>[/code]).
 var dtls_name: String = ""
-## Personaje con el que se entra con billete (de [code]enter[/code]); 0 = sin billete.
+## Character to enter with a ticket (from [code]enter[/code]); 0 = no ticket.
 var character_id: int = 0
-## Billete de 52 B de [code]enter[/code] (va en el HELLO); vacío = sin billete.
+## 52 B ticket from [code]enter[/code] (goes in the HELLO); empty = no ticket.
 var ticket: PackedByteArray = PackedByteArray()
-## Certificado DTLS en PEM que dio [code]enter[/code] (gana a [member dtls_cert_path]); vacío = sin DTLS.
+## DTLS certificate in PEM given by [code]enter[/code] (takes precedence over [member dtls_cert_path]); empty = no DTLS.
 var dtls_cert_pem: String = ""
-## true si la sesión sale de [FrontMain]: tras un rechazo o una desconexión [OnlineMain] vuelve a la selección de
-## personaje (la sesión de la cuenta sigue) en lugar de a [RealmSelect].
+## true if the session comes from [FrontMain]: after a rejection or a disconnection [OnlineMain] returns to
+## character selection (the account session continues) instead of to [RealmSelect].
 var from_front: bool = false
 
 
-## Lee [param args] (los argumentos de usuario) y devuelve la configuración. Los argumentos que no
-## son de red ([code]--zone[/code], [code]--demo[/code]...) se ignoran sin avisar. [param exported]: el
-## cliente es una exportación (no el editor); sin ningún modo, una exportación abre el título y el editor el
-## sandbox (docs/plataforma.md §5.5).
+## Reads [param args] (the user arguments) and returns the configuration. Arguments that are not
+## network ones ([code]--zone[/code], [code]--demo[/code]...) are ignored without warning.
+## [param exported]: the client is an export (not the editor); with no mode at all, an export opens the
+## title screen and the editor the sandbox (docs/plataforma.md §5.5).
 static func from_args(args: PackedStringArray, exported: bool = false) -> ClientConfig:
 	var config := ClientConfig.new()
 	var connect_text: String = _string_option(args, "--connect=")
@@ -201,7 +207,7 @@ static func from_args(args: PackedStringArray, exported: bool = false) -> Client
 			config.warnings.append("Reino desconocido '%s'" % _string_option(args, "--realm="))
 	config.display_name = _string_option(args, "--name=")
 	if config.display_name.is_empty():
-		# Los bots usan un nombre fijo por semilla (válido para NameRules); los jugadores, uno al azar.
+		# Bots use a fixed name per seed (valid for NameRules); players, a random one.
 		config.display_name = NameRules.bot_name(config.bot_seed) if is_bot or has_swarm \
 				else default_name()
 
@@ -220,16 +226,16 @@ static func from_args(args: PackedStringArray, exported: bool = false) -> Client
 	return config
 
 
-## URL de la plataforma del ajuste de proyecto [constant PLATFORM_URL_SETTING] (o
-## [constant DEFAULT_PLATFORM_URL] si no existe).
+## Platform URL from the project setting [constant PLATFORM_URL_SETTING] (or
+## [constant DEFAULT_PLATFORM_URL] if it does not exist).
 static func default_platform_url() -> String:
 	var value: String = str(ProjectSettings.get_setting(PLATFORM_URL_SETTING, DEFAULT_PLATFORM_URL)).strip_edges()
 	return value if not value.is_empty() else DEFAULT_PLATFORM_URL
 
 
-## Motivo, en español, por el que [param url] no vale como URL de la plataforma (vacío si vale): tiene que
-## empezar por [code]https://[/code] o, solo hacia esta máquina (loopback), por [code]http://[/code]
-## (docs/plataforma.md §10.1), y llevar servidor.
+## Reason, in Spanish, why [param url] is not valid as a platform URL (empty if it is valid): it must
+## start with [code]https://[/code] or, only towards this machine (loopback), with [code]http://[/code]
+## (docs/plataforma.md §10.1), and include a host.
 static func platform_url_error(url: String) -> String:
 	var clean: String = url.strip_edges()
 	if clean.is_empty():
@@ -250,7 +256,7 @@ static func platform_url_error(url: String) -> String:
 	return "Dirección del servidor de cuentas mal escrita: «%s»" % clean
 
 
-## El servidor de una URL ([code]http://host:puerto/ruta[/code] → [code]host[/code]; un IPv6 sin corchetes).
+## The host of a URL ([code]http://host:port/path[/code] → [code]host[/code]; an IPv6 without brackets).
 static func url_host(url: String) -> String:
 	var clean: String = url.strip_edges()
 	var scheme_end: int = clean.find("://")
@@ -269,7 +275,7 @@ static func url_host(url: String) -> String:
 	return rest.left(colon) if colon >= 0 else rest
 
 
-## true si [param host] es esta máquina: [code]localhost[/code], 127.0.0.0/8 o [code]::1[/code].
+## true if [param host] is this machine: [code]localhost[/code], 127.0.0.0/8 or [code]::1[/code].
 static func is_loopback_host(host: String) -> bool:
 	var clean: String = host.strip_edges().to_lower()
 	if clean == "localhost" or clean == "::1":
@@ -279,19 +285,20 @@ static func is_loopback_host(host: String) -> bool:
 	return false
 
 
-## true si la configuración entra con billete (de [code]enter[/code]).
+## true if the configuration enters with a ticket (from [code]enter[/code]).
 func has_ticket() -> bool:
 	return not ticket.is_empty()
 
 
-## true si la conexión con la zona va por DTLS: con el certificado de [code]enter[/code] o con
+## true if the connection to the zone goes over DTLS: with the certificate from [code]enter[/code] or with
 ## [code]--dtls-cert[/code].
 func has_dtls() -> bool:
 	return not dtls_cert_pem.is_empty() or not dtls_cert_path.is_empty()
 
 
-## Una copia de la configuración para la sesión de un personaje: los mismos ajustes de red, bot e informe, sin
-## billete ni personaje (los pone quien la pide). La usa [AccountFlow] para no tocar la de partida.
+## A copy of the configuration for a character's session: the same network, bot and report settings,
+## without ticket or character (the caller sets those). Used by [AccountFlow] so it does not touch the
+## starting one.
 func duplicate_config() -> ClientConfig:
 	var copy := ClientConfig.new()
 	for property: Dictionary in get_property_list():
@@ -304,36 +311,36 @@ func duplicate_config() -> ClientConfig:
 	return copy
 
 
-## Nombre por defecto de un jugador: «Jugador» y cuatro letras al azar (siempre válido).
+## Default name of a player: "Jugador" and four random letters (always valid).
 static func default_name() -> String:
 	return NameRules.default_name(randi_range(0, 456975))
 
 
-## true si [param template_name] es el [member EquipmentTemplate.id] de una plantilla del catálogo que el
-## jugador puede elegir ([member EquipmentTemplate.selectable]).
+## true if [param template_name] is the [member EquipmentTemplate.id] of a catalog template that the
+## player can choose ([member EquipmentTemplate.selectable]).
 static func is_selectable_template(template_name: String) -> bool:
 	var id: int = CombatCatalog.template_id(StringName(template_name))
 	var template: EquipmentTemplate = CombatCatalog.template(id) if id > 0 else null
 	return template != null and template.selectable
 
 
-## Id del catálogo de [member loadout] (0 si no hay o no es una plantilla que se pueda elegir).
+## Catalog id of [member loadout] (0 if there is none or it is not a selectable template).
 func get_loadout_template_id() -> int:
 	if loadout.is_empty() or not is_selectable_template(loadout):
 		return 0
 	return CombatCatalog.template_id(StringName(loadout))
 
 
-## true si el modo conecta con un servidor (todos menos [constant OFFLINE]).
+## true if the mode connects to a server (all except [constant OFFLINE]).
 func is_online() -> bool:
 	return mode != Mode.OFFLINE
 
 
-## Interpreta una dirección de servidor: [code]host[/code], [code]host:puerto[/code],
-## [code][::1][/code] o [code][::1]:puerto[/code] (un IPv6 sin corchetes, con varios ':', se toma
-## entero como host). Devuelve [code]{"host": String, "port": int, "error": String}[/code]:
-## [code]port[/code] es 0 si no viene o no es válido y [code]error[/code] (en español) está vacío si
-## todo es válido. Con un puerto no válido el host sí se devuelve.
+## Parses a server address: [code]host[/code], [code]host:port[/code],
+## [code][::1][/code] or [code][::1]:port[/code] (an IPv6 without brackets, with several ':', is taken
+## whole as the host). Returns [code]{"host": String, "port": int, "error": String}[/code]:
+## [code]port[/code] is 0 if absent or not valid and [code]error[/code] (in Spanish) is empty if
+## everything is valid. With an invalid port the host is still returned.
 static func parse_address(text: String) -> Dictionary:
 	var clean: String = text.strip_edges()
 	var result: Dictionary = {"host": "", "port": 0, "error": ""}
@@ -366,8 +373,8 @@ static func parse_address(text: String) -> Dictionary:
 	return result
 
 
-# Opciones de la cuenta y de DTLS (docs/plataforma.md §13.3). Una URL de plataforma que no vale se conserva (quien
-# la use falla con su motivo, en lugar de entrar sin plataforma) y se avisa.
+# Account and DTLS options (docs/plataforma.md §13.3). A platform URL that is not valid is kept (whoever
+# uses it fails with its reason, instead of entering without a platform) and a warning is issued.
 func _parse_account_options(args: PackedStringArray) -> void:
 	platform_url = _string_option(args, "--platform=")
 	if _has_option(args, "--platform=") and platform_url.is_empty():
@@ -386,8 +393,8 @@ func _parse_account_options(args: PackedStringArray) -> void:
 		warnings.append("--dtls-cert necesita --dtls-name=<cn> (el nombre del certificado de la zona)")
 
 
-# Interpreta el valor de --connect con [method parse_address]. Una dirección que no se entiende se
-# ignora con un aviso; un puerto no válido deja el puerto por defecto.
+# Parses the value of --connect with [method parse_address]. An address that is not understood is
+# ignored with a warning; an invalid port leaves the default port.
 func _parse_connect(text: String) -> void:
 	if text.is_empty():
 		warnings.append("--connect necesita una dirección (por ejemplo --connect=127.0.0.1:24600)")
@@ -410,7 +417,7 @@ static func _has_option(args: PackedStringArray, prefix: String) -> bool:
 	return false
 
 
-# Valor de la primera opción [param prefix], sin espacios ni comillas alrededor ("" si no viene).
+# Value of the first option [param prefix], without spaces or quotes around it ("" if absent).
 static func _string_option(args: PackedStringArray, prefix: String) -> String:
 	for arg: String in args:
 		if arg.begins_with(prefix):
@@ -419,7 +426,7 @@ static func _string_option(args: PackedStringArray, prefix: String) -> String:
 	return ""
 
 
-# Valor entero de la opción, o [param fallback] (con un aviso) si no es un entero en el rango.
+# Integer value of the option, or [param fallback] (with a warning) if it is not an integer in range.
 static func _int_option(args: PackedStringArray, prefix: String, fallback: int, min_value: int,
 		max_value: int, out_warnings: PackedStringArray) -> int:
 	if not _has_option(args, prefix):
@@ -431,6 +438,6 @@ static func _int_option(args: PackedStringArray, prefix: String, fallback: int, 
 	return text.to_int()
 
 
-# Ruta con barras normales (Windows escribe barras invertidas).
+# Path with forward slashes (Windows writes backslashes).
 static func _clean_path(value: String) -> String:
 	return value.replace("\\", "/")

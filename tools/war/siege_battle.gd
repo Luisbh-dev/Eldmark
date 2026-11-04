@@ -1,57 +1,57 @@
 extends SceneTree
-## Una batalla de asedio con jugadores falsos sobre el Vado Gris, en un solo proceso y sin red (GUE-15, GUE-17;
-## docs/fuerte.md, sección 7). Es la prueba larga que no cabe en la suite (la versión corta es
-## [code]tests/test_siege_zone.gd[/code]): [SiegeRunner] avanza el servidor deprisa y esta herramienta cuenta
-## qué pasa y lo resume en español.
+## A siege battle with fake players on Vado Gris, in a single process and with no network (GUE-15, GUE-17;
+## docs/fuerte.md, section 7). It is the long test that does not fit in the suite (the short version is
+## [code]tests/test_siege_zone.gd[/code]): [SiegeRunner] advances the server quickly and this tool counts
+## what happens and summarises it in Spanish.
 ## [br][br]
-## [b]Uso[/b], desde la raíz del proyecto (el [code]godot[/code] de consola):
+## [b]Usage[/b], from the project root (the console [code]godot[/code]):
 ## [codeblock]
-## # Veinte de Vardheim capturan el fuerte neutral y veinte de Solmarch lo recapturan (con la captura a la
-## # velocidad de verdad); registro de batalla y su resumen
+## # Twenty from Vardheim capture the neutral fort and twenty from Solmarch recapture it (with capture at the
+## # real speed); battle log and its summary
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --per-side=20 --battle-log=build/siege.jsonl
-## # Los dos bandos a la vez durante 8 minutos de juego, sin acelerar la captura
+## # Both sides at once for 8 minutes of game time, without speeding up the capture
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --scenario=war --per-side=20 --minutes=8
-## # Lo mismo que la primera, pero con los PNJ de verdad (Huecos, Capitán del Vado y guarnición) y sin ayudas (F6b)
+## # The same as the first, but with the real NPCs (the Hollow, the Ford Captain and the garrison) and without help (F6b)
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --npcs --per-side=20 --minutes=30
-## # Igual, con los bots como antes de GUE-44 (sin reunión ni formación), para comparar
+## # Same, with the bots as before GUE-44 (no rally or formation), for comparison
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --npcs --per-side=20 --minutes=30 --rally=0
-## # Igual, sin nadie en la pasarela (como antes de GUE-45), para comparar
+## # Same, with nobody on the walkway (as before GUE-45), for comparison
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --npcs --per-side=20 --minutes=30 --walkway=0
 ## [/codeblock]
-## [b]Opciones[/b] (después de [code]--[/code]):
-## [br]- [code]--scenario=capture[/code] (por defecto): primero los de Vardheim, que capturan el fuerte neutral; cuando
-## lo tienen, salen los de Solmarch, que lo recapturan (y los de Vardheim lo defienden). [code]--scenario=war[/code]:
-## los dos bandos salen a la vez y la batalla dura [code]--minutes[/code].
-## [br]- [code]--per-side=N[/code] bots por bando (por defecto 20). [code]--capture-speed=K[/code] multiplica la velocidad
-## de captura (orden 11; por defecto 1, la de verdad). [code]--minutes=M[/code] minutos de juego como mucho (por
-## defecto 10). [code]--battle-log=<ruta>[/code] registro de batalla JSON Lines ([BattleLog]) y, al acabar, su
-## resumen ([BattleSummary]). [code]--seed=N[/code] semilla de los cerebros (por defecto 1000).
-## [br]- [code]--npcs[/code] (F6b): el servidor arranca con sus PNJ y la herramienta no ayuda en nada: los bots
-## tienen que matar a los Huecos, al Capitán del Vado y a la guarnición del dueño. Sin ella (el asedio de F6a, sin
-## PNJ), cuando la puerta está rota y el fuerte guardado, la herramienta da por muerto al capitán
-## ([code]fort_kill_captain[/code], como haría la consola). [code]--npc-health=<id>:<vida>[/code] (repetible, con
-## [code]--npcs[/code]) cambia la vida de una definición de [code]data/npcs/[/code] solo en esta batalla, para
-## probar ajustes sin tocar los datos. [code]--verbose[/code] escribe el estado cada 10 s de juego.
-## [br]- [code]--rally=N[/code] (GUE-44): los atacantes salen de su campamento cuando hay N de su reino en el punto de
-## reunión (por defecto, [constant BotBrain.SIEGE_RALLY_GROUP_SIZE]); con 0 o 1 no esperan ni van en formación, como
-## antes de GUE-44 (sirve para comparar). [code]--rally-period=S[/code]: segundos de cada vuelta del reloj de la reunión
-## (por defecto 30).
-## [br]- [code]--walkway=F[/code] (GUE-45): la parte de los bots con el papel de la pasarela (por defecto
-## [constant BotBrain.SIEGE_WALKWAY_SHARE]; los del dueño la guardan y los atacantes la recorren una vez al entrar); con 0
-## nadie sube, como antes de GUE-45.
+## [b]Options[/b] (after [code]--[/code]):
+## [br]- [code]--scenario=capture[/code] (default): first the Vardheim ones, who capture the neutral fort; when
+## they hold it, the Solmarch ones go out and recapture it (and the Vardheim ones defend it). [code]--scenario=war[/code]:
+## both sides go out at once and the battle lasts [code]--minutes[/code].
+## [br]- [code]--per-side=N[/code] bots per side (default 20). [code]--capture-speed=K[/code] multiplies the capture
+## speed (command 11; default 1, the real one). [code]--minutes=M[/code] minutes of game time at most (default
+## 10). [code]--battle-log=<path>[/code] JSON Lines battle log ([BattleLog]) and, when done, its
+## summary ([BattleSummary]). [code]--seed=N[/code] seed of the brains (default 1000).
+## [br]- [code]--npcs[/code] (F6b): the server starts with its NPCs and the tool helps in no way: the bots
+## have to kill the Hollow, the Ford Captain and the owner's garrison. Without it (the F6a siege, with no
+## NPCs), when the gate is broken and the fort guarded, the tool declares the captain dead
+## ([code]fort_kill_captain[/code], as the console would). [code]--npc-health=<id>:<health>[/code] (repeatable, with
+## [code]--npcs[/code]) changes the health of a definition in [code]data/npcs/[/code] only in this battle, to
+## test adjustments without touching the data. [code]--verbose[/code] writes the state every 10 s of game time.
+## [br]- [code]--rally=N[/code] (GUE-44): the attackers leave their camp when there are N from their realm at the
+## rally point (by default, [constant BotBrain.SIEGE_RALLY_GROUP_SIZE]); with 0 or 1 they neither wait nor go in formation, as
+## before GUE-44 (useful for comparison). [code]--rally-period=S[/code]: seconds of each lap of the rally clock
+## (default 30).
+## [br]- [code]--walkway=F[/code] (GUE-45): the share of bots with the walkway role (by default
+## [constant BotBrain.SIEGE_WALKWAY_SHARE]; the owner's ones guard it and the attackers walk it once on entering); with 0
+## nobody goes up, as before GUE-45.
 ## [br][br]
-## El informe da, por fase, los hitos desde que salen sus bots: primer golpe a la puerta, puerta rota (y cuántas
-## veces), capitán caído y captura, y, por reino, las salidas en grupo de la reunión (cuántas y de cuántos), y dónde han
-## caído los muertos (con las clases del resumen de batalla: puente, vado, explanada y patio, pasarela). Termina
-## con código 0 si el escenario [code]capture[/code] acaba con Solmarch como dueño y 1 si no.
+## The report gives, per phase, the milestones since its bots leave: first hit on the gate, gate broken (and how many
+## times), captain down and capture, and, per realm, the group departures from the rally (how many and of how many), and where
+## the dead have fallen (with the classes of the battle summary: bridge, ford, esplanade and courtyard, walkway). It ends
+## with code 0 if the [code]capture[/code] scenario ends with Solmarch as owner and 1 if not.
 
 const CHECK_TICKS: int = 30
-## Cada cuántos ticks escribe el estado con [code]--verbose[/code].
+## How many ticks apart it writes the state with [code]--verbose[/code].
 const VERBOSE_TICKS: int = 600
 
 var _with_npcs: bool = false
 var _verbose: bool = false
-# Tick en el que salen los bots de cada fase y el bando que la juega: {name, realm, tick}.
+# Tick at which the bots of each phase leave and the side that plays it: {name, realm, tick}.
 var _phases: Array[Dictionary] = []
 
 
@@ -133,8 +133,8 @@ func _run() -> void:
 	quit(0 if ok else 1)
 
 
-# Avanza hasta que [param goal_owner] (0 = ninguno: se agota el tiempo) tenga el fuerte o pasen
-# [param limit_ticks] desde ahora. Sin PNJ mata al capitán cuando toca; apunta cada cambio de dueño.
+# Advances until [param goal_owner] (0 = nobody: time runs out) holds the fort or
+# [param limit_ticks] pass from now. Without NPCs it kills the captain when due; records each change of owner.
 func _fight(runner: SiegeRunner, limit_ticks: int, captures: Array[Dictionary], goal_owner: int) -> void:
 	var state: FortressState = runner.state()
 	var start_tick: int = runner.tick()
@@ -155,7 +155,7 @@ func _fight(runner: SiegeRunner, limit_ticks: int, captures: Array[Dictionary], 
 				return
 
 
-# Una línea de estado: fase, puerta, presencia, bots vivos y vida y estado de los PNJ de guerra (sin los Guardianes).
+# A status line: phase, gate, presence, bots alive and health and state of the war NPCs (without the Guardians).
 func _print_progress(runner: SiegeRunner) -> void:
 	var state: FortressState = runner.state()
 	var npcs := PackedStringArray()
@@ -173,13 +173,13 @@ func _print_progress(runner: SiegeRunner) -> void:
 		", ".join(npcs) if not npcs.is_empty() else "ninguno"])
 
 
-# Los hitos de cada fase, contados desde que salen sus bots.
+# The milestones of each phase, counted from when its bots leave.
 func _report_phases(runner: SiegeRunner) -> void:
 	for index: int in _phases.size():
 		var phase: Dictionary = _phases[index]
-		# Los avisos de una fase son los de después del tick en que salen sus bots (se añaden entre dos ticks) hasta el de
-		# la fase siguiente incluido: la captura que la acaba puede caer justo en ese tick (GUE-44: con la semilla 4000,
-		# la captura del neutral salía en la recaptura, a los 0 s).
+		# The warnings of a phase are those after the tick at which its bots leave (they are added between two ticks) up to that of
+		# the next phase included: the capture that ends it may fall right on that tick (GUE-44: with seed 4000,
+		# the capture of the neutral fort showed up in the recapture, at 0 s).
 		var from_tick: int = int(phase["tick"])
 		var to_tick: int = int(_phases[index + 1]["tick"]) if index + 1 < _phases.size() else runner.tick()
 		var parts := PackedStringArray()
@@ -261,8 +261,8 @@ func _report(runner: SiegeRunner, captures: Array[Dictionary], wall_seconds: flo
 	print("Avisos de guerra: %s" % ", ".join(PackedStringArray(ids)))
 
 
-# Dónde han caído los muertos de [param list] (los de SiegeRunner, con su posición), con las clases del resumen de batalla
-# (GUE-17, GUE-45) y, en la pasarela, de qué reino o qué PNJ eran.
+# Where the dead in [param list] have fallen (those of SiegeRunner, with their position), with the classes of the battle summary
+# (GUE-17, GUE-45) and, on the walkway, which realm or which NPC they were.
 func _report_places(runner: SiegeRunner, list: Array[Dictionary], title: String) -> void:
 	var labels: Dictionary = {"bridge": "puente", "ford": "vado", "gate": "explanada y patio", "walkway": "pasarela",
 			"other": "otros sitios"}
@@ -280,11 +280,11 @@ func _report_places(runner: SiegeRunner, list: Array[Dictionary], title: String)
 	print("%s: %s%s" % [title, ", ".join(parts), "" if on_walkway.is_empty() else " (en la pasarela: %s)" % on_walkway])
 
 
-# Las salidas en grupo de la reunión (GUE-44), por reino: cuántos grupos, de cuántos y si alguno se partió entre rutas.
+# The group departures from the rally (GUE-44), per realm: how many groups, of how many, and whether any split between routes.
 func _report_rally(runner: SiegeRunner) -> void:
 	for realm: int in [NetProtocol.Realm.VARDHEIM, NetProtocol.Realm.SOLMARCH]:
-		# Un grupo: las salidas que caen a menos de 1 s de la anterior (los que llegan mientras sale el grupo, que aún
-		# está en el punto de reunión, salen un tick después).
+		# A group: the departures that fall less than 1 s after the previous one (those who arrive while the group is leaving, which is still
+		# at the rally point, leave one tick later).
 		var groups: Dictionary = {}
 		var key: int = -1000
 		var last_tick: int = -1000

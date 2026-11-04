@@ -1,8 +1,9 @@
 class_name NpcRig
 extends RefCounted
-## Montaje de las pruebas de los PNJ (paquete F4): un [ZoneServer] sin red sobre la zona de verdad, el Vado Gris
-## (con su malla de navegación, su fuerte y sus generadores), que se avanza deprisa con un
-## [FortressFixture.Stepper]. Las pruebas piden jugadores falsos con cerebros a medida y miran lo que hacen los PNJ.
+## Setup for the NPC tests (package F4): a network-less [ZoneServer] on the real zone, Vado Gris
+## (with its navigation mesh, its fort and its spawners), advanced quickly with a
+## [FortressFixture.Stepper]. Tests request fake players with custom brains and watch what the NPCs
+## do.
 
 const ZONE_ID: String = "vado_gris"
 const FORTRESS: StringName = &"vado_gris_fort"
@@ -13,15 +14,15 @@ var world: Node3D = null
 var server: ZoneServer = null
 var stepper: FortressFixture.Stepper = null
 var tree: SceneTree = null
-## El [SubViewport] de la zona plana ([method start_flat]); null en la zona de verdad.
+## The flat zone's [SubViewport] ([method start_flat]); null in the real zone.
 var viewport: SubViewport = null
-## Los eventos de combate desde que arrancó.
+## The combat events since it started.
 var events: Array[NetMessages.EntityEvent] = []
 
 
-## Arranca el servidor en [param zone_id]. [param configure] es [code](config: ServerConfig) -> void[/code]
-## para cambiar la configuración antes de arrancar. Si [param manual] el servidor no corre solo: lo avanza
-## [method advance].
+## Starts the server in [param zone_id]. [param configure] is
+## [code](config: ServerConfig) -> void[/code] to change the configuration before starting. If
+## [param manual] the server does not run on its own: [method advance] advances it.
 func start(scene_tree: SceneTree, configure: Callable = Callable(), zone_id: String = ZONE_ID,
 		manual: bool = true) -> void:
 	tree = scene_tree
@@ -56,9 +57,9 @@ func start(scene_tree: SceneTree, configure: Callable = Callable(), zone_id: Str
 		tree.root.add_child(stepper)
 
 
-## Como [method start] pero sobre la zona plana de [ZoneFixture] (sin navegación ni fortaleza propias) en un
-## [SubViewport] con su mundo de física. [param build] es [code](world: Node3D) -> void[/code] para añadirle
-## fortaleza, generadores, zonas seguras o muros antes de arrancar el servidor.
+## Like [method start] but on the flat zone of [ZoneFixture] (without its own navigation or fort)
+## in a [SubViewport] with its physics world. [param build] is [code](world: Node3D) -> void[/code]
+## to add a fort, spawners, safe areas or walls before starting the server.
 func start_flat(scene_tree: SceneTree, build: Callable = Callable(), configure: Callable = Callable()) -> void:
 	tree = scene_tree
 	viewport = SubViewport.new()
@@ -90,9 +91,10 @@ func start_flat(scene_tree: SceneTree, build: Callable = Callable(), configure: 
 	viewport.add_child(stepper)
 
 
-## Añade a [param parent] un generador de PNJ ([NpcSpawner]) en [param local_position] mirando a [param yaw].
-## [param properties] da el resto de sus campos ([code]max_alive[/code], [code]respawn_s[/code],
-## [code]alert_group[/code], [code]condition[/code], [code]realm[/code], [code]patrol_route[/code]).
+## Adds to [param parent] an NPC spawner ([NpcSpawner]) at [param local_position] facing
+## [param yaw]. [param properties] gives the rest of its fields ([code]max_alive[/code],
+## [code]respawn_s[/code], [code]alert_group[/code], [code]condition[/code], [code]realm[/code],
+## [code]patrol_route[/code]).
 static func add_spawner(parent: Node3D, node_name: String, npc_id: StringName, local_position: Vector3,
 		yaw: float = 0.0, properties: Dictionary = {}) -> NpcSpawner:
 	var spawner := NpcSpawner.new()
@@ -107,7 +109,7 @@ static func add_spawner(parent: Node3D, node_name: String, npc_id: StringName, l
 	return spawner
 
 
-## Añade a [param world] una zona segura de [param realm] (nombre del reino) en [param position].
+## Adds to [param world] a safe area of [param realm] (realm name) at [param position].
 static func add_safe_area(world_node: Node3D, realm_name: StringName, position: Vector3,
 		radius: float = 24.0) -> Marker3D:
 	var marker := Marker3D.new()
@@ -120,7 +122,7 @@ static func add_safe_area(world_node: Node3D, realm_name: StringName, position: 
 	return marker
 
 
-## Añade a [param world] un muro de [param size] centrado en [param center] (capa del mundo).
+## Adds to [param world] a wall of [param size] centered at [param center] (world layer).
 static func add_wall(world_node: Node3D, center: Vector3, size: Vector3) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.name = "Muro"
@@ -136,15 +138,15 @@ static func add_wall(world_node: Node3D, center: Vector3, size: Vector3) -> Stat
 	return body
 
 
-## Avanza [param ticks] ticks del servidor (deprisa con el Stepper).
+## Advances [param ticks] server ticks (quickly with the Stepper).
 func advance(ticks: int) -> void:
 	stepper.remaining += ticks
 	while stepper.remaining > 0:
 		await tree.physics_frame
 
 
-## Avanza hasta que se cumpla [param condition] (cada [param step_ticks] ticks) o pasen [param max_ticks]. Devuelve
-## si se cumplió.
+## Advances until [param condition] is met (every [param step_ticks] ticks) or [param max_ticks]
+## pass. Returns whether it was met.
 func advance_until(condition: Callable, max_ticks: int, step_ticks: int = 6) -> bool:
 	var elapsed: int = 0
 	while elapsed < max_ticks:
@@ -155,7 +157,8 @@ func advance_until(condition: Callable, max_ticks: int, step_ticks: int = 6) -> 
 	return bool(condition.call())
 
 
-## Avanza hasta que la navegación esté lista y el sistema haya generado a los PNJ (o falla a los 900 ticks).
+## Advances until navigation is ready and the system has spawned the NPCs (or fails after 900
+## ticks).
 func advance_until_populated(max_ticks: int = 900) -> bool:
 	return await advance_until(func() -> bool:
 		return server.get_npc_system() != null and server.get_npc_system().is_ready() \
@@ -186,7 +189,8 @@ func fort_node() -> Node3D:
 	return server.get_fortresses().get_node_of(FORTRESS)
 
 
-## Un jugador falso de [param realm] en [param position] (en el suelo), con [param brain] (quieto si es null).
+## A fake player of [param realm] at [param position] (on the ground), with [param brain] (idle if
+## null).
 func add_player(realm: int, position: Vector3, brain: BotBrain = null, yaw: float = 0.0) -> int:
 	if brain == null:
 		brain = CombatFixture.ScriptBrain.new(1)
@@ -196,7 +200,7 @@ func add_player(realm: int, position: Vector3, brain: BotBrain = null, yaw: floa
 	return net_id
 
 
-## net_id de los PNJ vivos cuya definición es [param definition_id].
+## net_id of the living NPCs whose definition is [param definition_id].
 func alive_of(definition_id: StringName) -> Array[int]:
 	var found: Array[int] = []
 	var number: int = NpcCatalog.number_of(definition_id)
@@ -206,7 +210,7 @@ func alive_of(definition_id: StringName) -> Array[int]:
 	return found
 
 
-## Los eventos de combate del tipo [param kind] ([enum NetMessages.EntityEvent.Kind]).
+## The combat events of type [param kind] ([enum NetMessages.EntityEvent.Kind]).
 func events_of(kind: int) -> Array[NetMessages.EntityEvent]:
 	var found: Array[NetMessages.EntityEvent] = []
 	for event: NetMessages.EntityEvent in events:
@@ -215,7 +219,7 @@ func events_of(kind: int) -> Array[NetMessages.EntityEvent]:
 	return found
 
 
-## Suelta todo lo montado.
+## Releases everything that was set up.
 func stop() -> void:
 	if is_instance_valid(stepper):
 		stepper.get_parent().remove_child(stepper)

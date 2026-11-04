@@ -1,7 +1,7 @@
 extends TestCase
-## Pruebas de [Combatant] (docs/combate.md, sección 5): vida, estado «en combate», protección,
-## cadena de controles con su inmunidad, regeneración, maniquí inmortal, muerte y reaparición, la
-## muestra congelada y lo que se publica en la entidad para los snapshots.
+## Tests for [Combatant] (docs/combate.md, section 5): health, \"in combat\" state, protection,
+## control chain with its immunity, regeneration, immortal dummy, death and respawn, the
+## frozen sample and what is published on the entity for the snapshots.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 
@@ -62,10 +62,10 @@ func test_take_damage_clamps_to_the_remaining_health() -> void:
 	assert_eq(fighter.take_damage(300, 10), 300)
 	assert_eq(fighter.health, 700)
 	assert_eq(fighter.last_damage_tick, 10)
-	assert_eq(fighter.take_damage(5000, 11), 700, "solo se quita lo que queda")
+	assert_eq(fighter.take_damage(5000, 11), 700, "only what is left is taken off")
 	assert_eq(fighter.health, 0)
 	assert_true(fighter.is_dead())
-	assert_eq(fighter.take_damage(10, 12), 0, "un muerto no recibe más daño")
+	assert_eq(fighter.take_damage(10, 12), 0, "a dead player takes no more damage")
 	assert_eq(fighter.take_damage(-4, 12), 0)
 	assert_eq(fighter.take_damage(0, 12), 0)
 
@@ -75,7 +75,7 @@ func test_immortal_dummy_never_goes_below_one() -> void:
 	fighter.immortal = true
 	assert_eq(fighter.take_damage(999, 5), 999)
 	assert_eq(fighter.health, 1)
-	assert_eq(fighter.take_damage(500, 6), 0, "ya está en el mínimo")
+	assert_eq(fighter.take_damage(500, 6), 0, "it is already at the minimum")
 	assert_eq(fighter.health, 1)
 	assert_true(fighter.is_alive())
 
@@ -84,15 +84,15 @@ func test_status_bits() -> void:
 	var fighter: Combatant = _fighter()
 	fighter.mark_combat(100)
 	assert_true(fighter.is_in_combat(100))
-	assert_true(fighter.is_in_combat(699), "600 ticks de combate")
+	assert_true(fighter.is_in_combat(699), "600 ticks of combat")
 	assert_false(fighter.is_in_combat(700))
 	assert_eq(fighter.status_bits(100), NetMessages.STATUS_IN_COMBAT)
 	fighter.protected_until = 200
 	assert_eq(fighter.status_bits(150), NetMessages.STATUS_IN_COMBAT | NetMessages.STATUS_PROTECTED)
-	assert_eq(fighter.status_bits(200), NetMessages.STATUS_IN_COMBAT, "protección hasta 200 exclusive")
+	assert_eq(fighter.status_bits(200), NetMessages.STATUS_IN_COMBAT, "protection until 200 exclusive")
 	fighter.mark_dead(300, 7, 2)
-	assert_eq(fighter.status_bits(300), NetMessages.STATUS_DEAD, "muerto: solo el bit de muerte")
-	# mark_combat no acorta un combate más largo.
+	assert_eq(fighter.status_bits(300), NetMessages.STATUS_DEAD, "dead: only the death bit")
+	# mark_combat does not shorten a longer combat.
 	var other: Combatant = _fighter()
 	other.mark_combat(100)
 	other.mark_combat(50)
@@ -101,25 +101,25 @@ func test_status_bits() -> void:
 
 func test_control_chain_third_control_does_not_enter() -> void:
 	var fighter: Combatant = _fighter()
-	assert_true(fighter.try_control(100), "el primero entra")
-	assert_true(fighter.try_control(150), "el segundo, dentro de la ventana, entra")
-	assert_false(fighter.try_control(200), "el tercero no entra")
-	assert_eq(fighter.cc_immune_until, 200 + 120, "y abre 2 s de inmunidad")
-	assert_false(fighter.try_control(300), "durante la inmunidad nada entra")
+	assert_true(fighter.try_control(100), "the first one goes through")
+	assert_true(fighter.try_control(150), "the second, within the window, goes through")
+	assert_false(fighter.try_control(200), "the third does not go through")
+	assert_eq(fighter.cc_immune_until, 200 + 120, "and opens 2 s of immunity")
+	assert_false(fighter.try_control(300), "during the immunity nothing goes through")
 	assert_false(fighter.try_control(319))
-	# Pasada la inmunidad, la cadena empieza de nuevo.
-	assert_true(fighter.try_control(320), "tras la inmunidad vuelve a entrar")
+	# Once the immunity has passed, the chain starts anew.
+	assert_true(fighter.try_control(320), "after the immunity it applies again")
 	assert_true(fighter.try_control(330))
-	assert_false(fighter.try_control(340), "otra vez el tercero")
+	assert_false(fighter.try_control(340), "the third again")
 
 
 func test_control_chain_window_expires() -> void:
 	var fighter: Combatant = _fighter()
 	assert_true(fighter.try_control(100))
 	assert_true(fighter.try_control(120))
-	# 100 y 120 salen de la ventana de 180 ticks en 280 y 300: en 290 solo cuenta el segundo.
-	assert_true(fighter.try_control(290), "el primero ya caducó: entra")
-	assert_false(fighter.try_control(295), "el de 120 y el de 290 siguen dentro: el tercero no")
+	# 100 and 120 leave the 180-tick window at 280 and 300: at 290 only the second counts.
+	assert_true(fighter.try_control(290), "the first has already expired: it goes through")
+	assert_false(fighter.try_control(295), "the 120 one and the 290 one are still inside: the third does not")
 	assert_eq(fighter.cc_immune_until, 295 + 120)
 
 
@@ -130,21 +130,21 @@ func test_health_regenerates_only_out_of_combat() -> void:
 	fighter.mark_combat(0)
 	for tick: int in range(1, 599):
 		fighter.regenerate(tick, per_second)
-	assert_eq(fighter.health, 500, "en combate no regenera")
-	# Fuera de combate: 20 por segundo, es decir, 20 puntos cada 60 ticks.
+	assert_eq(fighter.health, 500, "in combat it does not regenerate")
+	# Out of combat: 20 per second, that is, 20 points every 60 ticks.
 	for tick: int in range(600, 600 + 60):
 		fighter.regenerate(tick, per_second)
-	assert_eq(fighter.health, 520, "un segundo, 20 puntos")
+	assert_eq(fighter.health, 520, "one second, 20 points")
 	for tick: int in range(660, 660 + 120):
 		fighter.regenerate(tick, per_second)
 	assert_eq(fighter.health, 560)
-	# No pasa de la vida máxima ni resucita a un muerto.
+	# It does not exceed maximum health nor resurrect a dead player.
 	for tick: int in range(1000, 1000 + 60 * 60):
 		fighter.regenerate(tick, per_second)
 	assert_eq(fighter.health, fighter.max_health)
 	fighter.mark_dead(5000, 0, 0)
 	fighter.regenerate(6000, per_second)
-	assert_eq(fighter.health, 0, "un muerto no regenera")
+	assert_eq(fighter.health, 0, "a dead player does not regenerate")
 
 
 func test_dummy_heals_fully_after_five_seconds_without_damage() -> void:
@@ -153,35 +153,35 @@ func test_dummy_heals_fully_after_five_seconds_without_damage() -> void:
 	fighter.take_damage(900, 100)
 	fighter.mark_combat(100)
 	fighter.regenerate(399, 20)
-	assert_true(fighter.health < fighter.max_health, "a los 299 ticks aún no")
+	assert_true(fighter.health < fighter.max_health, "at 299 ticks not yet")
 	fighter.regenerate(400, 20)
-	assert_eq(fighter.health, fighter.max_health, "a los 300 ticks se cura del todo")
+	assert_eq(fighter.health, fighter.max_health, "at 300 ticks it heals fully")
 
 
-# Revisión de la fase 4 (guerra): con oleadas, nadie reaparece fuera de una, tampoco por la vía automática.
+# Phase 4 revision (war): with waves, nobody respawns outside of one, not even through the automatic route.
 func test_with_waves_both_the_requested_and_the_automatic_respawn_fall_on_a_wave() -> void:
 	_timing.respawn_wave_ticks = 600
-	assert_eq(_timing.respawn_tick_for(101), 1200, "pedida: la primera oleada a 10 s o más")
-	assert_eq(_timing.auto_respawn_tick_for(101), 2400, "automática: la primera oleada a 30 s o más (no 1901)")
-	assert_eq(_timing.auto_respawn_tick_for(600), 2400, "a 30 s justos de una oleada, en ella")
+	assert_eq(_timing.respawn_tick_for(101), 1200, "requested: the first wave at 10 s or more")
+	assert_eq(_timing.auto_respawn_tick_for(101), 2400, "automatic: the first wave at 30 s or more (not 1901)")
+	assert_eq(_timing.auto_respawn_tick_for(600), 2400, "at exactly 30 s from a wave, in it")
 	assert_eq(_timing.auto_respawn_tick_for(438), 2400)
 	var fighter: Combatant = _fighter()
 	fighter.mark_dead(101, 0, 0)
 	assert_eq(fighter.respawn_tick, 1200)
 	assert_eq(fighter.auto_respawn_tick, 2400)
 	_timing.respawn_wave_ticks = 0
-	assert_eq(_timing.auto_respawn_tick_for(101), 1901, "sin oleadas, a los 30 s justos")
+	assert_eq(_timing.auto_respawn_tick_for(101), 1901, "without waves, at exactly 30 s")
 
 
 func test_a_combatant_that_asks_on_death_has_its_request_ready_for_its_respawn_tick() -> void:
 	var fighter: Combatant = _fighter()
 	fighter.requests_respawn_on_death = true
 	fighter.mark_dead(100, 0, 0)
-	assert_eq(fighter.pending_respawn_point, 0, "pide el primer punto al morir")
+	assert_eq(fighter.pending_respawn_point, 0, "requests the first point on death")
 	fighter.mark_respawned(800)
 	assert_eq(fighter.pending_respawn_point, -1)
 	fighter.mark_dead(900, 0, 0)
-	assert_eq(fighter.pending_respawn_point, 0, "y en cada muerte")
+	assert_eq(fighter.pending_respawn_point, 0, "and on every death")
 
 
 func test_death_and_respawn_bookkeeping() -> void:
@@ -194,20 +194,20 @@ func test_death_and_respawn_bookkeeping() -> void:
 	assert_true(fighter.is_dead())
 	assert_eq(fighter.death_tick, 100)
 	assert_eq(fighter.respawn_tick, 100 + _timing.respawn)
-	assert_eq(fighter.auto_respawn_tick, 100 + _timing.auto_respawn, "sin oleadas, la automática a los 30 s")
-	assert_eq(fighter.pending_respawn_point, -1, "sin pedir nada")
+	assert_eq(fighter.auto_respawn_tick, 100 + _timing.auto_respawn, "without waves, the automatic one at 30 s")
+	assert_eq(fighter.pending_respawn_point, -1, "without requesting anything")
 	assert_eq(fighter.killer_id, 9)
 	assert_eq(fighter.death_attack_id, 3)
 	fighter.mark_respawned(800)
 	assert_true(fighter.is_alive())
-	assert_eq(fighter.health, fighter.max_health, "vida llena")
+	assert_eq(fighter.health, fighter.max_health, "full health")
 	assert_eq(fighter.death_tick, -1)
 	assert_eq(fighter.respawn_tick, 0)
 	assert_eq(fighter.auto_respawn_tick, 0)
-	assert_eq(fighter.protected_until, 800 + _timing.protection, "3 s de protección")
+	assert_eq(fighter.protected_until, 800 + _timing.protection, "3 s of protection")
 	assert_true(fighter.is_protected(800 + 179))
 	assert_false(fighter.is_protected(800 + 180))
-	assert_eq(fighter.ledger.total_damage(800), 0, "el registro de daño se vacía")
+	assert_eq(fighter.ledger.total_damage(800), 0, "the damage ledger is emptied")
 	assert_eq(fighter.last_enemy_id, 0)
 	assert_eq(fighter.cc_chain.size(), 0)
 
@@ -228,29 +228,29 @@ func test_swing_tracking_one_hit_per_action() -> void:
 	fighter.mark_hit(2)
 	assert_true(fighter.has_hit(2))
 	fighter.track_swing(50)
-	assert_true(fighter.has_hit(2), "el mismo ataque recuerda a quién golpeó")
+	assert_true(fighter.has_hit(2), "the same attack remembers whom it hit")
 	fighter.track_swing(80)
-	assert_false(fighter.has_hit(2), "un ataque nuevo olvida")
+	assert_false(fighter.has_hit(2), "a new attack forgets")
 
 
 func test_the_rewind_of_a_swing_is_kept_until_a_new_swing_or_forget_swing() -> void:
 	var fighter: Combatant = _fighter()
 	fighter.track_swing(50)
-	assert_false(fighter.swing_rewind_fixed, "un ataque nuevo no tiene rebobinado fijado")
+	assert_false(fighter.swing_rewind_fixed, "a new attack has no fixed rewind")
 	fighter.swing_rewind_fixed = true
 	fighter.swing_rewind = 7.0
 	fighter.swing_defense_rewind = 9.0
 	fighter.track_swing(50)
-	assert_true(fighter.swing_rewind_fixed, "el mismo ataque conserva el rebobinado fijado")
+	assert_true(fighter.swing_rewind_fixed, "the same attack keeps the fixed rewind")
 	assert_eq(fighter.swing_rewind, 7.0)
 	fighter.forget_swing()
-	assert_false(fighter.swing_rewind_fixed, "forget_swing lo olvida (y a quién golpeó)")
+	assert_false(fighter.swing_rewind_fixed, "forget_swing forgets it (and whom it hit)")
 	fighter.swing_rewind_fixed = true
 	fighter.track_swing(80)
-	assert_false(fighter.swing_rewind_fixed, "un ataque nuevo lo olvida")
+	assert_false(fighter.swing_rewind_fixed, "a new attack forgets it")
 	fighter.swing_rewind_fixed = true
 	fighter.mark_respawned(100)
-	assert_false(fighter.swing_rewind_fixed, "y reaparecer también")
+	assert_false(fighter.swing_rewind_fixed, "and so does respawning")
 
 
 func test_freeze_captures_the_state_after_simulating() -> void:
@@ -266,21 +266,21 @@ func test_freeze_captures_the_state_after_simulating() -> void:
 	assert_eq(frozen.action, CombatState.Action.LIGHT)
 	assert_eq(frozen.action_id, state.action_id)
 	assert_eq(frozen.action_tick, state.action_tick)
-	assert_true(frozen.attack_active, "en el primer tick del golpe activo")
-	assert_false(frozen.hyper_armor, "un ligero no tiene entereza")
+	assert_true(frozen.attack_active, "on the first tick of the active hit")
+	assert_false(frozen.hyper_armor, "a light attack has no poise")
 	assert_eq((frozen.flags >> EntityRecord.TELEPORT_SHIFT) & EntityRecord.TELEPORT_MASK, 2,
-			"las banderas llevan el contador de teletransporte")
-	# Un fuerte en su golpe activo tiene entereza.
+			"the flags carry the teleport counter")
+	# A heavy attack in its active hit has poise.
 	CombatFixture.start_heavy_active(fighter, 200, 20)
 	fighter.freeze(200)
 	assert_true(frozen.attack_active)
-	assert_true(frozen.hyper_armor, "el fuerte tiene entereza en el golpe activo")
+	assert_true(frozen.hyper_armor, "the heavy attack has poise in the active hit")
 	assert_eq(frozen.charge_ticks, 20)
-	# En la anticipación aún no.
+	# Not yet during the windup.
 	fighter.freeze(200 - 5)
-	assert_false(frozen.attack_active, "en la anticipación todavía no golpea")
+	assert_false(frozen.attack_active, "during the windup it does not hit yet")
 	assert_false(frozen.hyper_armor)
-	# Bloqueando lleva la bandera.
+	# When blocking it carries the flag.
 	fighter.get_character().combat.action = CombatState.Action.BLOCK
 	fighter.get_character().combat.action_tick = 150
 	fighter.freeze(200)
@@ -298,7 +298,7 @@ func test_publish_updates_the_entity_view() -> void:
 	assert_eq(entity.health, 750)
 	assert_eq(entity.max_health, 1000)
 	assert_eq(entity.status, NetMessages.STATUS_IN_COMBAT | NetMessages.STATUS_PROTECTED)
-	assert_eq(entity.respawn_tick, 0, "vivo: 0")
+	assert_eq(entity.respawn_tick, 0, "alive: 0")
 	assert_eq(entity.health_q, EntityRecord.quantize_health(750, 1000))
 	assert_eq(entity.action, ActionMachine.action_byte(fighter.get_character().combat, 50))
 	fighter.mark_dead(60, 0, 0)
@@ -306,4 +306,4 @@ func test_publish_updates_the_entity_view() -> void:
 	assert_eq(entity.health, 0)
 	assert_eq(entity.health_q, EntityRecord.HEALTH_Q_DEAD)
 	assert_eq(entity.status, NetMessages.STATUS_DEAD)
-	assert_eq(entity.respawn_tick, fighter.respawn_tick, "muerto: el tick de reaparición")
+	assert_eq(entity.respawn_tick, fighter.respawn_tick, "dead: the respawn tick")

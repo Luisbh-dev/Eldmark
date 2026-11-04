@@ -1,48 +1,48 @@
 class_name ClientLauncher
 extends Node
-## Elige el modo de arranque del cliente (docs/red.md, sección 1.2) y cambia a su escena.
+## Chooses the client start-up mode (docs/red.md, section 1.2) and switches to its scene.
 ## [br][br]
-## Es la mitad del arranque que [code]boot.gd[/code] no puede tener: la escena principal la ejecuta
-## también el servidor dedicado, y cada referencia de clase que contiene arrastra el script de esa
-## clase (y, en cadena, la interfaz, los ajustes, el audio...), de modo que un servidor cargaba 56 de los
-## 69 scripts del cliente. Por eso [code]boot.gd[/code] solo conoce la ruta de la escena de este nodo
-## ([code]scenes/client/client_launcher.tscn[/code]) y la instancia cuando [b]no[/b] es el servidor;
-## aquí sí se nombran [ClientConfig], [OnlineMain], [BotSwarm] y [ClientMain].
+## It is the half of the start-up that [code]boot.gd[/code] cannot have: the main scene is also run by
+## the dedicated server, and each class reference it contains drags in that class's script (and, in
+## a chain, the UI, settings, audio...), so a server was loading 56 of the client's 69 scripts. That is
+## why [code]boot.gd[/code] only knows the scene path of this node
+## ([code]scenes/client/client_launcher.tscn[/code]) and instantiates it when it is [b]not[/b] the
+## server; here [ClientConfig], [OnlineMain], [BotSwarm] and [ClientMain] are named.
 ## [br][br]
-## Prioridad de los modos: [code]--bots=N[/code] (enjambre, [BotSwarm]) >
-## [code]--connect[/code] / [code]--bot[/code] / [code]--local[/code] (cliente en red, [OnlineMain];
-## [code]--local[/code] lanza antes un servidor local si no hay ninguno, ver [LocalServerLauncher]) >
-## [code]--title[/code] / [code]--platform[/code] (título con cuenta, [FrontMain]; docs/plataforma.md §5.5) >
-## sin argumentos: el título en una exportación y, desde el editor, el
-## sandbox sin red ([ClientMain], con [code]--zone[/code], [code]--realm[/code], [code]--demo[/code],
-## [code]--shots[/code] y [code]--quit-after-demo[/code]). Los argumentos del sandbox los interpreta la
-## función que pasa [code]boot.gd[/code] en el metadato [constant PARSER_META] (la misma de siempre,
-## [code]Boot.parse_client_options[/code]), para que este script no dependa del de arranque.
+## Mode priority: [code]--bots=N[/code] (swarm, [BotSwarm]) >
+## [code]--connect[/code] / [code]--bot[/code] / [code]--local[/code] (networked client, [OnlineMain];
+## [code]--local[/code] first launches a local server if there is none, see [LocalServerLauncher]) >
+## [code]--title[/code] / [code]--platform[/code] (title screen with an account, [FrontMain]; docs/plataforma.md §5.5) >
+## no arguments: the title screen in an export and, from the editor, the offline
+## sandbox ([ClientMain], with [code]--zone[/code], [code]--realm[/code], [code]--demo[/code],
+## [code]--shots[/code] and [code]--quit-after-demo[/code]). The sandbox arguments are interpreted by the
+## function that [code]boot.gd[/code] passes in the [constant PARSER_META] metadata (the same as ever,
+## [code]Boot.parse_client_options[/code]), so this script does not depend on the start-up one.
 
-## Metadato con el [Callable] que interpreta los argumentos del sandbox (recibe los argumentos de
-## usuario y devuelve un diccionario con [code]zone[/code], [code]realm[/code], [code]demo[/code],
-## [code]quit_after_demo[/code], [code]shots_dir[/code] y [code]warnings[/code]).
+## Metadata with the [Callable] that parses the sandbox arguments (it receives the user arguments and
+## returns a dictionary with [code]zone[/code], [code]realm[/code], [code]demo[/code],
+## [code]quit_after_demo[/code], [code]shots_dir[/code] and [code]warnings[/code]).
 const PARSER_META: StringName = &"client_options_parser"
 const CLIENT_MAIN_SCENE: String = "res://scenes/client/client_main.tscn"
 const ONLINE_MAIN_SCENE: String = "res://scenes/client/online_main.tscn"
-## Escena del enjambre de clientes ligeros ([code]--bots=N[/code]).
+## Scene of the lightweight client swarm ([code]--bots=N[/code]).
 const SWARM_SCENE: String = "res://scenes/client/bot_swarm.tscn"
-## Escena del título con cuenta ([code]--title[/code], [code]--platform[/code] o una exportación sin argumentos).
+## Scene of the title screen with an account ([code]--title[/code], [code]--platform[/code] or an export with no arguments).
 const FRONT_MAIN_SCENE: String = "res://scenes/client/front_main.tscn"
 
 
 func _ready() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
-	# Prioridad de la sección 1.2 y de docs/plataforma.md §13.3: --bots > --bot > --connect/--local >
-	# --title/--platform > sandbox (en el editor) o título (en una exportación).
+	# Priority from section 1.2 and docs/plataforma.md §13.3: --bots > --bot > --connect/--local >
+	# --title/--platform > sandbox (in the editor) or title screen (in an export).
 	var config: ClientConfig = ClientConfig.from_args(args, not OS.has_feature("editor"))
 	match config.mode:
 		ClientConfig.Mode.SWARM:
 			BotSwarm.config = config
 			_change_scene(SWARM_SCENE)
 		ClientConfig.Mode.ONLINE, ClientConfig.Mode.BOT, ClientConfig.Mode.LOCAL:
-			# --local: OnlineMain primero reutiliza o lanza el servidor local (LocalServerLauncher,
-			# docs/red.md 1.4) y apunta el cliente a su puerto.
+			# --local: OnlineMain first reuses or launches the local server (LocalServerLauncher,
+			# docs/red.md 1.4) and points the client at its port.
 			OnlineMain.config = config
 			_change_scene(ONLINE_MAIN_SCENE)
 		ClientConfig.Mode.TITLE:
@@ -52,8 +52,8 @@ func _ready() -> void:
 			_start_sandbox(args)
 
 
-## Pasa las opciones a [ClientMain] mediante sus variables estáticas y cambia a la escena del
-## sandbox del cliente (sin red).
+## Passes the options to [ClientMain] through its static variables and switches to the client's
+## (offline) sandbox scene.
 func _start_sandbox(args: PackedStringArray) -> void:
 	var options: Dictionary = _parse_sandbox_options(args)
 	for warning: String in options["warnings"]:
@@ -68,8 +68,8 @@ func _start_sandbox(args: PackedStringArray) -> void:
 	_change_scene(CLIENT_MAIN_SCENE)
 
 
-# Interpreta los argumentos del sandbox con la función que dejó boot.gd; sin ella (esta escena abierta
-# por su cuenta) se usan las opciones por defecto.
+# Parses the sandbox arguments with the function boot.gd left; without it (this scene opened on its
+# own) the default options are used.
 func _parse_sandbox_options(args: PackedStringArray) -> Dictionary:
 	if has_meta(PARSER_META):
 		var parser: Callable = get_meta(PARSER_META) as Callable

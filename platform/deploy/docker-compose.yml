@@ -1,37 +1,37 @@
-# Despliegue de un entorno (staging o production) en un VPS: docs/plataforma.md §10 y §12.
+# Deployment of one environment (staging or production) on a VPS: docs/plataforma.md §10 and §12.
 #
-#   cp staging.env.example staging.env        (y rellenarlo; staging.env no entra en git)
-#   docker compose --env-file staging.env up -d                       base, plataforma y Caddy
+#   cp staging.env.example staging.env        (and fill it in; staging.env does not go into git)
+#   docker compose --env-file staging.env up -d                       database, platform and Caddy
 #   docker compose --env-file staging.env run --rm platform migrate up
-#   docker compose --env-file staging.env --profile zonas up -d       las zonas (imagen de TEC-20)
-#   docker compose --env-file staging.env run --rm backup             copia diaria (cron del VPS)
-#   docker compose --env-file staging.env run --rm restore-check      restauración de prueba semanal
-#   docker compose --env-file staging.env run --rm pitr-check         prueba de la recuperación a un instante
-#   docker compose --env-file staging.env exec platform eldmark-platform admin --actor <correo> help
+#   docker compose --env-file staging.env --profile zonas up -d       the zones (TEC-20 image)
+#   docker compose --env-file staging.env run --rm backup             daily backup (VPS cron)
+#   docker compose --env-file staging.env run --rm restore-check      weekly test restore
+#   docker compose --env-file staging.env run --rm pitr-check         point-in-time recovery test
+#   docker compose --env-file staging.env exec platform eldmark-platform admin --actor <email> help
 #
-# Secretos: un archivo por secreto en ELDMARK_SECRETS_DIR (./secrets por defecto, ignorada por git),
-# montados como secretos de Docker en /run/secrets/<nombre>; las variables *_FILE de la plataforma
-# los leen de ahí (§2.3, §10.3). La carpeta, de root y 0700; cada archivo, 0444 (dentro de los
-# contenedores los leen usuarios sin privilegios: eldmark 10001, postgres 999):
-#   postgres_password   contraseña del rol eldmark de la base
-#   database_url        postgres://eldmark:<contraseña>@db:5432/eldmark?sslmode=disable
-#   ticket_keys         1:<base64 de 32 B>[,2:<…>]           (la plataforma y cada zona)
-#   zone_tokens         1:vado_gris:0:<SHA-256 en hex del token>[,…]   (solo la plataforma)
-#   zone_token_vado_gris                el token en claro            (solo esa zona)
-#   vado_gris_dtls_cert, vado_gris_dtls_key   PEM del DTLS de esa zona (P9c): autofirmado, con CN (el
-#                       nombre que comprueba el cliente) y clave sin contraseña; la zona no arranca si
-#                       la clave no es la del certificado. Por ejemplo (EC P-256, el apretón de manos
-#                       más barato; docs/plataforma.md §19.18):
+# Secrets: one file per secret in ELDMARK_SECRETS_DIR (./secrets by default, ignored by git),
+# mounted as Docker secrets at /run/secrets/<name>; the platform's *_FILE variables read them from
+# there (§2.3, §10.3). The folder owned by root and 0700; each file, 0444 (inside the containers
+# they are read by unprivileged users: eldmark 10001, postgres 999):
+#   postgres_password   password of the database's eldmark role
+#   database_url        postgres://eldmark:<password>@db:5432/eldmark?sslmode=disable
+#   ticket_keys         1:<base64 of 32 B>[,2:<...>]           (the platform and each zone)
+#   zone_tokens         1:vado_gris:0:<SHA-256 in hex of the token>[,...]   (platform only)
+#   zone_token_vado_gris                the token in plain text            (that zone only)
+#   vado_gris_dtls_cert, vado_gris_dtls_key   PEM of that zone's DTLS (P9c): self-signed, with a CN
+#                       (the name the client checks) and a passwordless key; the zone does not
+#                       start if the key is not the certificate's. For example (EC P-256, the
+#                       cheapest handshake; docs/plataforma.md §19.18):
 #     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 \
 #       -keyout vado_gris_dtls_key -out vado_gris_dtls_cert \
-#       -subj "/CN=vado-gris.<dominio>" -addext "subjectAltName=DNS:vado-gris.<dominio>"
-#   email_hmac_key      base64 de 32 B
-#   smtp_url            smtp://usuario:clave@host:587
+#       -subj "/CN=vado-gris.<domain>" -addext "subjectAltName=DNS:vado-gris.<domain>"
+#   email_hmac_key      base64 of 32 B
+#   smtp_url            smtp://user:password@host:587
 #
-# Todos los contenedores escriben en journald (logging.driver), con 30 días como mucho:
-# journald-eldmark.conf en /etc/systemd/journald.conf.d/ (§11.1).
+# All the containers write to journald (logging.driver), for 30 days at most:
+# journald-eldmark.conf in /etc/systemd/journald.conf.d/ (§11.1).
 #
-# Validar sin demonio: docker compose --env-file staging.env.example config -q
+# Validate without a daemon: docker compose --env-file staging.env.example config -q
 name: eldmark-${ELDMARK_ENV:?ELDMARK_ENV (staging o production)}
 
 x-logging: &logging
@@ -47,8 +47,8 @@ services:
       POSTGRES_USER: eldmark
       POSTGRES_DB: eldmark
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-    # WAL para recuperar a un instante (pitr_check.sh): con WAL-G, una imagen de la base que lo
-    # traiga (ELDMARK_DB_IMAGE), ELDMARK_PG_ARCHIVE_MODE=on y ELDMARK_PG_ARCHIVE_COMMAND="wal-g wal-push %p".
+    # WAL for point-in-time recovery (pitr_check.sh): with WAL-G, a database image that ships it
+    # (ELDMARK_DB_IMAGE), ELDMARK_PG_ARCHIVE_MODE=on and ELDMARK_PG_ARCHIVE_COMMAND="wal-g wal-push %p".
     command:
       - postgres
       - -c
@@ -130,9 +130,9 @@ services:
         ipv4_address: ${ELDMARK_CADDY_IP:-172.30.0.2}
     logging: *logging
 
-  # Las zonas (TEC-20 hace la imagen: el servidor exportado como ENTRYPOINT, con «--headless --»).
-  # Las opciones --platform, --world, --channel y --public-address son de plataforma.md P4, y
-  # --dtls-* de P9c. Una entrada por despliegue de zona, cada una con su token.
+  # The zones (TEC-20 builds the image: the exported server as ENTRYPOINT, with "--headless --").
+  # The options --platform, --world, --channel and --public-address are from plataforma.md P4, and
+  # --dtls-* from P9c. One entry per zone deployment, each with its token.
   zone-vado-gris:
     image: ${ELDMARK_ZONE_IMAGE:-eldmark-zone:local}
     profiles: [zonas]
@@ -164,8 +164,8 @@ services:
     stop_grace_period: 30s
     logging: *logging
 
-  # Operación (perfil ops; «docker compose run --rm <servicio>» los arranca aunque el perfil no esté
-  # activo). La imagen ops trae PostgreSQL 16, los scripts y el binario de la plataforma.
+  # Operations (ops profile; "docker compose run --rm <service>" starts them even if the profile is
+  # not active). The ops image ships PostgreSQL 16, the scripts and the platform binary.
   backup:
     image: ${ELDMARK_OPS_IMAGE:-eldmark-ops:local}
     build:
@@ -205,14 +205,14 @@ services:
     logging: *logging
 
 networks:
-  # Caddy y la API pública. IP fija de Caddy: es la única desde la que la plataforma lee X-Real-IP.
+  # Caddy and the public API. Caddy's fixed IP: it is the only one the platform reads X-Real-IP from.
   edge:
     ipam:
       config:
         - subnet: ${ELDMARK_EDGE_SUBNET:-172.30.0.0/24}
-  # Las zonas y la API interna.
+  # The zones and the internal API.
   zones: {}
-  # La base: sin salida a Internet.
+  # The database: no access to the Internet.
   data:
     internal: true
 

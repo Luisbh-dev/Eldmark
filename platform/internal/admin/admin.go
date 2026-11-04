@@ -1,17 +1,17 @@
-// Package admin es la orden admin de la plataforma (plataforma.md §9, §11.2 y §12; SOC-13 a
-// SOC-18): lo que hacen a mano los moderadores y los administradores, siempre con identidad.
+// Package admin is the platform's admin command (plataforma.md §9, §11.2 and §12; SOC-13 to
+// SOC-18): what moderators and administrators do by hand, always with identity.
 //
-// Toda orden lleva --actor <correo> de una cuenta admin (o moderator para las de lectura: reports
-// list|show, audit, chat y sanction list); sin él, o con otra cuenta, no se ejecuta ([ActorError],
-// código 2 en la CLI). Cada orden deja su fila en audit_log con source = 'cli', en command su nombre
-// («set-role», «reports show»…), en actor_account_id la cuenta del --actor, en args.os_user quien
-// la corrió en la máquina ($SUDO_USER o $USER) y el objetivo en target_account_id y
-// target_character_id: args nunca lleva un correo ni el nombre de un personaje (§9.1; los nombres
-// y los correos se resuelven a ids antes de escribir). Las lecturas también se auditan, en la misma
-// transacción que la consulta: si la fila no se escribe, no se lee nada.
+// Every command carries --actor <email> of an admin account (or moderator for the read ones:
+// reports list|show, audit, chat and sanction list); without it, or with another account, it is not
+// executed ([ActorError], code 2 in the CLI). Each command leaves its row in audit_log with source =
+// 'cli', its name in command ("set-role", "reports show"...), the --actor's account in
+// actor_account_id, whoever ran it on the machine in args.os_user ($SUDO_USER or $USER) and the
+// target in target_account_id and target_character_id: args never carries an email or a character's
+// name (§9.1; names and emails are resolved to ids before writing). Reads are also audited, in the
+// same transaction as the query: if the row is not written, nothing is read.
 //
-// Las órdenes que cambian algo vuelven a mirar el rol del --actor con su fila bloqueada, dentro de
-// su transacción: un administrador al que le quitan el rol a mitad no termina la orden.
+// Commands that change something check the --actor's role again with its row locked, inside their
+// transaction: an administrator who loses the role midway does not finish the command.
 package admin
 
 import (
@@ -36,41 +36,41 @@ import (
 	"eldmark/platform/legal"
 )
 
-// Plazos de purge-now (§11.2): espera hasta 30 s a que el latido expulse a los personajes de la
-// cuenta con su guardado final.
+// Timeouts of purge-now (§11.2): it waits up to 30 s for the heartbeat to kick out the account's
+// characters with their final save.
 const (
 	DefaultPurgeWait = 30 * time.Second
 	purgePoll        = 500 * time.Millisecond
 )
 
-// Topes de las consultas.
+// Query caps.
 const (
 	DefaultLimit = 200
 	MaxLimit     = 5000
 )
 
-// Options son las dependencias del servicio.
+// Options are the service's dependencies.
 type Options struct {
 	Pool     *pgxpool.Pool
 	Accounts *accounts.Service
-	// Characters vuelve a purgar personajes en reapply-purges (characters.Purger); nil: la orden se
-	// niega (staging y production mientras no exista el almacén del progreso, como purge-now).
+	// Characters purges characters again in reapply-purges (characters.Purger); nil: the command
+	// refuses (staging and production while the progression store does not exist, like purge-now).
 	Characters CharacterReapplier
-	// Legal son los textos vigentes: create-account y bootstrap los publican en legal_documents si
-	// faltan (como serve al arrancar) antes de dar la cuenta por aceptada. StrictLegal (staging y
-	// production) se niega si un texto ya publicado ha cambiado.
+	// Legal are the current texts: create-account and bootstrap publish them in legal_documents if they
+	// are missing (like serve at startup) before considering the account as having accepted. StrictLegal
+	// (staging and production) refuses if an already published text has changed.
 	Legal       *legal.Set
 	StrictLegal bool
-	Names       *names.Rules // nil: las de progression_rules.json
-	Clock       clock.Clock  // nil: el del sistema
+	Names       *names.Rules // nil: those from progression_rules.json
+	Clock       clock.Clock  // nil: the system's
 	Log         *slog.Logger
-	// OSUser es quien corre la orden en la máquina ($SUDO_USER o $USER): va en args.os_user.
+	// OSUser is whoever runs the command on the machine ($SUDO_USER or $USER): it goes in args.os_user.
 	OSUser string
-	// PurgePoll es cada cuánto mira purge-now si se han liberado los arrendamientos (0: 500 ms).
+	// PurgePoll is how often purge-now checks whether the leases have been released (0: 500 ms).
 	PurgePoll time.Duration
 }
 
-// Service es la orden admin.
+// Service is the admin command.
 type Service struct {
 	pool        *pgxpool.Pool
 	accounts    *accounts.Service
@@ -84,7 +84,7 @@ type Service struct {
 	purgePoll   time.Duration
 }
 
-// New prepara el servicio.
+// New prepares the service.
 func New(o Options) (*Service, error) {
 	if o.Pool == nil || o.Accounts == nil || o.Legal == nil {
 		return nil, errors.New("admin: faltan dependencias")
@@ -108,7 +108,7 @@ func New(o Options) (*Service, error) {
 		clock: o.Clock, log: o.Log, osUser: o.OSUser, purgePoll: o.PurgePoll}, nil
 }
 
-// Errores de las órdenes (el texto es el que ve quien la corre).
+// Command errors (the text is what the person who runs it sees).
 var (
 	ErrAccountNotFound   = errors.New("no hay ninguna cuenta con ese correo")
 	ErrCharacterNotFound = errors.New("no hay ningún personaje con ese nombre en ese mundo")
@@ -123,12 +123,14 @@ var (
 	ErrInvalidName       = errors.New("ese término no vale: solo letras, como un nombre de personaje")
 )
 
-// ActorError es un --actor que falta o que no puede usar la orden: no se ejecuta (código 2).
+// ActorError is an --actor that is missing or that cannot use the command: it is not executed (code
+// 2).
 type ActorError struct{ Reason string }
 
 func (e *ActorError) Error() string { return e.Reason }
 
-// DeniedError es una sanción que la plataforma no autoriza (§9.5): queda la fila sanction_denied.
+// DeniedError is a sanction that the platform does not authorize (§9.5): the sanction_denied row is
+// left.
 type DeniedError struct{ Denial sanctions.Denial }
 
 func (e *DeniedError) Error() string {
@@ -141,15 +143,15 @@ func (e *DeniedError) Error() string {
 	return "no autorizada (" + string(e.Denial) + ")"
 }
 
-// Actor es la cuenta del --actor.
+// Actor is the --actor's account.
 type Actor struct {
 	AccountID int64
 	Role      string
 }
 
-// Authorize comprueba el --actor: una cuenta activa (sin borrado pedido ni suspensión o expulsión
-// vigente) con al menos el rol need (sanctions.RoleModerator para las lecturas, RoleAdmin para lo
-// demás). Si no, [ActorError].
+// Authorize checks the --actor: an active account (without a requested deletion or a current
+// suspension or ban) with at least the role need (sanctions.RoleModerator for reads, RoleAdmin for
+// the rest). Otherwise, [ActorError].
 func (s *Service) Authorize(ctx context.Context, email, need string) (*Actor, error) {
 	if strings.TrimSpace(email) == "" {
 		return nil, &ActorError{Reason: "toda orden admin necesita --actor <correo> de una cuenta " + need}
@@ -177,8 +179,8 @@ func (s *Service) Authorize(ctx context.Context, email, need string) (*Actor, er
 	return &Actor{AccountID: id, Role: role}, nil
 }
 
-// lockActor vuelve a mirar el rol del --actor con su fila bloqueada (for share), dentro de la
-// transacción de una orden que cambia algo.
+// lockActor checks the --actor's role again with its row locked (for share), inside the transaction
+// of a command that changes something.
 func lockActor(ctx context.Context, tx pgx.Tx, actor *Actor, need string) error {
 	var role, status string
 	err := tx.QueryRow(ctx, `select role, status from accounts where account_id = $1 for share`, actor.AccountID).
@@ -196,7 +198,7 @@ func lockActor(ctx context.Context, tx pgx.Tx, actor *Actor, need string) error 
 	return nil
 }
 
-// entry es una fila de audit_log de la CLI: el objetivo por id y en args nada personal.
+// entry is a CLI audit_log row: the target by id and nothing personal in args.
 type entry struct {
 	world           int16
 	command         string
@@ -205,8 +207,8 @@ type entry struct {
 	args            map[string]any
 }
 
-// audit escribe la fila de una orden (source = 'cli', at = la hora de la orden, args con os_user).
-// actor nil: bootstrap, que no tiene --actor.
+// audit writes a command's row (source = 'cli', at = the command's time, args with os_user). actor
+// nil: bootstrap, which has no --actor.
 func (s *Service) audit(ctx context.Context, tx pgx.Tx, actor *Actor, e entry, at time.Time) error {
 	args := map[string]any{"os_user": s.osUser}
 	for k, v := range e.args {
@@ -243,7 +245,7 @@ func nullWorld(w int16) any {
 
 func idString(id int64) string { return strconv.FormatInt(id, 10) }
 
-// Character es un personaje resuelto por su nombre (o por «#id»).
+// Character is a character resolved by its name (or by "#id").
 type Character struct {
 	ID        int64
 	AccountID int64
@@ -252,9 +254,9 @@ type Character struct {
 	Deleted   bool
 }
 
-// character resuelve un personaje no purgado: «#123» por su id (en cualquier mundo) o un nombre por
-// la clave de NameRules en el mundo dado, primero el vivo y si no el borrado que aún se puede
-// restaurar. Si no hay ninguno, [ErrCharacterNotFound].
+// character resolves an unpurged character: "#123" by its id (in any world) or a name by its
+// NameRules key in the given world, first the living one and otherwise the deleted one that can
+// still be restored. If there is none, [ErrCharacterNotFound].
 func (s *Service) character(ctx context.Context, q interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }, world int16, ref string) (*Character, error) {
@@ -286,12 +288,12 @@ func (s *Service) character(ctx context.Context, q interface {
 	return c, nil
 }
 
-// inTx corre fn en una transacción con los reintentos de db.InTx.
+// inTx runs fn in a transaction with db.InTx's retries.
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	return db.InTx(ctx, s.pool, pgx.TxOptions{}, fn)
 }
 
-// limit acota el tope de una consulta.
+// limit bounds a query's cap.
 func limit(n int) int {
 	switch {
 	case n <= 0:

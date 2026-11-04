@@ -1,22 +1,22 @@
 class_name PartyInvitePrompt
 extends PanelContainer
-## Aviso de invitación a un grupo (SOC-08, docs/social.md, sección 12.5): «Ana te invita a su grupo», los
-## segundos que quedan y las teclas para aceptar y rechazar (acciones [code]party_accept[/code] y
-## [code]party_decline[/code], con el glifo de la tecla real). Se ve mientras [PartyState] tenga alguna
-## invitación vigente, la más antigua primero; con más de una dice cuántas más hay.
+## Party invitation prompt (SOC-08, docs/social.md, section 12.5): "Ana te invita a su grupo" (Ana invites you to her party), the
+## seconds remaining and the keys to accept and decline ([code]party_accept[/code] and
+## [code]party_decline[/code] actions, with the real key's glyph). It is visible while [PartyState] has any
+## valid invitation, the oldest first; with more than one it says how many more there are.
 ## [br][br]
-## Responder manda PARTY_RESPONSE ([method NetClient.send_party_response]); si sale, el cliente quita la
-## invitación y el aviso desaparece al momento (el servidor confirma con su propio mensaje). Si no sale (la sesión
-## se está cerrando), el aviso se queda como estaba.
+## Responding sends PARTY_RESPONSE ([method NetClient.send_party_response]); if it goes out, the client removes the
+## invitation and the prompt disappears at once (the server confirms with its own message). If it does not go out (the session
+## is closing), the prompt stays as it was.
 ## [br][br]
-## Las teclas solo se atienden con el aviso a la vista, en [method Node._unhandled_input], y nunca mientras otra
-## pieza de la interfaz tiene el cursor ([method CameraRig.is_ui_holding_cursor]: el menú social, el mapa, los
-## ajustes, la línea del chat...), para que una Y o una N pulsadas en ella no respondan sin querer. La excepción
-## es la pantalla de muerte (el [HUD] la da como [code]allowed_holder[/code] en [method bind]): no usa letras, y
-## esperar a reaparecer es buen momento para aceptar. Los segundos salen del tick del servidor estimado por el
-## cliente ([method NetClient.get_estimated_server_tick]).
+## The keys are only handled with the prompt in view, in [method Node._unhandled_input], and never while another
+## piece of the UI holds the cursor ([method CameraRig.is_ui_holding_cursor]: the social menu, the map, the
+## settings, the chat line...), so that a Y or an N pressed in it does not respond by accident. The exception
+## is the death screen (the [HUD] gives it as [code]allowed_holder[/code] in [method bind]): it uses no letters, and
+## waiting to respawn is a good time to accept. The seconds come from the server tick estimated by the
+## client ([method NetClient.get_estimated_server_tick]).
 ## [br][br]
-## Solo cliente.
+## Client only.
 
 const SECONDS_PER_TICK: float = 1.0 / 60.0
 const TEXT_INVITES: String = "%s te invita a su grupo"
@@ -28,7 +28,7 @@ const TEXT_DECLINE: String = "Rechazar"
 var _party: PartyState = null
 var _client: NetClient = null
 var _camera_rig: CameraRig = null
-# Quien puede tener el cursor sin que se dejen de atender las teclas (la pantalla de muerte, a través del HUD).
+# Who may hold the cursor without the keys ceasing to be handled (the death screen, via the HUD).
 var _allowed_holder: Object = null
 var _title: Label = null
 var _timer: Label = null
@@ -94,9 +94,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Conecta el aviso con el estado de grupo [param party] y el cliente [param client] (el tick del servidor y
-## el envío de la respuesta). Con [param camera_rig], las teclas no responden mientras alguna pieza de la interfaz
-## que no sea [param allowed_holder] tiene el cursor ([method CameraRig.is_ui_holding_cursor]).
+## Connects the prompt to the party state [param party] and the client [param client] (the server tick and
+## sending the response). With [param camera_rig], the keys do not respond while any piece of the UI
+## other than [param allowed_holder] holds the cursor ([method CameraRig.is_ui_holding_cursor]).
 func bind(party: PartyState, client: NetClient, camera_rig: CameraRig = null, allowed_holder: Object = null) -> void:
 	_disconnect()
 	_party = party
@@ -108,8 +108,8 @@ func bind(party: PartyState, client: NetClient, camera_rig: CameraRig = null, al
 	refresh()
 
 
-## Responde a la invitación que se enseña: la acepta o la rechaza. Devuelve false si no hay ninguna o si la
-## respuesta no ha salido, y entonces la invitación se queda; si sale, la quita
+## Responds to the invitation being shown: accepts or declines it. Returns false if there is none or if the
+## response did not go out, and then the invitation stays; if it goes out, it is removed by
 ## [method NetClient.send_party_response].
 func respond(accept: bool) -> bool:
 	var invitation: PartyState.Invitation = _party.get_current_invitation() if _party != null else null
@@ -118,7 +118,7 @@ func respond(accept: bool) -> bool:
 	return _client.send_party_response(invitation.inviter, accept)
 
 
-## Repinta el aviso (quita lo caducado, el texto y los segundos que quedan).
+## Redraws the prompt (removes what has expired, the text and the seconds remaining).
 func refresh() -> void:
 	if _party == null:
 		visible = false
@@ -138,7 +138,7 @@ func refresh() -> void:
 	_timer.text = TEXT_SECONDS % get_seconds_left()
 
 
-## Segundos que le quedan a la invitación que se enseña (0 si no hay o ya caducó).
+## Seconds left on the invitation being shown (0 if there is none or it has already expired).
 func get_seconds_left() -> int:
 	var invitation: PartyState.Invitation = _party.get_current_invitation() if _party != null else null
 	if invitation == null:

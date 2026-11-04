@@ -1,58 +1,58 @@
 class_name ClientPrediction
 extends RefCounted
-## Predicción del jugador local y reconciliación con el servidor (docs/red.md, sección 6).
+## Local player prediction and reconciliation with the server (docs/red.md, section 6).
 ##
-## El cliente simula su propio personaje por delante del servidor con las mismas entradas
-## cuantizadas que viajan por la red; guarda, por tick, la entrada y el estado resultante en dos
-## anillos de [constant HISTORY_SIZE] huecos indexados por [code]tick % HISTORY_SIZE[/code] con el
-## tick como etiqueta. Cuando llega el estado propio del servidor para un tick, se compara con el
-## predicho para ese tick con [method PlayerState.equals_exact]:
-## [br]- Si coincide, no hace falta nada.
-## [br]- Si no, se restaura el estado del servidor y se vuelven a simular las entradas guardadas
-## hasta el último tick predicho, con [member PlayerCharacter.events_enabled] en false. El cuerpo se
-## corrige de golpe y la diferencia visible la reparte [CorrectionSmoother]; si el error pasa de
-## [constant SNAP_DISTANCE] o hay un teletransporte, se salta directamente.
+## The client simulates its own character ahead of the server with the same quantized inputs
+## that travel over the network; for each tick it stores the input and the resulting state in two
+## rings of [constant HISTORY_SIZE] slots indexed by [code]tick % HISTORY_SIZE[/code] with the
+## tick as a label. When the server's own state arrives for a tick, it is compared with the
+## one predicted for that tick with [method PlayerState.equals_exact]:
+## [br]- If it matches, nothing needs to be done.
+## [br]- If not, the server's state is restored and the stored inputs are simulated again
+## up to the last predicted tick, with [member PlayerCharacter.events_enabled] set to false. The body is
+## corrected at once and the visible difference is spread by [CorrectionSmoother]; if the error exceeds
+## [constant SNAP_DISTANCE] or there is a teleport, it snaps directly.
 ## [br][br]
-## [b]Gancho antes de simular.[/b] [member before_simulate] se llama con el tick que se va a simular
-## justo antes de cada [method PlayerCharacter.simulate]: en la aparición, en cada paso, y también en
-## cada tick de las repeticiones. Es donde [FortressView] pone la capa de la puerta del fuerte que tenía
-## ese tick (docs/fuerte.md, sección 3.2), para que cliente y servidor simulen cada tick con el mismo
-## mundo aunque la reconciliación repita ticks pasados.
+## [b]Hook before simulating.[/b] [member before_simulate] is called with the tick about to be simulated
+## right before each [method PlayerCharacter.simulate]: on spawn, on every step, and also on
+## every tick of the replays. It is where [FortressView] puts the fort gate's layer that it had at
+## that tick (docs/fuerte.md, section 3.2), so that client and server simulate each tick with the same
+## world even if reconciliation replays past ticks.
 ## [br][br]
-## [b]Pasos dados.[/b] [signal stepped] sale tras [b]cada[/b] [method step] (un tick de física puede dar 0,
-## 1, 2 o más pasos), nunca en las repeticiones de la reconciliación ni en el avance neutro de
-## [method start]. Es donde [ProjectileWorld] mira el compromiso de un disparo y crea la flecha predicha
-## (docs/habilidades.md, sección 6.2): mirarlo una vez por tick de física perdería los pasos de en medio.
+## [b]Steps taken.[/b] [signal stepped] fires after [b]each[/b] [method step] (a physics tick can take 0,
+## 1, 2 or more steps), never during reconciliation replays or the neutral advance of
+## [method start]. It is where [ProjectileWorld] checks the commitment of a shot and creates the predicted
+## arrow (docs/habilidades.md, section 6.2): checking once per physics tick would miss the steps in between.
 ## [br][br]
-## Todo lo que simula debe llamarse dentro del tick de física y con
+## Everything that simulates must be called inside the physics tick and with
 ## [code]delta = 1 / Engine.physics_ticks_per_second[/code] ([method PlayerCharacter.simulate]).
 
-## Se ha dado un paso de predicción: [param input] es la entrada del tick [param tick] y [param state] el
-## estado resultante (el guardado en el anillo: no se debe modificar). Solo en [method step].
+## A prediction step was taken: [param input] is the input of tick [param tick] and [param state] the
+## resulting state (the one stored in the ring: it must not be modified). Only in [method step].
 signal stepped(tick: int, input: PlayerInput, state: PlayerState)
 
-## Qué hizo [method on_server_state] con el estado recibido.
+## What [method on_server_state] did with the received state.
 enum Result {
-	## Estado repetido o más antiguo que el último reconciliado: no se hizo nada.
+	## State repeated or older than the last reconciled one: nothing was done.
 	IGNORED,
-	## Coincidía exactamente con el predicho.
+	## It matched the predicted one exactly.
 	MATCH,
-	## Difería: se repitieron las entradas desde ese tick y el error fue al suavizador.
+	## It differed: the inputs were replayed from that tick and the error went to the smoother.
 	CORRECTED,
-	## Se restauró el estado sin comparar (llegó por delante de lo predicho o ya no está en el
-	## anillo).
+	## The state was restored without comparing (it arrived ahead of what was predicted or is no longer in
+	## the ring).
 	HARD_RESET,
 }
 
-## Huecos de cada anillo (algo más de 4 s a 60 ticks por segundo).
+## Slots of each ring (a bit over 4 s at 60 ticks per second).
 const HISTORY_SIZE: int = 256
-## Error (m) a partir del cual se salta directamente en lugar de suavizar.
+## Error (m) beyond which it snaps directly instead of smoothing.
 const SNAP_DISTANCE: float = 3.0
-## Las correcciones menores que esto (m) no se cuentan en las estadísticas.
+## Corrections smaller than this (m) are not counted in the statistics.
 const CORRECTION_REPORT_DISTANCE: float = 0.001
 
-## Gancho que se llama con el tick (int) que se va a simular, antes de cada simulate() (también en las
-## repeticiones). Vacío = ninguno.
+## Hook called with the tick (int) about to be simulated, before each simulate() (also in the
+## replays). Empty = none.
 var before_simulate: Callable = Callable()
 
 var _character: PlayerCharacter = null
@@ -66,17 +66,17 @@ var _first_real_tick: int = 0
 var _last_reconciled: int = 0
 var _replaying: bool = false
 
-# Anillos: la etiqueta de cada hueco es el tick que guarda (-1 = vacío).
+# Rings: the label of each slot is the tick it holds (-1 = empty).
 var _input_ticks: PackedInt64Array = PackedInt64Array()
 var _inputs: Array[PlayerInput] = []
 var _state_ticks: PackedInt64Array = PackedInt64Array()
 var _states: Array[PlayerState] = []
 
-# Regla de sustitución del servidor durante una repetición (ver _input_or_substitute).
+# The server's substitution rule during a replay (see _input_or_substitute).
 var _sub_last_applied: PlayerInput = null
 var _sub_last_real_tick: int = 0
 
-# Estadísticas (ver get_stats).
+# Statistics (see get_stats).
 var _matches: int = 0
 var _ignored: int = 0
 var _replays: int = 0
@@ -91,9 +91,9 @@ func _init() -> void:
 	_clear_rings()
 
 
-## Conecta la predicción con el personaje local, su controlador (que genera las entradas con
-## [method LocalPlayerController.build_input], con [code]auto_step = false[/code]) y el
-## suavizador de correcciones. [param delta] es el paso fijo de física.
+## Connects the prediction to the local character, its controller (which generates the inputs with
+## [method LocalPlayerController.build_input], with [code]auto_step = false[/code]) and the
+## correction smoother. [param delta] is the fixed physics step.
 func setup(character: PlayerCharacter, controller: LocalPlayerController,
 		smoother: CorrectionSmoother, delta: float) -> void:
 	_character = character
@@ -102,10 +102,10 @@ func setup(character: PlayerCharacter, controller: LocalPlayerController,
 	_dt = delta
 
 
-## Arranca la predicción con el estado de aparición del servidor ([param spawn_state], el estado
-## tras simular [param spawn_tick]). Hasta [param first_real_tick] (exclusive) avanza con entradas
-## neutras, que es lo que el servidor sustituye mientras no le llega ninguna real, así que los dos
-## estados coinciden bit a bit desde el primer tick.
+## Starts the prediction with the server's spawn state ([param spawn_state], the state
+## after simulating [param spawn_tick]). Up to [param first_real_tick] (exclusive) it advances with neutral
+## inputs, which is what the server substitutes while no real one reaches it, so the two
+## states match bit for bit from the first tick.
 func start(spawn_tick: int, spawn_state: PlayerState, first_real_tick: int) -> void:
 	_clear_rings()
 	_reset_stats()
@@ -119,8 +119,8 @@ func start(spawn_tick: int, spawn_state: PlayerState, first_real_tick: int) -> v
 	_first_real_tick = first_real_tick
 	_last_reconciled = spawn_tick - 1
 
-	# El servidor sustituye estos ticks (nunca le llega una entrada real): llevan la marca de
-	# entrada sustituida, como las suyas.
+	# The server substitutes these ticks (no real input ever reaches it): they carry the
+	# substituted-input mark, like its own.
 	var neutral: PlayerInput = NetProtocol.neutral_input(0, spawn_state.yaw)
 	neutral.buttons |= PlayerInput.SUBSTITUTED
 	var events_were_enabled: bool = _character.events_enabled
@@ -136,14 +136,14 @@ func start(spawn_tick: int, spawn_state: PlayerState, first_real_tick: int) -> v
 	_started = true
 
 
-## true una vez llamado [method start].
+## true once [method start] has been called.
 func is_started() -> bool:
 	return _started
 
 
-## Un paso de predicción: construye la entrada del siguiente tick con el controlador (ya
-## cuantizada y con las pulsaciones acumuladas), simula el personaje, guarda entrada y estado y
-## devuelve la entrada. Devuelve null si la predicción no ha arrancado.
+## One prediction step: builds the next tick's input with the controller (already
+## quantized and with the accumulated presses), simulates the character, stores input and state and
+## returns the input. Returns null if the prediction has not started.
 func step() -> PlayerInput:
 	if not _started:
 		return null
@@ -158,9 +158,9 @@ func step() -> PlayerInput:
 	return input
 
 
-## Compara el estado propio que manda el servidor para [param server_tick] con el predicho y, si
-## difieren, lo restaura y repite las entradas hasta el último tick predicho. [param teleported]
-## indica que el contador de teletransporte cambió: entonces nunca se suaviza. Devuelve un
+## Compares the own state the server sends for [param server_tick] with the predicted one and, if
+## they differ, restores it and replays the inputs up to the last predicted tick. [param teleported]
+## indicates that the teleport counter changed: then it is never smoothed. Returns a
 ## [enum Result].
 func on_server_state(server_tick: int, state: PlayerState, teleported: bool) -> int:
 	if not _started or state == null or server_tick <= _last_reconciled:
@@ -190,10 +190,10 @@ func on_server_state(server_tick: int, state: PlayerState, teleported: bool) -> 
 	return Result.CORRECTED
 
 
-## Restaura [param state] como el estado del tick [param tick] sin comparar y sin suavizar. Si
-## [param tick] no es anterior al último predicho, pasa a ser el último predicho (así
-## [TickSync] recupera la antelación); si lo es, se repiten las entradas hasta el último predicho.
-## Siempre termina con el suavizador a cero y la interpolación de física reiniciada.
+## Restores [param state] as the state of tick [param tick] without comparing and without smoothing. If
+## [param tick] is not earlier than the last predicted one, it becomes the last predicted one (so
+## [TickSync] recovers its lead); if it is, the inputs are replayed up to the last predicted one.
+## It always ends with the smoother at zero and physics interpolation reset.
 func hard_reset(tick: int, state: PlayerState) -> void:
 	if not _started:
 		return
@@ -210,18 +210,18 @@ func hard_reset(tick: int, state: PlayerState) -> void:
 	_hard_resets += 1
 
 
-## Último tick predicho (el del último [method step]).
+## Last predicted tick (that of the last [method step]).
 func get_predicted_tick() -> int:
 	return _predicted_tick
 
 
-## Primer tick con entrada real (P0); los anteriores se predijeron con entrada neutra.
+## First tick with real input (P0); earlier ones were predicted with neutral input.
 func get_first_real_tick() -> int:
 	return _first_real_tick
 
 
-## Entrada del tick [param tick], o null si ya no está en el anillo (o nunca hubo: el tick de
-## aparición). Es el objeto guardado: no se debe modificar.
+## Input of tick [param tick], or null if it is no longer in the ring (or never existed: the spawn
+## tick). It is the stored object: it must not be modified.
 func get_input(tick: int) -> PlayerInput:
 	var slot: int = _slot(tick)
 	if _input_ticks[slot] != tick:
@@ -229,8 +229,8 @@ func get_input(tick: int) -> PlayerInput:
 	return _inputs[slot]
 
 
-## Estado predicho para [param tick], o null si ya no está en el anillo. Es el objeto guardado: no
-## se debe modificar.
+## State predicted for [param tick], or null if it is no longer in the ring. It is the stored object: it
+## must not be modified.
 func get_predicted_state(tick: int) -> PlayerState:
 	var slot: int = _slot(tick)
 	if _state_ticks[slot] != tick:
@@ -238,20 +238,20 @@ func get_predicted_state(tick: int) -> PlayerState:
 	return _states[slot]
 
 
-## true mientras se repiten entradas (reconciliación o [method hard_reset]).
+## true while inputs are being replayed (reconciliation or [method hard_reset]).
 func is_replaying() -> bool:
 	return _replaying
 
 
-## Estadísticas desde [method start]:
-## [br]- [code]matches[/code]: estados del servidor que coincidían exactamente.
-## [br]- [code]ignored[/code]: estados repetidos o antiguos que se ignoraron.
-## [br]- [code]replays[/code]: veces que hubo que repetir entradas por una diferencia.
-## [br]- [code]corrections[/code]: de ellas, las de más de [constant CORRECTION_REPORT_DISTANCE].
-## [br]- [code]resimulated_ticks[/code]: ticks vueltos a simular (repeticiones y hard resets).
-## [br]- [code]last_correction[/code] y [code]max_correction[/code] (m): última y mayor corrección de
-## más de [constant CORRECTION_REPORT_DISTANCE].
-## [br]- [code]hard_resets[/code]: veces que se restauró el estado sin comparar.
+## Statistics since [method start]:
+## [br]- [code]matches[/code]: server states that matched exactly.
+## [br]- [code]ignored[/code]: repeated or old states that were ignored.
+## [br]- [code]replays[/code]: times inputs had to be replayed because of a difference.
+## [br]- [code]corrections[/code]: of those, the ones larger than [constant CORRECTION_REPORT_DISTANCE].
+## [br]- [code]resimulated_ticks[/code]: ticks simulated again (replays and hard resets).
+## [br]- [code]last_correction[/code] and [code]max_correction[/code] (m): last and largest correction
+## above [constant CORRECTION_REPORT_DISTANCE].
+## [br]- [code]hard_resets[/code]: times the state was restored without comparing.
 func get_stats() -> Dictionary:
 	return {
 		"matches": _matches,
@@ -265,9 +265,9 @@ func get_stats() -> Dictionary:
 	}
 
 
-# Vuelve a simular los ticks (from_tick, último predicho] a partir del estado que ya tiene el
-# personaje (el del tick from_tick). Sin eventos de salto ni aterrizaje, y guardando los estados
-# nuevos en el anillo. Las entradas son las guardadas y, donde no hay, las sustitutas.
+# Simulates the ticks (from_tick, last predicted] again starting from the state the
+# character already has (that of tick from_tick). Without jump or landing events, and storing the new
+# states in the ring. The inputs are the stored ones and, where there are none, the substitutes.
 func _replay_from(from_tick: int) -> void:
 	_replaying = true
 	var events_were_enabled: bool = _character.events_enabled
@@ -282,9 +282,9 @@ func _replay_from(from_tick: int) -> void:
 	_resimulated_ticks += maxi(_predicted_tick - from_tick, 0)
 
 
-# Prepara la regla de sustitución para una repetición que parte del estado de from_tick: la última
-# entrada aplicada es la guardada para ese tick o, si ya no está, una neutra con los botones del
-# estado (prev_buttons) y sin movimiento.
+# Prepares the substitution rule for a replay that starts from the state of from_tick: the last
+# applied input is the one stored for that tick or, if it is gone, a neutral one with the state's
+# buttons (prev_buttons) and no movement.
 func _begin_substitution(from_tick: int) -> void:
 	var known: PlayerInput = get_input(from_tick)
 	if known != null:
@@ -297,11 +297,11 @@ func _begin_substitution(from_tick: int) -> void:
 	_sub_last_real_tick = from_tick - NetProtocol.REPEAT_MOVE_TICKS - 1
 
 
-# La entrada guardada para el tick si su etiqueta coincide y, si no, la sustituta que aplicaría el
-# servidor (docs/red.md, 8.2): repite la última aplicada con todos sus botones y la marca
-# PlayerInput.SUBSTITUTED, y pone el movimiento a 0 si han pasado más de REPEAT_MOVE_TICKS ticks
-# desde la última real. Solo hace falta tras un hard_reset (huecos en el anillo); en una
-# reconciliación normal están todas.
+# The input stored for the tick if its label matches and, if not, the substitute the server would
+# apply (docs/red.md, 8.2): it repeats the last applied one with all its buttons and the
+# PlayerInput.SUBSTITUTED mark, and sets movement to 0 if more than REPEAT_MOVE_TICKS ticks have
+# passed since the last real one. Only needed after a hard_reset (gaps in the ring); in a normal
+# reconciliation they are all there.
 func _input_or_substitute(tick: int) -> PlayerInput:
 	var stored: PlayerInput = get_input(tick)
 	if stored != null:
@@ -317,7 +317,7 @@ func _input_or_substitute(tick: int) -> PlayerInput:
 	return input
 
 
-# Avisa a before_simulate del tick que se va a simular.
+# Notifies before_simulate of the tick about to be simulated.
 func _notify_before_simulate(tick: int) -> void:
 	if before_simulate.is_valid():
 		before_simulate.call(tick)
@@ -335,8 +335,8 @@ func _has_state(tick: int) -> bool:
 	return _state_ticks[_slot(tick)] == tick
 
 
-# Guarda la entrada (si no es null) y el estado de un tick. Un tick sin entrada (el de aparición)
-# no pisa el hueco de la entrada: su etiqueta, de otro tick, hace que get_input() devuelva null.
+# Stores the input (if not null) and the state of a tick. A tick without input (the spawn one)
+# does not overwrite the input slot: its label, from another tick, makes get_input() return null.
 func _store(tick: int, input: PlayerInput, state: PlayerState) -> void:
 	var slot: int = _slot(tick)
 	if input != null:

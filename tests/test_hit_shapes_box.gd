@@ -1,14 +1,14 @@
 extends TestCase
-## La puerta del fuerte como blanco de los golpes (docs/fuerte.md, sección 3.3): el sector anular de un
-## ataque contra una caja orientada ([method HitShapes.sector_hits_box]) y el solape de una cápsula con
-## la caja ([method HitShapes.capsule_overlaps_box]), que decide si el vano de la puerta está ocupado.
-## La caja de las pruebas es la de la puerta real: 0,5 m de grosor en X, 4,3 m de alto y 4 m de ancho en Z,
-## con el centro a 2,15 m.
+## The fort's gate as a target for hits (docs/fuerte.md, section 3.3): the annular sector of an
+## attack against an oriented box ([method HitShapes.sector_hits_box]) and the overlap of a capsule with
+## the box ([method HitShapes.capsule_overlaps_box]), which decides whether the gate's doorway is occupied.
+## The test box is the real gate's: 0.5 m thick in X, 4.3 m high and 4 m wide in Z,
+## with its centre at 2.15 m.
 
 const HALF_EXTENTS: Vector3 = Vector3(0.25, 2.15, 2.0)
 const BOX_CENTER: Vector3 = Vector3(0.0, 2.15, 0.0)
 const MARGIN: float = 0.01
-## Yaw que mira hacia +X (hacia la puerta, desde el oeste): yaw -90°.
+## Yaw that faces +X (towards the gate, from the west): yaw -90°.
 const YAW_EAST: float = -PI * 0.5
 
 
@@ -20,85 +20,85 @@ func _hits(origin: Vector3, yaw: float, shape: HitShape, box: Transform3D = _box
 	return HitShapes.sector_hits_box(origin, yaw, shape, box, HALF_EXTENTS)
 
 
-# --- Sector contra caja -------------------------------------------------------------------------
+# --- Sector against box -------------------------------------------------------------------------
 
 func test_a_sector_in_front_of_the_gate_hits_it_and_one_behind_does_not() -> void:
 	var shape := HitShape.new()
-	# Alcance 2,6 m; la cara oeste de la caja está en x = -0,25.
-	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), YAW_EAST, shape), "de frente a 1,75 m de la cara")
-	assert_true(_hits(Vector3(-2.8, 0.0, 0.0), YAW_EAST, shape), "justo dentro del alcance (2,55 m)")
-	assert_false(_hits(Vector3(-2.9, 0.0, 0.0), YAW_EAST, shape), "justo fuera del alcance (2,65 m)")
-	assert_false(_hits(Vector3(-2.0, 0.0, 0.0), -YAW_EAST, shape), "de espaldas a la puerta")
+	# Reach 2.6 m; the box's west face is at x = -0.25.
+	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), YAW_EAST, shape), "head-on at 1.75 m from the face")
+	assert_true(_hits(Vector3(-2.8, 0.0, 0.0), YAW_EAST, shape), "just within reach (2.55 m)")
+	assert_false(_hits(Vector3(-2.9, 0.0, 0.0), YAW_EAST, shape), "just out of reach (2.65 m)")
+	assert_false(_hits(Vector3(-2.0, 0.0, 0.0), -YAW_EAST, shape), "with back to the gate")
 	assert_false(_hits(Vector3(-3.0, 0.0, 0.0), 0.0, shape),
-			"mirando a lo largo de la puerta desde lejos: ni su cara cercana cae en el alcance")
+			"looking along the gate from afar: not even its near face falls within reach")
 
 
 func test_the_cone_catches_the_gate_corners_off_axis() -> void:
 	var shape := HitShape.new()
-	# A 1 m de la cara oeste y desplazado 1,9 m en Z: se golpea hacia el lado, dentro de los 50° de
-	# semiángulo, porque el extremo cercano de la puerta cae dentro del cono.
+	# At 1 m from the west face and displaced 1.9 m in Z: it strikes sideways, within the 50° of
+	# half-angle, because the near end of the gate falls inside the cone.
 	assert_true(_hits(Vector3(-1.25, 0.0, 3.0), YAW_EAST, shape),
-			"desde un lado de la puerta, mirando de frente, el extremo cae en el cono")
-	# Lejos de lado: ni el extremo de la puerta cabe en el alcance.
-	assert_false(_hits(Vector3(-1.25, 0.0, 6.5), YAW_EAST, shape), "demasiado a un lado")
-	# Mirando hacia el otro lado del extremo, aunque esté cerca.
-	assert_false(_hits(Vector3(-1.25, 0.0, 3.0), PI, shape), "mirando hacia el lado contrario")
+			"from one side of the gate, looking straight ahead, the end falls in the cone")
+	# Far to the side: not even the gate's end fits within reach.
+	assert_false(_hits(Vector3(-1.25, 0.0, 6.5), YAW_EAST, shape), "too far to one side")
+	# Looking away from the end, even if it is close.
+	assert_false(_hits(Vector3(-1.25, 0.0, 3.0), PI, shape), "looking the opposite way")
 
 
 func test_the_sector_height_overlaps_the_gate_height() -> void:
 	var shape := HitShape.new()
-	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), YAW_EAST, shape), "a ras de suelo")
-	# La caja llega hasta 4,3 m; el golpe sube hasta height_max = 2 m sobre los pies.
-	assert_true(_hits(Vector3(-2.0, 2.2, 0.0), YAW_EAST, shape), "con los pies 2,2 m más arriba (pasarela)")
+	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), YAW_EAST, shape), "at ground level")
+	# The box reaches up to 4.3 m; the hit goes up to height_max = 2 m above the feet.
+	assert_true(_hits(Vector3(-2.0, 2.2, 0.0), YAW_EAST, shape), "with the feet 2.2 m higher (walkway)")
 	assert_false(_hits(Vector3(-2.0, 4.2, 0.0), YAW_EAST, shape),
-			"los golpes empiezan a 0,2 m sobre los pies: con los pies a 4,2 m quedan por encima")
-	assert_false(_hits(Vector3(-2.0, -3.0, 0.0), YAW_EAST, shape), "muy por debajo de la caja")
+			"hits start at 0.2 m above the feet: with the feet at 4.2 m they are above")
+	assert_false(_hits(Vector3(-2.0, -3.0, 0.0), YAW_EAST, shape), "far below the box")
 
 
 func test_an_attacker_inside_the_box_footprint_hits_it() -> void:
 	var shape := HitShape.new()
-	assert_true(_hits(Vector3(0.0, 0.0, 0.0), 0.3, shape), "con el origen dentro de la caja")
-	assert_true(_hits(Vector3(0.1, 0.0, 1.0), PI, shape), "dentro y mirando a cualquier lado")
+	assert_true(_hits(Vector3(0.0, 0.0, 0.0), 0.3, shape), "with the origin inside the box")
+	assert_true(_hits(Vector3(0.1, 0.0, 1.0), PI, shape), "inside and looking any way")
 
 
 func test_the_inner_radius_leaves_a_hole() -> void:
 	var shape := HitShape.new()
 	shape.inner_m = 1.5
 	assert_true(_hits(Vector3(-1.0, 0.0, 0.0), YAW_EAST, shape),
-			"la parte lejana de la caja cae en el anillo, aunque la cercana esté en el hueco")
-	# Con el origen pegado a la puerta, el borde más lejano de la caja está a 0,5 m: dentro del hueco.
-	assert_false(_hits(Vector3(-0.25, 0.0, 0.0), YAW_EAST, shape), "toda la caja cae en el hueco central")
+			"the far part of the box falls in the ring, even if the near one is in the gap")
+	# With the origin against the gate, the box's farthest edge is at 0.5 m: inside the gap.
+	assert_false(_hits(Vector3(-0.25, 0.0, 0.0), YAW_EAST, shape), "the whole box falls in the central gap")
 	shape.inner_m = 0.0
-	assert_true(_hits(Vector3(-0.25, 0.0, 0.0), YAW_EAST, shape), "sin hueco, sí")
+	assert_true(_hits(Vector3(-0.25, 0.0, 0.0), YAW_EAST, shape), "without a gap, yes")
 
 
 func test_a_rotated_gate_is_hit_where_it_actually_is() -> void:
 	var shape := HitShape.new()
-	# La misma puerta girada 90°: ahora ocupa el plano z = 0 con el ancho a lo largo de X.
+	# The same gate rotated 90°: it now occupies the z = 0 plane with its width along X.
 	var rotated: Transform3D = _box(PI * 0.5, Vector3(10.0, 0.0, 5.0))
-	# Al sur de la puerta (z mayor) y mirando hacia -Z (yaw 0), a 1,5 m de su cara.
-	assert_true(_hits(Vector3(10.0, 0.0, 6.75), 0.0, shape, rotated), "de frente a la puerta girada")
-	assert_false(_hits(Vector3(10.0, 0.0, 6.75), PI, shape, rotated), "dándole la espalda")
-	assert_false(_hits(Vector3(-2.0, 0.0, 0.0), YAW_EAST, shape, rotated), "y no donde estaba antes")
+	# South of the gate (greater z) and facing -Z (yaw 0), 1.5 m from its face.
+	assert_true(_hits(Vector3(10.0, 0.0, 6.75), 0.0, shape, rotated), "head-on to the rotated gate")
+	assert_false(_hits(Vector3(10.0, 0.0, 6.75), PI, shape, rotated), "with back to it")
+	assert_false(_hits(Vector3(-2.0, 0.0, 0.0), YAW_EAST, shape, rotated), "and not where it was before")
 
 
 func test_a_wide_sector_is_the_union_of_two_half_planes() -> void:
 	var shape := HitShape.new()
 	shape.angle_deg = 240.0
-	# Un sector de 240° deja sin cubrir solo el cono de 120° de detrás (±60°): desde 2 m, la puerta entera
-	# cabe en ±49° de la dirección a ella.
-	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), YAW_EAST, shape), "de frente")
-	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), 0.0, shape), "con la puerta a un lado")
+	# A 240° sector leaves uncovered only the 120° cone behind (±60°): from 2 m, the whole gate
+	# fits within ±49° of the direction to it.
+	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), YAW_EAST, shape), "head-on")
+	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), 0.0, shape), "with the gate to one side")
 	assert_false(_hits(Vector3(-2.0, 0.0, 0.0), -YAW_EAST, shape),
-			"de espaldas, la puerta queda entera en el cono ciego")
+			"with back turned, the gate lies entirely in the blind cone")
 	shape.angle_deg = 360.0
-	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), -YAW_EAST, shape), "con 360° no hay cono")
+	assert_true(_hits(Vector3(-2.0, 0.0, 0.0), -YAW_EAST, shape), "with 360° there is no cone")
 
 
 func test_every_swing_direction_agrees_with_a_brute_force_sample() -> void:
-	# Contrasta la prueba exacta con un muestreo de puntos de la caja: si algún punto muestreado está en
-	# el sector, la prueba tiene que dar true; si la prueba da true, algún punto cercano al sector tiene
-	# que existir (con margen de muestreo).
+	# Contrasts the exact test with a sampling of the box's points: if any sampled point is in
+	# the sector, the test must return true; if the test returns true, some point close to the sector must
+	# exist (with a sampling margin).
 	var shape := HitShape.new()
 	var box: Transform3D = _box()
 	var mismatches: int = 0
@@ -111,7 +111,7 @@ func test_every_swing_direction_agrees_with_a_brute_force_sample() -> void:
 				var actual: bool = _hits(origin, yaw, shape, box)
 				if expected and not actual:
 					mismatches += 1
-	assert_eq(mismatches, 0, "la prueba exacta nunca falla un golpe que el muestreo ve")
+	assert_eq(mismatches, 0, "the exact test never misses a hit that the sampling sees")
 
 
 func _sample_hits(origin: Vector3, yaw: float, shape: HitShape, box: Transform3D) -> bool:
@@ -130,29 +130,29 @@ func _sample_hits(origin: Vector3, yaw: float, shape: HitShape, box: Transform3D
 	return false
 
 
-# --- Cápsula contra caja (el vano ocupado) -------------------------------------------------------
+# --- Capsule against box (the occupied doorway) ----------------------------------------------
 
 func test_a_character_in_the_doorway_overlaps_the_box() -> void:
 	var box: Transform3D = _box()
 	var feet := Vector3(0.0, 0.0, 0.0)
-	assert_true(HitShapes.capsule_overlaps_box(feet, 0.4, 1.8, box, HALF_EXTENTS), "justo en el vano")
+	assert_true(HitShapes.capsule_overlaps_box(feet, 0.4, 1.8, box, HALF_EXTENTS), "right in the doorway")
 	assert_true(HitShapes.capsule_overlaps_box(Vector3(0.6, 0.0, 0.0), 0.4, 1.8, box, HALF_EXTENTS),
-			"rozando la cara este con el radio (0,25 + 0,4 = 0,65)")
+			"grazing the east face with the radius (0.25 + 0.4 = 0.65)")
 	assert_false(HitShapes.capsule_overlaps_box(Vector3(0.7, 0.0, 0.0), 0.4, 1.8, box, HALF_EXTENTS),
-			"a 0,45 m de la cara este ya no la toca")
+			"at 0.45 m from the east face it no longer touches")
 	assert_false(HitShapes.capsule_overlaps_box(Vector3(-0.7, 0.0, 0.0), 0.4, 1.8, box, HALF_EXTENTS),
-			"ni por el oeste")
+			"nor from the west")
 	assert_true(HitShapes.capsule_overlaps_box(Vector3(0.0, 0.0, 2.3), 0.4, 1.8, box, HALF_EXTENTS),
-			"en el extremo del ancho, rozando el poste con el radio")
+			"at the end of the width, grazing the post with the radius")
 	assert_false(HitShapes.capsule_overlaps_box(Vector3(0.0, 0.0, 2.5), 0.4, 1.8, box, HALF_EXTENTS),
-			"fuera del ancho de la puerta")
+			"outside the gate's width")
 
 
 func test_a_character_standing_on_the_walkway_above_the_gate_does_not_block_it() -> void:
 	var box: Transform3D = _box()
 	assert_false(HitShapes.capsule_overlaps_box(Vector3(0.0, 4.4, 0.0), 0.4, 1.8, box, HALF_EXTENTS),
-			"pisando la pasarela a 4,4 m, por encima de la caja")
+			"stepping on the walkway at 4.4 m, above the box")
 	assert_true(HitShapes.capsule_overlaps_box(Vector3(0.0, 3.0, 0.0), 0.4, 1.8, box, HALF_EXTENTS),
-			"con los pies dentro del alto de la caja")
+			"with the feet within the box's height")
 	assert_false(HitShapes.capsule_overlaps_box(Vector3(0.0, -2.0, 0.0), 0.4, 1.8, box, HALF_EXTENTS),
-			"bajo el suelo de la caja, con la cabeza por debajo")
+			"under the box's floor, with the head below")

@@ -1,16 +1,17 @@
 class_name TemplateSelector
 extends VBoxContainer
-## Selector de plantilla de equipo (PRG-07, docs/habilidades.md, sección 6.5): un botón por cada
-## [EquipmentTemplate] que el jugador puede elegir ([member EquipmentTemplate.selectable]) con su nombre,
-## sus armas y sus cargas de pociones. Está en la pantalla de muerte y en la elección de reino; al pulsar
-## uno emite [signal template_chosen] y quien lo tiene manda el LOADOUT_SELECT
-## ([method NetClient.send_loadout_select]) o lo guarda para cuando conecte
-## ([member ClientConfig.loadout]). La plantilla vale en la siguiente aparición: el selector no promete más.
+## Loadout template selector (PRG-07, docs/habilidades.md, section 6.5): one button for each
+## [EquipmentTemplate] the player can choose ([member EquipmentTemplate.selectable]) with its name, its
+## weapons and its potion charges. It is on the death screen and the realm selection; pressing one emits
+## [signal template_chosen] and whoever holds it sends the LOADOUT_SELECT
+## ([method NetClient.send_loadout_select]) or stores it for when it connects
+## ([member ClientConfig.loadout]). The template takes effect at the next spawn: the selector promises no
+## more than that.
 ## [br][br]
-## Los ids salen del catálogo de combate en el orden de sus ids (por nombre: nunca son fijos). Solo
-## cliente.
+## The ids come from the combat catalog in the order of their ids (by name: they are never fixed). Client
+## only.
 
-## El jugador ha elegido la plantilla [param template_id] (id del catálogo de combate).
+## The player has chosen template [param template_id] (combat catalog id).
 signal template_chosen(template_id: int)
 
 const BUTTON_MIN_WIDTH: float = 200.0
@@ -22,7 +23,7 @@ var _title: Label = null
 var _row: HBoxContainer = null
 var _note: Label = null
 var _group: ButtonGroup = ButtonGroup.new()
-# id de plantilla -> su botón.
+# template id -> its button.
 var _buttons: Dictionary[int, Button] = {}
 var _selected: int = 0
 
@@ -33,7 +34,7 @@ func _init() -> void:
 	_build()
 
 
-## Ids de las plantillas que se ofrecen, en el orden de los botones.
+## Ids of the templates on offer, in button order.
 func get_template_ids() -> PackedInt32Array:
 	var ids := PackedInt32Array()
 	for id: int in _buttons:
@@ -41,13 +42,13 @@ func get_template_ids() -> PackedInt32Array:
 	return ids
 
 
-## Plantilla marcada (0 si ninguna: la de por defecto).
+## Selected template (0 if none: the default one).
 func get_selected() -> int:
 	return _selected
 
 
-## Marca [param template_id] sin emitir nada (0 o una que no se ofrece: la de por defecto del catálogo, si
-## se ofrece).
+## Selects [param template_id] without emitting anything (0 or one that is not offered: the catalog's
+## default, if it is offered).
 func select(template_id: int) -> void:
 	var id: int = template_id if _buttons.has(template_id) else CombatCatalog.default_template_id()
 	_selected = id if _buttons.has(id) else 0
@@ -55,8 +56,8 @@ func select(template_id: int) -> void:
 		_buttons[key].set_pressed_no_signal(key == _selected)
 
 
-## Como pulsar el botón de [param template_id]: lo marca y emite [signal template_chosen]. Devuelve false
-## si no se ofrece.
+## Like pressing the button of [param template_id]: selects it and emits [signal template_chosen]. Returns
+## false if it is not offered.
 func choose(template_id: int) -> bool:
 	if not _buttons.has(template_id):
 		return false
@@ -65,13 +66,14 @@ func choose(template_id: int) -> bool:
 	return true
 
 
-## El botón de [param template_id] (null si no se ofrece).
+## The button of [param template_id] (null if it is not offered).
 func get_button(template_id: int) -> Button:
 	return _buttons.get(template_id)
 
 
-## Con [param focusable] false, los botones no toman el foco ni con un clic (la pantalla de muerte, que se maneja con el
-## ratón y deja Tab e Intro para el juego); por defecto lo toman, para navegar con el teclado.
+## With [param focusable] false, the buttons do not take focus even on a click (the death screen, which is
+## operated with the mouse and leaves Tab and Enter for the game); by default they take it, for keyboard
+## navigation.
 func set_buttons_focusable(focusable: bool) -> void:
 	for button: Button in _buttons.values():
 		button.focus_mode = Control.FOCUS_ALL if focusable else Control.FOCUS_NONE

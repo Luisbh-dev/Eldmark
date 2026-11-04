@@ -1,6 +1,6 @@
 extends TestCase
-## Pruebas de [NetEntity]: el registro del snapshot y el mensaje ENTITY_SPAWN de una entidad de
-## red (docs/red.md, sección 9.1).
+## Tests for [NetEntity]: the snapshot record and the ENTITY_SPAWN message of a network
+## entity (docs/red.md, section 9.1).
 
 const PLAYER: int = NetProtocol.EntityKind.PLAYER
 
@@ -37,9 +37,9 @@ func _make_player(position: Vector3 = Vector3(12.34, 5.0, -8.76), yaw: float = 1
 
 func test_get_character_and_position() -> void:
 	var entity: NetEntity = _make_player()
-	assert_not_null(entity.get_character(), "un jugador tiene personaje")
+	assert_not_null(entity.get_character(), "a player has a character")
 	assert_vec_near(entity.get_position(), Vector3(12.34, 5.0, -8.76), 1e-5,
-			"posición fuera del árbol")
+			"position outside the tree")
 
 	var plain := Node3D.new()
 	_nodes.append(plain)
@@ -47,12 +47,12 @@ func test_get_character_and_position() -> void:
 	var npc := NetEntity.new()
 	npc.kind = NetProtocol.EntityKind.NPC
 	npc.node = plain
-	assert_null(npc.get_character(), "un nodo cualquiera no es un jugador")
-	assert_vec_near(npc.get_position(), Vector3(1, 2, 3), 1e-6, "posición del nodo")
+	assert_null(npc.get_character(), "an arbitrary node is not a player")
+	assert_vec_near(npc.get_position(), Vector3(1, 2, 3), 1e-6, "node position")
 
 	var empty := NetEntity.new()
-	assert_null(empty.get_character(), "sin nodo")
-	assert_vec_near(empty.get_position(), Vector3.ZERO, 1e-6, "sin nodo, el origen")
+	assert_null(empty.get_character(), "without a node")
+	assert_vec_near(empty.get_position(), Vector3.ZERO, 1e-6, "without a node, the origin")
 
 
 func test_position_is_global_when_in_the_tree() -> void:
@@ -62,14 +62,14 @@ func test_position_is_global_when_in_the_tree() -> void:
 	parent.position = Vector3(100, 0, 0)
 	var entity: NetEntity = _make_player(Vector3(5, 0, 0))
 	parent.add_child(entity.node)
-	assert_vec_near(entity.get_position(), Vector3(105, 0, 0), 1e-4, "posición global")
+	assert_vec_near(entity.get_position(), Vector3(105, 0, 0), 1e-4, "global position")
 
 
 func test_freed_node_is_handled() -> void:
 	var entity: NetEntity = _make_player()
 	entity.node.free()
-	assert_null(entity.get_character(), "un nodo liberado ya no es un personaje")
-	assert_vec_near(entity.get_position(), Vector3.ZERO, 1e-6, "ni tiene posición")
+	assert_null(entity.get_character(), "a freed node is no longer a character")
+	assert_vec_near(entity.get_position(), Vector3.ZERO, 1e-6, "nor does it have a position")
 
 
 func test_encode_record_matches_the_shared_encoder() -> void:
@@ -81,13 +81,13 @@ func test_encode_record_matches_the_shared_encoder() -> void:
 	EntityRecord.encode_character(direct, 0, entity.net_id, entity.get_character(), 2, 0,
 			EntityRecord.HEALTH_Q_FULL)
 	assert_eq(from_entity.size(), EntityRecord.SIZE, "21 B")
-	assert_eq(from_entity, direct, "los mismos bytes que EntityRecord.encode_character")
+	assert_eq(from_entity, direct, "the same bytes as EntityRecord.encode_character")
 	var record: EntityRecord = EntityRecord.decode_from(from_entity, 0, PLAYER)
 	assert_eq(record.net_id, entity.net_id, "net_id")
-	assert_vec_near(record.position, Vector3(12.34, 5.0, -8.76), 0.0087, "posición")
-	assert_eq(record.get_teleport_counter(), 2, "contador de teletransporte")
+	assert_vec_near(record.position, Vector3(12.34, 5.0, -8.76), 0.0087, "position")
+	assert_eq(record.get_teleport_counter(), 2, "teleport counter")
 	assert_true(record.is_grounded(), "grounded")
-	assert_vec_near(record.velocity, Vector3(1.5, -2.0, 3.25), 0.0087, "velocidad")
+	assert_vec_near(record.velocity, Vector3(1.5, -2.0, 3.25), 0.0087, "velocity")
 
 
 func test_encode_record_at_an_offset_grows_the_buffer() -> void:
@@ -95,46 +95,46 @@ func test_encode_record_at_an_offset_grows_the_buffer() -> void:
 	var bytes := PackedByteArray()
 	bytes.resize(4)
 	entity.encode_record(bytes, 40)
-	assert_eq(bytes.size(), 40 + EntityRecord.SIZE, "el búfer crece hasta caber el registro")
-	assert_eq(bytes.decode_u16(40), entity.net_id, "net_id en el offset")
+	assert_eq(bytes.size(), 40 + EntityRecord.SIZE, "the buffer grows to fit the record")
+	assert_eq(bytes.decode_u16(40), entity.net_id, "net_id at the offset")
 	var other: NetEntity = _make_player(Vector3(1, 1, 1))
 	other.net_id = 777
 	other.encode_record(bytes, 10)
-	assert_eq(bytes.decode_u16(10), 777, "otro registro en otro offset")
-	assert_eq(bytes.decode_u16(40), entity.net_id, "sin pisar el anterior")
+	assert_eq(bytes.decode_u16(10), 777, "another record at another offset")
+	assert_eq(bytes.decode_u16(40), entity.net_id, "without overwriting the previous one")
 
 
 func test_health_in_the_record_and_the_snapshot_block() -> void:
 	var entity: NetEntity = _make_player()
-	# Sin Combatant: sano y con la vida llena.
-	assert_eq(entity.health_q, EntityRecord.HEALTH_Q_FULL, "vida cuantizada llena por defecto")
-	assert_eq(entity.health, NetEntity.DEFAULT_HEALTH, "vida por defecto")
-	assert_eq(entity.max_health, NetEntity.DEFAULT_HEALTH, "vida máxima por defecto")
-	assert_eq(entity.status, 0, "sin estados")
-	assert_eq(entity.respawn_tick, 0, "sin reaparición pendiente")
+	# Without a Combatant: healthy and with full health.
+	assert_eq(entity.health_q, EntityRecord.HEALTH_Q_FULL, "quantised health full by default")
+	assert_eq(entity.health, NetEntity.DEFAULT_HEALTH, "default health")
+	assert_eq(entity.max_health, NetEntity.DEFAULT_HEALTH, "default maximum health")
+	assert_eq(entity.status, 0, "no states")
+	assert_eq(entity.respawn_tick, 0, "no pending respawn")
 	var bytes := PackedByteArray()
 	entity.encode_record(bytes, 0)
-	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 255, "registro con health_q 255")
+	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 255, "record with health_q 255")
 
-	# set_health_view cuantiza la vida en el registro y guarda el bloque extra.
+	# set_health_view quantises the health in the record and keeps the extra block.
 	entity.set_health_view(250, 1000, NetMessages.STATUS_IN_COMBAT, 0)
-	assert_eq(entity.health_q, EntityRecord.quantize_health(250, 1000), "health_q cuantizada")
-	assert_eq(entity.health_q, 64, "250 de 1000: 63,75 hacia arriba = 64")
-	assert_eq(entity.health, 250, "vida")
-	assert_eq(entity.max_health, 1000, "vida máxima")
-	assert_eq(entity.status, NetMessages.STATUS_IN_COMBAT, "estado")
+	assert_eq(entity.health_q, EntityRecord.quantize_health(250, 1000), "quantised health_q")
+	assert_eq(entity.health_q, 64, "250 of 1000: 63.75 rounded up = 64")
+	assert_eq(entity.health, 250, "health")
+	assert_eq(entity.max_health, 1000, "maximum health")
+	assert_eq(entity.status, NetMessages.STATUS_IN_COMBAT, "state")
 	entity.encode_record(bytes, 0)
-	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 64, "el registro lleva la vida")
-	assert_eq(bytes.decode_u8(EntityRecord.SIZE - 1), 64, "health_q es el último byte del registro")
+	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 64, "the record carries the health")
+	assert_eq(bytes.decode_u8(EntityRecord.SIZE - 1), 64, "health_q is the last byte of the record")
 
-	# Muerto: 0 en el registro y tick de reaparición en el bloque.
+	# Dead: 0 in the record and respawn tick in the block.
 	entity.set_health_view(0, 1000, NetMessages.STATUS_DEAD, 4321)
-	assert_eq(entity.health_q, EntityRecord.HEALTH_Q_DEAD, "muerto: health_q 0")
-	assert_eq(entity.respawn_tick, 4321, "tick de reaparición")
+	assert_eq(entity.health_q, EntityRecord.HEALTH_Q_DEAD, "dead: health_q 0")
+	assert_eq(entity.respawn_tick, 4321, "respawn tick")
 	entity.encode_record(bytes, 0)
-	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 0, "el registro dice muerto")
+	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 0, "the record says dead")
 
-	# Una entidad sin personaje lleva también la vida.
+	# An entity without a character also carries health.
 	var plain := Node3D.new()
 	_nodes.append(plain)
 	var npc := NetEntity.new()
@@ -145,7 +145,7 @@ func test_health_in_the_record_and_the_snapshot_block() -> void:
 	var npc_bytes := PackedByteArray()
 	npc.encode_record(npc_bytes, 0)
 	assert_eq(EntityRecord.decode_from(npc_bytes, 0, NetProtocol.EntityKind.NPC).health_q, 128,
-			"el PNJ lleva su vida: 127,5 hacia arriba = 128")
+			"the NPC carries its health: 127.5 rounded up = 128")
 
 
 func test_teleport_counter_wraps_modulo_four_in_the_record() -> void:
@@ -169,10 +169,10 @@ func test_npc_record_without_character() -> void:
 	npc.encode_record(bytes, 0)
 	var record: EntityRecord = EntityRecord.decode_from(bytes, 0, NetProtocol.EntityKind.NPC)
 	assert_eq(record.net_id, 9, "net_id")
-	assert_vec_near(record.position, Vector3(10, 0, 20), 0.0087, "posición")
+	assert_vec_near(record.position, Vector3(10, 0, 20), 0.0087, "position")
 	assert_near(record.yaw, 0.5, 1e-3, "yaw")
-	assert_vec_near(record.velocity, Vector3.ZERO, 1e-6, "sin velocidad")
-	assert_true(record.is_grounded(), "en el suelo")
+	assert_vec_near(record.velocity, Vector3.ZERO, 1e-6, "no velocity")
+	assert_true(record.is_grounded(), "on the ground")
 
 
 func test_encode_spawn_for_other_players() -> void:
@@ -180,28 +180,28 @@ func test_encode_spawn_for_other_players() -> void:
 	entity.teleport_counter = 1
 	var message: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
 			entity.encode_spawn(123, false))
-	if not assert_not_null(message, "el ENTITY_SPAWN se decodifica"):
+	if not assert_not_null(message, "the ENTITY_SPAWN decodes"):
 		return
 	assert_eq(message.net_id, entity.net_id, "net_id")
 	assert_eq(message.kind, PLAYER, "kind")
-	assert_eq(message.spawn_tick, 123, "spawn_tick es el tick del estado que se envía")
-	assert_eq(message.realm, NetProtocol.Realm.SOLMARCH, "reino")
-	assert_false(message.is_yours, "no es el personaje del receptor")
-	assert_eq(message.teleport_counter, 1, "contador de teletransporte")
-	assert_eq(message.display_name, "Brunilda", "nombre")
-	if assert_not_null(message.state, "con el estado"):
+	assert_eq(message.spawn_tick, 123, "spawn_tick is the tick of the state being sent")
+	assert_eq(message.realm, NetProtocol.Realm.SOLMARCH, "realm")
+	assert_false(message.is_yours, "it is not the receiver's character")
+	assert_eq(message.teleport_counter, 1, "teleport counter")
+	assert_eq(message.display_name, "Brunilda", "name")
+	if assert_not_null(message.state, "with the state"):
 		var own: PlayerState = entity.get_character().get_state()
-		assert_eq(message.state.position, own.position, "la posición, que ya viaja en el registro")
-		assert_eq(message.state.velocity, own.velocity, "la velocidad")
-		assert_eq(message.state.yaw, own.yaw, "el giro")
-		assert_eq(message.state.grounded, own.grounded, "y si pisa suelo")
-		assert_eq(message.state.last_input_tick, 39, "incluido last_input_tick")
-		# R4: de lo ajeno no viaja nada que no esté ya en el registro de 21 B (ver la prueba siguiente).
-		assert_eq(message.state.prev_buttons, 0, "los botones que mantiene no se envían")
+		assert_eq(message.state.position, own.position, "the position, which already travels in the record")
+		assert_eq(message.state.velocity, own.velocity, "the velocity")
+		assert_eq(message.state.yaw, own.yaw, "the turn")
+		assert_eq(message.state.grounded, own.grounded, "and whether it is on the ground")
+		assert_eq(message.state.last_input_tick, 39, "including last_input_tick")
+		# R4: nothing foreign travels that is not already in the 21 B record (see the next test).
+		assert_eq(message.state.prev_buttons, 0, "the buttons it holds are not sent")
 
 
-## R4: el ENTITY_SPAWN de una entidad ajena no lleva el CombatState entero (resistencia exacta,
-## agotamiento, enfriamiento de la parada, búfer y controles del enemigo); solo el propio, completo.
+## R4: another entity's ENTITY_SPAWN does not carry the whole CombatState (exact stamina,
+## exhaustion, parry cooldown, buffer and the enemy's controls); only the own one, complete.
 func test_encode_spawn_of_another_player_hides_the_private_combat_state() -> void:
 	var entity: NetEntity = _make_player()
 	var character: PlayerCharacter = entity.get_character()
@@ -224,41 +224,41 @@ func test_encode_spawn_of_another_player_hides_the_private_combat_state() -> voi
 	var others: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
 			entity.encode_spawn(40, false))
 	var mine: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(entity.encode_spawn(40, true))
-	if not assert_not_null(others, "se decodifica") or not assert_not_null(mine, "(propio)"):
+	if not assert_not_null(others, "it decodes") or not assert_not_null(mine, "(own)"):
 		return
 	var neutral: CombatState = CombatState.initial(CombatCatalog.rules(), combat.weapon_id)
 	var seen: CombatState = others.state.combat
-	assert_eq(seen.stamina, neutral.stamina, "sin la resistencia exacta del enemigo")
-	assert_eq(seen.stamina_regen_tick, 0, "ni cuándo vuelve a regenerar")
-	assert_eq(seen.combat_flags, 0, "ni agotado, ni botones mantenidos, ni infinita")
-	assert_eq(seen.parry_ready_tick, 0, "ni cuándo no puede parar")
-	assert_eq(seen.cc_until_tick, 0, "ni cuándo acaba su control")
-	assert_eq(seen.buffered, 0, "ni su búfer")
-	assert_eq(seen.combo_step, 0, "ni el paso del combo")
-	assert_eq(seen.primary_held, 0, "ni la pulsación")
-	assert_eq(seen.knockback, Vector2.ZERO, "ni el empuje")
-	assert_eq(others.state.prev_buttons, 0, "ni los botones del último tick")
-	assert_eq(others.state.coyote_ticks, 0, "ni los contadores de salto")
+	assert_eq(seen.stamina, neutral.stamina, "without the enemy's exact stamina")
+	assert_eq(seen.stamina_regen_tick, 0, "nor when it starts regenerating again")
+	assert_eq(seen.combat_flags, 0, "nor exhausted, nor held buttons, nor infinite")
+	assert_eq(seen.parry_ready_tick, 0, "nor when it cannot parry")
+	assert_eq(seen.cc_until_tick, 0, "nor when its control ends")
+	assert_eq(seen.buffered, 0, "nor its buffer")
+	assert_eq(seen.combo_step, 0, "nor the combo step")
+	assert_eq(seen.primary_held, 0, "nor the press")
+	assert_eq(seen.knockback, Vector2.ZERO, "nor the push")
+	assert_eq(others.state.prev_buttons, 0, "nor the last tick's buttons")
+	assert_eq(others.state.coyote_ticks, 0, "nor the jump counters")
 	assert_eq(others.state.jump_buffer_ticks, 0)
-	# Lo que ya enseña el registro (y el animador necesita) sí: acción, arma, posición y giro.
-	assert_eq(seen.action, CombatState.Action.LIGHT, "la acción en curso")
-	assert_eq(seen.action_id, combat.action_id, "con su ataque")
-	assert_eq(seen.action_tick, 33, "y su tick de inicio")
-	assert_eq(seen.weapon_id, combat.weapon_id, "el arma equipada")
-	assert_eq(others.state.position, character.get_state().position, "la posición")
-	assert_eq(others.state.yaw, character.get_state().yaw, "el giro")
-	# El SPAWN propio lo lleva todo.
-	assert_eq(mine.state.encode(), character.get_state().encode(), "el propio, completo")
+	# What the record already shows (and the animator needs) does travel: action, weapon, position and turn.
+	assert_eq(seen.action, CombatState.Action.LIGHT, "the action in progress")
+	assert_eq(seen.action_id, combat.action_id, "with its attack")
+	assert_eq(seen.action_tick, 33, "and its start tick")
+	assert_eq(seen.weapon_id, combat.weapon_id, "the equipped weapon")
+	assert_eq(others.state.position, character.get_state().position, "the position")
+	assert_eq(others.state.yaw, character.get_state().yaw, "the turn")
+	# The own SPAWN carries everything.
+	assert_eq(mine.state.encode(), character.get_state().encode(), "the own one, complete")
 	assert_eq(mine.state.combat.stamina, 137)
 	assert_eq(mine.state.combat.parry_ready_tick, 1234)
 	assert_eq(mine.state.prev_buttons, PlayerInput.BLOCK | PlayerInput.PRIMARY)
-	# El estado real del personaje no se toca al ocultarlo.
-	assert_eq(combat.stamina, 137, "la copia enviada no altera el personaje")
+	# The character's real state is not touched when hiding it.
+	assert_eq(combat.stamina, 137, "the sent copy does not alter the character")
 
 
-## H3a (docs/habilidades.md, 5.2): el SPAWN ajeno enseña también la otra arma y la ranura activa (las armas
-## se ven), pero no las reutilizaciones, las cargas, el consumible, las ranuras de movimiento ni los botones
-## mantenidos o el bit «sin reutilizaciones» de combat_flags2.
+## H3a (docs/habilidades.md, 5.2): the foreign SPAWN also shows the other weapon and the active slot (weapons
+## are visible), but not the reuse timers, charges, the consumable, the movement slots or the held
+## buttons or the "no reuse" bit of combat_flags2.
 func test_encode_spawn_of_another_player_shows_both_weapons_and_hides_the_ability_state() -> void:
 	var entity: NetEntity = _make_player()
 	var combat: CombatState = entity.get_character().combat
@@ -279,15 +279,15 @@ func test_encode_spawn_of_another_player_shows_both_weapons_and_hides_the_abilit
 	if not assert_not_null(others) or not assert_not_null(mine):
 		return
 	var seen: CombatState = others.state.combat
-	assert_eq(seen.weapon_id, sword, "el arma activa")
-	assert_eq(seen.alt_weapon_id, bow, "la de la otra ranura")
-	assert_eq(seen.combat_flags2, CombatState.FLAG2_SECOND_SLOT, "solo el bit de la ranura activa")
-	assert_eq(seen.ability_ready, PackedInt64Array([0, 0, 0, 0, 0, 0]), "sin reutilizaciones")
+	assert_eq(seen.weapon_id, sword, "the active weapon")
+	assert_eq(seen.alt_weapon_id, bow, "the one in the other slot")
+	assert_eq(seen.combat_flags2, CombatState.FLAG2_SECOND_SLOT, "only the active slot's bit")
+	assert_eq(seen.ability_ready, PackedInt64Array([0, 0, 0, 0, 0, 0]), "no reuse timers")
 	assert_eq(seen.consumable_ready_tick, 0)
-	assert_eq(seen.consumable_charges, 0, "ni cargas")
-	assert_eq(seen.move_effect_ids, PackedInt32Array([0, 0]), "ni ranuras de movimiento")
+	assert_eq(seen.consumable_charges, 0, "nor charges")
+	assert_eq(seen.move_effect_ids, PackedInt32Array([0, 0]), "nor movement slots")
 	assert_eq(seen.move_effect_until, PackedInt64Array([0, 0]))
-	assert_eq(mine.state.combat.ability_ready[5], 5005, "el propio lo lleva todo")
+	assert_eq(mine.state.combat.ability_ready[5], 5005, "the own one carries everything")
 	assert_eq(mine.state.combat.consumable_charges, CombatState.pack_charges(2, 3))
 	assert_eq(mine.state.combat.combat_flags2, combat.combat_flags2)
 
@@ -296,7 +296,7 @@ func test_encode_spawn_for_the_owner_sets_the_flag() -> void:
 	var entity: NetEntity = _make_player()
 	var message: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
 			entity.encode_spawn(40, true))
-	assert_true(message.is_yours, "el SPAWN propio lleva el bit «tuyo»")
+	assert_true(message.is_yours, "the own SPAWN carries the \"yours\" bit")
 	assert_eq(message.spawn_tick, 40, "tick 40")
 
 
@@ -305,9 +305,9 @@ func test_encode_spawn_keeps_names_within_the_limit() -> void:
 	entity.display_name = "ñ".repeat(40)
 	var bytes: PackedByteArray = entity.encode_spawn(1, false)
 	var message: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
-	if assert_not_null(message, "se decodifica aunque el nombre sea largo"):
+	if assert_not_null(message, "it decodes even if the name is long"):
 		assert_true(message.display_name.to_utf8_buffer().size() <= NetProtocol.MAX_NAME_BYTES,
-				"nombre recortado a 48 B")
+				"name trimmed to 48 B")
 
 
 func test_encode_spawn_of_a_node_without_character() -> void:
@@ -322,31 +322,31 @@ func test_encode_spawn_of_a_node_without_character() -> void:
 	npc.node = plain
 	var message: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
 			npc.encode_spawn(8, false))
-	if not assert_not_null(message, "se decodifica"):
+	if not assert_not_null(message, "it decodes"):
 		return
 	assert_eq(message.kind, NetProtocol.EntityKind.NPC, "kind")
-	assert_vec_near(message.state.position, Vector3(3, 0, 4), 1e-5, "posición")
-	assert_eq(message.display_name, "Guardia", "nombre")
-	assert_eq(message.npc_def_id, 0, "sin definición de PNJ por defecto")
-	# Con su id de definición (protocolo 3) el SPAWN lo lleva tras el nombre.
+	assert_vec_near(message.state.position, Vector3(3, 0, 4), 1e-5, "position")
+	assert_eq(message.display_name, "Guardia", "name")
+	assert_eq(message.npc_def_id, 0, "no NPC definition by default")
+	# With its definition id (protocol 3) the SPAWN carries it after the name.
 	npc.npc_def_id = 4
 	var with_definition: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
 			npc.encode_spawn(8, false))
-	if assert_not_null(with_definition, "con npc_def_id se decodifica"):
+	if assert_not_null(with_definition, "with npc_def_id it decodes"):
 		assert_eq(with_definition.npc_def_id, 4, "npc_def_id")
-		assert_eq(with_definition.display_name, "Guardia", "y el nombre sigue igual")
-	# Un jugador no lleva el campo, tenga o no valor puesto.
+		assert_eq(with_definition.display_name, "Guardia", "and the name stays the same")
+	# A player does not carry the field, whether or not a value is set.
 	var player: NetEntity = _make_player()
 	player.npc_def_id = 4
 	var player_message: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
 			player.encode_spawn(8, false))
-	if assert_not_null(player_message, "el SPAWN de un jugador"):
-		assert_eq(player_message.npc_def_id, 0, "un jugador no lleva npc_def_id")
+	if assert_not_null(player_message, "a player's SPAWN"):
+		assert_eq(player_message.npc_def_id, 0, "a player carries no npc_def_id")
 
 
 func test_always_relevant_flag() -> void:
 	var entity: NetEntity = _make_player()
-	assert_eq(entity.flags & NetEntity.FLAG_ALWAYS_RELEVANT, 0, "por defecto pasa por la política")
+	assert_eq(entity.flags & NetEntity.FLAG_ALWAYS_RELEVANT, 0, "by default it goes through the policy")
 	entity.flags |= NetEntity.FLAG_ALWAYS_RELEVANT
-	assert_true((entity.flags & NetEntity.FLAG_ALWAYS_RELEVANT) != 0, "se puede marcar")
+	assert_true((entity.flags & NetEntity.FLAG_ALWAYS_RELEVANT) != 0, "it can be marked")
 	assert_eq(NetEntity.FLAG_ALWAYS_RELEVANT, 1, "bit 0")

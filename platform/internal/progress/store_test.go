@@ -15,9 +15,9 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// Crear, guardar y recargar: Load da el registro de §3.4 de un personaje nuevo con los valores por defecto y,
-// tras el kit y un rato de juego, la foto del último guardado campo a campo con los campos de solo lectura y
-// location.saved_at_unix (PRG-10).
+// Create, save and reload: Load returns the §3.4 record of a new character with the defaults and,
+// after the kit and some play time, the snapshot of the last save field by field, with the
+// read-only fields and location.saved_at_unix (PRG-10).
 func TestCreateLoad(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -54,7 +54,7 @@ func TestCreateLoad(t *testing.T) {
 	}
 }
 
-// sameJSON compara dos valores por su JSON (los números, como json.Number: 0 y 0.0 son lo mismo).
+// sameJSON compares two values by their JSON (numbers, as json.Number: 0 and 0.0 are the same).
 func sameJSON(t testing.TB, a, b any) bool {
 	t.Helper()
 	norm := func(v any) any {
@@ -82,9 +82,9 @@ func decodeMap(t testing.TB, raw json.RawMessage) map[string]any {
 	return m
 }
 
-// ValidateCreate con los casos de appearance_cases.json (los mismos que test_character_appearance.gd), una
-// raza de otro reino, una que no existe y una plantilla que no es selectable: nil o un
-// *persistence.ValidationError con sus fields.
+// ValidateCreate with the cases from appearance_cases.json (the same as
+// test_character_appearance.gd), a race from another realm, one that does not exist and a
+// template that is not selectable: nil or a *persistence.ValidationError with its fields.
 func TestValidateCreate(t *testing.T) {
 	r := embedded(t)
 	data, err := os.ReadFile(sharedAppearanceCases)
@@ -109,7 +109,7 @@ func TestValidateCreate(t *testing.T) {
 	for _, c := range cases {
 		b, err := base64.StdEncoding.DecodeString(c.Appearance)
 		if err != nil || len(b) != 8 {
-			continue // los de otro tamaño los rechaza la API antes de validar (no son [8]byte)
+			continue // those of another size are rejected by the API before validating (they are not [8]byte)
 		}
 		got := fieldsOf(r.ValidateCreate(c.Realm, c.RaceID, [8]byte(b), "squire"))
 		var want map[string]string
@@ -149,8 +149,8 @@ func TestValidateCreate(t *testing.T) {
 	}
 }
 
-// Summaries de varios personajes: uno que nunca ha entrado (sin location), uno que ha guardado (zona,
-// canal, nivel y tiempo jugado) y uno que no existe (no sale).
+// Summaries of several characters: one that has never entered (no location), one that has saved
+// (zone, channel, level and played time) and one that does not exist (not returned).
 func TestSummaries(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -183,8 +183,9 @@ func TestSummaries(t *testing.T) {
 	}
 }
 
-// Export da el registro y lo propio del libro (las operaciones con sus apuntes y eventos); de las GM y
-// REVERSAL, sin actor_account_id, note ni detail; de una lápida, sin registro y con el libro.
+// Export returns the record and the ledger's own data (the operations with their entries and
+// events); for GM and REVERSAL operations, without actor_account_id, note or detail; for a
+// tombstone, without a record and with the ledger.
 func TestExport(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -237,7 +238,7 @@ func TestExport(t *testing.T) {
 			t.Fatalf("kit: %v", op)
 		}
 	}
-	// La lápida: sin registro, con el libro.
+	// The tombstone: without a record, with the ledger.
 	w.purgeAccount(7)
 	out = export()
 	if out["record"] != nil || len(out["ops"].([]any)) != 5 {

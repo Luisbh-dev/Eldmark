@@ -1,27 +1,27 @@
 class_name ActionWire
 extends RefCounted
-## El byte de acción del registro de red ([member EntityRecord.action]) tal y como lo publica el
-## servidor y lo lee el cliente (docs/combate.md, secciones 3.4 y 6).
+## The action byte of the network record ([member EntityRecord.action]) as published by the
+## server and read by the client (docs/combate.md, sections 3.4 and 6).
 ## [br][br]
-## Parte del byte de [method ActionMachine.action_byte] (bits 0-3 la acción, 4-5 la fase, 6-7 el paso
-## del combo del ligero en curso o la ranura de la habilidad: 0-2, o 3 si es un consumible) y rellena
-## los bits 6-7 de las acciones que se encadenan consigo mismas con un [b]contador de reinicio[/b].
-## Sin él, dos acciones iguales y seguidas serían indistinguibles para un remoto: la esquiva o el
-## cambio de arma guardados en el búfer salen en el mismo tick en que acaba el anterior (nunca hay un
-## tick en NONE) y un segundo tambaleo o aturdimiento encadena con el primero; en los dos casos el
-## byte es idéntico, el remoto no reiniciaría el clip y recorrería la segunda acción congelado en la
-## última pose. Una habilidad no lo necesita: entre dos usos de la misma ranura (o dos consumibles) hay
-## siempre [constant AbilityTicks.REARM_TICKS] ticks de NONE, más que el intervalo de los snapshots: la
-## validación del catálogo lo exige a las reutilizaciones, y una interrupción antes del compromiso o una
-## canalización que acaba sin comprometer (soltada en el fin de su lanzamiento) dejan ese margen
-## (docs/habilidades.md, sección 5.5; con un solo tick, un remoto que no lo muestreaba seguía el clip
-## del primero). DOWNED, REVIVE y EXECUTE llevan 0.
+## It starts from the byte of [method ActionMachine.action_byte] (bits 0-3 the action, 4-5 the phase, 6-7 the combo
+## step of the light attack in progress or the ability slot: 0-2, or 3 if it is a consumable) and fills
+## bits 6-7 of actions that chain into themselves with a [b]restart counter[/b].
+## Without it, two identical consecutive actions would be indistinguishable to a remote: a dodge or
+## weapon swap stored in the buffer comes out on the same tick the previous one ends (there is never a
+## tick in NONE) and a second stagger or stun chains with the first; in both cases the
+## byte is identical, the remote would not restart the clip and would play through the second action frozen in the
+## last pose. An ability does not need it: between two uses of the same slot (or two consumables) there are
+## always [constant AbilityTicks.REARM_TICKS] ticks of NONE, more than the snapshot interval: the
+## catalog validation requires it of cooldowns, and an interruption before the commit or a
+## channel that ends without committing (released at the end of its cast) leave that margin
+## (docs/habilidades.md, section 5.5; with a single tick, a remote that did not sample it kept following the clip
+## of the first). DOWNED, REVIVE and EXECUTE carry 0.
 ## [br][br]
-## El contador es de quien publica ([ActionWire] es una instancia por entidad): sube en 1 (módulo 4)
-## cada vez que empieza una esquiva, un tambaleo, un aturdimiento o un cambio de arma, es decir, cada
-## vez que cambia el par (acción, tick de inicio). Derivarlo del tick de inicio no bastaría: dos
-## tambaleos separados un múltiplo de 4 ticks darían el mismo valor. Solo el servidor lo calcula; no
-## forma parte de [PlayerState] ni se compara con la predicción.
+## The counter belongs to whoever publishes ([ActionWire] is one instance per entity): it goes up by 1 (modulo 4)
+## each time a dodge, a stagger, a stun or a weapon swap starts, that is, each
+## time the (action, start tick) pair changes. Deriving it from the start tick would not be enough: two
+## staggers separated by a multiple of 4 ticks would give the same value. Only the server computes it; it is not
+## part of [PlayerState] nor is it compared with prediction.
 
 const COUNTER_SHIFT: int = 6
 const COUNTER_MASK: int = 3
@@ -31,24 +31,24 @@ var _action_tick: int = -1
 var _counter: int = 0
 
 
-## true si [param action] lleva el contador de reinicio en los bits 6-7: las acciones sin combo ni
-## fases que pueden encadenarse consigo mismas sin pasar por NONE (esquiva, tambaleo, aturdimiento y
-## cambio de arma).
+## true if [param action] carries the restart counter in bits 6-7: actions with no combo or
+## phases that can chain into themselves without passing through NONE (dodge, stagger, stun and
+## weapon swap).
 static func has_counter(action: int) -> bool:
 	return action == CombatState.Action.DODGE or action == CombatState.Action.STAGGER \
 			or action == CombatState.Action.STUN or action == CombatState.Action.SWAP
 
 
-## Los bits 6-7 del byte [param action_byte]: el paso del combo si la acción es un ligero, la ranura
-## (3 = consumible) si es una habilidad y el contador de reinicio si es una esquiva, un tambaleo, un
-## aturdimiento o un cambio de arma (en las demás valen 0).
-## Un cambio de este valor con la misma acción y fase es una acción nueva.
+## Bits 6-7 of the byte [param action_byte]: the combo step if the action is a light attack, the slot
+## (3 = consumable) if it is an ability and the restart counter if it is a dodge, a stagger, a
+## stun or a weapon swap (in the others they are 0).
+## A change in this value with the same action and phase is a new action.
 static func step_of(action_byte: int) -> int:
 	return (action_byte >> COUNTER_SHIFT) & COUNTER_MASK
 
 
-## El byte de acción de [param state] en el tick [param tick] para el registro de red. Hay que
-## llamarlo una vez por tick de quien publica (el contador se alimenta de los cambios de acción).
+## The action byte of [param state] at tick [param tick] for the network record. It must be
+## called once per tick by whoever publishes (the counter is fed by action changes).
 func encode(state: CombatState, tick: int) -> int:
 	var byte: int = ActionMachine.action_byte(state, tick)
 	if not has_counter(state.action):

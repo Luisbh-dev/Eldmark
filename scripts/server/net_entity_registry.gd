@@ -1,33 +1,33 @@
 class_name NetEntityRegistry
 extends RefCounted
-## Registro de las entidades de red de la zona (docs/red.md, sección 9.1).
+## Registry of the zone's network entities (docs/red.md, section 9.1).
 ## [br][br]
-## Asigna ids de 1 a 65535 (el 0 significa «ninguno») recorriendo el rango en círculo, así que un
-## id tarda en volver a salir aunque no hubiera cuarentena. Un id liberado queda además en
-## cuarentena [constant ID_QUARANTINE_TICKS] ticks (10 s): los canales de snapshots y de mensajes
-## fiables no están ordenados entre sí, y un registro rezagado de la entidad vieja no puede
-## atribuirse a la nueva.
+## It assigns ids from 1 to 65535 (0 means "none") walking the range in a circle, so an
+## id takes a while to come out again even without quarantine. A released id also stays in
+## quarantine for [constant ID_QUARANTINE_TICKS] ticks (10 s): the snapshot and reliable
+## message channels are not ordered relative to each other, and a straggling record of the old entity cannot
+## be attributed to the new one.
 ## [br][br]
-## [method get_sorted] da las entidades por [code]net_id[/code] ascendente: ese es el orden fijo
-## de simulación del servidor.
+## [method get_sorted] gives the entities by ascending [code]net_id[/code]: that is the server's fixed
+## simulation order.
 ## [br][br]
-## [b]Ids pasajeros[/b] (docs/habilidades.md, sección 4.4): los proyectiles toman su id del mismo espacio
-## con [method allocate_transient_id], sin entrar en la lista de entidades (no tienen [NetEntity] ni van
-## en el snapshot), y lo devuelven con [method release_transient_id] a la misma cuarentena: un DESPAWN
-## rezagado de una flecha nunca se atribuye a la entidad que reciba después su id, ni al revés.
+## [b]Transient ids[/b] (docs/habilidades.md, section 4.4): projectiles take their id from the same space
+## with [method allocate_transient_id], without entering the entity list (they have no [NetEntity] and are not in
+## the snapshot), and return it with [method release_transient_id] to the same quarantine: a straggling
+## DESPAWN of an arrow is never attributed to the entity that later receives its id, nor the other way around.
 
-## Ticks que un id liberado no puede reutilizarse (10 s a 60 Hz).
+## Ticks a released id cannot be reused (10 s at 60 Hz).
 const ID_QUARANTINE_TICKS: int = 600
-## Primer y último id que se asignan.
+## First and last id that are assigned.
 const FIRST_ID: int = 1
 const LAST_ID: int = 65535
 
 var _entities: Dictionary[int, NetEntity] = {}
-# Ids pasajeros en uso (los proyectiles).
+# Transient ids in use (projectiles).
 var _transient: Dictionary[int, bool] = {}
-# net_id -> tick en el que se liberó.
+# net_id -> tick at which it was released.
 var _quarantine: Dictionary[int, int] = {}
-# Orden de liberación (los ticks no decrecen), para ir sacando los ids que ya cumplieron.
+# Release order (ticks never decrease), to pop the ids that have served their time.
 var _quarantine_order: PackedInt32Array = PackedInt32Array()
 var _quarantine_head: int = 0
 var _next_id: int = FIRST_ID
@@ -35,9 +35,9 @@ var _sorted: Array[NetEntity] = []
 var _sorted_dirty: bool = false
 
 
-## Crea una entidad de tipo [param kind] (un [enum NetProtocol.EntityKind]) dada de alta en el
-## tick [param now_tick] y le asigna un id libre. null si no queda ninguno (los 65535 están en
-## uso o en cuarentena).
+## Creates an entity of type [param kind] (an [enum NetProtocol.EntityKind]) added at
+## tick [param now_tick] and assigns it a free id. null if none remain (all 65535 are in
+## use or in quarantine).
 func allocate(kind: int, now_tick: int) -> NetEntity:
 	_release_expired(now_tick)
 	var span: int = LAST_ID - FIRST_ID + 1
@@ -56,9 +56,9 @@ func allocate(kind: int, now_tick: int) -> NetEntity:
 	return null
 
 
-## Reserva un id del espacio de las entidades en el tick [param now_tick] sin crear ninguna entidad (el de
-## un proyectil), con la misma búsqueda en círculo y la misma cuarentena que [method allocate]. 0 si no
-## queda ninguno.
+## Reserves an id from the entity space at tick [param now_tick] without creating any entity (a
+## projectile's), with the same circular search and the same quarantine as [method allocate]. 0 if none
+## remain.
 func allocate_transient_id(now_tick: int) -> int:
 	_release_expired(now_tick)
 	var span: int = LAST_ID - FIRST_ID + 1
@@ -72,8 +72,8 @@ func allocate_transient_id(now_tick: int) -> int:
 	return 0
 
 
-## Devuelve en el tick [param now_tick] el id pasajero [param net_id] y lo deja en cuarentena. No hace
-## nada si no es un id pasajero en uso.
+## Returns the transient id [param net_id] at tick [param now_tick] and puts it in quarantine. Does
+## nothing if it is not a transient id in use.
 func release_transient_id(net_id: int, now_tick: int) -> void:
 	if not _transient.erase(net_id):
 		return
@@ -81,18 +81,18 @@ func release_transient_id(net_id: int, now_tick: int) -> void:
 	_quarantine_order.append(net_id)
 
 
-## true si [param net_id] es un id pasajero en uso.
+## true if [param net_id] is a transient id in use.
 func is_transient(net_id: int) -> bool:
 	return _transient.has(net_id)
 
 
-## Ids pasajeros en uso.
+## Transient ids in use.
 func transient_count() -> int:
 	return _transient.size()
 
 
-## Quita la entidad [param net_id] del registro en el tick [param now_tick] y deja su id en
-## cuarentena. No hace nada si el id no está en uso.
+## Removes entity [param net_id] from the registry at tick [param now_tick] and puts its id in
+## quarantine. Does nothing if the id is not in use.
 func release(net_id: int, now_tick: int) -> void:
 	if not _entities.erase(net_id):
 		return
@@ -101,14 +101,14 @@ func release(net_id: int, now_tick: int) -> void:
 	_sorted_dirty = true
 
 
-## La entidad con ese id, o null.
+## The entity with that id, or null.
 func get_entity(net_id: int) -> NetEntity:
 	return _entities.get(net_id)
 
 
-## Todas las entidades por [code]net_id[/code] ascendente. El array es una caché que se
-## reconstruye tras cada alta y cada baja: quien llama no debe modificarlo, y debe saber que se
-## sustituye por otro array (no se cambia en el sitio) cuando el registro cambia.
+## All entities by ascending [code]net_id[/code]. The array is a cache that is
+## rebuilt after each addition and removal: the caller must not modify it, and must know that it is
+## replaced by another array (not changed in place) when the registry changes.
 func get_sorted() -> Array[NetEntity]:
 	if _sorted_dirty:
 		var ids: Array[int] = []
@@ -123,23 +123,23 @@ func get_sorted() -> Array[NetEntity]:
 	return _sorted
 
 
-## Número de entidades en el registro.
+## Number of entities in the registry.
 func size() -> int:
 	return _entities.size()
 
 
-## true si [param net_id] está en cuarentena (liberado hace menos de
-## [constant ID_QUARANTINE_TICKS] ticks) en el tick [param now_tick].
+## true if [param net_id] is in quarantine (released fewer than
+## [constant ID_QUARANTINE_TICKS] ticks ago) at tick [param now_tick].
 func is_quarantined(net_id: int, now_tick: int) -> bool:
 	return _quarantine.has(net_id) and now_tick - _quarantine[net_id] < ID_QUARANTINE_TICKS
 
 
-# true si nadie usa [param net_id]: ni una entidad, ni un proyectil, ni la cuarentena.
+# true if nobody uses [param net_id]: not an entity, nor a projectile, nor the quarantine.
 func _is_free(net_id: int) -> bool:
 	return not _entities.has(net_id) and not _transient.has(net_id) and not _quarantine.has(net_id)
 
 
-# Saca de la cuarentena los ids que llevan ID_QUARANTINE_TICKS ticks o más liberados.
+# Takes out of quarantine the ids that have been released for ID_QUARANTINE_TICKS ticks or more.
 func _release_expired(now_tick: int) -> void:
 	while _quarantine_head < _quarantine_order.size():
 		var net_id: int = _quarantine_order[_quarantine_head]
@@ -147,7 +147,7 @@ func _release_expired(now_tick: int) -> void:
 			break
 		_quarantine.erase(net_id)
 		_quarantine_head += 1
-	# Compacta la cola cuando ya se ha gastado la mayor parte.
+	# Compacts the queue once most of it has been used.
 	if _quarantine_head > 1024 and _quarantine_head * 2 > _quarantine_order.size():
 		_quarantine_order = _quarantine_order.slice(_quarantine_head)
 		_quarantine_head = 0

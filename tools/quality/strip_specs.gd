@@ -1,38 +1,38 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50): lista de tiras de personajes vistos desde el cliente de captura.
+## Quality capture bench (TEC-50): list of strips of characters seen from the capture client.
 ##
-## Cada tira ([method add]) tiene un id (nombre de archivo), una condición sobre las muestras de la grabadora
-## ([code]cond(actual, anterior) -> bool[/code], normalmente un borde de subida de la acción: «ahora BLOCK, antes no»), cuántos
-## fotogramas lleva, cada cuántos milisegundos y cuánto de antes del disparo. [method evaluate], una vez por fotograma,
-## lanza la tira cuyo disparo se da en el personaje seguido y, cuando la grabadora ya tiene lo que sigue al disparo, la
-## saca del anillo y la escribe ([method StripRecorder.save_strip]).
+## Each strip ([method add]) has an id (file name), a condition on the recorder's samples
+## ([code]cond(current, previous) -> bool[/code], normally a rising edge of the action: "now BLOCK, before not"), how many
+## frames it has, every how many milliseconds and how much before the trigger. [method evaluate], once per frame,
+## launches the strip whose trigger occurs on the followed character and, when the recorder already has what follows the trigger,
+## pulls it out of the ring and writes it ([method StripRecorder.save_strip]).
 ## [br][br]
-## Una tira puede llevar una validación ([code]validate(metas, info) -> bool[/code]) que comprueba que lo grabado es lo que
-## dice el título (por ejemplo, que un «ataque ligero» no se convirtió en carga a mitad de la toma y que el arma es la
-## espada): si no la cumple se descarta y se espera otra toma. Una tira en la que otro cuerpo tapa al seguido en más de
-## un tercio de los fotogramas se repite hasta [constant MAX_ATTEMPTS] veces antes de darla por buena (el aviso va en su
-## nota y en el índice).
+## A strip can carry a validation ([code]validate(metas, info) -> bool[/code]) that checks that what was recorded is what the
+## title says (for example, that a "light attack" did not turn into a charge halfway through the take and that the weapon is the
+## sword): if it fails it is discarded and another take is awaited. A strip in which another body blocks the followed one in more than
+## a third of the frames is repeated up to [constant MAX_ATTEMPTS] times before accepting it (the warning goes in its
+## note and in the index).
 
 const MAX_ATTEMPTS: int = 3
-## Tras descartar una toma de una tira, esperas (ms) antes de volver a dispararla: las condiciones de «andar» o «correr» se
-## cumplen casi siempre y, sin pausa, una toma rechazada tras otra dejaría sin ventana a las demás tiras.
+## After discarding a take of a strip, wait (ms) before triggering it again: the "walk" or "run" conditions
+## are almost always met and, without a pause, one rejected take after another would leave no window for the other strips.
 const REJECT_COOLDOWN_MS: int = 4000
 
 var specs: Array[Dictionary] = []
-## id -> true de las tiras guardadas.
+## id -> true for the strips already saved.
 var done: Dictionary = {}
-## id -> intentos descartados por tapadas o por anillo corto.
+## id -> attempts discarded because of occlusion or a short ring.
 var attempts: Dictionary = {}
-## id -> tomas descartadas por no cumplir su validación.
+## id -> takes discarded for failing their validation.
 var rejected: Dictionary = {}
-## Cuántas tiras se han guardado con fotogramas tapados (tras agotar los intentos).
+## How many strips have been saved with occluded frames (after running out of attempts).
 var saved_occluded: int = 0
 
 var _d: Variant
 var _rec: Variant
 var _pending: Dictionary = {}
 var _last_eval_ms: int = -1
-# id -> instante (ms) hasta el que no se vuelve a disparar.
+# id -> time (ms) until which it is not triggered again.
 var _cooldown: Dictionary = {}
 
 
@@ -41,14 +41,14 @@ func _init(driver: Variant, recorder: Variant) -> void:
 	_rec = recorder
 
 
-## Disparo: borde de subida de la acción, «ahora una de [param names] y antes ninguna».
+## Trigger: rising edge of the action, "now one of [param names] and before none".
 static func edge(names: Array) -> Callable:
 	return func(cur: Dictionary, prev: Dictionary) -> bool:
 		return names.has(cur["action"]) and not names.has(prev["action"])
 
 
-## Validación: al menos [param min_frames] fotogramas con alguna de las acciones [param wanted], ninguno con las de
-## [param forbidden], y el arma [param weapon] (vacía = cualquiera).
+## Validation: at least [param min_frames] frames with any of the actions [param wanted], none with those in
+## [param forbidden], and the weapon [param weapon] (empty = any).
 static func has_action(wanted: Array, min_frames: int, forbidden: Array = [], weapon: String = "") -> Callable:
 	return func(metas: Array, info: Dictionary) -> bool:
 		if not weapon.is_empty() and String(info.get("weapon", "")) != weapon:
@@ -62,10 +62,10 @@ static func has_action(wanted: Array, min_frames: int, forbidden: Array = [], we
 		return count >= min_frames
 
 
-## Añade una tira. [param target_key] dice a qué tipo de personaje se aplica (el escenario pasa el suyo a
-## [method evaluate]); [param cond] recibe la muestra actual y la anterior (sus [code]meta[/code]); [param validate]
-## (opcional) recibe las [code]meta[/code] de todos los fotogramas y los datos del seguido ([method StripRecorder.target_info]).
-## Con [param one_shot] (muertes y derribos: no se pueden repetir a voluntad) una toma con fotogramas tapados se guarda igualmente.
+## Adds a strip. [param target_key] says which type of character it applies to (the scenario passes its own to
+## [method evaluate]); [param cond] receives the current and the previous sample (their [code]meta[/code]); [param validate]
+## (optional) receives the [code]meta[/code] of all the frames and the data of the followed one ([method StripRecorder.target_info]).
+## With [param one_shot] (deaths and knockdowns: they cannot be repeated at will) a take with occluded frames is saved anyway.
 func add(id: String, title: String, target_key: String, cond: Callable, count: int = 12, interval_ms: int = 100,
 		pre_ms: int = 150, desc: String = "", validate: Callable = Callable(), one_shot: bool = false) -> void:
 	specs.append({"id": id, "title": title, "target": target_key, "cond": cond, "n": count,
@@ -76,7 +76,7 @@ func is_done(id: String) -> bool:
 	return done.has(id)
 
 
-## Ids de las tiras que aún faltan (de todos los objetivos, o solo de [param target_key]).
+## Ids of the strips still missing (of all the targets, or only of [param target_key]).
 func missing(target_key: String = "") -> PackedStringArray:
 	var out := PackedStringArray()
 	for spec: Dictionary in specs:
@@ -96,13 +96,13 @@ func is_recording() -> bool:
 	return not _pending.is_empty()
 
 
-## Descarta la tira en curso (se cambió de personaje seguido, murió o se perdió).
+## Discards the strip in progress (the followed character changed, died or was lost).
 func cancel() -> void:
 	_pending.clear()
 	_last_eval_ms = -1
 
 
-## Una vez por fotograma, tras [code]d.step()[/code]. [param target_key] es el tipo del personaje que sigue la grabadora.
+## Once per frame, after [code]d.step()[/code]. [param target_key] is the type of the character the recorder follows.
 func evaluate(target_key: String) -> void:
 	var ms: int = _rec.last_sample_ms()
 	if ms < 0 or ms == _last_eval_ms:
@@ -129,8 +129,8 @@ func evaluate(target_key: String) -> void:
 			return
 
 
-## Dispara una tira a mano (para los disparos que no salen de la muestra, como un golpe bloqueado): la toma cuenta como
-## si su condición se hubiera dado en [param trigger_ms].
+## Triggers a strip by hand (for triggers that do not come from the sample, such as a blocked hit): the take counts as
+## if its condition had occurred at [param trigger_ms].
 func trigger(id: String, trigger_ms: int) -> void:
 	if not _pending.is_empty() or done.has(id):
 		return

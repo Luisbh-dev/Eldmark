@@ -1,51 +1,51 @@
 class_name CombatTiming
 extends RefCounted
-## Plazos del combate que solo usa el servidor, ya en ticks (docs/combate.md, sección 2). Salen de
-## [CombatRules] (segundos en los [code].tres[/code]) con [code]roundi(s · 60)[/code], igual que el resto
-## del catálogo.
+## Combat time limits used only by the server, already in ticks (docs/combate.md, section 2). They come from
+## [CombatRules] (seconds in the [code].tres[/code] files) with [code]roundi(s · 60)[/code], like the rest
+## of the catalog.
 ## [br][br]
-## Las pruebas acortan los plazos largos (reaparición, por ejemplo) cambiando estos campos en el
-## [CombatTiming] que expone [method ZoneServer.get_combat_timing]; los valores por defecto son los
-## de los datos.
+## Tests shorten the long limits (respawn, for example) by changing these fields on the
+## [CombatTiming] exposed by [method ZoneServer.get_combat_timing]; the default values are
+## those of the data.
 
-## Segundos tras la muerte a los que la reaparición se hace sola si el jugador no la pide.
+## Seconds after death at which respawn happens on its own if the player does not request it.
 const AUTO_RESPAWN_S: float = 30.0
-## Segundos sin recibir daño tras los que el maniquí de entrenamiento se cura del todo.
+## Seconds without taking damage after which the training dummy fully heals.
 const DUMMY_HEAL_S: float = 5.0
-## Cada cuántos ticks sale una oleada de reaparición en una zona con fortaleza (10 s).
+## How many ticks between respawn waves in a zone with a fortress (10 s).
 const WAVE_TICKS: int = 600
-## Ticks de adelanto con los que se admite un RESPAWN_REQUEST antes de [member Combatant.respawn_tick]:
-## el cliente cuenta el tick del servidor por delante (lleva la antelación de sus entradas), así que
-## su botón puede llegar un par de ticks antes de que el servidor lo permita. La petición queda
-## pendiente hasta que llega el momento.
+## Ticks of lead with which a RESPAWN_REQUEST is accepted before [member Combatant.respawn_tick]:
+## the client counts the server's tick ahead (it carries its inputs' lead), so
+## its button may arrive a couple of ticks before the server allows it. The request stays
+## pending until the time comes.
 const RESPAWN_REQUEST_SLACK_TICKS: int = 12
 
-## Ticks "en combate" tras dar o recibir daño.
+## Ticks "in combat" after dealing or receiving damage.
 var in_combat: int = 600
-## Ticks desde la muerte hasta que se puede reaparecer.
+## Ticks from death until respawning is possible.
 var respawn: int = 600
-## Ticks tras la muerte en los que la reaparición se hace sola (en el primer punto del reino); con oleadas, en la
-## primera oleada a partir de ahí ([method auto_respawn_tick_for]).
+## Ticks after death at which respawn happens on its own (at the realm's first point); with waves, in the
+## first wave from there on ([method auto_respawn_tick_for]).
 var auto_respawn: int = 1800
-## Ticks de protección tras reaparecer.
+## Ticks of protection after respawning.
 var protection: int = 180
-## Oleadas de reaparición (docs/fuerte.md, sección 5; GUE-14): si es mayor que 1, nadie reaparece fuera
-## de un múltiplo de este número de ticks (el primero que cae a [member respawn] ticks o más de la
-## muerte si lo pide, y el primero a [member auto_respawn] ticks o más si no lo pide). 0 = sin oleadas,
-## reaparece a los [member respawn] ticks. El servidor lo pone a [constant WAVE_TICKS] en las zonas con
-## fortaleza.
+## Respawn waves (docs/fuerte.md, section 5; GUE-14): if greater than 1, nobody respawns outside
+## a multiple of this number of ticks (the first one that falls [member respawn] ticks or more after
+## death if they request it, and the first one [member auto_respawn] ticks or more after if they do not). 0 = no waves,
+## respawn at [member respawn] ticks. The server sets it to [constant WAVE_TICKS] in zones with a
+## fortress.
 var respawn_wave_ticks: int = 0
-## Ventana (ticks) en la que se cuentan los controles encadenados y ticks de inmunidad tras la cadena.
+## Window (ticks) in which chained controls are counted, and ticks of immunity after the chain.
 var cc_window: int = 180
 var cc_immunity: int = 120
-## Ticks de tambaleo del atacante parado y de aturdimiento tras una rotura de guardia.
+## Ticks of stagger for the parried attacker and of stun after a guard break.
 var parry_stagger: int = 36
 var guard_break_stun: int = 60
-## Ticks sin daño tras los que se cura el maniquí.
+## Ticks without damage after which the dummy heals.
 var dummy_heal: int = 300
 
 
-## Los plazos de [param rules] en ticks.
+## The time limits of [param rules] in ticks.
 static func from_rules(rules: CombatRules) -> CombatTiming:
 	var timing := CombatTiming.new()
 	timing.in_combat = seconds_to_ticks(rules.in_combat_s)
@@ -60,25 +60,25 @@ static func from_rules(rules: CombatRules) -> CombatTiming:
 	return timing
 
 
-## Segundos a ticks de simulación ([constant CombatCatalog.TICK_RATE] por segundo), redondeando.
+## Seconds to simulation ticks ([constant CombatCatalog.TICK_RATE] per second), rounding.
 static func seconds_to_ticks(seconds: float) -> int:
 	return roundi(seconds * float(CombatCatalog.TICK_RATE))
 
 
-## Primer tick en el que puede reaparecer quien muere en [param death_tick]: [member respawn] ticks
-## después o, con oleadas ([member respawn_wave_ticks]), el primer múltiplo de la oleada a partir de ahí.
+## First tick at which whoever dies at [param death_tick] can respawn: [member respawn] ticks
+## later or, with waves ([member respawn_wave_ticks]), the first wave multiple from there on.
 func respawn_tick_for(death_tick: int) -> int:
 	return _on_wave(death_tick + respawn)
 
 
-## Tick en el que reaparece solo quien muere en [param death_tick] y no lo ha pedido: [member auto_respawn]
-## ticks después o, con oleadas, el primer múltiplo de la oleada a partir de ahí (la reaparición
-## automática también sale en oleada).
+## Tick at which whoever dies at [param death_tick] and has not requested it respawns on their own: [member auto_respawn]
+## ticks later or, with waves, the first wave multiple from there on (automatic respawn
+## also comes out in a wave).
 func auto_respawn_tick_for(death_tick: int) -> int:
 	return _on_wave(death_tick + auto_respawn)
 
 
-# [param earliest] o, con oleadas, el primer múltiplo de la oleada que no es anterior.
+# [param earliest] or, with waves, the first wave multiple that is not earlier.
 func _on_wave(earliest: int) -> int:
 	if respawn_wave_ticks <= 1:
 		return earliest

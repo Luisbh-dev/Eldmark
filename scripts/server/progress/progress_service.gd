@@ -1,81 +1,81 @@
 class_name ProgressService
 extends RefCounted
-## El progreso de los personajes en la zona (docs/progresion.md §4, §8 y §9): la carga antes del WELCOME
-## ([method prepare]), el alta ([method on_arrival] y [method after_spawn]), el inventario por la red
-## ([method handle_packet] y [method apply_pending]), lo que el servidor cambia por su cuenta (CONSUME en
-## [method after_simulate], CAMP_REFILL en [method camp_step]), la sección [code]progress[/code] de
-## [CharacterSaver] ([method setup] la registra la primera) y la baja ([method on_departure]). Cada personaje con
-## peer tiene un [PlayerProgress] atado a su [code]net_id[/code] desde el alta hasta la baja; los jugadores falsos
-## no tienen ninguno, y todo gancho por [code]net_id[/code] sobre uno sin [PlayerProgress] no hace nada (§9.2).
+## Character progress in the zone (docs/progresion.md §4, §8 and §9): loading before the WELCOME
+## ([method prepare]), registration ([method on_arrival] and [method after_spawn]), the inventory over the network
+## ([method handle_packet] and [method apply_pending]), what the server changes on its own (CONSUME in
+## [method after_simulate], CAMP_REFILL in [method camp_step]), the [code]progress[/code] section of
+## [CharacterSaver] ([method setup] registers it first) and departure ([method on_departure]). Each character with a
+## peer has a [PlayerProgress] tied to its [code]net_id[/code] from registration to departure; fake players have none,
+## and every hook by [code]net_id[/code] on one without a [PlayerProgress] does nothing (§9.2).
 ## [br][br]
-## [b]Con plataforma[/b] todo jugador con peer es persistente: su registro llega en la reclamación ([method
-## prepare]) y se guarda. [b]Sin ella[/b] (§9.4) es efímero: el alta crea un personaje nuevo de su reino con el kit
-## de la plantilla de LOADOUT_SELECT (o la de por defecto), ids locales y nada que guardar.
+## [b]With a platform[/b] every player with a peer is persistent: its record arrives in the claim ([method
+## prepare]) and is saved. [b]Without one[/b] (§9.4) it is ephemeral: registration creates a new character of its realm
+## with the kit of the LOADOUT_SELECT template (or the default one), local ids and nothing to save.
 ## [br][br]
-## [b]El alta[/b] (§8 y §9.1): la regla de volver al mundo (en las zonas RVR, el campamento del reino, donde ya lo
-## pone la zona; en las SAFE, el sitio guardado si vale), la vida guardada con la regeneración del tiempo sin
-## conexión, el temporizador de /atascado, el kit de la primera entrada (crítico), el nivel y la apariencia en la
-## entidad, y el [ProgressService.Loadout] con el que la zona lo equipa en lugar de la plantilla. Tras el SPAWN
-## propio, [method after_spawn] manda INVENTORY_FULL, un WALLET_UPDATE por moneda y un PROGRESS_UPDATE.
+## [b]Registration[/b] (§8 and §9.1): the rule for returning to the world (in RvR zones, the realm's camp, where the
+## zone already puts it; in SAFE ones, the saved spot if valid), the saved health with regeneration for the offline
+## time, the /atascado (/stuck) timer, the first-entry kit (critical), the level and appearance on the entity, and the
+## [ProgressService.Loadout] with which the zone equips it instead of the template. After its own SPAWN,
+## [method after_spawn] sends INVENTORY_FULL, one WALLET_UPDATE per currency and one PROGRESS_UPDATE.
 ## [br][br]
-## [b]Peticiones[/b] (§4.2): RATE al llegar (8 por segundo con ráfaga de 16, y 2 SPLIT o DESTROY por segundo con
-## ráfaga de 10; pasados los diez primeros descartes de cada 10 s, cada uno suma un aviso), en cola y aplicadas al
-## final del tick tras las altas, en orden de llegada. Cada una recibe su INVENTORY_DELTA; un cambio de las
-## ranuras de arma impone las armas ([method ActionMachine.set_weapons], sin reiniciar reutilizaciones) con su
-## LOADOUT, y uno de la cantidad de un consumible, las cargas ([code]min(15, bolsa)[/code], §4.4).
+## [b]Requests[/b] (§4.2): RATE on arrival (8 per second with a burst of 16, and 2 SPLIT or DESTROY per second with a
+## burst of 10; after the first ten, discards in each 10 s each add a strike), queued and applied at the end of the
+## tick after registrations, in arrival order. Each one receives its INVENTORY_DELTA; a change of the weapon slots
+## imposes the weapons ([method ActionMachine.set_weapons], without restarting cooldowns) with its LOADOUT, and one of
+## a consumable's quantity, the charges ([code]min(15, bag)[/code], §4.4).
 ## [br][br]
-## [b]Ids[/b] ([IdAllocator], §4.5): sin plataforma, [method IdAllocator.local]; con ella, los bloques que llegan
-## como eventos [code]id_block[/code] (el primero, del arranque de la plataforma, en el primer «poll») y uno nuevo
-## cada vez que quedan pocos ([signal IdAllocator.running_low]), con uno en vuelo como mucho.
+## [b]Ids[/b] ([IdAllocator], §4.5): without a platform, [method IdAllocator.local]; with one, the blocks that arrive
+## as [code]id_block[/code] events (the first, from the platform startup, in the first "poll") and a new one each time
+## few remain ([signal IdAllocator.running_low]), with at most one in flight.
 ## [br][br]
-## [b]Recompensas[/b] (§6.2, P5c): méritos de PvP ([method on_merits]: solo con una víctima persistente de otro
-## reino) y de objetivo ([method on_objective_ticks]: un mérito por segundo en el círculo activo de un ciclo de
-## verdad), con [code]méritos × 10[/code] de XP; XP y oro de los PNJ a cada contribuyente ([method on_npc_killed]);
-## y la de captura ([method on_capture]: 300 XP y 20 de oro, una vez por personaje y fortaleza cada 30 min, con el
-## temporizador [code]capture:<fortress_id>[/code]). Cobra quien tiene [PlayerProgress] y no está marcado por un
-## comando de GM ([member NetEntity.gm_forced]); con plataforma y [code]--fake-players[/code], nadie. Lo ganado
-## cambia el saldo al momento (agregado, §5.2) y llega al dueño por [method flush]; subir de nivel pone
-## [member NetEntity.level], manda el LEVEL_UP ([member level_up_sink]) y marca el guardado como crítico, igual que
-## cobrar una captura.
+## [b]Rewards[/b] (§6.2, P5c): PvP merits ([method on_merits]: only with a persistent victim of another realm) and
+## objective merits ([method on_objective_ticks]: one merit per second in the active circle of a real cycle), with
+## [code]merits × 10[/code] of XP; XP and gold from NPCs to each contributor ([method on_npc_killed]); and the capture
+## reward ([method on_capture]: 300 XP and 20 gold, once per character and fortress every 30 min, with the
+## [code]capture:<fortress_id>[/code] timer). Whoever has a [PlayerProgress] and is not marked by a GM command
+## ([member NetEntity.gm_forced]) is paid; with a platform and [code]--fake-players[/code], nobody. What is earned
+## changes the balance immediately (aggregate, §5.2) and reaches the owner through [method flush]; levelling up sets
+## [member NetEntity.level], sends the LEVEL_UP ([member level_up_sink]) and marks the save as critical, as does
+## collecting a capture reward.
 
-## La clave de la sección en el cuerpo del guardado (plataforma.md §7.1).
+## The section's key in the save body (plataforma.md §7.1).
 const SECTION: StringName = &"progress"
-## Texto del REJECT UNAVAILABLE si el registro no se puede leer (plataforma.md §5.2).
+## Text of the REJECT UNAVAILABLE if the record cannot be read (plataforma.md §5.2).
 const PREPARE_FAILED_TEXT: String = "No se ha podido cargar el personaje"
-## Crítico del kit de inicio (§9.2).
+## Criticality of the starter kit (§9.2).
 const CRITICAL_STARTER_KIT: StringName = &"starter_kit"
-## NOTICE de CAMP_REFILL sin sitio en la bolsa (§4.4), una vez por entrada en la zona segura.
+## NOTICE for a CAMP_REFILL with no room in the bag (§4.4), once per entry into the safe zone.
 const BAG_FULL_TEXT: String = "Bolsa llena"
-## RATE (§4.2): peticiones por tick y ráfaga.
+## RATE (§4.2): requests per tick and burst.
 const REQUEST_RATE_PER_TICK: float = 8.0 / 60.0
 const REQUEST_BURST: float = 16.0
-## RATE de SPLIT y DESTROY, que gastan ids: por tick y ráfaga.
+## RATE of SPLIT and DESTROY, which spend ids: per tick and burst.
 const ID_REQUEST_RATE_PER_TICK: float = 2.0 / 60.0
 const ID_REQUEST_BURST: float = 10.0
-## INVENTORY_SYNC_REQUEST: uno cada 5 s; más, aviso (§4.6).
+## INVENTORY_SYNC_REQUEST: one every 5 s; more, a strike (§4.6).
 const SYNC_INTERVAL_TICKS: int = 300
-## WALLET_UPDATE y PROGRESS_UPDATE: uno cada 10 ticks por jugador como mucho (§12).
+## WALLET_UPDATE and PROGRESS_UPDATE: at most one every 10 ticks per player (§12).
 const FLUSH_INTERVAL_TICKS: int = 10
-## Temporizador de /atascado (§8).
+## The /atascado (/stuck) timer (§8).
 const TIMER_UNSTUCK: String = "unstuck"
-## Prefijo del temporizador de la recompensa de captura (§6.2 y §8): [code]capture:<fortress_id>[/code].
+## Prefix of the capture reward timer (§6.2 and §8): [code]capture:<fortress_id>[/code].
 const TIMER_CAPTURE_PREFIX: String = "capture:"
-## Críticos de la subida de nivel y de la recompensa de captura (§9.2).
+## Criticalities of levelling up and of the capture reward (§9.2).
 const CRITICAL_LEVEL_UP: StringName = &"level_up"
 const CRITICAL_CAPTURE: StringName = &"capture"
-## Recompensa de captura (§6.2): XP y oro a cada uno de la lista, una vez por personaje y fortaleza cada
-## [constant CAPTURE_COOLDOWN_S] segundos.
+## Capture reward (§6.2): XP and gold to each one on the list, once per character and fortress every
+## [constant CAPTURE_COOLDOWN_S] seconds.
 const CAPTURE_XP: int = 300
 const CAPTURE_GOLD: int = 20
 const CAPTURE_COOLDOWN_S: int = 1800
-## Ticks en el círculo activo que dan un mérito de objetivo: uno por segundo, los provisionales del marcador
-## ([ScoreKeeper], fuerte.md) hasta que PRG-09 los cambie.
+## Ticks in the active circle that give one objective merit: one per second, the scoreboard's provisional values
+## ([ScoreKeeper], fuerte.md) until PRG-09 changes them.
 const OBJECTIVE_TICKS_PER_MERIT: int = 60
-## Línea del registro al arrancar con plataforma y [code]--fake-players[/code] (§6.2).
+## Log line when starting with a platform and [code]--fake-players[/code] (§6.2).
 const FAKE_PLAYERS_TEXT: String = "Progreso: con --fake-players y la plataforma, la zona no da recompensas persistentes"
-## Zonas SAFE (§8): se vuelve al sitio guardado si se guardó hace menos de esto (s).
+## SAFE zones (§8): the character returns to the saved spot if it was saved less than this long ago (s).
 const RETURN_WINDOW_S: int = 900
-## Motivos de los avisos (red.md §12).
+## Reasons for the strikes (red.md §12).
 const STRIKE_NOT_IN_WORLD: String = "petición de inventario antes de entrar en el mundo"
 const STRIKE_MALFORMED: String = "petición de inventario mal formada"
 const STRIKE_INVALID: String = "petición de inventario no válida"
@@ -83,47 +83,48 @@ const STRIKE_RATE: String = "peticiones de inventario demasiado rápidas"
 const STRIKE_SYNC: String = "sincronías de inventario demasiado seguidas"
 
 
-## Las armas, la ranura activa y las cargas con las que el alta y la reaparición equipan al personaje en lugar de
-## la plantilla (§8).
+## The weapons, the active slot and the charges with which registration and respawn equip the character instead of
+## the template (§8).
 class Loadout:
 	extends RefCounted
-	## Ids de [CombatCatalog] de las ranuras 0 y 1 del equipo (0 = vacía).
+	## [CombatCatalog] ids of equipment slots 0 and 1 (0 = empty).
 	var weapon_1: int = 0
 	var weapon_2: int = 0
-	## La ranura 1 activa (bit0 de [code]combat_flags2[/code]).
+	## Slot 1 is active (bit0 of [code]combat_flags2[/code]).
 	var second_active: bool = false
-	## Empaquetadas como [member CombatState.consumable_charges]: [code]min(15, bolsa)[/code] de cada consumible.
+	## Packed as [member CombatState.consumable_charges]: [code]min(15, bag)[/code] of each consumable.
 	var charges: int = 0
 
 
-# Lo de red de un jugador con inventario en el mundo: su peer, sus ritmos y lo último que se le ha mandado.
+# The network state of a player with an inventory in the world: its peer, its pacing and the last thing sent to it.
 class _Session:
 	extends RefCounted
 	var net_id: int = 0
 	var peer: ServerPeer = null
 	var player: PlayerProgress = null
-	## El combate del cuerpo (el mismo desde el alta hasta la baja; null en un alta sin combate, que no pasa).
+	## The body's combat (the same from registration to departure; null on a registration without combat, which does not
+	## happen).
 	var combatant: Combatant = null
 	var requests: RateLimiter = RateLimiter.new(ProgressService.REQUEST_RATE_PER_TICK, ProgressService.REQUEST_BURST)
 	var id_requests: RateLimiter = RateLimiter.new(ProgressService.ID_REQUEST_RATE_PER_TICK,
 			ProgressService.ID_REQUEST_BURST)
 	var flood: ChatPeerState.FloodWindow = ChatPeerState.FloodWindow.new()
 	var last_sync_tick: int = -ProgressService.SYNC_INTERVAL_TICKS
-	## Las cargas antes del paso 1 del tick (−1 = sin cuerpo): CONSUME mira cuánto han bajado.
+	## The charges before step 1 of the tick (−1 = no body): CONSUME looks at how much they have dropped.
 	var charges_before: int = -1
-	## El último CAMP_REFILL (tick); el aviso de la bolsa llena sale una vez por entrada en la zona segura.
+	## The last CAMP_REFILL (tick); the full-bag notice goes out once per entry into the safe zone.
 	var last_camp_tick: int = -1
 	var bag_full_noticed: bool = false
-	## Lo último mandado: saldos (índice = moneda) y [nivel, xp_total, puntos de reino].
+	## The last thing sent: balances (index = currency) and [level, xp_total, realm points].
 	var sent_wallets: PackedInt64Array = PackedInt64Array()
 	var sent_progress: Array[int] = []
-	## Recompensa de captura: clave del temporizador ([code]capture:<id>[/code]) → tick desde el que vuelve a pagar.
+	## Capture reward: timer key ([code]capture:<id>[/code]) → tick from which it pays again.
 	var capture_ready: Dictionary[String, int] = {}
-	## Ticks de círculo que aún no llegan a un mérito de objetivo.
+	## Circle ticks that do not yet add up to an objective merit.
 	var objective_ticks: int = 0
 
 
-# Una petición en cola hasta el final del tick (request null = INVENTORY_SYNC_REQUEST).
+# A request queued until the end of the tick (request null = INVENTORY_SYNC_REQUEST).
 class _Pending:
 	extends RefCounted
 	var session: _Session = null
@@ -131,47 +132,47 @@ class _Pending:
 	var request: InventoryOps.Request = null
 
 
-## Registro (un [Callable] con un texto); sin él, print.
+## Log (a [Callable] with a text); without it, print.
 var log_sink: Callable = Callable()
-## [code](peer: ServerPeer, bytes: PackedByteArray) -> void[/code]: manda por el canal fiable (lo pone la zona).
+## [code](peer: ServerPeer, bytes: PackedByteArray) -> void[/code]: sends over the reliable channel (set by the zone).
 var send_sink: Callable = Callable()
-## [code](peer: ServerPeer, reason: String) -> void[/code]: suma un aviso al peer (red.md §12).
+## [code](peer: ServerPeer, reason: String) -> void[/code]: adds a strike to the peer (red.md §12).
 var strike_sink: Callable = Callable()
-## [code](peer: ServerPeer, text: String) -> void[/code]: un NOTICE informativo.
+## [code](peer: ServerPeer, text: String) -> void[/code]: an informational NOTICE.
 var notice_sink: Callable = Callable()
-## [code](net_id: int, level: int, s: int) -> void[/code]: el ENTITY_EVENT LEVEL_UP al dueño y a los de su reino que
-## lo tienen relevante (§6.3; lo pone la zona).
+## [code](net_id: int, level: int, s: int) -> void[/code]: the LEVEL_UP ENTITY_EVENT to the owner and to those of its
+## realm for whom it is relevant (§6.3; set by the zone).
 var level_up_sink: Callable = Callable()
-## [code](peer: ServerPeer, text: String) -> void[/code]: una línea de respuesta de un comando de [code]/gm[/code]
-## por el canal del sistema del chat (P5d; lo pone la zona).
+## [code](peer: ServerPeer, text: String) -> void[/code]: a response line of a [code]/gm[/code] command through the
+## chat's system channel (P5d; set by the zone).
 var reply_sink: Callable = Callable()
-## [code]() -> int[/code]: la hora Unix sin plataforma (P5d: el [code]detail.at_unix[/code] de las operaciones de GM
-## de los efímeros; lo pone la zona). Con plataforma manda [method ZonePlatform.now_unix].
+## [code]() -> int[/code]: Unix time without a platform (P5d: the [code]detail.at_unix[/code] of GM operations on
+## ephemeral characters; set by the zone). With a platform, [method ZonePlatform.now_unix] rules.
 var clock_unix: Callable = Callable()
 
 var _zone: ZoneServer = null
 var _platform: ZonePlatform = null
 var _saver: CharacterSaver = null
 var _commands: CommandRegistry = null
-## Los comandos de GM de §10 (P5d); null sin registro de comandos.
+## The GM commands of §10 (P5d); null without a command registry.
 var _gm: ProgressCommands = null
 var _ids: IdAllocator = null
 var _db: ItemDatabase = null
-## peer_id -> lo preparado en la reclamación, hasta el alta o la baja en LOADING.
+## peer_id -> what was prepared in the claim, until registration or departure during LOADING.
 var _prepared: Dictionary[int, PlayerProgress] = {}
-## net_id -> el progreso del cuerpo.
+## net_id -> the body's progress.
 var _players: Dictionary[int, PlayerProgress] = {}
-## net_id -> lo de red del jugador (peer, ritmos y lo último mandado).
+## net_id -> the player's network state (peer, pacing and last thing sent).
 var _sessions: Dictionary[int, _Session] = {}
-## Las mismas, en una lista (los pasos de cada tick la recorren sin crear un array nuevo).
+## The same ones, in a list (each tick's steps walk it without creating a new array).
 var _session_list: Array[_Session] = []
-## Peticiones del tick en orden de llegada.
+## The tick's requests in arrival order.
 var _pending: Array[_Pending] = []
-## Un bloque pedido y sin respuesta (el primero llega del arranque de la plataforma).
+## A block requested and not yet answered (the first one arrives from the platform startup).
 var _block_pending: bool = false
-## Con plataforma y --fake-players no se paga ninguna recompensa (§6.2).
+## With a platform and --fake-players no reward is paid (§6.2).
 var _rewards_blocked: bool = false
-## Id de texto → su huella u32 (ref_id de los PNJ y las fortalezas, §5.2).
+## Text id → its u32 fingerprint (ref_id of NPCs and fortresses, §5.2).
 var _ref_ids: Dictionary[StringName, int] = {}
 var _stats: Dictionary[StringName, int] = {
 	&"prepared": 0, &"prepare_failed": 0, &"appearance_replaced": 0, &"cancelled": 0, &"arrivals": 0,
@@ -183,10 +184,11 @@ var _stats: Dictionary[StringName, int] = {
 }
 
 
-## Engancha el servicio a [param zone]: con [param platform] y [param saver] (null sin plataforma, §9.4), registra la
-## sección [code]progress[/code] en [param saver] (la primera: es la única que puede devolver [code]{}[/code], y
-## [CharacterSaver] no deshace lo que haya construido otra antes en ese intento) y usa los bloques de la plataforma;
-## sin ella, ids locales. En [param commands] registra los comandos de GM de §10 ([ProgressCommands], P5d).
+## Hooks the service to [param zone]: with [param platform] and [param saver] (null without a platform, §9.4), it
+## registers the [code]progress[/code] section in [param saver] (the first one: it is the only one that can return
+## [code]{}[/code], and [CharacterSaver] does not undo what another built earlier in that attempt) and uses the
+## platform's blocks; without one, local ids. In [param commands] it registers the GM commands of §10
+## ([ProgressCommands], P5d).
 func setup(zone: ZoneServer, platform: ZonePlatform, saver: CharacterSaver, commands: CommandRegistry) -> void:
 	_zone = zone
 	_platform = platform
@@ -212,17 +214,17 @@ func setup(zone: ZoneServer, platform: ZonePlatform, saver: CharacterSaver, comm
 		_log(FAKE_PLAYERS_TEXT)
 
 
-## Arranque de la zona en el tick [param s]: con plataforma, el primer bloque ya está pedido (lo pide el arranque de
-## [ZonePlatform] antes de [signal ZonePlatform.startup_finished]) y llega como evento en el primer «poll».
+## Zone startup at tick [param s]: with a platform, the first block is already requested (requested by the
+## [ZonePlatform] startup before [signal ZonePlatform.startup_finished]) and arrives as an event in the first "poll".
 func start(_s: int) -> void:
 	_block_pending = _platform != null
 
 
-## Paso (3) de plataforma.md §5.2, antes del WELCOME (§9.1 paso 2): lee el registro de la reclamación
-## ([method ProgressRecord.from_dictionary]), valida la apariencia con la raza y el reino del personaje (una que no
-## vale se sustituye por la de por defecto de su raza, con aviso, sin echar al jugador) y prepara su
-## [PlayerProgress] para el alta. false si el registro no se puede leer: la zona responde REJECT UNAVAILABLE
-## ([constant PREPARE_FAILED_TEXT]), lo registra como alerta y libera.
+## Step (3) of plataforma.md §5.2, before the WELCOME (§9.1 step 2): reads the record from the claim
+## ([method ProgressRecord.from_dictionary]), validates the appearance against the character's race and realm (an
+## invalid one is replaced by its race's default, with a warning, without kicking the player) and prepares its
+## [PlayerProgress] for registration. false if the record cannot be read: the zone answers REJECT UNAVAILABLE
+## ([constant PREPARE_FAILED_TEXT]), logs it as an alert and releases.
 func prepare(peer_id: int, claimed: ClaimedCharacter) -> bool:
 	if claimed == null:
 		return false
@@ -240,19 +242,19 @@ func prepare(peer_id: int, claimed: ClaimedCharacter) -> bool:
 	return true
 
 
-## La baja en LOADING (§9.1 paso 3): descarta lo preparado para [param peer_id]. Sin nada, nada.
+## Departure during LOADING (§9.1 step 3): discards what was prepared for [param peer_id]. With nothing, nothing.
 func cancel_prepared(peer_id: int) -> void:
 	if _prepared.erase(peer_id):
 		_stats[&"cancelled"] += 1
 
 
-## El alta de [param entity] (§9.1 paso 4), tras [method CharacterSaver.track] y antes del SPAWN: ata al
-## [code]net_id[/code] el [PlayerProgress] preparado para [param peer] o, sin plataforma, uno efímero nuevo (§9.4);
-## aplica la regla de volver al mundo (§8: sitio y vida), restaura el temporizador de /atascado, toma la foto del
-## cuerpo como confirmada (entrar sin cambiar nada no ensucia), da el kit de la primera entrada (crítico, §2.5) y
-## pone el nivel y la apariencia en la entidad. Devuelve el [ProgressService.Loadout] con el que el alta equipa al
-## personaje en lugar de la plantilla; null sin peer o, con plataforma, sin nada preparado (la plantilla, como un
-## falso).
+## Registration of [param entity] (§9.1 step 4), after [method CharacterSaver.track] and before the SPAWN: ties to the
+## [code]net_id[/code] the [PlayerProgress] prepared for [param peer] or, without a platform, a new ephemeral one (§9.4);
+## applies the rule for returning to the world (§8: spot and health), restores the /atascado (/stuck) timer, takes the
+## body's snapshot as confirmed (entering without changing anything does not make it dirty), gives the first-entry kit
+## (critical, §2.5) and sets the level and appearance on the entity. Returns the [ProgressService.Loadout] with which
+## registration equips the character instead of the template; null without a peer or, with a platform, with nothing
+## prepared (the template, as for a fake player).
 func on_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> Loadout:
 	if entity == null or peer == null:
 		return null
@@ -267,7 +269,7 @@ func on_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> Loadout:
 	var net_id: int = entity.net_id
 	player.arrival_tick = s
 	player.played_base = player.record.played_seconds
-	# Un Callable de método (sin lambda): no guarda una referencia fuerte al servicio ni al propio progreso.
+	# A method Callable (no lambda): it holds no strong reference to the service or to the progress itself.
 	player.live_source = Callable(self, "_live_of").bind(net_id)
 	_players[net_id] = player
 	_return_to_world(entity, player)
@@ -295,8 +297,8 @@ func on_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> Loadout:
 	return _loadout(player, true)
 
 
-## Tras el SPAWN propio (§9.1 paso 5): INVENTORY_FULL (en páginas), un WALLET_UPDATE por moneda (delta 0) y un
-## PROGRESS_UPDATE del estado. Sin [PlayerProgress], nada.
+## After its own SPAWN (§9.1 step 5): INVENTORY_FULL (in pages), one WALLET_UPDATE per currency (delta 0) and one
+## PROGRESS_UPDATE of the state. Without a [PlayerProgress], nothing.
 func after_spawn(entity: NetEntity, _peer: ServerPeer, _s: int) -> void:
 	var session: _Session = _sessions.get(entity.net_id) if entity != null else null
 	if session == null:
@@ -311,34 +313,34 @@ func after_spawn(entity: NetEntity, _peer: ServerPeer, _s: int) -> void:
 	_send_progress(session)
 
 
-## El equipo con el que reaparece [param net_id] (§8): sus armas, la ranura 1 activa solo si WEAPON_1 está vacía
-## y las cargas de su bolsa. null sin [PlayerProgress] (quien llama usa la plantilla, como con un falso).
+## The equipment with which [param net_id] respawns (§8): its weapons, slot 1 active only if WEAPON_1 is empty and the
+## charges of its bag. null without a [PlayerProgress] (the caller uses the template, as with a fake player).
 func loadout_for(net_id: int) -> Loadout:
 	var player: PlayerProgress = _players.get(net_id)
 	return _loadout(player, false) if player != null else null
 
 
-## true si [param net_id] tiene [PlayerProgress] (un jugador con peer).
+## true if [param net_id] has a [PlayerProgress] (a player with a peer).
 func has_inventory(net_id: int) -> bool:
 	return _players.has(net_id)
 
 
-## El nivel de [param net_id]; 0 sin [PlayerProgress].
+## The level of [param net_id]; 0 without a [PlayerProgress].
 func level_of(net_id: int) -> int:
 	var player: PlayerProgress = _players.get(net_id)
 	return player.record.level if player != null else 0
 
 
-## El [code]character_id[/code] persistente de [param net_id]; 0 sin [PlayerProgress] o si es efímero.
+## The persistent [code]character_id[/code] of [param net_id]; 0 without a [PlayerProgress] or if it is ephemeral.
 func character_id_of(net_id: int) -> int:
 	var player: PlayerProgress = _players.get(net_id)
 	return player.character_id if player != null and player.persistent else 0
 
 
-## INVENTORY_REQUEST (0x50) o INVENTORY_SYNC_REQUEST (0x53) de [param peer], en el «poll»: fuera del mundo o mal
-## formado suma un aviso; RATE se mira al llegar, antes que nada (responde ya con el contenido real de las ranuras
-## que tocaba); lo demás va a la cola de [method apply_pending]. Una sincronía antes de 5 s suma un aviso y no se
-## contesta.
+## INVENTORY_REQUEST (0x50) or INVENTORY_SYNC_REQUEST (0x53) from [param peer], in the "poll": outside the world or
+## malformed adds a strike; RATE is checked on arrival, before anything else (it answers immediately with the real
+## contents of the slots concerned); the rest goes to the queue of [method apply_pending]. A sync within 5 s adds a
+## strike and is not answered.
 func handle_packet(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if peer == null or bytes.is_empty() or peer.state == ServerPeer.State.LEAVING:
 		return
@@ -391,10 +393,10 @@ func handle_packet(peer: ServerPeer, bytes: PackedByteArray) -> void:
 			_strike(peer, STRIKE_MALFORMED)
 
 
-## Las peticiones del tick [param s] (§4.2), al final del tick y tras las altas, en orden de llegada: cada una con
-## el [InventoryOps.Context] del [CombatState] del servidor (la ranura activa, si puede tocar el equipo y si está
-## bebiendo), su INVENTORY_DELTA de respuesta y, si se aplica, las armas y las cargas impuestas. INVALID suma un
-## aviso. Las sincronías, su INVENTORY_FULL con el estado de ese momento.
+## The requests of tick [param s] (§4.2), at the end of the tick and after registrations, in arrival order: each with
+## the [InventoryOps.Context] of the server's [CombatState] (the active slot, whether it can touch equipment and whether
+## it is drinking), its INVENTORY_DELTA as the response and, if applied, the imposed weapons and charges. INVALID adds a
+## strike. Syncs get their INVENTORY_FULL with the state of that moment.
 func apply_pending(s: int) -> void:
 	if _pending.is_empty():
 		return
@@ -411,18 +413,18 @@ func apply_pending(s: int) -> void:
 			_apply_request(session, entry, s)
 
 
-## Antes del paso 1 (simular) del tick [param s]: las cargas de cada jugador con inventario, para que
-## [method after_simulate] vea cuánto han bajado.
+## Before step 1 (simulate) of tick [param s]: the charges of each player with an inventory, so that
+## [method after_simulate] sees how much they have dropped.
 func before_simulate(_s: int) -> void:
 	for session: _Session in _session_list:
 		session.charges_before = session.combatant.get_character().combat.consumable_charges \
 				if session.combatant != null else -1
 
 
-## Tras el paso 1 del tick [param s] (§4.4): CONSUME. Si bajó la carga de un consumible (el compromiso de beber,
-## habilidades.md §3.3 regla 5), se quita esa cantidad de la pila de su definición con la ranura de bolsa más baja
-## (agregado), sale su INVENTORY_DELTA y se imponen las cargas ([code]min(15, bolsa)[/code]: con más de 15, la carga
-## vuelve a 15 con un LOADOUT). Beber interrumpido no baja la carga y no gasta nada.
+## After step 1 of tick [param s] (§4.4): CONSUME. If a consumable's charge dropped (the commitment to drink,
+## habilidades.md §3.3 rule 5), that amount is removed from the stack of its definition with the lowest bag slot
+## (aggregate), its INVENTORY_DELTA goes out and the charges are imposed ([code]min(15, bag)[/code]: with more than 15,
+## the charge goes back to 15 with a LOADOUT). An interrupted drink does not lower the charge and spends nothing.
 func after_simulate(s: int) -> void:
 	for session: _Session in _session_list:
 		var before: int = session.charges_before
@@ -456,11 +458,11 @@ func after_simulate(s: int) -> void:
 			_impose_charges(session, combatant, s)
 
 
-## CAMP_REFILL de [param entity] en el tick [param s] (§4.4): lo llama la recarga del campamento (paso 8, cada 60
-## ticks, vivo, fuera de combate y en la zona segura de su reino) en lugar de la de la plantilla. Repone el total
-## de cada definición con [member ItemDefinition.camp_refill] (agregado), con su INVENTORY_DELTA y las cargas; sin
-## sitio para una pila nueva, NOTICE «Bolsa llena» una vez por entrada en la zona segura (una entrada: no haber
-## repuesto en la recarga anterior). Sin [PlayerProgress], nada.
+## CAMP_REFILL of [param entity] at tick [param s] (§4.4): called by the camp restock (step 8, every 60 ticks, alive,
+## out of combat and in its realm's safe zone) instead of the template's. Restocks the total of each definition with
+## [member ItemDefinition.camp_refill] (aggregate), with its INVENTORY_DELTA and the charges; with no room for a new
+## stack, NOTICE "Bolsa llena" (bag full) once per entry into the safe zone (an entry: not having restocked in the
+## previous restock). Without a [PlayerProgress], nothing.
 func camp_step(entity: NetEntity, s: int) -> void:
 	var session: _Session = _sessions.get(entity.net_id) if entity != null else null
 	var combatant: Combatant = session.combatant if session != null else null
@@ -481,10 +483,10 @@ func camp_step(entity: NetEntity, s: int) -> void:
 			notice_sink.call(session.peer, BAG_FULL_TEXT)
 
 
-## El comando 16 [code]refill[/code] (y el [code]refill[/code] de la consola) para quien tiene inventario (§4.4):
-## sin plataforma, un CAMP_REFILL forzado (agregado) sin mirar zona ni combate, con su delta, las cargas y LOADOUT
-## al dueño. false si [param net_id] no tiene inventario o no está vivo; también con plataforma, donde es una
-## operación GM ([method ProgressCommands.net_refill], P5d).
+## The command 16 [code]refill[/code] (and the console's [code]refill[/code]) for whoever has an inventory (§4.4):
+## without a platform, a forced CAMP_REFILL (aggregate) ignoring zone and combat, with its delta, the charges and
+## LOADOUT to the owner. false if [param net_id] has no inventory or is not alive; also with a platform, where it is a
+## GM operation ([method ProgressCommands.net_refill], P5d).
 func force_refill(net_id: int, s: int) -> bool:
 	var session: _Session = _sessions.get(net_id)
 	var combatant: Combatant = session.combatant if session != null else null
@@ -498,10 +500,10 @@ func force_refill(net_id: int, s: int) -> bool:
 	return true
 
 
-## WALLET_UPDATE y PROGRESS_UPDATE del tick [param s] (§12): a cada jugador, uno cada
-## [constant FLUSH_INTERVAL_TICKS] ticks como mucho (escalonado por [code]net_id[/code]), con el delta sumado de
-## cada moneda que ha cambiado (y el motivo de su último cambio) y, si cambió el nivel, la XP o los puntos de reino,
-## el progreso con lo ganado desde el anterior.
+## WALLET_UPDATE and PROGRESS_UPDATE of tick [param s] (§12): to each player, at most one every
+## [constant FLUSH_INTERVAL_TICKS] ticks (staggered by [code]net_id[/code]), with the summed delta of each currency that
+## has changed (and the reason for its last change) and, if the level, XP or realm points changed, the progress with
+## what was gained since the previous one.
 func flush(s: int) -> void:
 	for session: _Session in _session_list:
 		if (s + session.net_id) % FLUSH_INTERVAL_TICKS != 0:
@@ -518,9 +520,9 @@ func flush(s: int) -> void:
 			_send_progress(session)
 
 
-## Guarda en el registro de [param net_id] el temporizador [param key] que vence en el tick [param ready_tick],
-## visto en el tick [param s] (§8: [code]ends_at_unix[/code] con la hora de la plataforma). Uno vencido se quita.
-## Sin plataforma (o en un efímero) no hay temporizadores que guardar.
+## Stores in the record of [param net_id] the timer [param key] that expires at tick [param ready_tick], seen at tick
+## [param s] (§8: [code]ends_at_unix[/code] with the platform's time). An expired one is removed. Without a platform
+## (or on an ephemeral character) there are no timers to save.
 func set_timer(net_id: int, key: String, ready_tick: int, s: int) -> void:
 	var player: PlayerProgress = _players.get(net_id)
 	var now: int = _platform.now_unix() if _platform != null else 0
@@ -532,12 +534,12 @@ func set_timer(net_id: int, key: String, ready_tick: int, s: int) -> void:
 		player.record.timers[key] = PlayerProgress.ends_at_unix_for(ready_tick, s, now)
 
 
-## Méritos de PRG-09 para [param net_id] en el tick [param s] (§6.2): [param amount] de [param reason]
-## (PVP_KILL, PVP_ASSIST u OBJECTIVE) y [code]amount × 10[/code] de XP. Los de PvP solo con una víctima
-## ([param victim_net_id]) persistente de otro reino: la de un PNJ, un falso o un efímero no da nada, y su apunte
-## lleva el [code]character_id[/code] de la víctima. Los de objetivo van sin víctima (0). Sube los puntos de reino con
-## lo apuntado (I9). Nada sin [PlayerProgress], con [member NetEntity.gm_forced] o con plataforma y
-## [code]--fake-players[/code].
+## PRG-09 merits for [param net_id] at tick [param s] (§6.2): [param amount] of [param reason]
+## (PVP_KILL, PVP_ASSIST or OBJECTIVE) and [code]amount × 10[/code] of XP. PvP ones only with a persistent victim
+## ([param victim_net_id]) of another realm: that of an NPC, a fake player or an ephemeral character gives nothing, and
+## its ledger entry carries the victim's [code]character_id[/code]. Objective ones go without a victim (0). Raises realm
+## points with what is recorded (I9). Nothing without a [PlayerProgress], with [member NetEntity.gm_forced] or with a
+## platform and [code]--fake-players[/code].
 func on_merits(net_id: int, amount: int, reason: int, victim_net_id: int, s: int) -> void:
 	if amount <= 0 or not EconomyReason.gives_realm_points(reason):
 		return
@@ -558,10 +560,10 @@ func on_merits(net_id: int, amount: int, reason: int, victim_net_id: int, s: int
 			ProgressMessages.XpSource.PVP, s)
 
 
-## [param ticks] más de [param net_id] en el círculo activo de [param fortress_id] en el tick [param s] (la señal
-## [signal FortressController.objective_time]: ciclo de verdad y sin [member NetEntity.gm_forced]): cada
-## [constant OBJECTIVE_TICKS_PER_MERIT] ticks acumulados son un mérito de objetivo (motivo OBJECTIVE, con la
-## fortaleza como referencia) y su XP.
+## [param ticks] more of [param net_id] in the active circle of [param fortress_id] at tick [param s] (the signal
+## [signal FortressController.objective_time]: real cycle and without [member NetEntity.gm_forced]): every
+## [constant OBJECTIVE_TICKS_PER_MERIT] accumulated ticks are one objective merit (reason OBJECTIVE, with the fortress
+## as reference) and its XP.
 func on_objective_ticks(fortress_id: StringName, net_id: int, ticks: int, s: int) -> void:
 	if ticks <= 0:
 		return
@@ -578,10 +580,10 @@ func on_objective_ticks(fortress_id: StringName, net_id: int, ticks: int, s: int
 			ProgressMessages.XpSource.CAPTURE, s)
 
 
-## Ha muerto un PNJ de [param npc] en el tick [param s] (§6.2): cada uno de [param contributors] (quienes hicieron al
-## menos el 10 % del daño de la ventana, [method DamageLedger.contributors]) recibe la recompensa entera:
-## [member NpcDefinition.xp_reward] de XP y [member NpcDefinition.gold_reward] de oro (NPC_KILL, con el PNJ como
-## referencia). Sin méritos. La zona no lo llama si el PNJ defendía una fortaleza en un ciclo forzado.
+## An NPC of [param npc] has died at tick [param s] (§6.2): each of [param contributors] (those who did at least 10 %
+## of the window's damage, [method DamageLedger.contributors]) receives the whole reward:
+## [member NpcDefinition.xp_reward] of XP and [member NpcDefinition.gold_reward] of gold (NPC_KILL, with the NPC as
+## reference). No merits. The zone does not call it if the NPC was defending a fortress in a forced cycle.
 func on_npc_killed(npc: NpcDefinition, contributors: PackedInt32Array, s: int) -> void:
 	if npc == null or (npc.xp_reward <= 0 and npc.gold_reward <= 0):
 		return
@@ -596,13 +598,12 @@ func on_npc_killed(npc: NpcDefinition, contributors: PackedInt32Array, s: int) -
 		_grant_xp(session, npc.xp_reward, ProgressMessages.XpSource.NPC, s)
 
 
-## Captura de verdad de [param fortress_id] por [param owner_realm] en el tick [param s]
-## ([signal FortressController.fortress_captured]): cada uno de [param in_circle] (la lista de plataforma.md §8, la
-## misma que suma [code]ScoreKeeper.captures[/code]) de ese reino recibe [constant CAPTURE_XP] de XP y
-## [constant CAPTURE_GOLD] de oro (OBJECTIVE, con la fortaleza como referencia), una vez cada
-## [constant CAPTURE_COOLDOWN_S] s por fortaleza: con plataforma, el temporizador
-## [code]capture:<fortress_id>[/code] se guarda y vuelve con el personaje (§8). Cobrar marca el guardado como
-## crítico. Una captura forzada no llega aquí.
+## Real capture of [param fortress_id] by [param owner_realm] at tick [param s]
+## ([signal FortressController.fortress_captured]): each one in [param in_circle] (the list from plataforma.md §8, the
+## same one that [code]ScoreKeeper.captures[/code] adds up) of that realm receives [constant CAPTURE_XP] of XP and
+## [constant CAPTURE_GOLD] of gold (OBJECTIVE, with the fortress as reference), once every
+## [constant CAPTURE_COOLDOWN_S] s per fortress: with a platform, the [code]capture:<fortress_id>[/code] timer is saved
+## and returns with the character (§8). Collecting marks the save as critical. A forced capture does not get here.
 func on_capture(fortress_id: StringName, owner_realm: int, in_circle: PackedInt32Array, s: int) -> void:
 	var key: String = TIMER_CAPTURE_PREFIX + String(fortress_id)
 	for net_id: int in in_circle:
@@ -625,34 +626,34 @@ func on_capture(fortress_id: StringName, owner_realm: int, in_circle: PackedInt3
 		_log("Progreso: net_id %d (%s) cobra la captura de %s" % [net_id, _who(session.player), fortress_id])
 
 
-## true si la zona no paga recompensas: con plataforma y [code]--fake-players[/code] (§6.2).
+## true if the zone pays no rewards: with a platform and [code]--fake-players[/code] (§6.2).
 func rewards_blocked() -> bool:
 	return _rewards_blocked
 
 
-## El progreso atado a [param net_id], o null (pruebas y paquetes siguientes).
+## The progress tied to [param net_id], or null (tests and following packages).
 func get_player(net_id: int) -> PlayerProgress:
 	return _players.get(net_id)
 
 
-## Lo preparado para [param peer_id] y aún sin alta, o null.
+## What was prepared for [param peer_id] and not yet registered, or null.
 func get_prepared(peer_id: int) -> PlayerProgress:
 	return _prepared.get(peer_id)
 
 
-## El generador de ids de la zona.
+## The zone's id generator.
 func get_ids() -> IdAllocator:
 	return _ids
 
 
-## Peticiones en cola para el final del tick (pruebas).
+## Requests queued for the end of the tick (tests).
 func pending_count() -> int:
 	return _pending.size()
 
 
-## Un evento de la plataforma de los suyos (§14.2): [code]id_block[/code] (un bloque nuevo; si quedan pocos, pide
-## otro), [code]progress_op[/code] y [code]progress_ledger[/code] (las respuestas de [code]op_show[/code],
-## [code]op_revert[/code] y [code]ledger_show[/code], que atiende [ProgressCommands]). true si era suyo.
+## A platform event of its own (§14.2): [code]id_block[/code] (a new block; if few remain, it requests another),
+## [code]progress_op[/code] and [code]progress_ledger[/code] (the responses of [code]op_show[/code],
+## [code]op_revert[/code] and [code]ledger_show[/code], handled by [ProgressCommands]). true if it was its own.
 func on_platform_event(event: PlatformEvent) -> bool:
 	match event.kind:
 		PlatformEvent.KIND_ID_BLOCK:
@@ -674,9 +675,9 @@ func on_platform_event(event: PlatformEvent) -> bool:
 	return false
 
 
-## La baja de [param net_id] (§9.2), tras [method CharacterSaver.finish] y [method ScoreKeeper.forget], o en la baja
-## sin guardado: descarta su estado (y sus peticiones en cola). Sobre un [code]net_id[/code] sin [PlayerProgress],
-## nada.
+## Departure of [param net_id] (§9.2), after [method CharacterSaver.finish] and [method ScoreKeeper.forget], or on a
+## departure without a save: discards its state (and its queued requests). On a [code]net_id[/code] without a
+## [PlayerProgress], nothing.
 func on_departure(net_id: int) -> void:
 	var session: _Session = _sessions.get(net_id)
 	if session != null:
@@ -686,7 +687,7 @@ func on_departure(net_id: int) -> void:
 		_stats[&"departures"] += 1
 
 
-## Contadores para el informe y las pruebas.
+## Counters for the report and the tests.
 func get_stats() -> Dictionary:
 	var stats: Dictionary = {}
 	for key: StringName in _stats:
@@ -699,22 +700,22 @@ func get_stats() -> Dictionary:
 	return stats
 
 
-# --- Lo que usan los comandos de GM (P5d, [ProgressCommands]) ------------------------------------
+# --- What the GM commands use (P5d, [ProgressCommands]) ------------------------------------
 
-## Los comandos de GM de §10 (null sin registro de comandos).
+## The GM commands of §10 (null without a command registry).
 func gm_commands() -> ProgressCommands:
 	return _gm
 
 
-## La hora Unix: la de la plataforma o, sin ella, la de [member clock_unix] (0 si no hay ninguna).
+## Unix time: the platform's or, without one, that of [member clock_unix] (0 if there is none).
 func now_unix() -> int:
 	if _platform != null:
 		return _platform.now_unix()
 	return int(clock_unix.call()) if clock_unix.is_valid() else 0
 
 
-## El [code]net_id[/code] del jugador con progreso conectado en esta zona que nombra [param text] (su
-## [code]net_id[/code] o su nombre, sin distinguir mayúsculas ni tildes), o 0.
+## The [code]net_id[/code] of the player with progress connected in this zone that [param text] names (their
+## [code]net_id[/code] or their name, ignoring case and accents), or 0.
 func find_connected(text: String) -> int:
 	var wanted: String = text.strip_edges()
 	var key: String = NameRules.normalize_key(wanted)
@@ -727,7 +728,7 @@ func find_connected(text: String) -> int:
 	return 0
 
 
-## El [code]net_id[/code] del personaje persistente [param character_id] si está conectado en esta zona, o 0.
+## The [code]net_id[/code] of the persistent character [param character_id] if connected in this zone, or 0.
 func connected_net_id_of(character_id: int) -> int:
 	for session: _Session in _session_list:
 		if session.player.persistent and session.player.character_id == character_id and _is_reachable(session):
@@ -735,25 +736,25 @@ func connected_net_id_of(character_id: int) -> int:
 	return 0
 
 
-## true si [param net_id] tiene progreso y su peer sigue en el mundo con ese cuerpo.
+## true if [param net_id] has progress and its peer is still in the world with that body.
 func is_connected_player(net_id: int) -> bool:
 	var session: _Session = _sessions.get(net_id)
 	return session != null and _is_reachable(session)
 
 
-## El peer de [param net_id] si sigue en el mundo con ese cuerpo, o null.
+## The peer of [param net_id] if it is still in the world with that body, or null.
 func peer_of(net_id: int) -> ServerPeer:
 	var session: _Session = _sessions.get(net_id)
 	return session.peer if session != null and _is_reachable(session) else null
 
 
-## Los [code]net_id[/code] con [PlayerProgress] (también el cuerpo que se queda tras una salida en combate).
+## The [code]net_id[/code]s with a [PlayerProgress] (including the body that stays after a combat exit).
 func player_net_ids() -> PackedInt32Array:
 	return PackedInt32Array(_players.keys())
 
 
-## La ranura de arma activa de [param net_id] (bit0 de [code]combat_flags2[/code] del [CombatState]; sin cuerpo, la
-## del registro).
+## The active weapon slot of [param net_id] (bit0 of [code]combat_flags2[/code] of the [CombatState]; without a body,
+## the record's).
 func active_weapon_slot(net_id: int) -> int:
 	var session: _Session = _sessions.get(net_id)
 	if session != null and session.combatant != null:
@@ -762,23 +763,23 @@ func active_weapon_slot(net_id: int) -> int:
 	return player.saved_active_slot() if player != null else 0
 
 
-## true si se le pueden cambiar las armas a [param net_id] ahora (sin una acción en curso: [method
-## ActionMachine.set_weapons] solo vale con la acción NONE).
+## true if the weapons of [param net_id] can be changed now (with no action in progress: [method
+## ActionMachine.set_weapons] is only valid with the NONE action).
 func can_change_weapons(net_id: int) -> bool:
 	var session: _Session = _sessions.get(net_id)
 	return session != null and session.combatant != null \
 			and session.combatant.get_character().combat.action == CombatState.Action.NONE
 
 
-## true si [param net_id] tiene cuerpo y está vivo.
+## true if [param net_id] has a body and is alive.
 func is_alive(net_id: int) -> bool:
 	var session: _Session = _sessions.get(net_id)
 	return session != null and session.combatant != null and session.combatant.is_alive()
 
 
-## Lo que un comando de GM ha cambiado en el inventario de [param net_id] en el tick [param s] (§4.4): el
-## INVENTORY_DELTA del servidor con [param reason], las armas si tocó las ranuras de arma ([param weapons_changed]) y
-## las cargas, con LOADOUT al dueño si cambian (o siempre, con [param always_loadout]: el 16).
+## What a GM command has changed in the inventory of [param net_id] at tick [param s] (§4.4): the server's
+## INVENTORY_DELTA with [param reason], the weapons if it touched the weapon slots ([param weapons_changed]) and the
+## charges, with LOADOUT to the owner if they change (or always, with [param always_loadout]: the 16).
 func after_gm_change(net_id: int, changed: Array[Vector2i], weapons_changed: bool, reason: int, s: int,
 		always_loadout: bool = false) -> void:
 	var session: _Session = _sessions.get(net_id)
@@ -797,8 +798,8 @@ func after_gm_change(net_id: int, changed: Array[Vector2i], weapons_changed: boo
 	_impose_charges(session, session.combatant, s, always_loadout)
 
 
-## Tras un cambio de nivel de GM de [param net_id] (que tenía [param old_level]) en el tick [param s]: el nivel en la
-## entidad (los SPAWN siguientes) y, si sube, el LEVEL_UP (§6.3). PROGRESS_UPDATE sale en [method flush].
+## After a GM level change of [param net_id] (who had [param old_level]) at tick [param s]: the level on the entity (the
+## following SPAWNs) and, if it goes up, the LEVEL_UP (§6.3). PROGRESS_UPDATE goes out in [method flush].
 func after_level_change(net_id: int, old_level: int, s: int) -> void:
 	var player: PlayerProgress = _players.get(net_id)
 	if player == null or player.record.level == old_level:
@@ -812,32 +813,32 @@ func after_level_change(net_id: int, old_level: int, s: int) -> void:
 			level_up_sink.call(net_id, player.record.level, s)
 
 
-## Un comando de GM ha cambiado el personaje de [param net_id]: guardado crítico [code]gm[/code] (§9.2).
+## A GM command has changed the character of [param net_id]: critical save [code]gm[/code] (§9.2).
 func mark_gm_critical(net_id: int) -> void:
 	var player: PlayerProgress = _players.get(net_id)
 	if _saver != null and player != null and player.persistent:
 		_saver.mark_critical(net_id, ProgressCommands.CRITICAL_GM)
 
 
-## Una línea de respuesta a [param peer] por el canal del sistema del chat (los comandos de [code]/gm[/code]).
+## A response line to [param peer] through the chat's system channel (the [code]/gm[/code] commands).
 func reply(peer: ServerPeer, text: String) -> void:
 	if reply_sink.is_valid() and peer != null:
 		reply_sink.call(peer, text)
 
 
-## Una línea para el registro de la zona.
+## A line for the zone log.
 func log_line(text: String) -> void:
 	_log(text)
 
 
-## Un NOTICE informativo a [param net_id] si sigue en el mundo (la razón de un DEBUG_COMMAND rechazado).
+## An informational NOTICE to [param net_id] if still in the world (the reason for a rejected DEBUG_COMMAND).
 func notice(net_id: int, text: String) -> void:
 	var session: _Session = _sessions.get(net_id)
 	if session != null and notice_sink.is_valid() and _is_reachable(session):
 		notice_sink.call(session.peer, text)
 
 
-# --- La sección progress de CharacterSaver (§9.2) ------------------------------------------------
+# --- The progress section of CharacterSaver (§9.2) ------------------------------------------------
 
 func _build(net_id: int, seq: int) -> Dictionary:
 	var player: PlayerProgress = _players.get(net_id)
@@ -862,14 +863,14 @@ func _is_dirty(net_id: int) -> bool:
 	return player != null and player.is_dirty()
 
 
-# --- Inventario por la red ------------------------------------------------------------------------
+# --- Inventory over the network ------------------------------------------------------------------------
 
 func _apply_request(session: _Session, entry: _Pending, s: int) -> void:
 	var player: PlayerProgress = session.player
 	var combatant: Combatant = session.combatant
 	var outcome: InventoryOps.Outcome
 	if combatant == null:
-		# Sin cuerpo: NOT_NOW («sin personaje o fuera del mundo», §4.2).
+		# No body: NOT_NOW ("no character or outside the world", §4.2).
 		outcome = InventoryOps.Outcome.new()
 		outcome.result = InventoryOps.Result.NOT_NOW
 		outcome.changed = _touched(player.record.inventory, entry.request)
@@ -893,19 +894,19 @@ func _apply_request(session: _Session, entry: _Pending, s: int) -> void:
 	if outcome.weapons_changed:
 		_impose_weapons(session, combatant, s)
 	if entry.request.op == InventoryOps.Op.DESTROY:
-		# Solo DESTROY cambia la cantidad de una definición (mover, dividir y juntar no, I4).
+		# Only DESTROY changes the quantity of a definition (move, split and merge do not, I4).
 		_impose_charges(session, combatant, s)
 
 
-# Tras un cambio confirmado de las ranuras de arma (§4.1): guarda las reutilizaciones de las armas que había en cada
-# ranura y pone las del equipo con las suyas guardadas ([method ActionMachine.set_weapons]: sin reiniciar nada más),
-# la ranura activa la misma (o la otra si se ha quedado sin arma) y LOADOUT al dueño y, si cambian las armas, a
-# quien lo tenga relevante.
+# After a confirmed change of the weapon slots (§4.1): saves the cooldowns of the weapons that were in each slot and
+# sets those of the equipment with their own saved ones ([method ActionMachine.set_weapons]: without resetting anything
+# else), the same active slot (or the other if it has been left without a weapon) and LOADOUT to the owner and, if the
+# weapons change, to whoever has it relevant.
 func _impose_weapons(session: _Session, combatant: Combatant, s: int) -> void:
 	var character: PlayerCharacter = combatant.get_character()
 	var combat: CombatState = character.combat
 	if combat.action != CombatState.Action.NONE:
-		# No pasa: tocar el equipo con una acción en curso es NOT_NOW.
+		# Does not happen: touching equipment with an action in progress is NOT_NOW.
 		_alert("armas del net_id %d sin imponer: acción %d en curso" % [session.net_id, combat.action])
 		return
 	var player: PlayerProgress = session.player
@@ -928,8 +929,8 @@ func _impose_weapons(session: _Session, combatant: Combatant, s: int) -> void:
 	_zone.get_combat().announce_loadout(combatant, s, before != CombatDirector.weapons_in_slot_order(combat))
 
 
-# Las cargas de los consumibles: min(15, bolsa) de cada uno (§4.4), con LOADOUT al dueño si cambian (o siempre, con
-# [param always]: el comando 16).
+# The consumable charges: min(15, bag) of each (§4.4), with LOADOUT to the owner if they change (or always, with
+# [param always]: command 16).
 func _impose_charges(session: _Session, combatant: Combatant, s: int, always: bool = false) -> void:
 	var character: PlayerCharacter = combatant.get_character()
 	var charges: int = session.player.charges()
@@ -978,8 +979,8 @@ func _send(session: _Session, bytes: PackedByteArray) -> void:
 		send_sink.call(session.peer, bytes)
 
 
-# El peer sigue siendo el dueño del cuerpo y está en el mundo (el cuerpo que se queda tras una salida en combate ya
-# no tiene a quién mandar nada).
+# The peer is still the body's owner and is in the world (the body that stays after a combat exit has no one left to
+# send anything to).
 func _is_reachable(session: _Session) -> bool:
 	return session.peer != null and session.peer.state == ServerPeer.State.IN_WORLD \
 			and session.peer.entity != null and session.peer.entity.net_id == session.net_id
@@ -990,7 +991,7 @@ func _strike(peer: ServerPeer, reason: String) -> void:
 		strike_sink.call(peer, reason)
 
 
-# Las ranuras que existen de las que toca [param request] (el contenido real que lleva el delta de un rechazo).
+# The slots that exist among those [param request] touches (the real contents carried by a rejection's delta).
 static func _touched(state: InventoryState, request: InventoryOps.Request) -> Array[Vector2i]:
 	var slots: Array[Vector2i] = []
 	if request == null:
@@ -1032,11 +1033,11 @@ static func _op_name(op: int) -> String:
 	return str(op)
 
 
-# --- Alta ----------------------------------------------------------------------------------------
+# --- Registration ----------------------------------------------------------------------------------
 
-# Un personaje efímero (§9.4): nuevo, del pueblo del reino del peer con su apariencia por defecto y con el kit de la
-# plantilla de LOADOUT_SELECT (la que llegó antes de CLIENT_READY) o la de por defecto; ids locales y nada que
-# guardar.
+# An ephemeral character (§9.4): new, from the peer's realm's folk with its default appearance and with the kit of the
+# LOADOUT_SELECT template (the one that arrived before CLIENT_READY) or the default one; local ids and nothing to
+# save.
 func _new_ephemeral(peer: ServerPeer) -> PlayerProgress:
 	var record: ProgressRecord = ProgressRecord.new_character()
 	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
@@ -1065,10 +1066,10 @@ func _loadout(player: PlayerProgress, at_arrival: bool) -> Loadout:
 	return loadout
 
 
-# La regla de volver al mundo (§8). Sitio: en las zonas RVR (todas las de la fase 5), el punto de aparición de su
-# reino, donde ya lo ha puesto la zona al crearlo; en las SAFE, el guardado si es de esta instancia, de hace menos de
-# 900 s, fuera de combate, vivo, con suelo y fuera de la zona segura de otro reino. Vida: la guardada más la
-# regeneración del tiempo sin conexión, sin pasar del máximo; llena con null o 0 o sin posición guardada.
+# The rule for returning to the world (§8). Spot: in RvR zones (all those of phase 5), the realm's spawn point, where
+# the zone has already put it on creating it; in SAFE ones, the saved one if it is from this instance, less than 900 s
+# old, out of combat, alive, with ground and outside another realm's safe zone. Health: the saved one plus
+# regeneration for the offline time, not exceeding the maximum; full with null or 0 or with no saved position.
 func _return_to_world(entity: NetEntity, player: PlayerProgress) -> void:
 	var record: ProgressRecord = player.record
 	var location: Dictionary = record.location
@@ -1104,8 +1105,8 @@ func _can_return(entity: NetEntity, record: ProgressRecord, config: ServerConfig
 	return true
 
 
-# El temporizador de /atascado (§8): el guardado, con su clave ("character:<id>"), en el UnstuckTracker; los
-# vencidos se descartan del registro.
+# The /atascado (/stuck) timer (§8): the saved one, with its key ("character:<id>"), in the UnstuckTracker; expired
+# ones are discarded from the record.
 func _restore_timers(entity: NetEntity, player: PlayerProgress, s: int) -> void:
 	var now: int = _platform.now_unix() if _platform != null else 0
 	if now <= 0 or not player.persistent:
@@ -1118,11 +1119,11 @@ func _restore_timers(entity: NetEntity, player: PlayerProgress, s: int) -> void:
 				PlayerProgress.ready_tick_for(player.record.timers[TIMER_UNSTUCK], now, s))
 
 
-# --- Recompensas (§6.2) --------------------------------------------------------------------------
+# --- Rewards (§6.2) --------------------------------------------------------------------------
 
-# La sesión de quien puede cobrar una recompensa: con [PlayerProgress] (un jugador con peer, también el cuerpo que se
-# queda tras una salida en combate), sin la marca de un comando de GM y que no sea un GM invisible (plataforma.md P7b:
-# además no hace daño ni cuenta en el círculo); null con plataforma y --fake-players.
+# The session of whoever can collect a reward: with a [PlayerProgress] (a player with a peer, also the body that stays
+# after a combat exit), without the mark of a GM command and not an invisible GM (plataforma.md P7b: it also does no
+# damage and does not count in the circle); null with a platform and --fake-players.
 func _collector(net_id: int) -> _Session:
 	if _rewards_blocked:
 		_stats[&"rewards_blocked"] += 1
@@ -1131,7 +1132,7 @@ func _collector(net_id: int) -> _Session:
 	if session == null:
 		return null
 	var entity: NetEntity = _entity(net_id)
-	# Ni el marcado por un comando de GM ni un GM invisible cobran (§6.2; plataforma.md §9.1).
+	# Neither one marked by a GM command nor an invisible GM collects (§6.2; plataforma.md §9.1).
 	if entity == null or entity.gm_forced or entity.gm_invisible:
 		return null
 	return session
@@ -1143,8 +1144,8 @@ func _pay_merits(session: _Session, amount: int, reason: int, ref_kind: int, ref
 	_grant_xp(session, amount * ProgressionRules.XP_PER_MERIT, source, s)
 
 
-# Suma XP; si sube de nivel: el nivel en la entidad (los SPAWN siguientes), el LEVEL_UP y el guardado crítico (§6.3).
-# PROGRESS_UPDATE sale en flush con lo ganado.
+# Adds XP; if it levels up: the level on the entity (the following SPAWNs), the LEVEL_UP and the critical save (§6.3).
+# PROGRESS_UPDATE goes out in flush with what was gained.
 func _grant_xp(session: _Session, amount: int, source: int, s: int) -> void:
 	if amount <= 0:
 		return
@@ -1163,7 +1164,7 @@ func _grant_xp(session: _Session, amount: int, source: int, s: int) -> void:
 	_log("Progreso: net_id %d (%s) sube al nivel %d" % [session.net_id, _who(session.player), result.level])
 
 
-# Los temporizadores de captura guardados (§8), en ticks de esta sesión: los vencidos ya los ha quitado el alta.
+# The saved capture timers (§8), in ticks of this session: expired ones were already removed by registration.
 func _restore_capture_timers(session: _Session, s: int) -> void:
 	var now: int = _platform.now_unix() if _platform != null else 0
 	if now <= 0 or not session.player.persistent:
@@ -1174,7 +1175,7 @@ func _restore_capture_timers(session: _Session, s: int) -> void:
 			session.capture_ready[key] = PlayerProgress.ready_tick_for(timers[key], now, s)
 
 
-# La huella u32 de un id de texto (el ref_id de un PNJ o una fortaleza, §5.2).
+# The u32 fingerprint of a text id (the ref_id of an NPC or a fortress, §5.2).
 func _ref_id(text_id: StringName) -> int:
 	if not _ref_ids.has(text_id):
 		_ref_ids[text_id] = HandoffTicket.zone_key_of(String(text_id))
@@ -1185,7 +1186,7 @@ static func _who(player: PlayerProgress) -> String:
 	return "personaje %d" % player.character_id if player.persistent else "efímero"
 
 
-# --- Interno -------------------------------------------------------------------------------------
+# --- Internal -------------------------------------------------------------------------------------
 
 func _entity(net_id: int) -> NetEntity:
 	return _zone.get_registry().get_entity(net_id) if _zone != null and _zone.get_registry() != null else null
@@ -1198,7 +1199,7 @@ func _combatant(net_id: int) -> Combatant:
 	return combatant if combatant != null and combatant.get_character() != null else null
 
 
-# Pide un bloque si quedan pocos y no hay otro en vuelo.
+# Requests a block if few remain and none is in flight.
 func _check_ids() -> void:
 	if _platform == null or _block_pending or not _ids.needs_block():
 		return
@@ -1207,9 +1208,9 @@ func _check_ids() -> void:
 	_platform.request_id_block()
 
 
-# §7.2: la apariencia vale para la raza del registro y el reino del personaje; si no, la de por defecto de la raza
-# (o, si la raza no es de ese reino, la del pueblo del reino), con aviso. Raza y apariencia son de solo lectura: el
-# cambio solo vive en la zona.
+# §7.2: the appearance is valid for the record's race and the character's realm; otherwise, the race's default (or, if
+# the race does not belong to that realm, the realm's folk's), with a warning. Race and appearance are read-only: the
+# change only lives in the zone.
 func _check_appearance(record: ProgressRecord, claimed: ClaimedCharacter) -> void:
 	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
 	var appearance: CharacterAppearance = CharacterAppearance.decode(record.appearance)
@@ -1232,7 +1233,8 @@ func _check_appearance(record: ProgressRecord, claimed: ClaimedCharacter) -> voi
 	record.appearance = fallback.encode()
 
 
-# Lo que aporta el cuerpo de [param net_id] a la foto de su progreso; null si ya no tiene cuerpo ni progreso.
+# What the body of [param net_id] contributes to the snapshot of its progress; null if it no longer has a body or
+# progress.
 func _live_of(net_id: int) -> PlayerProgress.Live:
 	var player: PlayerProgress = _players.get(net_id)
 	if _zone == null or player == null:

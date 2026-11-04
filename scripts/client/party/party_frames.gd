@@ -1,19 +1,19 @@
 class_name PartyFrames
 extends VBoxContainer
-## Marcos de grupo (SOC-08, docs/social.md, secciones 3 y 12.5): una columna de [PartyFrame], uno por
-## miembro y en el orden de la lista del servidor (por antigüedad), con la corona en el del líder, la vida y
-## la resistencia del último PARTY_STATUS, y atenuado el que está lejos o muerto. Se ven aunque el miembro esté
-## fuera del radio de interés de los snapshots, porque los datos salen del estado de grupo a 2 Hz, no de los
-## remotos que se dibujan.
+## Party frames (SOC-08, docs/social.md, sections 3 and 12.5): a column of [PartyFrame]s, one per
+## member and in the order of the server's list (by seniority), with the crown on the leader's, health and
+## stamina from the last PARTY_STATUS, and dimmed for one who is far away or dead. They are visible even if the member is
+## outside the snapshots' interest radius, because the data comes from the party state at 2 Hz, not from the
+## remotes being drawn.
 ## [br][br]
-## Solo hay marcos con un grupo; sin él la columna se oculta. Se repinta cuando llega una lista o un estado
-## ([signal PartyState.roster_changed], [signal PartyState.status_changed]) y, por la distancia (el jugador
-## se mueve y los miembros no tienen por qué), cada [constant REFRESH_SECONDS] s. El color del nombre es el del
-## reino del jugador (el grupo es de un solo reino).
+## There are only frames with a party; without one the column is hidden. It is redrawn when a roster or a status arrives
+## ([signal PartyState.roster_changed], [signal PartyState.status_changed]) and, because of distance (the player
+## moves and the members need not), every [constant REFRESH_SECONDS] s. The name color is that of the
+## player's realm (a party belongs to a single realm).
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Segundos entre dos repintados por distancia.
+## Seconds between two distance-based redraws.
 const REFRESH_SECONDS: float = 0.2
 
 var _party: PartyState = null
@@ -36,8 +36,8 @@ func _exit_tree() -> void:
 	_disconnect()
 
 
-## Conecta los marcos con el estado de grupo [param party] y el cliente [param client] (el jugador local, su
-## posición y su reino).
+## Connects the frames to the party state [param party] and the client [param client] (the local player, their
+## position and their realm).
 func bind(party: PartyState, client: NetClient) -> void:
 	_disconnect()
 	_party = party
@@ -48,14 +48,14 @@ func bind(party: PartyState, client: NetClient) -> void:
 	refresh()
 
 
-## Avanza el reloj de los repintados por distancia.
+## Advances the clock of the distance-based redraws.
 func advance(delta: float) -> void:
 	_since_refresh += delta
 	if _since_refresh >= REFRESH_SECONDS:
 		refresh()
 
 
-## Rehace los marcos con lo que sabe el estado de grupo.
+## Rebuilds the frames with what the party state knows.
 func refresh() -> void:
 	_since_refresh = 0.0
 	var members: Array[PartyState.Member] = _party.get_members() if _party != null else []
@@ -80,17 +80,17 @@ func refresh() -> void:
 	_apply_visibility()
 
 
-## Cuántos marcos hay.
+## How many frames there are.
 func get_frame_count() -> int:
 	return _frames.size()
 
 
-## Los marcos, en orden.
+## The frames, in order.
 func get_frames() -> Array[PartyFrame]:
 	return _frames.duplicate()
 
 
-## El marco del miembro [param net_id], o null.
+## The frame of member [param net_id], or null.
 func get_frame(net_id: int) -> PartyFrame:
 	for frame: PartyFrame in _frames:
 		if frame.get_net_id() == net_id:
@@ -102,7 +102,7 @@ func _apply_visibility() -> void:
 	visible = not _frames.is_empty()
 
 
-# Posición del jugador local (null si no hay personaje).
+# Position of the local player (null if there is no character).
 func _own_position() -> Variant:
 	if not is_instance_valid(_client):
 		return null
@@ -112,7 +112,7 @@ func _own_position() -> Variant:
 	return character.global_position
 
 
-# Color del nombre: el del reino del jugador local (blanco si no se sabe).
+# Name color: that of the local player's realm (white if unknown).
 func _name_color() -> Color:
 	if not is_instance_valid(_client) or _client.get_config() == null:
 		return UIPalette.TEXT

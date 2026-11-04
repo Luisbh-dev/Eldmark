@@ -1,77 +1,77 @@
 class_name ZonePlatform
 extends Node
-## La zona frente a la plataforma (docs/plataforma.md §5.3, §6, §8 y §14.3): registro y arranque, latido con su
-## conjunto de arrendamientos, cercado, reloj, reclamaciones, liberaciones, guardados, bloques de ids,
-## fortalezas, lotes y peticiones sueltas. Todo pasa por su [PlatformClient] (colas por prioridad y reintentos).
+## The zone facing the platform (docs/plataforma.md §5.3, §6, §8 and §14.3): registration and startup, heartbeat with its
+## set of leases, fencing, clock, claims, releases, saves, id blocks,
+## fortresses, batches and one-off requests. Everything goes through its [PlatformClient] (priority queues and retries).
 ## [br][br]
-## Las respuestas se guardan al llegar y se entregan como [PlatformEvent] en el paso «poll» del tick con
-## [method take_events]; nunca a mitad de tick. Las de la liberación y de los lotes no salen como evento: se
-## reintentan hasta una definitiva y se registran los rechazos. Las del registro, del GET de fortalezas y del
-## primer bloque acaban en [signal startup_finished] (el primer bloque sale además como evento
-## [code]id_block[/code], para [code]ProgressService[/code]). Un [code]instance_lost[/code],
-## [code]instance_replaced[/code] o [code]instance_stopped[/code] en cualquier respuesta, o en su
-## [code]instance_status[/code], da un solo evento [code]instance_closed[/code] (§6.1).
+## Responses are stored on arrival and delivered as [PlatformEvent]s in the tick's "poll" step with
+## [method take_events]; never mid-tick. Those of the release and the batches do not come out as events: they are
+## retried until a final one and rejections are logged. Those of the registration, the fortress GET and the
+## first block end in [signal startup_finished] (the first block also comes out as an
+## [code]id_block[/code] event, for [code]ProgressService[/code]). An [code]instance_lost[/code],
+## [code]instance_replaced[/code] or [code]instance_stopped[/code] in any response, or in its
+## [code]instance_status[/code], gives a single [code]instance_closed[/code] event (§6.1).
 ## [br][br]
-## [b]Arranque[/b] ([method start], §8): (1) registro, que deja la instancia en [code]starting[/code]; con 409
-## [code]instance_alive[/code] y sin [code]--replace[/code], otra vez cada 2 s durante 60 s; con 403, 409
-## [code]schema_mismatch[/code] o 60 s sin respuesta, error. (2) El [code]env[/code] frente a las opciones de
-## desarrollo (§5.5) y la clave de prueba del billete (solo en [code]test[/code]). (3) GET de las fortalezas de la
-## zona. (3b) El primer bloque de ids. Los latidos empiezan tras el registro. Después [code]ServerMain[/code] abre
-## el puerto y llama a [method go_live].
+## [b]Startup[/b] ([method start], §8): (1) registration, which leaves the instance in [code]starting[/code]; with 409
+## [code]instance_alive[/code] and without [code]--replace[/code], again every 2 s for 60 s; with 403, 409
+## [code]schema_mismatch[/code] or 60 s without a response, error. (2) The [code]env[/code] against the development
+## options (§5.5) and the test ticket key (only in [code]test[/code]). (3) GET of the zone's fortresses.
+## (3b) The first id block. Heartbeats start after registration. Then [code]ServerMain[/code] opens
+## the port and calls [method go_live].
 ## [br][br]
-## [b]Secretos[/b] ([method read_secrets]): el token de la zona y las claves del billete, de
-## [code]ELDMARK_ZONE_TOKEN[/code] y [code]ELDMARK_TICKET_KEYS[/code] o de los archivos de sus variables
-## [code]*_FILE[/code]; nunca de la línea de órdenes, que se ve con [code]ps[/code] (§10.3).
+## [b]Secrets[/b] ([method read_secrets]): the zone token and the ticket keys, from
+## [code]ELDMARK_ZONE_TOKEN[/code] and [code]ELDMARK_TICKET_KEYS[/code] or from the files of their
+## [code]*_FILE[/code] variables; never from the command line, which is visible with [code]ps[/code] (§10.3).
 
-## Tras el registro, las fortalezas y el primer bloque ([param ok]); o el motivo por el que la zona no puede
-## arrancar.
+## After the registration, the fortresses and the first block ([param ok]); or the reason the zone cannot
+## start.
 signal startup_finished(ok: bool, error: String)
-## [code]live[/code] agotó sus reintentos: la zona sale (§6).
+## [code]live[/code] exhausted its retries: the zone exits (§6).
 signal fatal_error(error: String)
 
-## [code]record_format[/code] del registro (§7.1): [code]ProgressRecord.FORMAT[/code] vale lo mismo
-## (progresion.md §3.4, lo comprueba su P5a).
+## [code]record_format[/code] of the record (§7.1): [code]ProgressRecord.FORMAT[/code] has the same value
+## (progresion.md §3.4, checked by its P5a).
 const RECORD_FORMAT: int = 1
-## Entornos de la plataforma.
+## Platform environments.
 const ENV_DEV: StringName = &"dev"
 const ENV_TEST: StringName = &"test"
 const ENV_STAGING: StringName = &"staging"
 const ENV_PRODUCTION: StringName = &"production"
-## Desfase del reloj a partir del cual se avisa (s).
+## Clock offset above which a warning is issued (s).
 const CLOCK_WARNING_S: int = 2
-## Espera entre registros con 409 instance_alive (s) y tope de todo el arranque (s).
+## Wait between registrations with 409 instance_alive (s) and cap for the whole startup (s).
 const ALIVE_RETRY_S: float = 2.0
 const STARTUP_LIMIT_S: float = 60.0
-## Lotes: cada cuánto salen (s), cuántas entradas y cuántos bytes como mucho, y cuántas en cola antes de
-## descartar el chat más viejo.
+## Batches: how often they go out (s), how many entries and how many bytes at most, and how many queued before
+## dropping the oldest chat.
 const BATCH_INTERVAL_S: float = 2.0
 const BATCH_MAX_ENTRIES: int = 200
 const BATCH_MAX_BYTES: int = 1000000
 const MAX_QUEUED_BATCH_ENTRIES: int = 20000
-## Rutas y campo de cada clase de lote.
+## Routes and field of each batch class.
 const BATCH_ROUTES: Dictionary[StringName, Array] = {
 	&"chat": ["/internal/v1/chat", "messages"],
 	&"audit": ["/internal/v1/audit", "entries"],
 	&"war": ["/internal/v1/war-events", "events"],
 }
-## Clases de petición propias (las que no salen como evento).
+## Own request classes (those that do not come out as events).
 const KIND_REGISTER: StringName = &"register"
 const KIND_LIVE: StringName = &"live"
 const KIND_FORTRESSES: StringName = &"fortresses"
 const KIND_RELEASE: StringName = &"release"
 const KIND_STOP: StringName = &"stop"
-## La clave del vector de plataforma.md §5.1 (00 01 … 1f): solo vale en [code]test[/code].
+## The key of the plataforma.md §5.1 vector (00 01 … 1f): only valid in [code]test[/code].
 const TEST_TICKET_KEY_HEX: String = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
-## Tamaño mínimo de una clave del billete.
+## Minimum size of a ticket key.
 const MIN_TICKET_KEY_BYTES: int = 32
 
-## Plazo de cada intento (s); se aplica al cliente en [method start].
+## Deadline of each attempt (s); applied to the client in [method start].
 var timeout_s: float = 3.0
-## Tope de cada paso del arranque y de [code]live[/code] (s): [constant STARTUP_LIMIT_S]; las pruebas lo bajan.
+## Cap on each startup step and on [code]live[/code] (s): [constant STARTUP_LIMIT_S]; tests lower it.
 var startup_limit_s: float = STARTUP_LIMIT_S
-## Jugadores para el latido: un [Callable] sin argumentos que devuelve un int ([method ZoneServer.get_player_count]).
+## Players for the heartbeat: an argument-less [Callable] that returns an int ([method ZoneServer.get_player_count]).
 var player_count_source: Callable = Callable()
-## Registro de la zona (un [Callable] con un texto); sin él, print.
+## The zone's log (a [Callable] with a text); without it, print.
 var log_sink: Callable = Callable()
 
 var _client: PlatformClient = null
@@ -89,7 +89,7 @@ var _startup_deadline_msec: int = 0
 var _last_accepted_heartbeat_msec: int = -1
 var _heartbeat_in_flight: bool = false
 var _next_heartbeat_msec: int = 0
-## Conjunto del latido: character_id -> lease_id (§5.3).
+## The heartbeat's set: character_id -> lease_id (§5.3).
 var _heartbeat_set: Dictionary[int, String] = {}
 var _claimed: Dictionary[int, ClaimedCharacter] = {}
 var _events: Array[PlatformEvent] = []
@@ -123,11 +123,11 @@ func _process(_delta: float) -> void:
 	_pump_batches(now)
 
 
-# --- Secretos ---------------------------------------------------------------------------------
+# --- Secrets ----------------------------------------------------------------------------------
 
-## Lee los secretos de la zona del entorno: [code]{token: String, ticket_keys: Dictionary[int,
-## PackedByteArray], errors: PackedStringArray}[/code]. Cada uno admite [code]<NOMBRE>_FILE[/code] con la ruta de
-## un archivo; los dos a la vez son un error, y uno que falta también.
+## Reads the zone's secrets from the environment: [code]{token: String, ticket_keys: Dictionary[int,
+## PackedByteArray], errors: PackedStringArray}[/code]. Each one accepts [code]<NAME>_FILE[/code] with the path to
+## a file; both at once is an error, and so is a missing one.
 static func read_secrets() -> Dictionary:
 	var errors := PackedStringArray()
 	var token: String = _read_secret("ELDMARK_ZONE_TOKEN", errors)
@@ -140,9 +140,9 @@ static func read_secrets() -> Dictionary:
 	return {"token": token, "ticket_keys": keys, "errors": errors}
 
 
-## Las claves del billete de [param text] ([code]1:<base64 de 32 B>,2:<…>[/code], como
-## [code]ELDMARK_TICKET_KEYS[/code] en la plataforma): [code]{keys: Dictionary[int, PackedByteArray], errors:
-## PackedStringArray}[/code]. Un id fuera de 1–255, repetido, o una clave de menos de 32 B son errores.
+## The ticket keys from [param text] ([code]1:<base64 of 32 B>,2:<…>[/code], like
+## [code]ELDMARK_TICKET_KEYS[/code] on the platform): [code]{keys: Dictionary[int, PackedByteArray], errors:
+## PackedStringArray}[/code]. An id outside 1–255, repeated, or a key shorter than 32 B are errors.
 static func parse_ticket_keys(text: String) -> Dictionary:
 	var keys: Dictionary[int, PackedByteArray] = {}
 	var errors := PackedStringArray()
@@ -186,7 +186,7 @@ static func _read_secret(name: String, errors: PackedStringArray) -> String:
 	return direct
 
 
-# true si [param text] solo tiene caracteres de base64 estándar (Marshalls registraría un error con otros).
+# true if [param text] only has standard base64 characters (Marshalls would log an error with others).
 static func _is_base64(text: String) -> bool:
 	if text.is_empty() or text.length() % 4 != 0:
 		return false
@@ -199,10 +199,10 @@ static func _is_base64(text: String) -> bool:
 	return true
 
 
-# --- Arranque ---------------------------------------------------------------------------------
+# --- Startup ----------------------------------------------------------------------------------
 
-## Empieza el arranque de §8 contra [member ServerConfig.platform_url] con [param secrets] (los de
-## [method read_secrets]). El resultado llega por [signal startup_finished]. Tiene que estar en el árbol.
+## Starts the startup of §8 against [member ServerConfig.platform_url] with [param secrets] (those from
+## [method read_secrets]). The result arrives through [signal startup_finished]. It must be in the tree.
 func start(config: ServerConfig, secrets: Dictionary) -> void:
 	if _client != null:
 		return
@@ -218,12 +218,12 @@ func start(config: ServerConfig, secrets: Dictionary) -> void:
 	_register(0)
 
 
-## El cliente HTTP; el falso de las pruebas lo cambia por uno sin red.
+## The HTTP client; the tests' fake swaps it for one without a network.
 func _make_client() -> PlatformClient:
 	return PlatformClient.new()
 
 
-## El cuerpo del registro (§6) de [param config].
+## The registration body (§6) of [param config].
 static func registration_body(config: ServerConfig) -> Dictionary:
 	var realms: Array = []
 	var allowed: PackedInt32Array = NetZones.allowed_realms(config.zone_id)
@@ -238,15 +238,15 @@ static func registration_body(config: ServerConfig) -> Dictionary:
 		"public_host": config.public_host(), "public_port": config.public_port(), "realms": realms,
 		"build_id": build_id(), "protocol_version": NetProtocol.PROTOCOL_VERSION,
 		"record_format": RECORD_FORMAT, "max_players": config.max_players,
-		# El certificado DTLS de la zona y su CN (plataforma.md §10.2, P9c), que la plataforma da al cliente en enter;
-		# sin DTLS, null (en staging y production la plataforma no registra una zona sin certificado).
+		# The zone's DTLS certificate and its CN (plataforma.md §10.2, P9c), which the platform gives to the client in enter;
+		# without DTLS, null (in staging and production the platform does not register a zone without a certificate).
 		"dtls_cert_pem": config.dtls.certificate_pem if config.dtls != null else null,
 		"dtls_name": config.dtls.common_name if config.dtls != null else null,
 		"replace": config.replace,
 	}
 
 
-## Versión de la zona para el registro: la del proyecto y la del protocolo.
+## Zone version for the registration: the project's and the protocol's.
 static func build_id() -> String:
 	var version: String = str(ProjectSettings.get_setting("application/config/version", "0"))
 	return ("eldmark-%s-p%d" % [version, NetProtocol.PROTOCOL_VERSION]).replace(" ", "_").left(64)
@@ -282,7 +282,7 @@ func _on_registered(_request: PlatformClient.Request, event: PlatformEvent) -> v
 				_heartbeat_s])
 		var guard: String = env_guard_error(_config, _env, _secrets)
 		if not guard.is_empty():
-			# La baja antes del aviso: quien espera startup_finished puede salir enseguida, tras vaciar la cola.
+			# The removal before the notice: whoever waits for startup_finished can exit right away, after draining the queue.
 			deregister()
 			_fail_startup(guard)
 			return
@@ -298,8 +298,8 @@ func _on_registered(_request: PlatformClient.Request, event: PlatformEvent) -> v
 	_fail_startup("El registro en la plataforma ha fallado: %s" % describe(event))
 
 
-## El motivo por el que la zona no puede arrancar con [param env] (§5.5), o vacío: las opciones de desarrollo
-## solo valen en [code]dev[/code] y [code]test[/code], y la clave de prueba del billete, solo en [code]test[/code].
+## The reason the zone cannot start with [param env] (§5.5), or empty: development options
+## are only valid in [code]dev[/code] and [code]test[/code], and the test ticket key only in [code]test[/code].
 static func env_guard_error(config: ServerConfig, env: StringName, secrets: Dictionary) -> String:
 	if env != ENV_DEV and env != ENV_TEST:
 		var options: PackedStringArray = config.platform_dev_options()
@@ -315,7 +315,7 @@ static func env_guard_error(config: ServerConfig, env: StringName, secrets: Dict
 
 
 func _load_fortresses() -> void:
-	# Cada paso del arranque tiene sus 60 s (§8).
+	# Each startup step gets its 60 s (§8).
 	_startup_deadline_msec = Time.get_ticks_msec() + int(startup_limit_s * 1000.0)
 	var request := _request(HTTPClient.METHOD_GET, "/internal/v1/fortresses?zone_instance_id=%s" % _instance_id,
 			null, PlatformClient.PRIORITY_CONTROL, KIND_FORTRESSES, null, PlatformClient.Retry.STARTUP,
@@ -368,8 +368,8 @@ func _fail_startup(error: String) -> void:
 	startup_finished.emit(false, error)
 
 
-## POST …/live tras abrir el puerto: desde aquí [code]enter[/code] manda jugadores. Se reintenta 60 s; si se
-## agota, [signal fatal_error].
+## POST …/live after opening the port: from here on [code]enter[/code] sends players. It is retried for 60 s; if
+## exhausted, [signal fatal_error].
 func go_live() -> void:
 	if not _registered or _live:
 		return
@@ -390,8 +390,8 @@ func _on_live(_request: PlatformClient.Request, event: PlatformEvent) -> void:
 	fatal_error.emit(error)
 
 
-## Baja de la instancia (DELETE, §6): [code]stopped[/code] y la plataforma libera lo que quede. Los latidos
-## paran.
+## Instance removal (DELETE, §6): [code]stopped[/code] and the platform releases whatever remains. Heartbeats
+## stop.
 func deregister() -> void:
 	if not _registered or _stopped:
 		return
@@ -400,67 +400,67 @@ func deregister() -> void:
 			PlatformClient.PRIORITY_CONTROL, KIND_STOP, null, PlatformClient.Retry.NONE, _on_logged))
 
 
-# --- Consultas --------------------------------------------------------------------------------
+# --- Queries ----------------------------------------------------------------------------------
 
-## Las fortalezas cargadas en el arranque: [code]{fortress_id: StringName, record: Dictionary, version:
-## int}[/code] (las aplica [code]FortressPersistence[/code], P6).
+## The fortresses loaded at startup: [code]{fortress_id: StringName, record: Dictionary, version:
+## int}[/code] (applied by [code]FortressPersistence[/code], P6).
 func fortress_records() -> Array[Dictionary]:
 	return _fortress_records
 
 
-## El [code]env[/code] del registro (&"dev", &"test", &"staging" o &"production"); vacío antes del registro.
+## The registration's [code]env[/code] (&"dev", &"test", &"staging" or &"production"); empty before registration.
 func env() -> StringName:
 	return _env
 
 
-## El [code]zone_instance_id[/code]; vacío antes del registro.
+## The [code]zone_instance_id[/code]; empty before registration.
 func instance_id() -> String:
 	return _instance_id
 
 
-## true tras el 204 de [method go_live].
+## true after the 204 of [method go_live].
 func is_live() -> bool:
 	return _live
 
 
-## true sin un latido aceptado en 2 × [code]heartbeat_s[/code] (y antes del registro): la zona no admite HELLO
-## (REJECT UNAVAILABLE) ni operaciones que piden guardado crítico. No expulsa a nadie (§5.3).
+## true without an accepted heartbeat in 2 × [code]heartbeat_s[/code] (and before registration): the zone does not accept HELLO
+## (REJECT UNAVAILABLE) or operations that require a critical save. It expels nobody (§5.3).
 func is_fenced() -> bool:
 	if not _registered:
 		return true
 	return Time.get_ticks_msec() - _last_accepted_heartbeat_msec > int(2.0 * _heartbeat_s * 1000.0)
 
 
-## La hora Unix (s) con el reloj de la plataforma: la del sistema más el desfase del último registro o latido.
+## The Unix time (s) with the platform's clock: the system's plus the offset from the last registration or heartbeat.
 func now_unix() -> int:
 	return int(Time.get_unix_time_from_system()) + _clock_offset_s
 
 
-## Segundos entre latidos (los del registro).
+## Seconds between heartbeats (those from the registration).
 func heartbeat_interval_s() -> float:
 	return _heartbeat_s
 
 
-## El conjunto del latido ahora mismo: character_id -> lease_id.
+## The heartbeat's set right now: character_id -> lease_id.
 func heartbeat_set() -> Dictionary[int, String]:
 	return _heartbeat_set.duplicate()
 
 
-## La última reclamación (200) del personaje [param character_id], o null.
+## The latest claim (200) of character [param character_id], or null.
 func claimed(character_id: int) -> ClaimedCharacter:
 	return _claimed.get(character_id)
 
 
-## El cliente HTTP (null antes de [method start]); para métricas y pruebas.
+## The HTTP client (null before [method start]); for metrics and tests.
 func get_client() -> PlatformClient:
 	return _client
 
 
-# --- Peticiones -------------------------------------------------------------------------------
+# --- Requests ---------------------------------------------------------------------------------
 
-## Pide la reclamación del billete de [param peer_id] (prioridad 1, sin reintento: la corta el plazo de §5.2).
-## La respuesta, evento [code]claim[/code] con [code]context = {peer_id, character_id, ticket_id}[/code]. Con
-## el 200, el personaje entra en el conjunto del latido.
+## Requests the claim of [param peer_id]'s ticket (priority 1, no retry: cut short by the deadline of §5.2).
+## The response is a [code]claim[/code] event with [code]context = {peer_id, character_id, ticket_id}[/code]. With
+## the 200, the character enters the heartbeat set.
 func claim(peer_id: int, ticket: HandoffTicket) -> void:
 	var body: Dictionary = {
 		"zone_instance_id": _instance_id, "ticket_id": PlatformJson.id_text(ticket.ticket_id),
@@ -483,8 +483,8 @@ func _on_claim(_request: PlatformClient.Request, event: PlatformEvent) -> void:
 	_events.append(event)
 
 
-## Libera sin guardar el arrendamiento [param lease_id] de [param character_id] (prioridad 1; se reintenta como
-## un guardado hasta una respuesta definitiva, y un 4xx lo es). Sale del conjunto del latido si sigue siendo ese
+## Releases without saving lease [param lease_id] of [param character_id] (priority 1; retried like
+## a save until a final response, and a 4xx is one). It leaves the heartbeat set if it is still that
 ## [param lease_id].
 func release(character_id: int, lease_id: String) -> void:
 	_forget_lease(character_id, lease_id)
@@ -494,10 +494,10 @@ func release(character_id: int, lease_id: String) -> void:
 			PlatformClient.Retry.STEADY, _on_logged))
 
 
-## Manda el guardado [param body] (el sobre entero de [code]CharacterSaver[/code], §7.3) sin tocar sus bytes,
-## con el mismo cuerpo en cada reintento hasta una respuesta definitiva, que sale como evento [code]save[/code]
-## con [param context]. Con [param release_lease], esa respuesta saca al personaje del conjunto del latido si
-## sigue siendo ese [param lease_id].
+## Sends the save [param body] (the whole envelope from [code]CharacterSaver[/code], §7.3) without touching its bytes,
+## with the same body on each retry until a final response, which comes out as a [code]save[/code] event
+## with [param context]. With [param release_lease], that response removes the character from the heartbeat set if
+## it is still that [param lease_id].
 func save(character_id: int, lease_id: String, body: PackedByteArray, release_lease: bool,
 		context: Variant) -> void:
 	var request := PlatformClient.Request.new()
@@ -516,16 +516,16 @@ func save(character_id: int, lease_id: String, body: PackedByteArray, release_le
 	_client.submit(request)
 
 
-## Pide un bloque de ids (prioridad 2, con reintentos): evento [code]id_block[/code] con
-## [code]{first, count}[/code] para [code]ProgressService[/code].
+## Requests an id block (priority 2, with retries): [code]id_block[/code] event with
+## [code]{first, count}[/code] for [code]ProgressService[/code].
 func request_id_block() -> void:
 	_client.submit(_request(HTTPClient.METHOD_POST, "/internal/v1/id-blocks", {"zone_instance_id": _instance_id},
 			PlatformClient.PRIORITY_PLAYER, PlatformEvent.KIND_ID_BLOCK, null, PlatformClient.Retry.STEADY, _on_event))
 
 
-## Guarda el registro de una fortaleza (prioridad 3): una petición en vuelo por fortaleza, siempre con el
-## registro más reciente y con [code]expected_version[/code]; con 409 [code]version_conflict[/code] toma la
-## versión del error y la reenvía (§8). Cada respuesta sale como evento [code]fortress[/code].
+## Saves a fortress's record (priority 3): one request in flight per fortress, always with the most
+## recent record and with [code]expected_version[/code]; with 409 [code]version_conflict[/code] it takes the
+## version from the error and resends it (§8). Each response comes out as a [code]fortress[/code] event.
 func put_fortress(fortress_id: StringName, record: Dictionary) -> void:
 	_fortress_latest[fortress_id] = record.duplicate(true)
 	if not _fortress_in_flight.get(fortress_id, false):
@@ -555,7 +555,7 @@ func _on_fortress(request: PlatformClient.Request, event: PlatformEvent) -> void
 		var version: int = PlatformJson.int_in(error, "version", 0, PlatformJson.MAX_SAFE_INT,
 				PlatformJson.int_in(event.body_dict(), "version", 0, PlatformJson.MAX_SAFE_INT, 0))
 		_fortress_versions[fortress_id] = version
-		# La instancia viva manda: se reenvía su registro (el más reciente si hay uno nuevo).
+		# The live instance rules: its record is resent (the most recent one if there is a new one).
 		if not _fortress_latest.has(fortress_id):
 			_fortress_latest[fortress_id] = (request.context as Dictionary)["record"]
 	_events.append(event)
@@ -563,9 +563,9 @@ func _on_fortress(request: PlatformClient.Request, event: PlatformEvent) -> void
 		_send_fortress(fortress_id)
 
 
-## Encola una entrada de un lote ([code]&"chat"[/code], [code]&"audit"[/code] o [code]&"war"[/code]). Si no
-## trae [code]key[/code] se le pone [code]"<zone_instance_id>:<n>"[/code]; la que la trae
-## ([code]op:<op_id>[/code]) la conserva. Los lotes salen cada 2 s o con 200 entradas.
+## Queues a batch entry ([code]&"chat"[/code], [code]&"audit"[/code] or [code]&"war"[/code]). If it
+## carries no [code]key[/code], [code]"<zone_instance_id>:<n>"[/code] is set; one that carries it
+## ([code]op:<op_id>[/code]) keeps it. Batches go out every 2 s or with 200 entries.
 func enqueue_batch(kind: StringName, entry: Dictionary) -> void:
 	if not _batch_queues.has(kind):
 		_log("Lote desconocido: %s" % kind)
@@ -579,10 +579,10 @@ func enqueue_batch(kind: StringName, entry: Dictionary) -> void:
 	_trim_batches()
 
 
-## Una petición suelta de [param kind] ([code]&"progress_op"[/code], [code]&"progress_ledger"[/code],
-## [code]&"ignore"[/code], [code]&"report"[/code] o [code]&"sanction"[/code]), sin reintento. Pone
-## [code]zone_instance_id[/code] en la consulta de un GET y en el cuerpo de los demás. La respuesta, evento de
-## [param kind] con [param context].
+## A one-off request of [param kind] ([code]&"progress_op"[/code], [code]&"progress_ledger"[/code],
+## [code]&"ignore"[/code], [code]&"report"[/code] or [code]&"sanction"[/code]), without retry. Sets
+## [code]zone_instance_id[/code] in the query of a GET and in the body of the others. The response is an event of
+## [param kind] with [param context].
 func request(kind: StringName, method: HTTPClient.Method, path: String, body: Dictionary, priority: int,
 		context: Variant) -> void:
 	var full_path: String = path
@@ -597,14 +597,14 @@ func request(kind: StringName, method: HTTPClient.Method, path: String, body: Di
 			_on_event))
 
 
-## Los eventos llegados desde la última llamada, en orden de llegada. En el paso «poll» del tick.
+## The events that arrived since the last call, in arrival order. In the tick's "poll" step.
 func take_events() -> Array[PlatformEvent]:
 	var taken: Array[PlatformEvent] = _events
 	_events = []
 	return taken
 
 
-## Cierre: los lotes y lo que espera su reintento salen ya.
+## Shutdown: batches and whatever waits for its retry go out now.
 func begin_flush() -> void:
 	_flushing = true
 	if _client != null:
@@ -612,7 +612,7 @@ func begin_flush() -> void:
 	_pump_batches(Time.get_ticks_msec())
 
 
-## true si no queda nada en cola ni en vuelo (sin contar los latidos).
+## true if nothing remains queued or in flight (not counting heartbeats).
 func is_flushed() -> bool:
 	if _client != null and _client.pending_count(PlatformEvent.KIND_HEARTBEAT) > 0:
 		return false
@@ -622,13 +622,13 @@ func is_flushed() -> bool:
 	return _fortress_latest.is_empty()
 
 
-## Manda ya un latido si no hay otro en vuelo (pruebas y herramientas).
+## Sends a heartbeat now if none is in flight (tests and tools).
 func send_heartbeat_now() -> void:
 	if _registered and not _stopped and not _heartbeat_in_flight:
 		_send_heartbeat(Time.get_ticks_msec())
 
 
-## El texto de un fallo para el registro: el código HTTP y el del error, o «sin respuesta».
+## The text of a failure for the log: the HTTP code and the error's, or "sin respuesta" (no response).
 static func describe(event: PlatformEvent) -> String:
 	if not event.transport_ok:
 		return "sin respuesta de la plataforma"
@@ -637,7 +637,7 @@ static func describe(event: PlatformEvent) -> String:
 	return "HTTP %d %s" % [event.status, event.error_code]
 
 
-# --- Latido y lotes ---------------------------------------------------------------------------
+# --- Heartbeat and batches --------------------------------------------------------------------
 
 func _send_heartbeat(now: int) -> void:
 	_heartbeat_in_flight = true
@@ -649,8 +649,8 @@ func _send_heartbeat(now: int) -> void:
 		characters.append({"character_id": PlatformJson.id_text(character_id),
 				"lease_id": _heartbeat_set[character_id]})
 	var players: int = int(player_count_source.call()) if player_count_source.is_valid() else 0
-	# El contexto dice por quién y cuándo se latió: los mutes de la respuesta solo valen para esos personajes y no
-	# deshacen una sanción de la zona posterior (plataforma.md §9.5, P7b).
+	# The context says for whom and when the heartbeat was sent: the response's mutes only apply to those characters and
+	# do not undo a later sanction by the zone (plataforma.md §9.5, P7b).
 	var context: Dictionary = {"characters": _heartbeat_set.duplicate(), "sent_msec": now}
 	_client.submit(_request(HTTPClient.METHOD_POST, "/internal/v1/zone-instances/%s/heartbeat" % _instance_id,
 			{"players": players, "characters": characters}, PlatformClient.PRIORITY_CONTROL,
@@ -667,7 +667,7 @@ func _on_heartbeat(_request: PlatformClient.Request, event: PlatformEvent) -> vo
 	_last_accepted_heartbeat_msec = Time.get_ticks_msec()
 	var body: Dictionary = event.body_dict()
 	_set_clock(body)
-	# Un lease_lost ya no es de esta zona: deja de latir por él.
+	# A lease_lost no longer belongs to this zone: it stops heartbeating for it.
 	for value: Variant in PlatformJson.array_in(body, "revoked"):
 		var revoked: Dictionary = value if value is Dictionary else {}
 		if PlatformJson.text_in(revoked, "reason") == "lease_lost":
@@ -715,8 +715,8 @@ func _on_batch(request: PlatformClient.Request, event: PlatformEvent) -> void:
 	_pump_batches(Time.get_ticks_msec())
 
 
-# Con más de MAX_QUEUED_BATCH_ENTRIES entradas en cola se descarta el chat más viejo (con aviso); la auditoría
-# y la guerra nunca (§6).
+# With more than MAX_QUEUED_BATCH_ENTRIES entries queued, the oldest chat is dropped (with a warning); audit
+# and war never are (§6).
 func _trim_batches() -> void:
 	var total: int = 0
 	for kind: StringName in _batch_queues:
@@ -733,7 +733,7 @@ func _trim_batches() -> void:
 			_log("Cola de lotes llena: %d mensajes de chat descartados en total" % _dropped_chat)
 
 
-# --- Auxiliares -------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _request(method: HTTPClient.Method, path: String, body: Variant, priority: int, kind: StringName,
 		context: Variant, retry: int, on_done: Callable) -> PlatformClient.Request:
@@ -760,14 +760,14 @@ func _on_logged(request: PlatformClient.Request, event: PlatformEvent) -> void:
 		_log("%s rechazada: %s" % [request.kind, describe(event)])
 
 
-# Saca a [param character_id] del conjunto del latido si sigue con [param lease_id].
+# Removes [param character_id] from the heartbeat set if it still has [param lease_id].
 func _forget_lease(character_id: int, lease_id: String) -> void:
 	if _heartbeat_set.get(character_id, "") == lease_id:
 		_heartbeat_set.erase(character_id)
 
 
-# instance_lost, instance_replaced o instance_stopped (en el error o en instance_status): un solo
-# instance_closed. Un instance_not_live solo se registra.
+# instance_lost, instance_replaced or instance_stopped (in the error or in instance_status): a single
+# instance_closed. An instance_not_live is only logged.
 func _check_closing(event: PlatformEvent) -> void:
 	var code: String = ""
 	if PlatformEvent.CLOSING_CODES.has(event.error_code):

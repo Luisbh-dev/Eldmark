@@ -1,28 +1,28 @@
 class_name CombatEventQueue
 extends RefCounted
-## Cola de eventos de combate ajenos, ordenada por tick del servidor (docs/combate.md, sección 6).
+## Queue of other entities' combat events, ordered by server tick (docs/combate.md, section 6).
 ## [br][br]
-## Un ENTITY_EVENT sobre otros jugadores no se muestra al llegar, sino cuando el tick de dibujo
-## ([method InterpolationClock.get_render_tick]) alcanza su [code]tick[/code]: así el destello, la
-## sacudida o la animación de un remoto coinciden con lo que se ve de él en pantalla (va unos 100
-## ms por detrás del servidor). [NetClient] mete aquí los eventos que no son propios y, en cada tick
-## de física, saca los que ya tocan con [method pop_due].
+## An ENTITY_EVENT about other players is not shown on arrival, but when the render tick
+## ([method InterpolationClock.get_render_tick]) reaches its [code]tick[/code]: that way the flash,
+## shake or animation of a remote entity matches what is seen of it on screen (it runs about 100
+## ms behind the server). [NetClient] puts here the events that are not its own and, on every physics
+## tick, pops the ones that are due with [method pop_due].
 ## [br][br]
-## Los eventos con el mismo tick salen en el orden en que llegaron. La cola tiene un tope
-## ([constant MAX_PENDING]) para que un reloj de dibujo que no arranca no la deje crecer sin límite;
-## al llenarse se descarta el más antiguo y se cuenta en [member dropped].
+## Events with the same tick come out in the order they arrived. The queue has a cap
+## ([constant MAX_PENDING]) so that a render clock that never starts cannot let it grow without limit;
+## when full, the oldest is dropped and counted in [member dropped].
 
-## Eventos que se guardan como máximo.
+## Maximum number of events kept.
 const MAX_PENDING: int = 512
 
-## Eventos descartados por llenarse la cola.
+## Events dropped because the queue filled up.
 var dropped: int = 0
 
-# Eventos pendientes ordenados por (tick, orden de llegada).
+# Pending events ordered by (tick, arrival order).
 var _events: Array[NetMessages.EntityEvent] = []
 
 
-## Guarda [param event] en su sitio según su tick (detrás de los que tienen el mismo tick o menos).
+## Stores [param event] in its place according to its tick (after those with the same tick or less).
 func push(event: NetMessages.EntityEvent) -> void:
 	if event == null:
 		return
@@ -35,8 +35,8 @@ func push(event: NetMessages.EntityEvent) -> void:
 		dropped += 1
 
 
-## Saca, en orden, los eventos cuyo tick es menor o igual que [param render_tick]. Con un tick de
-## dibujo que no ha arrancado (0 o menos) no sale ninguno.
+## Pops, in order, the events whose tick is less than or equal to [param render_tick]. With a render
+## tick that has not started (0 or less) none comes out.
 func pop_due(render_tick: float) -> Array[NetMessages.EntityEvent]:
 	var due: Array[NetMessages.EntityEvent] = []
 	if render_tick <= 0.0:
@@ -51,16 +51,16 @@ func pop_due(render_tick: float) -> Array[NetMessages.EntityEvent]:
 	return due
 
 
-## Eventos pendientes.
+## Pending events.
 func size() -> int:
 	return _events.size()
 
 
-## Tick del próximo evento, o -1 si no hay ninguno.
+## Tick of the next event, or -1 if there is none.
 func peek_next_tick() -> int:
 	return _events[0].tick if not _events.is_empty() else -1
 
 
-## Descarta todos los eventos pendientes.
+## Discards all pending events.
 func clear() -> void:
 	_events.clear()

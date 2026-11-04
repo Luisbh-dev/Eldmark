@@ -11,9 +11,10 @@ import (
 	"eldmark/platform/internal/db"
 )
 
-// La purga de un personaje con kit y apuntes dentro de la purga de su cuenta deja la lápida de characters sin
-// estado del progreso y con el libro; las tablas de solo añadir no admiten UPDATE ni DELETE sin la marca de la
-// retención (tampoco en la transacción siguiente a una que la puso) y la lápida no se puede borrar con libro.
+// The purge of a character with a kit and entries within its account's purge leaves the
+// characters tombstone without progress state and with the ledger; the append-only tables admit
+// neither UPDATE nor DELETE without the retention flag (not even in the transaction after one that
+// set it) and the tombstone cannot be deleted with a ledger.
 func TestPurgeKeepsLedger(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -57,7 +58,7 @@ func TestPurgeKeepsLedger(t *testing.T) {
 	if _, err := w.pool.Exec(ctx, `delete from characters where character_id = 42`); db.SQLState(err) != "23503" {
 		t.Errorf("borrar la lápida con libro: %v", err)
 	}
-	// La marca solo vale en su transacción.
+	// The flag is only valid within its transaction.
 	w.tx(func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `select set_config('eldmark.retention_purge', 'on', true)`)
 		return err
@@ -65,13 +66,14 @@ func TestPurgeKeepsLedger(t *testing.T) {
 	if _, err := w.pool.Exec(ctx, `delete from item_events where character_id = 42`); db.SQLState(err) != "P0001" {
 		t.Errorf("tras una transacción con la marca: %v", err)
 	}
-	// Una purga horaria del personaje ya purgado no hace nada (y Purge sobre nada no falla).
+	// An hourly purge of the already purged character does nothing (and Purge on nothing does not fail).
 	w.tx(func(tx pgx.Tx) error { return w.store.Purge(ctx, tx, 42) })
 }
 
-// Con el reloj a +366 días, PurgeRetention borra el libro del personaje purgado en llamadas sucesivas hasta dar
-// 0, devuelve su lápida (y la de uno purgado sin libro) en emptied y deja las operaciones de otros: la de dos
-// participantes se queda con el que sigue vivo. Antes del año no toca nada.
+// With the clock at +366 days, PurgeRetention deletes the purged character's ledger in successive
+// calls until it returns 0, returns its tombstone (and that of one purged without a ledger) in
+// emptied and leaves other characters' operations: the two-participant one stays with the one who
+// is still alive. Before the year it touches nothing.
 func TestRetention(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -97,8 +99,8 @@ func TestRetention(t *testing.T) {
 		values (42, 2, 2, 1600, 5, 35, 3), (43, 2, 1, 1600, 5, 5, 3)`)
 	w.purgeAccount(7) // 42
 	w.exec(`update characters set purged_at = now(), name = null, name_key = null where character_id = 49`)
-	// retention llama a PurgeRetention como el trabajo horario, una transacción cada vez mientras borre algo,
-	// y devuelve el total y todas las lápidas vacías.
+	// retention calls PurgeRetention like the hourly job, one transaction at a time while it deletes
+	// anything, and returns the total and all the empty tombstones.
 	retention := func() (int64, []int64) {
 		var total int64
 		var all []int64
@@ -112,7 +114,7 @@ func TestRetention(t *testing.T) {
 					return err
 				}
 				all = append(all, emptied...)
-				// La plataforma borra las lápidas vacías en la misma transacción.
+				// The platform deletes the empty tombstones in the same transaction.
 				for _, id := range emptied {
 					if _, err := tx.Exec(context.Background(), `delete from characters where character_id = $1`,
 						id); err != nil {
@@ -133,7 +135,7 @@ func TestRetention(t *testing.T) {
 	w.clock.advance(366 * 24 * time.Hour)
 	w.exec(`update characters set purged_at = $1 where character_id = 49`, w.clock.now().Add(-366*24*time.Hour))
 	deleted, emptied := retention()
-	// 42: 5 apuntes, 7 eventos y 6 participaciones; 5 operaciones solo suyas y 1 reversión.
+	// 42: 5 entries, 7 events and 6 participations; 5 operations that are only theirs and 1 reversal.
 	if deleted != 5+7+6+5+1 {
 		t.Errorf("borrados: %d", deleted)
 	}
@@ -162,7 +164,7 @@ func TestRetention(t *testing.T) {
 	if n := w.count(`select count(*) from ledger_entries where character_id = 43`); n != 1 {
 		t.Errorf("el libro de 43: %d", n)
 	}
-	// Ya no queda nada que borrar.
+	// Nothing is left to delete.
 	if deleted, emptied := retention(); deleted != 0 || len(emptied) != 0 {
 		t.Errorf("otra vuelta: %d, %v", deleted, emptied)
 	}

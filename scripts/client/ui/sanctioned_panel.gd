@@ -1,16 +1,17 @@
 class_name SanctionedPanel
 extends FrontScreen
-## Cuenta sancionada (docs/plataforma.md §4.2 y §13.2): con la sesión de privacidad de una cuenta suspendida o
-## expulsada, el motivo y la fecha de fin, y solo «Descargar mis datos» ([code]POST /v1/account/export[/code]),
-## «Borrar la cuenta» ([code]POST /v1/account/deletion[/code], con confirmación) y «Cerrar sesión». Las dos primeras
-## piden la contraseña (§4.3). Así exportar y pedir la supresión no dependen de no estar sancionado (§11.2). Esc
-## cierra sesión. Solo cliente.
+## Sanctioned account (docs/plataforma.md §4.2 and §13.2): with the privacy session of a suspended or
+## banned account, the reason and the end date, and only "Descargar mis datos" (Download my data)
+## ([code]POST /v1/account/export[/code]), "Borrar la cuenta" (Delete the account)
+## ([code]POST /v1/account/deletion[/code], with confirmation) and "Cerrar sesión" (Log out). The first
+## two ask for the password (§4.3). This way exporting and requesting erasure do not depend on not being
+## sanctioned (§11.2). Esc logs out. Client only.
 
-## Pulsó «Descargar mis datos» con la contraseña escrita.
+## Pressed "Descargar mis datos" (Download my data) with the password typed.
 signal export_requested(password: String)
-## Confirmó «Borrar la cuenta» con la contraseña escrita.
+## Confirmed "Borrar la cuenta" (Delete the account) with the password typed.
 signal deletion_requested(password: String)
-## Pulsó «Cerrar sesión» o Esc.
+## Pressed "Cerrar sesión" (Log out) or Esc.
 signal logout_requested
 
 const TEXT_HELP: String = "Puedes descargar tus datos o pedir que se borre tu cuenta. Escribe tu contraseña para hacerlo."
@@ -67,7 +68,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## La sanción ([code]{code, until, reason}[/code] de la sesión de privacidad).
+## The sanction ([code]{code, until, reason}[/code] from the privacy session).
 func set_restriction(restriction: Dictionary) -> void:
 	_restriction = restriction
 	_reason_label.text = PlatformErrors.text_for(ApiResult.failure(403, str(restriction.get("code",
@@ -81,7 +82,7 @@ func get_reason_text() -> String:
 	return _reason_label.text
 
 
-## Emite [signal export_requested] si hay contraseña. Devuelve true si lo emitió.
+## Emits [signal export_requested] if there is a password. Returns true if it emitted it.
 func try_export() -> bool:
 	if _busy or _password_edit.text.is_empty():
 		return false
@@ -89,19 +90,19 @@ func try_export() -> bool:
 	return true
 
 
-## Abre la confirmación del borrado (si hay contraseña).
+## Opens the deletion confirmation (if there is a password).
 func ask_deletion() -> void:
 	if _busy or _password_edit.text.is_empty():
 		return
 	_confirm.open(TEXT_CONFIRM_TITLE, TEXT_CONFIRM, "Borrar", "Cancelar", true)
 
 
-## Los datos ya están en [param path].
+## The data is already at [param path].
 func show_export_saved(path: String) -> void:
 	set_notice(TEXT_SAVED % path, false)
 
 
-## El borrado está pedido: la cuenta se purgará en [param purge_at] (Unix).
+## Deletion has been requested: the account will be purged at [param purge_at] (Unix).
 func show_deletion(purge_at: int) -> void:
 	set_notice(TEXT_DELETION % PlatformErrors.format_date(purge_at), false)
 

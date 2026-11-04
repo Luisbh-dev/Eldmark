@@ -1,14 +1,14 @@
-// Package app monta el proceso de serve (plataforma.md §2.5): las dos API HTTP (pública en
-// ELDMARK_PUBLIC_ADDR e interna en ELDMARK_INTERNAL_ADDR), /health y /ready en las dos, y el
-// arranque.
+// Package app mounts the serve process (plataforma.md §2.5): the two HTTP APIs (public on
+// ELDMARK_PUBLIC_ADDR and internal on ELDMARK_INTERNAL_ADDR), /health and /ready on both, and the
+// startup.
 //
-// serve no migra. Mientras falte por aplicar alguna migración del binario (o la base no responda),
-// el proceso sigue vivo: /health da 200, /ready da 503 con el motivo y el arranque espera,
-// mirando cada pocos segundos. Con el esquema al día hace la gracia de arranque (§2.5) y /ready
-// pasa a 200. Las rutas de /v1 y de /internal/v1 las añaden los paquetes siguientes con
-// [App.HandlePublic] y [App.HandleInternal]; hasta que el arranque termina responden 503. Lo que
-// hay que hacer al arrancar (los textos legales en legal_documents) va en [App.OnBoot], y los
-// trabajos periódicos (purgas, retenciones, zonas perdidas) en [App.AddJob].
+// serve does not migrate. While any of the binary's migrations remains to be applied (or the
+// database does not respond), the process stays alive: /health gives 200, /ready gives 503 with the
+// reason and startup waits, checking every few seconds. With the schema up to date it does the
+// startup grace period (§2.5) and /ready turns 200. The /v1 and /internal/v1 routes are added by
+// the following packages with [App.HandlePublic] and [App.HandleInternal]; until startup finishes
+// they answer 503. What has to be done at startup (the legal texts in legal_documents) goes in
+// [App.OnBoot], and the periodic jobs (purges, retentions, lost zones) in [App.AddJob].
 package app
 
 import (
@@ -34,14 +34,14 @@ import (
 	"eldmark/platform/internal/migrate"
 )
 
-// Plazos del arranque y del cierre.
+// Startup and shutdown timeouts.
 const (
-	readyTimeout    = time.Second // select 1 de /ready (§2.5)
+	readyTimeout    = time.Second // /ready's select 1 (§2.5)
 	schemaPoll      = 2 * time.Second
 	shutdownTimeout = 10 * time.Second
 )
 
-// App es el proceso de serve.
+// App is the serve process.
 type App struct {
 	cfg    *config.Config
 	pool   *pgxpool.Pool
@@ -59,11 +59,11 @@ type App struct {
 	hooks []func(ctx context.Context) error
 	jobs  []job
 
-	// SchemaPoll es cada cuánto se vuelve a mirar el esquema mientras no está al día.
+	// SchemaPoll is how often the schema is checked again while it is not up to date.
 	SchemaPoll time.Duration
 }
 
-// New prepara el proceso con las migraciones de migrations (normalmente migrate.FS()).
+// New prepares the process with the migrations from migrations (normally migrate.FS()).
 func New(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, migrations fs.FS) (*App, error) {
 	runner, err := migrate.New(pool, migrations)
 	if err != nil {
@@ -79,16 +79,16 @@ func New(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, migrations fs
 	return a, nil
 }
 
-// HandlePublic añade una ruta a la API pública («POST /v1/sessions»). Hasta que el arranque
-// termina, responde 503.
+// HandlePublic adds a route to the public API ("POST /v1/sessions"). Until startup finishes, it
+// answers 503.
 func (a *App) HandlePublic(pattern string, h http.Handler) { a.public.Handle(pattern, a.gate(h)) }
 
-// HandleInternal añade una ruta a la API interna («POST /internal/v1/claims»). Hasta que el
-// arranque termina, responde 503.
+// HandleInternal adds a route to the internal API ("POST /internal/v1/claims"). Until startup
+// finishes, it answers 503.
 func (a *App) HandleInternal(pattern string, h http.Handler) { a.internal.Handle(pattern, a.gate(h)) }
 
-// gate responde 503 mientras el arranque no ha terminado: el esquema puede no estar al día y los
-// textos legales, sin publicar.
+// gate answers 503 while startup has not finished: the schema may not be up to date and the legal
+// texts unpublished.
 func (a *App) gate(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !a.started.Load() {
@@ -100,44 +100,44 @@ func (a *App) gate(h http.Handler) http.Handler {
 	})
 }
 
-// OnBoot añade algo que hacer al arrancar, con el esquema al día y tras la gracia de §2.5 (y antes
-// de que /ready dé 200 y las rutas respondan). Si falla, el arranque se reintenta entero, así que
-// tiene que poder repetirse.
+// OnBoot adds something to do at startup, with the schema up to date and after the §2.5 grace
+// period (and before /ready gives 200 and the routes respond). If it fails, startup is retried in
+// full, so it has to be repeatable.
 func (a *App) OnBoot(fn func(ctx context.Context) error) { a.hooks = append(a.hooks, fn) }
 
-// job es un trabajo periódico.
+// job is a periodic job.
 type job struct {
 	name  string
 	every time.Duration
 	fn    func(ctx context.Context) error
 }
 
-// AddJob añade un trabajo periódico (§2.5): corre al terminar el arranque y después cada every,
-// con pg_try_advisory_lock para que nunca corra en dos procesos a la vez (si otro lo tiene, esa
-// vuelta se salta). Un error se registra y el trabajo sigue en la vuelta siguiente.
+// AddJob adds a periodic job (§2.5): it runs when startup finishes and then every every, with
+// pg_try_advisory_lock so that it never runs in two processes at once (if another holds it, that
+// round is skipped). An error is logged and the job continues in the next round.
 func (a *App) AddJob(name string, every time.Duration, fn func(ctx context.Context) error) {
 	a.jobs = append(a.jobs, job{name: name, every: every, fn: fn})
 }
 
-// PublicHandler es la API pública con el registro de peticiones.
+// PublicHandler is the public API with request logging.
 func (a *App) PublicHandler() http.Handler { return httpx.Middleware(a.log, a.public) }
 
-// InternalHandler es la API interna con el registro de peticiones.
+// InternalHandler is the internal API with request logging.
 func (a *App) InternalHandler() http.Handler {
 	return httpx.Middleware(a.log.With("api", "internal"), a.internal)
 }
 
-// Started dice si el arranque terminó (esquema al día y gracia hecha).
+// Started says whether startup finished (schema up to date and grace period done).
 func (a *App) Started() bool { return a.started.Load() }
 
-// Motivos de /ready, que es público: sin detalles de la base.
+// Reasons for /ready, which is public: no database details.
 var (
 	errDBDown   = errors.New("La base de datos no responde")
 	errStarting = errors.New("La plataforma está arrancando")
 )
 
-// Ready es la comprobación de /ready: select 1 en menos de 1 s, las migraciones del binario al
-// día y el arranque hecho.
+// Ready is the /ready check: select 1 in under 1 s, the binary's migrations up to date and startup
+// done.
 func (a *App) Ready(ctx context.Context) error {
 	if err := db.Ping(ctx, a.pool, readyTimeout); err != nil {
 		return errDBDown
@@ -154,8 +154,8 @@ func (a *App) Ready(ctx context.Context) error {
 	return nil
 }
 
-// Listen abre los dos puertos. Va aparte de Serve para que un puerto ocupado falle enseguida y
-// para que las pruebas sepan las direcciones (con «:0»).
+// Listen opens the two ports. It is separate from Serve so that a busy port fails right away and so
+// that the tests know the addresses (with ":0").
 func (a *App) Listen() error {
 	a.listenMu.Lock()
 	defer a.listenMu.Unlock()
@@ -172,7 +172,7 @@ func (a *App) Listen() error {
 	return nil
 }
 
-// PublicAddr y InternalAddr devuelven las direcciones abiertas por Listen.
+// PublicAddr and InternalAddr return the addresses opened by Listen.
 func (a *App) PublicAddr() string   { return a.publicLn.Addr().String() }
 func (a *App) InternalAddr() string { return a.intLn.Addr().String() }
 
@@ -187,8 +187,8 @@ func newServer(h http.Handler) *http.Server {
 	}
 }
 
-// Serve atiende las dos API hasta que ctx se cancela; entonces cierra ordenadamente. Llama a
-// Listen si no se ha llamado.
+// Serve serves the two APIs until ctx is cancelled; then it shuts down in an orderly way. It calls
+// Listen if it has not been called.
 func (a *App) Serve(ctx context.Context) error {
 	if a.publicLn == nil {
 		if err := a.Listen(); err != nil {
@@ -249,8 +249,8 @@ func (a *App) Serve(ctx context.Context) error {
 	return nil
 }
 
-// boot espera a que el esquema esté al día y hace el arranque; devuelve false si ctx se cancela
-// antes. Registra cada motivo nuevo por el que no puede arrancar, sin repetirlo en cada vuelta.
+// boot waits for the schema to be up to date and does the startup; it returns false if ctx is
+// cancelled first. It logs each new reason why it cannot start, without repeating it on every round.
 func (a *App) boot(ctx context.Context) bool {
 	lastReason := ""
 	for {
@@ -292,7 +292,7 @@ func (a *App) tryBoot(ctx context.Context) error {
 	return nil
 }
 
-// JobLockKey es la clave de pg_try_advisory_lock de un trabajo (distinta de la de migrate).
+// JobLockKey is a job's pg_try_advisory_lock key (different from migrate's).
 func JobLockKey(name string) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte("eldmark-job:" + name))
@@ -342,11 +342,11 @@ func (a *App) runJobOnce(ctx context.Context, j job) {
 	a.log.Debug("trabajo periódico", "job", j.name, "ms", float64(time.Since(start).Microseconds())/1000)
 }
 
-// startupGrace da a las zonas el margen de §2.5: una plataforma que vuelve tras caerse no da por
-// perdidas a las instancias que no pudieron latir ni por libres a sus arrendamientos. Alarga solo
-// los arrendamientos que seguían vivos en el último latido de su instancia (starting o live): uno
-// que ya había caducado antes (la zona dejó de renovarlo porque el personaje se fue) no resucita.
-// Por eso los arrendamientos van antes que el latido de las instancias.
+// startupGrace gives the zones the §2.5 margin: a platform that comes back after going down does not
+// consider the instances that could not heartbeat as lost nor their leases as free. It extends only
+// the leases that were still alive at the last heartbeat of their instance (starting or live): one
+// that had already expired before (the zone stopped renewing it because the character left) does not
+// come back to life. That is why the leases go before the instances' heartbeat.
 func (a *App) startupGrace(ctx context.Context) error {
 	return db.InTx(ctx, a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		res, err := tx.Exec(ctx, `update character_leases l

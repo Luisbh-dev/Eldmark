@@ -1,9 +1,9 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área interfaz (escenario de online_driver.gd).
+## Quality capture bench (TEC-50), interfaz area (scenario of online_driver.gd).
 ##
-## Título con cuenta (FrontMain): sin la plataforma de cuentas en marcha (no hace falta: el banco no usa cuentas ni contraseñas), así que se ve el
-## título con su aviso de error y, forzando la pantalla con datos de mentira (no hay contraseñas ni cuentas reales),
-## el registro, la selección de personaje y los cuatro pasos de la creación.
+## Title screen with account (FrontMain): without the accounts platform running (not needed: the bench uses no accounts or passwords), so what is seen is the
+## title with its error notice and, forcing the screen with fake data (no real passwords or accounts),
+## sign-up, character selection and the four character creation steps.
 
 var d: Variant
 
@@ -15,7 +15,7 @@ func run(drv: Variant) -> void:
 	await d.shot("interfaz/titulo_01_inicio.png", "pantalla de título con cuenta: inicio (la plataforma de cuentas no está en marcha)", "online_driver --front --title")
 	var title: Variant = main.get_title_screen()
 	if title != null:
-		# Intento de entrar sin escribir nada (el botón debe estar desactivado) y panel de «¿has olvidado la contraseña?».
+		# Attempt to log in without typing anything (the button must be disabled) and the "forgot your password?" panel.
 		title.open_forgot()
 		await d.wait(0.6)
 		await d.shot("interfaz/titulo_02_olvide_contrasena.png", "título: panel de recuperar contraseña abierto (sin escribir nada)", "TitleScreen.open_forgot()")
@@ -24,7 +24,7 @@ func run(drv: Variant) -> void:
 		title.get_register_button().pressed.emit()
 		await d.wait(0.8)
 		await d.shot("interfaz/titulo_03_registro.png", "pantalla de registro de cuenta (campos vacíos)", "botón «Crear cuenta»")
-	# Selección de personaje con datos inventados.
+	# Character selection with made-up data.
 	var select: Variant = main.get_character_select()
 	if select != null:
 		main._show(select)
@@ -44,7 +44,7 @@ func run(drv: Variant) -> void:
 		select.set_data({"realm": "vardheim", "slots": 3, "used": 0, "characters": []})
 		await d.wait(0.5)
 		await d.shot("interfaz/seleccion_personaje_04_vacia.png", "selección de personaje sin personajes", "set_data vacío")
-	# Creación de personaje, paso a paso.
+	# Character creation, step by step.
 	var create: Variant = main.get_character_create()
 	if create != null:
 		create.setup(&"")

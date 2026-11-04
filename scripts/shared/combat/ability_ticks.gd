@@ -1,79 +1,79 @@
 class_name AbilityTicks
 extends RefCounted
-## Una [AbilityDefinition] ya convertida a ticks por [CombatCatalog] (docs/habilidades.md, sección
+## An [AbilityDefinition] already converted to ticks by [CombatCatalog] (docs/habilidades.md, section
 ## 2.2).
 ## [br][br]
-## Las ventanas son intervalos [code][desde, hasta)[/code] de ticks contados desde el
-## [code]action_tick[/code] de la acción: lanzamiento [code][0, cast_ticks)[/code], activo (o
-## canalización) [code][cast_ticks, cast_ticks + active_ticks)[/code] y recuperación hasta
-## [member total_ticks]. El compromiso (la reutilización, las cargas, el proyectil y el efecto propio)
-## cae en el tick [code]cast_ticks[/code].
+## The windows are [code][from, to)[/code] intervals of ticks counted from the action's
+## [code]action_tick[/code]: cast [code][0, cast_ticks)[/code], active (or
+## channel) [code][cast_ticks, cast_ticks + active_ticks)[/code] and recovery up to
+## [member total_ticks]. The commit (the cooldown, the charges, the projectile and the self effect)
+## falls on tick [code]cast_ticks[/code].
 ## [br][br]
-## [member hit] es un [AttackTicks] [b]sintetizado[/b] con las ventanas de la habilidad (anticipación =
-## lanzamiento) y sus campos de solo servidor: el resolutor prueba igual un ataque que el golpe de
-## una habilidad. Su [member AttackTicks.id] es la fuente de la habilidad
-## ([method CombatSource.make] con [constant CombatSource.Kind.ABILITY]) y no está en la tabla de
-## ataques.
+## [member hit] is a [b]synthesized[/b] [AttackTicks] with the ability's windows (windup =
+## cast) and its server-only fields: the resolver tests an attack and an ability's hit
+## the same way. Its [member AttackTicks.id] is the ability's source
+## ([method CombatSource.make] with [constant CombatSource.Kind.ABILITY]) and is not in the attack
+## table.
 
-## Ticks en NONE, como poco, entre dos usos que el byte de acción no distingue (docs/habilidades.md, sección
-## 5.5): dos de la misma ranura, o dos consumibles, salen con el mismo byte (ABILITY, fase 0 y la misma ranura),
-## y un remoto ve el registro cada [constant NetProtocol.SNAPSHOT_INTERVAL_TICKS] ticks (o menos a menudo, con
-## el reparto por prioridad del snapshot). Tres intervalos: la validación de [CombatCatalog] lo exige a las
-## reutilizaciones y [method ActionMachine.impose_interrupt] lo deja como margen tras cortar un lanzamiento
-## (revisión de H5).
+## Ticks in NONE, at minimum, between two uses that the action byte cannot tell apart (docs/habilidades.md, section
+## 5.5): two of the same slot, or two consumables, come out with the same byte (ABILITY, phase 0 and the same slot),
+## and a remote sees the record every [constant NetProtocol.SNAPSHOT_INTERVAL_TICKS] ticks (or less often, with
+## the snapshot's priority-based distribution). Three intervals: the [CombatCatalog] validation requires it of
+## cooldowns and [method ActionMachine.impose_interrupt] leaves it as a margin after cutting a cast
+## (H5 review).
 const REARM_TICKS: int = 6
 
-## ID u16 del catálogo (1..n por orden alfabético del nombre; 0 = ninguna).
+## Catalog u16 ID (1..n in alphabetical order of the name; 0 = none).
 var id: int = 0
-## El [member AbilityDefinition.id] original.
+## The original [member AbilityDefinition.id].
 var name: StringName = &""
-## Ranura del arma (0-2), o -1 si es un consumible o no la lleva ningún arma.
+## Weapon slot (0-2), or -1 if it is a consumable or no weapon carries it.
 var slot: int = -1
-## Arma que la lleva (0 si es un consumible o no la lleva ninguna).
+## Weapon that carries it (0 if it is a consumable or none carries it).
 var weapon_id: int = 0
-## Índice en [member CombatRules.consumables] (0-1), o -1 si no es un consumible.
+## Index into [member CombatRules.consumables] (0-1), or -1 if it is not a consumable.
 var consumable_index: int = -1
 
-# Predichos (entran en la huella).
+# Predicted (part of the fingerprint).
 var cast_ticks: int = 0
 var active_ticks: int = 0
 var recovery_ticks: int = 0
-## Lanzamiento + activo + recuperación.
+## Cast + active + recovery.
 var total_ticks: int = 0
-## Reutilización (0 en los consumibles: usan [member CombatTables.consumable_cooldown_ticks]).
+## Cooldown (0 for consumables: they use [member CombatTables.consumable_cooldown_ticks]).
 var cooldown_ticks: int = 0
 var channel: bool = false
 var channel_hold: bool = true
 var channel_breaks_on_move: bool = false
-## Desde qué tick (relativo a la acción) se puede cancelar a esquiva y a ataque (los -1 del dato ya
-## son el inicio de la recuperación).
+## From which tick (relative to the action) it can be canceled into a dodge and into an attack (the -1s in the data
+## are already the start of recovery).
 var cancel_to_dodge_from_ticks: int = 0
 var cancel_to_attack_from_ticks: int = 0
 var move_speed_scale: float = 1.0
 var turn_rate: float = 0.0
 var lunge_speed: float = 0.0
 var dash_distance_m: float = 0.0
-## Ventana del avance [desde, hasta) relativa a la acción.
+## Advance window [from, to) relative to the action.
 var dash_from_ticks: int = 0
 var dash_to_ticks: int = 0
-## 0 hacia look_yaw, 1 hacia atrás, 2 según el movimiento.
+## 0 toward look_yaw, 1 backward, 2 following the movement.
 var dash_direction: int = 0
-## Velocidad (m/s) del avance en cada tick de su ventana (índice = tick - action_tick - dash_from),
-## en f32 y normalizada para que la suma de [code]v / 60[/code] sea [member dash_distance_m].
+## Speed (m/s) of the advance on each tick of its window (index = tick - action_tick - dash_from),
+## in f32 and normalized so that the sum of [code]v / 60[/code] is [member dash_distance_m].
 var dash_speeds: PackedFloat32Array = PackedFloat32Array()
 var usable_in_air: bool = false
 var stamina_restore: int = 0
 var blocks: bool = false
-## ID del [ProjectileTicks] (0 = sin proyectil).
+## ID of the [ProjectileTicks] (0 = no projectile).
 var projectile_id: int = 0
 var projectile_count: int = 1
 var projectile_spread_deg: float = 0.0
 var projectile_speed_mps: float = 0.0
 
-# Solo servidor (no entran en la huella).
-## El golpe sintetizado (siempre existe; sin forma no hay golpe cuerpo a cuerpo).
+# Server only (not part of the fingerprint).
+## The synthesized hit (it always exists; with no shape there is no melee hit).
 var hit: AttackTicks = null
-## ID del [StatusTicks] propio al comprometer (0 = ninguno) y curación propia.
+## ID of the self [StatusTicks] on commit (0 = none) and self healing.
 var self_status_id: int = 0
 var self_heal: int = 0
 var interrupt_on_damage: bool = false
@@ -81,23 +81,23 @@ var wall_half_extents: Vector3 = Vector3.ZERO
 var wall_forward_m: float = 0.7
 
 
-## true si es uno de los consumibles de [member CombatRules.consumables].
+## true if it is one of the consumables in [member CombatRules.consumables].
 func is_consumable() -> bool:
 	return consumable_index >= 0
 
 
-## Primer tick (relativo a la acción) del activo: el del compromiso.
+## First tick (relative to the action) of the active phase: the commit tick.
 func active_from() -> int:
 	return cast_ticks
 
 
-## Primer tick (relativo a la acción) tras el activo (exclusivo).
+## First tick (relative to the action) after the active phase (exclusive).
 func active_to() -> int:
 	return cast_ticks + active_ticks
 
 
-## Velocidad impuesta (m/s) del avance en el tick [param relative_tick] de la acción (0 fuera de
-## su ventana).
+## Forced speed (m/s) of the advance at tick [param relative_tick] of the action (0 outside
+## its window).
 func dash_speed_at(relative_tick: int) -> float:
 	var index: int = relative_tick - dash_from_ticks
 	if index < 0 or index >= dash_speeds.size():
@@ -105,7 +105,7 @@ func dash_speed_at(relative_tick: int) -> float:
 	return dash_speeds[index]
 
 
-## true si [param relative_tick] cae en la ventana del avance.
+## true if [param relative_tick] falls within the advance window.
 func is_dashing(relative_tick: int) -> bool:
 	return dash_distance_m > 0.0 and relative_tick >= dash_from_ticks \
 			and relative_tick < dash_to_ticks

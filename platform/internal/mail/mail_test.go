@@ -71,7 +71,7 @@ func TestBuildMIME(t *testing.T) {
 	if !strings.Contains(string(body), "https://eldmark.example/reset?token=x") || !strings.Contains(string(body), "contraseña") {
 		t.Fatalf("cuerpo: %s", body)
 	}
-	// Solo cabeceras conocidas: nada que venga del destinatario abre una cabecera nueva.
+	// Only known headers: nothing coming from the recipient opens a new header.
 	for _, bad := range []string{"aneira@example.org\r\nBcc: otro@example.org", "a@example.org\nBcc: b@example.org"} {
 		m.To = bad
 		if _, err := BuildMIME(from, m, time.Now()); err == nil {
@@ -84,7 +84,7 @@ func TestBuildMIME(t *testing.T) {
 	}
 }
 
-// fakeSMTP es un servidor SMTP mínimo en loopback, sin TLS ni autenticación.
+// fakeSMTP is a minimal SMTP server on loopback, without TLS or authentication.
 type fakeSMTP struct {
 	ln   net.Listener
 	mu   sync.Mutex
@@ -195,9 +195,10 @@ func TestSMTPSenderDelivers(t *testing.T) {
 	}
 }
 
-// Sin STARTTLS, solo hacia loopback: hacia otra máquina no se manda nada en claro. La URL nombra
-// otra máquina y la conexión se desvía al servidor falso (que no ofrece STARTTLS): el envío se
-// niega antes de MAIL FROM. Con smtps://, un servidor sin TLS tampoco recibe nada.
+// Without STARTTLS, only toward loopback: nothing is sent in the clear to another machine. The URL
+// names another machine and the connection is diverted to the fake server (which does not offer
+// STARTTLS): the send is refused before MAIL FROM. With smtps://, a server without TLS does not
+// receive anything either.
 func TestSMTPRequiresStartTLSOutsideLoopback(t *testing.T) {
 	if isLoopback("smtp.example.org") || !isLoopback("127.0.0.1") || !isLoopback("::1") || !isLoopback("localhost") {
 		t.Fatal("isLoopback")

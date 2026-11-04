@@ -1,87 +1,87 @@
 class_name CombatState
 extends RefCounted
-## Estado de combate de un personaje (docs/combate.md, sección 3.1, ampliada a la versión 5 en
-## docs/habilidades.md, sección 3.1). Va dentro de [PlayerState] y entra en
-## [method PlayerState.encode], así que la reconciliación compara también la acción en curso, la
-## resistencia, los controles impuestos por el servidor, las reutilizaciones, las cargas de los
-## consumibles y los efectos de movimiento.
+## A character's combat state (docs/combate.md, section 3.1, extended to version 5 in
+## docs/habilidades.md, section 3.1). It lives inside [PlayerState] and goes into
+## [method PlayerState.encode], so reconciliation also compares the current action, the
+## stamina, the controls imposed by the server, the cooldowns, the consumable charges
+## and the movement effects.
 ## [br][br]
-## Formato de red ([constant ENCODED_SIZE] bytes, little-endian). La columna de la izquierda es el
-## offset dentro de [PlayerState] (el combate empieza en el byte 35):
+## Network format ([constant ENCODED_SIZE] bytes, little-endian). The left column is the
+## offset within [PlayerState] (combat starts at byte 35):
 ## [codeblock]
 ## 35   u8       action                 Action
-## 36   u16      action_id              ataque (LIGHT, HEAVY, CHARGE) o habilidad (ABILITY) del catálogo
-## 38   u32      action_tick            tick en que empezó la acción
-## 42   u8       combo_step             0-2: siguiente ligero del combo
-## 43   u8       primary_held           ticks reales con PRIMARY pulsado desde su flanco (0 = ninguna)
-## 44   u8       charge_ticks           ticks de carga al lanzar el fuerte
-## 45   u8       buffered               bits 0-3 tipo (BUFFER_*), bits 4-7 ticks que le quedan
+## 36   u16      action_id              catalog attack (LIGHT, HEAVY, CHARGE) or ability (ABILITY)
+## 38   u32      action_tick            tick on which the action started
+## 42   u8       combo_step             0-2: next light attack of the combo
+## 43   u8       primary_held           real ticks with PRIMARY pressed since its edge (0 = none)
+## 44   u8       charge_ticks           charge ticks when the heavy attack is released
+## 45   u8       buffered               bits 0-3 type (BUFFER_*), bits 4-7 ticks remaining
 ## 46   u16      stamina                0..stamina_max
-## 48   u32      stamina_regen_tick     primer tick en que vuelve a regenerar
+## 48   u32      stamina_regen_tick     first tick on which it regenerates again
 ## 52   u8       combat_flags           FLAG_* (bits 0-6)
-## 53   u16      action_dir             yaw cuantizado de la esquiva o del avance de una habilidad
-## 55   u32      cc_until_tick          fin del control actual (exclusivo)
-## 59   s16 x2   knockback              empuje horizontal (x, z) en cm/s
-## 63   u32      parry_ready_tick       primer tick en que puede abrirse otra ventana de parada
-## 67   u16      weapon_id              arma activa
-## 69   u16      alt_weapon_id          arma de la otra ranura (0 = ninguna)
-## 71   u8       combat_flags2          FLAG2_* (ranura activa, botones del tick anterior, comando)
-## 72   u32 x3   ability_ready[0..2]    primer tick en que vuelve a valer cada habilidad del arma activa
-## 84   u32 x3   ability_ready[3..5]    ídem, arma de la otra ranura
-## 96   u32      consumable_ready_tick  reutilización compartida de los consumibles
-## 100  u8       consumable_charges     bits 0-3 poción 1, bits 4-7 poción 2
-## 101  u8 + u32 move_effect 0          id del efecto de movimiento (0 = libre) y su fin (exclusivo)
-## 106  u8 + u32 move_effect 1          ídem
+## 53   u16      action_dir             quantized yaw of the dodge or an ability's advance
+## 55   u32      cc_until_tick          end of the current control (exclusive)
+## 59   s16 x2   knockback              horizontal knockback (x, z) in cm/s
+## 63   u32      parry_ready_tick       first tick on which another parry window can be opened
+## 67   u16      weapon_id              active weapon
+## 69   u16      alt_weapon_id          weapon in the other slot (0 = none)
+## 71   u8       combat_flags2          FLAG2_* (active slot, previous-tick buttons, command)
+## 72   u32 x3   ability_ready[0..2]    first tick on which each of the active weapon's abilities is ready again
+## 84   u32 x3   ability_ready[3..5]    same, for the other slot's weapon
+## 96   u32      consumable_ready_tick  shared cooldown of the consumables
+## 100  u8       consumable_charges     bits 0-3 potion 1, bits 4-7 potion 2
+## 101  u8 + u32 move_effect 0          id of the movement effect (0 = free) and its end (exclusive)
+## 106  u8 + u32 move_effect 1          same
 ## [/codeblock]
-## Todo son enteros salvo [member knockback], que se redondea a cm/s al codificar. Los ticks son
-## absolutos (como [member cc_until_tick]): restaurar un estado no tiene ambigüedad y el tiempo de
-## las reutilizaciones corre aunque el arma esté guardada.
+## Everything is integers except [member knockback], which is rounded to cm/s on encoding. Ticks are
+## absolute (like [member cc_until_tick]): restoring a state is unambiguous and the cooldown
+## time keeps running even while the weapon is stowed.
 
-## Acciones. [constant NONE] es no hacer nada; [constant STAGGER], [constant STUN], [constant DEAD],
-## [constant DOWNED], [constant REVIVE] y [constant EXECUTE] los impone el servidor.
-## [constant ABILITY] es una habilidad o un consumible ([member action_id] es la habilidad) y
-## [constant SWAP], el cambio de arma (docs/habilidades.md, sección 3). 14 y 15 quedan libres (la
-## acción ocupa 4 bits en el byte de acción del registro).
+## Actions. [constant NONE] is doing nothing; [constant STAGGER], [constant STUN], [constant DEAD],
+## [constant DOWNED], [constant REVIVE] and [constant EXECUTE] are imposed by the server.
+## [constant ABILITY] is an ability or a consumable ([member action_id] is the ability) and
+## [constant SWAP], the weapon swap (docs/habilidades.md, section 3). 14 and 15 are left free (the
+## action takes 4 bits in the record's action byte).
 enum Action {
 	NONE, LIGHT, HEAVY, CHARGE, BLOCK, DODGE, STAGGER, STUN, DEAD,
 	ABILITY, SWAP, DOWNED, REVIVE, EXECUTE,
 }
 
-## Tamaño en bytes de un estado de combate codificado.
+## Size in bytes of an encoded combat state.
 const ENCODED_SIZE: int = 76
-## Ranuras de habilidad de un arma.
+## Ability slots of a weapon.
 const ABILITY_SLOTS: int = 3
-## Ranuras de efectos de movimiento (ralentizar, enraizar).
+## Movement effect slots (slow, root).
 const MOVE_EFFECT_SLOTS: int = 2
-## Consumibles (pociones) de las reglas.
+## Consumables (potions) of the rules.
 const CONSUMABLE_SLOTS: int = 2
-## Cargas máximas de cada consumible (4 bits).
+## Maximum charges of each consumable (4 bits).
 const MAX_CHARGES: int = 15
 
-## Bit 0 de [member combat_flags]: agotado (sin esquiva ni bloqueo hasta superar el umbral).
+## Bit 0 of [member combat_flags]: exhausted (no dodge or block until the threshold is exceeded).
 const FLAG_EXHAUSTED: int = 1 << 0
-## Bit 1: el último intento de acción falló por falta de resistencia (para la interfaz). Dura un
-## solo tick: la máquina lo borra al principio del siguiente.
+## Bit 1: the last action attempt failed for lack of stamina (for the UI). It lasts a
+## single tick: the machine clears it at the start of the next one.
 const FLAG_NO_STAMINA: int = 1 << 1
-## Bit 2: resistencia infinita (comando de depuración): la máquina no gasta.
+## Bit 2: infinite stamina (debug command): the machine does not spend.
 const FLAG_INFINITE_STAMINA: int = 1 << 2
-## Bits 3-5: nivel que tenían DODGE, BLOCK y PRIMARY en el tick anterior. La máquina saca de ahí
-## los flancos de subida, así que no depende de [member PlayerCharacter.prev_buttons].
+## Bits 3-5: level that DODGE, BLOCK and PRIMARY had on the previous tick. The machine derives
+## the rising edges from them, so it does not depend on [member PlayerCharacter.prev_buttons].
 const FLAG_DODGE_HELD: int = 1 << 3
 const FLAG_BLOCK_HELD: int = 1 << 4
 const FLAG_PRIMARY_HELD: int = 1 << 5
-## Bit 6: el ligero en curso empezó mientras la pulsación viva de PRIMARY estaba abajo (del flanco o
-## del búfer o enlace que ella dejó), así que mantenerla lo convierte en carga. No se deduce de
-## [member primary_held] y el tick actual porque una entrada sustituida no suma a esa cuenta y abriría
-## un hueco para siempre. Lo pone y lo borra la máquina de acciones (solo tiene sentido con un ligero
-## en curso).
+## Bit 6: the light attack in progress started while the live PRIMARY press was down (from the edge or
+## from the buffer or link it left), so holding it turns it into a charge. It is not deduced from
+## [member primary_held] and the current tick because a substituted input does not add to that count and would open
+## a permanent gap. It is set and cleared by the action machine (it only makes sense with a light attack
+## in progress).
 const FLAG_LIGHT_OF_PRESS: int = 1 << 6
 
-## Bit 0 de [member combat_flags2]: el arma activa es la de la ranura 2 ([member weapon_id] es la
-## segunda arma de la plantilla y [member alt_weapon_id], la primera).
+## Bit 0 of [member combat_flags2]: the active weapon is the one in slot 2 ([member weapon_id] is the
+## template's second weapon and [member alt_weapon_id], the first).
 const FLAG2_SECOND_SLOT: int = 1 << 0
-## Bits 1-6: nivel que tenían ABILITY_1, ABILITY_2, ABILITY_3, SWAP_WEAPON, CONSUMABLE_1 y
-## CONSUMABLE_2 en el tick anterior (para sacar sus flancos, como los bits 3-5 de
+## Bits 1-6: level that ABILITY_1, ABILITY_2, ABILITY_3, SWAP_WEAPON, CONSUMABLE_1 and
+## CONSUMABLE_2 had on the previous tick (to derive their edges, like bits 3-5 of
 ## [member combat_flags]).
 const FLAG2_ABILITY_1_HELD: int = 1 << 1
 const FLAG2_ABILITY_2_HELD: int = 1 << 2
@@ -89,33 +89,33 @@ const FLAG2_ABILITY_3_HELD: int = 1 << 3
 const FLAG2_SWAP_HELD: int = 1 << 4
 const FLAG2_CONSUMABLE_1_HELD: int = 1 << 5
 const FLAG2_CONSUMABLE_2_HELD: int = 1 << 6
-## Los bits 1-6 juntos.
+## Bits 1-6 together.
 const FLAG2_HELD_MASK: int = 0b0111_1110
-## Bit 7: sin reutilizaciones ni gasto de cargas (comando de depuración 13).
+## Bit 7: no cooldowns or charge spending (debug command 13).
 const FLAG2_NO_COOLDOWNS: int = 1 << 7
 
-## Tipos del búfer de entradas ([member buffered], bits 0-3).
+## Input buffer types ([member buffered], bits 0-3).
 const BUFFER_NONE: int = 0
 const BUFFER_PRIMARY: int = 1
 const BUFFER_DODGE: int = 2
-## Pulsación de PRIMARY dentro de la ventana de combo de un ligero: empieza el siguiente al acabar
-## su recuperación, sin caducar antes.
+## PRIMARY press within a light attack's combo window: it starts the next one when
+## its recovery ends, without expiring before.
 const BUFFER_LINK: int = 3
-## Habilidades de las ranuras 1-3 (4, 5 y 6).
+## Abilities of slots 1-3 (4, 5 and 6).
 const BUFFER_ABILITY_1: int = 4
 const BUFFER_ABILITY_2: int = 5
 const BUFFER_ABILITY_3: int = 6
 const BUFFER_SWAP: int = 7
-## Consumibles 1 y 2 (8 y 9).
+## Consumables 1 and 2 (8 and 9).
 const BUFFER_CONSUMABLE_1: int = 8
 const BUFFER_CONSUMABLE_2: int = 9
-## Bits del tipo del búfer y desplazamiento de sus ticks.
+## Buffer type bits and shift of its ticks.
 const BUFFER_TYPE_MASK: int = 15
 const BUFFER_TICKS_SHIFT: int = 4
 
-## Pasos del yaw cuantizado de [member action_dir] (como [member PlayerInput.look_yaw]).
+## Steps of the quantized yaw of [member action_dir] (like [member PlayerInput.look_yaw]).
 const YAW_STEPS: int = 65536
-## Empuje: centímetros por m/s.
+## Knockback: centimeters per m/s.
 const KNOCKBACK_SCALE: float = 100.0
 
 var action: int = Action.NONE
@@ -130,31 +130,31 @@ var stamina_regen_tick: int = 0
 var combat_flags: int = 0
 var action_dir: int = 0
 var cc_until_tick: int = 0
-## Empuje horizontal (x, z) en m/s, a cm/s de precisión.
+## Horizontal knockback (x, z) in m/s, at cm/s precision.
 var knockback: Vector2 = Vector2.ZERO
 var parry_ready_tick: int = 0
-## Arma activa.
+## Active weapon.
 var weapon_id: int = 0
-## Arma de la otra ranura (0 = ninguna).
+## Weapon in the other slot (0 = none).
 var alt_weapon_id: int = 0
-## FLAG2_*: ranura activa, botones del tick anterior y sin reutilizaciones.
+## FLAG2_*: active slot, previous-tick buttons and no cooldowns.
 var combat_flags2: int = 0
-## Primer tick en que vuelve a valer cada habilidad: índices 0-2 las del arma activa, 3-5 las de la
-## otra ranura (6 valores; [method copy_from] copia el contenido, no la referencia).
+## First tick on which each ability is ready again: indices 0-2 are the active weapon's, 3-5 those of the
+## other slot (6 values; [method copy_from] copies the contents, not the reference).
 var ability_ready: PackedInt64Array
-## Primer tick en que vuelve a valer cualquier consumible (reutilización compartida).
+## First tick on which any consumable is ready again (shared cooldown).
 var consumable_ready_tick: int = 0
-## Cargas de los consumibles: bits 0-3 la poción 1 y bits 4-7 la poción 2 ([method charges_of]).
+## Consumable charges: bits 0-3 potion 1 and bits 4-7 potion 2 ([method charges_of]).
 var consumable_charges: int = 0
-## Id ([StatusTicks]) de cada ranura de efecto de movimiento; 0 = libre (2 valores).
+## Id ([StatusTicks]) of each movement effect slot; 0 = free (2 values).
 var move_effect_ids: PackedInt32Array
-## Fin (exclusivo) de cada ranura de efecto de movimiento (2 valores).
+## End (exclusive) of each movement effect slot (2 values).
 var move_effect_until: PackedInt64Array
 
 
 func _init() -> void:
-	# Arrays propios de cada estado: los Packed*Array se pasan por referencia y un valor por defecto
-	# compartido haría que dos estados se pisaran.
+	# Each state's own arrays: Packed*Arrays are passed by reference and a shared default
+	# value would make two states overwrite each other.
 	ability_ready = PackedInt64Array()
 	ability_ready.resize(ABILITY_SLOTS * 2)
 	move_effect_ids = PackedInt32Array()
@@ -163,9 +163,9 @@ func _init() -> void:
 	move_effect_until.resize(MOVE_EFFECT_SLOTS)
 
 
-## Estado de un personaje recién creado: sin acción, con la resistencia llena, el arma
-## [param weapon] activa, [param alt_weapon] en la otra ranura y las cargas [param charges]
-## (empaquetadas como [member consumable_charges]).
+## State of a newly created character: no action, full stamina, weapon
+## [param weapon] active, [param alt_weapon] in the other slot and the charges [param charges]
+## (packed as [member consumable_charges]).
 static func initial(rules: CombatRules, weapon: int, alt_weapon: int = 0,
 		charges: int = 0) -> CombatState:
 	var state := CombatState.new()
@@ -176,37 +176,37 @@ static func initial(rules: CombatRules, weapon: int, alt_weapon: int = 0,
 	return state
 
 
-## Empaqueta las cargas de los dos consumibles como [member consumable_charges] (cada una se limita
-## a 0..[constant MAX_CHARGES]).
+## Packs the charges of the two consumables as [member consumable_charges] (each is clamped
+## to 0..[constant MAX_CHARGES]).
 static func pack_charges(first: int, second: int) -> int:
 	return clampi(first, 0, MAX_CHARGES) | (clampi(second, 0, MAX_CHARGES) << 4)
 
 
-## Empaqueta un búfer de tipo [param kind] (BUFFER_*) con [param ticks] ticks de vida.
+## Packs a buffer of type [param kind] (BUFFER_*) with [param ticks] ticks of life.
 static func pack_buffer(kind: int, ticks: int) -> int:
 	return (kind & BUFFER_TYPE_MASK) | (clampi(ticks, 0, 15) << BUFFER_TICKS_SHIFT)
 
 
-## Redondea [param value] a la precisión de [member knockback] (cm/s), la que sobrevive a
-## [method encode_into] y [method decode_from].
+## Rounds [param value] to the precision of [member knockback] (cm/s), the one that survives
+## [method encode_into] and [method decode_from].
 static func quantize_knockback(value: Vector2) -> Vector2:
 	return Vector2(_knockback_q(value.x) / KNOCKBACK_SCALE, _knockback_q(value.y) / KNOCKBACK_SCALE)
 
 
-## Yaw (rad) -> pasos de [member action_dir] (0..65535).
+## Yaw (rad) -> [member action_dir] steps (0..65535).
 static func quantize_yaw(yaw: float) -> int:
 	if not is_finite(yaw):
 		return 0
 	return roundi(fposmod(yaw, TAU) / TAU * YAW_STEPS) % YAW_STEPS
 
 
-## Pasos de [member action_dir] -> yaw (rad) en [0, TAU).
+## [member action_dir] steps -> yaw (rad) in [0, TAU).
 static func dequantize_yaw(steps: int) -> float:
 	return (steps % YAW_STEPS) / float(YAW_STEPS) * TAU
 
 
-## Escribe el estado en [param bytes] a partir de [param offset]
-## ([constant ENCODED_SIZE] bytes; el búfer ya debe tener ese tamaño).
+## Writes the state into [param bytes] starting at [param offset]
+## ([constant ENCODED_SIZE] bytes; the buffer must already have that size).
 func encode_into(bytes: PackedByteArray, offset: int) -> void:
 	bytes.encode_u8(offset, action & 0xFF)
 	bytes.encode_u16(offset + 1, action_id & 0xFFFF)
@@ -224,7 +224,7 @@ func encode_into(bytes: PackedByteArray, offset: int) -> void:
 	bytes.encode_s16(offset + 26, _knockback_q(knockback.y))
 	bytes.encode_u32(offset + 28, parry_ready_tick & 0xFFFFFFFF)
 	bytes.encode_u16(offset + 32, weapon_id & 0xFFFF)
-	# Versión 5 (docs/habilidades.md, sección 3.1).
+	# Version 5 (docs/habilidades.md, section 3.1).
 	bytes.encode_u16(offset + 34, alt_weapon_id & 0xFFFF)
 	bytes.encode_u8(offset + 36, combat_flags2 & 0xFF)
 	for i: int in ABILITY_SLOTS * 2:
@@ -236,8 +236,8 @@ func encode_into(bytes: PackedByteArray, offset: int) -> void:
 		bytes.encode_u32(offset + 67 + 5 * i, move_effect_until[i] & 0xFFFFFFFF)
 
 
-## Lee un estado de [param bytes] a partir de [param offset]. Devuelve null si no caben
-## [constant ENCODED_SIZE] bytes.
+## Reads a state from [param bytes] starting at [param offset]. Returns null if
+## [constant ENCODED_SIZE] bytes do not fit.
 static func decode_from(bytes: PackedByteArray, offset: int) -> CombatState:
 	if offset < 0 or offset + ENCODED_SIZE > bytes.size():
 		return null
@@ -272,15 +272,15 @@ static func decode_from(bytes: PackedByteArray, offset: int) -> CombatState:
 	return state
 
 
-## Copia exacta e independiente.
+## Exact, independent copy.
 func duplicate_state() -> CombatState:
 	var copy := CombatState.new()
 	copy.copy_from(self)
 	return copy
 
 
-## Copia todos los campos de [param other] sobre este estado (sin crear objetos nuevos: los arrays
-## se copian elemento a elemento).
+## Copies all fields of [param other] onto this state (without creating new objects: arrays
+## are copied element by element).
 func copy_from(other: CombatState) -> void:
 	action = other.action
 	action_id = other.action_id
@@ -308,8 +308,8 @@ func copy_from(other: CombatState) -> void:
 		move_effect_until[i] = other.move_effect_until[i]
 
 
-## true si todos los campos coinciden tal y como viajan por la red (es decir, si
-## [method encode_into] da los mismos bytes). Un [param other] null nunca es igual.
+## true if all fields match as they travel over the network (that is, if
+## [method encode_into] gives the same bytes). A null [param other] is never equal.
 func equals(other: CombatState) -> bool:
 	if other == null:
 		return false
@@ -322,29 +322,29 @@ func equals(other: CombatState) -> bool:
 	return mine == theirs
 
 
-## Tipo del búfer de entradas ([constant BUFFER_NONE]...).
+## Type of the input buffer ([constant BUFFER_NONE]...).
 func buffered_type() -> int:
 	return buffered & BUFFER_TYPE_MASK
 
 
-## Ticks que le quedan a la pulsación del búfer.
+## Ticks remaining for the buffered press.
 func buffered_ticks() -> int:
 	return (buffered >> BUFFER_TICKS_SHIFT) & 15
 
 
-## Cargas que le quedan al consumible [param index] (0 o 1); 0 para un índice fuera de rango.
+## Charges remaining for consumable [param index] (0 or 1); 0 for an out-of-range index.
 func charges_of(index: int) -> int:
 	if index < 0 or index >= CONSUMABLE_SLOTS:
 		return 0
 	return (consumable_charges >> (4 * index)) & MAX_CHARGES
 
 
-## true si el arma activa es la de la ranura 2.
+## true if the active weapon is the one in slot 2.
 func is_second_slot() -> bool:
 	return (combat_flags2 & FLAG2_SECOND_SLOT) != 0
 
 
-## true si el personaje está agotado.
+## true if the character is exhausted.
 func is_exhausted() -> bool:
 	return (combat_flags & FLAG_EXHAUSTED) != 0
 

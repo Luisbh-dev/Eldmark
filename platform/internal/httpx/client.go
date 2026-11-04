@@ -14,9 +14,9 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// ClientIP devuelve la IP del cliente (plataforma.md §4.2): la de X-Real-IP solo si la conexión
-// llega de un proxy de confianza (ELDMARK_TRUSTED_PROXIES, el contenedor de Caddy) y, si no, la
-// de la conexión. Nunca X-Forwarded-For. Las IPv4 dentro de IPv6 salen como IPv4.
+// ClientIP returns the client's IP (plataforma.md §4.2): the one from X-Real-IP only if the
+// connection comes from a trusted proxy (ELDMARK_TRUSTED_PROXIES, the Caddy container) and,
+// otherwise, the connection's. Never X-Forwarded-For. IPv4 addresses inside IPv6 come out as IPv4.
 func ClientIP(r *http.Request, trusted []netip.Prefix) netip.Addr {
 	remote := remoteAddr(r.RemoteAddr)
 	if remote.IsValid() && contains(trusted, remote) {
@@ -53,8 +53,8 @@ func contains(prefixes []netip.Prefix, a netip.Addr) bool {
 	return false
 }
 
-// AddrGroup es el grupo de una IP para los límites: la propia IPv4, o el prefijo /64 de una IPv6
-// (como ServerAuth.address_group en la zona).
+// AddrGroup is an IP's group for the limits: the IPv4 itself, or the /64 prefix of an IPv6 (like
+// ServerAuth.address_group in the zone).
 func AddrGroup(a netip.Addr) string {
 	if !a.IsValid() {
 		return "?"
@@ -70,10 +70,10 @@ func AddrGroup(a netip.Addr) string {
 	return p.String()
 }
 
-// ProtocolHeader es la cabecera con el PROTOCOL_VERSION del cliente (§4.1).
+// ProtocolHeader is the header carrying the client's PROTOCOL_VERSION (§4.1).
 const ProtocolHeader = "X-Eldmark-Protocol"
 
-// ClientProtocol devuelve el protocolo de la cabecera, o 0 si falta o no es un entero positivo.
+// ClientProtocol returns the header's protocol, or 0 if it is missing or not a positive integer.
 func ClientProtocol(r *http.Request) int {
 	v := strings.TrimSpace(r.Header.Get(ProtocolHeader))
 	n, err := strconv.Atoi(v)
@@ -83,14 +83,14 @@ func ClientProtocol(r *http.Request) int {
 	return n
 }
 
-// Outdated es el 426 client_outdated, con el protocolo mínimo.
+// Outdated is the 426 client_outdated, with the minimum protocol.
 func Outdated(min int) *Error {
 	return &Error{Status: http.StatusUpgradeRequired, Code: "client_outdated", Message: "Actualiza el cliente",
 		Extra: map[string]any{"min_protocol": min}}
 }
 
-// RequireProtocol responde 426 si la petición no trae X-Eldmark-Protocol o trae uno por debajo de
-// min (toda ruta de /v1, §4.1). Con min 0 basta con que la cabecera traiga un entero positivo.
+// RequireProtocol answers 426 if the request does not carry X-Eldmark-Protocol or carries one below
+// min (every /v1 route, §4.1). With min 0 it is enough for the header to carry a positive integer.
 func RequireProtocol(min int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p := ClientProtocol(r); p == 0 || p < min {
@@ -101,16 +101,16 @@ func RequireProtocol(min int, next http.Handler) http.Handler {
 	})
 }
 
-// Unavailable es el 503 de la API pública cuando la base no responde o una transacción chocó con
-// otras demasiadas veces.
+// Unavailable is the public API's 503 when the database does not respond or a transaction clashed
+// with others too many times.
 func Unavailable() *Error {
 	return &Error{Status: http.StatusServiceUnavailable, Code: "unavailable",
 		Message: "El servicio de cuentas no responde; inténtalo más tarde", RetryAfter: 5}
 }
 
-// Fail escribe la respuesta de un error: un *Error tal cual; uno de la base que no está
-// disponible (o que agotó los reintentos), 503 unavailable; cualquier otro, 500 internal. Los dos
-// últimos se registran con el id de la petición (el mensaje de pgx no lleva valores de las filas).
+// Fail writes an error's response: an *Error as is; a database one that is unavailable (or that
+// exhausted the retries), 503 unavailable; any other, 500 internal. The last two are logged with the
+// request id (pgx's message carries no row values).
 func Fail(w http.ResponseWriter, r *http.Request, log *slog.Logger, err error) {
 	var e *Error
 	if errors.As(err, &e) {
@@ -118,7 +118,7 @@ func Fail(w http.ResponseWriter, r *http.Request, log *slog.Logger, err error) {
 		return
 	}
 	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
-		// El cliente se fue: no hay a quién responder.
+		// The client left: there is nobody to respond to.
 		return
 	}
 	resp := ErrInternal

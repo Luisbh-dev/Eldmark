@@ -5,19 +5,19 @@ import (
 	"time"
 )
 
-// CommandSetRole es el command de la fila fija de set-role (§9.1): source cli, actor_account_id
-// del --actor, target_account_id la cuenta y args {from, to, os_user}.
+// CommandSetRole is the command of the fixed set-role row (§9.1): source cli, actor_account_id
+// of the --actor, target_account_id the account and args {from, to, os_user}.
 const CommandSetRole = "set-role"
 
-// Roles son los roles válidos, de menor a mayor.
+// Roles are the valid roles, from lowest to highest.
 var Roles = []string{RolePlayer, RoleModerator, RoleGM, RoleAdmin}
 
-// RoleAt es el rol que tenía la cuenta en el instante at, para la comprobación S2 del guardado
-// (progresion.md §13.3: el actor de una operación GM o REVERSAL con el rol que tenía en
-// detail.at_unix). Lo da la primera fila set-role de la CLI posterior a at, con su args.from: el
-// rol de antes de ese cambio; sin ninguna, el rol actual. Solo cuentan las filas con source = 'cli'
-// (las que escribe la orden admin): una zona no las puede escribir (§6, «Lotes»), así que no puede
-// darle a nadie un rol pasado. "" si la cuenta no existe.
+// RoleAt is the role the account had at instant at, for the save's S2 check (progresion.md
+// §13.3: the actor of a GM or REVERSAL operation with the role they had at detail.at_unix). It is
+// given by the first CLI set-role row after at, with its args.from: the role from before that
+// change; with none, the current role. Only rows with source = 'cli' count (those written by the
+// admin command): a zone cannot write them (§6, "Batches"), so it cannot give anyone a past role.
+// "" if the account does not exist.
 func RoleAt(ctx context.Context, q Querier, accountID int64, at time.Time) (string, error) {
 	var role *string
 	err := q.QueryRow(ctx, `select coalesce(
@@ -31,15 +31,15 @@ func RoleAt(ctx context.Context, q Querier, accountID int64, at time.Time) (stri
 	return *role, nil
 }
 
-// Warning es un aviso (§9.5: «al entrar, NOTICE con el motivo»).
+// Warning is a warning (§9.5: "on entering, NOTICE with the reason").
 type Warning struct {
 	SanctionID int64
 	Reason     string
 	At         time.Time
 }
 
-// Text es el texto para el jugador, compuesto por la plataforma como los demás (§6.1): «Has
-// recibido un aviso de la moderación: motivo», cortado a [MaxTextBytes].
+// Text is the player-facing text, composed by the platform like the others (§6.1): "Has recibido
+// un aviso de la moderación: motivo" (you have received a warning from moderation: reason), cut to [MaxTextBytes].
 func (w Warning) Text() string {
 	msg := "Has recibido un aviso de la moderación"
 	if w.Reason != "" {
@@ -48,14 +48,15 @@ func (w Warning) Text() string {
 	return Truncate(msg, MaxTextBytes)
 }
 
-// MaxWarnings es cuántos avisos pendientes trae una reclamación como mucho (los más recientes).
+// MaxWarnings is how many pending warnings a claim brings at most (the most recent ones).
 const MaxWarnings = 5
 
-// PendingWarnings devuelve los avisos de la cuenta que aún no ha visto en ese mundo: sin revocar,
-// de ese mundo o de todos, puestos hasta now y después de since (la última entrada al mundo de
-// cualquiera de sus personajes, antes de esta; nil si nunca entró). Así cada aviso sale en la
-// primera entrada que le sigue y, después, solo queda en la cuenta (cuenta para la reincidencia,
-// social.md §9). Los más recientes, [MaxWarnings] como mucho, del más viejo al más nuevo.
+// PendingWarnings returns the account's warnings that it has not yet seen in that world: not
+// revoked, from that world or all of them, issued up to now and after since (the last world entry
+// of any of its characters, before this one; nil if it never entered). This way each warning
+// appears on the first entry that follows it and, afterwards, only remains on the account (it
+// counts toward recidivism, social.md §9). The most recent ones, [MaxWarnings] at most, from
+// oldest to newest.
 func PendingWarnings(ctx context.Context, q Querier, accountID int64, worldID int16, since *time.Time,
 	now time.Time) ([]Warning, error) {
 	rows, err := q.Query(ctx, `select sanction_id, reason, starts_at from (

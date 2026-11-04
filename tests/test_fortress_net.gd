@@ -1,9 +1,9 @@
 extends TestCase
-## El servidor del fuerte con clientes de verdad sobre ENet en 127.0.0.1, en un solo proceso (paquete F3):
-## lo que ve un cliente de una captura completa (el SPAWN de la fortaleza, los OBJECT_STATE y los avisos
-## WAR en orden), el KILL a toda la zona, el marcador cada 2 s en páginas, la salida y la desconexión en
-## combate (GUE-41) y el comando /atascado (MUN-41). Los clientes son [RawClient]s que hablan el protocolo a
-## mano, como en [code]test_zone_server_net.gd[/code].
+## The fort server with real clients over ENet on 127.0.0.1, in a single process (package F3):
+## what a client sees of a full capture (the fortress SPAWN, the OBJECT_STATEs and the WAR notices
+## in order), the KILL to the whole zone, the scoreboard every 2 s in pages, leaving and disconnecting in
+## combat (GUE-41) and the /atascado command (MUN-41). The clients are [RawClient]s that speak the protocol by
+## hand, as in [code]test_zone_server_net.gd[/code].
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -22,7 +22,7 @@ var _client_tick: int = 0
 var _next_client_index: int = 0
 
 
-## Un cliente que habla el protocolo a mano y guarda todo lo que recibe, también lo de la fortaleza.
+## A client that speaks the protocol by hand and stores everything it receives, including the fortress stuff.
 class RawClient:
 	extends RefCounted
 
@@ -119,7 +119,7 @@ class RawClient:
 			ids.append(event.war_event)
 		return ids
 
-	## Los reinos que acompañan a los avisos del tipo [param war_event], en el orden en que llegaron.
+	## The realms that accompany the notices of type [param war_event], in the order they arrived.
 	func war_realms_of(war_event: int) -> Array[int]:
 		var realms: Array[int] = []
 		for event: NetMessages.EntityEvent in events_of(NetMessages.EntityEvent.Kind.WAR):
@@ -134,7 +134,7 @@ class RawClient:
 		return false
 
 
-## Política de interés que esconde a los jugadores falsos (los «Bot…») para probar lo que va a toda la zona.
+## Interest policy that hides the fake players (the \"Bot...\" ones) to test what goes to the whole zone.
 class HidingPolicy:
 	extends InterestPolicy
 
@@ -162,7 +162,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _start_server(definition: FortressDefinition = null, configure: Callable = Callable()) -> void:
 	_viewport = SubViewport.new()
@@ -189,7 +189,7 @@ func _start_server(definition: FortressDefinition = null, configure: Callable = 
 	if configure.is_valid():
 		configure.call(config)
 	assert_eq(_server.start(config, _world, _server_transport, DevAuthProvider.new()), OK,
-			"el servidor abre el puerto %d" % _port)
+			"the server opens port %d" % _port)
 
 
 func _find_free_port() -> int:
@@ -228,7 +228,7 @@ func _connect_client(realm: int, player_name: String) -> RawClient:
 	_viewport.add_child(transport)
 	var client := RawClient.new(transport, _hello(realm, player_name))
 	_clients.append(client)
-	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "el cliente conecta")
+	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "the client connects")
 	return client
 
 
@@ -254,11 +254,11 @@ func _run_until(condition: Callable, max_frames: int = MAX_FRAMES) -> bool:
 	return condition.call()
 
 
-## Entra un cliente y espera a su alta. null si no la tiene.
+## A client joins and waits for its registration. null if it does not get one.
 func _join(player_name: String, realm: int = VARDHEIM) -> RawClient:
 	var client: RawClient = _connect_client(realm, player_name)
 	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null)
-	if not assert_true(joined, "%s entra en el mundo" % player_name):
+	if not assert_true(joined, "%s enters the world" % player_name):
 		return null
 	return client
 
@@ -279,7 +279,7 @@ func _brain() -> CombatFixture.ScriptBrain:
 	return CombatFixture.ScriptBrain.new(1)
 
 
-# --- El fuerte en el cliente --------------------------------------------------------------------
+# --- The fort on the client ---------------------------------------------------------------------
 
 func test_a_joining_client_gets_the_fortress_spawn_with_its_whole_state() -> void:
 	await _start_server()
@@ -291,21 +291,21 @@ func test_a_joining_client_gets_the_fortress_spawn_with_its_whole_state() -> voi
 	for spawn: NetMessages.EntitySpawn in ana.spawns:
 		if spawn.net_id == gate_id:
 			found.append(spawn)
-	if not assert_eq(found.size(), 1, "un SPAWN de la fortaleza"):
+	if not assert_eq(found.size(), 1, "a fortress SPAWN"):
 		return
 	assert_eq(found[0].kind, NetProtocol.EntityKind.STRUCTURE)
 	assert_eq(found[0].definition_id, String(FORTRESS))
-	assert_eq(found[0].fields.size(), FortressFields.all_ids().size(), "con todos los campos")
+	assert_eq(found[0].fields.size(), FortressFields.all_ids().size(), "with all the fields")
 	var mirror: FortressState = FortressState.initial(FortressFixture.make_definition(), 0)
 	found[0].to_object_state().apply_to_fortress(mirror)
 	assert_eq(mirror.gate_health, 900)
 	assert_eq(mirror.owner, 0)
 	assert_eq(ana.malformed, 0)
-	# Los snapshots no llevan registros de estructuras.
+	# The snapshots carry no structure records.
 	await _run_frames(10)
 	for snapshot: NetMessages.Snapshot in ana.snapshots:
 		for record: EntityRecord in snapshot.records:
-			assert_true(record.net_id != gate_id, "la fortaleza no va en los snapshots")
+			assert_true(record.net_id != gate_id, "the fortress does not go in the snapshots")
 
 
 func test_a_full_capture_reaches_every_client_as_object_state_and_war_events_in_order() -> void:
@@ -317,21 +317,21 @@ func test_a_full_capture_reaches_every_client_as_object_state_and_war_events_in_
 		return
 	_server.teleport(ana.own_spawn.net_id, FortressFixture.circle_center())
 	await _run_frames(30)
-	assert_true(ana.war_ids().is_empty(), "con el capitán vivo, nada")
+	assert_true(ana.war_ids().is_empty(), "with the captain alive, nothing")
 	_server.console_command("fort_kill_captain")
 	var both_notified := func() -> bool: return ana.war_ids().size() >= 3 and bo.war_ids().size() >= 3
 	var captured: bool = await _run_until(both_notified)
-	assert_true(captured, "los dos clientes reciben los tres avisos (%s y %s)" % [ana.war_ids(), bo.war_ids()])
+	assert_true(captured, "both clients receive the three notices (%s and %s)" % [ana.war_ids(), bo.war_ids()])
 	assert_eq(ana.war_ids(), [WarEvents.CAPTAIN_DOWN, WarEvents.CAPTURE_STARTED, WarEvents.FORT_CAPTURED] as Array[int],
-			"en el orden en que ocurren")
-	assert_eq(bo.war_ids(), ana.war_ids(), "a toda la zona, el mismo aviso")
+			"in the order they happen")
+	assert_eq(bo.war_ids(), ana.war_ids(), "to the whole zone, the same notice")
 	var gate_id: int = _server.get_fortresses().get_net_id(FORTRESS)
 	var realms: Array[int] = []
 	for event: NetMessages.EntityEvent in ana.events_of(NetMessages.EntityEvent.Kind.WAR):
 		assert_eq(event.net_id, gate_id)
 		realms.append(event.war_realm)
-	assert_eq(realms, [0, VARDHEIM, VARDHEIM] as Array[int], "el capitán lo mató la orden de depuración (reino 0)")
-	# El cliente reconstruye el estado con los OBJECT_STATE (más el SPAWN).
+	assert_eq(realms, [0, VARDHEIM, VARDHEIM] as Array[int], "the captain was killed by the debug order (realm 0)")
+	# The client rebuilds the state with the OBJECT_STATEs (plus the SPAWN).
 	await _run_frames(20)
 	var mirror: FortressState = FortressState.initial(FortressFixture.make_definition(), 0)
 	for spawn: NetMessages.EntitySpawn in bo.spawns:
@@ -340,16 +340,16 @@ func test_a_full_capture_reaches_every_client_as_object_state_and_war_events_in_
 	for object_state: NetMessages.ObjectState in bo.object_states:
 		assert_eq(object_state.net_id, gate_id)
 		object_state.apply_to_fortress(mirror)
-	assert_eq(mirror.owner, VARDHEIM, "el cliente ve cambiar el dueño")
+	assert_eq(mirror.owner, VARDHEIM, "the client sees the owner change")
 	assert_eq(mirror.phase, _state().phase)
 	assert_eq(mirror.presence[VARDHEIM], _state().presence[VARDHEIM])
 	assert_eq(mirror.capture_progress_at_start, _state().capture_progress_at_start)
-	# Ritmo: como mucho uno cada 6 ticks, salvo los que cambian la colisión de la puerta.
+	# Rate: at most one every 6 ticks, except those that change the gate's collision.
 	var previous: NetMessages.ObjectState = null
 	for object_state: NetMessages.ObjectState in bo.object_states:
 		if previous != null and object_state.tick - previous.tick < FortressController.OBJECT_STATE_INTERVAL_TICKS:
 			assert_true(object_state.has_field(FortressFields.OWNER) or object_state.has_field(FortressFields.GATE_HEALTH),
-					"dos OBJECT_STATE a menos de 6 ticks solo si cambia la colisión de la puerta")
+					"two OBJECT_STATEs less than 6 ticks apart only if the gate's collision changes")
 		previous = object_state
 	assert_eq(bo.malformed, 0)
 
@@ -371,9 +371,9 @@ func test_a_kill_goes_to_the_whole_zone_even_to_a_client_that_does_not_see_the_b
 			PackedInt32Array([victim, killer]))
 	await _run_frames(20)
 	assert_eq(ana.events_of(NetMessages.EntityEvent.Kind.KILL).size(), 1,
-			"el KILL llega a quien no ve a ninguno de los dos")
+			"the KILL reaches whoever sees neither of the two")
 	assert_eq(ana.events_of(NetMessages.EntityEvent.Kind.DEATH).size(), 0,
-			"el DEATH, que no es de la zona entera, no")
+			"the DEATH, which is not zone-wide, does not")
 	assert_eq(ana.events_of(NetMessages.EntityEvent.Kind.KILL)[0].killer, killer)
 
 
@@ -389,11 +389,11 @@ func test_a_gate_hit_reaches_the_attackers_client_with_the_fortress_net_id() -> 
 	var target: StructureTarget = _server.get_fortresses().get_structure_targets()[0]
 	_server.get_fortresses().on_structure_hit(target, combatant, 31, _server.get_tick() + 1)
 	await _run_frames(10)
-	assert_eq(ana.war_ids(), [WarEvents.UNDER_ATTACK] as Array[int], "el aviso llega a la zona")
+	assert_eq(ana.war_ids(), [WarEvents.UNDER_ATTACK] as Array[int], "the notice reaches the zone")
 	assert_eq(_state().gate_health, 900 - 31)
 
 
-# --- Marcador ----------------------------------------------------------------------------------
+# --- Scoreboard --------------------------------------------------------------------------------
 
 func test_the_scoreboard_arrives_every_two_seconds_in_pages_of_66_rows() -> void:
 	await _start_server(null, func(config: ServerConfig) -> void: config.max_players = 100)
@@ -407,29 +407,29 @@ func test_the_scoreboard_arrives_every_two_seconds_in_pages_of_66_rows() -> void
 	combat.event_emitted.emit(NetMessages.EntityEvent.kill(victim, 5, ana.own_spawn.net_id, 1,
 			PackedInt32Array()), PackedInt32Array())
 	var arrived: bool = await _run_until(func() -> bool: return ana.scoreboards.size() >= 2, 400)
-	assert_true(arrived, "llega un marcador, partido en dos páginas")
+	assert_true(arrived, "a scoreboard arrives, split into two pages")
 	var pages: Dictionary = {}
 	for board: NetMessages.Scoreboard in ana.scoreboards:
 		assert_eq(board.page_count, 2)
 		pages[board.page_index] = board
 	assert_true(pages.has(0) and pages.has(1))
-	assert_eq((pages[0] as NetMessages.Scoreboard).rows.size(), 66, "una página llena")
-	assert_eq((pages[1] as NetMessages.Scoreboard).rows.size(), 71 - 66, "y el resto en la otra")
+	assert_eq((pages[0] as NetMessages.Scoreboard).rows.size(), 66, "one full page")
+	assert_eq((pages[1] as NetMessages.Scoreboard).rows.size(), 71 - 66, "and the rest in the other")
 	var own_row: NetMessages.ScoreRow = null
 	for board: NetMessages.Scoreboard in pages.values():
 		for row: NetMessages.ScoreRow in board.rows:
 			if row.net_id == ana.own_spawn.net_id:
 				own_row = row
-	if assert_not_null(own_row, "mi fila está"):
+	if assert_not_null(own_row, "my row is there"):
 		assert_eq(own_row.kills, 1)
 		assert_eq(own_row.merits, 10)
 	var more: int = ana.scoreboards.size()
 	var again: bool = await _run_until(func() -> bool: return ana.scoreboards.size() >= more + 2, 400)
-	assert_true(again, "y se repite cada 2 s")
+	assert_true(again, "and it repeats every 2 s")
 	assert_eq(ana.malformed, 0)
 
 
-# --- Salida y desconexión en combate (GUE-41) ---------------------------------------------------
+# --- Leaving and disconnecting in combat (GUE-41) -----------------------------------------------
 
 func test_leaving_in_combat_leaves_a_neutral_attackable_body_for_the_linger_time() -> void:
 	await _start_server()
@@ -444,41 +444,41 @@ func test_leaving_in_combat_leaves_a_neutral_attackable_body_for_the_linger_time
 	await _run_frames(5)
 	ana.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
 	var gone: bool = await _run_until(func() -> bool: return ana.disconnected)
-	assert_true(gone, "el cliente se va")
+	assert_true(gone, "the client leaves")
 	await _run_frames(10)
-	assert_true(_server.is_lingering(net_id), "su cuerpo sigue en el mundo")
+	assert_true(_server.is_lingering(net_id), "its body stays in the world")
 	assert_not_null(_server.get_registry().get_entity(net_id))
 	assert_eq(_server.get_lingering_count(), 1)
 	assert_false(bo.despawns.any(func(d: NetMessages.EntityDespawn) -> bool: return d.net_id == net_id),
-			"los demás no reciben el DESPAWN todavía")
-	# Quieto y sin botones: entradas neutras de verdad.
+			"the others do not receive the DESPAWN yet")
+	# Still and with no buttons: truly neutral inputs.
 	var body: PlayerCharacter = _server.get_registry().get_entity(net_id).get_character()
 	var position: Vector3 = body.global_position
 	await _run_frames(20)
-	assert_vec_near(body.global_position, position, 0.05, "quieto")
-	assert_eq(body.combat.action, CombatState.Action.NONE, "sin acción ni bloqueo")
-	# Atacable: el combatiente sigue vivo y puede recibir daño.
+	assert_vec_near(body.global_position, position, 0.05, "still")
+	assert_eq(body.combat.action, CombatState.Action.NONE, "no action or block")
+	# Attackable: the combatant is still alive and can take damage.
 	assert_true(_combatant(net_id).is_alive())
-	# Su nombre sigue reservado.
+	# Its name stays reserved.
 	var again: RawClient = _connect_client(VARDHEIM, "Ana")
 	var rejected: bool = await _run_until(func() -> bool: return again.reject != null)
-	assert_true(rejected, "el nombre está reservado")
+	assert_true(rejected, "the name is reserved")
 	assert_eq(again.reject.result, NetProtocol.Result.NAME)
-	# No cuenta en el círculo: con el fuerte abierto, estar dentro no captura.
+	# It does not count in the circle: with the fort open, being inside does not capture.
 	_state().on_captain_died(_server.get_tick() + 1, SOLMARCH)
 	await _run_frames(30)
-	assert_eq(_state().presence[VARDHEIM], 0, "el cuerpo que queda no cuenta")
+	assert_eq(_state().presence[VARDHEIM], 0, "the body left behind does not count")
 	assert_eq(_state().phase, FortressState.Phase.VULNERABLE)
-	# Pasado el plazo, desaparece y todos reciben su DESPAWN.
+	# After the deadline, it disappears and everyone receives its DESPAWN.
 	var removed: bool = await _run_until(func() -> bool: return not _server.is_lingering(net_id))
-	assert_true(removed, "el cuerpo se retira a los %d ticks" % _server.linger_ticks)
+	assert_true(removed, "the body is removed after %d ticks" % _server.linger_ticks)
 	assert_null(_server.get_registry().get_entity(net_id))
 	var despawned: bool = await _run_until(func() -> bool:
 		return bo.despawns.any(func(d: NetMessages.EntityDespawn) -> bool: return d.net_id == net_id))
-	assert_true(despawned, "DESPAWN para quien lo veía")
+	assert_true(despawned, "DESPAWN for whoever saw it")
 	var free_again: RawClient = _connect_client(VARDHEIM, "Ana")
 	var entered: bool = await _run_until(func() -> bool: return free_again.own_spawn != null)
-	assert_true(entered, "y el nombre queda libre")
+	assert_true(entered, "and the name becomes free")
 
 
 func test_leaving_out_of_combat_is_immediate() -> void:
@@ -492,7 +492,7 @@ func test_leaving_out_of_combat_is_immediate() -> void:
 	ana.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
 	var despawned: bool = await _run_until(func() -> bool:
 		return bo.despawns.any(func(d: NetMessages.EntityDespawn) -> bool: return d.net_id == net_id))
-	assert_true(despawned, "fuera de combate, la baja es inmediata")
+	assert_true(despawned, "out of combat, the removal is immediate")
 	assert_false(_server.is_lingering(net_id))
 	assert_eq(_server.get_lingering_count(), 0)
 
@@ -508,7 +508,7 @@ func test_a_dropped_connection_in_combat_also_leaves_the_body() -> void:
 	await _run_frames(3)
 	ana.transport.close()
 	var lingering: bool = await _run_until(func() -> bool: return _server.is_lingering(net_id), 300)
-	assert_true(lingering, "una desconexión en combate también deja el cuerpo")
+	assert_true(lingering, "a disconnect in combat also leaves the body")
 	var removed: bool = await _run_until(func() -> bool: return not _server.is_lingering(net_id), 300)
 	assert_true(removed)
 
@@ -527,8 +527,8 @@ func test_killing_the_lingering_body_credits_the_killer_like_any_other_death() -
 	await _run_frames(3)
 	ana.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
 	await _run_until(func() -> bool: return _server.is_lingering(net_id))
-	# Un enemigo golpea al cuerpo: un ligero de 90 lo derriba (docs/habilidades.md, sección 4.5: es un jugador de
-	# otro reino) y lo remata manteniendo E.
+	# An enemy hits the body: a light attack of 90 knocks it down (docs/habilidades.md, section 4.5: it is a player from
+	# another realm) and finishes it off by holding E.
 	var killer: int = _server.add_fake_player(_brain(), SOLMARCH)
 	_server.teleport(killer, Vector3(-20.0, 0.05, 6.5))
 	_server.get_registry().get_entity(killer).get_character().yaw = PI
@@ -545,14 +545,14 @@ func test_killing_the_lingering_body_credits_the_killer_like_any_other_death() -
 		return input
 	var is_dead := func() -> bool: return _combatant(net_id) == null or _combatant(net_id).is_dead()
 	var dead: bool = await _run_until(is_dead, 400)
-	assert_true(dead, "el cuerpo muere como cualquier otro")
+	assert_true(dead, "the body dies like any other")
 	var kills: Array[NetMessages.EntityEvent] = bo.events_of(NetMessages.EntityEvent.Kind.KILL)
-	if assert_eq(kills.size(), 1, "con su KILL"):
-		assert_eq(kills[0].killer, killer, "acreditado al que lo mató")
+	if assert_eq(kills.size(), 1, "with its KILL"):
+		assert_eq(kills[0].killer, killer, "credited to whoever killed it")
 		assert_eq(kills[0].net_id, net_id)
-	assert_eq(_server.get_scores().get_entry(killer).kills, 1, "y la baja cuenta en el marcador")
+	assert_eq(_server.get_scores().get_entry(killer).kills, 1, "and the kill counts on the scoreboard")
 	var removed: bool = await _run_until(func() -> bool: return not _server.is_lingering(net_id), 100)
-	assert_true(removed, "muerto, el cuerpo se retira enseguida")
+	assert_true(removed, "dead, the body is removed right away")
 
 
 # --- /atascado (MUN-41) --------------------------------------------------------------------------
@@ -575,17 +575,17 @@ func test_unstuck_teleports_to_the_nearest_valid_point_after_the_channel_and_log
 	await _run_frames(5)
 	ana.send_raw(NetProtocol.CH_RELIABLE, _unstuck_request())
 	var started: bool = await _run_until(func() -> bool: return _server.get_unstuck().is_channeling("ana"), 60)
-	assert_true(started, "empieza la canalización")
+	assert_true(started, "the channeling starts")
 	var notified: bool = await _run_until(func() -> bool: return ana.has_notice_containing("/atascado"), 60)
-	assert_true(notified, "y se le avisa")
-	assert_vec_near(entity.get_position(), Vector3(150.0, 0.05, 90.0), 0.5, "aún no se ha movido")
+	assert_true(notified, "and it is notified")
+	assert_vec_near(entity.get_position(), Vector3(150.0, 0.05, 90.0), 0.5, "it has not moved yet")
 	var moved: bool = await _run_until(func() -> bool: return _server.get_unstuck().completed_count == 1, 200)
-	assert_true(moved, "completa la canalización")
+	assert_true(moved, "completes the channeling")
 	await _run_frames(3)
 	assert_vec_near(entity.get_position(), FortressFixture.VARDHEIM_CAMP, 1.5,
-			"al punto de su reino más cercano (el campamento: el fuerte es neutral)")
-	assert_true(entity.teleport_counter != counter, "con salto de teletransporte para los clientes")
-	# Queda registrado: zona, origen y destino.
+			"to the nearest point of its realm (the camp: the fort is neutral)")
+	assert_true(entity.teleport_counter != counter, "with a teleport jump for the clients")
+	# It is logged: zone, origin and destination.
 	var path: String = ProjectSettings.globalize_path("res://build/test_fortress_net_report.json")
 	assert_eq(_server.write_report(path), OK)
 	var report: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -595,11 +595,11 @@ func test_unstuck_teleports_to_the_nearest_valid_point_after_the_channel_and_log
 	assert_eq(entry["zone"], "test_world")
 	assert_eq(entry["name"], "Ana")
 	assert_eq((entry["from"] as Array)[0], 150.0)
-	# Segundo uso inmediato: en reutilización.
+	# Second immediate use: on cooldown.
 	var notices_before: int = ana.notices.size()
 	ana.send_raw(NetProtocol.CH_RELIABLE, _unstuck_request())
 	await _run_until(func() -> bool: return ana.notices.size() > notices_before, 60)
-	assert_true(ana.has_notice_containing("disponible de nuevo"), "reutilización de 5 min")
+	assert_true(ana.has_notice_containing("disponible de nuevo"), "5 min cooldown")
 	assert_false(_server.get_unstuck().is_channeling("ana"))
 
 
@@ -616,9 +616,9 @@ func test_unstuck_is_refused_in_combat_and_interrupted_by_damage() -> void:
 	await _run_frames(3)
 	ana.send_raw(NetProtocol.CH_RELIABLE, _unstuck_request())
 	var refused: bool = await _run_until(func() -> bool: return ana.has_notice_containing("en combate"), 60)
-	assert_true(refused, "en combate no se puede")
+	assert_true(refused, "in combat it cannot be used")
 	assert_false(_server.get_unstuck().is_channeling("ana"))
-	# Fuera de combate empieza; el daño lo interrumpe y no gasta la reutilización.
+	# Out of combat it starts; damage interrupts it and does not spend the cooldown.
 	combatant.in_combat_until = 0
 	await _run_frames(3)
 	ana.send_raw(NetProtocol.CH_RELIABLE, _unstuck_request())
@@ -628,13 +628,13 @@ func test_unstuck_is_refused_in_combat_and_interrupted_by_damage() -> void:
 	combatant.take_damage(10, _server.get_tick() + 1)
 	combatant.mark_combat(_server.get_tick() + 1)
 	var interrupted: bool = await _run_until(func() -> bool: return ana.has_notice_containing("interrumpido"), 60)
-	assert_true(interrupted, "el daño interrumpe la canalización")
+	assert_true(interrupted, "damage interrupts the channeling")
 	assert_false(_server.get_unstuck().is_channeling("ana"))
 	assert_eq(_server.get_unstuck().interrupted_count, 1)
 	assert_eq(_server.get_unstuck().completed_count, 0)
 	assert_vec_near(_server.get_registry().get_entity(net_id).get_position(), Vector3(150.0, 0.05, 90.0), 0.5,
-			"no se mueve")
-	assert_eq(_server.get_unstuck().cooldown_remaining("ana", _server.get_tick()), 0, "y no gasta la reutilización")
+			"it does not move")
+	assert_eq(_server.get_unstuck().cooldown_remaining("ana", _server.get_tick()), 0, "and does not spend the cooldown")
 
 
 func test_unstuck_goes_to_the_fortress_of_the_realm_when_it_is_the_nearest_valid_point() -> void:
@@ -653,7 +653,7 @@ func test_unstuck_goes_to_the_fortress_of_the_realm_when_it_is_the_nearest_valid
 	await _run_frames(3)
 	assert_vec_near(_server.get_registry().get_entity(net_id).get_position(),
 			FortressFixture.ORIGIN + FortressFixture.INNER_POINTS_LOCAL[1], 1.5,
-			"un fuerte propio y tranquilo es el punto válido más cercano")
+			"one's own, quiet fort is the nearest valid point")
 
 
 func test_unstuck_does_not_need_debug_commands_and_a_malformed_request_is_a_strike() -> void:
@@ -664,13 +664,13 @@ func test_unstuck_does_not_need_debug_commands_and_a_malformed_request_is_a_stri
 	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
 	ana.send_raw(NetProtocol.CH_RELIABLE, _unstuck_request())
 	await _run_frames(5)
-	assert_eq(peer.strikes_total, 0, "vale sin --debug-commands")
+	assert_eq(peer.strikes_total, 0, "it works without --debug-commands")
 	ana.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([NetProtocol.MSG_UNSTUCK_REQUEST, 1]))
 	await _run_frames(5)
-	assert_eq(peer.strikes_total, 1, "uno mal formado suma un aviso")
+	assert_eq(peer.strikes_total, 1, "a malformed one adds a notice")
 
 
-# --- Un golpe de verdad a la puerta, visto por otro cliente --------------------------------------------
+# --- A real hit on the gate, seen by another client ---------------------------------------------
 
 func _brain_with(script: Callable) -> CombatFixture.ScriptBrain:
 	var brain := CombatFixture.ScriptBrain.new(1)
@@ -698,25 +698,25 @@ func test_a_real_swing_at_the_gate_reaches_a_watching_client_as_hit_and_object_s
 	var gate_id: int = _server.get_fortresses().get_net_id(FORTRESS)
 	var seen: bool = await _run_until(func() -> bool:
 		return not ana.events_of(NetMessages.EntityEvent.Kind.HIT).is_empty(), 300)
-	if not assert_true(seen, "el HIT del golpe a la puerta llega a quien ve al atacante"):
+	if not assert_true(seen, "the HIT of the hit on the gate reaches whoever sees the attacker"):
 		return
 	var hit: NetMessages.EntityEvent = ana.events_of(NetMessages.EntityEvent.Kind.HIT)[0]
-	assert_eq(hit.net_id, gate_id, "con el net_id de la fortaleza")
+	assert_eq(hit.net_id, gate_id, "with the fortress net_id")
 	assert_eq(hit.attacker, attacker)
-	assert_true(hit.amount > 0 and hit.amount < 90, "el ligero cortante, rebajado por el multiplicador")
+	assert_true(hit.amount > 0 and hit.amount < 90, "the slashing light attack, reduced by the multiplier")
 	var health_told: bool = await _run_until(func() -> bool:
 		return ana.object_states.any(func(o: NetMessages.ObjectState) -> bool:
 			return o.has_field(FortressFields.GATE_HEALTH)), 120)
-	assert_true(health_told, "y la vida nueva de la puerta llega como OBJECT_STATE")
+	assert_true(health_told, "and the gate's new health arrives as an OBJECT_STATE")
 	var mirror: FortressState = FortressState.initial(FortressFixture.make_definition(), 0)
 	for object_state: NetMessages.ObjectState in ana.object_states:
 		object_state.apply_to_fortress(mirror)
-	assert_eq(mirror.gate_health, 900 - hit.amount, "la vida que ve el cliente es la del golpe")
+	assert_eq(mirror.gate_health, 900 - hit.amount, "the health the client sees is that of the hit")
 	assert_eq(ana.war_ids(), [WarEvents.UNDER_ATTACK] as Array[int])
 	assert_eq(ana.malformed, 0)
 
 
-# --- Comandos de depuración del fuerte por la red (ids 8 a 11) ----------------------------------------
+# --- Fort debug commands over the network (ids 8 to 11) ----------------------------------------
 
 func _send_command(client: RawClient, command: NetMessages.DebugCommand) -> void:
 	client.send_raw(NetProtocol.CH_RELIABLE, command.encode())
@@ -729,33 +729,33 @@ func test_the_fortress_debug_commands_act_over_the_network_with_debug_commands()
 		return
 	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
 	_server.teleport(ana.own_spawn.net_id, FortressFixture.circle_center())
-	# 11 fort_capture_speed: la captura de 2 s dura unos ticks.
+	# 11 fort_capture_speed: the 2 s capture lasts a few ticks.
 	_send_command(ana, NetMessages.DebugCommand.fort_capture_speed(30))
 	var sped_up: bool = await _run_until(func() -> bool: return _state().capture_rate_multiplier == 30)
 	assert_true(sped_up, "fort_capture_speed 30")
-	# 10 fort_kill_captain: el capitán de los Huecos cae a manos del reino de quien lo manda y,
-	# con Ana en el círculo, el fuerte se captura.
+	# 10 fort_kill_captain: the Hollows' captain falls at the hands of the realm of whoever orders it and,
+	# with Ana in the circle, the fort is captured.
 	_send_command(ana, NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_KILL_CAPTAIN))
 	var captured: bool = await _run_until(func() -> bool: return _state().owner == VARDHEIM)
-	assert_true(captured, "fort_kill_captain abre el círculo y Vardheim captura")
-	# 9 fort_owner: el fuerte pasa a Solmarch, con su guarnición y la puerta entera.
+	assert_true(captured, "fort_kill_captain opens the circle and Vardheim captures")
+	# 9 fort_owner: the fort passes to Solmarch, with its garrison and the gate intact.
 	_send_command(ana, NetMessages.DebugCommand.fort_owner(SOLMARCH))
 	var given: bool = await _run_until(func() -> bool: return _state().owner == SOLMARCH)
 	assert_true(given, "fort_owner solmarch")
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
 	assert_true(_state().captain_alive)
-	# 8 fort_reset: vuelve a neutral.
+	# 8 fort_reset: back to neutral.
 	_send_command(ana, NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_RESET))
 	var reset: bool = await _run_until(func() -> bool: return _state().owner == 0)
 	assert_true(reset, "fort_reset")
 	await _run_frames(15)
-	assert_eq(peer.strikes_total, 0, "ninguno cuenta como aviso")
-	assert_true(_server.get_commands().audit_total >= 4, "los cuatro quedan auditados")
+	assert_eq(peer.strikes_total, 0, "none counts as a notice")
+	assert_true(_server.get_commands().audit_total >= 4, "all four are audited")
 	assert_eq(ana.war_ids(), [WarEvents.CAPTAIN_DOWN, WarEvents.CAPTURE_STARTED,
 			WarEvents.FORT_CAPTURED, WarEvents.FORT_CAPTURED, WarEvents.FORT_RESET] as Array[int],
-			"y la zona recibe los avisos en el orden en que ocurren")
+			"and the zone receives the notices in the order they happen")
 	assert_eq(ana.war_realms_of(WarEvents.CAPTAIN_DOWN), [VARDHEIM] as Array[int],
-			"el capitán lo mató el reino de quien mandó el comando")
+			"the captain was killed by the realm of whoever sent the command")
 
 
 func test_the_fortress_debug_commands_are_refused_without_debug_commands() -> void:
@@ -767,12 +767,12 @@ func test_the_fortress_debug_commands_are_refused_without_debug_commands() -> vo
 	_send_command(ana, NetMessages.DebugCommand.fort_owner(SOLMARCH))
 	_send_command(ana, NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_KILL_CAPTAIN))
 	await _run_frames(20)
-	assert_eq(_state().owner, 0, "el fuerte no cambia de manos")
-	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "ni se mata al capitán")
-	assert_eq(peer.strikes_total, 2, "cada intento es un aviso")
+	assert_eq(_state().owner, 0, "the fort does not change hands")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "nor is the captain killed")
+	assert_eq(peer.strikes_total, 2, "each attempt is a notice")
 
 
-# --- Reinicio periódico a neutral (docs/fuerte.md, 1.5) -------------------------------------------------
+# --- Periodic reset to neutral (docs/fuerte.md, 1.5) -----------------------------------------------
 
 func test_the_periodic_reset_reaches_every_client_and_closes_the_gate_for_everybody() -> void:
 	await _start_server(FortressFixture.make_definition(2.0, 2.0, 4.0))
@@ -781,32 +781,32 @@ func test_the_periodic_reset_reaches_every_client_and_closes_the_gate_for_everyb
 	if ana == null or bo == null:
 		return
 	var gate_id: int = _server.get_fortresses().get_net_id(FORTRESS)
-	# El reloj del reinicio arranca con el dueño nuevo; Ana espera en el círculo.
+	# The reset clock starts with the new owner; Ana waits in the circle.
 	_server.teleport(ana.own_spawn.net_id, FortressFixture.circle_center())
 	_server.console_command("fort_owner solmarch")
 	var owned: bool = await _run_until(func() -> bool: return _state().owner == SOLMARCH)
 	assert_true(owned)
-	# La orden de la consola entra antes del tick; las capas de la puerta cambian al final de ese tick.
+	# The console order enters before the tick; the gate layers change at the end of that tick.
 	await _run_frames(3)
 	var given_at: int = _state().last_reset_tick
 	assert_eq(_gate().collision_layer, FortGate.layers_for(SOLMARCH, false),
-			"la puerta frena a los enemigos de Solmarch")
+			"the gate holds back Solmarch's enemies")
 	var position: Vector3 = _server.get_registry().get_entity(ana.own_spawn.net_id).get_position()
 	var reset: bool = await _run_until(func() -> bool: return _state().owner == 0, 400)
-	if not assert_true(reset, "a los 4 s el fuerte vuelve a ser neutral"):
+	if not assert_true(reset, "at 4 s the fort becomes neutral again"):
 		return
-	assert_eq(_state().last_reset_tick - given_at, 4 * 60, "justo a los 4 s del último reinicio")
+	assert_eq(_state().last_reset_tick - given_at, 4 * 60, "exactly 4 s after the last reset")
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
-	assert_true(_state().captain_alive, "con los Huecos y su Capitán")
+	assert_true(_state().captain_alive, "with the Hollows and their Captain")
 	assert_eq(_state().gate_health, 900)
-	assert_eq(_gate().collision_layer, FortGate.layers_for(0, false), "ahora frena a los tres reinos")
+	assert_eq(_gate().collision_layer, FortGate.layers_for(0, false), "now it holds back all three realms")
 	assert_vec_near(_server.get_registry().get_entity(ana.own_spawn.net_id).get_position(), position, 0.2,
-			"los jugadores que hay dentro no se mueven")
-	# Los dos clientes se enteran: aviso de «fuerte reiniciado» y el dueño nuevo en un OBJECT_STATE.
+			"the players inside are not moved")
+	# Both clients find out: a \"fuerte reiniciado\" (fort reset) notice and the new owner in an OBJECT_STATE.
 	var told: bool = await _run_until(func() -> bool:
 		return ana.war_ids().has(WarEvents.FORT_RESET) and bo.war_ids().has(WarEvents.FORT_RESET), 120)
-	assert_true(told, "FORT_RESET a toda la zona")
-	assert_eq(ana.war_realms_of(WarEvents.FORT_RESET), [0] as Array[int], "sin reino")
+	assert_true(told, "FORT_RESET to the whole zone")
+	assert_eq(ana.war_realms_of(WarEvents.FORT_RESET), [0] as Array[int], "no realm")
 	for client: RawClient in [ana, bo]:
 		var mirror: FortressState = FortressState.initial(FortressFixture.make_definition(), 0)
 		for spawn: NetMessages.EntitySpawn in client.spawns:
@@ -814,10 +814,10 @@ func test_the_periodic_reset_reaches_every_client_and_closes_the_gate_for_everyb
 				spawn.to_object_state().apply_to_fortress(mirror)
 		for object_state: NetMessages.ObjectState in client.object_states:
 			object_state.apply_to_fortress(mirror)
-		assert_eq(mirror.owner, 0, "el cliente ve el fuerte neutral")
+		assert_eq(mirror.owner, 0, "the client sees the fort as neutral")
 		assert_eq(mirror.phase, FortressState.Phase.GARRISONED)
 		assert_eq(client.malformed, 0)
-	# Y vuelve a repetirse cada 4 s desde el último reinicio.
+	# And it repeats again every 4 s since the last reset.
 	var again: bool = await _run_until(func() -> bool:
 		return ana.war_ids().count(WarEvents.FORT_RESET) >= 2, 400)
-	assert_true(again, "el reinicio se repite")
+	assert_true(again, "the reset repeats")

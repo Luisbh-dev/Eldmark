@@ -16,20 +16,21 @@ import (
 	"eldmark/platform/internal/progress"
 )
 
-// Las pruebas del progreso de extremo a extremo (progresion.md §15 P8): el bot con --bot-scenario=progress (equipa
-// el arco de su bolsa, se da 50 de oro y una poción de vida por DEBUG_COMMAND 41 y 40) contra una zona test_world
-// con --platform --debug-commands, y lo que vio el bot (la clave progress de su informe) frente a lo que devuelve
-// Load del almacén de verdad, campo a campo.
+// The end-to-end progression tests (progresion.md §15 P8): the bot with --bot-scenario=progress
+// (equips the bow from its bag, gives itself 50 gold and a health potion through DEBUG_COMMAND 41
+// and 40) against a test_world zone with --platform --debug-commands, and what the bot saw (the
+// progress key of its report) against what the real store's Load returns, field by field.
 
 const (
-	// scenarioTimeout: un bot con el escenario, de arrancar a acabarlo (tres pasos con un segundo de pausa).
+	// scenarioTimeout: a bot with the scenario, from start to finishing it (three steps with a
+	// one-second pause).
 	scenarioTimeout = 90 * time.Second
-	// goldGiven: lo que da el escenario (BotProgressScenario.GOLD_AMOUNT).
+	// goldGiven: what the scenario gives (BotProgressScenario.GOLD_AMOUNT).
 	goldGiven    = 50
 	currencyGold = 1
 )
 
-// savedItem es una entrada de items del registro (progresion.md §3.4): la de Load y la del informe del bot
+// savedItem is an entry of the record's items (progresion.md §3.4): Load's and the bot report's
 // (ItemInstance.to_dictionary).
 type savedItem struct {
 	UID        string  `json:"uid"`
@@ -49,7 +50,7 @@ type savedWallet struct {
 	Balance  int64 `json:"balance"`
 }
 
-// savedRecord es lo que se compara del registro de Load.
+// savedRecord is what is compared from Load's record.
 type savedRecord struct {
 	Items             []savedItem   `json:"items"`
 	Wallets           []savedWallet `json:"wallets"`
@@ -62,8 +63,8 @@ type savedRecord struct {
 	StarterGranted    bool          `json:"starter_granted"`
 }
 
-// botProgress es la clave progress del informe del bot (NetClient.progress_report): lo que el cliente sabe de su
-// progreso por INVENTORY_FULL/DELTA, WALLET_UPDATE y PROGRESS_UPDATE.
+// botProgress is the bot report's progress key (NetClient.progress_report): what the client knows
+// about its progression through INVENTORY_FULL/DELTA, WALLET_UPDATE and PROGRESS_UPDATE.
 type botProgress struct {
 	Items            []savedItem   `json:"items"`
 	Wallets          []savedWallet `json:"wallets"`
@@ -75,7 +76,7 @@ type botProgress struct {
 	Pending          int           `json:"pending"`
 }
 
-// botScenario es la clave scenario del informe (BotProgressScenario.to_report).
+// botScenario is the report's scenario key (BotProgressScenario.to_report).
 type botScenario struct {
 	Name            string   `json:"name"`
 	Phase           string   `json:"phase"`
@@ -87,14 +88,14 @@ type botScenario struct {
 	PotionsBefore   int      `json:"potions_before"`
 }
 
-// progressReport es lo que estas pruebas leen del informe del bot.
+// progressReport is what these tests read from the bot's report.
 type progressReport struct {
 	Progress *botProgress `json:"progress"`
 	Scenario *botScenario `json:"scenario"`
 }
 
-// readProgressReport lee el informe del bot (el final, o uno a medias del escenario); error si aún no se puede
-// leer entero.
+// readProgressReport reads the bot's report (the final one, or a partial one from the scenario);
+// error if it cannot yet be read in full.
 func readProgressReport(path string) (*progressReport, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -107,8 +108,9 @@ func readProgressReport(path string) (*progressReport, error) {
 	return r, nil
 }
 
-// makeAdmin da el rol admin a la cuenta (los DEBUG_COMMAND 40 y 41 lo piden con plataforma, progresion.md §10).
-// Sin fila set-role en audit_log, S2 toma el rol de accounts (sanctions.RoleAt).
+// makeAdmin gives the admin role to the account (DEBUG_COMMANDs 40 and 41 require it with the
+// platform, progresion.md §10). Without a set-role row in audit_log, S2 takes the role from accounts
+// (sanctions.RoleAt).
 func makeAdmin(h *Harness, acc *Account) {
 	h.T.Helper()
 	if _, err := h.Pool.Exec(context.Background(), `update accounts set role = 'admin' where account_id = $1`,
@@ -117,7 +119,7 @@ func makeAdmin(h *Harness, acc *Account) {
 	}
 }
 
-// progressRules son las reglas exportadas (las de la plataforma).
+// progressRules are the exported rules (the platform's).
 func progressRules(t *testing.T) *progress.Rules {
 	t.Helper()
 	rules, err := progress.LoadRules(gamedata.Raw())
@@ -127,7 +129,7 @@ func progressRules(t *testing.T) *progress.Rules {
 	return rules
 }
 
-// loadRecord es el registro del personaje como lo da Load del almacén (el de la reclamación siguiente).
+// loadRecord is the character's record as given by the store's Load (the one for the next claim).
 func loadRecord(h *Harness, rules *progress.Rules, characterID int64) savedRecord {
 	h.T.Helper()
 	raw, err := progress.New(rules, nil).Load(context.Background(), h.Pool, characterID)
@@ -141,9 +143,10 @@ func loadRecord(h *Harness, rules *progress.Rules, characterID int64) savedRecor
 	return rec
 }
 
-// compareWithLoad compara, campo a campo, lo que vio el bot con el registro de Load: cada objeto (uid, def_id,
-// contenedor, ranura, cantidad, durabilidad, rareza, ligado, semilla y afijos), cada saldo, el nivel, la XP (la del
-// nivel más total_to(nivel)), los puntos de reino, las ranuras de la bolsa y la ranura de arma activa.
+// compareWithLoad compares, field by field, what the bot saw with Load's record: each object (uid,
+// def_id, container, slot, quantity, durability, rarity, bound, seed and affixes), each balance, the
+// level, the XP (the level's plus total_to(level)), the realm points, the bag slots and the active
+// weapon slot.
 func compareWithLoad(t *testing.T, rules *progress.Rules, what string, seen *botProgress, rec savedRecord) {
 	t.Helper()
 	if seen == nil {
@@ -182,7 +185,7 @@ func compareWithLoad(t *testing.T, rules *progress.Rules, what string, seen *bot
 	}
 }
 
-// itemAt es el objeto de esa ranura (nil si está vacía).
+// itemAt is the object in that slot (nil if empty).
 func itemAt(rec savedRecord, container, slot int) *savedItem {
 	for i := range rec.Items {
 		if rec.Items[i].Container == container && rec.Items[i].Slot == slot {
@@ -192,7 +195,7 @@ func itemAt(rec savedRecord, container, slot int) *savedItem {
 	return nil
 }
 
-// countOf es la cantidad total de def_id.
+// countOf is the total quantity of def_id.
 func countOf(rec savedRecord, defID string) int {
 	n := 0
 	for _, it := range rec.Items {
@@ -203,7 +206,7 @@ func countOf(rec savedRecord, defID string) int {
 	return n
 }
 
-// balanceOf es el saldo de la moneda.
+// balanceOf is the currency's balance.
 func balanceOf(rec savedRecord, currency int) int64 {
 	for _, w := range rec.Wallets {
 		if w.Currency == currency {
@@ -213,7 +216,7 @@ func balanceOf(rec savedRecord, currency int) int64 {
 	return -1
 }
 
-// characterOf es el character_id del informe del bot.
+// characterOf is the bot report's character_id.
 func characterOf(t *testing.T, report *BotReport) int64 {
 	t.Helper()
 	id, err := strconv.ParseInt(report.Platform.CharacterID, 10, 64)
@@ -223,10 +226,11 @@ func characterOf(t *testing.T, report *BotReport) int64 {
 	return id
 }
 
-// TestProgressEndToEnd (progresion.md §15 P8): la plataforma de verdad, una zona test_world con --debug-commands y
-// un bot de una cuenta admin con el escenario progress, que crea su personaje con la plantilla squire (el arco en la
-// bolsa), lo equipa, se da 50 de oro y una poción y sale. Lo que vio el bot es, campo a campo, lo que devuelve Load
-// después de su guardado final; las dos operaciones GM están en el libro con su fila de auditoría, y todo cuadra.
+// TestProgressEndToEnd (progresion.md §15 P8): the real platform, a test_world zone with
+// --debug-commands and a bot of an admin account with the progress scenario, which creates its
+// character with the squire template (the bow in the bag), equips it, gives itself 50 gold and a
+// potion and leaves. What the bot saw is, field by field, what Load returns after its final save;
+// the two GM operations are in the ledger with their audit row, and everything adds up.
 func TestProgressEndToEnd(t *testing.T) {
 	h := New(t)
 	rules := progressRules(t)
@@ -255,7 +259,7 @@ func TestProgressEndToEnd(t *testing.T) {
 	}
 	h.Logf("el bot ha hecho el escenario con el personaje %d: %v", id, sc.Completed)
 
-	// El guardado final y la liberación salen al irse el cuerpo.
+	// The final save and the release come out when the body leaves.
 	h.WaitFor(saveTimeout, "el guardado final y la liberación", func() bool {
 		requireRunning(t, zone.Process)
 		return h.Exists(`select 1 from character_leases where character_id = $1 and zone_instance_id is null
@@ -264,7 +268,7 @@ func TestProgressEndToEnd(t *testing.T) {
 	rec := loadRecord(h, rules, id)
 	compareWithLoad(t, rules, "tras salir", seen.Progress, rec)
 
-	// Lo que tiene que haber, además de que el bot y la base digan lo mismo.
+	// What has to be there, besides the bot and the database saying the same thing.
 	if rec.StarterTemplateID != "squire" || !rec.StarterGranted {
 		t.Fatalf("plantilla %q y kit dado %v (se esperaba squire y true)", rec.StarterTemplateID, rec.StarterGranted)
 	}
@@ -279,8 +283,8 @@ func TestProgressEndToEnd(t *testing.T) {
 		t.Fatalf("pociones de vida guardadas: %d (las %d del kit y la dada)", got, sc.PotionsBefore)
 	}
 
-	// Las dos operaciones GM de DEBUG_COMMAND: del admin, con la nota «debug», y cada una con su fila de auditoría
-	// (la de S8 o la del lote de la zona, que no se duplican: la misma event_key).
+	// The two GM operations from DEBUG_COMMAND: by the admin, with the note "debug", and each with its
+	// audit row (S8's or the zone batch's, which are not duplicated: the same event_key).
 	ctx := context.Background()
 	rows, err := h.Pool.Query(ctx, `select o.op_id, o.actor_account_id, o.note, o.detail->>'command', o.detail->>'source'
 		from economy_ops o join op_participants p on p.op_id = o.op_id
@@ -331,10 +335,11 @@ func TestProgressEndToEnd(t *testing.T) {
 	h.Logf("TestProgressEndToEnd: %.1f s", h.Elapsed().Seconds())
 }
 
-// TestProgressCrash (progresion.md §15 P8; TEC-25): lo mismo con kill -9 a la zona en cuanto el bot ha visto llegar
-// el oro (su informe a medias dice gold), antes de la poción. Lo guardado cuadra por SQL (por definición, Σ
-// count_delta = Σ count de los objetos vivos; por moneda, Σ delta = saldo; un solo kit) y un segundo bot de la misma
-// cuenta entra en otra instancia con exactamente lo que dice Load, y sale con ello guardado otra vez.
+// TestProgressCrash (progresion.md §15 P8; TEC-25): the same with kill -9 on the zone as soon as
+// the bot has seen the gold arrive (its partial report says gold), before the potion. What is saved
+// adds up by SQL (by definition, sum of count_delta = sum of count of the live objects; per
+// currency, sum of delta = balance; a single kit) and a second bot of the same account joins
+// another instance with exactly what Load says, and leaves with it saved again.
 func TestProgressCrash(t *testing.T) {
 	h := New(t)
 	rules := progressRules(t)
@@ -349,7 +354,7 @@ func TestProgressCrash(t *testing.T) {
 	var phase string
 	h.WaitFor(scenarioTimeout, "el oro en el bot", func() bool {
 		requireRunning(t, first.Process, old.Process)
-		r, err := readProgressReport(first.Report) // a medias mientras se escribe: se vuelve a leer
+		r, err := readProgressReport(first.Report) // partial while being written: read again
 		if err != nil || r.Scenario == nil {
 			return false
 		}
@@ -375,7 +380,7 @@ func TestProgressCrash(t *testing.T) {
 	if newInstance == oldInstance || oldStatus != "lost" {
 		t.Fatalf("instancia nueva %s y la vieja %s en %q (se esperaba otra y lost)", newInstance, oldInstance, oldStatus)
 	}
-	h.CheckBooks(id) // lo que quedó de la vieja: nada a medias
+	h.CheckBooks(id) // what was left by the old one: nothing half-done
 	before := loadRecord(h, rules, id)
 
 	second := h.StartBot(acc, "--character=Caida", "--quit-after-ticks=240")
@@ -398,7 +403,7 @@ func TestProgressCrash(t *testing.T) {
 	})
 	after := loadRecord(h, rules, id)
 	compareWithLoad(t, rules, "tras salir de la nueva", seen.Progress, after)
-	h.CheckBooks(id) // y tras volver a entrar: el kit no se repite y nada se duplica
+	h.CheckBooks(id) // and after joining again: the kit is not repeated and nothing is duplicated
 	if code := replacement.Stop(zoneStop); code != 0 {
 		t.Fatalf("la zona nueva sale con el código %d tras el cierre ordenado", code)
 	}

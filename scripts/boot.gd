@@ -1,46 +1,46 @@
 extends Node
-## Escena de arranque (escena principal del proyecto).
+## Boot scene (the project's main scene).
 ##
-## Lee los argumentos de usuario de la línea de comandos (los que van después
-## de [code]--[/code]) y decide en qué modo arranca el juego:
-## [br]- [code]--server[/code]: servidor dedicado de una zona ([ServerMain], siempre con
-## [code]--headless[/code]; opciones en [ServerConfig]). Tiene prioridad sobre el resto.
-## [br]- Cualquier otro caso es un modo de cliente y lo resuelve [code]ClientLauncher[/code]
-## (escena [constant CLIENT_LAUNCHER_SCENE]), que este script instancia por su ruta:
-## [br]    - [code]--bots=N[/code]: enjambre de N clientes ligeros para pruebas de carga.
-## Tiene prioridad sobre el resto de modos de cliente.
-## [br]    - [code]--connect=<host>[:<puerto>][/code] o [code]--bot[/code]: cliente en red (ver
-## [code]ClientConfig[/code]). Tiene prioridad sobre el sandbox.
-## [br]    - [code]--local[/code]: cliente en red contra un servidor local que se lanza solo si no
-## hay ninguno ([code]LocalServerLauncher[/code]).
-## [br]    - [code]--title[/code] o [code]--platform=<url>[/code]: la pantalla de título con cuenta
-## ([code]FrontMain[/code], docs/plataforma.md §5.5 y §13). Una exportación sin argumentos también la abre.
-## [br]    - Sin nada de lo anterior, el sandbox sin red ([code]ClientMain[/code]; también en modo
-## headless), con las opciones de [method parse_client_options]:
-## [br]        - [code]--zone=<id>[/code]: zona que se carga ([code]vado_gris[/code] por defecto,
-## [code]test_world[/code] para el circuito de la fase 1). Ver [Zones].
-## [br]        - [code]--realm=<reino>[/code]: reino del jugador ([code]vardheim[/code] por defecto o
-## [code]solmarch[/code]); decide en qué punto de aparición de la zona se empieza.
-## [br]        - [code]--demo[/code]: entrada guionizada.
-## [br]        - [code]--shots=<carpeta absoluta>[/code]: durante la demo, guarda una captura
-## PNG cada 90 ticks en esa carpeta ([code]shot_000.png[/code], ...) y, al terminar, una desde
-## cada cámara de revisión de la zona ([code]zona_<nombre>.png[/code]).
-## [br]        - [code]--quit-after-demo[/code]: cierra el juego cuando termina la demo.
-## [br]Sin argumentos (también en modo headless) arranca el cliente en el Vado Gris.
+## Reads the command-line user arguments (those after [code]--[/code]) and decides which mode the
+## game starts in:
+## [br]- [code]--server[/code]: dedicated server for a zone ([ServerMain], always with
+## [code]--headless[/code]; options in [ServerConfig]). It takes priority over the rest.
+## [br]- Any other case is a client mode and is resolved by [code]ClientLauncher[/code]
+## (scene [constant CLIENT_LAUNCHER_SCENE]), which this script instantiates by its path:
+## [br]    - [code]--bots=N[/code]: swarm of N lightweight clients for load testing.
+## It takes priority over the other client modes.
+## [br]    - [code]--connect=<host>[:<puerto>][/code] or [code]--bot[/code]: networked client (see
+## [code]ClientConfig[/code]). It takes priority over the sandbox.
+## [br]    - [code]--local[/code]: networked client against a local server that is launched on its own if
+## there is none ([code]LocalServerLauncher[/code]).
+## [br]    - [code]--title[/code] or [code]--platform=<url>[/code]: the title screen with account
+## ([code]FrontMain[/code], docs/plataforma.md §5.5 and §13). An export with no arguments also opens it.
+## [br]    - With none of the above, the offline sandbox ([code]ClientMain[/code]; also in headless
+## mode), with the options from [method parse_client_options]:
+## [br]        - [code]--zone=<id>[/code]: zone to load ([code]vado_gris[/code] by default,
+## [code]test_world[/code] for the phase 1 course). See [Zones].
+## [br]        - [code]--realm=<reino>[/code]: the player's realm ([code]vardheim[/code] by default or
+## [code]solmarch[/code]); it decides which spawn point in the zone to start at.
+## [br]        - [code]--demo[/code]: scripted entry.
+## [br]        - [code]--shots=<carpeta absoluta>[/code]: during the demo, saves a PNG screenshot
+## every 90 ticks into that folder ([code]shot_000.png[/code], ...) and, when finished, one from
+## each of the zone's review cameras ([code]zona_<nombre>.png[/code]).
+## [br]        - [code]--quit-after-demo[/code]: closes the game when the demo ends.
+## [br]With no arguments (also in headless mode) it starts the client in Vado Gris.
 ## [br][br]
-## [b]Este script no nombra ninguna clase de [code]scripts/client/[/code][/b]: el servidor dedicado
-## ejecuta también la escena principal, y cada referencia de clase que contenga arrastra el script de
-## esa clase y, en cadena, la interfaz, los ajustes y el audio. Lo comprueba
-## [code]tests/test_architecture.gd[/code] con un proceso de verdad arrancado con [code]--server[/code].
-## [br][br]Ejemplo:
+## [b]This script names no class from [code]scripts/client/[/code][/b]: the dedicated server also
+## runs the main scene, and each class reference it contains drags in that class's script and, in
+## a chain, the UI, the settings and the audio. This is checked by
+## [code]tests/test_architecture.gd[/code] with a real process started with [code]--server[/code].
+## [br][br]Example:
 ## [code]godot --path . -- --zone=vado_gris --realm=solmarch --demo --shots=C:/ruta/capturas --quit-after-demo[/code]
 
 const SERVER_MAIN_SCENE: String = "res://scenes/server/server_main.tscn"
-## Escena del nodo que elige el modo de cliente (ver [code]ClientLauncher[/code]). Solo se carga si no es
-## el servidor.
+## Scene of the node that chooses the client mode (see [code]ClientLauncher[/code]). It is only
+## loaded if this is not the server.
 const CLIENT_LAUNCHER_SCENE: String = "res://scenes/client/client_launcher.tscn"
-## Metadato del nodo del cliente con la función que interpreta los argumentos del sandbox. Es el mismo
-## nombre que [code]ClientLauncher.PARSER_META[/code]; lo comprueba [code]tests/test_client_launcher.gd[/code].
+## Metadata of the client node with the function that interprets the sandbox's arguments. It is
+## the same name as [code]ClientLauncher.PARSER_META[/code]; it is checked by [code]tests/test_client_launcher.gd[/code].
 const CLIENT_PARSER_META: StringName = &"client_options_parser"
 const SERVER_ARG: String = "--server"
 const DEMO_ARG: String = "--demo"
@@ -48,8 +48,8 @@ const SHOTS_ARG_PREFIX: String = "--shots="
 const QUIT_AFTER_DEMO_ARG: String = "--quit-after-demo"
 const ZONE_ARG_PREFIX: String = "--zone="
 const REALM_ARG_PREFIX: String = "--realm="
-## Argumentos de los modos en red (docs/red.md, sección 1.2) que el sandbox ignora sin avisar: los
-## interpretan [ServerConfig] y los modos de cliente en red, no [method parse_client_options].
+## Arguments of the networked modes (docs/red.md, section 1.2) that the sandbox ignores silently:
+## they are interpreted by [ServerConfig] and the networked client modes, not by [method parse_client_options].
 const NETWORK_ARGS: Array[String] = ["--local", "--bot", "--title"]
 const NETWORK_ARG_PREFIXES: Array[String] = [
 	"--connect=", "--bots=", "--name=", "--port=", "--net-sim=", "--quit-after-ticks=",
@@ -67,11 +67,11 @@ func _ready() -> void:
 	_start_client()
 
 
-## Interpreta los argumentos de usuario del cliente. Devuelve un diccionario con
-## [code]zone[/code] y [code]realm[/code] ([StringName]), [code]demo[/code] y
-## [code]quit_after_demo[/code] ([bool]), [code]shots_dir[/code] ([String]) y
-## [code]warnings[/code] ([PackedStringArray], avisos para el usuario). Una zona o un reino
-## desconocidos se sustituyen por los de por defecto, con aviso.
+## Interprets the client's user arguments. Returns a dictionary with
+## [code]zone[/code] and [code]realm[/code] ([StringName]), [code]demo[/code] and
+## [code]quit_after_demo[/code] ([bool]), [code]shots_dir[/code] ([String]) and
+## [code]warnings[/code] ([PackedStringArray], warnings for the user). An unknown zone or realm
+## is replaced by the default one, with a warning.
 static func parse_client_options(args: PackedStringArray) -> Dictionary:
 	var options: Dictionary = {
 		"zone": Zones.DEFAULT_ZONE,
@@ -119,7 +119,7 @@ static func parse_client_options(args: PackedStringArray) -> Dictionary:
 	return options
 
 
-## true si [param arg] es un argumento de los modos en red (ver [constant NETWORK_ARGS]).
+## true if [param arg] is an argument of the networked modes (see [constant NETWORK_ARGS]).
 static func _is_network_arg(arg: String) -> bool:
 	if NETWORK_ARGS.has(arg):
 		return true
@@ -129,16 +129,15 @@ static func _is_network_arg(arg: String) -> bool:
 	return false
 
 
-## Rellena [member ServerMain.config] con los argumentos de usuario y cambia a la escena del
-## servidor dedicado.
+## Fills [member ServerMain.config] with the user arguments and switches to the dedicated server scene.
 func _start_server(args: PackedStringArray) -> void:
 	ServerMain.config = ServerConfig.from_args(args)
 	get_tree().change_scene_to_file.call_deferred(SERVER_MAIN_SCENE)
 
 
-## Monta el nodo que elige el modo de cliente (enjambre, red o sandbox) a partir de los argumentos de
-## usuario, por la ruta de su escena: el servidor dedicado no llega aquí y nunca la carga. Le deja en
-## un metadato [constant CLIENT_PARSER_META] la función [method parse_client_options].
+## Mounts the node that chooses the client mode (swarm, network or sandbox) from the user
+## arguments, by its scene path: the dedicated server does not get here and never loads it. It
+## leaves the function [method parse_client_options] on it in a [constant CLIENT_PARSER_META] metadata entry.
 func _start_client() -> void:
 	var packed: PackedScene = load(CLIENT_LAUNCHER_SCENE) as PackedScene
 	if packed == null:
@@ -150,11 +149,11 @@ func _start_client() -> void:
 	add_child(launcher)
 
 
-## Valor de una opción sin espacios ni comillas alrededor, en minúsculas.
+## Value of an option without surrounding spaces or quotes, in lowercase.
 static func _clean_value(value: String) -> String:
 	return value.strip_edges().trim_prefix("\"").trim_suffix("\"").to_lower()
 
 
-## Ruta de una opción sin espacios ni comillas alrededor y con barras normales.
+## Path of an option without surrounding spaces or quotes and with forward slashes.
 static func _clean_path(value: String) -> String:
 	return value.strip_edges().trim_prefix("\"").trim_suffix("\"").replace("\\", "/")

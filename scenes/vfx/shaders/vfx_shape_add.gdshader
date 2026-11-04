@@ -1,18 +1,18 @@
 shader_type spatial;
-// Formas de luz (aditivas, con [cover] opcional para tapar un poco el fondo) sobre un quad
-// (MeshInstance3D con QuadMesh), animadas por el parámetro de instancia [progress] (0 al empezar, 1 al
-// acabar), que mueve el [VfxEffect].
-// Como el avance es por instancia, un solo material sirve a todo el grupo de reutilización.
+// Light shapes (additive, with optional [cover] to cover the background a little) on a quad
+// (MeshInstance3D with QuadMesh), animated by the instance parameter [progress] (0 at the start,
+// 1 at the end), which [VfxEffect] drives.
+// Since progress is per instance, a single material serves the whole reuse pool.
 //
-// [mode]: 0 destello (la textura es un destello de puntas), 1 anillo de choque (analítico: un filo fino y
-// nítido con una cola corta hacia dentro, sin relleno), 2 rayos radiales (textura de rayos que gira),
-// 3 resplandor (disco de luz blando), 4 runa de suelo (anillo con muescas que gira y se cierra con
-// [progress] como carga; es continuo, no se apaga) y 5 destello de lente (una raya horizontal en la
-// pantalla, con un núcleo caliente: el quad es alargado).
+// [mode]: 0 flash (the texture is a pointed flash), 1 shock ring (analytic: a thin, sharp edge
+// with a short tail inward, no fill), 2 radial rays (ray texture that rotates), 3 glow (soft disc
+// of light), 4 ground rune (notched ring that rotates and closes with [progress] as it charges; it
+// is continuous, it does not fade out) and 5 lens flare (a horizontal streak across the screen,
+// with a hot core: the quad is elongated).
 //
-// Orientación: con [billboard] el quad mira a la cámara (destellos, rayos); sin él se queda en el plano
-// del nodo, que [VfxEffect.play_at] orienta con la normal del impacto: así los anillos de choque son una
-// onda que se abre sobre la superficie golpeada, no una pompa que mira al jugador.
+// Orientation: with [billboard] the quad faces the camera (flashes, rays); without it, it stays
+// in the node's plane, which [VfxEffect.play_at] orients with the impact normal: this way shock
+// rings are a wave that opens out over the struck surface, not a bubble facing the player.
 render_mode blend_premul_alpha, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
@@ -22,36 +22,36 @@ uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform int mode = 0;
 uniform bool billboard = true;
 uniform float intensity = 3.0;
-// 0 = aditivo puro; 1 = la luz tapa el fondo como una mezcla normal (ver vfx_particle_add).
+// 0 = pure additive; 1 = the light covers the background like a normal blend (see vfx_particle_add).
 uniform float cover = 0.0;
 uniform float start_scale = 0.6;
 uniform float end_scale = 1.0;
-// Metros que se adelanta el quad hacia la cámara (en el espacio de vista si es billboard, o a lo largo de
-// su normal si no): un destello que nace pegado a una superficie (el escudo) no lo corta la geometría.
+// Meters the quad is pushed toward the camera (in view space if billboard, or along its normal if
+// not): a flash born flush against a surface (the shield) is not clipped by the geometry.
 uniform float push = 0.0;
-// Giro total (radianes) a lo largo de la vida, en destellos y rayos.
+// Total rotation (radians) over its life, for flashes and rays.
 uniform float spin = 0.0;
 uniform float fade_power = 2.0;
-// Fracción de la vida que tarda en alcanzar el máximo.
+// Fraction of its life it takes to reach the peak.
 uniform float attack = 0.05;
-// Anillo: radio inicial (fracción del radio final) y grosor del filo y de la cola al nacer y al morir.
+// Ring: starting radius (fraction of the final radius) and thickness of the edge and the tail at birth and at death.
 uniform float ring_start_radius = 0.15;
 uniform float ring_width_start = 0.16;
 uniform float ring_width_end = 0.02;
-// Anillo: grosor del filo (en unidades del quad, de -1 a 1) y fuerza de la cola corta que lo sigue por
-// dentro (0 = solo el filo).
+// Ring: edge thickness (in quad units, from -1 to 1) and strength of the short tail that follows
+// it inward (0 = edge only).
 uniform float ring_line = 0.03;
 uniform float ring_tail = 0.35;
-// Anillo: cuánto se ve el relleno suave de dentro. 0 = nada (un anillo, no un disco); es lo que convertía
-// el anillo en una pompa de jabón.
+// Ring: how visible the soft fill inside is. 0 = none (a ring, not a disc); it is what turned the
+// ring into a soap bubble.
 uniform float ring_fill = 0.0;
-// Anillo: fracción de la circunferencia que se pinta (1 = entera, 0,5 = media, centrada en +Y) y
-// achatamiento vertical (1 = circular, 0,5 = elipse tumbada).
+// Ring: fraction of the circumference that is painted (1 = whole, 0.5 = half, centered on +Y) and
+// vertical flattening (1 = circular, 0.5 = lying-down ellipse).
 uniform float ring_arc = 1.0;
 uniform float ring_squash = 1.0;
-// Runa: número de muescas.
+// Rune: number of notches.
 uniform float runes = 14.0;
-// Destello de lente: grosor de la raya al nacer y al acabar (de -1 a 1 en vertical).
+// Lens flare: streak thickness at birth and at the end (from -1 to 1 vertically).
 uniform float lens_thick_start = 0.2;
 uniform float lens_thick_end = 0.05;
 instance uniform float progress : hint_range(0.0, 1.0) = 0.0;
@@ -90,15 +90,15 @@ void fragment() {
 		float dist = length(vec2(c.x, c.y / max(ring_squash, 0.05)));
 		float inside = radius - dist;
 		float depth = max(inside, 0.0);
-		// El filo: una línea fina y nítida (más gruesa al nacer), con un poco de ruido para que no sea de compás.
+		// The edge: a thin, sharp line (thicker at birth), with a little noise so it does not look compass-drawn.
 		float line_width = ring_line * mix(1.5, 0.8, p) * (0.8 + 0.4 * n);
 		float edge = exp(-pow((dist - radius) / line_width, 2.0));
-		// Cola corta hacia dentro (la estela del filo al abrirse); no llega al centro.
+		// Short tail inward (the edge's trail as it opens); it does not reach the center.
 		float tail = step(0.0, inside) * exp(-pow(depth / max(width, 0.001), 1.4)) * ring_tail;
 		float band = smoothstep(-width * 0.1, 0.0, inside) * exp(-pow(depth / max(width * 3.0, 0.001), 1.6));
 		a = (edge + tail * 0.5 + band * ring_fill) * life;
 		if (ring_arc < 0.999) {
-			// UV.y crece hacia abajo: el +Y del nodo (arriba) es c.y negativo.
+			// UV.y grows downward: the node's +Y (up) is negative c.y.
 			float angle = abs(atan(c.x, -c.y));
 			a *= 1.0 - smoothstep(ring_arc * 3.14159 - 0.35, ring_arc * 3.14159, angle);
 		}

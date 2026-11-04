@@ -22,21 +22,21 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// QueueSize es cuántos correos esperan como mucho en la cola de [SMTPSender]; con la cola llena,
-// Send devuelve un error (que se registra) en lugar de bloquear la petición.
+// QueueSize is how many emails wait at most in the [SMTPSender] queue; with the queue full, Send
+// returns an error (which is logged) instead of blocking the request.
 const QueueSize = 1000
 
-// Intentos de cada envío y espera entre ellos.
+// Attempts for each send and the wait between them.
 var retryWaits = []time.Duration{2 * time.Second, 10 * time.Second}
 
-// SMTPSender envía por SMTP desde una cola en segundo plano (ELDMARK_MAIL=smtp). Con smtp:// usa
-// STARTTLS, que exige salvo hacia loopback; con smtps://, TLS desde el principio.
+// SMTPSender sends over SMTP from a background queue (ELDMARK_MAIL=smtp). With smtp:// it uses
+// STARTTLS, which it requires except toward loopback; with smtps://, TLS from the start.
 type SMTPSender struct {
 	url      *url.URL
 	from     netmail.Address
 	log      *slog.Logger
 	queue    chan Message
-	dial     func(ctx context.Context, network, addr string) (net.Conn, error) // net.Dialer; las pruebas lo cambian
+	dial     func(ctx context.Context, network, addr string) (net.Conn, error) // net.Dialer; tests change it
 	timeout  time.Duration
 	wg       sync.WaitGroup
 	start    sync.Once
@@ -44,8 +44,8 @@ type SMTPSender struct {
 	stop     chan struct{}
 }
 
-// NewSMTP prepara el envío por el servidor de smtpURL (smtp://usuario:clave@host:587) con el
-// remitente from (una dirección).
+// NewSMTP prepares sending through the server in smtpURL (smtp://user:password@host:587) with the
+// sender from (an address).
 func NewSMTP(smtpURL *url.URL, from string, log *slog.Logger) (*SMTPSender, error) {
 	if smtpURL == nil || (smtpURL.Scheme != "smtp" && smtpURL.Scheme != "smtps") || smtpURL.Hostname() == "" {
 		return nil, errors.New("mail: la URL de SMTP no vale")
@@ -60,7 +60,7 @@ func NewSMTP(smtpURL *url.URL, from string, log *slog.Logger) (*SMTPSender, erro
 		stop: make(chan struct{})}, nil
 }
 
-// Start arranca el envío en segundo plano hasta Close.
+// Start starts the sending in the background until Close.
 func (s *SMTPSender) Start() {
 	s.start.Do(func() {
 		s.wg.Add(1)
@@ -68,14 +68,15 @@ func (s *SMTPSender) Start() {
 	})
 }
 
-// Close deja de aceptar correos, intenta enviar los que quedan en la cola (sin reintentos) y
-// espera a que termine.
+// Close stops accepting emails, tries to send those left in the queue (without retries) and waits
+// for it to finish.
 func (s *SMTPSender) Close() {
 	s.stopOnce.Do(func() { close(s.stop) })
 	s.wg.Wait()
 }
 
-// Send encola el correo. No espera al servidor: con la cola llena devuelve un error.
+// Send enqueues the email. It does not wait for the server: with the queue full it returns an
+// error.
 func (s *SMTPSender) Send(_ context.Context, m Message) error {
 	select {
 	case <-s.stop:
@@ -120,7 +121,7 @@ func (s *SMTPSender) deliverWithRetries(m Message, retry bool) {
 			select {
 			case <-time.After(retryWaits[i-1]):
 			case <-s.stop:
-				// Al parar no se espera: un último intento.
+				// On stopping we do not wait: one last attempt.
 			}
 		}
 		if err = s.deliver(m); err == nil {
@@ -221,9 +222,9 @@ func domainOf(addr string) string {
 	return "localhost"
 }
 
-// BuildMIME escribe el correo entero (cabeceras y cuerpo) en texto plano UTF-8 con
-// quoted-printable. Rechaza un destinatario o un remitente con saltos de línea, aunque la API ya
-// los rechaza antes.
+// BuildMIME writes the whole email (headers and body) in plain UTF-8 text with quoted-printable. It
+// rejects a recipient or a sender with line breaks, even though the API already rejects them
+// earlier.
 func BuildMIME(from netmail.Address, m Message, date time.Time) ([]byte, error) {
 	for _, v := range []string{from.Name, from.Address, m.To} {
 		if strings.ContainsAny(v, "\r\n") {
@@ -258,7 +259,7 @@ func BuildMIME(from netmail.Address, m Message, date time.Time) ([]byte, error) 
 	return b.Bytes(), nil
 }
 
-// Close de un Sender que lo necesita (SMTPSender); el resto no hace nada.
+// Close of a Sender that needs it (SMTPSender); the rest do nothing.
 func Close(s Sender) {
 	if c, ok := s.(interface{ Close() }); ok {
 		c.Close()

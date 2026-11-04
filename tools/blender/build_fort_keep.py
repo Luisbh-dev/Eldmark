@@ -1,76 +1,76 @@
-"""Torreón del fuerte del Vado Gris (ART-57), modelado desde cero en Blender con código. Versión 2.
+"""Keep of the Vado Gris fort (ART-57), modeled from scratch in Blender with code. Version 2.
 
-Genera assets/models/environment/custom/fort_keep.glb: un torreón de piedra de unos 26 m (con el
-asta) y 9,1 m de planta, con zócalo ataludado, muro con talud suave y a haces (sin pilastras ni
-paños rehundidos), esquinas de sillares grandes abrazando las dos caras, saeteras y ventanas
-profundas, cordón, cornisa con canecillos, cadalso de madera bajo un tejado a cuatro aguas,
-parapeto almenado, torrecilla de escalera con tejadillo, puerta con arco de dovelas y herrajes
-bajo un porche, estandartes en un nodo propio y un pie enterrado en la colina con piedras caídas y
-una falda de tierra.
+Generates assets/models/environment/custom/fort_keep.glb: a stone keep about 26 m tall (with the
+flagpole) and 9.1 m wide at the base, with a battered plinth, a wall with a gentle batter and in bundles (no pilasters or
+recessed panels), large ashlar corners hugging both faces, arrow slits and deep
+windows, a string course, a cornice with corbels, a wooden hoarding under a hipped roof,
+a crenellated parapet, a stair turret with a small roof, a door with a voussoir arch and ironwork
+under a porch, banners in their own node and a foot buried in the hill with fallen stones and
+a skirt of earth.
 
-Uso, desde la raíz del repo (antes hay que generar las texturas propias):
+Usage, from the repo root (the custom textures have to be generated first):
 
     python tools/blender/make_fort_keep_textures.py
-    blender --background --factory-startup --python tools/blender/build_fort_keep.py -- [opciones]
+    blender --background --factory-startup --python tools/blender/build_fort_keep.py -- [options]
 
-Opciones tras "--":
-    --out <ruta.glb>      GLB de salida (por defecto assets/models/environment/custom/fort_keep.glb)
-    --render <carpeta>    además guarda renders del modelo solo (Eevee) en esa carpeta (ruta
-                          absoluta o relativa a donde se lanza Blender: se normaliza)
-    --blend <ruta.blend>  guarda también la escena de Blender (no se versiona)
+Options after "--":
+    --out <path.glb>      output GLB (by default assets/models/environment/custom/fort_keep.glb)
+    --render <folder>     also saves renders of the model alone (Eevee) in that folder (absolute
+                          path or relative to where Blender is launched: it is normalized)
+    --blend <path.blend>  also saves the Blender scene (not versioned)
 
-Qué contiene el GLB (nodos de primer nivel):
-    FortKeep_LOD0      detalle completo (sillares modelados), unos 60 000 triángulos
-    FortKeep_LOD1      nivel medio, unos 5 000 triángulos: muros lisos con la textura de sillería
-                       despiezada (keep_wall), cadalso, ménsulas, vanos y puerta con su geometría
-    FortKeep_LOD2      versión lejana, unos 600 triángulos
-    Estandarte         gallardete del asta y pendones colgados del cadalso, fuera de las mallas de
-                       los LOD para que el controlador del fuerte mueva faction_color, emblem_index y
-                       capture_progress (instance uniforms de fort_keep_cloth.gdshader) y el
-                       viento lo mueva el shader (el peso del viento va en el alfa del color de vértice)
-    FortKeep-colonly   colisión aparte de baja resolución (Godot la importa como StaticBody3D con
-                       trimesh y no dibuja la malla): cuerpo, porche, cadalso, parapeto, tejado y
-                       torrecilla
+What the GLB contains (top-level nodes):
+    FortKeep_LOD0      full detail (modeled ashlars), about 60,000 triangles
+    FortKeep_LOD1      medium level, about 5,000 triangles: smooth walls with the cut-ashlar masonry
+                       texture (keep_wall), hoarding, brackets, openings and a door with their geometry
+    FortKeep_LOD2      distant version, about 600 triangles
+    Estandarte         flagpole pennant and banners hanging from the hoarding, outside the LOD
+                       meshes so that the fort controller can drive faction_color, emblem_index and
+                       capture_progress (instance uniforms of fort_keep_cloth.gdshader) and the
+                       shader can animate the wind (the wind weight goes in the vertex color's alpha)
+    FortKeep-colonly   separate low-resolution collision (Godot imports it as a StaticBody3D with
+                       a trimesh and does not draw the mesh): body, porch, hoarding, parapet, roof and
+                       turret
 
-Rangos de visibilidad recomendados (los pone el código del juego, no el glTF; ver
-scripts/client/tools/fort_keep_preview.gd): LOD0 hasta 50 m, LOD1 de 50 a 250 m y LOD2 desde 250 m,
-con visibility_range_fade_mode SELF y 10 m de margen. LOD0 acaba pronto porque las juntas modeladas
-(2,4 cm) son subpíxel a 30 m o más y centellean al moverse; el LOD1 centellea la mitad.
+Recommended visibility ranges (set by the game code, not the glTF; see
+scripts/client/tools/fort_keep_preview.gd): LOD0 up to 50 m, LOD1 from 50 to 250 m and LOD2 from 250 m,
+with visibility_range_fade_mode SELF and a 10 m margin. LOD0 ends early because the modeled joints
+(2.4 cm) are subpixel at 30 m or more and flicker when moving; LOD1 flickers half as much.
 
-Ejes: se modela en Z arriba con la puerta hacia -X de Blender; el exportador lo pasa a Y arriba de
-glTF/Godot, así que la puerta mira a -X en Godot (hacia la puerta del fuerte). Origen: centro del
-torreón a la altura del suelo; el zócalo baja 1,2 m bajo el origen para enterrarse en la colina.
-Planta: 9,1 m de zócalo (con el porche, 10,0 m en el eje de la puerta; las piedras caídas añaden
-unos 0,5 m): antes de conectarlo hay que recolocar el CaptureCircle (radio 5 m, centro en
-x = -8,5) y el CaptainSpawn, reornear vado_gris_navmesh.tres y corregir docs/zonas/vado_gris.md
-(dice torre de 6 x 6 x 12 m).
+Axes: it is modeled Z-up with the door toward Blender's -X; the exporter converts it to the Y-up of
+glTF/Godot, so the door faces -X in Godot (toward the fort's gate). Origin: center of the
+keep at ground level; the plinth goes 1.2 m below the origin to bury itself in the hill.
+Footprint: 9.1 m of plinth (with the porch, 10.0 m on the door axis; the fallen stones add
+about 0.5 m): before connecting it you have to reposition the CaptureCircle (radius 5 m, center at
+x = -8.5) and the CaptainSpawn, re-bake vado_gris_navmesh.tres and fix docs/zonas/vado_gris.md
+(it says a tower of 6 x 6 x 12 m).
 
-Color de vértice (COLOR_0, lineal), que lee fort_keep_surface.gdshader:
-    RGB   valor y tono del sillar (+-8 %), oclusión de las juntas, suciedad del pie, churretes
-          bajo vanos, ménsulas y cornisa
-    A     máscara de desgaste: musgo, polvo o ceniza (según el reino) y, en la piedra, dónde brillan
-          las grietas de brasa de Eldrun; en la argamasa, la brasa de las juntas; en el tejado,
-          los trozos que faltan en ruina; en las telas, el peso del viento
+Vertex color (COLOR_0, linear), which fort_keep_surface.gdshader reads:
+    RGB   value and tone of the ashlar (+-8 %), joint occlusion, dirt at the foot, streaks
+          under openings, brackets and cornice
+    A     wear mask: moss, dust or ash (depending on the realm) and, on the stone, where the
+          ember cracks of Eldrun glow; on the mortar, the embers of the joints; on the roof,
+          the missing pieces in ruin; on the cloths, the wind weight
 
-Materiales (por nombre, para que el juego los cambie por los de reino):
-    keep_stone      sillares de cara          keep_mortar   fondo de las juntas
-    keep_trim       piedra labrada            keep_wood     madera pintada
-    keep_iron       herrajes                  keep_dark     huecos de saeteras y ventanas
-    keep_cloth      gallardete                keep_pendant  pendones colgantes
-    keep_roof       tablillas del tejado      keep_wall     paño de sillería despiezada (LOD 1 y 2)
-    keep_earth      falda de tierra del pie
+Materials (by name, so the game can swap them for the realm ones):
+    keep_stone      face ashlars              keep_mortar   bottom of the joints
+    keep_trim       dressed stone             keep_wood     painted wood
+    keep_iron       ironwork                  keep_dark     openings of arrow slits and windows
+    keep_cloth      pennant                   keep_pendant  hanging banners
+    keep_roof       roof shingles             keep_wall     cut-ashlar masonry panel (LOD 1 and 2)
+    keep_earth      earth skirt at the foot
 
-Ajustes de importación del GLB que NO son los de por defecto y hay que conservar si el editor
-regenera fort_keep.glb.import (el .import está versionado; si se recrea, volver a ponerlos):
-    meshes/generate_lods = false        los LOD son los de este archivo, con rangos y fundido propios;
-                                        el generador automático de Godot los pisaría y deformaría los
-                                        vanos y la puerta
-    gltf/embedded_image_handling = 3    (insertar sin comprimir). Este GLB ya no lleva imágenes
-                                        (los materiales de reino cargan las texturas desde
-                                        fort_keep/textures/), pero se mantiene el valor para que un
-                                        .import recreado no extraiga texturas junto al modelo
+GLB import settings that are NOT the defaults and must be kept if the editor
+regenerates fort_keep.glb.import (the .import is versioned; if it is recreated, set them again):
+    meshes/generate_lods = false        the LODs are the ones in this file, with their own ranges and fade;
+                                        Godot's automatic generator would overwrite them and deform the
+                                        openings and the door
+    gltf/embedded_image_handling = 3    (embed uncompressed). This GLB no longer carries images
+                                        (the realm materials load the textures from
+                                        fort_keep/textures/), but the value is kept so that a recreated
+                                        .import does not extract textures next to the model
 
-Es determinista: semillas fijas.
+It is deterministic: fixed seeds.
 """
 
 import math
@@ -93,45 +93,45 @@ X = Vector((1.0, 0.0, 0.0))
 Y = Vector((0.0, 1.0, 0.0))
 
 # ---------------------------------------------------------------------------------------------
-# Medidas (m)
+# Dimensions (m)
 # ---------------------------------------------------------------------------------------------
-FOOT_Z = -1.2                 # fondo del zócalo, enterrado
-PLINTH_HALF_BOTTOM = 4.55     # semilado del zócalo a ras de suelo (z = 0)
+FOOT_Z = -1.2                 # bottom of the plinth, buried
+PLINTH_HALF_BOTTOM = 4.55     # half-width of the plinth at ground level (z = 0)
 PLINTH_HALF_TOP = 4.05
-PLINTH_TOP = 3.00             # arriba del zócalo ataludado
-LEDGE_TOP = 3.25              # primera hilada del muro (la repisa la tapa por abajo)
-H_WALL0 = 3.58                # semilado del muro a z = LEDGE_TOP
-SLOPE_LOW = -0.030            # talud (m de semilado por m de altura) de la parte baja
+PLINTH_TOP = 3.00             # top of the battered plinth
+LEDGE_TOP = 3.25              # first course of the wall (the ledge covers it from below)
+H_WALL0 = 3.58                # half-width of the wall at z = LEDGE_TOP
+SLOPE_LOW = -0.030            # batter (m of half-width per m of height) of the lower part
 CORDON_Z0, CORDON_Z1 = 8.55, 8.90
-CORDON_STEP = 0.10            # lo que el muro entra por encima del cordón
+CORDON_STEP = 0.10            # how much the wall steps in above the string course
 SLOPE_UP = -0.022
-CORNICE_Z0 = 14.00            # cornisa con canecillos bajo el cadalso
-WALK_Z = 14.90                # suelo del adarve y del cadalso
+CORNICE_Z0 = 14.00            # cornice with corbels under the hoarding
+WALK_Z = 14.90                # floor of the wall walk and of the hoarding
 PARAPET_BASE = 14.30
 PARAPET_TOP = 16.05
 COPING_TOP = 16.25
 MERLON_TOP = 17.45
-PLATE_Z = 17.60               # carrera sobre la que apoya el tejado
+PLATE_Z = 17.60               # ridge beam on which the roof rests
 ROOF_EAVE_Z = 17.72
 ROOF_APEX_Z = 22.00
 TURRET_TOP = 20.90
 TURRET_ROOF_APEX = 23.60
-TOTAL_TOP = 25.80             # punta del asta
-HOARD_OUT = 1.10              # cuánto sale el cadalso del muro de arriba
+TOTAL_TOP = 25.80             # tip of the flagpole
+HOARD_OUT = 1.10              # how far the hoarding projects from the wall above
 ROOF_OVERHANG = 0.55
-PORCH_FRONT = PLINTH_HALF_BOTTOM + 0.38   # cara delantera del porche de la puerta (a -X)
+PORCH_FRONT = PLINTH_HALF_BOTTOM + 0.38   # front face of the door porch (at -X)
 PORCH_HALF = 1.70
 PORCH_TOP = 4.90
 
 BLOCK_GAP = 0.012
-STONE_TILE = 3.2              # metros por baldosa de la textura de piedra
+STONE_TILE = 3.2              # meters per tile of the stone texture
 WOOD_TILE = 3.0
-ROOF_TILE = 2.0               # una tablilla de la textura mide 0,2 m de hilada
+ROOF_TILE = 2.0               # one shingle of the texture measures 0.2 m of course
 
 MATERIALS = ["keep_stone", "keep_mortar", "keep_trim", "keep_wood", "keep_iron", "keep_dark",
 		"keep_cloth", "keep_pendant", "keep_roof", "keep_wall", "keep_earth"]
 
-# Color base de cada material en el glTF (solo se ve si el juego no lo sustituye por el de reino).
+# Base color of each material in the glTF (only visible if the game does not replace it with the realm one).
 MATERIAL_COLORS = {
 	"keep_stone": (0.46, 0.46, 0.45), "keep_mortar": (0.17, 0.16, 0.15), "keep_trim": (0.58, 0.57, 0.55),
 	"keep_wood": (0.30, 0.21, 0.14), "keep_iron": (0.08, 0.08, 0.09), "keep_dark": (0.012, 0.012, 0.015),
@@ -141,20 +141,20 @@ MATERIAL_COLORS = {
 
 
 def wall_half(z: float) -> float:
-	"""Semilado del muro (sin sillares) a la altura z: talud suave, con un retranqueo en el cordón."""
+	"""Half-width of the wall (without ashlars) at height z: gentle batter, with a setback at the string course."""
 	if z < CORDON_Z1:
 		return H_WALL0 + SLOPE_LOW * (z - LEDGE_TOP)
 	h_cordon = H_WALL0 + SLOPE_LOW * (CORDON_Z0 - LEDGE_TOP) - CORDON_STEP
 	return h_cordon + SLOPE_UP * (z - CORDON_Z1)
 
 
-H_TOP = wall_half(CORNICE_Z0)             # semilado del muro bajo la cornisa
-HOARD_H = H_TOP + HOARD_OUT               # semilado del cadalso (cara exterior)
-ROOF_R = HOARD_H + ROOF_OVERHANG          # semilado del alero
+H_TOP = wall_half(CORNICE_Z0)             # half-width of the wall below the cornice
+HOARD_H = H_TOP + HOARD_OUT               # half-width of the hoarding (outer face)
+ROOF_R = HOARD_H + ROOF_OVERHANG          # half-width of the eave
 
 
 class Style:
-	"""Parámetros de despiece y de acabado de un paño de sillares."""
+	"""Layout and finishing parameters of a panel of ashlars."""
 
 	def __init__(self, tile=STONE_TILE, lo=0.72, hi=1.5, min_len=0.42, depth=0.075, chamfer=0.030,
 			gap=BLOCK_GAP, drop=0.034, quoin=(0.95, 0.55), q=0.125, sigma=0.075, ao_joint=0.45) -> None:
@@ -166,9 +166,9 @@ class Style:
 		self.chamfer = chamfer
 		self.gap = gap
 		self.drop = drop
-		self.quoin = quoin       # (largo, corto) de las piedras de esquina
-		self.q = q               # cuánto sobresalen las piedras de esquina del plano del muro
-		self.sigma = sigma       # variación de valor por sillar
+		self.quoin = quoin       # (long, short) of the corner stones
+		self.q = q               # how far the corner stones protrude from the wall plane
+		self.sigma = sigma       # value variation per ashlar
 		self.ao_joint = ao_joint
 
 
@@ -179,13 +179,13 @@ SMALL = Style(lo=0.5, hi=1.0, min_len=0.3, depth=0.07, chamfer=0.026, sigma=0.07
 
 
 # ---------------------------------------------------------------------------------------------
-# Contexto de acabado (suciedad, churretes, brasas): lo rellenan las piezas y lo evalúa to_object
+# Finishing context (dirt, streaks, embers): filled in by the pieces and evaluated by to_object
 # ---------------------------------------------------------------------------------------------
 class ShadeContext:
 	def __init__(self) -> None:
-		self.streaks = []     # (centro, normal, semiancho, largo, fuerza)
-		self.ledges = []      # (z del vuelo, fondo de la sombra, fuerza)
-		self.fissures = []    # (centro, normal, semiancho, z0, z1): grietas de brasa de Eldrun
+		self.streaks = []     # (center, normal, half-width, length, strength)
+		self.ledges = []      # (z of the overhang, depth of the shadow, strength)
+		self.fissures = []    # (center, normal, half-width, z0, z1): ember cracks of Eldrun
 
 	def streak(self, center, normal, half_width, length, strength) -> None:
 		self.streaks.append((Vector(center), Vector(normal), half_width, length, strength))
@@ -206,10 +206,10 @@ CTX = ShadeContext()
 
 
 # ---------------------------------------------------------------------------------------------
-# Acumulador de geometría
+# Geometry accumulator
 # ---------------------------------------------------------------------------------------------
 class Geo:
-	"""Lista de polígonos (material, puntos, UV, tinte, oclusión). Se vuelca a una malla de Blender."""
+	"""List of polygons (material, points, UV, tint, occlusion). It is dumped into a Blender mesh."""
 
 	def __init__(self) -> None:
 		self.faces = []
@@ -247,7 +247,7 @@ class Geo:
 
 
 def uv_frame(n: Vector, grain=None):
-	"""Ejes de UV (u, v) para una cara de normal n. Con grain, la veta va a lo largo de u."""
+	"""UV axes (u, v) for a face with normal n. With grain, the grain runs along u."""
 	if grain is not None:
 		g = grain - n * grain.dot(n)
 		if g.length > 1e-5:
@@ -259,13 +259,13 @@ def uv_frame(n: Vector, grain=None):
 
 
 def block_tint(rng, sigma=0.05):
-	"""Valor y tono propios de cada sillar (el pintor no reparte el mismo gris a todos)."""
+	"""Value and tone of each ashlar (the painter does not give every one the same gray)."""
 	v = 1.0 + max(-2.0, min(2.0, rng.gauss(0.0, 1.0))) * sigma
 	roll = rng.random()
 	if roll < 0.06:
-		v *= rng.uniform(0.80, 0.90)       # sillar oscuro, de reposición
+		v *= rng.uniform(0.80, 0.90)       # dark ashlar, a replacement
 	elif roll < 0.11:
-		v *= rng.uniform(1.07, 1.13)       # sillar claro, recién picado
+		v *= rng.uniform(1.07, 1.13)       # light ashlar, freshly dressed
 	w = rng.gauss(0.0, 0.022)
 	return (v * (1.0 + w), v * (1.0 + 0.15 * w), v * (1.0 - w))
 
@@ -277,13 +277,13 @@ def board_tint(rng, sigma=0.07):
 
 
 # ---------------------------------------------------------------------------------------------
-# Primitivas
+# Primitives
 # ---------------------------------------------------------------------------------------------
 def bevel_box(g, mat, center, axes, size, bevel=0.0, tile=STONE_TILE, grain=None, rng=None,
 		jitter=0.0, offset=None, tint=None, skip_back=None):
-	"""Caja con bisel de un tramo. axes = (ex, ey, ez) ortonormales; size = (sx, sy, sz).
-	skip_back: vector; si se da, no se emiten las caras que miran en sentido contrario (las que
-	quedan dentro del muro)."""
+	"""Beveled box of a section. axes = (ex, ey, ez) orthonormal; size = (sx, sy, sz).
+	skip_back: vector; if given, faces pointing the opposite way are not emitted (those that
+	end up inside the wall)."""
 	ex, ey, ez = [Vector(a) for a in axes]
 	bm = bmesh.new()
 	bmesh.ops.create_cube(bm, size=1.0)
@@ -316,7 +316,7 @@ def bevel_box(g, mat, center, axes, size, bevel=0.0, tile=STONE_TILE, grain=None
 
 
 def axis_box(g, mat, lo, hi, bevel=0.0, tile=STONE_TILE, grain=None, rng=None, jitter=0.0, tint=None):
-	"""Caja alineada con los ejes entre dos esquinas."""
+	"""Axis-aligned box between two corners."""
 	lo = Vector(lo)
 	hi = Vector(hi)
 	center = (lo + hi) * 0.5
@@ -325,8 +325,8 @@ def axis_box(g, mat, lo, hi, bevel=0.0, tile=STONE_TILE, grain=None, rng=None, j
 
 
 def plank(g, mat, center, axes, size, tile=WOOD_TILE, grain=None, rng=None, tint=None, hide=None):
-	"""Tabla sin bisel (hasta 6 caras): para la multitud de tablas del cadalso. hide es un vector
-	hacia el interior: no se emite la cara que lo mira."""
+	"""Unbeveled board (up to 6 faces): for the crowd of hoarding boards. hide is a vector
+	toward the interior: the face looking at it is not emitted."""
 	vec = [Vector(a) for a in axes]
 	h = (size[0] * 0.5, size[1] * 0.5, size[2] * 0.5)
 	center = Vector(center)
@@ -346,7 +346,7 @@ def plank(g, mat, center, axes, size, tile=WOOD_TILE, grain=None, rng=None, tint
 
 
 def beam(g, mat, p0, p1, w, h, bevel=0.012, tile=WOOD_TILE, up=Z, rng=None, jitter=0.0, tint=None):
-	"""Viga de sección w x h entre dos puntos (la veta va a lo largo)."""
+	"""Beam of section w x h between two points (the grain runs along it)."""
 	p0 = Vector(p0)
 	p1 = Vector(p1)
 	d = p1 - p0
@@ -361,9 +361,9 @@ def beam(g, mat, p0, p1, w, h, bevel=0.012, tile=WOOD_TILE, up=Z, rng=None, jitt
 
 
 def loft(g, mat, rect, profile, tile=STONE_TILE, skip=(), tint=None, ao=None):
-	"""Anillo rectangular con un perfil (h, z). rect = (xmin, xmax, ymin, ymax). El perfil va en
-	sentido antihorario alrededor de la sección: la normal sale por la derecha de la marcha.
-	ao: un valor, o una lista con la oclusión de cada punto del perfil."""
+	"""Rectangular ring with a profile (h, z). rect = (xmin, xmax, ymin, ymax). The profile goes
+	counterclockwise around the section: the normal points out to the right of the direction of travel.
+	ao: a single value, or a list with the occlusion of each profile point."""
 	xmin, xmax, ymin, ymax = rect
 	sides = [
 		(Vector((1, 0, 0)), lambda h: (Vector((xmax + h, ymin - h, 0)), Vector((xmax + h, ymax + h, 0)))),
@@ -400,7 +400,7 @@ def loft(g, mat, rect, profile, tile=STONE_TILE, skip=(), tint=None, ao=None):
 
 
 def cylinder(g, mat, center, radius, z0, z1, sides=8, tile=WOOD_TILE, taper=1.0, cap_top=True, tint=None):
-	"""Prisma vertical (mástil, cilindros pequeños). taper escala el radio de arriba."""
+	"""Vertical prism (mast, small cylinders). taper scales the top radius."""
 	cx, cy = center
 	for i in range(sides):
 		a0 = 2 * math.pi * i / sides
@@ -420,7 +420,7 @@ def cylinder(g, mat, center, radius, z0, z1, sides=8, tile=WOOD_TILE, taper=1.0,
 
 
 def torus(g, mat, center, axis_x, axis_y, big, small, seg_big=14, seg_small=5):
-	"""Anillo (tirador). Está en el plano de axis_x y axis_y."""
+	"""Ring (pull handle). It lies in the plane of axis_x and axis_y."""
 	center = Vector(center)
 	normal_axis = axis_x.cross(axis_y)
 	pts = {}
@@ -441,7 +441,7 @@ def torus(g, mat, center, axis_x, axis_y, big, small, seg_big=14, seg_small=5):
 
 
 def cone_stud(g, mat, base, normal, tangent, radius, height, sides=5):
-	"""Remache: pirámide baja sobre una superficie."""
+	"""Rivet: a low pyramid on a surface."""
 	base = Vector(base)
 	bitangent = normal.cross(tangent)
 	ring = []
@@ -455,7 +455,7 @@ def cone_stud(g, mat, base, normal, tangent, radius, height, sides=5):
 
 
 def make_courses(z0, z1, target, rng, vary=0.09):
-	"""Límites de hiladas entre z0 y z1: alturas parecidas pero no iguales, que suman justo z1-z0."""
+	"""Course boundaries between z0 and z1: similar but not equal heights, summing exactly to z1-z0."""
 	count = max(1, round((z1 - z0) / target))
 	heights = [1.0 + rng.uniform(-vary, vary) for _ in range(count)]
 	total = sum(heights)
@@ -467,10 +467,10 @@ def make_courses(z0, z1, target, rng, vary=0.09):
 
 
 # ---------------------------------------------------------------------------------------------
-# Sillares
+# Ashlars
 # ---------------------------------------------------------------------------------------------
 def cut_pieces(a, b, rng, prev, style):
-	"""Reparte [a, b] en sillares de largo variable evitando juntas alineadas con la hilada de abajo."""
+	"""Splits [a, b] into ashlars of variable length, avoiding joints aligned with the course below."""
 	lo, hi, min_len = style.lo, style.hi, style.min_len
 	out = []
 	x = a
@@ -494,8 +494,8 @@ def cut_pieces(a, b, rng, prev, style):
 
 
 def stone_block(g, O, t, up, n, ua, ub, va, vb, rng, style, weathered=0.0):
-	"""Un sillar: cara plana ligeramente irregular y cuatro biseles hacia la junta. Lleva su propio
-	tinte y la oclusión de las juntas en el color de vértice."""
+	"""An ashlar: a slightly irregular flat face and four bevels toward the joint. It carries its own
+	tint and the joint occlusion in the vertex color."""
 	w = ub - ua
 	h = vb - va
 	c = min(style.chamfer, 0.3 * w, 0.3 * h)
@@ -542,10 +542,10 @@ MORTAR_TINT = (1.0, 1.0, 1.0)
 
 
 def ashlar(g, O, t, up, n, course_v, spans, rng, style=WALL, weathered_fn=None, row_spans=False):
-	"""Muro de sillares en un plano: O es el origen (u = 0, v = 0), t el sentido de las hiladas,
-	up el sentido de subida en el plano y n la normal. spans(i, va, vb) da los tramos [(ua, ub)]
-	de cada hilada (ya sin huecos ni piedras de esquina). Cada sillar lleva debajo su pieza de
-	argamasa (el fondo de las juntas): así la brasa de las grietas de Eldrun puede ir por bloque."""
+	"""Wall of ashlars in a plane: O is the origin (u = 0, v = 0), t the direction of the courses,
+	up the upward direction in the plane and n the normal. spans(i, va, vb) gives the spans [(ua, ub)]
+	of each course (already without openings or corner stones). Each ashlar carries its piece of
+	mortar underneath (the bottom of the joints): this way the ember glow of Eldrun's cracks can go per block."""
 	prev = []
 	for i in range(len(course_v) - 1):
 		va, vb = course_v[i], course_v[i + 1]
@@ -565,7 +565,7 @@ def ashlar(g, O, t, up, n, course_v, spans, rng, style=WALL, weathered_fn=None, 
 
 
 def subtract(intervals, cut):
-	"""Resta un intervalo cut = (a, b) de una lista de intervalos."""
+	"""Subtracts an interval cut = (a, b) from a list of intervals."""
 	out = []
 	for a, b in intervals:
 		if cut[1] <= a or cut[0] >= b:
@@ -579,13 +579,13 @@ def subtract(intervals, cut):
 
 
 class Opening:
-	"""Hueco rectangular (con arco opcional) en una cara. Medidas en coordenadas de cara."""
+	"""Rectangular opening (with an optional arch) in a face. Dimensions in face coordinates."""
 
 	def __init__(self, u_center, width, z0, z1, arch=False, margin=0.0):
 		self.uc = u_center
 		self.half = width * 0.5
 		self.z0 = z0
-		self.z1 = z1          # arranque del arco si arch, o dintel
+		self.z1 = z1          # start of the arch if arch, or lintel
 		self.arch = arch
 		self.margin = margin
 
@@ -593,7 +593,7 @@ class Opening:
 		return self.z1 + (self.half if self.arch else 0.0)
 
 	def cut_for(self, za, zb):
-		"""Intervalo que ocupa el hueco en una hilada [za, zb], o None."""
+		"""Interval the opening occupies in a course [za, zb], or None."""
 		lo = self.z0 - self.margin
 		hi = self.top() + self.margin
 		if zb <= lo or za >= hi:
@@ -612,28 +612,28 @@ class Opening:
 
 
 class Face:
-	"""Cara de piedra entre dos esquinas. Con slope distinto de 0 es una cara con talud: el plano
-	se mueve slope metros por metro de altura (negativo: se cierra hacia arriba)."""
+	"""Stone face between two corners. With a nonzero slope it is a battered face: the plane
+	moves slope meters per meter of height (negative: it closes toward the top)."""
 
 	def __init__(self, n_h, plane, umin, umax, z_courses, openings=(), corners=(), slope=0.0, z_ref=None,
 			u_slope=0.0):
 		self.n = Vector(n_h)
 		self.t = Z.cross(self.n).normalized()
-		self.plane = plane          # distancia del plano al eje (m) a la altura z_ref
+		self.plane = plane          # distance from the plane to the axis (m) at height z_ref
 		self.slope = slope
 		self.z_ref = z_courses[0] if z_ref is None else z_ref
 		self.umin = umin
 		self.umax = umax
-		self.u_slope = u_slope      # cuánto se mueven las esquinas (umax) por metro de altura
+		self.u_slope = u_slope      # how much the corners (umax) move per meter of height
 		self.courses = z_courses
 		self.openings = list(openings)
-		self.corners = list(corners)  # [(corner, rol)] rol 'A' o 'B'
+		self.corners = list(corners)  # [(corner, role)] role 'A' or 'B'
 
 	def plane_at(self, z: float) -> float:
 		return self.plane + self.slope * (z - self.z_ref)
 
 	def P(self, u: float, z: float, d: float = 0.0) -> Vector:
-		"""Punto de la cara: u a lo largo, altura z y d hacia fuera (horizontal) del plano."""
+		"""Point on the face: u along it, height z and d outward (horizontal) from the plane."""
 		return self.n * (self.plane_at(z) + d) + self.t * u + Z * z
 
 	def origin(self) -> Vector:
@@ -660,7 +660,7 @@ class Face:
 		return spans
 
 	def ashlar_rows(self, g, zs, spans_fn, rng, style=WALL, weathered_fn=None):
-		"""Sillares de las hiladas dadas (límites en altura) con la pendiente de la cara."""
+		"""Ashlars of the given courses (height limits) with the face's slope."""
 		z0 = zs[0]
 		length = math.sqrt(1.0 + self.slope * self.slope)
 		O = self.n * self.plane_at(z0) + Z * z0
@@ -680,14 +680,14 @@ class Face:
 
 
 class Corner:
-	"""Esquina saliente con piedras de refuerzo alternas, largas y cortas."""
+	"""Outward corner with alternating long and short reinforcing stones."""
 
 	def __init__(self, point, n_a, n_b, parity=0, fixed=None, long=0.80, short=0.46):
 		self.P = Vector(point)
 		self.nA = Vector(n_a)
 		self.nB = Vector(n_b)
 		self.parity = parity
-		self.fixed = fixed  # (lenA, lenB) para una esquina de retorno estrecho
+		self.fixed = fixed  # (lenA, lenB) for a narrow-return corner
 		self.long = long
 		self.short = short
 
@@ -699,19 +699,19 @@ class Corner:
 		return (self.short, self.long)
 
 	def end_of(self, face, role):
-		"""'max' si la esquina está en el u máximo de la cara."""
+		"""'max' if the corner is at the face's maximum u."""
 		t = face.t
 		other = self.nB if role == 'A' else self.nA
 		return 'max' if t.dot(other) > 0 else 'min'
 
 
 def build_quoins(g, corner, courses, rng, protrude=0.045, style=WALL):
-	"""Piedras de esquina de un muro vertical: una caja con bisel por hilada, alternando largo y corto."""
+	"""Corner stones of a vertical wall: one beveled box per course, alternating long and short."""
 	nA, nB = corner.nA, corner.nB
 	for i in range(len(courses) - 1):
 		za, zb = courses[i] + 0.012, courses[i + 1] - 0.012
 		la, lb = corner.lens(i)
-		# el cuerpo sobresale `protrude` por delante de las dos caras y entra en el muro por detrás
+		# the body protrudes `protrude` in front of both faces and goes into the wall at the back
 		center = corner.P - nA * (lb * 0.5 - protrude * 0.5) - nB * (la * 0.5 - protrude * 0.5)
 		center.z = (za + zb) * 0.5
 		bevel = 0.032 + rng.uniform(-0.006, 0.014)
@@ -720,10 +720,10 @@ def build_quoins(g, corner, courses, rng, protrude=0.045, style=WALL):
 
 
 def quoin_block(g, rng, sx, sy, za, zb, h_a, h_b, la, lb, style, bevel=True):
-	"""Piedra de esquina de un muro con talud: un paralelepípedo cuyas dos caras exteriores siguen
-	los dos planos inclinados y se juntan en la arista (la limatesa), con bisel. Así las dos caras
-	se abrazan sin cuñas entre ellas. h_a y h_b son los semilados del muro (sin piedras) abajo y
-	arriba de la hilada; la piedra sobresale style.q de ese plano."""
+	"""Corner stone of a battered wall: a parallelepiped whose two outer faces follow
+	the two sloped planes and meet at the edge (the hip), with a bevel. This way the two faces
+	hug each other without wedges between them. h_a and h_b are the wall's half-widths (without stones) at the bottom and
+	top of the course; the stone protrudes style.q from that plane."""
 	q = style.q
 	gap = style.gap
 	zlo, zhi = za + gap, zb - gap
@@ -771,21 +771,21 @@ def quoin_block(g, rng, sx, sy, za, zb, h_a, h_b, la, lb, style, bevel=True):
 
 
 # ---------------------------------------------------------------------------------------------
-# Aberturas con marco
+# Framed openings
 # ---------------------------------------------------------------------------------------------
 def frame_opening(g, face, op, rng, reveal=0.6, kind='slit', detail=True, fill=True):
-	"""Hueco con jambas, fondo oscuro, alféizar y dintel o dovelas. Las saeteras tienen ebrasamiento
-	(se estrechan hacia dentro) y todas oscurecen hacia el fondo. Coordenadas de cara."""
+	"""Opening with jambs, dark back, sill and lintel or voussoirs. Arrow slits are splayed
+	(they narrow inward) and all of them darken toward the back. Face coordinates."""
 	n, t = face.n, face.t
 	P = face.P
 	hw = op.half
 	z0, z1 = op.z0, op.z1
-	depth = 0.075      # plano de los sillares
+	depth = 0.075      # plane of the ashlars
 	splay = 0.42 if kind == 'slit' else 1.0
 	hwb = hw * splay
 	uc = op.uc
 	dark = 0.12
-	# fondo oscuro
+	# dark back
 	if op.arch:
 		pts = [P(uc - hw, z0, -reveal), P(uc + hw, z0, -reveal), P(uc + hw, z1, -reveal)]
 		steps = 10
@@ -797,7 +797,7 @@ def frame_opening(g, face, op, rng, reveal=0.6, kind='slit', detail=True, fill=T
 	else:
 		g.add("keep_dark", [P(uc - hwb, z0, -reveal), P(uc + hwb, z0, -reveal), P(uc + hwb, op.top(), -reveal),
 				P(uc - hwb, op.top(), -reveal)], [(0, 0)] * 4, n)
-	# jambas y alféizar
+	# jambs and sill
 	for sgn in (-1, 1):
 		uf = uc + sgn * hw
 		ub = uc + sgn * hwb
@@ -819,8 +819,8 @@ def frame_opening(g, face, op, rng, reveal=0.6, kind='slit', detail=True, fill=T
 			g.add("keep_trim", q, [(0, 0), (1, 0), (1, 1), (0, 1)], inward, None, [1.0, dark, dark, 1.0])
 		ring = 0.34 if kind == 'window' else 0.45
 		voussoirs(g, face, uc, z1, hw, ring, rng, count=9 if kind == 'window' else 11)
-		# la hilada que pasa justo sobre el anillo queda recortada por el arco: se rellena con
-		# sillares para que no quede un hueco por encima de las dovelas
+		# the course passing right over the ring is cut by the arch: it is filled with
+		# ashlars so that no gap is left above the voussoirs
 		for ci in range(len(face.courses) - 1) if fill else ():
 			za, zb = face.courses[ci], face.courses[ci + 1]
 			cut = op.cut_for(za, zb)
@@ -828,16 +828,16 @@ def frame_opening(g, face, op, rng, reveal=0.6, kind='slit', detail=True, fill=T
 				lo_z = max(za, z1 + hw + ring - 0.03)
 				face.ashlar_rows(g, [lo_z, zb], lambda i, a, b, cut=cut: [cut], rng, WALL)
 	elif detail:
-		# dintel: una piedra gruesa y larga
+		# lintel: a thick, long stone
 		center = P(uc, z1 + 0.11, 0.045)
 		bevel_box(g, "keep_trim", center, (t, n, Z), (2 * hw + 0.34, 0.14, 0.22), 0.025, STONE_TILE, None, rng, 0.003,
 				tint=block_tint(rng, 0.03))
-	# alféizar saliente
+	# projecting sill
 	if detail:
 		center = P(uc, z0 - 0.07, 0.07)
 		bevel_box(g, "keep_trim", center, (t, n, Z), (2 * hw + 0.34, 0.22, 0.14), 0.025, STONE_TILE, None, rng, 0.003,
 				tint=block_tint(rng, 0.03))
-	# jambas de piedra labrada a cada lado
+	# dressed-stone jambs on each side
 	jamb = 0.15
 	for sgn in (-1, 1) if detail else ():
 		if op.arch:
@@ -850,7 +850,7 @@ def frame_opening(g, face, op, rng, reveal=0.6, kind='slit', detail=True, fill=T
 		bevel_box(g, "keep_trim", center, (t, n, Z), (jamb, 0.14, height), 0.02, STONE_TILE, None, rng, 0.003,
 				tint=block_tint(rng, 0.03))
 	if kind == 'window' and detail:
-		# barrotes de hierro verticales dentro del hueco
+		# vertical iron bars inside the opening
 		for k in range(3):
 			u = uc + hw * (-0.5 + k * 0.5)
 			a = P(u, z0 + 0.05, -0.14)
@@ -859,13 +859,13 @@ def frame_opening(g, face, op, rng, reveal=0.6, kind='slit', detail=True, fill=T
 		a = P(uc - hw, z0 + (z1 - z0) * 0.55, -0.14)
 		b = P(uc + hw, z0 + (z1 - z0) * 0.55, -0.14)
 		beam(g, "keep_iron", a, b, 0.035, 0.035, 0.004, STONE_TILE, n)
-	# churrete bajo el alféizar
+	# streak under the sill
 	if kind != 'door':
 		CTX.streak(P(uc, z0 - 0.1, depth), n, hw * 1.2 + 0.10, 2.8 if kind == 'window' else 2.0, 0.34)
 
 
 def voussoirs(g, face, uc, zc, r_in, thick, rng, count=9):
-	"""Anillo de dovelas de un arco de medio punto sobre una cara."""
+	"""Ring of voussoirs of a semicircular arch over a face."""
 	n, t = face.n, face.t
 	P = face.P
 	protrude = 0.105
@@ -889,7 +889,7 @@ def voussoirs(g, face, uc, zc, r_in, thick, rng, count=9):
 			return (p.dot(t) / STONE_TILE + off[0], p.dot(Z) / STONE_TILE + off[1])
 
 		g.add("keep_trim", pts_front, [uvf(p) for p in pts_front], n, tint, [1.0, 1.0, 1.02, 1.02])
-		# lados de la dovela (intradós, trasdós y juntas)
+		# sides of the voussoir (intrados, extrados and joints)
 		for k in range(4):
 			k2 = (k + 1) % 4
 			q = [pts_front[k], pts_front[k2], pts_back[k2], pts_back[k]]
@@ -899,12 +899,12 @@ def voussoirs(g, face, uc, zc, r_in, thick, rng, count=9):
 
 
 # ---------------------------------------------------------------------------------------------
-# Paños lisos con la textura de sillería despiezada (LOD medio)
+# Smooth panels with the cut-ashlar masonry texture (medium LOD)
 # ---------------------------------------------------------------------------------------------
 def panel_face(g, face, z_lo, z_hi, ops, tile=STONE_TILE, mat="keep_wall", depth=0.07, quoins=True):
-	"""Cara de muro como unas pocas franjas planas (una por tramo entre huecos) con la textura del
-	paño de sillería. Los huecos se cortan sin margen: el marco los cubre. Se parte por las
-	alturas de los huecos y, en los arcos, por tramos para seguir la curva."""
+	"""Wall face as a few flat strips (one per span between openings) with the cut-ashlar
+	masonry panel texture. The openings are cut with no margin: the frame covers them. It is split at the
+	heights of the openings and, on the arches, into segments to follow the curve."""
 	flat = [Opening(op.uc, 2 * op.half, op.z0, op.z1, op.arch, 0.0) for op in ops]
 	zs = {z_lo, z_hi}
 	for op in flat:
@@ -946,7 +946,7 @@ def panel_face(g, face, z_lo, z_hi, ops, tile=STONE_TILE, mat="keep_wall", depth
 
 
 # ---------------------------------------------------------------------------------------------
-# Secciones de torre con talud: cuatro caras de sillares y cuatro esquinas de piedras abrazadas
+# Battered tower sections: four faces of ashlars and four corners of hugging stones
 # ---------------------------------------------------------------------------------------------
 FACE_NORMALS = (("E", X), ("N", Y), ("W", -X), ("S", -Y))
 CORNER_SIGNS = ((1, 1), (-1, 1), (-1, -1), (1, -1))
@@ -954,11 +954,11 @@ CORNER_SIGNS = ((1, 1), (-1, 1), (-1, -1), (1, -1))
 
 def build_section(g, rng, courses, h0, h1, style, openings=None, cuts=None, weathered_fn=None, reveal=1.0, lod=0,
 		tile=None):
-	"""Tramo de torre entre courses[0] y courses[-1], con semilado h0 abajo y h1 arriba (talud lineal).
-	openings: {cara: [(Opening, tipo)]}. cuts: {cara: [Opening]} huecos sin marco (el porche).
-	Las piedras de esquina de cada hilada son una pieza que abraza las dos caras, con sillares largos
-	y cortos alternos (soga y tizón). Con lod = 1 los muros son franjas planas con la textura de
-	sillería despiezada y las piedras de esquina, de dos hiladas, no llevan bisel."""
+	"""Tower stretch between courses[0] and courses[-1], with half-width h0 at the bottom and h1 at the top (linear batter).
+	openings: {face: [(Opening, type)]}. cuts: {face: [Opening]} openings with no frame (the porch).
+	The corner stones of each course are a single piece that hugs both faces, with alternating long
+	and short ashlars (stretcher and header). With lod = 1 the walls are flat strips with the cut-ashlar
+	masonry texture and the corner stones, two courses tall, carry no bevel."""
 	openings = openings or {}
 	cuts = cuts or {}
 	z0, z1 = courses[0], courses[-1]
@@ -994,16 +994,16 @@ def build_section(g, rng, courses, h0, h1, style, openings=None, cuts=None, weat
 
 
 # ---------------------------------------------------------------------------------------------
-# Piezas del torreón
+# Pieces of the keep
 # ---------------------------------------------------------------------------------------------
-TURRET_IN = 1.75           # cuánto entra la torrecilla en el muro
-TURRET_OUT = 0.50          # cuánto sobresale del muro de la cornisa
+TURRET_IN = 1.75           # how far the turret goes into the wall
+TURRET_OUT = 0.50          # how far it projects from the cornice wall
 
 
 def pyramid_roof(g, rng, cx, cy, half, eave_z, apex_z, rows, thick=0.045, mat="keep_roof", row_group=1):
-	"""Tejado piramidal de tablillas en hileras solapadas. Cada hilera es una franja de la
-	vertiente con su canto (el "borde" que recibe sombra); la hilera de arriba se apoya sobre
-	la de abajo. Las UV casan con la textura de tablillas (una hilera de la textura por hilera)."""
+	"""Pyramidal shingle roof in overlapping rows. Each row is a strip of the
+	slope with its edge (the "border" that receives shadow); the upper row rests on
+	the lower one. The UVs match the shingle texture (one row of the texture per row)."""
 	center = Vector((cx, cy, 0.0))
 	rise = apex_z - eave_z
 	for d in (X, Y, -X, -Y):
@@ -1029,7 +1029,7 @@ def pyramid_roof(g, rng, cx, cy, half, eave_z, apex_z, rows, thick=0.045, mat="k
 			u_lo0, u_lo1 = (-h0) / ROOF_TILE + off_u, h0 / ROOF_TILE + off_u
 			u_up0, u_up1 = (-h1) / ROOF_TILE + off_u, h1 / ROOF_TILE + off_u
 			g.add(mat, [lo0, lo1, up1, up0], [(u_lo0, v_lo), (u_lo1, v_lo), (u_up1, v_up), (u_up0, v_up)], nrm, tint, 1.0)
-			# canto (la tablilla gruesa): de la superficie de la hilera de abajo a la de esta
+			# edge (the thick shingle): from the surface of the row below to this one's
 			e0 = base0 - tang * h0 + Z * z0 + nrm * (-0.02 if j == 0 else 0.0)
 			e1 = base0 + tang * h0 + Z * z0 + nrm * (-0.02 if j == 0 else 0.0)
 			butt = (d * half - Z * rise).normalized()
@@ -1038,9 +1038,9 @@ def pyramid_roof(g, rng, cx, cy, half, eave_z, apex_z, rows, thick=0.045, mat="k
 
 
 def snap_opening(op, courses):
-	"""Ajusta un hueco para que su recorte (con margen) empiece y acabe en límites de hilada: una
-	hilada que el hueco solo roza se quita entera, y si el recorte no coincide con ella queda una
-	franja sin piedra bajo el alféizar y sobre el dintel por la que se ve el interior."""
+	"""Adjusts an opening so that its cut (with margin) starts and ends at course boundaries: a
+	course the opening only grazes is removed whole, and if the cut does not match it a
+	strip with no stone is left under the sill and over the lintel through which the interior shows."""
 	m = op.margin
 	b0 = min(courses, key=lambda z: abs(z - (op.z0 - m)))
 	b1 = min(courses, key=lambda z: abs(z - (op.top() + m)))
@@ -1053,8 +1053,8 @@ def snap_opening(op, courses):
 
 
 class Builder:
-	"""Monta el torreón. lod = 0: sillares modelados uno a uno. lod = 1: nivel medio, con los muros
-	como franjas planas de textura de sillería despiezada y menos detalle fino (misma silueta)."""
+	"""Assembles the keep. lod = 0: ashlars modeled one by one. lod = 1: medium level, with the walls
+	as flat strips of cut-ashlar masonry texture and less fine detail (same silhouette)."""
 
 	def __init__(self, lod: int = 0) -> None:
 		self.lod = lod
@@ -1069,30 +1069,30 @@ class Builder:
 		self.c_turret = make_courses(CORNICE_Z0 + 0.05, TURRET_TOP, 0.46, rng)
 		self.c_porch = make_courses(FOOT_Z, PORCH_TOP - 0.30, 0.55, rng)
 
-	# --- zócalo ---------------------------------------------------------------------------
+	# --- plinth ---------------------------------------------------------------------------
 	def plinth(self) -> None:
 		g, rng = self.g, self.rng
-		# el hueco del porche en el zócalo: los sillares (LOD0) y los paños (LOD1) se meten unos
-		# centímetros bajo las caras laterales del porche, para que no quede una rendija entre ambos
+		# the porch opening in the plinth: the ashlars (LOD0) and the panels (LOD1) are tucked a few
+		# centimeters under the porch's side faces, so that no gap is left between them
 		cut_half = PORCH_HALF - 0.05 if self.lod == 0 else PORCH_HALF - 0.12
 		porch_cut = {"W": [Opening(0.0, 2 * cut_half, -5.0, PORCH_TOP, False, 0.0)]}
 
 		def wear(i, va) -> float:
 			return 0.06 if i < 2 else 0.0
 
-		tile = PLINTH.tile * 1.6   # una hilada del zócalo mide 0,75 m: más grande que la del paño (0,46 m)
+		tile = PLINTH.tile * 1.6   # a plinth course measures 0.75 m: larger than the panel's (0.46 m)
 		build_section(g, rng, self.c_foot, PLINTH_HALF_BOTTOM, PLINTH_HALF_BOTTOM, PLINTH, cuts=porch_cut, weathered_fn=wear,
 				lod=self.lod, tile=tile)
 		build_section(g, rng, self.c_batter, PLINTH_HALF_BOTTOM, PLINTH_HALF_TOP, PLINTH, cuts=porch_cut, weathered_fn=wear,
 				lod=self.lod, tile=tile)
-		# repisa con glacis: sale del zócalo y vuelve al muro (sentido antihorario)
+		# ledge with glacis: it leaves the plinth and returns to the wall (counterclockwise)
 		h = wall_half(LEDGE_TOP)
 		out = PLINTH_HALF_TOP + PLINTH.q + 0.10 - h
 		loft(g, "keep_trim", (-h, h, -h, h), [(out, PLINTH_TOP - 0.08), (out, PLINTH_TOP + 0.10), (-0.02, PLINTH_TOP + 0.34)],
 				STONE_TILE, ao=[0.7, 1.0, 1.0])
 		CTX.ledge(PLINTH_TOP, 0.7, 0.30)
 
-	# --- muros ------------------------------------------------------------------------------
+	# --- walls ------------------------------------------------------------------------------
 	def bays(self) -> None:
 		g, rng = self.g, self.rng
 		openings = self.make_openings()
@@ -1103,8 +1103,8 @@ class Builder:
 			build_section(g, rng, courses, wall_half(z0), wall_half(z1), WALL, openings=ops, reveal=0.95, lod=self.lod)
 
 	def make_openings(self):
-		"""Huecos por cara: {cara: [(etapa, Opening, tipo)]}. Etapa 'low' (bajo el cordón) o 'up'. Pocos
-		y hondos: una ventana con arco por cara y saeteras estrechas con ebrasamiento."""
+		"""Openings per face: {face: [(stage, Opening, type)]}. Stage 'low' (below the string course) or 'up'. Few
+		and deep: one arched window per face and narrow splayed arrow slits."""
 		def slit(u, z0, z1):
 			return Opening(u, 0.28, z0, z1, False, 0.16)
 
@@ -1126,22 +1126,22 @@ class Builder:
 				("up", slit(-0.5, 11.9, 13.2), 'slit')]
 		return out
 
-	# --- cordón y cornisa --------------------------------------------------------------------
+	# --- string course and cornice --------------------------------------------------------------------
 	def string_courses(self) -> None:
 		g, rng = self.g, self.rng
-		# cordón: anillo que marca el retranqueo del muro y vierte el agua lejos de él
+		# string course: a ring that marks the wall's setback and sheds water away from it
 		h = wall_half(CORDON_Z0)
 		hu = wall_half(CORDON_Z1)
 		loft(g, "keep_trim", (-h, h, -h, h), [(-0.03, CORDON_Z0), (0.17, CORDON_Z0), (0.17, CORDON_Z0 + 0.20),
 				(hu - h - 0.01, CORDON_Z1)], STONE_TILE, ao=[0.75, 1.0, 1.0, 0.9])
 		CTX.ledge(CORDON_Z0, 0.8, 0.34)
-		# cornisa: bajo el cadalso
+		# cornice: under the hoarding
 		h = wall_half(CORNICE_Z0)
 		loft(g, "keep_trim", (-h, h, -h, h), [(-0.03, CORNICE_Z0), (0.30, CORNICE_Z0), (0.30, CORNICE_Z0 + 0.14),
 				(0.48, CORNICE_Z0 + 0.14), (0.48, CORNICE_Z0 + 0.34), (-0.03, CORNICE_Z0 + 0.55)], STONE_TILE,
 				ao=[0.75, 1.0, 0.95, 1.0, 1.0, 0.9])
 		CTX.ledge(CORNICE_Z0, 1.0, 0.36)
-		# canecillos escalonados bajo la cornisa
+		# stepped corbels under the cornice
 		for n_h in (X, Y, -X, -Y):
 			t = Z.cross(n_h).normalized()
 			count = 7
@@ -1158,14 +1158,14 @@ class Builder:
 							tint=block_tint(rng, 0.04), skip_back=-n_h)
 				CTX.streak(base + Z * (CORNICE_Z0 - 0.90) + n_h * 0.05, n_h, 0.26, 1.5, 0.22)
 
-	# --- parapeto y almenas ----------------------------------------------------------------------
+	# --- parapet and crenellations ----------------------------------------------------------------------
 	def parapet(self) -> None:
 		g, rng = self.g, self.rng
 		h = H_TOP
 		if self.lod == 1:
 			self.parapet_simple()
 			return
-		# muro del parapeto con sillares (por encima de la cornisa, hasta la albardilla)
+		# parapet wall with ashlars (above the cornice, up to the coping)
 		for side_index, n_h in enumerate((X, Y, -X, -Y)):
 			face = Face(n_h, h, -h - 0.09, h + 0.09, self.c_parapet)
 
@@ -1175,13 +1175,13 @@ class Builder:
 				return [(lo, hi)]
 
 			face.ashlar_rows(g, self.c_parapet, spans, rng, SMALL)
-		# albardilla y cara interior
+		# coping and inner face
 		loft(g, "keep_trim", (-h, h, -h, h), [(0.0, PARAPET_TOP), (0.11, PARAPET_TOP), (0.11, COPING_TOP - 0.04),
 				(0.02, COPING_TOP), (-0.8, COPING_TOP), (-0.8, PARAPET_TOP - 0.02)], STONE_TILE)
-		# suelo del adarve (losas)
+		# wall walk floor (slabs)
 		inner = h - 0.8
 		axis_box(g, "keep_trim", (-inner, -inner, WALK_Z - 0.25), (inner, inner, WALK_Z), 0.0, STONE_TILE, None, rng)
-		# cara interior del parapeto, con sillares (se ve desde arriba y desde las almenas)
+		# inner face of the parapet, with ashlars (seen from above and from the crenellations)
 		inner_courses = make_courses(WALK_Z, PARAPET_TOP, 0.40, rng)
 		for side_index, n_h in enumerate((X, Y, -X, -Y)):
 			face = Face(-n_h, -inner, -inner - 0.09, inner + 0.09, inner_courses)
@@ -1192,7 +1192,7 @@ class Builder:
 				return [(lo, hi)]
 
 			face.ashlar_rows(g, inner_courses, inner_spans, rng, SMALL)
-		# almenas: cuatro de esquina y dos por lado
+		# crenellations: four at the corners and two per side
 		m_w = 0.9
 		gap = (2 * h - 4 * m_w) / 3.0
 		thick = 0.8
@@ -1213,7 +1213,7 @@ class Builder:
 			self.merlon(sx * (h - m_w * 0.5), sy * (h - m_w * 0.5), m_w * 0.5, m_w * 0.5)
 
 	def parapet_simple(self) -> None:
-		"""Parapeto del nivel medio: paños planos, albardilla, adarve y almenas como cajas."""
+		"""Medium-level parapet: flat panels, coping, wall walk and merlons as boxes."""
 		g, rng = self.g, self.rng
 		h = H_TOP
 		inner = h - 0.8
@@ -1248,7 +1248,7 @@ class Builder:
 					(X, Y, Z), (m_w, m_w, MERLON_TOP - COPING_TOP), 0.0, STONE_TILE)
 
 	def merlon(self, cx, cy, hx, hy) -> None:
-		"""Almena: cuatro caras de sillares sobre un núcleo y una albardilla biselada encima."""
+		"""Merlon: four faces of ashlars over a core and a beveled coping on top."""
 		g, rng = self.g, self.rng
 		z0, z1 = COPING_TOP, MERLON_TOP - 0.13
 		courses = make_courses(z0, z1, 0.40, rng)
@@ -1271,7 +1271,7 @@ class Builder:
 		center = Vector((cx, cy, MERLON_TOP - 0.065))
 		bevel_box(g, "keep_trim", center, (X, Y, Z), (2 * hx + 0.20, 2 * hy + 0.20, 0.13), 0.03, STONE_TILE, None, rng, 0.003)
 
-	# --- porche de la puerta --------------------------------------------------------------------
+	# --- door porch --------------------------------------------------------------------------------
 	def porch(self) -> None:
 		g, rng = self.g, self.rng
 		n_h = -X
@@ -1287,7 +1287,7 @@ class Builder:
 			build_quoins(g, c2, self.c_porch, rng)
 		else:
 			panel_face(g, front, FOOT_Z, PORCH_TOP - 0.30, [door], STONE_TILE, quoins=False)
-		# lados del porche (se pierden dentro del zócalo y del muro)
+		# porch sides (they disappear inside the plinth and the wall)
 		wall_in = H_WALL0 - 0.14
 		for sgn in (1, -1):
 			side = Face(Y * sgn, PORCH_HALF, 0.0, 0.0, self.c_porch)
@@ -1297,19 +1297,19 @@ class Builder:
 				side.build(g, rng, WALL)
 			else:
 				panel_face(g, side, FOOT_Z, PORCH_TOP - 0.30, [], STONE_TILE, quoins=False)
-		# puerta con marco, dovelas, hojas y herrajes
+		# door with frame, voussoirs, leaves and ironwork
 		frame_opening(g, front, door, rng, 0.55, 'door', detail=True, fill=lod0)
 		self.door_leaves(front, door)
-		# umbral y peldaño
+		# threshold and step
 		axis_box(g, "keep_trim", (-PORCH_FRONT - 0.30, -1.15, FOOT_Z + 1.0), (-PORCH_FRONT + 0.9, 1.15, 0.12), 0.03,
 				STONE_TILE, None, rng, 0.003, tint=block_tint(rng, 0.03))
 		self.porch_roof()
 
 	def door_leaves(self, front, door) -> None:
-		"""Dos hojas de tablones verticales con arco, flejes de hierro con punta, remaches y tirador."""
+		"""Two leaves of vertical planks with an arch, pointed iron straps, rivets and a pull handle."""
 		g, rng = self.g, self.rng
 		n, t = front.n, front.t
-		d = -0.40            # plano de las hojas, dentro del hueco
+		d = -0.40            # plane of the leaves, inside the opening
 		hw = door.half - 0.02
 		z0, z1 = 0.08, door.z1
 		steps = 12
@@ -1327,12 +1327,12 @@ class Builder:
 			poly = [P(u0, z0), P(u1, z0), P(u1, z1)] + arc + [P(u0, z1 + hw)]
 			uvs = [(p.dot(Z) / WOOD_TILE, (p.dot(t) * sgn) / WOOD_TILE) for p in poly]
 			g.add("keep_wood", poly, uvs, n, board_tint(rng, 0.05), 0.95)
-			# juntas de los tablones: ranuras oscuras verticales
+			# plank joints: dark vertical grooves
 			for k in range(1, 4) if self.lod == 0 else ():
 				u = sgn * hw * k / 4.0
 				top = z1 + math.sqrt(max(hw * hw - u * u, 0.0)) - 0.03
 				beam(g, "keep_dark", P(u, z0 + 0.02, d + 0.012), P(u, top, d + 0.012), 0.012, 0.012, 0.0, WOOD_TILE, n)
-			# tres flejes de hierro desde el gozne, con remate en punta, y sus remaches
+			# three iron straps from the hinge, with a pointed finial, and their rivets
 			for zf in (0.62, 1.55, 2.38):
 				end = sgn * 0.20 * hw
 				beam(g, "keep_iron", P(u1, zf, d + 0.03), P(end, zf, d + 0.03), 0.12, 0.028, 0.004, WOOD_TILE, n)
@@ -1342,25 +1342,25 @@ class Builder:
 					for k in range(0, 6):
 						u = end + (u1 - end) * (0.10 + 0.84 * k / 5.0)
 						cone_stud(g, "keep_iron", P(u, zf, d + 0.032), n, t, 0.026, 0.020)
-					# pernio del gozne: cilindro corto en el canto de la hoja
+					# hinge pintle: a short cylinder on the edge of the leaf
 					hinge = P(u1 - sgn * 0.02, zf, d + 0.03)
 					cylinder(g, "keep_iron", (hinge.x, hinge.y), 0.035, zf - 0.10, zf + 0.10, 6, STONE_TILE, 1.0, True)
-			# tirador: anillo de hierro sobre una chapa
+			# pull handle: an iron ring on a plate
 			if self.lod == 0:
 				torus(g, "keep_iron", P(sgn * 0.22, 1.25, d + 0.075), t, Z, 0.07, 0.014)
 				cone_stud(g, "keep_iron", P(sgn * 0.22, 1.325, d + 0.03), n, t, 0.04, 0.035, 6)
-		# barra y placa de cerradura sobre las dos hojas
+		# bar and lock plate across both leaves
 		axis_box(g, "keep_iron", P(-0.30, 1.04, d + 0.03), P(0.30, 1.12, d + 0.065), 0.004, STONE_TILE, None, rng)
 
 	def porch_roof(self) -> None:
 		g, rng = self.g, self.rng
-		# cornisa de piedra sobre el porche
+		# stone cornice over the porch
 		center = Vector((-PORCH_FRONT + 0.50, 0.0, PORCH_TOP - 0.15))
 		bevel_box(g, "keep_trim", center, (X, Y, Z), (1.30 + 0.4, 2 * PORCH_HALF + 0.5, 0.30), 0.03, STONE_TILE, None, rng, 0.004)
-		# tejadillo: una vertiente de tablillas apoyada en el muro, con aleros
+		# small roof: a shingle slope resting on the wall, with eaves
 		zw = PORCH_TOP + 1.35
-		xe = -PORCH_FRONT - 0.30     # alero
-		xw = -(wall_half(zw) - 0.08)  # muro
+		xe = -PORCH_FRONT - 0.30     # eave
+		xw = -(wall_half(zw) - 0.08)  # wall
 		ze = PORCH_TOP + 0.12
 		yh = PORCH_HALF + 0.30
 		slope = Vector((xw - xe, 0, zw - ze))
@@ -1390,7 +1390,7 @@ class Builder:
 		g.add("keep_wood", [bottom[0], bottom[1], pts_top[1], pts_top[0]], [(0, 0), (1, 0), (1, 0.1), (0, 0.1)], -sdir)
 		for a, b, sgn in ((0, 3, -1), (1, 2, 1)):
 			g.add("keep_wood", [bottom[a], bottom[b], pts_top[b], pts_top[a]], [(0, 0), (1, 0), (1, 0.1), (0, 0.1)], Y * sgn)
-		# hastiales de piedra bajo la vertiente
+		# stone gables under the slope
 		for sgn in (-1, 1):
 			y = sgn * (PORCH_HALF + 0.12)
 			tri = [Vector((-PORCH_FRONT + 0.15, y, PORCH_TOP + 0.10)), Vector((xw + 0.07, y, PORCH_TOP + 0.10)),
@@ -1400,56 +1400,56 @@ class Builder:
 					Vector((tri[2].x, y - sgn * 0.14, tri[2].z))]
 			g.add("keep_trim", tri2, [(p.x / STONE_TILE, p.z / STONE_TILE) for p in tri2], -Y * sgn)
 
-	# --- cadalso de madera ----------------------------------------------------------------------
+	# --- wooden hoarding ----------------------------------------------------------------------
 	def hoarding(self) -> None:
 		g, rng = self.g, self.rng
 		H = HOARD_H
 		bv = 0.012 if self.lod == 0 else 0.0
 		turret_cut = H_TOP - TURRET_IN - 0.13
 		sides = []
-		# cada lado: (normal, u0, u1) con u a lo largo de la tangente t = Z x n
+		# each side: (normal, u0, u1) with u along the tangent t = Z x n
 		for n_h in (X, Y, -X, -Y):
 			t = Z.cross(n_h).normalized()
 			lo, hi = -H, H
-			# la torrecilla (NE) corta los lados E y N
+			# the turret (NE) cuts the E and N sides
 			if n_h == X:
 				hi = turret_cut
 			elif n_h == Y:
 				lo = -turret_cut
 			sides.append((n_h, t, lo, hi))
 		for n_h, t, lo, hi in sides:
-			# soportes: ménsulas cada ~1,5 m
+			# supports: brackets every ~1.5 m
 			count = int((hi - lo) / 1.5) + 1
 			us = [lo + 0.60 + (hi - lo - 1.20) * k / max(count - 1, 1) for k in range(count)]
 			for u in us:
 				base = t * u
 				tint = board_tint(rng, 0.06)
-				# vigueta voladiza
+				# cantilever joist
 				a = base + n_h * (H_TOP - 0.15) + Z * (WALK_Z - 0.28)
 				b = base + n_h * (H + 0.12) + Z * (WALK_Z - 0.28)
 				beam(g, "keep_wood", a, b, 0.22, 0.24, bv, WOOD_TILE, Z, rng, 0.004, tint)
-				# riostra diagonal (ménsula)
+				# diagonal brace (bracket)
 				c = base + n_h * (H_TOP + 0.50) + Z * (WALK_Z - 0.98)
 				d = base + n_h * (H - 0.20) + Z * (WALK_Z - 0.36)
 				beam(g, "keep_wood", c, d, 0.19, 0.19, bv, WOOD_TILE, Z, rng, 0.004, tint)
-				# pie de la riostra contra la cornisa
+				# foot of the brace against the cornice
 				axis_pad = base + n_h * (H_TOP + 0.48) + Z * (WALK_Z - 1.02)
 				bevel_box(g, "keep_wood", axis_pad, (t, n_h, Z), (0.30, 0.10, 0.22), 0.01, WOOD_TILE, Z, rng, 0.003, tint=tint)
-				# poste vertical exterior, hasta la carrera del tejado
+				# outer vertical post, up to the roof's ridge beam
 				pa = base + n_h * (H - 0.04) + Z * WALK_Z
 				pb = base + n_h * (H - 0.04) + Z * PLATE_Z
 				beam(g, "keep_wood", pa, pb, 0.22, 0.22, bv, WOOD_TILE, n_h, rng, 0.004, tint)
 				CTX.streak(base + n_h * (H_TOP + 0.4) + Z * (WALK_Z - 1.1), n_h, 0.22, 1.8, 0.2)
-			# solera de tablas (la veta va hacia afuera)
+			# plank sole plate (the grain runs outward)
 			deck_center = n_h * ((H_TOP + H + 0.12) * 0.5 - 0.02) + t * ((lo + hi) * 0.5) + Z * (WALK_Z - 0.04)
 			bevel_box(g, "keep_wood", deck_center, (n_h, t, Z), (H + 0.12 - H_TOP + 0.04, hi - lo, 0.09), 0.006, WOOD_TILE, n_h)
-			# viga de borde y carrera
+			# edge beam and ridge beam
 			rail_center = n_h * (H - 0.04) + t * ((lo + hi) * 0.5) + Z * (PLATE_Z - 0.10)
 			bevel_box(g, "keep_wood", rail_center, (n_h, t, Z), (0.22, hi - lo, 0.20), 0.012, WOOD_TILE, t)
 			base_center = n_h * (H - 0.04) + t * ((lo + hi) * 0.5) + Z * (WALK_Z + 0.10)
 			bevel_box(g, "keep_wood", base_center, (n_h, t, Z), (0.20, hi - lo, 0.17), 0.012, WOOD_TILE, t)
-			# tablas verticales por fuera: fila baja continua y friso alto, con la franja de en medio
-			# abierta (aspilleras corridas) para ver las almenas y el tejado por dentro
+			# vertical planks on the outside: a continuous low row and a high frieze, with the strip in between
+			# left open (continuous loopholes) so the merlons and the roof can be seen from inside
 			board_w = 0.235 if self.lod == 0 else (hi - lo)
 			u = lo + 0.10
 			low_top = WALK_Z + 1.05
@@ -1470,7 +1470,7 @@ class Builder:
 				plank(g, "keep_wood", n_h * (H + 0.04) + t * ub + Z * ((z_lo + z_hi) * 0.5), (n_h, t, Z),
 						(0.07, bw - 0.018, z_hi - z_lo), WOOD_TILE, Z, rng, tint, hide=-n_h)
 				u += bw
-		# tapas de los extremos que topan con la torrecilla
+		# end caps that butt against the turret
 		for n_h, t, lo, hi in sides:
 			if (n_h == X and hi == turret_cut) or (n_h == Y and lo == -turret_cut):
 				end_u = hi if n_h == X else lo
@@ -1478,7 +1478,7 @@ class Builder:
 				c = n_h * ((H_TOP + H) * 0.5) + pos + Z * (WALK_Z + 1.35)
 				bevel_box(g, "keep_wood", c, (n_h, t, Z), (H - H_TOP + 0.06, 0.10, 2.7), 0.008, WOOD_TILE, Z, rng, 0.003)
 
-	# --- tejado a cuatro aguas ------------------------------------------------------------------
+	# --- hipped roof ------------------------------------------------------------------------------
 	def roof(self) -> None:
 		g, rng = self.g, self.rng
 		R = ROOF_R
@@ -1486,7 +1486,7 @@ class Builder:
 		group = 1 if self.lod == 0 else 3
 		rows = int(round(math.hypot(R, rise) / 0.2 / group))
 		pyramid_roof(g, rng, 0.0, 0.0, R, ROOF_EAVE_Z, ROOF_APEX_Z, rows, 0.045, row_group=group)
-		# faldón interior (la cara de abajo, de madera) y cabios que se ven bajo el alero
+		# inner skirt (the underside, wooden) and rafters visible under the eave
 		apex = Vector((0.0, 0.0, ROOF_APEX_Z))
 		for d in (X, Y, -X, -Y):
 			tang = Z.cross(d)
@@ -1501,27 +1501,27 @@ class Builder:
 				f = -1.0 + 2.0 * (k + 0.5) / count
 				start = d * R + tang * (R * f) + Z * ROOF_EAVE_Z
 				end_point = apex + tang * (R * f * 0.02)
-				# el cabio llega a la cumbrera; se ve la parte que sale por debajo del alero
+				# the rafter reaches the ridge; the part that sticks out below the eave is visible
 				beam(g, "keep_wood", start + drop - d * 0.20 + Z * -0.02, end_point + drop, 0.10, 0.12, 0.008, WOOD_TILE, Z, rng, 0.003,
 						board_tint(rng, 0.06))
-			# tabla de alero a lo largo del borde del tejado
+			# eave board along the roof's edge
 			c = d * (R + 0.02) + Z * (ROOF_EAVE_Z - 0.08)
 			bevel_box(g, "keep_wood", c, (d, tang, Z), (0.10, 2 * R + 0.10, 0.24), 0.01, WOOD_TILE, tang, rng, 0.0,
 					tint=board_tint(rng, 0.05))
-		# limatesas: tabla de cumbrera sobre cada arista
+		# hips: a ridge board over each arris
 		for sx, sy in CORNER_SIGNS:
 			start = Vector((sx * R, sy * R, ROOF_EAVE_Z + 0.02))
 			beam(g, "keep_wood", start, apex + Z * 0.04, 0.16, 0.16, 0.012, WOOD_TILE, Z, rng, 0.003, board_tint(rng, 0.05))
-		# techo del adarve cubierto: tablones bajo el faldón se ven desde abajo por el friso abierto
-		# remate de cumbrera
+		# ceiling of the covered wall walk: boards under the skirt are seen from below through the open frieze
+		# ridge cap
 		cylinder(g, "keep_wood", (0.0, 0.0), 0.16, ROOF_APEX_Z - 0.10, ROOF_APEX_Z + 0.30, 8, WOOD_TILE, 0.7, False)
 
-	# --- torrecilla ----------------------------------------------------------------------------
+	# --- turret ----------------------------------------------------------------------------
 	def turret_top(self) -> None:
 		g, rng = self.g, self.rng
 		x0, x1 = H_TOP - TURRET_IN, H_TOP + TURRET_OUT
 		rect = (x0, x1, x0, x1)
-		# la parte alta de la torrecilla, desde la cornisa hasta su remate
+		# the upper part of the turret, from the cornice to its top
 		ex, ey = X, Y
 		xo, yo = x1, x1
 		corner_out = Corner(Vector((xo, yo, 0)), ex, ey, 0, None, 0.95, 0.55)
@@ -1543,7 +1543,7 @@ class Builder:
 		for c in (corner_out, corner_bc, corner_ad):
 			if self.lod == 0:
 				build_quoins(g, c, self.c_turret, rng)
-		# corona con vuelo y tejado piramidal de tablillas
+		# crown with an overhang and a pyramidal shingle roof
 		loft(g, "keep_trim", rect, [(-0.3, TURRET_TOP - 0.02), (0.20, TURRET_TOP - 0.02), (0.20, TURRET_TOP + 0.20),
 				(-0.3, TURRET_TOP + 0.20)], STONE_TILE)
 		cx = (x0 + x1) * 0.5
@@ -1558,10 +1558,10 @@ class Builder:
 		cylinder(g, "keep_iron", (cx, cx), 0.05, TURRET_ROOF_APEX - 0.02, TURRET_ROOF_APEX + 0.40, 4, STONE_TILE, 0.0, False)
 		self.ball((cx, cx, TURRET_ROOF_APEX + 0.40), 0.07)
 
-	# --- asta y remate --------------------------------------------------------------------------
+	# --- flagpole and finial --------------------------------------------------------------------------
 	def flagpole(self) -> None:
-		"""Asta de madera sobre la cumbrera del tejado, con remate de hierro. El gallardete va aparte
-		(build_banners): es el nodo Estandarte."""
+		"""Wooden flagpole over the roof's ridge, with an iron finial. The pennant goes separately
+		(build_banners): it is the Estandarte node."""
 		g, rng = self.g, self.rng
 		cylinder(g, "keep_wood", (0.0, 0.0), 0.11, ROOF_APEX_Z + 0.2, TOTAL_TOP - 0.10, 8, WOOD_TILE, 0.65, False)
 		self.ball((0.0, 0.0, TOTAL_TOP - 0.06), 0.08)
@@ -1576,7 +1576,7 @@ class Builder:
 			g.add("keep_iron", p, [(0, 0), (1, 0), (0.5, 1)], (p[0] + p[1] + p[2]) / 3 - c)
 
 	def pendant_rails(self) -> None:
-		"""Varal de madera del que cuelga cada pendón, en el borde del cadalso de cada cara."""
+		"""Wooden pole from which each banner hangs, at the edge of the hoarding on each face."""
 		g, rng = self.g, self.rng
 		for n_h in (X, Y, -X, -Y):
 			t = Z.cross(n_h).normalized()
@@ -1585,10 +1585,10 @@ class Builder:
 			for sgn in (-1, 1):
 				bevel_box(g, "keep_iron", c + t * sgn * 0.9, (n_h, t, Z), (0.04, 0.04, 0.10), 0.005, STONE_TILE, None, None, 0.0)
 
-	# --- contacto con el suelo --------------------------------------------------------------------
+	# --- ground contact --------------------------------------------------------------------
 	def foot_rubble(self) -> None:
-		"""Piedras caídas y sillares medio enterrados: agrupados en las esquinas y junto al porche,
-		de tamaños muy distintos, con la mitad bajo tierra. Atan el torreón a la colina."""
+		"""Fallen stones and half-buried ashlars: grouped at the corners and next to the porch,
+		of very different sizes, with half below ground. They tie the keep to the hill."""
 		g = self.g
 		rng = random.Random(4242)
 		grng = random.Random(99)
@@ -1605,7 +1605,7 @@ class Builder:
 					grng, 0.035, tint=tint)
 
 		for sx, sy in CORNER_SIGNS:
-			# un bloque grande en la esquina y cuatro de menor tamaño alrededor
+			# one large block at the corner and four smaller ones around it
 			stone(sx * (HB + 0.42), sy * (HB + 0.42), Vector((rng.uniform(1.0, 1.35), rng.uniform(0.75, 0.95), rng.uniform(0.55, 0.8))),
 					math.atan2(sy, sx) + rng.uniform(-0.4, 0.4), rng.uniform(0.25, 0.4))
 			for _ in range(4):
@@ -1617,7 +1617,7 @@ class Builder:
 					cy = sy * (HB - rng.uniform(0.0, 1.6))
 				stone(cx, cy, Vector((rng.uniform(0.4, 0.8), rng.uniform(0.32, 0.55), rng.uniform(0.25, 0.45))),
 						rng.uniform(0.0, math.pi), rng.uniform(0.08, 0.22))
-		# a lo largo de cada lado, alguna piedra suelta y casi enterrada
+		# along each side, a few loose, almost buried stones
 		for side, n_h in enumerate((X, Y, -X, -Y)):
 			t = Z.cross(n_h).normalized()
 			for _ in range(3):
@@ -1627,21 +1627,21 @@ class Builder:
 				p = n_h * (HB + rng.uniform(0.18, 0.5)) + t * u
 				stone(p.x, p.y, Vector((rng.uniform(0.3, 0.6), rng.uniform(0.25, 0.45), rng.uniform(0.2, 0.35))),
 						rng.uniform(0.0, math.pi), rng.uniform(0.10, 0.2))
-		# junto al porche: dos piedras grandes a cada lado del peldaño y una losa caída delante
+		# next to the porch: two large stones on each side of the step and a fallen slab in front
 		for sgn in (-1, 1):
 			stone(-PORCH_FRONT - 0.35, sgn * (PORCH_HALF + 0.55), Vector((0.9, 0.7, 0.5)), rng.uniform(-0.3, 0.3), 0.22)
 			stone(-PORCH_FRONT + 0.4, sgn * (PORCH_HALF + 0.95), Vector((0.55, 0.45, 0.34)), rng.uniform(0, 3), 0.1)
 		stone(-PORCH_FRONT - 1.15, 0.15, Vector((1.3, 0.8, 0.22)), 0.25, 0.12)
 
 	def foot_skirt(self) -> None:
-		"""Falda de tierra y hierba que sube por el zócalo y se hunde en el terreno: el zócalo deja de
-		acabar en una línea dura sobre el patio. Colores de vértice de tierra a hierba."""
+		"""Skirt of earth and grass that climbs the plinth and sinks into the terrain: the plinth no longer
+		ends in a hard line over the courtyard. Vertex colors from earth to grass."""
 		g = self.g
 		rng = random.Random(777)
 		HB = PLINTH_HALF_BOTTOM + PLINTH.q
 		loop = []
 		for k, (sx, sy) in enumerate(CORNER_SIGNS):
-			# cada tramo va de una esquina a la siguiente por el lado que las une
+			# each stretch goes from one corner to the next along the side that joins them
 			nxt = CORNER_SIGNS[(k + 1) % 4]
 			steps = 13
 			for s in range(steps):
@@ -1652,7 +1652,7 @@ class Builder:
 				loop.append((HB * nx, HB * ny, nx / ln, ny / ln))
 		count = len(loop)
 		noise = [rng.uniform(0.0, 1.0) for _ in range(count)]
-		# (separación al zócalo, altura, color de tierra a hierba)
+		# (distance from the plinth, height, color from earth to grass)
 		profile = [(-0.15, 0.40, (0.075, 0.058, 0.040)), (0.40, 0.30, (0.088, 0.071, 0.046)),
 				(1.00, 0.12, (0.095, 0.104, 0.058)), (1.75, -0.04, (0.104, 0.128, 0.070)), (2.35, -0.30, (0.107, 0.133, 0.074))]
 		rings = []
@@ -1664,7 +1664,7 @@ class Builder:
 				px = x + nx * o
 				py = y + ny * o
 				zz = z + (0.06 * (noise[i] - 0.5) if off > 0.1 else 0.0)
-				# junto al porche la falda baja para no tapar el umbral
+				# next to the porch the skirt drops so as not to cover the threshold
 				if px < 0 and abs(py) < PORCH_HALF + 0.7 and off < 1.5:
 					zz = min(zz, 0.02)
 				shade = 0.88 + 0.24 * noise[(i * 7) % count]
@@ -1692,28 +1692,28 @@ class Builder:
 		self.roof()
 		self.turret_top()
 		self.flagpole()
-		register_fissures()   # grietas de brasa (Eldrun)
+		register_fissures()   # ember cracks (Eldrun)
 		return self.g
 
 
 # ---------------------------------------------------------------------------------------------
-# Estandartes (nodo propio)
+# Banners (own node)
 # ---------------------------------------------------------------------------------------------
 def sway_color(direction):
-	"""Direccion del vaiven de una tela codificada como color (0..1), ya en el espacio de Godot (el
-	exportador pasa de Z arriba a Y arriba: x, y, z -> x, z, -y). El shader la lee de COLOR.rgb: una
-	direccion comun a toda la pieza evita que las caras sueltas se separen al moverse."""
+	"""Direction of a cloth's sway encoded as a color (0..1), already in Godot space (the
+	exporter goes from Z-up to Y-up: x, y, z -> x, z, -y). The shader reads it from COLOR.rgb: a
+	direction common to the whole piece keeps loose faces from separating when moving."""
 	d = Vector(direction).normalized()
 	return (d.x * 0.5 + 0.5, d.z * 0.5 + 0.5, -d.y * 0.5 + 0.5)
 
 
 def build_banners() -> Geo:
-	"""Gallardete del asta y un pendón colgado del cadalso en cada cara. Van en su propio objeto
-	(Estandarte), fuera de las mallas fusionadas de los LOD. El alfa del color de vértice es el
-	peso del viento (0 donde la tela está sujeta, 1 en la punta libre); fort_keep_cloth.gdshader
-	mueve los vértices con él y lee faction_color, emblem_index y capture_progress por instancia."""
+	"""Pennant on the flagpole and one banner hanging from the hoarding on each face. They go in their own object
+	(Estandarte), outside the merged LOD meshes. The vertex color's alpha is the
+	wind weight (0 where the cloth is fixed, 1 at the free tip); fort_keep_cloth.gdshader
+	moves the vertices with it and reads faction_color, emblem_index and capture_progress per instance."""
 	g = Geo()
-	# gallardete: 3,5 m de largo y 1,55 de alto en el asta, con cola de golondrina; ondea hacia -X.
+	# pennant: 3.5 m long and 1.55 tall at the pole, with a swallowtail; it flies toward -X.
 
 	x0, y0 = -0.10, 0.0
 	z_top = TOTAL_TOP - 0.22
@@ -1737,7 +1737,7 @@ def build_banners() -> Geo:
 				uvs.append((along, 1.0 - f))
 				wind.append(min(1.0, along ** 1.1 + 0.02))
 			g.add("keep_cloth", quad, uvs, Y, sway_color(Y), wind)
-	# pendones: 1,5 m de ancho y unos 3,4 de largo, con punta, a cada lado del cadalso
+	# banners: 1.5 m wide and about 3.4 long, with a point, on each side of the hoarding
 	width, drop = 1.5, 2.9
 	prow, pcols = 10, 6
 	z_hang = WALK_Z - 0.19
@@ -1771,7 +1771,7 @@ def build_banners() -> Geo:
 
 
 # ---------------------------------------------------------------------------------------------
-# Colisión de baja resolución
+# Low-resolution collision
 # ---------------------------------------------------------------------------------------------
 def build_collision() -> Geo:
 	g = Geo()
@@ -1784,9 +1784,9 @@ def build_collision() -> Geo:
 			(wall_half(CORNICE_Z0) + q - 1.0, CORNICE_Z0), (wall_half(CORNICE_Z0) + 0.48 - 1.0, CORNICE_Z0),
 			(wall_half(CORNICE_Z0) + 0.48 - 1.0, CORNICE_Z0 + 0.34), (H_TOP - 1.0, CORNICE_Z0 + 0.55)]
 	loft(g, "col", (-1.0, 1.0, -1.0, 1.0), profile, tile)
-	# cuerpo del parapeto y adarve (sólido, para que ni la cámara ni los proyectiles entren)
+	# parapet and wall walk body (solid, so that neither the camera nor projectiles get in)
 	axis_box(g, "col", (-H_TOP, -H_TOP, CORNICE_Z0 + 0.4), (H_TOP, H_TOP, COPING_TOP), 0.0, tile)
-	# cadalso: solera, pared baja y friso, por los cuatro lados
+	# hoarding: sole plate, low wall and frieze, on all four sides
 	for n_h in (X, Y, -X, -Y):
 		t = Z.cross(n_h).normalized()
 		half = HOARD_H + 0.05
@@ -1796,7 +1796,7 @@ def build_collision() -> Geo:
 		bevel_box(g, "col", wall_c, (n_h, t, Z), (0.22, 2 * half, 1.2), 0.0, tile)
 		plate_c = n_h * (HOARD_H) + Z * (PLATE_Z - 0.3)
 		bevel_box(g, "col", plate_c, (n_h, t, Z), (0.22, 2 * half, 0.6), 0.0, tile)
-	# tejado: pirámide cerrada
+	# roof: closed pyramid
 	apex = Vector((0.0, 0.0, ROOF_APEX_Z))
 	R = ROOF_R
 	rise = ROOF_APEX_Z - ROOF_EAVE_Z
@@ -1805,7 +1805,7 @@ def build_collision() -> Geo:
 		a = d * R - tang * R + Z * ROOF_EAVE_Z
 		b = d * R + tang * R + Z * ROOF_EAVE_Z
 		g.add("col", [a, b, apex], [(0, 0), (1, 0), (0.5, 1)], (d * rise + Z * R))
-	# torrecilla y porche
+	# turret and porch
 	x0, x1 = H_TOP - TURRET_IN, H_TOP + TURRET_OUT
 	axis_box(g, "col", (x0, x0, CORNICE_Z0), (x1, x1, TURRET_TOP), 0.0, tile)
 	half = (x1 - x0) * 0.5 + 0.34
@@ -1822,11 +1822,11 @@ def build_collision() -> Geo:
 
 
 # ---------------------------------------------------------------------------------------------
-# LOD lejano
+# Distant LOD
 # ---------------------------------------------------------------------------------------------
 def build_lod_far() -> Geo:
-	"""Silueta de unos 600 triángulos para más de 250 m: zócalo y muro con talud, cordón, cornisa,
-	cadalso, tejado, torrecilla, porche, vanos como manchas oscuras y el asta."""
+	"""Silhouette of about 600 triangles for beyond 250 m: plinth and battered wall, string course, cornice,
+	hoarding, roof, turret, porch, openings as dark patches and the flagpole."""
 	g = Geo()
 	wall = "keep_wall"
 	tile = STONE_TILE
@@ -1843,10 +1843,10 @@ def build_lod_far() -> Geo:
 	h = H_TOP
 	loft(g, "keep_trim", (-1.0, 1.0, -1.0, 1.0), [(h - 1.0, CORNICE_Z0), (h + 0.30 - 1.0, CORNICE_Z0), (h + 0.48 - 1.0, CORNICE_Z0 + 0.14),
 			(h + 0.48 - 1.0, CORNICE_Z0 + 0.34), (h - 1.0, CORNICE_Z0 + 0.55)], tile)
-	# cadalso
+	# hoarding
 	loft(g, "keep_wood", (-1.0, 1.0, -1.0, 1.0), [(h + 0.1 - 1.0, WALK_Z - 0.6), (HOARD_H - 1.0, WALK_Z - 0.2), (HOARD_H - 1.0, PLATE_Z),
 			(h - 1.0, PLATE_Z)], WOOD_TILE, ao=[0.5, 0.9, 1.0, 1.0])
-	# tejado
+	# roof
 	R = ROOF_R
 	apex = Vector((0.0, 0.0, ROOF_APEX_Z))
 	rise = ROOF_APEX_Z - ROOF_EAVE_Z
@@ -1855,7 +1855,7 @@ def build_lod_far() -> Geo:
 		a = d * R - tang * R + Z * ROOF_EAVE_Z
 		b = d * R + tang * R + Z * ROOF_EAVE_Z
 		g.add("keep_roof", [a, b, apex], [(0, 0), (2 * R / ROOF_TILE, 0), (R / ROOF_TILE, R / ROOF_TILE * 1.2)], d * rise + Z * R, None, 1.0)
-	# torrecilla
+	# turret
 	x0, x1 = H_TOP - TURRET_IN, H_TOP + TURRET_OUT
 	axis_box(g, wall, (x0, x0, CORNICE_Z0), (x1, x1, TURRET_TOP), 0.0, tile)
 	cx = (x0 + x1) * 0.5
@@ -1867,12 +1867,12 @@ def build_lod_far() -> Geo:
 		a = Vector((cx, cx, 0.0)) + d * half - tang * half + Z * eave
 		b = Vector((cx, cx, 0.0)) + d * half + tang * half + Z * eave
 		g.add("keep_roof", [a, b, tapex], [(0, 0), (2, 0), (1, 2)], d * (TURRET_ROOF_APEX - eave) + Z * half, None, 1.0)
-	# porche y puerta
+	# porch and door
 	axis_box(g, wall, (-PORCH_FRONT, -PORCH_HALF, FOOT_Z), (-H_WALL0, PORCH_HALF, PORCH_TOP - 0.3), 0.0, tile)
 	g.add("keep_dark", [Vector((-PORCH_FRONT - 0.01, -0.95, 0.0)), Vector((-PORCH_FRONT - 0.01, 0.95, 0.0)),
 			Vector((-PORCH_FRONT - 0.01, 0.95, 3.0)), Vector((-PORCH_FRONT - 0.01, -0.95, 3.0))], [(0, 0)] * 4, -X)
 	axis_box(g, "keep_roof", (-PORCH_FRONT - 0.3, -PORCH_HALF - 0.3, PORCH_TOP), (-H_WALL0 + 0.1, PORCH_HALF + 0.3, PORCH_TOP + 0.25), 0.0, ROOF_TILE)
-	# huecos oscuros (ventanas y saeteras principales)
+	# dark openings (windows and main arrow slits)
 	for name, n_h in FACE_NORMALS:
 		t = Z.cross(n_h).normalized()
 		for u, z0, z1, w in ((0.0, 9.6, 11.7, 0.9), (-1.0, 11.9, 13.2, 0.28), (1.0, 11.9, 13.2, 0.28), (0.0, 6.0, 7.5, 0.28)):
@@ -1881,15 +1881,15 @@ def build_lod_far() -> Geo:
 			base = n_h * (wall_half(z0) + 0.09) + t * u
 			p = [base - t * (w * 0.5) + Z * z0, base + t * (w * 0.5) + Z * z0, base + t * (w * 0.5) + Z * z1, base - t * (w * 0.5) + Z * z1]
 			g.add("keep_dark", p, [(0, 0)] * 4, n_h)
-	# asta
+	# flagpole
 	cylinder(g, "keep_wood", (0.0, 0.0), 0.11, ROOF_APEX_Z, TOTAL_TOP - 0.1, 5, 3.0, 0.7, False)
 	return g
 
 
 # ---------------------------------------------------------------------------------------------
-# Acabado por vértice: suciedad, churretes, sombras bajo los vuelos y brasas
+# Per-vertex finishing: dirt, streaks, shadows under overhangs and embers
 # ---------------------------------------------------------------------------------------------
-COLOR_GAIN = 1.25   # el shader multiplica el color de vértice por esto (el valor se guarda dividido)
+COLOR_GAIN = 1.25   # the shader multiplies the vertex color by this (the value is stored divided)
 
 
 def _hash3(ix, iy, iz):
@@ -1900,7 +1900,7 @@ def _hash3(ix, iy, iz):
 
 
 def vnoise(P, scale, offset=0.0):
-	"""Ruido de valor 3D (0..1), suave, en las posiciones P (N, 3)."""
+	"""3D value noise (0..1), smooth, at the positions P (N, 3)."""
 	q = P * scale + offset
 	i = np.floor(q).astype(np.int64)
 	f = q - i
@@ -1922,21 +1922,21 @@ CATEGORY = {"keep_stone": 0, "keep_trim": 0, "keep_wall": 0, "keep_mortar": 1, "
 
 
 def shade_arrays(P, N, cat, roof_alpha=1.0):
-	"""Devuelve (multiplicador RGB, alfa) por vértice. P y N son (N, 3); cat la categoría de material:
-	0 piedra, 1 argamasa, 2 madera, 3 tejado y 4 el resto (sin acabado)."""
+	"""Returns (RGB multiplier, alpha) per vertex. P and N are (N, 3); cat is the material category:
+	0 stone, 1 mortar, 2 wood, 3 roof and 4 the rest (no finishing)."""
 	n = len(P)
 	z = P[:, 2]
 	n1 = vnoise(P, 0.55, 1.7)
 	n2 = vnoise(P, 1.9, 5.3)
 	n3 = vnoise(P, 0.23, 9.1)
 	wallish = (np.abs(N[:, 2]) < 0.75).astype(np.float64)
-	# humedad y suciedad que suben del suelo
+	# moisture and dirt rising from the ground
 	base = np.clip(1.0 - (z + 0.1) / 2.7, 0.0, 1.0)
 	grime = np.clip(base ** 1.3 * np.clip(0.30 + 1.25 * n1 + 0.35 * (n2 - 0.5), 0.0, 1.0), 0.0, 1.0)
 	m = 1.0 - 0.36 * grime
 	m = m * (1.0 + 0.16 * (n3 - 0.5))
 	m = m * (1.0 - 0.28 * np.clip(1.0 - (z + 0.15) / 0.8, 0.0, 1.0))
-	# churretes bajo vanos y ménsulas
+	# streaks under openings and brackets
 	streak = np.zeros(n)
 	for c, nrm, hw, length, strength in CTX.streaks:
 		tdir = Z.cross(nrm)
@@ -1949,12 +1949,12 @@ def shade_arrays(P, N, cat, roof_alpha=1.0):
 		amt = strength * np.clip(1.0 - dz / length, 0.0, 1.0) ** 1.2 * np.clip(1.0 - lat / eff, 0.0, 1.0) ** 0.7 * (0.75 + 0.5 * n2)
 		streak = np.maximum(streak, np.where(ok, amt, 0.0))
 	m = m * (1.0 - streak)
-	# sombra bajo cornisas, cordones y repisas
+	# shadow under cornices, string courses and ledges
 	for zl, depth, strength in CTX.ledges:
 		dz = zl - z
 		ok = (dz > 0.0) & (dz < depth)
 		m = m * (1.0 - strength * np.where(ok, np.clip(1.0 - dz / depth, 0.0, 1.0) ** 1.6, 0.0) * wallish)
-	# grietas de brasa (Eldrun): bandas verticales con un borde roto por el ruido
+	# ember cracks (Eldrun): vertical bands with an edge broken up by noise
 	fiss = np.zeros(n)
 	for c, nrm, hw, z0, z1 in CTX.fissures:
 		tdir = Z.cross(nrm)
@@ -1979,7 +1979,7 @@ def shade_arrays(P, N, cat, roof_alpha=1.0):
 
 
 # ---------------------------------------------------------------------------------------------
-# Volcado a Blender, materiales, exportación
+# Dump to Blender, materials, export
 # ---------------------------------------------------------------------------------------------
 def make_material(name, color, rough=0.9, metal=0.0, double_sided=False):
 	mat = bpy.data.materials.new(name)
@@ -1993,8 +1993,8 @@ def make_material(name, color, rough=0.9, metal=0.0, double_sided=False):
 
 
 def make_materials():
-	"""Materiales del glTF: solo color base (los materiales de reino del juego los sustituyen por
-	fort_keep_surface con las texturas de fort_keep/textures/)."""
+	"""glTF materials: base color only (the game's realm materials replace them with
+	fort_keep_surface using the textures from fort_keep/textures/)."""
 	mats = {}
 	for name in MATERIALS + ["col"]:
 		rough, metal = 0.9, 0.0
@@ -2005,10 +2005,10 @@ def make_materials():
 
 
 def to_object(name, geo, mats, collection, mode="shade", roof_alpha=1.0):
-	"""Convierte un Geo en un objeto de Blender con un hueco de material por material usado y,
-	según mode, color de vértice: "shade" (tinte x oclusión x acabado de to_object), "wind" (RGB es la
-	dirección del vaivén, ver sway_color, y el alfa el peso del viento, que se guarda en la lista ao)
-	o "none" (colisión)."""
+	"""Converts a Geo into a Blender object with one material slot per material used and,
+	depending on mode, vertex color: "shade" (tint x occlusion x to_object finishing), "wind" (RGB is the
+	sway direction, see sway_color, and the alpha the wind weight, which is stored in the ao list)
+	or "none" (collision)."""
 	used = []
 	for face in geo.faces:
 		if face[0] not in used:
@@ -2079,7 +2079,7 @@ def to_object(name, geo, mats, collection, mode="shade", roof_alpha=1.0):
 
 
 def register_far_shading() -> None:
-	"""El LOD lejano no monta piezas con churretes: solo las sombras bajo los vuelos y las grietas."""
+	"""The distant LOD does not assemble pieces with streaks: only the shadows under overhangs and the cracks."""
 	CTX.ledge(PLINTH_TOP, 0.7, 0.30)
 	CTX.ledge(CORDON_Z0, 0.8, 0.34)
 	CTX.ledge(CORNICE_Z0, 1.0, 0.36)
@@ -2115,8 +2115,8 @@ def main() -> None:
 	collection = scene.collection
 	mats = make_materials()
 
-	# cada nivel registra su propio acabado (churretes, sombras bajo los vuelos) y se pinta antes de
-	# montar el siguiente: así el LOD medio y el lejano oscurecen igual que el detallado
+	# each level registers its own finishing (streaks, shadows under overhangs) and is painted before
+	# assembling the next one: this way the medium and distant LODs darken the same as the detailed one
 	CTX.reset()
 	lod0 = Builder(0).run()
 	obj0 = to_object("FortKeep_LOD0", lod0, mats, collection)
@@ -2156,8 +2156,8 @@ def main() -> None:
 
 
 def render_previews(folder, obj0, hidden) -> None:
-	"""Renders del modelo solo con Eevee (vistas de comprobación rápida, sin texturas ni color de
-	vértice: la referencia visual son las capturas de Godot de tools/render/)."""
+	"""Renders of the model alone with Eevee (quick check views, with no textures or vertex
+	color: the visual reference is the Godot captures from tools/render/)."""
 	os.makedirs(folder, exist_ok=True)
 	scene = bpy.context.scene
 	for obj in hidden:

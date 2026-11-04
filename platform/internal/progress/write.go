@@ -10,13 +10,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// write es S8 (progresion.md §13.3): escribe el guardado ya comprobado en la transacción de quien llama.
-// character_progress entero con saved_at y save_version + 1 (que devuelve); los saldos con su last_seq; los
-// objetos (inserta los nuevos sin on conflict, así un uid que ya existe, de otro personaje o retirado, es un
-// 23505 de la clave primaria; cambia los que se mueven; retira los que faltan); las operaciones (sin on
-// conflict: un op_id repetido es un 23505 de economy_ops_pkey), sus participantes, apuntes con su seq, eventos
-// y reversiones; una fila de audit_log por GM o REVERSAL (op:<op_id>, on conflict do nothing); y el conjunto
-// de temporizadores. No toca characters.
+// write is S8 (progresion.md §13.3): it writes the already checked save in the caller's
+// transaction. character_progress whole with saved_at and save_version + 1 (which it returns);
+// balances with their last_seq; objects (it inserts new ones without on conflict, so a uid that
+// already exists, from another character or retired, is a 23505 on the primary key; it updates
+// those that move; it retires those that are missing); operations (without on conflict: a
+// repeated op_id is a 23505 on economy_ops_pkey), their participants, entries with their seq,
+// events and reversals; one audit_log row per GM or REVERSAL (op:<op_id>, on conflict do
+// nothing); and the set of timers. It does not touch characters.
 func (a *apply) write(ctx context.Context, tx pgx.Tx) (int64, error) {
 	sec, id := a.sec, a.key.CharacterID
 	var health *int32
@@ -70,10 +71,10 @@ func (a *apply) write(ctx context.Context, tx pgx.Tx) (int64, error) {
 	return version, nil
 }
 
-// writeWallets cambia cada saldo con apuntes con la suma de sus deltas, con la guarda de progresion.md §5.4
-// (update … set balance = balance + delta where … and balance + delta entre 0 y el tope): una transacción
-// que no viera el saldo bueno no toca ninguna fila y el guardado se deshace. Devuelve, por moneda, el seq del
-// primer apunte del cuerpo (last_seq + 1).
+// writeWallets changes each balance that has entries by the sum of its deltas, with the guard
+// from progresion.md §5.4 (update … set balance = balance + delta where … and balance + delta
+// between 0 and the cap): a transaction that did not see the right balance touches no row and the
+// save is rolled back. It returns, per currency, the seq of the first entry in the body (last_seq + 1).
 func (a *apply) writeWallets(ctx context.Context, tx pgx.Tx) (map[int64]int64, error) {
 	sums := map[int64]int64{}
 	counts := map[int64]int64{}
@@ -126,9 +127,10 @@ func (a *apply) photoBalance(code int64) int64 {
 	return 0
 }
 
-// writeItems retira los objetos vivos que faltan en la foto, cambia los que se mueven o cambian de cantidad,
-// durabilidad o ligado e inserta los nuevos (created_op: la operación con un evento que suma de ese uid; null
-// si nació al dividir). La restricción de ranuras es diferida: un intercambio cabe en la transacción.
+// writeItems retires the live objects missing from the snapshot, updates those that move or
+// change quantity, durability or binding, and inserts the new ones (created_op: the operation
+// with an event that adds that uid; null if it was born from a split). The slot constraint is
+// deferred: a swap fits in the transaction.
 func (a *apply) writeItems(ctx context.Context, tx pgx.Tx) error {
 	id := a.key.CharacterID
 	inPhoto := map[int64]bool{}
@@ -187,8 +189,9 @@ func (a *apply) writeItems(ctx context.Context, tx pgx.Tx) error {
 	return sendBatch(ctx, tx, b)
 }
 
-// writeOps inserta las operaciones del diario en su orden: la operación, su participante, sus apuntes (con el
-// seq de su moneda), sus eventos, la reversión y, en las GM y REVERSAL, la fila de audit_log.
+// writeOps inserts the journal's operations in order: the operation, its participant, its
+// entries (with their currency's seq), its events, the reversal and, for GM and REVERSAL, the
+// audit_log row.
 func (a *apply) writeOps(ctx context.Context, tx pgx.Tx, seqs map[int64]int64) error {
 	if len(a.sec.ops) == 0 {
 		return nil
@@ -228,7 +231,7 @@ func (a *apply) writeOps(ctx context.Context, tx pgx.Tx, seqs map[int64]int64) e
 	return sendBatch(ctx, tx, b)
 }
 
-// sendBatch manda las sentencias de b y devuelve el primer error.
+// sendBatch sends the statements in b and returns the first error.
 func sendBatch(ctx context.Context, tx pgx.Tx, b *pgx.Batch) error {
 	if b.Len() == 0 {
 		return nil

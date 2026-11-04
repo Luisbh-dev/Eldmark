@@ -1,21 +1,21 @@
 class_name InventoryWindow
 extends UIWindow
-## Ventana de inventario (tecla I; docs/progresion.md §11, UI-26): la bolsa en una rejilla de
-## [constant COLUMNS] columnas con [member InventoryState.bag_slots] casillas ([InventorySlotView]) y, al pie,
-## el oro y los méritos. Enseña la [b]vista[/b] de [ClientInventory] (lo confirmado con las peticiones en vuelo)
-## y se rehace con cada cambio.
+## Inventory window (key I; docs/progresion.md §11, UI-26): the bag in a grid of
+## [constant COLUMNS] columns with [member InventoryState.bag_slots] slots ([InventorySlotView]) and, at the bottom,
+## gold and merits. It shows the [b]view[/b] of [ClientInventory] (what is confirmed plus the requests in flight)
+## and is rebuilt on every change.
 ## [br][br]
-## [b]Gestos[/b] (§11.2), también los de las casillas de la [CharacterWindow], que pasan por aquí:
-## [br]- arrastrar y soltar en otra casilla: MOVE (mover, juntar, intercambiar, equipar, desequipar);
-## [br]- con Mayúsculas: SPLIT, con el [SplitDialog] (por defecto, la mitad) si la división vale;
-## [br]- doble clic o clic derecho: equipar desde la bolsa o desequipar a la primera ranura libre
+## [b]Gestures[/b] (§11.2), including those of the [CharacterWindow] slots, which go through here:
+## [br]- drag and drop onto another slot: MOVE (move, merge, swap, equip, unequip);
+## [br]- with Shift: SPLIT, with the [SplitDialog] (half by default) if the split is valid;
+## [br]- double click or right click: equip from the bag or unequip to the first free slot
 ## ([method ClientInventory.equip_target]);
-## [br]- soltar fuera de las ventanas ([method add_drop_zone]): DESTROY tras un [UIConfirmDialog]
-## («¿Destruir Poción de vida ×3?»), si la destrucción vale.
-## [br]Toda petición se valida antes en local con la misma regla que el servidor: si no vale, el aviso sale por
-## [signal ClientInventory.request_rejected] y no se envía nada (ni se abre el diálogo).
+## [br]- drop outside the windows ([method add_drop_zone]): DESTROY after a [UIConfirmDialog]
+## ("¿Destruir Poción de vida ×3?", Destroy Health Potion ×3?), if the destruction is valid.
+## [br]Every request is first validated locally with the same rule as the server: if it is not valid, the notice comes out through
+## [signal ClientInventory.request_rejected] and nothing is sent (nor is the dialog opened).
 ## [br][br]
-## Las dos ventanas usan [UIWindow]: se abren a la vez y liberan el cursor. Solo cliente.
+## Both windows use [UIWindow]: they open together and release the cursor. Client only.
 
 const TEXT_TITLE: String = "Inventario"
 const TEXT_LOADING: String = "Cargando el inventario…"
@@ -24,9 +24,9 @@ const TEXT_DESTROY_QUESTION: String = "¿Destruir %s?"
 const TEXT_DESTROY_HINT: String = "No se puede deshacer."
 const TEXT_DESTROY_BUTTON: String = "Destruir"
 const TEXT_CANCEL: String = "Cancelar"
-## Columnas de la rejilla de la bolsa.
+## Columns of the bag grid.
 const COLUMNS: int = 6
-## Filas que se ven sin desplazar (con más ranuras, la rejilla se desplaza).
+## Rows visible without scrolling (with more slots, the grid scrolls).
 const VISIBLE_ROWS: int = 6
 const SLOT_GAP: int = 4
 
@@ -42,7 +42,7 @@ var _loading_label: Label = null
 var _gold_label: Label = null
 var _merits_label: Label = null
 var _drop_zones: Array[Control] = []
-# Lo que espera el diálogo abierto: origen y destino de la división, y origen, uid y cantidad de la destrucción.
+# What the open dialog expects: source and destination of the split, and source, uid and quantity of the destruction.
 var _split_from: Vector2i = Vector2i(-1, -1)
 var _split_to: Vector2i = Vector2i(-1, -1)
 var _split_uid: int = 0
@@ -96,9 +96,9 @@ func _ready() -> void:
 		view.bind_tooltip(tooltip)
 
 
-## Conecta la ventana con el inventario [param inventory] y el progreso [param progress] del jugador, y con los
-## diálogos de dividir y de destruir (que viven fuera de la ventana: son modales a pantalla completa).
-## [param db] son las definiciones (null = [method ItemDatabase.shared]).
+## Connects the window to the player's inventory [param inventory] and progress [param progress], and to the
+## split and destroy dialogs (which live outside the window: they are full-screen modals).
+## [param db] are the definitions (null = [method ItemDatabase.shared]).
 func bind(inventory: ClientInventory, progress: ClientProgress, split_dialog: SplitDialog,
 		destroy_dialog: UIConfirmDialog, db: ItemDatabase = null) -> void:
 	if _inventory != null and _inventory.view_changed.is_connected(refresh):
@@ -123,8 +123,8 @@ func bind(inventory: ClientInventory, progress: ClientProgress, split_dialog: Sp
 	refresh()
 
 
-## Además de esta ventana, [param control] cuenta como «dentro» al soltar un arrastre (la ventana de
-## personaje): soltar fuera de todas es destruir.
+## Besides this window, [param control] counts as "inside" when dropping a drag (the character
+## window): dropping outside all of them means destroying.
 func add_drop_zone(control: Control) -> void:
 	if control != null and not _drop_zones.has(control):
 		_drop_zones.append(control)
@@ -134,12 +134,12 @@ func get_inventory() -> ClientInventory:
 	return _inventory
 
 
-## La casilla [param slot] de la bolsa (null si no existe).
+## Bag slot [param slot] (null if it does not exist).
 func get_slot_view(slot: int) -> InventorySlotView:
 	return _slots[slot] if slot >= 0 and slot < _slots.size() else null
 
 
-## Casillas de la bolsa que hay ahora.
+## Bag slots there are now.
 func get_slot_count() -> int:
 	return _slots.size()
 
@@ -152,7 +152,7 @@ func get_merits_label() -> Label:
 	return _merits_label
 
 
-## Rehace las casillas y las monedas con la vista del inventario.
+## Rebuilds the slots and the coins from the inventory view.
 func refresh() -> void:
 	var view: InventoryState = _inventory.get_view() if _inventory != null else null
 	_loading_label.visible = view == null
@@ -162,9 +162,9 @@ func refresh() -> void:
 	_refresh_wallet()
 
 
-## Pone en [param view_slot] lo que la vista tiene en su ranura, con el nivel del personaje y, para un arma de la
-## bolsa, la de la ranura a la que iría con un doble clic para la comparación del tooltip. La usa también la
-## [CharacterWindow] para sus casillas.
+## Puts in [param view_slot] what the view has in its slot, with the character's level and, for a bag
+## weapon, that of the slot it would go to on a double click for the tooltip comparison. It is also used by the
+## [CharacterWindow] for its slots.
 func present_slot(view_slot: InventorySlotView) -> void:
 	var view: InventoryState = _inventory.get_view() if _inventory != null else null
 	var level: int = _progress.get_level() if _progress != null else 1
@@ -181,18 +181,18 @@ func present_slot(view_slot: InventorySlotView) -> void:
 	view_slot.show_item(item, _db, level, compare)
 
 
-## Conecta los gestos de [param view_slot] (de esta ventana o de la de personaje) con los de esta ventana.
+## Connects the gestures of [param view_slot] (from this window or the character one) to those of this window.
 func connect_slot(view_slot: InventorySlotView) -> void:
 	view_slot.drop_handler = drop_item
 	view_slot.activated.connect(func() -> void: activate_item(view_slot.get_position_key()))
 	view_slot.drag_cancelled.connect(func() -> void: handle_drag_cancelled(view_slot.get_position_key()))
 
 
-# --- Gestos -------------------------------------------------------------------------------------
+# --- Gestures -----------------------------------------------------------------------------------
 
-## Soltar lo de [param from] en [param to]: MOVE, o con [param split] el diálogo de dividir (si la división de
-## la mitad vale; si no, el aviso de por qué). Devuelve el resultado local de la petición (OK también cuando
-## abre el diálogo) o −1 si no hay nada que hacer.
+## Drops what is at [param from] onto [param to]: MOVE, or with [param split] the split dialog (if the split of
+## half is valid; if not, the notice about why). Returns the request's local result (OK also when
+## it opens the dialog) or −1 if there is nothing to do.
 func drop_item(from: Vector2i, to: Vector2i, split: bool) -> int:
 	if _inventory == null or from == to:
 		return -1
@@ -203,7 +203,7 @@ func drop_item(from: Vector2i, to: Vector2i, split: bool) -> int:
 	var amount: int = SplitDialog.default_amount(item.count) if item != null else 1
 	var op: InventoryOps.Request = _inventory.make_split(from, to, amount)
 	if _inventory.validate(op) != InventoryOps.Result.OK or _split_dialog == null:
-		# Sin diálogo (o si no vale): se pide la mitad tal cual, que avisa del motivo si no vale.
+		# Without a dialog (or if it is not valid): half is requested as is, which notifies the reason if it is not valid.
 		return _inventory.request(op)
 	_split_from = from
 	_split_to = to
@@ -212,8 +212,8 @@ func drop_item(from: Vector2i, to: Vector2i, split: bool) -> int:
 	return InventoryOps.Result.OK
 
 
-## Doble clic o clic derecho en [param at]: equipar o desequipar ([method ClientInventory.equip_target]).
-## Devuelve el resultado local, o −1 si el objeto no se equipa o la casilla está vacía.
+## Double click or right click at [param at]: equip or unequip ([method ClientInventory.equip_target]).
+## Returns the local result, or −1 if the item is not equippable or the slot is empty.
 func activate_item(at: Vector2i) -> int:
 	if _inventory == null or _inventory.get_view() == null:
 		return -1
@@ -228,16 +228,16 @@ func activate_item(at: Vector2i) -> int:
 	return _inventory.request(_inventory.make_move(at, target))
 
 
-## Un arrastre desde [param from] acabó sin que nadie lo recogiera: si el ratón está fuera de las ventanas, se
-## pide confirmación para destruirlo ([method drop_outside]).
+## A drag from [param from] ended without anyone picking it up: if the mouse is outside the windows,
+## confirmation is asked to destroy it ([method drop_outside]).
 func handle_drag_cancelled(from: Vector2i) -> bool:
 	if is_over_drop_zone(get_global_mouse_position()):
 		return false
 	return drop_outside(from)
 
 
-## Soltar lo de [param from] fuera de las ventanas: si la destrucción de toda la pila vale, abre la confirmación
-## y devuelve true; si no, avisa del motivo y devuelve false.
+## Drops what is at [param from] outside the windows: if destroying the whole stack is valid, opens the confirmation
+## and returns true; if not, notifies the reason and returns false.
 func drop_outside(from: Vector2i) -> bool:
 	if _inventory == null or _inventory.get_view() == null:
 		return false
@@ -258,12 +258,12 @@ func drop_outside(from: Vector2i) -> bool:
 	return true
 
 
-## «¿Destruir Poción de vida ×3?» (la cantidad solo en lo que se apila).
+## "¿Destruir Poción de vida ×3?" (Destroy Health Potion ×3?) (the quantity only for what stacks).
 static func destroy_question(item: ItemInstance, db: ItemDatabase = null) -> String:
 	return TEXT_DESTROY_QUESTION % _display_name(item, db)
 
 
-## true si [param point] (pantalla) cae dentro de esta ventana o de una de [method add_drop_zone] visibles.
+## true if [param point] (screen) falls inside this window or one of the visible [method add_drop_zone] ones.
 func is_over_drop_zone(point: Vector2) -> bool:
 	var zones: Array[Control] = [self]
 	zones.append_array(_drop_zones)
@@ -273,7 +273,7 @@ func is_over_drop_zone(point: Vector2) -> bool:
 	return false
 
 
-# --- Interno ------------------------------------------------------------------------------------
+# --- Internal -------------------------------------------------------------------------------------
 
 func _on_split_confirmed(amount: int) -> void:
 	if _inventory == null or _split_from.x < 0:
@@ -326,7 +326,7 @@ func _refresh_wallet() -> void:
 	_merits_label.text = "%s: %s" % [Currency.display_name(Currency.Code.MERITS), _thousands(merits)]
 
 
-## [param value] con puntos de millar («1.250.000»).
+## [param value] with thousands separators ("1.250.000").
 static func _thousands(value: int) -> String:
 	var digits: String = str(absi(value))
 	var groups: PackedStringArray = PackedStringArray()

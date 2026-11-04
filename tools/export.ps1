@@ -53,15 +53,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Escribe el mensaje en la salida de error y termina con ese código (Write-Error con 'Stop' saldría
-# siempre con 1).
+# Writes the message to the error output and exits with that code (Write-Error with 'Stop' would
+# always exit with 1).
 function Fail {
 	param([string]$Message, [int]$Code)
 	[Console]::Error.WriteLine($Message)
 	exit $Code
 }
 
-# Nombres de los presets (los de export_presets.cfg; test_export_config.gd comprueba que coinciden).
+# Preset names (those in export_presets.cfg; test_export_config.gd checks that they match).
 $ClientPreset = 'Cliente Windows'
 $ServerPreset = 'Servidor Linux'
 $ClientOut = 'exports/windows/Eldmark.exe'
@@ -71,7 +71,7 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $Root
 $Mode = if ($DebugBuild) { 'debug' } else { 'release' }
 
-# Busca el ejecutable de Godot: GODOT, el PATH y la instalación de winget (consola de 4.7.2).
+# Finds the Godot executable: GODOT, the PATH and the winget install (4.7.2 console).
 function Find-Godot {
 	if ($env:GODOT) { return $env:GODOT }
 	$command = Get-Command godot -ErrorAction SilentlyContinue
@@ -86,10 +86,10 @@ if (-not $Godot) {
 	Fail 'No se encuentra Godot. Instala Godot 4.7.2 o indica su ruta con la variable de entorno GODOT.' 2
 }
 
-# Versión de Godot ("4.7.2.stable.official.xxxx" -> "4.7.2.stable") y carpeta de sus plantillas.
+# Godot version ("4.7.2.stable.official.xxxx" -> "4.7.2.stable") and its templates folder.
 $GodotVersion = (& $Godot --version | Select-Object -First 1).Trim()
 $TemplateVersion = ($GodotVersion -split '\.')[0..3] -join '.'
-# (En Windows PowerShell 5.1 $IsLinux y $IsMacOS no existen y valen $null: cae en Windows.)
+# (In Windows PowerShell 5.1 $IsLinux and $IsMacOS do not exist and are $null: falls through to Windows.)
 if ($IsLinux) {
 	$DataBase = $env:XDG_DATA_HOME
 	if (-not $DataBase) { $DataBase = Join-Path $HOME '.local/share' }
@@ -101,7 +101,7 @@ if ($IsLinux) {
 }
 $TemplatesDir = Join-Path $DataHome "export_templates/$TemplateVersion"
 
-# Ejecuta un comando (o solo lo muestra con -DryRun) y falla si termina con error.
+# Runs a command (or only prints it with -DryRun) and fails if it exits with an error.
 function Invoke-Step {
 	param([string]$Exe, [string[]]$Arguments)
 	$shown = ($Arguments | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
@@ -127,7 +127,7 @@ Para comprobar solo los filtros de los presets, sin plantillas: tools\export.ps1
 	}
 }
 
-# Los .res del terreno van por Git LFS: si son punteros, la exportación saldría rota.
+# The terrain .res files go through Git LFS: if they are pointers, the export would come out broken.
 $Sample = Join-Path $Root 'scenes/world/zones/vado_gris/terrain/terrain3d_00_00.res'
 if (Test-Path $Sample) {
 	$head = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($Sample)[0..63])
@@ -141,12 +141,12 @@ if (-not $PackOnly -and -not $DryRun) {
 	if ($Target -in 'server', 'all') { Test-Templates "linux_${Mode}*" 'Linux' }
 }
 
-# Identificador de la compilación (git describe), que se guarda junto a lo exportado.
+# Build identifier (git describe), stored next to the exported files.
 try { $BuildId = (git describe --tags --always --dirty 2>$null) } catch { $BuildId = $null }
 if (-not $BuildId) { $BuildId = 'desconocido' }
 Write-Host "Godot $GodotVersion · compilación $BuildId · destino: $Target ($Mode)"
 
-# Importa los recursos (deja al día la caché .godot/ que usa la exportación).
+# Imports the resources (brings the .godot/ cache that the export uses up to date).
 Invoke-Step $Godot @('--headless', '--path', $Root, '--import')
 
 function Export-Preset {
@@ -179,12 +179,12 @@ if ($Target -in 'client', 'all') {
 if ($Target -in 'server', 'all') {
 	Export-Preset $ServerPreset $ServerOut
 	if (-not $DryRun) {
-		# El servidor dedicado se ejecuta siempre sin ventana: el lanzador pone --headless y pasa el
-		# resto de las opciones (--zone, --port, --max-players...) detrás de --server. Con finales de
-		# línea LF, que es lo que espera bash.
+		# The dedicated server always runs without a window: the launcher adds --headless and passes the
+		# remaining options (--zone, --port, --max-players...) after --server. With LF line endings,
+		# which is what bash expects.
 		$launcher = @'
 #!/usr/bin/env bash
-# Lanza el servidor dedicado de Eldmark: ./run-server.sh --zone=vado_gris --port=24600
+# Launches the Eldmark dedicated server: ./run-server.sh --zone=vado_gris --port=24600
 cd "$(dirname "${BASH_SOURCE[0]}")"
 exec ./eldmark-server.x86_64 --headless -- --server "$@"
 '@

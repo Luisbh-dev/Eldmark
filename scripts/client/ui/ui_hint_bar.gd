@@ -1,17 +1,17 @@
 class_name UIHintBar
 extends HBoxContainer
-## Línea de ayuda de controles (UI-09): una fila de pares «tecla + texto» con el glifo real de cada
-## acción ([UIKeyGlyph]) en lugar de texto fijo. La usa el HUD en la parte baja de la pantalla.
+## Controls help line (UI-09): a row of "key + text" pairs with the real glyph of each action
+## ([UIKeyGlyph]) instead of fixed text. The HUD uses it at the bottom of the screen.
 ## [br][br]
-## Cada pista es un diccionario [code]{"action": StringName, "text": String}[/code] y, opcionalmente,
-## [code]"glyph"[/code], un texto que sustituye al glifo de la acción («Rueda» para el zoom, que son
-## dos acciones). [method set_hints] reconstruye la fila; [method refresh] solo vuelve a leer las
-## teclas ([method UIKeyGlyph.refresh_all] también las alcanza).
+## Each hint is a dictionary [code]{"action": StringName, "text": String}[/code] and, optionally,
+## [code]"glyph"[/code], a text that replaces the action's glyph ("Rueda" (Wheel) for zoom, which is two
+## actions). [method set_hints] rebuilds the row; [method refresh] only rereads the keys
+## ([method UIKeyGlyph.refresh_all] also reaches them).
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Pistas del HUD: las teclas del sandbox y del cliente en red. Sin «Soltar ratón» (Esc) ni «Depuración» (F3): la línea
-## ya no pasa de una docena de atajos (UI-49).
+## HUD hints: the keys of the sandbox and of the networked client. Without "Soltar ratón" (Release mouse)
+## (Esc) or "Depuración" (Debug) (F3): the line no longer exceeds a dozen shortcuts (UI-49).
 const DEFAULT_HINTS: Array[Dictionary] = [
 	{"action": &"free_cursor", "text": "Liberar cursor"},
 	{"action": &"shoulder_swap", "text": "Cambiar hombro"},
@@ -33,7 +33,7 @@ func _ready() -> void:
 		set_hints(DEFAULT_HINTS)
 
 
-## Rehace la fila con [param hints] (ver la documentación de la clase).
+## Rebuilds the row with [param hints] (see the class documentation).
 func set_hints(hints: Array[Dictionary]) -> void:
 	for child: Node in get_children():
 		remove_child(child)
@@ -57,24 +57,24 @@ func set_hints(hints: Array[Dictionary]) -> void:
 		_texts.append(label)
 
 
-## Vuelve a leer las teclas asignadas.
+## Rereads the assigned keys.
 func refresh() -> void:
 	for glyph: UIKeyGlyph in _glyphs:
 		glyph.refresh()
 
 
-## Número de pistas.
+## Number of hints.
 func get_hint_count() -> int:
 	return _hints.size()
 
 
-## Glifos de la fila, en orden.
+## Glyphs of the row, in order.
 func get_glyphs() -> Array[UIKeyGlyph]:
 	return _glyphs
 
 
-## La fila como texto plano («Alt: Liberar cursor · Esc: Soltar ratón...»), para pruebas y
-## lectores de pantalla.
+## The row as plain text ("Alt: Liberar cursor · Esc: Soltar ratón..." (Alt: Free cursor · Esc: Release
+## mouse...)), for tests and screen readers.
 func get_plain_text() -> String:
 	var parts: PackedStringArray = PackedStringArray()
 	for index: int in _glyphs.size():

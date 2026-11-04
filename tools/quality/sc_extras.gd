@@ -1,7 +1,7 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área interfaz (escenario de online_driver.gd).
+## Quality capture bench (TEC-50), interfaz area (scenario of online_driver.gd).
 ##
-## Marcador Tab con jugadores, barra de jefe y aviso de derribado.
+## Tab scoreboard with players, boss bar and knocked-down notice.
 
 var d: Variant
 
@@ -11,7 +11,7 @@ func run(drv: Variant) -> void:
 	if not await d.enter_world():
 		return
 	await d.wait(1.5)
-	# Marcador (Tab) con los bots dentro, en tres momentos.
+	# Scoreboard (Tab) with the bots in it, at three moments.
 	for i: int in (0 if String(d.tag).ends_with("_boss") else 3):
 		await d.ensure_alive()
 		await d.tp(0.0, -134.0, 180.0, 4.0, NAN, 1.0)
@@ -20,7 +20,7 @@ func run(drv: Variant) -> void:
 		await d.shot("interfaz/marcador_tab_%d.png" % (i + 1), "marcador de la zona (Tab mantenido), toma %d" % (i + 1), "InputEventKey Tab mantenido")
 		d.key_up(KEY_TAB)
 		await d.wait_healing(18.0 if i < 2 else 0.5)
-	# Barra de jefe: pelea contra el Capitán del Vado.
+	# Boss bar: fight against the Ford Captain.
 	await d.ensure_alive()
 	d.cmd(NetProtocol.DEBUG_FORT_RESET)
 	await d.wait_healing(2.0)
@@ -54,7 +54,7 @@ func run(drv: Variant) -> void:
 			await d.shot("interfaz/barra_de_jefe_%02d.png" % shots, "pelea contra el Capitán del Vado con su barra de jefe (%d)" % shots, "cliente atacando al capitán")
 		await d.frames(1)
 	d.release_all()
-	# Derribado visto desde el HUD.
+	# Knocked down as seen from the HUD.
 	await d.ensure_alive()
 	d.cmd(NetProtocol.DEBUG_DOWN)
 	await d.wait(1.5)

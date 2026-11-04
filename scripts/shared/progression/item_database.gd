@@ -1,51 +1,55 @@
 class_name ItemDatabase
 extends RefCounted
-## Las definiciones de objetos (docs/progresion.md §2.2, PRG-02): lee [code]data/items/[/code] (con
-## subcarpetas) una vez, con carga perezosa como [CombatCatalog], tolera los [code].tres.remap[/code] de un
-## proyecto exportado y registra sus errores una sola vez ([method shared]).
+## The item definitions (docs/progresion.md §2.2, PRG-02): reads [code]data/items/[/code] (with
+## subfolders) once, lazily like [CombatCatalog], tolerates the [code].tres.remap[/code] files of
+## an exported project and logs its errors only once ([method shared]).
 ## [br][br]
-## [b]Net id.[/b] 1..n por orden alfabético de [member ItemDefinition.id]; 0 = ninguno. Cambia al añadir
-## objetos: solo viaja hacia el dueño y nunca se guarda (la base de datos guarda el [code]id[/code]).
-## [b]Huella.[/b] [method wire_hash], u32 del SHA-256 de la lista ordenada
-## [code](id, net_id, category, equip_slot, max_stack, has_durability)[/code]; entra en el
-## [code]sim_hash[/code] (§12) para que un cliente con otro catálogo no interprete mal los net ids.
-## [b]Búsquedas.[/b] [method for_ref] da el objeto de un arma o un consumible de [CombatCatalog] (en la fase 5
-## hay uno por cada uno; dos son un error) y [method consumable_definition], el del consumible de cada botón.
+## [b]Net id.[/b] 1..n in alphabetical order of [member ItemDefinition.id]; 0 = none. It changes
+## when items are added: it only travels to the owner and is never stored (the database stores the
+## [code]id[/code]).
+## [b]Fingerprint.[/b] [method wire_hash], u32 of the SHA-256 of the sorted list
+## [code](id, net_id, category, equip_slot, max_stack, has_durability)[/code]; it enters the
+## [code]sim_hash[/code] (§12) so that a client with a different catalog does not misinterpret the
+## net ids.
+## [b]Lookups.[/b] [method for_ref] gives the item of a [CombatCatalog] weapon or consumable (in
+## phase 5 there is one for each; two is an error) and [method consumable_definition], the
+## consumable of each button.
 ## [br][br]
-## [b]Coherencia[/b] ([member errors], §2.1): ids con formato y sin repetir, nombre no vacío, enumerados en
-## rango, pila de 1 a 999 (1 si es equipable o lleva durabilidad), nivel requerido dentro de la curva, valor
-## no negativo, [member ItemDefinition.camp_refill] que cabe en una pila; WEAPON ⇒ ranura WEAPON y
-## [code]ref_id[/code] de un arma del catálogo de combate; ARMOR ⇒ ranura de HEAD a FEET; CONSUMABLE ⇒ sin
-## ranura y [code]ref_id[/code] de un consumible; el resto, sin ranura ni [code]ref_id[/code]; icono bajo
-## [code]res://assets/icons/items/[/code] y escenas solo en las armaduras. Lo exporta
-## [ProgressionRulesExport] (sección [code]items[/code]). Compartido: sin reloj ni azar.
+## [b]Consistency[/b] ([member errors], §2.1): ids with the right format and unique, non-empty
+## name, enums in range, stack from 1 to 999 (1 if equippable or has durability), required level
+## within the curve, non-negative value, [member ItemDefinition.camp_refill] that fits in a stack;
+## WEAPON ⇒ WEAPON slot and [code]ref_id[/code] of a weapon in the combat catalog; ARMOR ⇒ slot
+## from HEAD to FEET; CONSUMABLE ⇒ no slot and [code]ref_id[/code] of a consumable; the rest, no
+## slot and no [code]ref_id[/code]; icon under [code]res://assets/icons/items/[/code] and scenes
+## only on armor. Exported by [ProgressionRulesExport] ([code]items[/code] section). Shared: no
+## clock, no randomness.
 
-## Carpeta de los datos.
+## Data folder.
 const DATA_DIR: String = "res://data/items"
-## Tope de definiciones: el net id viaja en u16.
+## Cap on definitions: the net id travels in a u16.
 const MAX_DEFINITIONS: int = 0xFFFF
-## Prefijo de los iconos.
+## Prefix of icons.
 const ICON_PREFIX: String = "res://assets/icons/items/"
-## Prefijo de las escenas de las armaduras.
+## Prefix of armor scenes.
 const VISUAL_PREFIX: String = "res://assets/"
 
-## Problemas de los datos (vacío si todo vale).
+## Problems with the data (empty if everything is valid).
 var errors: PackedStringArray = PackedStringArray()
 
-# Definiciones por net id − 1 (orden alfabético).
+# Definitions by net id − 1 (alphabetical order).
 var _definitions: Array[ItemDefinition] = []
 var _net_ids: Dictionary[StringName, int] = {}
-# "categoría/ref_id" → definición.
+# "category/ref_id" → definition.
 var _by_ref: Dictionary[String, ItemDefinition] = {}
-# Definición del consumible de cada botón (índice de CombatCatalog.consumable_ids()).
+# Definition of each button's consumable (index of CombatCatalog.consumable_ids()).
 var _consumables: Array[ItemDefinition] = []
 var _wire_hash: int = 0
 
 static var _shared: ItemDatabase = null
 
 
-## La base de [constant DATA_DIR], cargada la primera vez que se pide. Sus errores se registran con
-## [code]push_error[/code] una sola vez.
+## The database of [constant DATA_DIR], loaded the first time it is requested. Its errors are
+## logged with [code]push_error[/code] only once.
 static func shared() -> ItemDatabase:
 	if _shared == null:
 		_shared = build_from_directory(DATA_DIR)
@@ -54,9 +58,9 @@ static func shared() -> ItemDatabase:
 	return _shared
 
 
-## Lee los [code].tres[/code] de [param dir] y de sus subcarpetas y construye la base con
-## [method build_from_definitions] y el catálogo de combate compartido. Un recurso que no se carga o que
-## no es una [ItemDefinition] cuenta como error. No registra errores en el motor.
+## Reads the [code].tres[/code] files in [param dir] and its subfolders and builds the database
+## with [method build_from_definitions] and the shared combat catalog. A resource that fails to
+## load or is not an [ItemDefinition] counts as an error. It logs no engine errors.
 static func build_from_directory(dir: String) -> ItemDatabase:
 	var load_errors := PackedStringArray()
 	var definitions: Array[ItemDefinition] = []
@@ -75,15 +79,16 @@ static func build_from_directory(dir: String) -> ItemDatabase:
 	return db
 
 
-## Construye la base con [param definitions] (en cualquier orden), comprobando los [code]ref_id[/code] con
-## [param combat] (null = [method CombatCatalog.tables]). Un id repetido se avisa y se queda el que llega
-## antes en [param definitions]. No registra errores en el motor: quedan en [member errors].
+## Builds the database with [param definitions] (in any order), checking the [code]ref_id[/code]s
+## against [param combat] (null = [method CombatCatalog.tables]). A repeated id is reported and the
+## one that comes first in [param definitions] is kept. It logs no engine errors: they stay in
+## [member errors].
 static func build_from_definitions(definitions: Array[ItemDefinition],
 		combat: CombatTables = null) -> ItemDatabase:
 	if combat == null:
 		combat = CombatCatalog.tables()
 	var db := ItemDatabase.new()
-	# Orden alfabético por id y, entre ids iguales, el de llegada (sort_custom no es estable).
+	# Alphabetical order by id and, among equal ids, arrival order (sort_custom is not stable).
 	var order: Array[int] = []
 	for i: int in range(definitions.size()):
 		if definitions[i] != null:
@@ -121,41 +126,41 @@ static func build_from_definitions(definitions: Array[ItemDefinition],
 	return db
 
 
-## La definición con id [param id], o null.
+## The definition with id [param id], or null.
 func get_definition(id: StringName) -> ItemDefinition:
 	var net_id: int = _net_ids.get(id, 0)
 	return _definitions[net_id - 1] if net_id > 0 else null
 
 
-## Net id de [param id] (1..n por orden alfabético), o 0 si no existe.
+## Net id of [param id] (1..n in alphabetical order), or 0 if it does not exist.
 func net_id_of(id: StringName) -> int:
 	return _net_ids.get(id, 0)
 
 
-## La definición con net id [param net_id], o null (0 o fuera de rango).
+## The definition with net id [param net_id], or null (0 or out of range).
 func definition_by_net_id(net_id: int) -> ItemDefinition:
 	if net_id < 1 or net_id > _definitions.size():
 		return null
 	return _definitions[net_id - 1]
 
 
-## El objeto del arma ([code]Category.WEAPON[/code]) o del consumible ([code]Category.CONSUMABLE[/code])
-## con id [param ref_id] en [CombatCatalog], o null.
+## The item of the weapon ([code]Category.WEAPON[/code]) or consumable
+## ([code]Category.CONSUMABLE[/code]) with id [param ref_id] in [CombatCatalog], or null.
 func for_ref(category: int, ref_id: StringName) -> ItemDefinition:
 	if ref_id == &"":
 		return null
 	return _by_ref.get(_ref_key(category, ref_id), null)
 
 
-## El objeto del consumible [param index] de [method CombatCatalog.consumable_ids] (0 vida, R; 1
-## resistencia, T), o null.
+## The item of consumable [param index] of [method CombatCatalog.consumable_ids] (0 health, R; 1
+## stamina, T), or null.
 func consumable_definition(index: int) -> ItemDefinition:
 	if index < 0 or index >= _consumables.size():
 		return null
 	return _consumables[index]
 
 
-## Los ids de todas las definiciones, en orden de net id (alfabético).
+## The ids of all definitions, in net id order (alphabetical).
 func all_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for definition: ItemDefinition in _definitions:
@@ -163,15 +168,15 @@ func all_ids() -> Array[StringName]:
 	return ids
 
 
-## Huella u32 de lo que da sentido a los net ids (§2.2): entra en el [code]sim_hash[/code].
+## u32 fingerprint of what gives the net ids meaning (§2.2): it enters the [code]sim_hash[/code].
 func wire_hash() -> int:
 	return _wire_hash
 
 
-# --- Construcción ------------------------------------------------------------------------------
+# --- Construction ------------------------------------------------------------------------------
 
-# Rutas de los recursos de [param dir] y sus subcarpetas, ordenadas (sin el .remap de un proyecto
-# exportado, y una sola vez aunque estén los dos).
+# Paths of the resources in [param dir] and its subfolders, sorted (without the .remap of an
+# exported project, and only once even if both are present).
 static func _resource_paths(dir: String) -> PackedStringArray:
 	var paths := PackedStringArray()
 	if not DirAccess.dir_exists_absolute(dir):
@@ -187,7 +192,7 @@ static func _resource_paths(dir: String) -> PackedStringArray:
 	return paths
 
 
-# Las reglas de §2.1 de una definición; los problemas van a errors.
+# The §2.1 rules for a definition; problems go to errors.
 func _check_definition(definition: ItemDefinition, combat: CombatTables,
 		consumable_refs: Dictionary[StringName, int]) -> void:
 	var label: String = "objeto %s" % definition.id
@@ -243,7 +248,8 @@ func _check_definition(definition: ItemDefinition, combat: CombatTables,
 			errors.append("%s: la escena '%s' no está en %s" % [label, path, VISUAL_PREFIX])
 
 
-# Anota el objeto de su arma o consumible; dos para el mismo son un error (en la fase 5 hay uno).
+# Records the item of its weapon or consumable; two for the same one is an error (in phase 5
+# there is one).
 func _index_ref(definition: ItemDefinition) -> void:
 	if definition.ref_id == &"" or (definition.category != ItemDefinition.Category.WEAPON
 			and definition.category != ItemDefinition.Category.CONSUMABLE):
@@ -259,7 +265,7 @@ static func _ref_key(category: int, ref_id: StringName) -> String:
 	return "%d/%s" % [category, ref_id]
 
 
-# SHA-256 de la lista de §2.2 en orden de net id: los 4 primeros bytes como u32.
+# SHA-256 of the §2.2 list in net id order: the first 4 bytes as a u32.
 func _compute_wire_hash() -> int:
 	var parts: Array = []
 	for i: int in range(_definitions.size()):

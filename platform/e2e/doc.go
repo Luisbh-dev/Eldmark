@@ -1,15 +1,15 @@
-// Package e2e son las pruebas de extremo a extremo de la plataforma (plataforma.md P10, §15): la plataforma
-// de verdad en el proceso de la prueba, con un PostgreSQL efímero (internal/testdb), y procesos de Godot de
-// verdad (una zona test_world con --platform y bots con cuenta).
+// Package e2e holds the platform's end-to-end tests (plataforma.md P10, §15): the real platform in
+// the test process, with an ephemeral PostgreSQL (internal/testdb), and real Godot processes (a
+// test_world zone with --platform and bots with an account).
 //
-// Las pruebas llevan la etiqueta de compilación e2e, así que «go test ./...» no las ve:
+// The tests carry the e2e build tag, so "go test ./..." does not see them:
 //
-//	cd platform && ELDMARK_GODOT=<ruta de Godot 4.7.2> go test -tags e2e -count=1 -v ./e2e
+//	cd platform && ELDMARK_GODOT=<path to Godot 4.7.2> go test -tags e2e -count=1 -v ./e2e
 //
-// Sin ELDMARK_GODOT se saltan (con ELDMARK_REQUIRE_GODOT=1, la CI, fallan). TestMain importa el proyecto
-// una vez (godot --headless --import, con los objetos de LFS ya bajados). ELDMARK_E2E_ARTIFACTS=<carpeta>
-// conserva allí los registros de cada prueba (la plataforma, las zonas, los bots y sus informes); sin ella
-// van a una carpeta temporal y, si la prueba falla, se copia el final de cada uno en su salida.
-// progress_test.go (progresion.md P8) usa el mismo arnés para el inventario, los saldos y la caída con operaciones
-// de la economía.
+// Without ELDMARK_GODOT they are skipped (with ELDMARK_REQUIRE_GODOT=1, CI, they fail). TestMain
+// imports the project once (godot --headless --import, with the LFS objects already downloaded).
+// ELDMARK_E2E_ARTIFACTS=<folder> keeps the logs of each test there (the platform, the zones, the
+// bots and their reports); without it they go to a temporary folder and, if the test fails, the end
+// of each one is copied to its output. progress_test.go (progresion.md P8) uses the same harness for
+// the inventory, the balances and the crash with economy operations.
 package e2e

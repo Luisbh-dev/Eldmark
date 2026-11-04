@@ -1,19 +1,19 @@
-"""Quita la cuña del cuello del traje Ranger que asoma por la nuca de la cabeza Superhero.
+"""Removes the neck wedge of the Ranger outfit that peeks out at the nape of the Superhero head.
 
-El traje Male_Ranger (Modular Character Outfits - Fantasy) está pensado para el cuerpo Regular;
-con la cabeza Superhero que usa Eldmark, la parte trasera del cuello de Male_Ranger_Body sube por
-encima del borde del jubón (y = 1,52-1,60 m) por fuera de la piel de la nuca y se ve como una
-cuña parda justo donde mira la cámara al hombro. Ese trozo queda siempre dentro o detrás del
-cuello de la cabeza, así que sus triángulos se anulan (los tres índices apuntan al mismo
-vértice: triángulo degenerado, que no se dibuja). No se mueven vértices ni cambia el número de
-índices: solo cambia el búfer de índices de Male_Ranger_Body en Male_Ranger.bin.
+The Male_Ranger outfit (Modular Character Outfits - Fantasy) is designed for the Regular body;
+with the Superhero head that Eldmark uses, the back of Male_Ranger_Body's neck rises above
+the edge of the doublet (y = 1.52-1.60 m) on the outside of the nape skin and shows up as a
+brown wedge right where the over-the-shoulder camera looks. That piece is always inside or behind the
+head's neck, so its triangles are nullified (all three indices point to the same
+vertex: a degenerate triangle, which is not drawn). No vertices are moved and the number of
+indices does not change: only Male_Ranger_Body's index buffer in Male_Ranger.bin changes.
 
-Es idempotente (repetirlo no cambia nada). Uso, desde la raíz del repo:
+It is idempotent (repeating it changes nothing). Usage, from the repo root:
 
     python -I tools/assets/fix_ranger_collar.py
 
-Después hay que forzar la reimportación del .gltf (Godot no vigila el .bin): borrar
-.godot/imported/Male_Ranger.gltf-* y ejecutar godot --headless --path . --import.
+Afterwards you have to force a re-import of the .gltf (Godot does not watch the .bin): delete
+.godot/imported/Male_Ranger.gltf-* and run godot --headless --path . --import.
 """
 
 import json
@@ -24,9 +24,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 OUTFIT = ROOT / "assets/models/characters/outfits/ranger/Male_Ranger"
 BODY_MESH = "Male_Ranger_Body"
-# Zona de la cuña: por encima del borde del cuello del jubón (y = 1,506-1,509, que se queda
-# porque tapa la costura de la cabeza), en la mitad trasera (el modelo mira hacia +Z) y cerca
-# del eje.
+# Wedge zone: above the edge of the doublet's collar (y = 1.506-1.509, which stays
+# because it covers the head seam), in the back half (the model faces +Z) and near
+# the axis.
 MIN_Y = 1.513
 MAX_Z = -0.06
 MAX_ABS_X = 0.08

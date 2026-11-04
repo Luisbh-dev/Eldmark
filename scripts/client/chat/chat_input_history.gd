@@ -1,20 +1,18 @@
 class_name ChatInputHistory
 extends RefCounted
-## Historial de lo que ha escrito el jugador en la línea del chat (SOC-05): flecha arriba recorre las
-## líneas enviadas de la más nueva a la más vieja y flecha abajo vuelve hacia la que se estaba escribiendo
-## (el borrador). Es solo datos.
+## History of what the player has typed on the chat line (SOC-05): up arrow walks through the sent
+## lines from newest to oldest and down arrow goes back toward the one being typed (the draft). It is data only.
 
-## Líneas como mucho que recuerda.
+## Maximum lines it remembers.
 const MAX_ENTRIES: int = 50
 
 var _entries: PackedStringArray = PackedStringArray()
-## Posición en [member _entries] (-1 = el borrador).
+## Position in [member _entries] (-1 = the draft).
 var _cursor: int = -1
 var _draft: String = ""
 
 
-## Recuerda la línea enviada [param line] (se ignora si está vacía o es igual a la última) y vuelve al
-## borrador.
+## Remembers the sent line [param line] (ignored if empty or equal to the last one) and returns to the draft.
 func remember(line: String) -> void:
 	_cursor = -1
 	_draft = ""
@@ -28,14 +26,14 @@ func remember(line: String) -> void:
 		_entries.remove_at(0)
 
 
-## Vuelve al borrador sin recordar nada (al abrir o cerrar la línea).
+## Returns to the draft without remembering anything (when opening or closing the line).
 func reset() -> void:
 	_cursor = -1
 	_draft = ""
 
 
-## La línea anterior a la mostrada. Si se estaba escribiendo ([param current_text]), eso queda de
-## borrador. Devuelve [param current_text] si no hay historial.
+## The line before the one shown. If one was being typed ([param current_text]), that is kept as
+## the draft. Returns [param current_text] if there is no history.
 func previous(current_text: String) -> String:
 	if _entries.is_empty():
 		return current_text
@@ -47,8 +45,8 @@ func previous(current_text: String) -> String:
 	return _entries[_cursor]
 
 
-## La línea siguiente a la mostrada; tras la más nueva, el borrador. Sin haber subido antes, no cambia
-## nada ([param current_text]).
+## The line after the one shown; after the newest, the draft. If one has not gone up first, it
+## changes nothing ([param current_text]).
 func next(current_text: String) -> String:
 	if _cursor < 0:
 		return current_text

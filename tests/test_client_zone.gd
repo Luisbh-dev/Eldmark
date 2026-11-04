@@ -1,15 +1,15 @@
 extends TestCase
-## Pruebas del cliente ([ClientMain]) arrancando en una zona real, headless.
+## Tests for the client ([ClientMain]) starting in a real zone, headless.
 ##
-## Comprueban lo que hace [code]boot.gd[/code] con [code]--zone=[/code] y [code]--realm=[/code]:
-## que el personaje aparece en el punto de su reino, cae sobre el terreno de Terrain3D y se queda
-## allí, que lleva el humanoide animado en lugar de la cápsula provisional, y que el terreno
-## recibe la cámara del cliente (ZoneRoot). La escena compartida player_character.tscn no cambia:
-## el visual se añade solo en el cliente.
+## They check what [code]boot.gd[/code] does with [code]--zone=[/code] and [code]--realm=[/code]:
+## that the character appears at the point of its realm, falls onto the Terrain3D terrain and stays
+## there, that it carries the animated humanoid instead of the provisional capsule, and that the terrain
+## receives the client camera (ZoneRoot). The shared scene player_character.tscn does not change:
+## the visual is added only on the client.
 
 const CLIENT_MAIN_SCENE: String = "res://scenes/client/client_main.tscn"
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
-## Ticks de física que se deja correr al cliente antes de comprobar el aterrizaje.
+## Physics ticks the client is allowed to run before checking the landing.
 const SETTLE_TICKS: int = 45
 
 var _client: ClientMain
@@ -48,23 +48,23 @@ func test_client_uses_humanoid_visual_instead_of_capsule() -> void:
 	_client = _start_client(&"vado_gris", &"vardheim")
 	await wait_process_frames(2)
 	var character: PlayerCharacter = _client.get_character()
-	if not assert_not_null(character, "hay personaje"):
+	if not assert_not_null(character, "there is a character"):
 		return
 	var visual_root: Node3D = character.get_node_or_null(^"Visual") as Node3D
-	if not assert_not_null(visual_root, "el personaje conserva su nodo Visual"):
+	if not assert_not_null(visual_root, "the character keeps its Visual node"):
 		return
 	var visual: HumanoidVisual = _client.get_visual()
-	if not assert_not_null(visual, "el cliente instala el humanoide"):
+	if not assert_not_null(visual, "the client installs the humanoid"):
 		return
-	assert_eq(visual.get_parent(), visual_root, "el humanoide cuelga de Visual (la cámara lo oculta de cerca)")
-	assert_not_null(visual.get_skeleton(), "el humanoide tiene esqueleto")
+	assert_eq(visual.get_parent(), visual_root, "the humanoid hangs from Visual (the camera hides it up close)")
+	assert_not_null(visual.get_skeleton(), "the humanoid has a skeleton")
 	for child: Node in visual_root.get_children():
-		assert_false(child is MeshInstance3D, "la malla provisional %s ya no está" % child.name)
-	assert_eq(visual.get_animator().get_debug_state().is_empty(), false, "el animador funciona")
-	# La escena compartida sigue siendo ligera: sin humanoide ni animaciones.
+		assert_false(child is MeshInstance3D, "the provisional mesh %s is gone" % child.name)
+	assert_eq(visual.get_animator().get_debug_state().is_empty(), false, "the animator works")
+	# The shared scene stays lightweight: no humanoid or animations.
 	var shared: Node = (load(CHARACTER_SCENE_PATH) as PackedScene).instantiate()
 	assert_eq(_count_of_type(shared, "AnimationTree") + _count_of_type(shared, "Skeleton3D"), 0,
-			"player_character.tscn no lleva esqueleto ni animaciones (la carga el servidor)")
+			"player_character.tscn carries no skeleton or animations (the server loads it)")
 	shared.free()
 
 
@@ -73,13 +73,13 @@ func test_test_world_still_boots_at_its_first_spawn() -> void:
 	await wait_physics_frames(SETTLE_TICKS)
 	var world: Node = _client.get_world()
 	var character: PlayerCharacter = _client.get_character()
-	if not (assert_not_null(world, "carga test_world") and assert_not_null(character, "hay personaje")):
+	if not (assert_not_null(world, "loads test_world") and assert_not_null(character, "there is a character")):
 		return
 	var first: Node3D = Zones.get_spawn_points(world)[0]
 	var moved: Vector3 = character.global_position - first.global_position
-	assert_true(Vector2(moved.x, moved.z).length() < 0.05, "aparece en el primer punto de test_world")
-	assert_true(character.grounded, "está en el suelo")
-	assert_not_null(_client.get_visual(), "también lleva el humanoide")
+	assert_true(Vector2(moved.x, moved.z).length() < 0.05, "it appears at the first point of test_world")
+	assert_true(character.grounded, "it is on the ground")
+	assert_not_null(_client.get_visual(), "it also carries the humanoid")
 
 
 func _check_spawn_and_landing(realm: StringName) -> void:
@@ -87,29 +87,29 @@ func _check_spawn_and_landing(realm: StringName) -> void:
 	await wait_physics_frames(SETTLE_TICKS)
 	var world: Node = _client.get_world()
 	var character: PlayerCharacter = _client.get_character()
-	if not (assert_not_null(world, "carga el Vado Gris") and assert_not_null(character, "hay personaje")):
+	if not (assert_not_null(world, "loads Vado Gris") and assert_not_null(character, "there is a character")):
 		return
 	var spawn: Node3D = Zones.find_spawn_point(world, realm)
-	if not assert_not_null(spawn, "hay punto de aparición de %s" % realm):
+	if not assert_not_null(spawn, "there is a spawn point for %s" % realm):
 		return
-	assert_eq(Zones.get_spawn_realm(spawn), realm, "el punto es de %s" % realm)
+	assert_eq(Zones.get_spawn_realm(spawn), realm, "the point belongs to %s" % realm)
 	var moved: Vector3 = character.global_position - spawn.global_position
 	assert_true(Vector2(moved.x, moved.z).length() < 0.05,
-			"%s aparece en %s (desviación %.3f m)" % [realm, spawn.name, Vector2(moved.x, moved.z).length()])
+			"%s appears at %s (deviation %.3f m)" % [realm, spawn.name, Vector2(moved.x, moved.z).length()])
 	assert_near(wrapf(character.yaw - spawn.global_rotation.y, -PI, PI), 0.0, 0.01,
-			"mira hacia donde mira el punto de aparición (el fuerte)")
-	assert_true(character.grounded, "%s: está en el suelo" % realm)
+			"it faces where the spawn point faces (the fort)")
+	assert_true(character.grounded, "%s: it is on the ground" % realm)
 	var hit: Dictionary = _raycast_down(character)
-	if assert_false(hit.is_empty(), "hay terreno bajo el personaje"):
+	if assert_false(hit.is_empty(), "there is terrain under the character"):
 		assert_near(character.global_position.y, (hit["position"] as Vector3).y, 0.1,
-				"los pies quedan sobre el terreno")
-		assert_true(hit["collider"] is Terrain3D, "el suelo del campamento es el Terrain3D")
-	# En el cliente, ZoneRoot da la cámara al terreno y reactiva su proceso.
+				"the feet are on the terrain")
+		assert_true(hit["collider"] is Terrain3D, "the camp ground is the Terrain3D")
+	# On the client, ZoneRoot gives the camera to the terrain and re-enables its processing.
 	var terrain: Terrain3D = world.get_node_or_null(^"Terrain3D") as Terrain3D
-	if assert_not_null(terrain, "la zona tiene Terrain3D"):
-		assert_true(terrain.is_physics_processing(), "con cámara, el terreno vuelve a procesar")
+	if assert_not_null(terrain, "the zone has Terrain3D"):
+		assert_true(terrain.is_physics_processing(), "with a camera, the terrain processes again")
 		assert_eq(terrain.get_camera(), _client.get_camera_rig().get_camera(),
-				"el terreno sigue a la cámara de acción")
+				"the terrain follows the action camera")
 
 
 func _start_client(zone_id: StringName, realm: StringName) -> ClientMain:

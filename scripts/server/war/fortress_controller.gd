@@ -1,126 +1,134 @@
 class_name FortressController
 extends RefCounted
-## Las fortalezas de una zona en el servidor (docs/fuerte.md, secciones 1.6, 1.7, 2 y 3; GUE-08,
-## GUE-10, GUE-12 y GUE-13). Por cada nodo del grupo [code]fortresses[/code] con el metadato
-## [code]definition[/code] crea una [NetEntity] [code]STRUCTURE[/code] con
-## [constant NetEntity.FLAG_ALWAYS_RELEVANT] y lleva su [FortressState].
+## The fortresses of a zone on the server (docs/fuerte.md, sections 1.6, 1.7, 2 and 3; GUE-08,
+## GUE-10, GUE-12 and GUE-13). For each node of the [code]fortresses[/code] group with the
+## [code]definition[/code] metadata it creates a [NetEntity] [code]STRUCTURE[/code] with
+## [constant NetEntity.FLAG_ALWAYS_RELEVANT] and carries its [FortressState].
 ## [br][br]
-## [b]Cada tick[/b] ([method step], paso 4b del orden del tick, después del combate): cada 6 ticks
-## recuenta la presencia en el círculo ([FortressPresence]), avanza el estado ([method
-## FortressState.advance], que corre cada tick para que las transiciones caigan en el tick exacto) y
-## aplica sus efectos:
-## [br]- el dueño y la rotura de la puerta pasan a las capas de colisión de los dos cuerpos de la
-## puerta ([method FortGate.set_state]); el cambio vale [b]desde s + 1[/b], en el servidor y en el
-## cliente;
-## [br]- la puerta se repara al cambiar de dueño, con [code]fort_reset[/code] o tras
-## [member FortressDefinition.gate_repair_after_s] sin daño, pero [b]no mientras un personaje solape el
-## vano[/b]: el estado conserva la vida rota y la reparación se aplaza tick a tick hasta que quede libre;
-## [br]- los avisos de guerra salen por [signal war_event_emitted] en el orden en que ocurren y el
-## estado por [signal object_state_emitted] como OBJECT_STATE.
+## [b]Every tick[/b] ([method step], step 4b of the tick order, after combat): every 6 ticks it
+## recounts the presence in the circle ([FortressPresence]), advances the state ([method
+## FortressState.advance], which runs every tick so transitions land on the exact tick) and
+## applies its effects:
+## [br]- the owner and the broken state of the gate go to the collision layers of the gate's two
+## bodies ([method FortGate.set_state]); the change applies [b]from s + 1[/b], on the server and on
+## the client;
+## [br]- the gate is repaired on an owner change, with [code]fort_reset[/code] or after
+## [member FortressDefinition.gate_repair_after_s] without damage, but [b]not while a character
+## overlaps the doorway[/b]: the state keeps the broken health and the repair is postponed tick by
+## tick until it is clear;
+## [br]- the war notices go out through [signal war_event_emitted] in the order they happen and the
+## state goes out through [signal object_state_emitted] as OBJECT_STATE.
 ## [br][br]
-## [b]OBJECT_STATE[/b]: como mucho uno por fortaleza cada 6 ticks, con los campos que han cambiado
-## desde el último; [code]under_attack_until_tick[/code] solo si avanza al menos 60 ticks. Si lo que cambia
-## es la colisión de la puerta (dueño o rotura) sale [b]en ese mismo tick[/b], sin esperar al intervalo:
-## el cliente pone la capa de la puerta según el tick de cada cambio, y retrasarlo desfasaría la
-## predicción (docs/fuerte.md, sección 3.2). El alta ([method NetEntity.encode_spawn]) lleva el estado
-## completo.
+## [b]OBJECT_STATE[/b]: at most one per fortress every 6 ticks, with the fields that changed since
+## the last one; [code]under_attack_until_tick[/code] only if it advances at least 60 ticks. If what
+## changes is the gate collision (owner or broken state) it goes out [b]on that same tick[/b],
+## without waiting for the interval: the client sets the gate layer according to the tick of each
+## change, and delaying it would desync the prediction (docs/fuerte.md, section 3.2). The spawn
+## ([method NetEntity.encode_spawn]) carries the full state.
 ## [br][br]
-## [b]La puerta como blanco[/b] ([StructureTarget], docs/fuerte.md 3.3): los golpes los resuelve el
-## [CombatResolver] y los aplica el [CombatDirector], que avisa con [signal CombatDirector.structure_hit]
-## a [method on_structure_hit]; aquí se resta la vida, se avisa y se anota para el marcador.
+## [b]The gate as a target[/b] ([StructureTarget], docs/fuerte.md 3.3): hits are resolved by the
+## [CombatResolver] and applied by the [CombatDirector], which notifies [method on_structure_hit]
+## through [signal CombatDirector.structure_hit]; here the health is subtracted, a notice is sent
+## and the damage is recorded for the scoreboard.
 ## [br][br]
-## [b]Interfaz con los PNJ (paquete F4)[/b]:
-## [br]- [method get_fortress_state] da el [FortressState] vivo (dueño, fase, capitán, guardias...).
-## [br]- [method on_captain_died] cuando muere el capitán (el de los Huecos o el del dueño), y
-## [method set_guards_alive] con los guardias vivos. [method register_captain] y
-## [method register_defender] dejan que el controlador lo note solo por los DEATH y HIT del combate.
-## [br]- Las señales [signal defenders_retired] (se retiran los PNJ del dueño anterior o de los Huecos),
-## [signal garrison_due] (aparece la guarnición y el capitán del dueño actual; [code]full[/code] es false
-## si solo reaparece el capitán) y [signal guards_respawn_due] (toca reponer los guardias que faltan).
-## Al arrancar, el fuerte es neutral y está guardado por los Huecos y su Capitán: no hay señal, el
-## generador de PNJ lo lee de [method get_fortress_state].
+## [b]NPC interface (package F4)[/b]:
+## [br]- [method get_fortress_state] gives the live [FortressState] (owner, phase, captain,
+## guards...).
+## [br]- [method on_captain_died] when the captain dies (the Hollow's or the owner's), and
+## [method set_guards_alive] with the living guards. [method register_captain] and
+## [method register_defender] let the controller notice it on its own from combat DEATH and HIT.
+## [br]- The signals [signal defenders_retired] (the NPCs of the previous owner or of the Hollow
+## are withdrawn), [signal garrison_due] (the garrison and the captain of the current owner appear;
+## [code]full[/code] is false if only the captain respawns) and [signal guards_respawn_due] (time
+## to replace the missing guards). On startup, the fort is neutral and guarded by the Hollow and
+## its Captain: there is no signal, the NPC spawner reads it from [method get_fortress_state].
 ## [br][br]
-## [b]Guerra persistente[/b] (docs/plataforma.md §8, GUE-19): [method restore_state] pone el estado cargado de la
-## plataforma al arrancar ([FortressPersistence]); en cada captura de verdad, la lista de quien estaba en el círculo
-## (del reino captor, presente, vivo y conectado, sin personajes marcados con [member NetEntity.gm_forced]) suma
-## [code]captures[/code] en el [ScoreKeeper] y sale por [signal fortress_captured]; y los del reino dueño presentes
-## con el círculo activo suman [code]defend_ticks[/code]. [b]Cambio forzado[/b] (docs/progresion.md §6.2): lo que
-## provoca un comando del fuerte ([code]fort_owner[/code], [code]fort_reset[/code], [code]fort_kill_captain[/code],
-## una captura con [member FortressState.capture_rate_multiplier] distinto de 1) no suma capturas ni tiempo
-## defendiendo y [method is_forced] lo dice a quien paga recompensas (progresion.md P5c). Las recompensas
-## (progresion.md §6.2) salen de [signal fortress_captured] (la captura), [signal objective_time] (el tiempo en el
-## círculo activo de un ciclo de verdad: los méritos de objetivo) y [method fortress_of_defender] (de qué fortaleza
-## era el PNJ que muere).
+## [b]Persistent war[/b] (docs/plataforma.md §8, GUE-19): [method restore_state] sets the state
+## loaded from the platform on startup ([FortressPersistence]); on every real capture, the list of
+## those who were in the circle (of the capturing realm, present, alive and connected, without
+## characters flagged with [member NetEntity.gm_forced]) adds [code]captures[/code] in the
+## [ScoreKeeper] and goes out through [signal fortress_captured]; and those of the owning realm
+## present while the circle is active add [code]defend_ticks[/code]. [b]Forced change[/b]
+## (docs/progresion.md §6.2): whatever a fort command causes ([code]fort_owner[/code],
+## [code]fort_reset[/code], [code]fort_kill_captain[/code], a capture with
+## [member FortressState.capture_rate_multiplier] other than 1) adds no captures or defending time,
+## and [method is_forced] tells whoever pays out rewards (progresion.md P5c). The rewards
+## (progresion.md §6.2) come from [signal fortress_captured] (the capture), [signal objective_time]
+## (the time in the active circle of a real cycle: objective merits) and [method fortress_of_defender]
+## (which fortress the dying NPC belonged to).
 ## [br][br]
-## No toca la red ni el reloj: avisa con señales y recibe de quien lo lleva ([ZoneServer]) los
-## candidatos a la presencia, los cuerpos que pueden ocupar el vano y cómo matar al capitán.
+## It does not touch the network or the clock: it notifies through signals and receives from whoever
+## runs it ([ZoneServer]) the presence candidates, the bodies that may occupy the doorway and how
+## to kill the captain.
 
-## Un aviso de guerra (ENTITY_EVENT [code]WAR[/code]) que hay que mandar a toda la zona.
+## A war notice (ENTITY_EVENT [code]WAR[/code]) that must be sent to the whole zone.
 signal war_event_emitted(event: NetMessages.EntityEvent)
-## Un OBJECT_STATE que hay que mandar a toda la zona.
+## An OBJECT_STATE that must be sent to the whole zone.
 signal object_state_emitted(object_state: NetMessages.ObjectState)
-## La fortaleza cambia de manos o se reinicia: hay que retirar a los PNJ defensores que había.
+## The fortress changes hands or is reset: the defending NPCs that were there must be withdrawn.
 signal defenders_retired(fortress_id: StringName, tick: int)
-## La fortaleza vuelve a estar GARRISONED: hay que hacer aparecer a la guarnición y al capitán de
-## [param owner_realm] (los Huecos y el Capitán del Vado con el fuerte neutral). Con [param full] false
-## solo reaparece el capitán (la guarnición sigue en pie).
+## The fortress is GARRISONED again: the garrison and the captain of [param owner_realm] must be
+## spawned (the Hollow and the Ford Captain with the fort neutral). With [param full] false only
+## the captain respawns (the garrison is still standing).
 signal garrison_due(fortress_id: StringName, owner_realm: int, tick: int, full: bool)
-## Han pasado los segundos de reaparición de los guardias que faltan: hay que reponerlos y avisar con
-## [method set_guards_alive].
+## The respawn seconds of the missing guards have elapsed: they must be replaced and the change
+## reported with [method set_guards_alive].
 signal guards_respawn_due(fortress_id: StringName, tick: int)
-## Alguien golpea por primera vez la puerta entera de la fortaleza (para la telemetría).
+## Someone hits the intact gate of the fortress for the first time (for telemetry).
 signal gate_damage_started(fortress_id: StringName, tick: int)
-## [param fortress_id] ha pasado a [param owner_realm] por una captura de verdad (no forzada) en el tick
-## [param tick]: [param in_circle] es la lista de docs/plataforma.md §8 (los net_id del reino captor presentes, vivos
-## y conectados en el círculo en ese tick, sin [member NetEntity.gm_forced]), la misma que ya ha sumado
-## [code]captures[/code] en el [ScoreKeeper]. Una captura forzada no sale (progresion.md §6.2): aquí se conecta
-## [code]ProgressService.on_capture[/code] (progresion.md P5c).
+## [param fortress_id] has passed to [param owner_realm] through a real (non-forced) capture at
+## tick [param tick]: [param in_circle] is the list from docs/plataforma.md §8 (the net_ids of the
+## capturing realm present, alive and connected in the circle at that tick, without
+## [member NetEntity.gm_forced]), the same one that has already added [code]captures[/code] in the
+## [ScoreKeeper]. A forced capture is not emitted (progresion.md §6.2): this is where
+## [code]ProgressService.on_capture[/code] connects (progresion.md P5c).
 signal fortress_captured(fortress_id: StringName, owner_realm: int, in_circle: PackedInt32Array, tick: int)
-## [param ticks] más de [param net_id] en el círculo activo de [param fortress_id] (cada recuento, en el tick
-## [param tick]), de un ciclo de verdad y sin [member NetEntity.gm_forced]: el tiempo que da los méritos de objetivo
-## (docs/progresion.md §6.2; aquí se conecta [code]ProgressService.on_objective_ticks[/code], P5c). Cuenta a todos los
-## reinos presentes, como [code]circle_ticks[/code] del marcador, pero no en un ciclo forzado.
+## [param ticks] more for [param net_id] in the active circle of [param fortress_id] (each recount,
+## at tick [param tick]), in a real cycle and without [member NetEntity.gm_forced]: the time that
+## gives objective merits (docs/progresion.md §6.2; [code]ProgressService.on_objective_ticks[/code]
+## connects here, P5c). It counts all the realms present, like [code]circle_ticks[/code] of the
+## scoreboard, but not in a forced cycle.
 signal objective_time(fortress_id: StringName, net_id: int, ticks: int, tick: int)
 
-## Ticks entre dos OBJECT_STATE de una misma fortaleza.
+## Ticks between two OBJECT_STATE messages of the same fortress.
 const OBJECT_STATE_INTERVAL_TICKS: int = 6
-## Lo que debe avanzar [code]under_attack_until_tick[/code] para que merezca un OBJECT_STATE.
+## How far [code]under_attack_until_tick[/code] must advance to deserve an OBJECT_STATE.
 const UNDER_ATTACK_MIN_ADVANCE_TICKS: int = 60
-## Hijos del nodo de la fortaleza que usa el controlador.
+## Children of the fortress node used by the controller.
 const CIRCLE_NODE: NodePath = ^"CaptureCircle"
 const GATE_NODE: NodePath = ^"FortGate"
-## Metadato del círculo con su radio y radio por defecto si falta.
+## Circle metadata with its radius, and the default radius if it is missing.
 const CIRCLE_RADIUS_META: StringName = &"radius"
 const DEFAULT_CIRCLE_RADIUS: float = 5.0
 
-## Marcador de la batalla (null = no se lleva): el controlador suma el tiempo en el círculo y el daño a
-## la puerta.
+## Battle scoreboard (null = not kept): the controller adds the time in the circle and the damage to
+## the gate.
 var score_keeper: ScoreKeeper = null
-## [code](tick: int) -> Array[PlayerCandidate][/code]: los jugadores que pueden contar en el círculo
-## (solo jugadores: los PNJ no cuentan). Se llama cada 6 ticks.
+## [code](tick: int) -> Array[PlayerCandidate][/code]: the players that may count in the circle
+## (players only: NPCs do not count). Called every 6 ticks.
 var candidates_source: Callable = Callable()
-## [code]() -> PackedVector3Array[/code]: los pies de los personajes (jugadores y PNJ vivos) que pueden
-## ocupar el vano de la puerta. Solo se llama cuando hay una reparación en espera.
+## [code]() -> PackedVector3Array[/code]: the feet of the characters (living players and NPCs) that
+## may occupy the gate doorway. Only called when a repair is waiting.
 var bodies_source: Callable = Callable()
-## [code](net_id: int) -> bool[/code]: mata al PNJ capitán registrado ([method register_captain]). Si
-## no es válido (o devuelve false), [method kill_captain] da por muerto al capitán directamente.
+## [code](net_id: int) -> bool[/code]: kills the registered captain NPC ([method register_captain]).
+## If it is not valid (or returns false), [method kill_captain] declares the captain dead directly.
 var captain_killer: Callable = Callable()
 
 var _registry: NetEntityRegistry = null
 var _sites: Array[Site] = []
 var _sites_by_id: Dictionary[StringName, Site] = {}
 var _sites_by_net_id: Dictionary[int, Site] = {}
-# Tick de la siguiente orden de depuración (se pone en register_commands).
+# Tick of the next debug command (set in register_commands).
 var _next_tick_source: Callable = Callable()
 
 
-## Un jugador candidato a contar en el círculo: lo de [FortressPresence.Candidate] más el id de red.
+## A player candidate to count in the circle: the [FortressPresence.Candidate] data plus the network id.
 class PlayerCandidate:
 	extends FortressPresence.Candidate
 
 	var net_id: int = 0
-	## Marcado por un comando de GM ([member NetEntity.gm_forced]): cuenta en la presencia, pero no entra en la
-	## lista de capturas ni suma tiempo defendiendo.
+	## Flagged by a GM command ([member NetEntity.gm_forced]): counts in the presence, but does not enter
+	## the capture list or add defending time.
 	var gm_forced: bool = false
 
 
@@ -134,7 +142,7 @@ class PlayerCandidate:
 		return candidate
 
 
-## Lo que el controlador sabe de una fortaleza.
+## What the controller knows about a fortress.
 class Site:
 	extends RefCounted
 
@@ -147,43 +155,44 @@ class Site:
 	var circle_radius: float = DEFAULT_CIRCLE_RADIUS
 	var gate: FortGate = null
 	var target: StructureTarget = null
-	# Presencia del último recuento (se mantiene entre recuentos).
+	# Presence from the last recount (kept between recounts).
 	var presence: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
-	# Lo que los clientes saben (los campos enviados) y cuándo se envió.
+	# What the clients know (the fields sent) and when it was sent.
 	var last_sent: FortressState = null
 	var last_sent_tick: int = 0
-	# Dueño y rotura con los que se mandó el último OBJECT_STATE: la colisión que ven los clientes.
+	# Owner and broken state with which the last OBJECT_STATE was sent: the collision the clients see.
 	var sent_owner: int = 0
 	var sent_broken: bool = false
-	# Dueño y rotura que tienen ahora las capas de la puerta.
+	# Owner and broken state that the gate layers currently have.
 	var applied_owner: int = 0
 	var applied_broken: bool = false
-	# true mientras la reparación de una puerta rota espera a que el vano quede libre (solo con la puerta rota:
-	# una entera se repara sin esperar).
+	# true while the repair of a broken gate waits for the doorway to be clear (only with a broken gate:
+	# an intact one is repaired without waiting).
 	var repair_pending: bool = false
-	# PNJ capitán registrado (0 = ninguno) y reino de quien ha pedido matarlo (-1 = nadie).
+	# Registered captain NPC (0 = none) and realm of whoever asked to kill it (-1 = nobody).
 	var captain_net_id: int = 0
 	var pending_killer_realm: int = -1
-	# PNJ defensores registrados: net_id -> true.
+	# Registered defender NPCs: net_id -> true.
 	var defenders: Dictionary[int, bool] = {}
-	# Ya se avisó de que toca reponer los guardias (hasta el próximo set_guards_alive).
+	# The need to replace the guards has already been announced (until the next set_guards_alive).
 	var guards_due_notified: bool = false
-	# Ya se avisó del primer golpe a la puerta desde su última reparación.
+	# The first hit on the gate since its last repair has already been announced.
 	var gate_damage_announced: bool = false
-	# El ciclo actual viene de un comando del fuerte (progresion.md §6.2): fort_owner, fort_reset,
-	# fort_kill_captain o fort_capture_speed distinto de 1. Lo quita el siguiente cambio de verdad: la muerte del
-	# capitán en combate, la vuelta a GARRISONED por sí sola o el reinicio periódico.
+	# The current cycle comes from a fort command (progresion.md §6.2): fort_owner, fort_reset,
+	# fort_kill_captain or fort_capture_speed other than 1. The next real change clears it: the
+	# captain's death in combat, returning to GARRISONED on its own or the periodic reset.
 	var forced: bool = false
-	# Fin de la consolidación cargada de la plataforma ([constant FortressState.NO_TICK] si no hay): el estado no
-	# guarda el fin, sino el inicio, que no puede ser negativo en OBJECT_STATE (restore_state).
+	# End of the consolidation loaded from the platform ([constant FortressState.NO_TICK] if there is
+	# none): the state does not store the end, but the start, which cannot be negative in OBJECT_STATE
+	# (restore_state).
 	var consolidation_ends_tick: int = FortressState.NO_TICK
 
 
-# --- Alta de fortalezas --------------------------------------------------------------------------
+# --- Fortress spawning --------------------------------------------------------------------------
 
-## Crea las fortalezas de [param world] (los nodos del grupo [code]fortresses[/code] con su
-## definición) con el estado «tras [param tick]». Cada una pide su [NetEntity] a [param registry].
-## Devuelve cuántas ha creado.
+## Creates the fortresses of [param world] (the nodes of the [code]fortresses[/code] group with their
+## definition) with the state "after [param tick]". Each one requests its [NetEntity] from
+## [param registry]. Returns how many it created.
 func setup(world: Node3D, registry: NetEntityRegistry, tick: int) -> int:
 	_registry = registry
 	for node: Node3D in NetZones.get_fortress_nodes(world):
@@ -195,10 +204,10 @@ func setup(world: Node3D, registry: NetEntityRegistry, tick: int) -> int:
 	return _sites.size()
 
 
-## Añade la fortaleza del nodo [param node] con la definición [param definition] (el nodo debe estar
-## en el árbol: sus hijos [code]CaptureCircle[/code] y [code]FortGate[/code] dan el círculo y la
-## puerta). Devuelve su id de red, o 0 si ya hay otra con ese id, el id no cabe en el protocolo o no
-## queda ningún id de red.
+## Adds the fortress of node [param node] with definition [param definition] (the node must be in
+## the tree: its [code]CaptureCircle[/code] and [code]FortGate[/code] children provide the circle and
+## the gate). Returns its network id, or 0 if another one with that id already exists, the id does
+## not fit in the protocol or no network id is left.
 func add_fortress(node: Node3D, definition: FortressDefinition, tick: int) -> int:
 	var fortress_id: StringName = definition.id
 	if _sites_by_id.has(fortress_id) or fortress_id.is_empty() \
@@ -245,12 +254,13 @@ func add_fortress(node: Node3D, definition: FortressDefinition, tick: int) -> in
 	return entity.net_id
 
 
-## Pone en [param fortress_id] el estado [param loaded] (el cargado de la plataforma al arrancar, docs/plataforma.md
-## §8; [FortressPersistence]) en el tick [param tick], antes de que nadie lo vea: se copia en el estado vivo (la
-## entidad y la puerta lo siguen), lo enviado se da por sabido (el alta lleva el estado entero) y las capas de la
-## puerta pasan a su dueño y rotura. [param consolidation_ends_tick] es el fin de una consolidación cargada
-## ([constant FortressState.NO_TICK] si no hay): el estado no puede llevar un inicio negativo, así que el fin lo
-## guarda el controlador. Devuelve false si la fortaleza no existe.
+## Sets [param loaded] as the state of [param fortress_id] (the one loaded from the platform on
+## startup, docs/plataforma.md §8; [FortressPersistence]) at tick [param tick], before anyone sees
+## it: it is copied into the live state (the entity and the gate follow it), what was sent is taken
+## as known (the spawn carries the whole state) and the gate layers go to its owner and broken
+## state. [param consolidation_ends_tick] is the end of a loaded consolidation
+## ([constant FortressState.NO_TICK] if there is none): the state cannot carry a negative start, so
+## the controller stores the end. Returns false if the fortress does not exist.
 func restore_state(fortress_id: StringName, loaded: FortressState, consolidation_ends_tick: int,
 		tick: int) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
@@ -271,7 +281,7 @@ func restore_state(fortress_id: StringName, loaded: FortressState, consolidation
 	return true
 
 
-## Quita todas las fortalezas y libera sus entidades de red (cierre del servidor).
+## Removes all the fortresses and frees their network entities (server shutdown).
 func clear() -> void:
 	if _registry != null:
 		for site: Site in _sites:
@@ -281,14 +291,14 @@ func clear() -> void:
 	_sites_by_net_id.clear()
 
 
-# --- Consultas -----------------------------------------------------------------------------------
+# --- Queries ------------------------------------------------------------------------------------
 
-## true si la zona tiene alguna fortaleza.
+## true if the zone has any fortress.
 func has_fortresses() -> bool:
 	return not _sites.is_empty()
 
 
-## Ids de las fortalezas, en el orden de la escena.
+## Ids of the fortresses, in scene order.
 func get_fortress_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for site: Site in _sites:
@@ -296,13 +306,13 @@ func get_fortress_ids() -> Array[StringName]:
 	return ids
 
 
-## El estado [b]vivo[/b] de la fortaleza [param fortress_id] (no una copia), o null si no existe.
+## The [b]live[/b] state of fortress [param fortress_id] (not a copy), or null if it does not exist.
 func get_fortress_state(fortress_id: StringName) -> FortressState:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site.state if site != null else null
 
 
-## Estados vivos por id de fortaleza (la forma que pide [method RespawnRules.points_for]).
+## Live states by fortress id (the shape that [method RespawnRules.points_for] requires).
 func get_states() -> Dictionary:
 	var states: Dictionary = {}
 	for site: Site in _sites:
@@ -310,31 +320,32 @@ func get_states() -> Dictionary:
 	return states
 
 
-## La entidad de red de la fortaleza [param fortress_id], o null.
+## The network entity of fortress [param fortress_id], or null.
 func get_entity(fortress_id: StringName) -> NetEntity:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site.entity if site != null else null
 
 
-## Id de red de la fortaleza [param fortress_id], o 0.
+## Network id of fortress [param fortress_id], or 0.
 func get_net_id(fortress_id: StringName) -> int:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site.entity.net_id if site != null else 0
 
 
-## Id de la fortaleza con ese [param net_id] de red, o una cadena vacía.
+## Id of the fortress with that network [param net_id], or an empty string.
 func get_fortress_id_of(net_id: int) -> StringName:
 	var site: Site = _sites_by_net_id.get(net_id)
 	return site.id if site != null else &""
 
 
-## Definición de la fortaleza [param fortress_id], o null.
+## Definition of fortress [param fortress_id], or null.
 func get_definition(fortress_id: StringName) -> FortressDefinition:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site.definition if site != null else null
 
 
-## Centro y radio del círculo de captura de [param fortress_id] (el centro es ZERO si no existe).
+## Center and radius of the capture circle of [param fortress_id] (the center is ZERO if it does not
+## exist).
 func get_circle(fortress_id: StringName) -> Dictionary:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null:
@@ -342,26 +353,26 @@ func get_circle(fortress_id: StringName) -> Dictionary:
 	return {"center": site.circle_center, "radius": site.circle_radius}
 
 
-## Nodo de la fortaleza [param fortress_id] en la escena, o null.
+## Node of fortress [param fortress_id] in the scene, or null.
 func get_node_of(fortress_id: StringName) -> Node3D:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site.node if site != null else null
 
 
-## Puerta de la fortaleza [param fortress_id], o null si la escena no la tiene.
+## Gate of fortress [param fortress_id], or null if the scene does not have one.
 func get_gate(fortress_id: StringName) -> FortGate:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site.gate if site != null else null
 
 
-## Presencia (jugadores de cada reino) del último recuento de [param fortress_id].
+## Presence (players of each realm) from the last recount of [param fortress_id].
 func get_presence(fortress_id: StringName) -> PackedInt32Array:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site.presence.duplicate() if site != null else PackedInt32Array([0, 0, 0, 0])
 
 
-## Los blancos de golpes (las puertas) de la zona, para el [CombatResolver]. El array es el mismo
-## durante toda la vida del controlador.
+## The hit targets (the gates) of the zone, for the [CombatResolver]. The array is the same for the
+## whole life of the controller.
 func get_structure_targets() -> Array[StructureTarget]:
 	var targets: Array[StructureTarget] = []
 	for site: Site in _sites:
@@ -370,23 +381,24 @@ func get_structure_targets() -> Array[StructureTarget]:
 	return targets
 
 
-## true si hay una reparación de la puerta rota esperando a que el vano quede libre.
+## true if a repair of the broken gate is waiting for the doorway to be clear.
 func is_repair_pending(fortress_id: StringName) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site != null and site.repair_pending
 
 
-## true si el ciclo actual de [param fortress_id] lo ha provocado un comando del fuerte (progresion.md §6.2): un
-## cambio de dueño o un reinicio por orden, el capitán muerto con [code]fort_kill_captain[/code] (y la captura que
-## lo sigue) o una velocidad de captura distinta de 1. Lo que pasa en él no suma capturas ni tiempo defendiendo y
-## no paga recompensas persistentes.
+## true if the current cycle of [param fortress_id] was caused by a fort command (progresion.md
+## §6.2): an owner change or a reset by command, the captain killed with
+## [code]fort_kill_captain[/code] (and the capture that follows it) or a capture speed other than 1.
+## What happens in it adds no captures or defending time and pays no persistent rewards.
 func is_forced(fortress_id: StringName) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site != null and (site.forced or site.state.capture_rate_multiplier != 1)
 
 
-## Tick en el que termina la consolidación de [param fortress_id] (la cargada de la plataforma o la de su inicio más
-## [method FortressDefinition.consolidation_ticks]); [constant FortressState.NO_TICK] si no está consolidando.
+## Tick at which the consolidation of [param fortress_id] ends (the one loaded from the platform or
+## the one from its start plus [method FortressDefinition.consolidation_ticks]);
+## [constant FortressState.NO_TICK] if it is not consolidating.
 func get_consolidation_end_tick(fortress_id: StringName) -> int:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null or site.state.phase != FortressState.Phase.CONSOLIDATING:
@@ -396,9 +408,10 @@ func get_consolidation_end_tick(fortress_id: StringName) -> int:
 	return site.state.phase_tick + site.definition.consolidation_ticks()
 
 
-## La fortaleza que defiende el PNJ [param net_id] (registrado con [method register_captain] o
-## [method register_defender]); vacío si no defiende ninguna. Su muerte la lee aquí quien la paga (progresion.md P5c)
-## antes de que el controlador lo olvide: el DEATH llega antes a la zona que a [method on_combat_event].
+## The fortress defended by NPC [param net_id] (registered with [method register_captain] or
+## [method register_defender]); empty if it defends none. Whoever pays out its death reads it here
+## (progresion.md P5c) before the controller forgets it: the DEATH reaches the zone before
+## [method on_combat_event].
 func fortress_of_defender(net_id: int) -> StringName:
 	for site: Site in _sites:
 		if site.defenders.has(net_id):
@@ -406,13 +419,13 @@ func fortress_of_defender(net_id: int) -> StringName:
 	return &""
 
 
-## El PNJ capitán registrado de [param fortress_id] (0 = ninguno).
+## The registered captain NPC of [param fortress_id] (0 = none).
 func get_captain_net_id(fortress_id: StringName) -> int:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site.captain_net_id if site != null else 0
 
 
-## La fortaleza más cercana al punto [param position] (por su círculo), o una cadena vacía si no hay.
+## The fortress nearest to point [param position] (by its circle), or an empty string if there is none.
 func get_nearest_fortress_id(position: Vector3) -> StringName:
 	var best: StringName = &""
 	var best_distance: float = INF
@@ -424,11 +437,11 @@ func get_nearest_fortress_id(position: Vector3) -> StringName:
 	return best
 
 
-# --- Interfaz con los PNJ (F4) y con el combate ---------------------------------------------------
+# --- Interface with NPCs (F4) and with combat ---------------------------------------------------
 
-## Registra al PNJ [param net_id] como capitán de [param fortress_id] (y como defensor): cuando muere
-## ([signal CombatDirector.event_emitted] con DEATH, vía [method on_combat_event]) el controlador
-## llama a [method on_captain_died] con el reino de quien lo mató. Sustituye al anterior.
+## Registers NPC [param net_id] as captain of [param fortress_id] (and as a defender): when it dies
+## ([signal CombatDirector.event_emitted] with DEATH, via [method on_combat_event]) the controller
+## calls [method on_captain_died] with the realm of whoever killed it. Replaces the previous one.
 func register_captain(fortress_id: StringName, net_id: int) -> void:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null:
@@ -437,16 +450,16 @@ func register_captain(fortress_id: StringName, net_id: int) -> void:
 	site.defenders[net_id] = true
 
 
-## Registra al PNJ [param net_id] como defensor de [param fortress_id]: si recibe un golpe, el fuerte
-## cuenta como atacado (no se puede reaparecer en él durante
-## [member FortressDefinition.under_attack_s]) y sale el aviso de «fuerte atacado».
+## Registers NPC [param net_id] as a defender of [param fortress_id]: if it is hit, the fort counts
+## as attacked (one cannot respawn in it during [member FortressDefinition.under_attack_s]) and the
+## "fort under attack" notice goes out.
 func register_defender(fortress_id: StringName, net_id: int) -> void:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site != null:
 		site.defenders[net_id] = true
 
 
-## Quita al PNJ [param net_id] de los defensores (y de capitán, si lo era).
+## Removes NPC [param net_id] from the defenders (and from captain, if it was one).
 func unregister_defender(fortress_id: StringName, net_id: int) -> void:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null:
@@ -456,9 +469,9 @@ func unregister_defender(fortress_id: StringName, net_id: int) -> void:
 		site.captain_net_id = 0
 
 
-## Ha muerto el capitán de [param fortress_id] en el tick [param tick] a manos de [param killer_realm]
-## (0 si nadie). Si guardaba el fuerte, pasa a VULNERABLE y sale el aviso de «capitán caído». Devuelve
-## true si ha tenido efecto.
+## The captain of [param fortress_id] has died at tick [param tick] at the hands of
+## [param killer_realm] (0 if nobody). If it was guarding the fort, it becomes VULNERABLE and the
+## "captain fallen" notice goes out. Returns true if it had any effect.
 func on_captain_died(fortress_id: StringName, tick: int, killer_realm: int) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null:
@@ -469,8 +482,8 @@ func on_captain_died(fortress_id: StringName, tick: int, killer_realm: int) -> b
 	return true
 
 
-## Dice cuántos guardias de la guarnición de [param fortress_id] están vivos. Los que faltan
-## reaparecen a los [member FortressDefinition.guard_respawn_s] ([signal guards_respawn_due]).
+## Says how many guards of the garrison of [param fortress_id] are alive. The missing ones respawn
+## after [member FortressDefinition.guard_respawn_s] ([signal guards_respawn_due]).
 func set_guards_alive(fortress_id: StringName, count: int) -> void:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null:
@@ -479,10 +492,11 @@ func set_guards_alive(fortress_id: StringName, count: int) -> void:
 	site.guards_due_notified = false
 
 
-## Un golpe ha dado en la puerta ([signal CombatDirector.structure_hit]): le resta [param amount] de
-## vida en el tick [param tick], sale el aviso de «fuerte atacado» (como mucho uno por minuto) y el de
-## «puerta rota» si la rompe, y el daño cuenta para el marcador de [param attacker]. Un golpe que quita
-## vida anula cualquier reparación pendiente: la siguiente llega tras el plazo sin daño contado desde él.
+## A hit has landed on the gate ([signal CombatDirector.structure_hit]): it subtracts [param amount]
+## of health at tick [param tick], the "fort under attack" notice goes out (at most one per minute)
+## and the "gate broken" one if it breaks it, and the damage counts for the scoreboard of
+## [param attacker]. A hit that removes health cancels any pending repair: the next one comes after
+## the no-damage period counted from it.
 func on_structure_hit(target: StructureTarget, attacker: Combatant, amount: int, tick: int) -> void:
 	var site: Site = _sites_by_net_id.get(target.net_id)
 	if site == null or amount <= 0:
@@ -500,8 +514,8 @@ func on_structure_hit(target: StructureTarget, attacker: Combatant, amount: int,
 	_emit_war(site, tick, events, attacker.get_realm())
 
 
-## Un evento del combate ([signal CombatDirector.event_emitted]): la muerte del capitán registrado
-## abre el círculo y un golpe a un defensor registrado marca el fuerte como atacado.
+## A combat event ([signal CombatDirector.event_emitted]): the death of the registered captain opens
+## the circle and a hit on a registered defender marks the fort as attacked.
 func on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
 	if _sites.is_empty():
 		return
@@ -511,11 +525,11 @@ func on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Array
 		_on_death(event)
 
 
-# --- Órdenes de administración -------------------------------------------------------------------
+# --- Administration commands --------------------------------------------------------------------
 
-## Devuelve [param fortress_id] a neutral en el tick [param tick] ([code]fort_reset[/code]): Huecos y
-## Capitán del Vado, puerta llena (cuando el vano esté libre) y captura a cero. Los jugadores que haya
-## dentro no se mueven. Devuelve false si la fortaleza no existe.
+## Returns [param fortress_id] to neutral at tick [param tick] ([code]fort_reset[/code]): Hollow and
+## Ford Captain, full gate (when the doorway is clear) and capture at zero. Players inside are not
+## moved. Returns false if the fortress does not exist.
 func reset_fortress(fortress_id: StringName, tick: int) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null:
@@ -529,9 +543,10 @@ func reset_fortress(fortress_id: StringName, tick: int) -> bool:
 	return true
 
 
-## Da la fortaleza [param fortress_id] al reino [param realm] (0 a 3; 0 = neutral) en el tick
-## [param tick] ([code]fort_owner[/code]): GARRISONED con la guarnición y el capitán de ese reino, puerta
-## llena y sin captura. Con un reino sale el aviso de «fuerte capturado» y con 0 el de «reiniciado».
+## Gives fortress [param fortress_id] to realm [param realm] (0 to 3; 0 = neutral) at tick
+## [param tick] ([code]fort_owner[/code]): GARRISONED with the garrison and captain of that realm,
+## full gate and no capture. With a realm the "fort captured" notice goes out and with 0 the "reset"
+## one.
 func set_owner(fortress_id: StringName, realm: int, tick: int) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null or realm < 0 or realm > 3:
@@ -548,10 +563,11 @@ func set_owner(fortress_id: StringName, realm: int, tick: int) -> bool:
 	return true
 
 
-## Mata al capitán de [param fortress_id] en el tick [param tick] a manos de [param killer_realm]
-## ([code]fort_kill_captain[/code]). Si hay un PNJ capitán registrado, lo mata
-## ([member captain_killer]) y su muerte llega por [method on_combat_event]; si no, da por muerto al
-## capitán directamente. Devuelve true si la fortaleza estaba guardada por su capitán.
+## Kills the captain of [param fortress_id] at tick [param tick] at the hands of
+## [param killer_realm] ([code]fort_kill_captain[/code]). If there is a registered captain NPC, it
+## kills it ([member captain_killer]) and its death arrives through [method on_combat_event]; if
+## not, it declares the captain dead directly. Returns true if the fortress was guarded by its
+## captain.
 func kill_captain(fortress_id: StringName, tick: int, killer_realm: int) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null:
@@ -559,7 +575,8 @@ func kill_captain(fortress_id: StringName, tick: int, killer_realm: int) -> bool
 	var state: FortressState = site.state
 	if state.phase != FortressState.Phase.GARRISONED or not state.captain_alive:
 		return false
-	# Forzado antes de matar: la muerte sale en esta misma llamada y quien la paga (progresion.md P5c) ya la ve así.
+	# Forced before killing: the death goes out in this very call and whoever pays it out (progresion.md
+	# P5c) already sees it that way.
 	var was_forced: bool = site.forced
 	site.forced = true
 	if site.captain_net_id != 0 and captain_killer.is_valid():
@@ -573,8 +590,8 @@ func kill_captain(fortress_id: StringName, tick: int, killer_realm: int) -> bool
 	return true
 
 
-## Multiplica por [param factor] (1 a 255) la velocidad de captura de [param fortress_id]
-## ([code]fort_capture_speed[/code]); el decaimiento no cambia.
+## Multiplies the capture speed of [param fortress_id] by [param factor] (1 to 255)
+## ([code]fort_capture_speed[/code]); decay does not change.
 func set_capture_speed(fortress_id: StringName, factor: int) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null or factor < 1 or factor > 255:
@@ -585,10 +602,10 @@ func set_capture_speed(fortress_id: StringName, factor: int) -> bool:
 	return true
 
 
-# --- El tick -------------------------------------------------------------------------------------
+# --- The tick -----------------------------------------------------------------------------------
 
-## Paso 4b del tick [param s]: recuento de la presencia (cada 6 ticks), avance del estado de cada
-## fortaleza, efectos y OBJECT_STATE.
+## Step 4b of tick [param s]: presence recount (every 6 ticks), state advance of each fortress,
+## effects and OBJECT_STATE.
 func step(s: int) -> void:
 	if _sites.is_empty():
 		return
@@ -612,7 +629,7 @@ func _step_site(site: Site, s: int) -> void:
 		if state.phase != FortressState.Phase.CONSOLIDATING:
 			site.consolidation_ends_tick = FortressState.NO_TICK
 		elif s >= site.consolidation_ends_tick:
-			# La consolidación cargada termina en su tick: advance la cierra con este inicio (que solo vive aquí).
+			# The loaded consolidation ends at its tick: advance closes it with this start (which only lives here).
 			state.phase_tick = s - site.definition.consolidation_ticks()
 			site.consolidation_ends_tick = FortressState.NO_TICK
 	var events: PackedInt32Array = state.advance(site.definition, s, site.presence)
@@ -629,8 +646,8 @@ func _step_site(site: Site, s: int) -> void:
 	_flush_object_state(site, s)
 
 
-# Recuenta quién está en el círculo de [param site] (solo cuenta con el círculo activo para el
-# marcador) con los candidatos de este tick.
+# Recounts who is in the circle of [param site] (only counts with the circle active for the
+# scoreboard) with the candidates of this tick.
 func _recount(site: Site, candidates: Array, s: int) -> void:
 	var counts := PackedInt32Array([0, 0, 0, 0])
 	var active: bool = site.state.is_circle_active()
@@ -647,21 +664,21 @@ func _recount(site: Site, candidates: Array, s: int) -> void:
 			continue
 		if score_keeper != null:
 			score_keeper.add_circle_ticks(player.net_id, FortressState.PRESENCE_RECOUNT_TICKS)
-			# El tiempo defendiendo (docs/plataforma.md §8): solo el reino dueño, y no en un ciclo forzado.
+			# Defending time (docs/plataforma.md §8): only the owning realm, and not in a forced cycle.
 			if defending and candidate.realm == owner and not player.gm_forced:
 				score_keeper.add_defend_ticks(player.net_id, FortressState.PRESENCE_RECOUNT_TICKS)
-		# Los méritos de objetivo (progresion.md §6.2): no en un ciclo forzado ni a un marcado por un comando de GM.
+		# Objective merits (progresion.md §6.2): not in a forced cycle nor for someone flagged by a GM command.
 		if not forced and not player.gm_forced:
 			objective_time.emit(site.id, player.net_id, FortressState.PRESENCE_RECOUNT_TICKS, s)
 	site.presence = counts
 
 
-# Captura de verdad en el tick [param s] (advance ha dado FORT_CAPTURED): si no es forzada, la lista de quien
-# estaba en el círculo suma una captura a cada uno y sale por fortress_captured (docs/plataforma.md §8). La lista se
-# calcula una vez, con los candidatos de este tick.
+# Real capture at tick [param s] (advance gave FORT_CAPTURED): if it is not forced, the list of those
+# who were in the circle adds a capture to each one and goes out through fortress_captured
+# (docs/plataforma.md §8). The list is computed once, with the candidates of this tick.
 func _on_captured(site: Site, s: int) -> void:
 	if is_forced(site.id):
-		# El dueño nuevo sale de un cambio forzado: el ciclo lo sigue siendo hasta que llegue su guarnición.
+		# The new owner comes from a forced change: the cycle remains so until its garrison arrives.
 		site.forced = true
 		return
 	var owner: int = site.state.owner
@@ -680,13 +697,12 @@ func _on_captured(site: Site, s: int) -> void:
 	fortress_captured.emit(site.id, owner, in_circle, s)
 
 
-# Efectos de los cambios de fase y de dueño que ha hecho advance(): retirar a los PNJ, hacer aparecer
-# la guarnición.
+# Effects of the phase and owner changes made by advance(): withdraw the NPCs, spawn the garrison.
 func _note_transitions(site: Site, tick: int, events: PackedInt32Array, previous_owner: int,
 		previous_phase: int) -> void:
 	var state: FortressState = site.state
 	if events.has(WarEvents.FORT_RESET):
-		# El reinicio periódico es un cambio de verdad: empieza un ciclo sin forzar.
+		# The periodic reset is a real change: it starts an unforced cycle.
 		site.forced = false
 		_retire_defenders(site, tick)
 		site.gate_damage_announced = false
@@ -710,8 +726,8 @@ func _retire_defenders(site: Site, tick: int) -> void:
 	defenders_retired.emit(site.id, tick)
 
 
-# Tras un reinicio o un cambio de dueño por orden: avisos, PNJ y reparación (que espera si hay
-# alguien en el vano).
+# After a reset or an owner change by command: notices, NPCs and repair (which waits if someone is
+# in the doorway).
 func _after_hard_reset(site: Site, tick: int, events: PackedInt32Array, health_before: int,
 		last_damage_before: int) -> void:
 	_retire_defenders(site, tick)
@@ -735,7 +751,7 @@ func _emit_war(site: Site, tick: int, events: PackedInt32Array, caller_realm: in
 				site.state.event_realm(war_event, caller_realm)))
 
 
-# Un golpe a un defensor registrado marca el fuerte como atacado y puede dar el aviso.
+# A hit on a registered defender marks the fort as attacked and may give the notice.
 func _on_defender_hit(event: NetMessages.EntityEvent) -> void:
 	var attacker: NetEntity = _registry.get_entity(event.attacker) if _registry != null else null
 	if attacker == null:
@@ -755,8 +771,8 @@ func _on_death(event: NetMessages.EntityEvent) -> void:
 			continue
 		site.defenders.erase(event.net_id)
 		if site.captain_net_id == event.net_id:
-			# Con fort_kill_captain, pending_killer_realm ya está puesto y kill_captain marca el ciclo como forzado;
-			# una muerte en combate es un cambio de verdad.
+			# With fort_kill_captain, pending_killer_realm is already set and kill_captain marks the cycle as
+			# forced; a death in combat is a real change.
 			var by_command: bool = site.pending_killer_realm >= 0
 			var killer_realm: int = site.pending_killer_realm
 			if event.killer != 0 and _registry != null:
@@ -768,11 +784,11 @@ func _on_death(event: NetMessages.EntityEvent) -> void:
 		return
 
 
-# --- La puerta -----------------------------------------------------------------------------------
+# --- The gate -----------------------------------------------------------------------------------
 
-# Si una reparación que ha hecho el estado (captura, reinicio) cierra una puerta que estaba rota con
-# alguien en el vano, se deshace: la puerta sigue rota y la reparación espera. Una puerta entera (dañada
-# o no) se queda reparada: cerrarla no cambia su colisión, así que no hay nadie a quien dejar atrapado.
+# If a repair made by the state (capture, reset) closes a gate that was broken with someone in the
+# doorway, it is undone: the gate stays broken and the repair waits. An intact gate (damaged or
+# not) stays repaired: closing it does not change its collision, so there is nobody to trap.
 func _hold_repair_if_blocked(site: Site, health_before: int, last_damage_before: int) -> void:
 	var state: FortressState = site.state
 	if health_before <= 0 and state.gate_health > health_before and _is_gate_blocked(site):
@@ -781,9 +797,10 @@ func _hold_repair_if_blocked(site: Site, health_before: int, last_damage_before:
 		site.repair_pending = true
 
 
-# Repara la puerta si toca (tras 5 min sin daño o una reparación aplazada). Solo la rota espera a que el
-# vano esté libre: la entera se repara en el acto. Una rota no recibe daño, así que lo que espera no se
-# queda viejo (y un golpe a una entera anula lo pendiente: on_structure_hit).
+# Repairs the gate when due (after 5 min without damage or a postponed repair). Only the broken one
+# waits for the doorway to be clear: an intact one is repaired immediately. A broken one takes no
+# damage, so what waits does not go stale (and a hit on an intact one cancels what is pending:
+# on_structure_hit).
 func _repair_if_due(site: Site, tick: int) -> void:
 	var state: FortressState = site.state
 	if not site.repair_pending and not state.gate_repair_due(tick):
@@ -797,7 +814,7 @@ func _repair_if_due(site: Site, tick: int) -> void:
 	site.gate_damage_announced = false
 
 
-# true si algún personaje solapa el vano de la puerta (la caja de la puerta cerrada).
+# true if any character overlaps the gate doorway (the box of the closed gate).
 func _is_gate_blocked(site: Site) -> bool:
 	if site.target == null or not bodies_source.is_valid():
 		return false
@@ -809,7 +826,7 @@ func _is_gate_blocked(site: Site) -> bool:
 	return false
 
 
-# Pone las capas de la puerta según el dueño y la rotura de ahora: valen desde el tick siguiente.
+# Sets the gate layers according to the current owner and broken state: they apply from the next tick.
 func _sync_gate(site: Site) -> void:
 	if site.gate == null:
 		return
@@ -820,7 +837,7 @@ func _sync_gate(site: Site) -> void:
 		site.gate.set_state(site.applied_owner, broken)
 
 
-# --- OBJECT_STATE --------------------------------------------------------------------------------
+# --- OBJECT_STATE -------------------------------------------------------------------------------
 
 func _flush_object_state(site: Site, tick: int) -> void:
 	var state: FortressState = site.state
@@ -842,7 +859,7 @@ func _flush_object_state(site: Site, tick: int) -> void:
 	object_state_emitted.emit(object_state)
 
 
-# Campos que han cambiado desde el último envío, sin el aviso de ataque si apenas ha avanzado.
+# Fields that changed since the last send, without the attack notice if it has barely advanced.
 func _fields_to_send(site: Site) -> PackedInt32Array:
 	var changed: PackedInt32Array = site.state.changed_fields_since(site.last_sent)
 	var index: int = changed.find(FortressFields.UNDER_ATTACK_UNTIL_TICK)
@@ -853,14 +870,14 @@ func _fields_to_send(site: Site) -> PackedInt32Array:
 	return changed
 
 
-# --- Comandos de depuración -----------------------------------------------------------------------
+# --- Debug commands -----------------------------------------------------------------------------
 
-## Registra en [param commands] los comandos de la fortaleza, con sus ids fijos de red (8
+## Registers in [param commands] the fortress commands, with their fixed network ids (8
 ## [code]fort_reset[/code], 9 [code]fort_owner[/code], 10 [code]fort_kill_captain[/code], 11
-## [code]fort_capture_speed[/code]) y su versión de consola. [param next_tick] es
-## [code]() -> int[/code]: el tick que va a simular el servidor (en el que cae la orden).
-## [br]Los de red actúan sobre la fortaleza más cercana al que los envía; los de consola, sobre la que
-## se nombra al final o, si no, sobre la primera.
+## [code]fort_capture_speed[/code]) and their console version. [param next_tick] is
+## [code]() -> int[/code]: the tick the server is about to simulate (the one the command falls on).
+## [br]The network ones act on the fortress nearest to the sender; the console ones, on the one
+## named at the end or, failing that, on the first.
 func register_commands(commands: CommandRegistry, next_tick: Callable) -> void:
 	_next_tick_source = next_tick
 	commands.register(&"fort_reset", "fort_reset [fortaleza]", _console_reset, _net_reset)
@@ -876,7 +893,7 @@ func _command_tick() -> int:
 	return int(_next_tick_source.call()) if _next_tick_source.is_valid() else 0
 
 
-# La fortaleza más cercana a quien envía un comando de red, o una cadena vacía.
+# The fortress nearest to whoever sends a network command, or an empty string.
 func _fortress_of_sender(ctx: CommandRegistry.Context) -> StringName:
 	if ctx.peer == null or ctx.peer.entity == null:
 		return &""
@@ -887,7 +904,7 @@ func _sender_realm(ctx: CommandRegistry.Context) -> int:
 	return ctx.peer.entity.realm if ctx.peer != null and ctx.peer.entity != null else 0
 
 
-# La fortaleza nombrada en el argumento [param index] de la consola o la primera.
+# The fortress named in console argument [param index] or the first one.
 func _fortress_from_args(ctx: CommandRegistry.Context, index: int) -> StringName:
 	if ctx.args.size() > index:
 		var named: StringName = StringName(ctx.args[index])
@@ -982,7 +999,7 @@ func _console_capture_speed(ctx: CommandRegistry.Context) -> String:
 	return "Captura de %s a x%d" % [fortress_id, factor]
 
 
-# Código de reino de un texto («vardheim», «neutral», «0»...), o -1.
+# Realm code from a text ("vardheim", "neutral", "0"...), or -1.
 static func _realm_from_text(text: String) -> int:
 	var clean: String = text.strip_edges().to_lower()
 	if clean == "neutral" or clean == "huecos" or clean == "0":
@@ -994,9 +1011,9 @@ static func _realm_from_text(text: String) -> int:
 	return realm if realm != NetProtocol.Realm.NONE else -1
 
 
-# --- Auxiliares ----------------------------------------------------------------------------------
+# --- Helpers ------------------------------------------------------------------------------------
 
-# La definición del nodo: la propia [FortressDefinition] o la ruta de su .tres.
+# The definition of the node: the [FortressDefinition] itself or the path of its .tres.
 static func _definition_of(node: Node3D) -> FortressDefinition:
 	var value: Variant = node.get_meta(NetZones.fortress_definition_meta(), null)
 	if value is FortressDefinition:

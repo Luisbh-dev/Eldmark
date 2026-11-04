@@ -1,16 +1,16 @@
 extends SceneTree
-## Genera el tema global de la interfaz (UI-02): construye el [Theme] con [UIThemeBuilder] (que lee
-## la paleta de [UIPalette]) y lo guarda en [code]assets/ui/theme/eldmark_theme.tres[/code].
+## Generates the global interface theme (UI-02): builds the [Theme] with [UIThemeBuilder] (which reads
+## the palette from [UIPalette]) and saves it to [code]assets/ui/theme/eldmark_theme.tres[/code].
 ##
-## Si las fuentes elegidas ya están en [code]assets/fonts/[/code] (Noto Sans y Cinzel; ver
-## [constant UIThemeBuilder.BODY_FONT_PATH] y [constant UIThemeBuilder.TITLE_FONT_PATH]) las
-## cablea en el tema; si no, el tema usa la del motor. Hay que volver a ejecutarlo cada vez que
-## cambie la paleta, el constructor o las fuentes:
+## If the chosen fonts are already in [code]assets/fonts/[/code] (Noto Sans and Cinzel; see
+## [constant UIThemeBuilder.BODY_FONT_PATH] and [constant UIThemeBuilder.TITLE_FONT_PATH]) it
+## wires them into the theme; if not, the theme uses the engine's. It must be run again whenever
+## the palette, the builder or the fonts change:
 ##
 ## [codeblock]
 ## godot --headless --path . -s res://tools/ui/build_theme.gd
 ## [/codeblock]
-## Sale con código 1 si no puede guardar el archivo.
+## Exits with code 1 if it cannot save the file.
 
 
 func _initialize() -> void:

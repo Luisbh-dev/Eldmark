@@ -22,7 +22,7 @@ var ctx = context.Background()
 
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
-// staff crea una cuenta con ese rol y devuelve su jugador y su --actor.
+// staff creates an account with that role and returns its player and its --actor.
 func staff(t *testing.T, p *platformtest.Platform, email, role string) (*platformtest.Player, *admin.Actor) {
 	t.Helper()
 	pl := p.NewPlayer(email)
@@ -30,7 +30,7 @@ func staff(t *testing.T, p *platformtest.Platform, email, role string) (*platfor
 	return pl, &admin.Actor{AccountID: pl.ID, Role: role}
 }
 
-// auditRow lee una fila de audit_log por su command (la última).
+// auditRow reads an audit_log row by its command (the last one).
 type auditRow struct {
 	Source          string
 	Actor           *int64
@@ -62,9 +62,9 @@ func lastAudit(t *testing.T, p *platformtest.Platform, command string) auditRow 
 
 func is(p *int64, v int64) bool { return p != nil && *p == v }
 
-// --actor (§9.1): sin él, con un correo sin cuenta, con un rol que no llega, con la cuenta
-// sancionada o con el borrado pedido, no se ejecuta (ActorError, código 2 en la CLI); moderator
-// basta para leer y admin hace falta para lo demás.
+// --actor (§9.1): without it, with an email without an account, with a role that is not enough,
+// with the account sanctioned or with deletion requested, it is not executed (ActorError, code 2 in
+// the CLI); moderator is enough to read and admin is needed for the rest.
 func TestAuthorize(t *testing.T) {
 	p := platformtest.New(t)
 	player := p.NewPlayer("p@example.org")
@@ -94,7 +94,7 @@ func TestAuthorize(t *testing.T) {
 	if a, err := p.Admin.Authorize(ctx, adm.Email, sanctions.RoleAdmin); err != nil || a.Role != sanctions.RoleAdmin {
 		t.Fatalf("admin: %v %v", a, err)
 	}
-	// Un admin al que le quitan el rol entre la comprobación y la orden no la termina.
+	// An admin who loses the role between the check and the command does not finish it.
 	actor, _ := p.Admin.Authorize(ctx, adm.Email, sanctions.RoleAdmin)
 	p.Exec(`update accounts set role = 'gm' where account_id = $1`, adm.ID)
 	var actorErr *admin.ActorError
@@ -106,10 +106,10 @@ func TestAuthorize(t *testing.T) {
 	}
 }
 
-// set-role (§9.1) revoca las sesiones de la cuenta (role_changed) y el latido siguiente expulsa a
-// su personaje (≤ HEARTBEAT_S); deja la fila fija que lee S2 (source cli, command set-role,
-// target_account_id y args {from, to, os_user}); al volver a entrar, la reclamación trae el rol
-// nuevo. RoleAt da el rol de antes del cambio para un instante anterior.
+// set-role (§9.1) revokes the account's sessions (role_changed) and the next heartbeat kicks out
+// its character (<= HEARTBEAT_S); it leaves the fixed row that S2 reads (source cli, command
+// set-role, target_account_id and args {from, to, os_user}); on logging back in, the claim brings
+// the new role. RoleAt gives the pre-change role for an earlier instant.
 func TestSetRole(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -130,7 +130,7 @@ func TestSetRole(t *testing.T) {
 	if !res.Changed || res.From != sanctions.RoleGM || res.To != sanctions.RolePlayer || res.Revoked != 1 {
 		t.Fatalf("%+v", res)
 	}
-	// El latido siguiente lo expulsa (con guardado final: session_revoked).
+	// The next heartbeat kicks it out (with a final save: session_revoked).
 	hb = z.Heartbeat(1, platformtest.Lease{CharacterID: id, LeaseID: lease})
 	revoked := hb.Body["revoked"].([]any)
 	if len(revoked) != 1 {
@@ -146,21 +146,21 @@ func TestSetRole(t *testing.T) {
 		t.Fatal("sesiones sin revocar")
 	}
 	platformtest.Expect(t, p.PublicDo("GET", "/v1/account", gm.Token, nil), 401, "unauthorized")
-	// La fila fija de §9.1.
+	// The fixed row of §9.1.
 	row := lastAudit(t, p, "set-role")
 	if row.Source != "cli" || !is(row.Actor, actor.AccountID) || !is(row.TargetAccount, gm.ID) || row.TargetCharacter != nil ||
 		row.ActorCharacter != nil || row.World != nil || row.Zone != nil || !row.At.Equal(p.Clock.Now()) ||
 		len(row.Args) != 3 || row.Args["from"] != "gm" || row.Args["to"] != "player" || row.Args["os_user"] != "prueba" {
 		t.Fatalf("fila set-role: %+v", row)
 	}
-	// S2: el rol en un instante anterior al cambio es el de antes.
+	// S2: the role at an instant before the change is the previous one.
 	for at, want := range map[time.Time]string{before: "gm", p.Clock.Now(): "player",
 		p.Clock.Now().Add(time.Hour): "player"} {
 		if got, err := sanctions.RoleAt(ctx, p.Pool, gm.ID, at); err != nil || got != want {
 			t.Errorf("RoleAt(%v) = %q %v, se esperaba %s", at, got, err, want)
 		}
 	}
-	// Vuelve a entrar con el rol nuevo (la zona liberó tras su guardado final).
+	// It logs back in with the new role (the zone released after its final save).
 	platformtest.Expect(t, z.Release(id, lease), 204, "")
 	p.Login(gm)
 	ticket, _ := p.MustEnter(gm, id)
@@ -169,8 +169,8 @@ func TestSetRole(t *testing.T) {
 	if role := claim.Body["account"].(map[string]any)["role"]; role != "player" {
 		t.Fatalf("rol en la reclamación: %v", role)
 	}
-	// El mismo rol otra vez no cambia nada ni deja fila; sobre sí mismo, a un correo sin cuenta o
-	// a un rol desconocido, error.
+	// The same role again changes nothing and leaves no row; on itself, on an email without an account
+	// or on an unknown role, error.
 	res, err = p.Admin.SetRole(ctx, actor, gm.Email, sanctions.RolePlayer)
 	if err != nil || res.Changed || p.Count(`select count(*) from audit_log where command = 'set-role'`) != 1 {
 		t.Fatalf("mismo rol: %+v %v", res, err)
@@ -186,9 +186,10 @@ func TestSetRole(t *testing.T) {
 	}
 }
 
-// S2 (progresion.md §13.3) solo lee las filas set-role de la CLI: un lote de auditoría de la zona
-// con una entrada source = 'cli' o command = 'set-role' la rechaza, y una fila set-role con otro
-// source (escrita a mano) no cambia RoleAt. Con varios cambios, RoleAt da el rol de cada tramo.
+// S2 (progresion.md §13.3) only reads the CLI's set-role rows: a zone audit batch with an entry
+// source = 'cli' or command = 'set-role' rejects it, and a set-role row with another source
+// (written by hand) does not change RoleAt. With several changes, RoleAt gives the role of each
+// stretch.
 func TestRoleAtOnlyReadsCLI(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -233,8 +234,9 @@ func TestRoleAtOnlyReadsCLI(t *testing.T) {
 	}
 }
 
-// names block|unblock (SOC-13): la clave de NameRules va a la lista negra (crear → 422 reserved,
-// también con otras mayúsculas y tildes) y sale de ella; avisa de quien ya se llama así.
+// names block|unblock (SOC-13): the NameRules key goes to the blacklist (create -> 422 reserved,
+// also with other capitalization and accents) and leaves it; it warns about whoever already has
+// that name.
 func TestNamesBlock(t *testing.T) {
 	p := platformtest.New(t)
 	_, actor := staff(t, p, "admin@example.org", sanctions.RoleAdmin)
@@ -279,9 +281,9 @@ func TestNamesBlock(t *testing.T) {
 	}
 }
 
-// Dos admins que se quitan el rol el uno al otro a la vez: set-role bloquea las dos filas en orden
-// de id y vuelve a mirar el rol del --actor, así que gana uno y el otro no se ejecuta (nunca se
-// quedan los dos sin admin).
+// Two admins who remove each other's role at the same time: set-role locks both rows in id order
+// and checks the --actor's role again, so one wins and the other is not executed (they are never
+// both left without an admin).
 func TestSetRoleRace(t *testing.T) {
 	p := platformtest.New(t)
 	for round := 0; round < 8; round++ {

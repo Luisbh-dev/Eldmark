@@ -1,33 +1,37 @@
 class_name InventoryState
 extends RefCounted
-## Los contenedores de un personaje (docs/progresion.md §4.1, PRG-11): la bolsa ([code]BAG[/code],
-## [member bag_slots] ranuras, 30 por defecto y 120 como mucho) y el equipo ([code]EQUIPMENT[/code], 7
-## ranuras: las dos armas y cinco de armadura reservadas en la fase 5). El equipo puesto [b]es[/b] el
-## contenedor EQUIPMENT. El banco (PRG-25) y el contenedor 3 no existen todavía: sus ranuras no existen.
+## A character's containers (docs/progresion.md §4.1, PRG-11): the bag ([code]BAG[/code],
+## [member bag_slots] slots, 30 by default and 120 at most) and equipment ([code]EQUIPMENT[/code],
+## 7 slots: the two weapons and five armor slots reserved in phase 5). The worn equipment [b]is[/b]
+## the EQUIPMENT container. The bank (PRG-25) and container 3 do not exist yet: their slots do not
+## exist.
 ## [br][br]
-## Solo guarda instancias: no sabe de reglas (las aplica [InventoryOps]) ni de la ranura activa, que es el
-## bit0 de [code]combat_flags2[/code] del [CombatState] y llega a cada petición en
-## [member InventoryOps.Context.active_weapon_slot]. La sección [code]containers[/code] de las reglas
-## exportadas ([ProgressionRulesExport]) sale de sus constantes. Compartido: sin reloj ni azar.
+## It only stores instances: it knows nothing of rules (applied by [InventoryOps]) or of the active
+## slot, which is bit0 of [code]combat_flags2[/code] in the [CombatState] and reaches each request
+## in [member InventoryOps.Context.active_weapon_slot]. The [code]containers[/code] section of the
+## exported rules ([ProgressionRulesExport]) comes from its constants. Shared: no clock, no
+## randomness.
 
-## Contenedores (en la base de datos y en el cable, este número). En la fase 5 solo BAG y EQUIPMENT.
+## Containers (in the database and on the wire, this number). In phase 5 only BAG and EQUIPMENT.
 enum ContainerId { BAG = 0, EQUIPMENT = 1, BANK = 2 }
-## Ranuras del equipo. En la fase 5 solo las dos de arma admiten algo (CANNOT_EQUIP en el resto).
+## Equipment slots. In phase 5 only the two weapon slots accept anything (CANNOT_EQUIP for the
+## rest).
 enum EquipmentSlot { WEAPON_1 = 0, WEAPON_2 = 1, HEAD = 2, CHEST = 3, HANDS = 4, LEGS = 5, FEET = 6 }
 
-## Ranuras de la bolsa de un personaje nuevo.
+## Bag slots of a new character.
 const BAG_SLOTS_DEFAULT: int = 30
-## Tope de las ranuras de la bolsa (INVENTORY_FULL las lleva en un u8).
+## Cap on bag slots (INVENTORY_FULL carries them in a u8).
 const BAG_SLOTS_MAX: int = 120
-## Ranuras del equipo.
+## Equipment slots.
 const EQUIPMENT_SLOTS: int = 7
-## Ranuras del equipo que admiten algo en la fase 5: solo las armas.
+## Equipment slots that accept anything in phase 5: weapons only.
 const OPEN_EQUIPMENT_SLOTS: int = 2
-## Contenedores que existen en la fase 5.
+## Containers that exist in phase 5.
 const OPEN_CONTAINERS: Array[int] = [ContainerId.BAG, ContainerId.EQUIPMENT]
 
-## Ranuras de la bolsa (1 a [constant BAG_SLOTS_MAX]; en la fase 5 no cambia, I12). Cambiarlo conserva lo
-## que cabe; lo que quede fuera al reducirla se pierde, así que solo se reduce con la bolsa vacía.
+## Bag slots (1 to [constant BAG_SLOTS_MAX]; in phase 5 it does not change, I12). Changing it
+## keeps what fits; whatever falls outside when shrinking is lost, so it is only reduced with an
+## empty bag.
 var bag_slots: int = BAG_SLOTS_DEFAULT:
 	set = _set_bag_slots
 
@@ -40,7 +44,8 @@ func _init(slots: int = BAG_SLOTS_DEFAULT) -> void:
 	bag_slots = slots
 
 
-## Ranuras de [param container]: [member bag_slots], [constant EQUIPMENT_SLOTS] o 0 si no existe.
+## Slots of [param container]: [member bag_slots], [constant EQUIPMENT_SLOTS] or 0 if it does not
+## exist.
 func slot_count(container: int) -> int:
 	match container:
 		ContainerId.BAG:
@@ -50,20 +55,20 @@ func slot_count(container: int) -> int:
 	return 0
 
 
-## true si la ranura existe (contenedor abierto en la fase 5 y ranura en rango).
+## true if the slot exists (container open in phase 5 and slot in range).
 func has_slot(container: int, slot: int) -> bool:
 	return slot >= 0 and slot < slot_count(container)
 
 
-## La instancia de la ranura, o null si está vacía o no existe.
+## The instance in the slot, or null if it is empty or does not exist.
 func get_item(container: int, slot: int) -> ItemInstance:
 	if not has_slot(container, slot):
 		return null
 	return _bag[slot] if container == ContainerId.BAG else _equipment[slot]
 
 
-## Pone [param item] en la ranura (null la vacía). Una ranura que no existe es un error de quien llama: se
-## registra y no cambia nada. No comprueba reglas: eso es de [InventoryOps].
+## Puts [param item] in the slot (null empties it). A slot that does not exist is a caller error:
+## it is logged and nothing changes. It does not check rules: that is [InventoryOps]'s job.
 func set_item(container: int, slot: int, item: ItemInstance) -> void:
 	if not has_slot(container, slot):
 		push_error("[Eldmark] Inventario: la ranura (%d, %d) no existe" % [container, slot])
@@ -74,7 +79,7 @@ func set_item(container: int, slot: int, item: ItemInstance) -> void:
 		_equipment[slot] = item
 
 
-## La primera ranura vacía de [param container], o −1 si no queda ninguna (o no existe).
+## The first empty slot of [param container], or −1 if none is left (or it does not exist).
 func first_free(container: int) -> int:
 	for slot: int in range(slot_count(container)):
 		if get_item(container, slot) == null:
@@ -82,7 +87,7 @@ func first_free(container: int) -> int:
 	return -1
 
 
-## Cuántas ranuras vacías tiene [param container].
+## How many empty slots [param container] has.
 func free_count(container: int) -> int:
 	var free: int = 0
 	for slot: int in range(slot_count(container)):
@@ -91,7 +96,8 @@ func free_count(container: int) -> int:
 	return free
 
 
-## Dónde está la instancia con [param uid]: [code](contenedor, ranura)[/code], o [code](−1, −1)[/code].
+## Where the instance with [param uid] is: [code](container, slot)[/code], or
+## [code](−1, −1)[/code].
 func find_uid(uid: int) -> Vector2i:
 	for container: int in OPEN_CONTAINERS:
 		for slot: int in range(slot_count(container)):
@@ -101,7 +107,7 @@ func find_uid(uid: int) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
-## Unidades de [param def_id] en la bolsa y el equipo.
+## Units of [param def_id] in the bag and equipment.
 func count_of(def_id: StringName) -> int:
 	var total: int = 0
 	for item: ItemInstance in _bag:
@@ -113,7 +119,7 @@ func count_of(def_id: StringName) -> int:
 	return total
 
 
-## Todas las instancias: la bolsa y después el equipo, cada uno en orden de ranura.
+## All instances: the bag and then equipment, each in slot order.
 func all_items() -> Array[ItemInstance]:
 	var result: Array[ItemInstance] = []
 	for item: ItemInstance in _bag:
@@ -125,7 +131,7 @@ func all_items() -> Array[ItemInstance]:
 	return result
 
 
-## Las ranuras ocupadas como [code](contenedor, ranura)[/code], en el orden de [method all_items].
+## The occupied slots as [code](container, slot)[/code], in the order of [method all_items].
 func occupied_slots() -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	for container: int in OPEN_CONTAINERS:
@@ -135,7 +141,7 @@ func occupied_slots() -> Array[Vector2i]:
 	return result
 
 
-## Una copia independiente (también cada instancia).
+## An independent copy (each instance too).
 func duplicate_state() -> InventoryState:
 	var copy := InventoryState.new(bag_slots)
 	for slot: int in range(bag_slots):
@@ -147,7 +153,7 @@ func duplicate_state() -> InventoryState:
 	return copy
 
 
-## true si [param other] tiene las mismas ranuras con las mismas instancias (campo a campo).
+## true if [param other] has the same slots with the same instances (field by field).
 func equals(other: InventoryState) -> bool:
 	if other == null or other.bag_slots != bag_slots:
 		return false

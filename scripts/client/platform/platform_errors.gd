@@ -1,17 +1,17 @@
 class_name PlatformErrors
 extends RefCounted
-## Los textos para el jugador de los errores de la plataforma (docs/plataforma.md §4.1, UI-04): el cliente traduce
-## por [code]code[/code] y, si no lo conoce, enseña el [code]message[/code] del servidor. Sin respuesta o con un fallo
-## de TLS: «No se puede conectar con el servidor de cuentas» (§13.2).
+## The texts for the player for platform errors (docs/plataforma.md §4.1, UI-04): the client translates
+## by [code]code[/code] and, if it does not know it, shows the server's [code]message[/code]. With no response or with a TLS
+## failure: "No se puede conectar con el servidor de cuentas" (Cannot connect to the accounts server) (§13.2).
 ## [br][br]
-## Las fechas de los errores (fin de una sanción, borrado de la cuenta, reino que se libera) llegan en Unix y se
-## enseñan en la hora local ([method format_date]). Solo cliente.
+## Error dates (end of a sanction, account deletion, realm being released) arrive in Unix time and are
+## shown in local time ([method format_date]). Client only.
 
 const TEXT_NETWORK: String = "No se puede conectar con el servidor de cuentas"
 const TEXT_VALIDATION: String = "Datos no válidos"
 const TEXT_INTERNAL: String = "Error del servidor"
 
-## Textos fijos por código (§4.1 y los códigos que añadieron P1 y P2, §19.2 y §19.3).
+## Fixed texts by code (§4.1 and the codes added by P1 and P2, §19.2 and §19.3).
 const TEXTS: Dictionary = {
 	"bad_request": TEXT_VALIDATION,
 	"validation": TEXT_VALIDATION,
@@ -37,7 +37,7 @@ const TEXTS: Dictionary = {
 	ApiResult.CODE_BAD_RESPONSE: TEXT_INTERNAL,
 }
 
-## Nombre en español de cada campo de [code]fields[/code] para «Datos no válidos (correo, contraseña)».
+## Spanish name of each field of [code]fields[/code] for "Datos no válidos (correo, contraseña)" (Invalid data (email, password)).
 const FIELD_NAMES: Dictionary = {
 	"email": "correo",
 	"new_email": "correo",
@@ -56,7 +56,7 @@ const FIELD_NAMES: Dictionary = {
 }
 
 
-## El texto para el jugador de [param result] (vacío si fue bien).
+## The text for the player of [param result] (empty if it went well).
 static func text_for(result: ApiResult) -> String:
 	if result == null:
 		return TEXT_NETWORK
@@ -108,7 +108,7 @@ static func text_for(result: ApiResult) -> String:
 	return TEXT_INTERNAL
 
 
-## Una fecha Unix en la hora local de esta máquina: «12/05/2026 18:00».
+## A Unix date in this machine's local time: "12/05/2026 18:00".
 static func format_date(unix: int) -> String:
 	var bias_minutes: int = int(Time.get_time_zone_from_system().get("bias", 0))
 	var local: Dictionary = Time.get_datetime_dict_from_unix_time(unix + bias_minutes * 60)

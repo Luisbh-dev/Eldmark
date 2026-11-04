@@ -1,74 +1,74 @@
 class_name PlayerState
 extends RefCounted
-## Estado completo de simulación de un personaje.
+## Complete simulation state of a character.
 ##
-## Restaurarlo con [method PlayerCharacter.set_state] y volver a aplicar las mismas entradas debe
-## reproducir el mismo resultado (reconciliación de la fase 2).
+## Restoring it with [method PlayerCharacter.set_state] and reapplying the same inputs must
+## reproduce the same result (phase 2 reconciliation).
 ## [br][br]
-## Formato de red ([constant ENCODED_SIZE] bytes, little-endian):
+## Network format ([constant ENCODED_SIZE] bytes, little-endian):
 ## [codeblock]
-## offset  tipo     campo
+## offset  type     field
 ## 0       f32 x3   position
 ## 12      f32 x3   velocity
 ## 24      f32      yaw
 ## 28      u8       flags: bit 0 = grounded, bits 1-3 = coyote_ticks, bits 4-7 = jump_buffer_ticks
 ## 29      u16      prev_buttons
 ## 31      u32      last_input_tick
-## 35      76 B     combat (CombatState v5, ver docs/combate.md sección 3.1 y docs/habilidades.md
-##                  sección 3.1)
+## 35      76 B     combat (CombatState v5, see docs/combate.md section 3.1 and docs/habilidades.md
+##                  section 3.1)
 ## [/codeblock]
 
-## Tamaño en bytes de un estado codificado (35 de movimiento y [constant CombatState.ENCODED_SIZE]
-## de combate).
+## Size in bytes of an encoded state (35 for movement and [constant CombatState.ENCODED_SIZE] for
+## combat).
 const ENCODED_SIZE: int = 111
-## Offset del estado de combate dentro del estado codificado.
+## Offset of the combat state inside the encoded state.
 const COMBAT_OFFSET: int = 35
-## Valor máximo de [member coyote_ticks] (ocupa 3 bits de los flags).
+## Maximum value of [member coyote_ticks] (takes 3 bits of the flags).
 const MAX_COYOTE_TICKS: int = 7
-## Valor máximo de [member jump_buffer_ticks] (ocupa 4 bits de los flags).
+## Maximum value of [member jump_buffer_ticks] (takes 4 bits of the flags).
 const MAX_JUMP_BUFFER_TICKS: int = 15
 
 const _FLAG_GROUNDED: int = 1 << 0
 const _COYOTE_SHIFT: int = 1
 const _JUMP_BUFFER_SHIFT: int = 4
 
-# Búfer de 4 bytes que usa to_f32() para no reservar memoria en cada llamada.
+# 4-byte buffer used by to_f32() to avoid allocating memory on every call.
 static var _f32_scratch: PackedByteArray = PackedByteArray([0, 0, 0, 0])
 
-## Posición global de los pies del personaje.
+## Global position of the character's feet.
 var position: Vector3 = Vector3.ZERO
-## Velocidad en m/s.
+## Velocity in m/s.
 var velocity: Vector3 = Vector3.ZERO
-## Orientación en radianes (misma convención que [member Node3D.rotation].y).
+## Orientation in radians (same convention as [member Node3D.rotation].y).
 var yaw: float = 0.0
-## Si el personaje estaba en el suelo al terminar el último tick.
+## Whether the character was on the ground when the last tick ended.
 var grounded: bool = false
-## Botones de la última entrada aplicada (para detectar flancos de subida, como el salto).
+## Buttons of the last applied input (to detect rising edges, such as the jump).
 var prev_buttons: int = 0
-## Tick de la última entrada aplicada.
+## Tick of the last applied input.
 var last_input_tick: int = 0
-## Ticks en el aire que le quedan al personaje para poder saltar tras dejar el suelo sin saltar
-## ("coyote time"). Entre 0 y [constant MAX_COYOTE_TICKS].
+## Ticks in the air the character has left to be able to jump after leaving the ground without
+## jumping ("coyote time"). Between 0 and [constant MAX_COYOTE_TICKS].
 var coyote_ticks: int = 0
-## Ticks que le quedan a una pulsación de salto guardada en el búfer (0 = ninguna pendiente).
-## Entre 0 y [constant MAX_JUMP_BUFFER_TICKS].
+## Ticks remaining for a jump press stored in the buffer (0 = none pending).
+## Between 0 and [constant MAX_JUMP_BUFFER_TICKS].
 var jump_buffer_ticks: int = 0
-## Estado de combate: acción en curso, resistencia, controles impuestos por el servidor... Un
-## estado nuevo lleva el combate inicial del arma por defecto (resistencia llena, sin acción).
+## Combat state: current action, stamina, crowd controls imposed by the server... A new state
+## carries the initial combat of the default weapon (full stamina, no action).
 var combat: CombatState = CombatState.initial(
 		CombatCatalog.rules(), CombatCatalog.default_weapon_id())
 
 
-## Redondea [param value] a float de 32 bits, la precisión con la que [method encode] guarda el
-## yaw y el resto de campos reales. [member PlayerCharacter.yaw] lo usa en su setter para que el
-## estado sobreviva exactamente a la ida y vuelta por la red (reconciliación de la fase 2).
-## Un NaN sigue siendo NaN y un valor que no cabe en f32 pasa a infinito.
+## Rounds [param value] to a 32-bit float, the precision with which [method encode] stores the yaw
+## and the other real fields. [member PlayerCharacter.yaw] uses it in its setter so that the state
+## survives the network round trip exactly (phase 2 reconciliation).
+## A NaN remains NaN and a value that does not fit in f32 becomes infinity.
 static func to_f32(value: float) -> float:
 	_f32_scratch.encode_float(0, value)
 	return _f32_scratch.decode_float(0)
 
 
-## Serializa el estado en [constant ENCODED_SIZE] bytes little-endian.
+## Serializes the state into [constant ENCODED_SIZE] little-endian bytes.
 func encode() -> PackedByteArray:
 	var bytes := PackedByteArray()
 	bytes.resize(ENCODED_SIZE)
@@ -89,7 +89,7 @@ func encode() -> PackedByteArray:
 	return bytes
 
 
-## Reconstruye un estado a partir de bytes. Devuelve null si el tamaño no es
+## Rebuilds a state from bytes. Returns null if the size is not
 ## [constant ENCODED_SIZE].
 static func decode(bytes: PackedByteArray) -> PlayerState:
 	if bytes.size() != ENCODED_SIZE:
@@ -108,7 +108,7 @@ static func decode(bytes: PackedByteArray) -> PlayerState:
 	return state
 
 
-## Copia exacta del estado.
+## Exact copy of the state.
 func duplicate_state() -> PlayerState:
 	var copy := PlayerState.new()
 	copy.position = position
@@ -123,25 +123,25 @@ func duplicate_state() -> PlayerState:
 	return copy
 
 
-## Devuelve true si [method encode] es idéntico byte a byte en ambos estados. Es la comparación de
-## la reconciliación: detecta también las diferencias de [member prev_buttons],
-## [member last_input_tick], los contadores de salto y el [member combat], que
-## [method is_close_to] no tolera. Un [param other] null nunca es igual.
+## Returns true if [method encode] is byte-for-byte identical in both states. This is the
+## reconciliation comparison: it also detects differences in [member prev_buttons],
+## [member last_input_tick], the jump counters and [member combat], which [method is_close_to]
+## does not tolerate. A null [param other] is never equal.
 func equals_exact(other: PlayerState) -> bool:
 	if other == null:
 		return false
 	return encode() == other.encode()
 
 
-## Devuelve true si ambos estados coinciden dentro de la tolerancia: posición y velocidad
-## (distancia <= pos_epsilon), yaw (diferencia angular <= pos_epsilon, teniendo en cuenta la
-## vuelta completa), grounded y los contadores de salto ([member coyote_ticks] y
-## [member jump_buffer_ticks], que cambian lo que harán los ticks siguientes) y el estado de
-## combate, que se compara exacto (son enteros). Cualquier NaN hace que devuelva false.
+## Returns true if both states match within tolerance: position and velocity
+## (distance <= pos_epsilon), yaw (angular difference <= pos_epsilon, accounting for the full
+## turn), grounded and the jump counters ([member coyote_ticks] and [member jump_buffer_ticks],
+## which change what the next ticks will do) and the combat state, which is compared exactly
+## (they are integers). Any NaN makes it return false.
 func is_close_to(other: PlayerState, pos_epsilon: float = 0.01) -> bool:
 	if other == null:
 		return false
-	# Se usa "not (x <= eps)" para que un NaN cuente como diferencia.
+	# "not (x <= eps)" is used so that a NaN counts as a difference.
 	if not (position.distance_to(other.position) <= pos_epsilon):
 		return false
 	if not (velocity.distance_to(other.velocity) <= pos_epsilon):

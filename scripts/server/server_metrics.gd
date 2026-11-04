@@ -1,44 +1,44 @@
 class_name ServerMetrics
 extends RefCounted
-## Medidas del servidor (docs/red.md, secciones 8.1, 13 y 14): duración del tick y de cada una de
-## sus secciones (red, simulación, historial, snapshots...), contadores y un resumen para el
-## informe [code]--report[/code] y para los monitores de la depuración remota del editor.
+## Server measurements (docs/red.md, sections 8.1, 13 and 14): duration of the tick and of each of its sections
+## (network, simulation, history, snapshots...), counters and a summary for the [code]--report[/code] report and for the
+## editor's remote debugging monitors.
 ## [br][br]
-## Está en [code]scripts/server/[/code], así que puede leer el reloj ([method Time.get_ticks_usec]).
-## Uso, una vez por tick:
+## It lives in [code]scripts/server/[/code], so it can read the clock ([method Time.get_ticks_usec]). Usage, once per
+## tick:
 ## [codeblock]
 ## metrics.begin_tick()
 ## metrics.begin_section(&"net")
-## # ... recibir ...
+## # ... receive ...
 ## metrics.end_section(&"net")
 ## metrics.end_tick(tick)
 ## [/codeblock]
-## Una sección puede abrirse varias veces en un tick: se suman. Los percentiles se calculan sobre
-## los últimos [constant WINDOW_TICKS] ticks de cada sección.
+## A section can be opened several times in a tick: they are added up. Percentiles are computed over the last
+## [constant WINDOW_TICKS] ticks of each section.
 
-## Ticks que recuerda cada sección (unos 34 s a 60 Hz).
+## Ticks that each section remembers (about 34 s at 60 Hz).
 const WINDOW_TICKS: int = 2048
-## Nombre de la sección que mide el tick entero.
+## Name of the section that measures the whole tick.
 const SECTION_TICK: StringName = &"tick"
 
-# Contadores que [method summary] sabe interpretar. ZoneServer puede usar los suyos además.
-## Jugadores conectados: se suma +1 al entrar y -1 al salir.
+# Counters that [method summary] knows how to interpret. ZoneServer can also use its own.
+## Connected players: +1 is added on joining and -1 on leaving.
 const COUNTER_PLAYERS: StringName = &"players"
-## Bytes recibidos y enviados por la red.
+## Bytes received and sent over the network.
 const COUNTER_BYTES_IN: StringName = &"bytes_in"
 const COUNTER_BYTES_OUT: StringName = &"bytes_out"
-## Entradas de jugadores consumidas por el servidor y, de ellas, las que hubo que sustituir.
+## Player inputs consumed by the server and, of those, the ones that had to be substituted.
 const COUNTER_INPUTS: StringName = &"inputs"
 const COUNTER_SUBSTITUTIONS: StringName = &"substitutions"
 
-## Prefijo de los monitores personalizados del editor.
+## Prefix of the editor's custom monitors.
 const MONITOR_PREFIX: String = "eldmark/"
 const _MONITOR_KEYS: Array[StringName] = [
 	&"tick_p50_us", &"tick_p99_us", &"tick_max_us", &"players", &"substituted_percent",
 ]
 
-## Reloj en microsegundos. Vacío = [method Time.get_ticks_usec]; las pruebas lo sustituyen por
-## uno propio para que las medidas sean reproducibles.
+## Clock in microseconds. Empty = [method Time.get_ticks_usec]; tests replace it with their own so that measurements are
+## reproducible.
 var clock_usec: Callable = Callable()
 
 var _tick_start_usec: int = 0
@@ -46,26 +46,26 @@ var _first_usec: int = -1
 var _last_usec: int = 0
 var _ticks_measured: int = 0
 var _last_tick: int = 0
-# sección -> inicio de la medida abierta (µs).
+# section -> start of the open measurement (µs).
 var _section_start: Dictionary[StringName, int] = {}
-# sección -> µs acumulados en el tick actual.
+# section -> µs accumulated in the current tick.
 var _section_accum: Dictionary[StringName, int] = {}
-# sección -> anillo de duraciones de los últimos ticks.
+# section -> ring of durations of the last ticks.
 var _sections: Dictionary[StringName, Series] = {}
 var _counters: Dictionary[StringName, int] = {}
 
-# Quién lee cada monitor (id -> instance_id): la última instancia que los registró.
+# Who reads each monitor (id -> instance_id): the last instance that registered them.
 static var _monitor_owners: Dictionary[StringName, int] = {}
 
 
-## Anillo de duraciones (µs) de una sección y su máximo histórico.
+## Ring of durations (µs) of a section and its all-time maximum.
 class Series:
 	var samples: PackedInt32Array = PackedInt32Array()
 	var count: int = 0
 	var head: int = 0
 	var max_all: int = 0
-	## Suma (µs) y número de todas las medidas desde el principio (no solo las de la ventana): la media de
-	## una sección sale de ellas.
+	## Sum (µs) and number of all measurements since the start (not just those in the window): a section's mean comes from
+	## them.
 	var total: int = 0
 	var pushed: int = 0
 
@@ -83,7 +83,7 @@ class Series:
 		pushed += 1
 
 
-	# Muestras de la ventana, ordenadas.
+	# Samples of the window, sorted.
 	func sorted_window() -> PackedInt32Array:
 		var window: PackedInt32Array = samples.slice(0, count) if count < WINDOW_TICKS \
 				else samples.duplicate()
@@ -91,7 +91,7 @@ class Series:
 		return window
 
 
-	# Percentil por rango más cercano (0..1); 0 si no hay muestras.
+	# Nearest-rank percentile (0..1); 0 if there are no samples.
 	func percentile(fraction: float) -> int:
 		if count == 0:
 			return 0
@@ -100,20 +100,20 @@ class Series:
 		return window[rank]
 
 
-## Empieza a medir un tick.
+## Starts measuring a tick.
 func begin_tick() -> void:
 	_tick_start_usec = _now()
 	if _first_usec < 0:
 		_first_usec = _tick_start_usec
 
 
-## Abre la medida de [param section] dentro del tick.
+## Opens the measurement of [param section] within the tick.
 func begin_section(section: StringName) -> void:
 	_section_start[section] = _now()
 
 
-## Cierra la medida de [param section] y la suma a lo que lleva en este tick. No hace nada si la
-## sección no estaba abierta.
+## Closes the measurement of [param section] and adds it to what it has in this tick. Does nothing if the section was
+## not open.
 func end_section(section: StringName) -> void:
 	if not _section_start.has(section):
 		return
@@ -122,8 +122,8 @@ func end_section(section: StringName) -> void:
 	_section_accum[section] = _section_accum.get(section, 0) + elapsed
 
 
-## Cierra el tick [param tick]: guarda la duración de cada sección que se usó en él y la del
-## tick entero ([constant SECTION_TICK]).
+## Closes tick [param tick]: stores the duration of each section used in it and that of the whole tick
+## ([constant SECTION_TICK]).
 func end_tick(tick: int) -> void:
 	var now: int = _now()
 	_last_usec = now
@@ -136,17 +136,17 @@ func end_tick(tick: int) -> void:
 	_section_start.clear()
 
 
-## Suma [param amount] (puede ser negativo) al contador [param counter].
+## Adds [param amount] (may be negative) to the counter [param counter].
 func add_counter(counter: StringName, amount: int) -> void:
 	_counters[counter] = _counters.get(counter, 0) + amount
 
 
-## Valor actual del contador [param counter] (0 si no existe).
+## Current value of the counter [param counter] (0 if it does not exist).
 func get_counter(counter: StringName) -> int:
 	return _counters.get(counter, 0)
 
 
-## Porcentaje de entradas consumidas que hubo que sustituir (0 si no se ha consumido ninguna).
+## Percentage of consumed inputs that had to be substituted (0 if none has been consumed).
 func get_substituted_percent() -> float:
 	var inputs: int = get_counter(COUNTER_INPUTS)
 	if inputs <= 0:
@@ -154,14 +154,14 @@ func get_substituted_percent() -> float:
 	return 100.0 * float(get_counter(COUNTER_SUBSTITUTIONS)) / float(inputs)
 
 
-## Percentil de [param section] (rango más cercano, [param fraction] entre 0 y 1), en µs. 0 si
-## la sección no tiene medidas.
+## Percentile of [param section] (nearest rank, [param fraction] between 0 and 1), in µs. 0 if the section has no
+## measurements.
 func get_percentile_us(section: StringName, fraction: float) -> int:
 	var series: Series = _sections.get(section)
 	return 0 if series == null else series.percentile(fraction)
 
 
-## Máximo de [param section] en la ventana de las últimas medidas, en µs.
+## Maximum of [param section] in the window of the latest measurements, in µs.
 func get_max_us(section: StringName) -> int:
 	var series: Series = _sections.get(section)
 	if series == null or series.count == 0:
@@ -169,18 +169,18 @@ func get_max_us(section: StringName) -> int:
 	return series.sorted_window()[series.count - 1]
 
 
-## Resumen para el informe y el registro de cada 10 s:
+## Summary for the report and the log every 10 s:
 ## [codeblock]
 ## {
-##   "ticks": int,                  # ticks medidos
+##   "ticks": int,                  # ticks measured
 ##   "last_tick": int,
-##   "seconds": float,              # tiempo real entre el primer begin_tick y el último end_tick
-##   "sections": { nombre: {"p50": µs, "p95": µs, "p99": µs, "max": µs, "max_all": µs, "samples": int,
-##                          "total_us": µs de toda la ejecución, "pushed": medidas de toda la ejecución} },
-##   "counters": { nombre: int },   # totales
+##   "seconds": float,              # real time between the first begin_tick and the last end_tick
+##   "sections": { name: {"p50": µs, "p95": µs, "p99": µs, "max": µs, "max_all": µs, "samples": int,
+##                        "total_us": µs of the whole run, "pushed": measurements of the whole run} },
+##   "counters": { name: int },     # totals
 ##   "players": int,
 ##   "kb_in_per_s": float, "kb_out_per_s": float,
-##   "substituted_percent": float,  # entradas sustituidas / entradas consumidas
+##   "substituted_percent": float,  # substituted inputs / consumed inputs
 ## }
 ## [/codeblock]
 func summary() -> Dictionary:
@@ -214,12 +214,11 @@ func summary() -> Dictionary:
 	}
 
 
-## Registra los monitores personalizados del editor (pestaña «Monitores» del depurador):
+## Registers the editor's custom monitors ("Monitores" (Monitors) tab of the debugger):
 ## [code]eldmark/tick_p50_us[/code], [code]tick_p99_us[/code], [code]tick_max_us[/code],
-## [code]players[/code] y [code]substituted_percent[/code]. Registrar dos veces el mismo nombre es
-## un error del motor, así que cada monitor se añade una sola vez por proceso y esta instancia
-## pasa a ser la que lee. Si la instancia que los leía se libera, los monitores devuelven 0
-## hasta que otra los vuelva a registrar.
+## [code]players[/code] and [code]substituted_percent[/code]. Registering the same name twice is an engine error, so each
+## monitor is added only once per process and this instance becomes the one that reads. If the instance that was reading
+## them is freed, the monitors return 0 until another registers them again.
 func register_monitors() -> void:
 	for key: StringName in _MONITOR_KEYS:
 		var id: StringName = _monitor_id(key)
@@ -228,7 +227,7 @@ func register_monitors() -> void:
 		_monitor_owners[id] = get_instance_id()
 
 
-## Quita los monitores de los que esta instancia es la dueña (los de otra instancia, no).
+## Removes the monitors that this instance owns (not those of another instance).
 func unregister_monitors() -> void:
 	for key: StringName in _MONITOR_KEYS:
 		var id: StringName = _monitor_id(key)
@@ -266,8 +265,7 @@ static func _monitor_id(key: StringName) -> StringName:
 	return StringName(MONITOR_PREFIX + String(key))
 
 
-# Lo que lee el editor: se resuelve la instancia dueña por su id, así que un monitor nunca apunta
-# a un objeto liberado.
+# What the editor reads: the owning instance is resolved by its id, so a monitor never points to a freed object.
 static func _read_monitor(key: StringName) -> float:
 	var owner_id: int = _monitor_owners.get(_monitor_id(key), 0)
 	var metrics: ServerMetrics = instance_from_id(owner_id) as ServerMetrics

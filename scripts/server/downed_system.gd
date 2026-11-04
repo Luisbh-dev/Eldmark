@@ -1,53 +1,53 @@
 class_name DownedSystem
 extends RefCounted
-## Derribado, levantar y rematar en el servidor (docs/habilidades.md, sección 4.5; CMB-28).
+## Knocked down, lifting and finishing off on the server (docs/habilidades.md, section 4.5; CMB-28).
 ## [br][br]
-## [b]Cuándo[/b] ([method should_down]): la vida de un [b]jugador[/b] (también los falsos) llega a 0 por un
-## golpe, una flecha o un pulso cuyo autor es un jugador de un reino hostil en una zona RVR. Si no, muerte
-## directa (PNJ, entorno, maniquí, PvE). Lo decide el [CombatDirector] al aplicar el golpe.
+## [b]When[/b] ([method should_down]): the health of a [b]player[/b] (fake ones too) reaches 0 from a
+## hit, an arrow or a pulse whose author is a player of a hostile realm in an RvR zone. Otherwise, direct
+## death (NPC, environment, dummy, PvE). Decided by the [CombatDirector] when applying the hit.
 ## [br][br]
-## [b]Caer[/b] ([method down]): [method ActionMachine.impose_downed], vida 0, vida de derribado
-## [member CombatRules.downed_health], autor y fuente, efectos borrados (sin STATUS: DOWNED los borra en el
-## cliente) y el evento DOWNED a toda la zona. El HIT del golpe lleva el bit 6 (lo pone el director).
+## [b]Falling[/b] ([method down]): [method ActionMachine.impose_downed], health 0, downed health
+## [member CombatRules.downed_health], author and source, effects cleared (without STATUS: DOWNED clears them on the
+## client) and the DOWNED event to the whole zone. The hit's HIT carries bit 6 (set by the director).
 ## [br][br]
-## [b]El paso 7 del tick[/b] ([method step], docs/habilidades.md, sección 4.1), por net_id:
-## [br]1. [b]Desangrado[/b]: la vida de derribado baja de forma exacta en enteros hasta 0 en
-## [member CombatTables.downed_ticks] (−1 cada 3 ticks con 400 en 1200). A 0, muerte: asesino el último
-## enemigo que le hizo daño ya derribado o, si no, quien lo derribó, con la fuente «desangrado».
-## [br]2. [b]INTERACT nuevos[/b]: un flanco de INTERACT en una entrada real (los botones de [code]s[/code]
-## frente a los de [code]s − 1[/code], que guarda el [Combatant]) de alguien vivo, en NONE o BLOCK y en el
-## suelo busca el derribado más cercano a [member CombatRules.interact_range_m] en horizontal (desnivel ≤
-## [constant MAX_HEIGHT_DIFFERENCE], empate por net_id) con línea de visión del pecho (pies + 1,4) a pies +
-## 0,5 del derribado: un aliado al que nadie levanta → REVIVE (INTERACT 1); un enemigo sin zonas seguras de
-## por medio → EXECUTE (INTERACT 4). [method ActionMachine.impose_interact] y [code]commit_state[/code].
-## Empezar a rematar quita la protección de reaparición (como atacar): si no, nadie podría cortar el remate de
-## quien acaba de reaparecer, porque un protegido no es candidato de ningún golpe (revisión de H5).
-## [br]3. [b]Progreso y final[/b]: en [code]s == inicio + duración[/code] acaba (se mira antes que seguir: en
-## ese tick la simulación ya ha vuelto a NONE): levantar → [method ActionMachine.impose_revived] con
-## [member CombatRules.revived_health] (INTERACT 3); rematar → muerte con la fuente «remate». Antes, cada
-## tick se corta (INTERACT 2 o 5, e [method ActionMachine.impose_interrupt] si aún está en la acción) si
-## quien actúa ha dejado la acción (soltó, esquivó, le impusieron otra o le interrumpió un golpe), el
-## objetivo ya no está derribado o ha recibido daño en este tick, pasa de
-## [member CombatRules.interact_keep_range_m] o se pierde la línea de visión (la puerta cerrada la corta); un
-## remate, también si queda una zona segura de por medio (el derribado se arrastra a su campamento o quien
-## remata entra en el suyo), y eso se mira también en el tick del final.
+## [b]Step 7 of the tick[/b] ([method step], docs/habilidades.md, section 4.1), by net_id:
+## [br]1. [b]Bleeding out[/b]: downed health drops exactly in integers down to 0 over
+## [member CombatTables.downed_ticks] (−1 every 3 ticks with 400 in 1200). At 0, death: killer is the last
+## enemy that damaged it while already downed or, failing that, whoever downed it, with the source "bled out".
+## [br]2. [b]New INTERACTs[/b]: an INTERACT edge on a real input (the buttons of [code]s[/code]
+## against those of [code]s − 1[/code], kept by the [Combatant]) from someone alive, in NONE or BLOCK and on the
+## ground, looks for the nearest downed player within [member CombatRules.interact_range_m] horizontally (height difference ≤
+## [constant MAX_HEIGHT_DIFFERENCE], ties by net_id) with line of sight from the chest (feet + 1.4) to feet +
+## 0.5 of the downed player: an ally whom nobody is lifting → REVIVE (INTERACT 1); an enemy with no safe zones in
+## between → EXECUTE (INTERACT 4). [method ActionMachine.impose_interact] and [code]commit_state[/code].
+## Starting to finish off removes respawn protection (like attacking): otherwise nobody could cut off the finishing of
+## someone who has just respawned, because a protected player is no candidate for any hit (H5 review).
+## [br]3. [b]Progress and end[/b]: at [code]s == start + duration[/code] it ends (checked before continuing: on
+## that tick the simulation has already returned to NONE): lifting → [method ActionMachine.impose_revived] with
+## [member CombatRules.revived_health] (INTERACT 3); finishing off → death with the source "execution". Before that, each
+## tick it is cut (INTERACT 2 or 5, and [method ActionMachine.impose_interrupt] if still in the action) if
+## whoever acts has left the action (released, dodged, had another imposed or was interrupted by a hit), the
+## target is no longer downed or has taken damage on this tick, goes beyond
+## [member CombatRules.interact_keep_range_m] or loses line of sight (a closed gate cuts it); an
+## execution also if a safe zone ends up in between (the downed player drags themselves to their camp or the finisher
+## enters theirs), and that is also checked on the final tick.
 ## [br][br]
-## Un derribado no es ni vivo ni muerto ([method Combatant.is_downed]): es candidato de los golpes y de los
-## PNJ, no recibe efectos ni pulsos, no cuenta en el círculo, no se cura ni reaparece y su baja (salir,
-## desconectarse, el fin del cuerpo de GUE-41) es antes una muerte ([method killer_of]).
+## A downed player is neither alive nor dead ([method Combatant.is_downed]): it is a candidate for hits and for
+## NPCs, receives no effects or pulses, does not count in the circle, neither heals nor respawns and its removal (leaving,
+## disconnecting, the end of the body from GUE-41) is treated as a death ([method killer_of]).
 ## [br][br]
-## No toca la red ni el reloj: avisa con [signal event_emitted] (DOWNED e INTERACT) y pide las muertes con
-## [signal killed], que aplica el [CombatDirector] (DEATH y KILL).
+## It touches neither the network nor the clock: it announces with [signal event_emitted] (DOWNED and INTERACT) and requests deaths with
+## [signal killed], which the [CombatDirector] applies (DEATH and KILL).
 
-## Un evento DOWNED o INTERACT y los net_id implicados (el derribado y su autor o quien actúa).
+## A DOWNED or INTERACT event and the net_ids involved (the downed player and its author or whoever acts).
 signal event_emitted(event: NetMessages.EntityEvent, involved: PackedInt32Array)
-## Un derribado muere desangrado o rematado: [param killer_id] es el asesino (0 = nadie) y [param source] la
-## fuente ([constant CombatSource.BLEED_OUT] o [constant CombatSource.EXECUTE]). Lo mata el [CombatDirector].
+## A downed player dies bled out or finished off: [param killer_id] is the killer (0 = nobody) and [param source] the
+## source ([constant CombatSource.BLEED_OUT] or [constant CombatSource.EXECUTE]). The [CombatDirector] kills them.
 signal killed(victim: Combatant, killer_id: int, source: int, tick: int)
 
-## Desnivel máximo (m) entre quien actúa y el derribado para empezar a levantarlo o rematarlo, y para seguir.
+## Maximum height difference (m) between whoever acts and the downed player to start lifting or finishing them off, and to continue.
 const MAX_HEIGHT_DIFFERENCE: float = 1.5
-## Altura sobre los pies del derribado a la que llega el rayo de la línea de visión (está en el suelo).
+## Height above the downed player's feet that the line-of-sight ray reaches (they are on the ground).
 const DOWNED_SIGHT_HEIGHT: float = 0.5
 
 const _NONE: int = CombatState.Action.NONE
@@ -55,29 +55,29 @@ const _BLOCK: int = CombatState.Action.BLOCK
 const _REVIVE: int = CombatState.Action.REVIVE
 const _EXECUTE: int = CombatState.Action.EXECUTE
 
-## Zona (las reglas de hostilidad y el modo RVR) y sus zonas seguras (null = ninguna).
+## Zone (the hostility rules and RvR mode) and its safe zones (null = none).
 var zone_id: StringName = &""
 var safe_areas: SafeAreas = null
-## Los efectos de estado de la zona: se borran al caer.
+## The zone's status effects: cleared on falling.
 var status: StatusSystem = null
-## Los combatientes de la zona por net_id (el diccionario del [CombatDirector]: no es una copia).
+## The zone's combatants by net_id (the [CombatDirector]'s dictionary: not a copy).
 var combatants: Dictionary[int, Combatant] = {}
-## Contadores de la ejecución (para el informe del servidor).
+## Counters for the run (for the server report).
 var stats: Dictionary[StringName, int] = {
 	&"downs": 0, &"revives": 0, &"executions": 0, &"bled_out": 0, &"interact_started": 0,
 	&"interact_cut": 0,
 }
 
-# Derribados de la zona y quienes levantan o rematan, por net_id: sin ninguno, step() no recorre a nadie.
+# Downed players of the zone and those who lift or finish off, by net_id: with none, step() iterates over nobody.
 var _downed: Dictionary[int, Combatant] = {}
 var _actors: Dictionary[int, Combatant] = {}
-# (reino de quien actúa · 16 + reino del derribado) -> si son hostiles en esta zona.
+# (realm of whoever acts · 16 + realm of the downed player) -> whether they are hostile in this zone.
 var _hostile_cache: Dictionary[int, bool] = {}
 
 
-## true si [param victim], que acaba de quedarse sin vida, queda derribado en vez de morir: es un jugador
-## (no un PNJ ni un maniquí) y el autor del golpe es un jugador ([param author_is_player]) de un reino
-## ([param author_realm]) hostil al suyo en una zona RVR. Contra PNJ, el entorno o los Huecos, muerte directa.
+## true if [param victim], who has just run out of health, is knocked down instead of dying: it is a player
+## (not an NPC or a dummy) and the hit's author is a player ([param author_is_player]) of a realm
+## ([param author_realm]) hostile to its own in an RvR zone. Against NPCs, the environment or the Hollow, direct death.
 func should_down(victim: Combatant, author_realm: int, author_is_player: bool) -> bool:
 	if victim == null or victim.immortal or not author_is_player:
 		return false
@@ -89,14 +89,14 @@ func should_down(victim: Combatant, author_realm: int, author_is_player: bool) -
 	return NetZones.is_rvr(String(zone_id)) and _is_hostile(author_realm, victim_realm)
 
 
-## true si la zona admite el derribado entre reinos (es RVR).
+## true if the zone allows knocking down between realms (it is RvR).
 func is_enabled() -> bool:
 	return NetZones.is_rvr(String(zone_id))
 
 
-## Deja derribado a [param victim] en el tick [param s] por [param author_id] (0 = nadie: el comando 15) con la
-## fuente [param source]: DOWNED con la vida de derribado, sin efectos, y el evento DOWNED. No hace nada sobre
-## alguien ya derribado o muerto.
+## Leaves [param victim] downed at tick [param s] by [param author_id] (0 = nobody: command 15) with
+## source [param source]: DOWNED with the downed health, no effects, and the DOWNED event. Does nothing on
+## someone already downed or dead.
 func down(victim: Combatant, author_id: int, source: int, s: int) -> void:
 	if victim == null or victim.is_downed() or victim.death_tick >= 0:
 		return
@@ -113,14 +113,14 @@ func down(victim: Combatant, author_id: int, source: int, s: int) -> void:
 			_involved(victim.get_id(), author_id))
 
 
-## Paso 7 del tick [param s] (docs/habilidades.md, sección 4.1) sobre [param list] (por net_id):
-## desangrado, INTERACT nuevos y el progreso y el final de levantar y rematar. [param space] es el espacio de
-## física del mundo (línea de visión; null = sin mundo).
+## Step 7 of tick [param s] (docs/habilidades.md, section 4.1) over [param list] (by net_id):
+## bleeding out, new INTERACTs and the progress and end of lifting and finishing off. [param space] is the world's
+## physics space (line of sight; null = no world).
 func step(s: int, list: Array[Combatant], space: PhysicsDirectSpaceState3D) -> void:
 	if _downed.is_empty() and _actors.is_empty():
 		return
 	var tables: CombatTables = CombatCatalog.tables()
-	# 1. Desangrado.
+	# 1. Bleeding out.
 	if not _downed.is_empty():
 		for victim: Combatant in list:
 			if not victim.is_downed():
@@ -132,12 +132,12 @@ func step(s: int, list: Array[Combatant], space: PhysicsDirectSpaceState3D) -> v
 			if victim.downed_health == 0:
 				stats[&"bled_out"] += 1
 				killed.emit(victim, killer_of(victim), CombatSource.BLEED_OUT, s)
-	# 2. INTERACT nuevos (solo hay a quién si queda algún derribado).
+	# 2. New INTERACTs (there is a target only if some downed player remains).
 	if not _downed.is_empty():
 		for actor: Combatant in list:
 			if _interact_pressed(actor, s):
 				_try_start(actor, s, space, tables)
-	# 3. Progreso y final de lo que ya estaba en marcha.
+	# 3. Progress and end of what was already under way.
 	if not _actors.is_empty():
 		for actor: Combatant in list:
 			if actor.interact_target != 0 and actor.interact_start != s:
@@ -145,9 +145,9 @@ func step(s: int, list: Array[Combatant], space: PhysicsDirectSpaceState3D) -> v
 	_prune()
 
 
-## Lo que quita el desangrado en el tick que hace [param elapsed] desde la caída: la vida de derribado baja
-## en enteros de forma exacta hasta 0 en [member CombatTables.downed_ticks] (con 400 en 1200, 1 cada 3 ticks).
-## [param remaining] acota el resultado.
+## What bleeding out removes on the tick that is [param elapsed] since the fall: downed health drops
+## in exact integers down to 0 over [member CombatTables.downed_ticks] (with 400 in 1200, 1 every 3 ticks).
+## [param remaining] bounds the result.
 static func bleed_loss(elapsed: int, remaining: int, tables: CombatTables) -> int:
 	var total_ticks: int = tables.downed_ticks
 	var full: int = tables.rules.downed_health
@@ -160,8 +160,8 @@ static func bleed_loss(elapsed: int, remaining: int, tables: CombatTables) -> in
 	return mini(now - before, remaining)
 
 
-## El asesino de un derribado que muere sin golpe (desangrado, al salir, el entorno): el último enemigo que le
-## hizo daño ya derribado o, si no, quien lo derribó; 0 si ninguno sigue en la zona.
+## The killer of a downed player who dies without a hit (bleeding out, on leaving, the environment): the last enemy that
+## damaged it while already downed or, failing that, whoever downed it; 0 if none remains in the zone.
 func killer_of(victim: Combatant) -> int:
 	if victim.last_enemy_id != 0 and victim.last_enemy_tick >= victim.downed_tick \
 			and combatants.has(victim.last_enemy_id):
@@ -171,30 +171,30 @@ func killer_of(victim: Combatant) -> int:
 	return 0
 
 
-## Deja de seguir a [param victim] como derribado (ha muerto o ha reaparecido). Quien lo levantaba o
-## remataba se corta en el siguiente paso 7.
+## Stops tracking [param victim] as downed (it has died or respawned). Whoever was lifting or
+## finishing it off is cut on the next step 7.
 func release(victim: Combatant) -> void:
 	if victim != null:
 		_downed.erase(victim.get_id())
 
 
-## Al dar de baja a [param net_id]: deja de seguirlo como derribado y como quien actúa.
+## On removing [param net_id]: stops tracking it as downed and as someone acting.
 func forget(net_id: int) -> void:
 	_downed.erase(net_id)
 	_actors.erase(net_id)
 
 
-## Derribados de la zona ahora.
+## Downed players in the zone now.
 func downed_count() -> int:
 	return _downed.size()
 
 
-## Quien levanta o remata ahora.
+## Those lifting or finishing off now.
 func interacting_count() -> int:
 	return _actors.size()
 
 
-## Olvida a todos (cierre del servidor).
+## Forgets everyone (server shutdown).
 func clear() -> void:
 	_downed.clear()
 	_actors.clear()
@@ -202,8 +202,8 @@ func clear() -> void:
 
 # --- INTERACT --------------------------------------------------------------------------------------
 
-# Flanco de INTERACT de [param actor] en una entrada real del tick [param s] (la que se simuló: real o
-# sustituta), frente a los botones del tick anterior. Pone al día los botones que guarda el Combatant.
+# INTERACT edge of [param actor] on a real input of tick [param s] (the one that was simulated: real or
+# substitute), against the previous tick's buttons. Updates the buttons the Combatant keeps.
 func _interact_pressed(actor: Combatant, s: int) -> bool:
 	var queue: InputQueue = actor.queue
 	if queue == null:
@@ -216,7 +216,7 @@ func _interact_pressed(actor: Combatant, s: int) -> bool:
 	if actor.last_buttons_tick == s - 1:
 		previous = actor.last_buttons
 	else:
-		# Sin derribados en el tick anterior no se guardaron: los da la cola (si no, no hay flanco).
+		# With no downed players on the previous tick they were not stored: the queue provides them (otherwise there is no edge).
 		var before: PlayerInput = queue.get_applied(s - 1)
 		if before != null:
 			previous = before.buttons & ~PlayerInput.SUBSTITUTED
@@ -226,8 +226,8 @@ func _interact_pressed(actor: Combatant, s: int) -> bool:
 	return real and (buttons & PlayerInput.INTERACT) != 0 and (previous & PlayerInput.INTERACT) == 0
 
 
-# Empieza a levantar o rematar al derribado más cercano que valga, si [param actor] puede: vivo, sin otra
-# interacción, en NONE o BLOCK y en el suelo.
+# Starts lifting or finishing off the nearest valid downed player, if [param actor] can: alive, with no other
+# interaction, in NONE or BLOCK and on the ground.
 func _try_start(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tables: CombatTables) -> void:
 	var character: PlayerCharacter = actor.get_character()
 	if character == null or not actor.is_alive() or actor.is_interacting():
@@ -261,8 +261,8 @@ func _try_start(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tabl
 			continue
 		var action: int = option[3]
 		if action == _EXECUTE:
-			# Rematar es atacar: quita la protección de reaparición desde este tick (los golpes de este tick ya
-			# se han resuelto; desde el siguiente, los aliados del derribado lo pueden cortar).
+			# Finishing off is attacking: removes respawn protection from this tick on (this tick's hits have already
+			# been resolved; from the next one, the downed player's allies can cut it).
 			actor.protected_until = mini(actor.protected_until, s)
 		ActionMachine.impose_interact(combat, s, action)
 		CombatDirector.commit_state(character)
@@ -278,10 +278,10 @@ func _try_start(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tabl
 		return
 
 
-# Qué puede hacer [param actor] con el derribado [param target]: REVIVE a un aliado al que nadie levanta,
-# EXECUTE a un enemigo sin zonas seguras de por medio, o 0 (siempre 0 para un GM invisible).
+# What [param actor] can do with the downed player [param target]: REVIVE an ally whom nobody is lifting,
+# EXECUTE an enemy with no safe zones in between, or 0 (always 0 for an invisible GM).
 func _interaction_for(actor: Combatant, target: Combatant) -> int:
-	# Un GM invisible no levanta ni remata (docs/plataforma.md §9.1).
+	# An invisible GM neither lifts nor finishes off (docs/plataforma.md §9.1).
 	if actor.is_gm_invisible():
 		return 0
 	if target.get_realm() == actor.get_realm():
@@ -291,8 +291,8 @@ func _interaction_for(actor: Combatant, target: Combatant) -> int:
 	return 0 if _safe_area_between(actor, target) else _EXECUTE
 
 
-# true si hay una zona segura de por medio para rematar: el derribado está en la de su reino, o quien remata en
-# la suya (salvo que la ignore). Vale para empezar, para seguir y para acabar.
+# true if there is a safe zone in between for finishing off: the downed player is in their realm's, or the finisher in
+# theirs (unless they ignore it). Applies to starting, continuing and ending.
 func _safe_area_between(actor: Combatant, target: Combatant) -> bool:
 	if safe_areas == null:
 		return false
@@ -309,12 +309,12 @@ func _being_revived(target: Combatant) -> bool:
 	return false
 
 
-# Un tick de una interacción en marcha: acaba en su tick, o se corta si ya no se cumple lo que hace falta.
+# One tick of an interaction in progress: it ends on its tick, or is cut if what it needs no longer holds.
 func _progress(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tables: CombatTables) -> void:
 	var target: Combatant = combatants.get(actor.interact_target)
 	var end_tick: int = actor.interact_start + _duration(actor.interact_action, tables)
 	if s >= end_tick:
-		# Acabar se mira antes que seguir: en este tick la simulación ya ha vuelto a NONE.
+		# Ending is checked before continuing: on this tick the simulation has already returned to NONE.
 		if s == end_tick and target != null and target.is_downed() and actor.is_alive() \
 				and not (actor.interact_action == _EXECUTE and _safe_area_between(actor, target)):
 			_complete(actor, target, s, tables)
@@ -333,7 +333,7 @@ func _keeps_going(actor: Combatant, target: Combatant, s: int, space: PhysicsDir
 	if target == null or not target.is_downed() or target.last_damage_tick == s:
 		return false
 	if actor.interact_action == _EXECUTE and _safe_area_between(actor, target):
-		# Se ha arrastrado a su campamento (o quien remata ha entrado en el suyo): ahí no se le puede rematar.
+		# They have dragged themselves to their camp (or the finisher has entered theirs): they cannot be finished off there.
 		return false
 	var feet: Vector3 = actor.entity.get_position()
 	var other: Vector3 = target.entity.get_position()
@@ -343,8 +343,8 @@ func _keeps_going(actor: Combatant, target: Combatant, s: int, space: PhysicsDir
 	return _clear_line(space, feet, other)
 
 
-# Acaba la interacción de [param actor] sobre [param target]: levantado (vida de levantado, NONE e INTERACT 3)
-# o rematado (muerte con la fuente «remate»).
+# Ends [param actor]'s interaction on [param target]: lifted (revived health, NONE and INTERACT 3)
+# or finished off (death with the source "execution").
 func _complete(actor: Combatant, target: Combatant, s: int, tables: CombatTables) -> void:
 	var action: int = actor.interact_action
 	var actor_id: int = actor.get_id()
@@ -366,8 +366,8 @@ func _complete(actor: Combatant, target: Combatant, s: int, tables: CombatTables
 	killed.emit(target, actor_id, CombatSource.EXECUTE, s)
 
 
-# Corta la interacción de [param actor]: si sigue en la acción, NONE conservando su action_tick
-# (impose_interrupt); INTERACT 2 o 5.
+# Cuts [param actor]'s interaction: if still in the action, NONE keeping its action_tick
+# (impose_interrupt); INTERACT 2 or 5.
 func _cut(actor: Combatant, s: int) -> void:
 	var target_id: int = actor.interact_target
 	var action: int = actor.interact_action
@@ -392,7 +392,7 @@ static func _duration(action: int, tables: CombatTables) -> int:
 	return tables.revive_ticks if action == _REVIVE else tables.execute_ticks
 
 
-# Quita de las listas a quien ya no está (muerto, levantado, dado de baja).
+# Removes from the lists whoever is no longer there (dead, lifted, removed).
 func _prune() -> void:
 	for net_id: int in _downed.keys():
 		var victim: Combatant = _downed[net_id]
@@ -403,8 +403,8 @@ func _prune() -> void:
 			_actors.erase(net_id)
 
 
-# Línea de visión del pecho de quien actúa (pies + 1,4) a pies + 0,5 del derribado, contra el mundo y las
-# estructuras (la puerta cerrada la corta).
+# Line of sight from the actor's chest (feet + 1.4) to feet + 0.5 of the downed player, against the world and
+# structures (a closed gate cuts it).
 static func _clear_line(space: PhysicsDirectSpaceState3D, actor_feet: Vector3, target_feet: Vector3) -> bool:
 	if space == null:
 		return true

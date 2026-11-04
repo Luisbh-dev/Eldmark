@@ -1,13 +1,13 @@
-// Package accounts es el servicio de cuentas y sesiones de la plataforma (plataforma.md §4.1 a
-// §4.3, TEC-23 y TEC-41): registro sin delatar cuentas, inicio de sesión con argon2id y una sola
-// función que comprueba contraseñas ([Service.CheckPassword], con fallos por cuenta y grupo de
-// IP), sesiones con el refresco que rota en la misma fila, sesión de privacidad para las cuentas
-// sancionadas, límites de ritmo, el ciclo de vida de la cuenta con enlaces de un solo uso
-// (verificar, recuperar, cambiar y revertir el correo, borrar), la exportación de datos, la purga
-// de las cuentas sin verificar y de las borradas, y las páginas HTML de los enlaces de los correos.
+// Package accounts is the platform's accounts and sessions service (plataforma.md §4.1 to §4.3,
+// TEC-23 and TEC-41): registration that does not reveal accounts, login with argon2id and a single
+// function that checks passwords ([Service.CheckPassword], with failures per account and IP group),
+// sessions with the refresh that rotates in the same row, a privacy session for sanctioned
+// accounts, rate limits, the account lifecycle with single-use links (verify, recover, change and
+// revert the email, delete), data export, the purge of unverified and deleted accounts, and the
+// HTML pages for the email links.
 //
-// Las rutas de /v1 las monta [API.Mount]; [API.RequireSession] protege también las de los paquetes
-// siguientes (personajes, entrar al mundo).
+// The /v1 routes are mounted by [API.Mount]; [API.RequireSession] also protects those of the
+// following packages (characters, entering the world).
 package accounts
 
 import (
@@ -40,58 +40,58 @@ import (
 	"eldmark/platform/legal"
 )
 
-// Plazos de plataforma.md §0, §4.2, §4.3 y §11.1.
+// Timeouts from plataforma.md §0, §4.2, §4.3 and §11.1.
 const (
-	AccessTTL      = 15 * time.Minute    // token de acceso
-	SessionTTL     = 12 * time.Hour      // la sesión, desde el inicio de sesión; rotar no la alarga
+	AccessTTL      = 15 * time.Minute    // access token
+	SessionTTL     = 12 * time.Hour      // the session, from login; rotating does not extend it
 	VerifyTTL      = 24 * time.Hour      // verify_email
 	ChangeEmailTTL = 24 * time.Hour      // change_email
 	ResetTTL       = time.Hour           // reset_password
 	RevertTTL      = 7 * 24 * time.Hour  // revert_email
-	DeletionGrace  = 14 * 24 * time.Hour // del borrado pedido a la purga
-	UnverifiedTTL  = 7 * 24 * time.Hour  // cuenta sin verificar (staging y production)
-	ExportEvery    = 24 * time.Hour      // una exportación al día
-	BaseSlots      = 6                   // huecos de personaje por cuenta y mundo, sin derechos
+	DeletionGrace  = 14 * 24 * time.Hour // from the requested deletion to the purge
+	UnverifiedTTL  = 7 * 24 * time.Hour  // unverified account (staging and production)
+	ExportEvery    = 24 * time.Hour      // one export per day
+	BaseSlots      = 6                   // character slots per account and world, without entitlements
 )
 
-// Límites de ritmo de §4.2.
+// Rate limits from §4.2.
 const (
 	maxPasswordBytes = 512
 	maxUserAgent     = 256
 )
 
-// Ámbitos de una sesión (sessions.scope).
+// Scopes of a session (sessions.scope).
 const (
 	ScopeGame    = "game"
 	ScopePrivacy = "privacy"
 )
 
-// CharacterPurger purga los personajes de una cuenta dentro de la transacción de su purga
-// (plataforma.md §11.2: lápida, ProgressStore.Purge…). Lo aporta characters.Purger (P2); sin él,
-// una cuenta con personajes sin purgar no se purga y se registra. Con un personaje en el mundo
-// devuelve un error que envuelve [ErrCharactersBusy] y no purga nada.
+// CharacterPurger purges an account's characters inside its purge transaction (plataforma.md §11.2:
+// tombstone, ProgressStore.Purge...). It is provided by characters.Purger (P2); without it, an
+// account with unpurged characters is not purged and is logged. With a character in the world it
+// returns an error that wraps [ErrCharactersBusy] and purges nothing.
 type CharacterPurger interface {
 	PurgeAccountCharacters(ctx context.Context, tx pgx.Tx, accountID int64, at time.Time) error
 }
 
-// Options son las dependencias del servicio.
+// Options are the service's dependencies.
 type Options struct {
 	Config     *config.Config
 	Pool       *pgxpool.Pool
 	Log        *slog.Logger
 	Mail       mail.Sender
-	Clock      clock.Clock // por defecto, el del sistema
+	Clock      clock.Clock // by default, the system's
 	Legal      *legal.Set
-	Characters CharacterPurger // characters.Purger (P2); nil: las cuentas con personajes no se purgan
-	// Progress da el progreso de cada personaje en la exportación (ProgressStore.Export, §11.2); nil: la
-	// exportación no lo lleva (las pruebas de este paquete).
+	Characters CharacterPurger // characters.Purger (P2); nil: accounts with characters are not purged
+	// Progress gives each character's progression in the export (ProgressStore.Export, §11.2); nil: the
+	// export does not include it (this package's tests).
 	Progress ProgressExporter
-	// MinProtocol es el protocolo mínimo del cliente para la regla del 426 (ya resuelto con
-	// config.ResolveMinProtocol; 0 mientras no haya progression_rules.json: basta la cabecera).
+	// MinProtocol is the client's minimum protocol for the 426 rule (already resolved with
+	// config.ResolveMinProtocol; 0 while there is no progression_rules.json: the header is enough).
 	MinProtocol int
 }
 
-// Service es el servicio de cuentas.
+// Service is the accounts service.
 type Service struct {
 	cfg         *config.Config
 	pool        *pgxpool.Pool
@@ -106,17 +106,17 @@ type Service struct {
 	failures    *failureTracker
 	limits      limits
 	minProtocol int
-	background  sync.WaitGroup // lo que sigue tras responder (Wait)
+	background  sync.WaitGroup // what continues after responding (Wait)
 }
 
 type limits struct {
-	login       *ratelimit.Limiter // 10/min, ráfaga 10, por grupo de IP
-	register    *ratelimit.Limiter // 3 por hora por grupo de IP
-	mailAccount *ratelimit.Limiter // 3 por hora por destinatario
-	mailIP      *ratelimit.Limiter // 10 por hora por grupo de IP
+	login       *ratelimit.Limiter // 10/min, burst 10, per IP group
+	register    *ratelimit.Limiter // 3 per hour per IP group
+	mailAccount *ratelimit.Limiter // 3 per hour per recipient
+	mailIP      *ratelimit.Limiter // 10 per hour per IP group
 }
 
-// New prepara el servicio. Calcula el hash de relleno con los parámetros actuales.
+// New prepares the service. It computes the padding hash with the current parameters.
 func New(o Options) (*Service, error) {
 	if o.Config == nil || o.Pool == nil || o.Mail == nil || o.Legal == nil {
 		return nil, errors.New("accounts: faltan dependencias")
@@ -146,7 +146,7 @@ func New(o Options) (*Service, error) {
 	}, nil
 }
 
-// Errores de la API pública (§4.1).
+// Public API errors (§4.1).
 
 func errValidation(fields map[string]string) *httpx.Error {
 	return &httpx.Error{Status: http.StatusBadRequest, Code: "validation", Message: "Datos no válidos", Fields: fields}
@@ -173,15 +173,16 @@ func errRateLimited(wait time.Duration) *httpx.Error {
 		Message: "Demasiados intentos; espera " + strconv.Itoa(s) + " s", RetryAfter: s}
 }
 
-// Correo y contraseña (§4.2).
+// Email and password (§4.2).
 
-// NormalizeEmail pone el correo en minúsculas y le quita los espacios de alrededor (solo
-// espacios: un salto de línea no se quita y hace que el correo no valga).
+// NormalizeEmail lowercases the email and strips the surrounding whitespace (spaces only: a line
+// break is not stripped and makes the email invalid).
 func NormalizeEmail(s string) string { return strings.ToLower(strings.Trim(s, " ")) }
 
-// ValidEmail dice si un correo ya normalizado vale: 3–254 B, solo ASCII imprimible sin espacios,
-// una sola @, net/mail.ParseAddress lo devuelve igual y sin nombre visible, y un dominio con al
-// menos un punto, etiquetas [a-z0-9-] y ninguna xn-- (los IDN se rechazan en la fase 5).
+// ValidEmail says whether an already normalized email is valid: 3-254 B, printable ASCII only with
+// no spaces, a single @, net/mail.ParseAddress returns it unchanged and without a display name, and
+// a domain with at least one dot, [a-z0-9-] labels and none starting with xn-- (IDNs are rejected
+// in phase 5).
 func ValidEmail(email string) bool {
 	if len(email) < 3 || len(email) > 254 || strings.Count(email, "@") != 1 {
 		return false
@@ -210,8 +211,8 @@ func ValidEmail(email string) bool {
 	return err == nil && addr == email
 }
 
-// PasswordProblem dice por qué no vale una contraseña nueva ("" si vale): too_short (menos de 10
-// caracteres), too_long (más de 128 o de 512 B) o same_as_email.
+// PasswordProblem says why a new password is not valid ("" if it is): too_short (fewer than 10
+// characters), too_long (more than 128 characters or 512 B) or same_as_email.
 func PasswordProblem(password, email string) string {
 	switch n := utf8.RuneCountInString(password); {
 	case len(password) > maxPasswordBytes || n > 128:
@@ -224,14 +225,14 @@ func PasswordProblem(password, email string) string {
 	return ""
 }
 
-// emailHash es la clave de un correo en los límites y en los fallos de contraseña.
+// emailHash is an email's key in the limits and in the password failures.
 func emailHash(email string) string {
 	sum := sha256.Sum256([]byte(email))
 	return hex.EncodeToString(sum[:])
 }
 
-// accountKey es la clave de una cuenta en los fallos de contraseña (§4.2): el account_id si no es
-// 0 o, si el correo no tiene cuenta, el SHA-256 del correo normalizado.
+// accountKey is an account's key in the password failures (§4.2): the account_id if it is not 0
+// or, if the email has no account, the SHA-256 of the normalized email.
 func accountKey(accountID int64, email string) string {
 	if accountID != 0 {
 		return "a:" + strconv.FormatInt(accountID, 10)
@@ -239,20 +240,20 @@ func accountKey(accountID int64, email string) string {
 	return "e:" + emailHash(email)
 }
 
-// sanctionedHMAC es la huella de un correo en sanctioned_email_hashes (§11.2).
+// sanctionedHMAC is an email's fingerprint in sanctioned_email_hashes (§11.2).
 func (s *Service) sanctionedHMAC(email string) []byte {
 	m := hmac.New(sha256.New, s.cfg.EmailHMACKey)
 	m.Write([]byte(email))
 	return m.Sum(nil)
 }
 
-// link arma el enlace de un correo: ELDMARK_PUBLIC_URL/<página>?token=….
+// link builds an email's link: ELDMARK_PUBLIC_URL/<page>?token=....
 func (s *Service) link(page, token string) string {
 	return s.cfg.PublicURL.String() + "/" + page + "?token=" + token
 }
 
-// sendMail compone y envía un correo. Un fallo se registra y no cambia la respuesta: la API no
-// delata si un correo salió.
+// sendMail composes and sends an email. A failure is logged and does not change the response: the
+// API does not reveal whether an email went out.
 func (s *Service) sendMail(ctx context.Context, tpl mail.Template, to string, data mail.Data) {
 	m, err := mail.Compose(tpl, to, data)
 	if err == nil {
@@ -264,8 +265,8 @@ func (s *Service) sendMail(ctx context.Context, tpl mail.Template, to string, da
 	}
 }
 
-// allowMail gasta una ficha del límite de correos del destinatario y de la IP (§4.2: 3 por
-// cuenta y hora y 10 por IP y hora).
+// allowMail spends a token from the recipient's and the IP's email limit (§4.2: 3 per account per
+// hour and 10 per IP per hour).
 func (s *Service) allowMail(recipient string, ip netip.Addr, now time.Time) error {
 	ok, wait := ratelimit.AllowAll(now,
 		ratelimit.Key{Limiter: s.limits.mailAccount, Key: emailHash(recipient)},
@@ -276,7 +277,7 @@ func (s *Service) allowMail(recipient string, ip netip.Addr, now time.Time) erro
 	return nil
 }
 
-// Acceso a la base.
+// Database access.
 
 type execer interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
@@ -288,7 +289,7 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// ClientMeta son los datos de la conexión que se guardan con la sesión y en auth_events.
+// ClientMeta is the connection data stored with the session and in auth_events.
 type ClientMeta struct {
 	IP        netip.Addr
 	UserAgent string
@@ -320,20 +321,20 @@ func nullID(id int64) any {
 	return id
 }
 
-// event escribe una fila en auth_events (kind: §4.2).
+// event writes a row in auth_events (kind: §4.2).
 func (s *Service) event(ctx context.Context, q execer, accountID int64, kind string, meta ClientMeta, at time.Time) error {
 	_, err := q.Exec(ctx, `insert into auth_events (account_id, kind, ip, user_agent, at) values ($1, $2, $3, $4, $5)`,
 		nullID(accountID), kind, nullIP(meta.IP), nullString(cleanUserAgent(meta.UserAgent)), at)
 	return err
 }
 
-// Event escribe una fila en auth_events dentro de la transacción de quien llama: los personajes
-// (P2) anotan así character_create y character_delete, que cuentan en sus límites diarios (§4.2).
+// Event writes a row in auth_events inside the caller's transaction: characters (P2) record
+// character_create and character_delete this way, which count toward their daily limits (§4.2).
 func (s *Service) Event(ctx context.Context, tx pgx.Tx, accountID int64, kind string, meta ClientMeta, at time.Time) error {
 	return s.event(ctx, tx, accountID, kind, meta, at)
 }
 
-// eventLogged escribe la fila fuera de la transacción de la petición; un fallo solo se registra.
+// eventLogged writes the row outside the request's transaction; a failure is only logged.
 func (s *Service) eventLogged(ctx context.Context, accountID int64, kind string, meta ClientMeta, at time.Time) {
 	if err := s.event(context.WithoutCancel(ctx), s.pool, accountID, kind, meta, at); err != nil {
 		s.log.LogAttrs(ctx, slog.LevelError, "auth_events", slog.String("req", logx.RequestID(ctx)),
@@ -348,7 +349,7 @@ func nullString(v string) any {
 	return v
 }
 
-// unix devuelve la fecha Unix de un instante, o nil.
+// unix returns the Unix date of an instant, or nil.
 func unix(t *time.Time) *int64 {
 	if t == nil {
 		return nil

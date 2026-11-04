@@ -1,42 +1,43 @@
 class_name RealmSelect
 extends Control
-## Pantalla de elección de reino (docs/red.md, secciones 1.2 y 17.5; TEC-45).
+## Realm selection screen (docs/red.md, sections 1.2 and 17.5; TEC-45).
 ## [br][br]
-## Tres botones (Vardheim, Solmarch, Askarra), los campos de dirección del servidor y de nombre del
-## personaje, un aviso y el botón «Entrar». [OnlineMain] la muestra cuando un modo en red arranca sin
-## [code]--realm[/code] y vuelve a ella tras un rechazo o una desconexión, con el motivo en el aviso
-## ([method set_notice]).
+## Three buttons (Vardheim, Solmarch, Askarra), the server address and character name fields, a notice
+## and the "Entrar" (Enter) button. [OnlineMain] shows it when a networked mode starts without
+## [code]--realm[/code] and returns to it after a rejection or a disconnection, with the reason in the
+## notice ([method set_notice]).
 ## [br][br]
-## [b]Validación antes de conectar.[/b] El nombre se comprueba con [NameRules] mientras se escribe y
-## el motivo (en español, [method NameRules.reason_text]) se muestra junto al campo; la dirección, con
-## [method ClientConfig.parse_address]. «Entrar» solo se activa con un reino admitido elegido, un nombre
-## válido y una dirección válida, y entonces emite [signal realm_chosen]. Los reinos que la zona no
-## admite ([param allowed] de [method setup]) salen desactivados.
+## [b]Validation before connecting.[/b] The name is checked with [NameRules] as it is typed and the
+## reason (in Spanish, [method NameRules.reason_text]) is shown next to the field; the address, with
+## [method ClientConfig.parse_address]. "Entrar" is only enabled with a supported realm chosen, a valid
+## name and a valid address, and then it emits [signal realm_chosen]. Realms the zone does not support
+## ([param allowed] of [method setup]) appear disabled.
 ## [br][br]
-## En modo [code]--local[/code] la dirección es siempre la de esta máquina: [method set_address_editable]
-## desactiva ese campo.
+## In [code]--local[/code] mode the address is always this machine's: [method set_address_editable]
+## disables that field.
 ## [br][br]
-## [b]Recuento por reino (GUE-42, docs/fuerte.md sección 7).[/b] [method set_realm_counts] enseña bajo cada botón
-## cuántos jugadores tiene su reino en la zona (el recuento que el servidor manda en el WELCOME) y marca el
-## reino con menos jugadores como recomendado ([method get_recommended_realm]) para repartir la batalla. El
-## WELCOME solo llega al conectar, así que el recuento es el de la última conexión (y no hay ninguno antes de
-## la primera). Si el servidor rechaza el reino elegido por desequilibrio (REJECT 9, [constant
-## NetProtocol.Result.IMBALANCE]) [method set_rejected_realm] lo quita de la elección y lo deja marcado.
+## [b]Per-realm count (GUE-42, docs/fuerte.md section 7).[/b] [method set_realm_counts] shows under each
+## button how many players its realm has in the zone (the count the server sends in the WELCOME) and marks
+## the realm with the fewest players as recommended ([method get_recommended_realm]) to spread out the
+## battle. The WELCOME only arrives on connecting, so the count is that of the last connection (and there
+## is none before the first). If the server rejects the chosen realm because of imbalance (REJECT 9, [constant
+## NetProtocol.Result.IMBALANCE]), [method set_rejected_realm] removes it from the choice and
+## leaves it marked.
 ## [br][br]
-## [b]Plantilla de equipo[/b] (PRG-07, docs/habilidades.md, sección 6.5): bajo el nombre, el
-## [TemplateSelector]. La elegida ([method get_selected_template]) la guarda [OnlineMain] en
-## [member ClientConfig.loadout] y [NetClient] la manda en un LOADOUT_SELECT nada más llegar el WELCOME, así
-## que vale ya para la primera aparición.
+## [b]Loadout template[/b] (PRG-07, docs/habilidades.md, section 6.5): under the name, the
+## [TemplateSelector]. The chosen one ([method get_selected_template]) is stored by [OnlineMain] in
+## [member ClientConfig.loadout] and [NetClient] sends it in a LOADOUT_SELECT as soon as the WELCOME
+## arrives, so it is already valid for the first spawn.
 
-## Se emite al pulsar «Entrar» con todo válido: [param realm] es un código de
-## [enum NetProtocol.Realm], [param address] el texto del campo de dirección
-## ([code]host[/code] o [code]host:puerto[/code]) y [param display_name] el nombre ya sin espacios
-## alrededor.
+## Emitted when "Entrar" is pressed with everything valid: [param realm] is a code from
+## [enum NetProtocol.Realm], [param address] the text of the address field
+## ([code]host[/code] or [code]host:port[/code]) and [param display_name] the name with the surrounding
+## spaces already removed.
 signal realm_chosen(realm: int, address: String, display_name: String)
-## Se emite al pulsar «Salir».
+## Emitted when "Salir" (Quit) is pressed.
 signal quit_requested()
 
-## Reinos jugables, en el orden de los botones.
+## Playable realms, in button order.
 const REALMS: Array[int] = [
 	NetProtocol.Realm.VARDHEIM, NetProtocol.Realm.SOLMARCH, NetProtocol.Realm.ASKARRA,
 ]
@@ -111,10 +112,10 @@ func _ready() -> void:
 	_apply()
 
 
-## Prepara la pantalla: [param default_address] y [param default_name] rellenan los campos y
-## [param allowed] son los códigos de reino ([enum NetProtocol.Realm]) que admite la zona; vacío =
-## todos ([method NetZones.allowed_realms]). Se puede llamar antes o después de añadirla al árbol.
-## Deshace la elección de reino anterior si ya no está admitida.
+## Prepares the screen: [param default_address] and [param default_name] fill in the fields and
+## [param allowed] are the realm codes ([enum NetProtocol.Realm]) the zone supports; empty = all
+## ([method NetZones.allowed_realms]). It can be called before or after adding it to the tree.
+## It undoes the previous realm choice if it is no longer supported.
 func setup(default_address: String, default_name: String, allowed: PackedInt32Array) -> void:
 	_default_address = default_address
 	_default_name = default_name
@@ -126,14 +127,14 @@ func setup(default_address: String, default_name: String, allowed: PackedInt32Ar
 		_apply()
 
 
-## Aviso que se muestra encima del formulario (el motivo del último rechazo o corte). Vacío lo quita.
+## Notice shown above the form (the reason for the last rejection or disconnection). Empty removes it.
 func set_notice(text: String) -> void:
 	_notice = text
 	if is_node_ready():
 		_refresh()
 
 
-## Activa o desactiva el campo de dirección (desactivado en modo [code]--local[/code]).
+## Enables or disables the address field (disabled in [code]--local[/code] mode).
 func set_address_editable(editable: bool) -> void:
 	_address_editable = editable
 	if is_node_ready():
@@ -141,8 +142,8 @@ func set_address_editable(editable: bool) -> void:
 		_refresh()
 
 
-## Elige [param realm] (si la zona lo admite), como si se pulsara su botón. Con
-## [constant NetProtocol.Realm.NONE] quita la elección.
+## Chooses [param realm] (if the zone supports it), as if its button were pressed. With
+## [constant NetProtocol.Realm.NONE] it clears the choice.
 func select_realm(realm: int) -> void:
 	if realm != NetProtocol.Realm.NONE and (not REALMS.has(realm) or not is_realm_allowed(realm)):
 		return
@@ -152,37 +153,37 @@ func select_realm(realm: int) -> void:
 		_refresh()
 
 
-## Reino elegido ([constant NetProtocol.Realm.NONE] si aún no hay).
+## Chosen realm ([constant NetProtocol.Realm.NONE] if none yet).
 func get_selected_realm() -> int:
 	return _selected_realm
 
 
-## true si la zona admite [param realm] (la lista de admitidos vacía admite todos).
+## true if the zone supports [param realm] (an empty allowed list supports all).
 func is_realm_allowed(realm: int) -> bool:
 	return _allowed.is_empty() or _allowed.has(realm)
 
 
-## Marca la plantilla de equipo [param template_id] (0 = la de por defecto). Se puede llamar antes de añadir
-## la pantalla al árbol.
+## Selects the loadout template [param template_id] (0 = the default one). It can be called before
+## adding the screen to the tree.
 func set_selected_template(template_id: int) -> void:
 	_pending_template = template_id
 	if _templates != null:
 		_templates.select(template_id)
 
 
-## Plantilla de equipo elegida (id del catálogo de combate; la de por defecto si no se ha tocado).
+## Chosen loadout template (combat catalog id; the default one if untouched).
 func get_selected_template() -> int:
 	if _templates != null:
 		return _templates.get_selected()
 	return _pending_template if _pending_template > 0 else CombatCatalog.default_template_id()
 
 
-## El selector de plantilla de equipo (null antes de entrar en el árbol).
+## The loadout template selector (null before entering the tree).
 func get_template_selector() -> TemplateSelector:
 	return _templates
 
 
-## Botón del reino [param realm] (null si no es un reino jugable).
+## Button of realm [param realm] (null if it is not a playable realm).
 func get_realm_button(realm: int) -> Button:
 	match realm:
 		NetProtocol.Realm.VARDHEIM:
@@ -194,28 +195,29 @@ func get_realm_button(realm: int) -> Button:
 	return null
 
 
-## Enseña el recuento por reino ([param counts]: jugadores de Vardheim, Solmarch y Askarra, como el
-## [member NetMessages.Welcome.realm_counts]). Vacío (o de otro tamaño) quita el recuento.
+## Shows the per-realm count ([param counts]: players of Vardheim, Solmarch and Askarra, like
+## [member NetMessages.Welcome.realm_counts]). Empty (or of another size) clears the count.
 func set_realm_counts(counts: PackedInt32Array) -> void:
 	_counts = counts.duplicate() if counts.size() == REALMS.size() else PackedInt32Array()
 	if is_node_ready():
 		_refresh_counts()
 
 
-## true si hay un recuento que enseñar.
+## true if there is a count to show.
 func has_realm_counts() -> bool:
 	return not _counts.is_empty()
 
 
-## Jugadores del reino [param realm] según el recuento (-1 si no hay recuento o no es un reino jugable).
+## Players of realm [param realm] according to the count (-1 if there is no count or it is not a
+## playable realm).
 func get_realm_count(realm: int) -> int:
 	var index: int = REALMS.find(realm)
 	return _counts[index] if index >= 0 and not _counts.is_empty() else -1
 
 
-## El reino admitido con menos jugadores: el que conviene elegir. [constant NetProtocol.Realm.NONE] si no hay
-## recuento, si hay menos de dos reinos admitidos o si todos los admitidos van igualados. Con un empate en el
-## mínimo, el primero en el orden de los botones.
+## The supported realm with the fewest players: the one worth choosing. [constant NetProtocol.Realm.NONE]
+## if there is no count, if fewer than two realms are supported or if all the supported ones are tied. With
+## a tie at the minimum, the first in button order.
 func get_recommended_realm() -> int:
 	if _counts.is_empty():
 		return NetProtocol.Realm.NONE
@@ -235,14 +237,14 @@ func get_recommended_realm() -> int:
 	return best if allowed_count >= 2 and highest > lowest else NetProtocol.Realm.NONE
 
 
-## Texto del recuento bajo el botón de [param realm] (vacío si no hay recuento).
+## Count text under the button of [param realm] (empty if there is no count).
 func get_count_text(realm: int) -> String:
 	var label: Label = _count_label(realm)
 	return label.text if label != null else ""
 
 
-## El servidor ha rechazado [param realm] por desequilibrio (REJECT 9): se quita de la elección y se marca.
-## Con [constant NetProtocol.Realm.NONE] se quita la marca.
+## The server rejected [param realm] because of imbalance (REJECT 9): it is removed from the choice and
+## marked. With [constant NetProtocol.Realm.NONE] the mark is cleared.
 func set_rejected_realm(realm: int) -> void:
 	_rejected_realm = realm if REALMS.has(realm) else NetProtocol.Realm.NONE
 	if _selected_realm == _rejected_realm and _rejected_realm != NetProtocol.Realm.NONE:
@@ -253,7 +255,7 @@ func set_rejected_realm(realm: int) -> void:
 		_refresh()
 
 
-## Reino marcado como rechazado por desequilibrio ([constant NetProtocol.Realm.NONE] si ninguno).
+## Realm marked as rejected because of imbalance ([constant NetProtocol.Realm.NONE] if none).
 func get_rejected_realm() -> int:
 	return _rejected_realm
 
@@ -274,23 +276,23 @@ func get_name_edit() -> LineEdit:
 	return _name_edit
 
 
-## Motivo, en español, por el que el nombre escrito no vale (vacío si vale).
+## Reason, in Spanish, why the typed name is not valid (empty if it is valid).
 func get_name_reason_text() -> String:
 	return _name_reason.text
 
 
-## Indicación bajo el formulario: qué falta para poder entrar (reino sin elegir o dirección
-## no válida). Vacía si no falta nada.
+## Hint under the form: what is missing before entering is possible (no realm chosen or invalid
+## address). Empty if nothing is missing.
 func get_hint_text() -> String:
 	return _hint_label.text
 
 
-## Aviso que se muestra encima del formulario.
+## Notice shown above the form.
 func get_notice_text() -> String:
 	return _notice_label.text
 
 
-## Emite [signal realm_chosen] si todo es válido (lo que hace «Entrar»). Devuelve true si lo emitió.
+## Emits [signal realm_chosen] if everything is valid (what "Entrar" does). Returns true if it emitted it.
 func try_enter() -> bool:
 	if not _is_ready_to_enter():
 		return false
@@ -299,7 +301,7 @@ func try_enter() -> bool:
 	return true
 
 
-# Rellena los campos y los botones con lo que dijo setup().
+# Fills in the fields and buttons with what setup() said.
 func _apply() -> void:
 	if _configured:
 		_address_edit.text = _default_address
@@ -332,7 +334,7 @@ func _count_label(realm: int) -> Label:
 	return null
 
 
-# Rellena los textos de recuento bajo los botones: jugadores, recomendado y rechazado.
+# Fills in the count texts under the buttons: players, recommended and rejected.
 func _refresh_counts() -> void:
 	var recommended: int = get_recommended_realm()
 	_counts_note.visible = has_realm_counts()
@@ -342,7 +344,7 @@ func _refresh_counts() -> void:
 		var button: Button = get_realm_button(realm)
 		button.tooltip_text = "" if is_realm_allowed(realm) else TEXT_NOT_ALLOWED
 		if not has_realm_counts():
-			# Sin recuento solo se marca el reino que el servidor ha rechazado.
+			# With no count, only the realm the server rejected is marked.
 			label.visible = realm == _rejected_realm
 			label.text = TEXT_FULL if realm == _rejected_realm else ""
 			label.add_theme_color_override(&"font_color", REJECTED_COLOR)
@@ -365,7 +367,7 @@ func _refresh_counts() -> void:
 			button.tooltip_text = TEXT_REJECTED_TOOLTIP
 
 
-# Textos y estado de «Entrar» según lo que hay escrito y elegido.
+# Texts and state of "Entrar" according to what is typed and chosen.
 func _refresh() -> void:
 	_notice_label.text = _notice
 	_notice_label.visible = not _notice.is_empty()
@@ -390,7 +392,7 @@ func _is_ready_to_enter() -> bool:
 	return true
 
 
-# Motivo por el que la dirección escrita no vale (vacío si vale).
+# Reason why the typed address is not valid (empty if it is valid).
 func _address_error() -> String:
 	return String(ClientConfig.parse_address(_address_edit.text)["error"])
 

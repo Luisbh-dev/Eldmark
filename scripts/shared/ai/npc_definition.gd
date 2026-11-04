@@ -1,89 +1,89 @@
 class_name NpcDefinition
 extends Resource
-## Definición de un tipo de PNJ (docs/fuerte.md, sección 4.2; MUN-07): los datos que el servidor necesita para
-## crearlo y para que su cerebro ([code]HfsmBrain[/code]) sepa cómo comportarse. Está en
-## [code]data/npcs/<id>.tres[/code] (el [member id] es el nombre del archivo sin extensión) y la lista el
-## [NpcCatalog], que da a cada una un número 1..n por orden alfabético: es el [code]npc_def_id[/code] del
-## ENTITY_SPAWN que usa el cliente para elegir modelo, tabardo y barra de jefe.
+## Definition of an NPC type (docs/fuerte.md, section 4.2; MUN-07): the data the server needs to
+## create it and for its brain ([code]HfsmBrain[/code]) to know how to behave. It lives in
+## [code]data/npcs/<id>.tres[/code] (the [member id] is the file name without extension) and is listed by the
+## [NpcCatalog], which gives each one a number 1..n in alphabetical order: it is the [code]npc_def_id[/code] of the
+## ENTITY_SPAWN that the client uses to choose model, tabard and boss bar.
 ## [br][br]
-## Compartido porque los nodos de la zona (el [code]NpcSpawner[/code]) lo nombran. Las duraciones están en
-## segundos y las distancias en metros; el cerebro las convierte a ticks.
+## Shared because the zone nodes (the [code]NpcSpawner[/code]) name it. Durations are in
+## seconds and distances in meters; the brain converts them to ticks.
 
-## Identificador (el nombre del archivo en [code]data/npcs/[/code] sin extensión).
+## Identifier (the file name in [code]data/npcs/[/code] without extension).
 @export var id: StringName = &""
-## Nombre que ven los jugadores.
+## Name that players see.
 @export var display_name: String = ""
-## Vida máxima.
+## Maximum health.
 @export_range(1, 65535) var max_health: int = 1000
-## Arma del catálogo de combate ([code]data/combat/npc_*.tres[/code]): sus ataques ligeros y fuertes, su
-## bloqueo y su esquiva.
+## Weapon from the combat catalog ([code]data/combat/npc_*.tres[/code]): its light and heavy attacks, its
+## block and its dodge.
 @export var weapon_id: StringName = &"npc_hollow"
-## true: no muere (la vida no baja de 1). Solo los maniquíes.
+## true: does not die (health does not drop below 1). Dummies only.
 @export var immortal: bool = false
-## true: es un jefe (el cliente le pone barra de jefe).
+## true: it is a boss (the client gives it a boss bar).
 @export var is_boss: bool = false
-## true: ataca a los enemigos dentro de la zona segura de su propio reino y puede atacar desde ella (los
-## Guardianes de la Puerta, docs/combate.md 5). Solo ataca a los enemigos que están dentro de esa zona.
+## true: attacks enemies inside the safe zone of its own realm and can attack from it (the
+## Gate Guardians, docs/combate.md 5). It only attacks enemies that are inside that zone.
 @export var ignores_safe_area: bool = false
 
 @export_group("Movimiento")
-## Fracción de la velocidad de carrera (5 m/s) al patrullar y al volver.
+## Fraction of the run speed (5 m/s) when patrolling and returning.
 @export_range(0.1, 1.0) var patrol_speed_scale: float = 0.45
-## Fracción de la velocidad de carrera al perseguir.
+## Fraction of the run speed when chasing.
 @export_range(0.1, 1.0) var chase_speed_scale: float = 0.85
-## true: esprinta (7,5 m/s) si el objetivo está lejos.
+## true: sprints (7.5 m/s) if the target is far away.
 @export var can_sprint: bool = false
 
 @export_group("Percepción")
-## Radio de visión (m).
+## Vision radius (m).
 @export var perception_radius: float = 16.0
-## Cono de visión (grados, total). 360 = ve a su alrededor.
+## Vision cone (degrees, total). 360 = sees all around.
 @export_range(10.0, 360.0) var perception_cone_deg: float = 140.0
-## Radio (m) en el que nota a alguien aunque esté a su espalda o sin línea de visión limpia (el oído).
+## Radius (m) within which it notices someone even if behind it or without a clear line of sight (hearing).
 @export var awareness_radius: float = 4.0
-## A más de esta distancia (m) del objetivo, lo da por perdido.
+## Beyond this distance (m) from the target, it gives it up for lost.
 @export var lose_radius: float = 28.0
-## Radio (m) de la alerta de grupo: al entrar en combate avisa a los del mismo grupo a esta distancia.
+## Radius (m) of the group alert: on entering combat it warns those of the same group at this distance.
 @export var alert_radius: float = 25.0
-## Tiempo (s) que tarda en reaccionar tras notar a alguien (mínimo y máximo; el azar sale de su semilla).
+## Time (s) it takes to react after noticing someone (minimum and maximum; the randomness comes from its seed).
 @export var reaction_s: Vector2 = Vector2(0.3, 0.7)
 
 @export_group("Correa")
-## Distancia máxima (m) a la que se aleja de su puesto persiguiendo. Más allá vuelve, regenerado e inmune.
+## Maximum distance (m) it strays from its post while chasing. Beyond that it returns, regenerated and immune.
 @export var leash_radius: float = 32.0
 
 @export_group("Combate")
-## Probabilidad (0 a 1) de que un ataque sea el fuerte (cargado).
+## Probability (0 to 1) that an attack is the heavy (charged) one.
 @export_range(0.0, 1.0) var heavy_chance: float = 0.2
-## Probabilidad (0 a 1) de que, entre dos ataques, levante el escudo.
+## Probability (0 to 1) that, between two attacks, it raises its shield.
 @export_range(0.0, 1.0) var block_chance: float = 0.12
-## Duración (s) del bloqueo (mínimo y máximo).
+## Duration (s) of the block (minimum and maximum).
 @export var block_s: Vector2 = Vector2(0.6, 1.1)
-## Pausa (s) entre un ataque y el siguiente (mínimo y máximo).
+## Pause (s) between one attack and the next (minimum and maximum).
 @export var attack_gap_s: Vector2 = Vector2(0.5, 1.2)
-## Cada cuántos ataques lanza el ataque fuerte especial (el golpe imbloqueable del Capitán); 0 = nunca.
+## Every how many attacks it launches the special heavy attack (the Captain's unblockable strike); 0 = never.
 @export_range(0, 20) var special_every: int = 0
-## Distancia (m) a la que rodea al objetivo cuando no tiene ficha de ataque (3 a 4 m).
+## Distance (m) at which it circles the target when it has no attack token (3 to 4 m).
 @export var circle_distance: float = 3.5
 
 @export_group("Jefe")
-## true: al entrar en combate grita y alerta a los PNJ de su grupo.
+## true: on entering combat it shouts and alerts the NPCs of its group.
 @export var shouts: bool = false
-## Definición de los refuerzos que llama al bajar de [member reinforcement_health_fraction] (vacío = ninguno).
+## Definition of the reinforcements it calls when dropping below [member reinforcement_health_fraction] (empty = none).
 @export var reinforcement_id: StringName = &""
-## Cuántos refuerzos llama.
+## How many reinforcements it calls.
 @export_range(0, 8) var reinforcement_count: int = 0
-## Fracción de vida (0 a 1) por debajo de la cual llama a los refuerzos, una sola vez.
+## Health fraction (0 to 1) below which it calls the reinforcements, only once.
 @export_range(0.0, 1.0) var reinforcement_health_fraction: float = 0.5
 
 @export_group("Guarnición")
-## Definición que lo sustituye en el mismo puesto cuando el fuerte tiene dueño (los Huecos dan paso a los
-## guardias del reino, el Capitán del Vado al capitán del reino). Vacío = nadie.
+## Definition that replaces it at the same post when the fort has an owner (the Hollow give way to the
+## realm's guards, the Ford Captain to the realm's captain). Empty = nobody.
 @export var garrison_id: StringName = &""
 
 @export_group("Recompensas")
-## XP que recibe cada contribuyente cuando muere: quien hizo al menos el 10 % del daño de los últimos 900 ticks
-## (docs/progresion.md §6.2, PRG-13). 0 = ninguna. La paga el servidor ([code]ProgressService.on_npc_killed[/code]).
+## XP each contributor receives when it dies: whoever did at least 10 % of the damage of the last 900 ticks
+## (docs/progresion.md §6.2, PRG-13). 0 = none. It is paid by the server ([code]ProgressService.on_npc_killed[/code]).
 @export_range(0, 100000) var xp_reward: int = 0
-## Oro que recibe cada contribuyente cuando muere (motivo NPC_KILL, docs/progresion.md §5.3). 0 = ninguno.
+## Gold each contributor receives when it dies (reason NPC_KILL, docs/progresion.md §5.3). 0 = none.
 @export_range(0, 100000) var gold_reward: int = 0

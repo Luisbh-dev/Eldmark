@@ -1,67 +1,67 @@
 class_name SiegeRunner
 extends Node
-## Un asedio con jugadores falsos sobre la zona de verdad (GUE-15, GUE-17; docs/fuerte.md, sección 7), en un
-## solo proceso y sin red: carga el Vado Gris con su Terrain3D, arranca un [ZoneServer] y lo avanza «a mano»,
-## muchos ticks por fotograma de física ([member ticks_per_frame]), para que una batalla de minutos de juego
-## dure segundos. Lo usan [code]tools/war/siege_battle.gd[/code] (la herramienta de línea de órdenes, que
-## imprime el informe) y [code]tests/test_siege_zone.gd[/code] (una versión corta dentro de la suite).
+## A siege with fake players on the real zone (GUE-15, GUE-17; docs/fuerte.md, section 7), in a
+## single process and with no network: loads Vado Gris with its Terrain3D, starts a [ZoneServer] and advances it "by hand",
+## many ticks per physics frame ([member ticks_per_frame]), so that a battle of minutes of game time
+## lasts seconds. It is used by [code]tools/war/siege_battle.gd[/code] (the command-line tool, which
+## prints the report) and [code]tests/test_siege_zone.gd[/code] (a short version inside the suite).
 ## [br][br]
-## Apunta lo que hace falta para medir: cuándo llega cada bot a la puerta y por qué ruta, los avisos de guerra y
-## las muertes de jugadores y de PNJ. Sin PNJ (el asedio de F6a), [method kill_captain] da por muerto al capitán como
-## el comando [code]fort_kill_captain[/code] y [method spawn_captain_double] pone un PNJ mortal en su sitio para que
-## los bots lo maten ellos. Con ellos ([code]with_npcs[/code] en [method start], F6b) defienden el fuerte los
-## Huecos, el Capitán del Vado y la guarnición del dueño de verdad, y [method set_npc_health] los debilita para las
-## pruebas cortas sin tocar [code]data/npcs/[/code]. Los bots esperan a los suyos en su campamento y van en formación
-## (GUE-44); [method set_rally] lo cambia o lo quita, y [member rally_departures] apunta cada salida. Una parte sube a la
-## pasarela (GUE-45); [method set_walkway_share] cambia qué parte, y [method place_of] dice dónde ha caído cada muerto.
+## It records what is needed to measure: when each bot reaches the gate and by which route, the war warnings and
+## the player and NPC deaths. Without NPCs (the F6a siege), [method kill_captain] declares the captain dead like
+## the [code]fort_kill_captain[/code] command and [method spawn_captain_double] places a mortal NPC in his place so that
+## the bots kill him themselves. With them ([code]with_npcs[/code] in [method start], F6b) the real Hollow,
+## Ford Captain and owner's garrison defend the fort, and [method set_npc_health] weakens them for
+## short tests without touching [code]data/npcs/[/code]. The bots wait for their own in their camp and go in formation
+## (GUE-44); [method set_rally] changes or removes that, and [member rally_departures] records each departure. A share goes up to the
+## walkway (GUE-45); [method set_walkway_share] changes which share, and [method place_of] says where each dead has fallen.
 
-## Zona del asedio.
+## Siege zone.
 const ZONE_ID: String = "vado_gris"
-## A esta distancia (m) de la puerta, en horizontal, se cuenta que un bot ha llegado.
+## At this distance (m) from the gate, horizontally, a bot is counted as having arrived.
 const ARRIVAL_DISTANCE: float = 3.0
-## Ticks que se avanzan por fotograma de física.
+## Ticks advanced per physics frame.
 const DEFAULT_TICKS_PER_FRAME: int = 40
-## Ticks entre dos comprobaciones de la condición de [method advance_until].
+## Ticks between two checks of the condition of [method advance_until].
 const CHECK_TICKS: int = 30
-## Tick por segundo.
+## Ticks per second.
 const TICK_RATE: int = 60
 
-## Ticks que se avanzan por fotograma de física.
+## Ticks advanced per physics frame.
 var ticks_per_frame: int = DEFAULT_TICKS_PER_FRAME
-## El servidor de la zona (null antes de [method start]).
+## The zone server (null before [method start]).
 var server: ZoneServer = null
 var world: Node3D = null
-## Avisos de guerra en el orden en que salieron (cada uno con su tick), muertes de jugadores
-## ([code]{tick, net_id, realm, position}[/code]) y muertes de PNJ ([code]{tick, net_id, npc, position}[/code], con el id
-## de su definición).
+## War warnings in the order they came out (each with its tick), player deaths
+## ([code]{tick, net_id, realm, position}[/code]) and NPC deaths ([code]{tick, net_id, npc, position}[/code], with the id
+## of its definition).
 var war_events: Array[NetMessages.EntityEvent] = []
 var deaths: Array[Dictionary] = []
 var npc_deaths: Array[Dictionary] = []
-## net_id -> {realm, route, tick} de cada bot que ha llegado a la puerta.
+## net_id -> {realm, route, tick} of each bot that has reached the gate.
 var arrivals: Dictionary[int, Dictionary] = {}
-## net_id -> realm de los jugadores falsos de asedio.
+## net_id -> realm of the siege fake players.
 var bots: Dictionary[int, int] = {}
-## Salidas de la reunión (GUE-44), en el orden en que pasan: [code]{tick, net_id, realm, route}[/code] de cada bot que
-## sale del punto de reunión de su campamento con los suyos (también si no tuvo que esperar porque ya eran bastantes).
+## Rally departures (GUE-44), in the order they happen: [code]{tick, net_id, realm, route}[/code] of each bot that
+## leaves the rally point of its camp with its own (also if it did not have to wait because there were already enough).
 var rally_departures: Array[Dictionary] = []
 
-# net_id -> cerebro de cada bot de asedio (para saber qué ruta sigue).
+# net_id -> brain of each siege bot (to know which route it follows).
 var _brains: Dictionary[int, BotBrain] = {}
 var _remaining: int = 0
 var _running: bool = false
-# La reunión que se impone a los bots (set_rally; -1 = la de BotBrain) y la última salida de la reunión que se ha
-# apuntado de cada bot.
+# The rally imposed on the bots (set_rally; -1 = BotBrain's) and the last rally departure recorded
+# for each bot.
 var _rally_size: int = -1
 var _rally_period: int = BotBrain.SIEGE_RALLY_PERIOD_TICKS
 var _rally_seen: Dictionary[int, int] = {}
-# La parte de los bots con el papel de la pasarela que se impone (set_walkway_share; -1 = la de BotBrain).
+# The share of bots with the walkway role that is imposed (set_walkway_share; -1 = BotBrain's).
 var _walkway_share: float = -1.0
 
 
-## Carga la zona, arranca el servidor y lo deja listo (sin avanzar). [param battle_log_path] activa el
-## [code]--battle-log[/code] del servidor. Sin [param with_npcs] el servidor arranca con
-## [code]--no-npcs[/code] (sin Huecos, Capitán ni Guardianes: el asedio de F6a, medido así); con él, los PNJ
-## de la zona (F4) defienden el fuerte (F6b). Devuelve false si no ha podido.
+## Loads the zone, starts the server and leaves it ready (without advancing). [param battle_log_path] enables the
+## server's [code]--battle-log[/code]. Without [param with_npcs] the server starts with
+## [code]--no-npcs[/code] (no Hollow, Captain or Guardians: the F6a siege, measured that way); with it, the zone's
+## NPCs (F4) defend the fort (F6b). Returns false if it could not.
 func start(parent: Node, battle_log_path: String = "", max_players: int = 256, with_npcs: bool = false) -> bool:
 	var packed: PackedScene = load(NetZones.scene_path(ZONE_ID)) as PackedScene
 	if packed == null:
@@ -93,7 +93,7 @@ func start(parent: Node, battle_log_path: String = "", max_players: int = 256, w
 	return true
 
 
-## Cierra el servidor y libera la zona.
+## Closes the server and frees the zone.
 func finish() -> void:
 	if is_instance_valid(server):
 		server.stop()
@@ -108,8 +108,8 @@ func finish() -> void:
 	world = null
 
 
-## Añade [param count] jugadores falsos de asedio de [param realm], con las semillas [param seed_base],
-## [param seed_base] + 1... Devuelve sus net_id.
+## Adds [param count] siege fake players of [param realm], with the seeds [param seed_base],
+## [param seed_base] + 1... Returns their net_id.
 func add_siege_bots(realm: int, count: int, seed_base: int) -> Array[int]:
 	var ids: Array[int] = []
 	for i: int in count:
@@ -126,9 +126,9 @@ func add_siege_bots(realm: int, count: int, seed_base: int) -> Array[int]:
 	return ids
 
 
-## Cambia la reunión de los bots de asedio (GUE-44; [method BotBrain.set_rally]), los que ya hay y los que se añadan:
-## salen de su campamento cuando hay [param group_size] de su reino o en la siguiente salida del reloj, que da una vuelta
-## cada [param period_ticks] ticks. Con [param group_size] 1 o menos no esperan (como antes de GUE-44).
+## Changes the rally of the siege bots (GUE-44; [method BotBrain.set_rally]), those already there and those added later:
+## they leave their camp when there are [param group_size] from their realm or at the next tick of the clock, which makes one lap
+## every [param period_ticks] ticks. With [param group_size] 1 or less they do not wait (as before GUE-44).
 func set_rally(group_size: int, period_ticks: int = BotBrain.SIEGE_RALLY_PERIOD_TICKS) -> void:
 	_rally_size = group_size
 	_rally_period = period_ticks
@@ -136,17 +136,17 @@ func set_rally(group_size: int, period_ticks: int = BotBrain.SIEGE_RALLY_PERIOD_
 		_brains[net_id].set_rally(group_size, period_ticks)
 
 
-## Cambia qué parte de los bots de asedio tiene el papel de la pasarela (GUE-45; [method BotBrain.set_walkway_share]),
-## los que ya hay y los que se añadan. Con 0 nadie sube (como antes de GUE-45).
+## Changes which share of the siege bots has the walkway role (GUE-45; [method BotBrain.set_walkway_share]),
+## those already there and those added later. With 0 nobody goes up (as before GUE-45).
 func set_walkway_share(share: float) -> void:
 	_walkway_share = share
 	for net_id: int in _brains:
 		_brains[net_id].set_walkway_share(share)
 
 
-## Dónde ha caído un muerto en [param position], con la clasificación del resumen de batalla
+## Where a dead player at [param position] has fallen, with the battle summary's classification
 ## ([method BattleSummary.classify_route]: [code]walkway[/code], [code]gate[/code], [code]bridge[/code],
-## [code]ford[/code] u [code]other[/code]), con el círculo de la fortaleza y las rutas de la zona.
+## [code]ford[/code] or [code]other[/code]), using the fortress circle and the zone's routes.
 func place_of(position: Vector3) -> StringName:
 	var circle: Dictionary = server.get_fortresses().get_circle(fortress_id())
 	var center: Vector3 = circle["center"]
@@ -154,10 +154,10 @@ func place_of(position: Vector3) -> StringName:
 	return BattleSummary.classify_route([position.x, position.y, position.z], fortress, server.get_approach_routes())
 
 
-## Los PNJ de la definición [param npc_id] que aparezcan desde ahora tendrán [param health] de vida (una copia de la
-## definición con otra vida, solo en este servidor: [method NpcSpawnerSystem.set_definition_override]). Hay que
-## llamarlo justo después de [method start], antes de avanzar, para que valga ya para los primeros. Devuelve false si
-## el servidor no tiene PNJ o la definición no existe.
+## The NPCs of definition [param npc_id] that appear from now on will have [param health] health (a copy of the
+## definition with a different health, only on this server: [method NpcSpawnerSystem.set_definition_override]). It must be
+## called right after [method start], before advancing, so that it already applies to the first ones. Returns false if
+## the server has no NPCs or the definition does not exist.
 func set_npc_health(npc_id: StringName, health: int) -> bool:
 	var system: NpcSpawnerSystem = server.get_npc_system()
 	var base: NpcDefinition = NpcCatalog.get_definition(npc_id)
@@ -169,34 +169,34 @@ func set_npc_health(npc_id: StringName, health: int) -> bool:
 	return true
 
 
-## Pone en el sitio del capitán un PNJ mortal y quieto, registrado como capitán (ver
-## [method ZoneServer.spawn_captain_double]). Devuelve su net_id.
+## Places a mortal, motionless NPC in the captain's spot, registered as the captain (see
+## [method ZoneServer.spawn_captain_double]). Returns its net_id.
 func spawn_captain_double() -> int:
 	return server.spawn_captain_double(fortress_id())
 
 
-## Da por muerto al capitán con la orden de la consola [code]fort_kill_captain[/code]. Devuelve true si el
-## fuerte lo guardaba (fase GARRISONED con el capitán vivo).
+## Declares the captain dead with the console command [code]fort_kill_captain[/code]. Returns true if the
+## fort was guarding him (GARRISONED phase with the captain alive).
 func kill_captain() -> bool:
 	return server.console_command("fort_kill_captain").contains("ha muerto")
 
 
-## Multiplica la velocidad de captura ([code]fort_capture_speed[/code]).
+## Multiplies the capture speed ([code]fort_capture_speed[/code]).
 func set_capture_speed(factor: int) -> void:
 	server.get_fortresses().set_capture_speed(fortress_id(), factor)
 
 
-## Id de la fortaleza de la zona.
+## Id of the zone's fortress.
 func fortress_id() -> StringName:
 	return server.get_fortresses().get_fortress_ids()[0]
 
 
-## Estado vivo de la fortaleza.
+## Live state of the fortress.
 func state() -> FortressState:
 	return server.get_fortresses().get_fortress_state(fortress_id())
 
 
-## Avanza [param ticks] ticks del servidor.
+## Advances [param ticks] server ticks.
 func advance(ticks: int) -> void:
 	_remaining += ticks
 	_running = true
@@ -205,8 +205,8 @@ func advance(ticks: int) -> void:
 	_running = false
 
 
-## Avanza hasta que [param condition] sea verdadera (se mira cada [constant CHECK_TICKS] ticks) o pasen
-## [param max_ticks]. Devuelve los ticks que ha avanzado, o -1 si no se cumplió.
+## Advances until [param condition] is true (checked every [constant CHECK_TICKS] ticks) or
+## [param max_ticks] pass. Returns the ticks it advanced, or -1 if it was not met.
 func advance_until(condition: Callable, max_ticks: int) -> int:
 	var advanced: int = 0
 	while advanced < max_ticks:
@@ -218,12 +218,12 @@ func advance_until(condition: Callable, max_ticks: int) -> int:
 	return advanced if bool(condition.call()) else -1
 
 
-## Tick del servidor.
+## Server tick.
 func tick() -> int:
 	return server.get_tick()
 
 
-## Los avisos de guerra (ids de [WarEvents]) en el orden en que salieron.
+## The war warnings (ids of [WarEvents]) in the order they came out.
 func war_ids() -> Array[int]:
 	var ids: Array[int] = []
 	for event: NetMessages.EntityEvent in war_events:
@@ -231,7 +231,7 @@ func war_ids() -> Array[int]:
 	return ids
 
 
-## Tick del primer aviso de guerra [param war_event] desde el tick [param from_tick] (-1 si no ha salido).
+## Tick of the first war warning [param war_event] from tick [param from_tick] (-1 if it has not come out).
 func tick_of_war(war_event: int, from_tick: int = 0) -> int:
 	for event: NetMessages.EntityEvent in war_events:
 		if event.war_event == war_event and event.tick >= from_tick:
@@ -239,7 +239,7 @@ func tick_of_war(war_event: int, from_tick: int = 0) -> int:
 	return -1
 
 
-## Cuántas veces ha salido el aviso de guerra [param war_event] desde el tick [param from_tick].
+## How many times the war warning [param war_event] has come out since tick [param from_tick].
 func count_war(war_event: int, from_tick: int = 0) -> int:
 	var count: int = 0
 	for event: NetMessages.EntityEvent in war_events:
@@ -248,12 +248,12 @@ func count_war(war_event: int, from_tick: int = 0) -> int:
 	return count
 
 
-## El cerebro del bot de asedio [param net_id] (null si no es uno de los suyos).
+## The brain of siege bot [param net_id] (null if it is not one of its own).
 func get_brain(net_id: int) -> BotBrain:
 	return _brains.get(net_id)
 
 
-## Cuántos bots de [param realm] siguen vivos.
+## How many bots of [param realm] are still alive.
 func alive_bots(realm: int) -> int:
 	var count: int = 0
 	for net_id: int in bots:
@@ -265,7 +265,7 @@ func alive_bots(realm: int) -> int:
 	return count
 
 
-## Segundos de juego que son [param ticks].
+## Seconds of game time that [param ticks] amounts to.
 static func seconds(ticks: int) -> float:
 	return float(ticks) / float(TICK_RATE)
 
@@ -279,7 +279,7 @@ func _physics_process(delta: float) -> void:
 	_remaining -= count
 
 
-# Anota las muertes de jugadores (con el reino de la víctima y su sitio) y de PNJ de guerra (con su definición).
+# Records the deaths of players (with the victim's realm and location) and of war NPCs (with their definition).
 func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
 	if event.event != NetMessages.EntityEvent.Kind.DEATH:
 		return
@@ -295,7 +295,7 @@ func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Arra
 			"position": victim.get_position()})
 
 
-# Al terminar cada tick, anota quién sale de la reunión y quién acaba de llegar a la puerta y por qué ruta.
+# At the end of each tick, records who leaves the rally and who has just reached the gate and by which route.
 func _on_tick_finished(tick_now: int) -> void:
 	_note_rally_departures()
 	var gate: FortGate = server.get_fortresses().get_gate(fortress_id())
@@ -313,7 +313,7 @@ func _on_tick_finished(tick_now: int) -> void:
 			arrivals[net_id] = {"realm": bots[net_id], "route": _route_of(net_id), "tick": tick_now}
 
 
-# Los bots que acaban de salir del punto de reunión (GUE-44).
+# The bots that have just left the rally point (GUE-44).
 func _note_rally_departures() -> void:
 	for net_id: int in _brains:
 		var left: int = _brains[net_id].get_last_rally_departure()
@@ -323,7 +323,7 @@ func _note_rally_departures() -> void:
 					"route": _route_of(net_id)})
 
 
-# La ruta que sigue el bot [param net_id] (el cerebro la elige al empezar).
+# The route that bot [param net_id] follows (the brain chooses it at the start).
 func _route_of(net_id: int) -> StringName:
 	var brain: BotBrain = _brains.get(net_id)
 	return brain.get_siege_route() if brain != null else &""

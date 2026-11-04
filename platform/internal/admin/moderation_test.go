@@ -12,7 +12,7 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// reportFrom manda un reporte por la API interna (§9.4) con dos mensajes de prueba.
+// reportFrom sends a report through the internal API (§9.4) with two test messages.
 func reportFrom(t *testing.T, z *platformtest.Zone, reporter int64, target string) string {
 	t.Helper()
 	res := z.Do("POST", "/internal/v1/reports", map[string]any{"zone_instance_id": z.ID,
@@ -26,8 +26,8 @@ func reportFrom(t *testing.T, z *platformtest.Zone, reporter int64, target strin
 	return res.String("report_id")
 }
 
-// reports list|show|close: un moderador lee la cola y un reporte con su prueba (cada lectura deja
-// su fila, con el objetivo por id); solo un admin lo cierra, una vez.
+// reports list|show|close: a moderator reads the queue and a report with its evidence (each read
+// leaves its row, with the target by id); only an admin closes it, once.
 func TestReports(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -63,7 +63,7 @@ func TestReports(t *testing.T) {
 	if _, err := p.Admin.Report(ctx, mod, 424242); !errors.Is(err, admin.ErrReportNotFound) {
 		t.Fatal(err)
 	}
-	// Cerrar es de admin: con la cuenta del moderador no pasa de Authorize.
+	// Closing is admin-only: with the moderator's account it does not get past Authorize.
 	var actorErr *admin.ActorError
 	if _, err := p.Admin.Authorize(ctx, "mod@example.org", sanctions.RoleAdmin); !errors.As(err, &actorErr) {
 		t.Fatal(err)
@@ -102,9 +102,9 @@ func TestReports(t *testing.T) {
 	}
 }
 
-// chat (SOC-15): el historial de un personaje entre dos fechas (lo que mandó y los susurros que
-// recibió, con la zona y su copia), auditado; la retención de 30 días borra lo caducado y la
-// consulta deja de verlo.
+// chat (SOC-15): a character's history between two dates (what it sent and the whispers it
+// received, with the zone and its copy), audited; the 30-day retention deletes what has expired and
+// the query stops seeing it.
 func TestChatHistoryAndRetention(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 1).Start()
@@ -155,7 +155,7 @@ func TestChatHistoryAndRetention(t *testing.T) {
 	if _, lines, _ := p.Admin.Chat(ctx, mod, all); len(lines) != 4 {
 		t.Fatalf("con lo de hace cuarenta días: %d", len(lines))
 	}
-	// La retención (trabajo horario chat_retention) borra lo de más de 30 días y nada más.
+	// The retention (hourly job chat_retention) deletes what is older than 30 days and nothing else.
 	deleted, err := p.Social.PurgeChat(ctx)
 	if err != nil || deleted != 1 {
 		t.Fatalf("borrados %d: %v", deleted, err)
@@ -170,7 +170,7 @@ func TestChatHistoryAndRetention(t *testing.T) {
 	if n := p.Count(`select count(*) from chat_messages`); n != 3 {
 		t.Fatal(n)
 	}
-	// Fechas al revés, personaje que no existe.
+	// Dates reversed, character that does not exist.
 	if _, _, err := p.Admin.Chat(ctx, mod, admin.ChatQuery{World: 1, Character: "Bran", From: now, To: now}); err == nil {
 		t.Fatal("rango vacío")
 	}
@@ -181,8 +181,8 @@ func TestChatHistoryAndRetention(t *testing.T) {
 	}
 }
 
-// audit: la consulta con --since, --actor-name y --target, auditada a su vez (sin los nombres
-// escritos).
+// audit: the query with --since, --actor-name and --target, itself audited (without the names
+// typed).
 func TestAuditQuery(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -218,7 +218,7 @@ func TestAuditQuery(t *testing.T) {
 	if !is(row.TargetCharacter, idB) || !is(row.TargetAccount, b.ID) || row.Args["actor_account_id"] != idStr(gm.ID) {
 		t.Fatalf("%+v", row)
 	}
-	// Las consultas anteriores también están en la auditoría.
+	// The previous queries are also in the audit.
 	rows, _ = p.Admin.Audit(ctx, mod, admin.AuditQuery{Since: since, World: 1, Command: "audit"})
 	if len(rows) != 2 || rows[0].Source != "cli" || !is(rows[0].ActorAccountID, mod.AccountID) {
 		t.Fatalf("las lecturas se auditan: %+v", rows)
@@ -228,8 +228,9 @@ func TestAuditQuery(t *testing.T) {
 	}
 }
 
-// purge-now (§11.2): revoca las sesiones (deletion) y, con un personaje aún en el mundo pasado el
-// plazo, responde character_busy sin purgar nada; ya fuera, purga la cuenta y sus personajes.
+// purge-now (§11.2): it revokes the sessions (deletion) and, with a character still in the world
+// after the deadline, answers character_busy without purging anything; once it is out, it purges the
+// account and its characters.
 func TestPurgeNow(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -247,7 +248,7 @@ func TestPurgeNow(t *testing.T) {
 	if n := p.Count(`select count(*) from accounts where account_id = $1 and status = 'active'`, pl.ID); n != 1 {
 		t.Fatal("no se purga nada")
 	}
-	// El latido expulsa (session_revoked) y la zona libera tras el guardado final.
+	// The heartbeat kicks out (session_revoked) and the zone releases after the final save.
 	hb := z.Heartbeat(1, platformtest.Lease{CharacterID: id, LeaseID: lease})
 	if r := hb.Body["revoked"].([]any); len(r) != 1 || r[0].(map[string]any)["reason"] != "session_revoked" {
 		t.Fatal(hb.Raw)
@@ -277,8 +278,8 @@ func TestPurgeNow(t *testing.T) {
 	}
 }
 
-// create-account y bootstrap: cuentas verificadas con los textos aceptados (entran sin
-// terms_required); bootstrap solo sin ningún admin.
+// create-account and bootstrap: verified accounts with the texts accepted (they get in without
+// terms_required); bootstrap only with no admin.
 func TestCreateAccountAndBootstrap(t *testing.T) {
 	p := platformtest.New(t)
 	const password = "otra contraseña larga"
@@ -312,7 +313,8 @@ func TestCreateAccountAndBootstrap(t *testing.T) {
 	if acc.Body["email_verified"] != true || acc.Body["role"] != "gm" || pending["terms_required"] != false {
 		t.Fatalf("cuenta creada: %s", acc.Raw)
 	}
-	// Un correo que reserva el revert_email vivo de otra cuenta (plataforma.md §4.3) tampoco vale.
+	// An email reserved by another account's live revert_email (plataforma.md §4.3) is not valid
+	// either.
 	p.Exec(`insert into account_tokens (token_hash, account_id, purpose, email, expires_at, created_at)
 		values ('\x01', $1, 'revert_email', 'reservado@example.org', $2, $3)`, gmID, p.Clock.Now().Add(time.Hour), p.Clock.Now())
 	for _, c := range []struct {
@@ -331,9 +333,9 @@ func TestCreateAccountAndBootstrap(t *testing.T) {
 	}
 }
 
-// Ninguna fila de audit_log de la CLI (set-role, purge-now, chat --character, reports show,
-// audit --target, sanciones) ni un sanction_denied (de la zona o de la CLI) lleva un correo o el
-// nombre de un personaje en args (§9.1); todas las de la CLI llevan os_user.
+// No CLI audit_log row (set-role, purge-now, chat --character, reports show, audit --target,
+// sanctions) nor a sanction_denied (from the zone or the CLI) carries an email or a character's name
+// in args (§9.1); all the CLI ones carry os_user.
 func TestAuditHasNoPersonalData(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -354,11 +356,11 @@ func TestAuditHasNoPersonalData(t *testing.T) {
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/chat", map[string]any{"zone_instance_id": z.ID, "messages": []any{
 		map[string]any{"key": z.ID + ":1", "channel": 2, "sender_character_id": idStr(idA), "target_character_id": nil,
 			"text": "hola Bran", "sent_at_unix": p.Clock.Now().Unix()}}}), 204, "")
-	// Lo de la zona: una sanción denegada (un moderador pide ban).
+	// The zone's: a denied sanction (a moderator requests ban).
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/sanctions", map[string]any{"zone_instance_id": z.ID,
 		"author_character_id": idStr(idMod), "target_name": "Bran", "kind": "ban", "minutes": 0, "reason": "Bran insulta",
 		"report_ids": []any{}}), 403, "forbidden")
-	// Lo de la CLI.
+	// The CLI's.
 	must := func(err error) {
 		t.Helper()
 		if err != nil {

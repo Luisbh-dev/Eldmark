@@ -1,28 +1,26 @@
 class_name UIGallery
 extends Control
-## Galería de la interfaz (UI-02, UI-09): una página que muestra todos los estilos del tema global y
-## los componentes comunes, para revisarlos de un vistazo y para que las pruebas comprueben que no
-## falta ninguno.
+## UI gallery (UI-02, UI-09): a page that shows all the styles of the global theme and the common
+## components, to review them at a glance and so that the tests verify none is missing.
 ## [br][br]
-## Se abre con la escena [code]scenes/tests/ui_gallery.tscn[/code] (herramienta de desarrollo, solo
-## cliente):
+## It opens with the scene [code]scenes/tests/ui_gallery.tscn[/code] (development tool, client only):
 ## [codeblock]
 ## godot --path . res://scenes/tests/ui_gallery.tscn
 ## [/codeblock]
-## Todo se monta en código desde [method _ready]. Sobre un fondo de color plano (para que se vea la
-## translucidez de los paneles) hay una sección por tipo de control del tema ([UIThemeBuilder]):
-## etiquetas, botones, interruptores, barras, campos de texto, deslizadores, pestañas, listas,
-## paneles, ventanas y diálogos, los emblemas y colores de bando, las rarezas y los componentes
-## comunes de UI-09. Los tipos que el motor muestra bajo demanda (tooltip, menús emergentes, ventana
-## y diálogo) tienen un control que los abre: pasar el ratón por «Pasa el ratón», el menú y el
-## desplegable, y el botón «Abrir diálogo».
+## Everything is assembled in code from [method _ready]. Over a flat color background (so the
+## translucency of the panels shows) there is one section per control type in the theme
+## ([UIThemeBuilder]): labels, buttons, toggles, bars, text fields, sliders, tabs, lists, panels, windows
+## and dialogs, the faction emblems and colors, the rarities and the common components of UI-09. The
+## types the engine shows on demand (tooltip, popup menus, window and dialog) have a control that opens
+## them: hovering over "Pasa el ratón" (Hover here), the menu and the dropdown, and the "Abrir diálogo"
+## (Open dialog) button.
 
-## Tipos del tema que el motor dibuja solo bajo demanda y que la galería abre con un control (ver
-## la documentación de la clase), así que no hay un nodo de ese tipo visible en la página.
+## Theme types that the engine only draws on demand and that the gallery opens with a control (see the
+## class documentation), so there is no node of that type visible on the page.
 const ON_DEMAND_TYPES: Array[StringName] = [
 	&"TooltipPanel", &"TooltipLabel", &"PopupMenu", &"PopupPanel", &"Window", &"AcceptDialog",
 ]
-## Color del fondo de la galería: un verde de prado apagado, como el mundo detrás del HUD.
+## Gallery background color: a muted meadow green, like the world behind the HUD.
 const BACKGROUND_COLOR: Color = Color(0.2, 0.27, 0.24, 1.0)
 
 var _content: VBoxContainer = null
@@ -75,7 +73,7 @@ func _ready() -> void:
 	UISounds.hook_all(self)
 
 
-## Todos los nodos de la galería (para las pruebas).
+## All the gallery's nodes (for the tests).
 func get_all_controls() -> Array[Control]:
 	var result: Array[Control] = []
 	for node: Node in find_children("*", "Control", true, false):
@@ -83,8 +81,8 @@ func get_all_controls() -> Array[Control]:
 	return result
 
 
-## true si la galería enseña el tipo de tema [param type]: hay un control de esa clase o con esa
-## variación de tema, o es uno de los que el motor abre bajo demanda ([constant ON_DEMAND_TYPES]).
+## true if the gallery shows theme type [param type]: there is a control of that class or with that theme
+## variation, or it is one of those the engine opens on demand ([constant ON_DEMAND_TYPES]).
 func shows_theme_type(type: StringName) -> bool:
 	if ON_DEMAND_TYPES.has(type):
 		return true
@@ -94,12 +92,12 @@ func shows_theme_type(type: StringName) -> bool:
 	return false
 
 
-## Diálogo de ejemplo (para las pruebas: abrirlo y cerrarlo).
+## Sample dialog (for the tests: open it and close it).
 func get_dialog() -> AcceptDialog:
 	return _dialog
 
 
-# --- Secciones --------------------------------------------------------------------------------
+# --- Sections ---------------------------------------------------------------------------------
 
 func _build_labels() -> void:
 	var row: Container = _section("Etiquetas")
@@ -314,31 +312,31 @@ func _build_factions() -> void:
 		row.add_child(swatch)
 
 
-## Tooltip de la galería (propio, no el compartido).
+## The gallery's tooltip (its own, not the shared one).
 func get_ui_tooltip() -> UITooltip:
 	return _tooltip
 
 
-## Diálogo de confirmación de la galería.
+## The gallery's confirmation dialog.
 func get_confirm_dialog() -> UIConfirmDialog:
 	return _confirm
 
 
-## Casillas de icono de la galería.
+## The gallery's icon slots.
 func get_slots() -> Array[UIIconSlot]:
 	return _slots
 
 
-## Casilla que repite una reutilización sin parar.
+## Slot that repeats a cooldown endlessly.
 func get_cooldown_slot() -> UIIconSlot:
 	return _cooldown_slot
 
 
-# --- Componentes comunes (UI-09) --------------------------------------------------------------
+# --- Common components (UI-09) ----------------------------------------------------------------
 
 func _build_extra_sections() -> void:
-	# Capa propia del tooltip y diálogo de confirmación: viven en la galería (no en los
-	# compartidos) para desaparecer con ella.
+	# Own layer for the tooltip and confirmation dialog: they live in the gallery (not in the shared ones)
+	# so they disappear with it.
 	var layer: CanvasLayer = CanvasLayer.new()
 	layer.name = "ComponentLayer"
 	layer.layer = UITooltip.LAYER
@@ -454,9 +452,9 @@ func _slot(icon: Texture2D, rarity: int) -> UIIconSlot:
 	return slot
 
 
-# --- Utilidades -------------------------------------------------------------------------------
+# --- Utilities --------------------------------------------------------------------------------
 
-# Añade una sección con título y devuelve el contenedor en el que se ponen sus muestras.
+# Adds a titled section and returns the container into which its samples are put.
 func _section(title: String) -> Container:
 	var box: VBoxContainer = VBoxContainer.new()
 	box.name = title

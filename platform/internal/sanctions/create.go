@@ -11,91 +11,90 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Orígenes de las filas de audit_log que escribe la plataforma (§9.1): las sanciones que pide un
-// GM desde la zona (por la API interna) y las órdenes de la CLI admin.
+// Sources of the audit_log rows the platform writes (§9.1): sanctions requested by a GM from the
+// zone (through the internal API) and the admin CLI's commands.
 const (
 	SourcePlatform = "platform"
 	SourceCLI      = "cli"
 )
 
-// Commands de audit_log de una sanción (§9.5): creada o denegada. Los dos los escribe solo la
-// plataforma; una zona no los puede mandar en su lote.
+// audit_log commands for a sanction (§9.5): created or denied. Both are written only by the
+// platform; a zone cannot send them in its batch.
 const (
 	CommandSanction       = "sanction"
 	CommandSanctionDenied = "sanction_denied"
 )
 
-// Denial es por qué la plataforma no deja crear una sanción (va en args.denied de
-// sanction_denied).
+// Denial is why the platform does not let a sanction be created (it goes in args.denied of sanction_denied).
 type Denial string
 
 const (
-	DeniedNoLease    Denial = "no_lease"    // el autor no tiene arrendamiento en la instancia
-	DeniedRole       Denial = "role"        // su rol no llega para ese tipo y esa duración
-	DeniedTargetRole Denial = "target_role" // el objetivo no tiene un rol menor
+	DeniedNoLease    Denial = "no_lease"    // the author has no lease on the instance
+	DeniedRole       Denial = "role"        // their role is not enough for that type and duration
+	DeniedTargetRole Denial = "target_role" // the target does not have a lower role
 )
 
-// Errores de [Create] que no son de autorización.
+// [Create] errors that are not authorization errors.
 var (
-	// ErrUnknownReports: algún report_id no es un reporte del mundo de la sanción (400).
+	// ErrUnknownReports: some report_id is not a report of the sanction's world (400).
 	ErrUnknownReports = errors.New("sanctions: hay reportes que no son de ese mundo")
-	// ErrBadRequest: el tipo, la duración o el motivo no valen.
+	// ErrBadRequest: the type, duration or reason is not valid.
 	ErrBadRequest = errors.New("sanctions: tipo, duración o motivo que no valen")
 )
 
-// Request es una sanción pedida (§9.5), desde la zona (/gm …, por la API interna) o desde la CLI
-// (admin --actor <correo> sanction …). El objetivo ya viene resuelto (por su nombre en el mundo, en
-// la transacción de quien llama); su rol se lee aquí con su fila bloqueada.
+// Request is a requested sanction (§9.5), from the zone (/gm …, through the internal API) or from
+// the CLI (admin --actor <email> sanction …). The target is already resolved (by name in the
+// world, in the caller's transaction); its role is read here with its row locked.
 type Request struct {
 	WorldID int16
-	ZoneID  string // la zona de la instancia; "" desde la CLI
-	Source  string // SourcePlatform (la zona) o SourceCLI
+	ZoneID  string // the instance's zone; "" from the CLI
+	Source  string // SourcePlatform (the zone) or SourceCLI
 
-	// AuthorCharacterID es el personaje del GM (desde la zona): su cuenta sale de characters en el
-	// mundo de la sanción, y tiene que tener arrendamiento en Instance.
+	// AuthorCharacterID is the GM's character (from the zone): their account comes from characters
+	// in the sanction's world, and they must hold a lease on Instance.
 	AuthorCharacterID int64
 	Instance          *[16]byte
-	// AuthorAccountID es la cuenta del --actor (desde la CLI), sin personaje ni instancia.
+	// AuthorAccountID is the --actor's account (from the CLI), with no character or instance.
 	AuthorAccountID int64
-	// RequireRole es un rol mínimo del autor aparte del de la tabla de §9.1 («admin» en la CLI,
-	// que exige admin para toda orden que cambia algo); "" si no hay.
+	// RequireRole is a minimum role for the author besides the one in the §9.1 table ("admin" in the
+	// CLI, which requires admin for any command that changes something); "" if none.
 	RequireRole string
 
 	TargetAccountID   int64
 	TargetCharacterID int64
 
 	Kind      string
-	Duration  time.Duration // silencio y suspensión; 0 en los demás
+	Duration  time.Duration // mute and suspension; 0 for the others
 	Reason    string
 	ReportIDs []int64
-	// Args son más argumentos para las filas de audit_log (os_user de la CLI). Nunca un correo ni
-	// un nombre (§9.1).
+	// Args are additional arguments for the audit_log rows (the CLI's os_user). Never an email or a
+	// name (§9.1).
 	Args map[string]any
 	Now  time.Time
 }
 
-// Created es una sanción creada.
+// Created is a created sanction.
 type Created struct {
 	SanctionID int64
-	EndsAt     *time.Time // nil: sin fin
+	EndsAt     *time.Time // nil: no end
 }
 
-// Timed dice si el tipo lleva duración: el silencio y la suspensión. El aviso, el renombrado y la
-// expulsión (permanente) no.
+// Timed says whether the type carries a duration: mute and suspension. Warning, rename and ban
+// (permanent) do not.
 func Timed(kind string) bool { return kind == KindMute || kind == KindSuspension }
 
-// Create crea la sanción si la plataforma la autoriza (§9.5), dentro de la transacción tx de quien
-// llama, que tiene que confirmarla también cuando la deniega (la fila sanction_denied):
+// Create creates the sanction if the platform authorizes it (§9.5), inside the caller's
+// transaction tx, which must commit it also when it denies it (the sanction_denied row):
 //
-//  1. desde la zona, el autor tiene arrendamiento en la instancia;
-//  2. la cuenta del autor tiene el rol mínimo de §9.1 para ese tipo y esa duración (y RequireRole);
-//  3. la cuenta objetivo tiene un rol menor que la del autor.
+//  1. from the zone, the author holds a lease on the instance;
+//  2. the author's account has the minimum role from §9.1 for that type and duration (and RequireRole);
+//  3. the target account has a lower role than the author's.
 //
-// Las filas de las dos cuentas se bloquean en orden de id (for no key update): el rol que se mira
-// no cambia a mitad (set-role bloquea las mismas filas). Si falla alguna comprobación devuelve el
-// motivo y deja una fila sanction_denied en audit_log, con el objetivo por id (sin nombres ni
-// correos). Si no, inserta la sanción con sus reportes (de ese mundo; si no, [ErrUnknownReports]),
-// pone must_rename en un renombrado y deja una fila sanction.
+// The rows of both accounts are locked in id order (for no key update): the role being checked
+// does not change midway (set-role locks the same rows). If a check fails it returns the reason
+// and leaves a sanction_denied row in audit_log, with the target by id (no names or emails).
+// Otherwise, it inserts the sanction with its reports (from that world; if not, [ErrUnknownReports]),
+// sets must_rename on a rename and leaves a sanction row.
 func Create(ctx context.Context, tx pgx.Tx, req Request) (*Created, Denial, error) {
 	if MinRole(req.Kind, req.Duration) == "" || req.Reason == "" || Timed(req.Kind) != (req.Duration > 0) {
 		return nil, "", ErrBadRequest
@@ -205,7 +204,7 @@ func Create(ctx context.Context, tx pgx.Tx, req Request) (*Created, Denial, erro
 	return created, "", nil
 }
 
-// lockRoles bloquea las filas de las cuentas en orden de id (for no key update) y devuelve su rol.
+// lockRoles locks the account rows in id order (for no key update) and returns their role.
 func lockRoles(ctx context.Context, tx pgx.Tx, accounts []int64) (map[int64]string, error) {
 	rows, err := tx.Query(ctx, `select account_id, role from accounts where account_id = any($1)
 		order by account_id for no key update`, accounts)
@@ -225,8 +224,8 @@ func lockRoles(ctx context.Context, tx pgx.Tx, accounts []int64) (map[int64]stri
 	return roles, rows.Err()
 }
 
-// auditRow es una fila de audit_log escrita por la plataforma (§9.1): el objetivo por id, sin
-// nombres ni correos en args.
+// auditRow is an audit_log row written by the platform (§9.1): the target by id, with no names or
+// emails in args.
 type auditRow struct {
 	world           int16
 	zone            string

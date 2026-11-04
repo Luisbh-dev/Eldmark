@@ -1,23 +1,23 @@
 class_name FactionRules
 extends RefCounted
-## Quién puede dañar a quién (docs/combate.md, sección 5): una regla pura sobre los códigos de
-## bando de red de [RealmCatalog] (1 Vardheim, 2 Solmarch, 3 Askarra, 0 los Huecos neutrales) y
-## el modo PvP de la zona ([method Zones.get_pvp_mode]).
+## Who can damage whom (docs/combate.md, section 5): a pure rule over the [RealmCatalog] network
+## side codes (1 Vardheim, 2 Solmarch, 3 Askarra, 0 the neutral Hollow) and the zone's PvP mode
+## ([method Zones.get_pvp_mode]).
 ## [br][br]
-## Las zonas seguras (campamentos) y la protección de reaparición son aparte: las comprueba el
-## servidor al resolver el golpe.
+## Safe zones (camps) and respawn protection are separate: the server checks them when resolving
+## the hit.
 ## [br][br]
-## Compartido: no depende del cliente ni del servidor.
+## Shared: depends on neither the client nor the server.
 
 
-## true si un atacante del bando [param attacker_realm] puede dañar a una víctima del bando
-## [param victim_realm] en la zona [param zone_id]:
-## [br]- Nunca entre miembros del mismo bando (sin fuego amigo, tampoco entre Huecos).
-## [br]- Los Huecos (código [constant RealmCatalog.NEUTRAL_CODE]) son hostiles a todos los reinos,
-## y los reinos a ellos, en cualquier zona.
-## [br]- Dos reinos enemigos solo se dañan en una zona RVR ([constant Zones.PvpMode.RVR]); en una
-## zona segura o desconocida, no.
-## [br]- Un código que no es un bando del catálogo no daña ni recibe daño.
+## true if an attacker of side [param attacker_realm] can damage a victim of side
+## [param victim_realm] in zone [param zone_id]:
+## [br]- Never between members of the same side (no friendly fire, not even among the Hollow).
+## [br]- The Hollow (code [constant RealmCatalog.NEUTRAL_CODE]) is hostile to all realms, and the
+## realms to it, in any zone.
+## [br]- Two enemy realms only damage each other in an RvR zone ([constant Zones.PvpMode.RVR]); in
+## a safe or unknown zone, they do not.
+## [br]- A code that is not a side in the catalog neither deals nor receives damage.
 static func can_damage(attacker_realm: int, victim_realm: int, zone_id: StringName) -> bool:
 	if not _is_faction_code(attacker_realm) or not _is_faction_code(victim_realm):
 		return false
@@ -28,6 +28,6 @@ static func can_damage(attacker_realm: int, victim_realm: int, zone_id: StringNa
 	return Zones.get_pvp_mode(zone_id) == Zones.PvpMode.RVR
 
 
-## true si [param code] es el código de un reino jugable o el del bando neutral.
+## true if [param code] is the code of a playable realm or of the neutral side.
 static func _is_faction_code(code: int) -> bool:
 	return code == RealmCatalog.NEUTRAL_CODE or RealmCatalog.is_realm_code(code)

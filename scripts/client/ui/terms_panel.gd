@@ -1,15 +1,16 @@
 class_name TermsPanel
 extends FrontScreen
-## Aceptar textos nuevos (docs/plataforma.md §4.2 y §13.2): cuando [code]GET /v1/account[/code] dice
-## [code]pending.terms_required[/code] (o [code]enter[/code] responde [code]terms_required[/code]), qué textos han
-## cambiado ([code]documents[/code]), cada uno con su botón para leerlo en el panel con desplazamiento, y «Aceptar» o
-## «Cerrar sesión». Hasta aceptarlos no se puede entrar al mundo. Esc cierra sesión. Solo cliente.
+## Accept new texts (docs/plataforma.md §4.2 and §13.2): when [code]GET /v1/account[/code] says
+## [code]pending.terms_required[/code] (or [code]enter[/code] responds [code]terms_required[/code]), which
+## texts have changed ([code]documents[/code]), each with its button to read it in the scrolling panel,
+## and "Aceptar" (Accept) or "Cerrar sesión" (Log out). Until they are accepted, entering the world is not
+## possible. Esc logs out. Client only.
 
-## Pulsó «Aceptar».
+## Pressed "Aceptar" (Accept).
 signal accepted
-## Pulsó «Cerrar sesión» o Esc.
+## Pressed "Cerrar sesión" (Log out) or Esc.
 signal logout_requested
-## Pidió leer el texto [param kind].
+## Asked to read text [param kind].
 signal text_requested(kind: String)
 
 const TEXT_INTRO: String = "Hemos cambiado estos textos. Léelos y acéptalos para seguir jugando:"
@@ -57,7 +58,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Los textos que han cambiado ([code]terms[/code], [code]privacy[/code], [code]rules[/code]); vacío = los tres.
+## The texts that have changed ([code]terms[/code], [code]privacy[/code], [code]rules[/code]); empty = all three.
 func set_documents(documents: PackedStringArray) -> void:
 	_documents = documents if not documents.is_empty() else PackedStringArray(RegisterPanel.KINDS)
 	for child: Node in _list.get_children():
@@ -75,7 +76,7 @@ func get_documents() -> PackedStringArray:
 	return _documents
 
 
-## Enseña el texto [param kind] en el panel.
+## Shows text [param kind] in the panel.
 func show_text(_kind: String, text: String) -> void:
 	_text_view.text = text
 	_text_scroll.visible = true

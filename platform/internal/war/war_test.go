@@ -29,9 +29,9 @@ func list(t *testing.T, z *platformtest.Zone) []any {
 	return res.Body["fortresses"].([]any)
 }
 
-// Fortalezas (§6, §8): la lista vacía del primer arranque (también en starting), el primer PUT
-// crea la fila con la zona de la instancia, versiones con version_conflict, una fortaleza de otra
-// zona da 403 y el GET solo devuelve las de la zona de la instancia.
+// Forts (§6, §8): the empty list on first startup (also in starting), the first PUT creates the
+// row with the instance's zone, versions with version_conflict, a fort of another zone gives 403
+// and the GET returns only those of the instance's zone.
 func TestFortresses(t *testing.T) {
 	p := platformtest.New(t)
 	vado := p.NewZone(1, "vado_gris", 0)
@@ -57,7 +57,7 @@ func TestFortresses(t *testing.T) {
 	if res.Int("version") != 2 {
 		t.Fatal(res.Raw)
 	}
-	platformtest.Expect(t, put(vado, "fuerte_sur", 3, record(1)), 409, "version_conflict") // no existe: versión 0
+	platformtest.Expect(t, put(vado, "fuerte_sur", 3, record(1)), 409, "version_conflict") // does not exist: version 0
 
 	other := p.NewZone(1, "test_world", 0).Start()
 	platformtest.Expect(t, put(other, "fuerte_norte", 2, record(3)), 403, "forbidden")
@@ -80,15 +80,15 @@ func TestFortresses(t *testing.T) {
 	if updatedBy != vado.ID {
 		t.Fatal(updatedBy)
 	}
-	// Cuerpos que no valen.
+	// Invalid bodies.
 	platformtest.Expect(t, put(vado, "Fuerte", 2, record(1)), 400, "validation")
 	platformtest.Expect(t, put(vado, "fuerte_norte", 2, []int{1}), 400, "validation")
 	platformtest.Expect(t, put(vado, "fuerte_norte", -1, record(1)), 400, "validation")
-	// Un registro que jsonb no admite (un NUL): 400 validation, no un 500 que la zona reintenta.
+	// A record that jsonb does not accept (a NUL): 400 validation, not a 500 that the zone retries.
 	if res := put(vado, "fuerte_norte", 2, map[string]any{"owner": "a\x00b"}); res.Status != 400 || res.Field("record") != "invalid" {
 		t.Fatal(res.Raw)
 	}
-	// Una zona de otro mundo con el mismo zone_id no ve las del mundo 1.
+	// A zone of another world with the same zone_id does not see those of world 1.
 	w2 := p.NewZone(2, "vado_gris", 0).Start()
 	if got := list(t, w2); len(got) != 0 {
 		t.Fatalf("otro mundo: %v", got)
@@ -96,8 +96,9 @@ func TestFortresses(t *testing.T) {
 	platformtest.Expect(t, put(w2, "fuerte_norte", 0, record(1)), 200, "")
 }
 
-// Eventos de guerra (§8): se insertan con world_id e instancia; reenviar no duplica; una entrada
-// mala, de otra instancia o de una fortaleza de otra zona va a rejected y las demás se insertan.
+// War events (§8): they are inserted with world_id and instance; resending does not duplicate; a
+// bad entry, one from another instance or one for a fort of another zone goes to rejected and the
+// rest are inserted.
 func TestWarEvents(t *testing.T) {
 	p := platformtest.New(t)
 	vado := p.NewZone(1, "vado_gris", 0).Start()
@@ -114,15 +115,15 @@ func TestWarEvents(t *testing.T) {
 	batch := map[string]any{"zone_instance_id": vado.ID, "events": []any{
 		ev(vado.ID+":1", "fuerte_norte", 3),
 		ev(vado.ID+":2", "fuerte_norte", 6),
-		ev(other.ID+":3", "fuerte_norte", 7),       // key de otra instancia
-		ev(vado.ID+":4", "fuerte_ajeno", 6),        // fortaleza de otra zona
-		ev(vado.ID+":5", "fuerte_norte", 9),        // evento fuera de rango
-		map[string]any{"key": vado.ID + ":6"},      // le faltan campos
-		ev("op:5", "fuerte_norte", 3),              // op: no vale en la guerra
-		ev(vado.ID+":07", "fuerte_norte", 3),       // secuencia con un cero delante
-		map[string]any{"key": 5, "fortress_id": 1}, // sin key legible
-		far(vado.ID+":8", 9000000000000000),        // fecha fuera de rango (antes, 500 y el lote atascado)
-		far(vado.ID+":9", 1<<53-1),                 // pgx la desbordaba sin decir nada
+		ev(other.ID+":3", "fuerte_norte", 7),       // key from another instance
+		ev(vado.ID+":4", "fuerte_ajeno", 6),        // fort of another zone
+		ev(vado.ID+":5", "fuerte_norte", 9),        // event out of range
+		map[string]any{"key": vado.ID + ":6"},      // missing fields
+		ev("op:5", "fuerte_norte", 3),              // op: is not valid in war
+		ev(vado.ID+":07", "fuerte_norte", 3),       // sequence with a leading zero
+		map[string]any{"key": 5, "fortress_id": 1}, // no readable key
+		far(vado.ID+":8", 9000000000000000),        // date out of range (before, a 500 and the batch stuck)
+		far(vado.ID+":9", 1<<53-1),                 // pgx overflowed it silently
 	}}
 	res := vado.Do("POST", "/internal/v1/war-events", batch)
 	platformtest.Expect(t, res, 200, "")
@@ -140,14 +141,14 @@ func TestWarEvents(t *testing.T) {
 	if n := p.Count(`select count(*) from fortress_events where world_id = 1 and zone_instance_id = $1`, vado.ID); n != 2 {
 		t.Fatalf("insertados: %d", n)
 	}
-	// Reenviar el lote no duplica nada; un lote limpio da 204.
+	// Resending the batch does not duplicate anything; a clean batch gives 204.
 	vado.Do("POST", "/internal/v1/war-events", batch)
 	platformtest.Expect(t, vado.Do("POST", "/internal/v1/war-events", map[string]any{"zone_instance_id": vado.ID,
 		"events": []any{ev(vado.ID+":1", "fuerte_norte", 3)}}), 204, "")
 	if n := p.Count(`select count(*) from fortress_events`); n != 2 {
 		t.Fatalf("sin duplicados: %d", n)
 	}
-	// Un lote con el objeto de fuera roto: 400.
+	// A batch with a broken outer object: 400.
 	platformtest.Expect(t, vado.Do("POST", "/internal/v1/war-events", map[string]any{"zone_instance_id": vado.ID}), 400,
 		"bad_request")
 	platformtest.Expect(t, vado.Do("POST", "/internal/v1/war-events", map[string]any{"zone_instance_id": vado.ID,

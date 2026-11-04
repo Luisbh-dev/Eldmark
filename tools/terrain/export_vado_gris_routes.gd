@@ -1,44 +1,44 @@
 extends SceneTree
-## Escribe las rutas de aproximación al fuerte del Vado Gris como datos compartidos
-## ([ApproachRoutes], docs/fuerte.md sección 7) en [code]data/routes/vado_gris.tres[/code].
+## Writes the approach routes to the Vado Gris fort as shared data
+## ([ApproachRoutes], docs/fuerte.md section 7) to [code]data/routes/vado_gris.tres[/code].
 ##
-## Uso (desde la raíz del proyecto, sin ventana):
+## Usage (from the project root, windowless):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/terrain/export_vado_gris_routes.gd
 ## [/codeblock]
-## Los puntos son los de las rutas que recorre y verifica [code]verify_vado_gris_routes.gd[/code]
-## desde el punto de aparición de Vardheim hasta la explanada delante de la puerta del fuerte
-## (la misma ruta del puente que sigue la demo de [RouteDemoInput]); las de Solmarch son su
-## reflejo exacto (z -> -z), porque la zona es simétrica. Desde GUE-45 escribe también la pasarela del fuerte (su
-## altura, su eje y las dos rampas por las que se sube). Si cambia el trazado de la zona, se cambian aquí los puntos,
-## se vuelve a lanzar este script y se pasa la verificación.
+## The points are those of the routes walked and verified by [code]verify_vado_gris_routes.gd[/code]
+## from the Vardheim spawn point to the esplanade in front of the fort gate
+## (the same bridge route the [RouteDemoInput] demo follows); Solmarch's are their
+## exact mirror (z -> -z), because the zone is symmetric. Since GUE-45 it also writes the fort walkway (its
+## height, its axis and the two ramps used to climb up). If the zone layout changes, the points are changed here,
+## this script is run again and the verification is passed.
 
 const OUTPUT_PATH: String = "res://data/routes/vado_gris.tres"
 
-## Dónde está el fuerte (x, z): el centro del vano de la puerta (cara oeste del recinto), el centro del
-## círculo de captura (el marcador CaptureCircle) y su radio. Son los de vado_gris.tscn;
-## tests/test_siege_zone.gd comprueba que siguen coincidiendo con los de la escena.
+## Where the fort is (x, z): the centre of the gate opening (west face of the enclosure), the centre of the
+## capture circle (the CaptureCircle marker) and its radius. They are those in vado_gris.tscn;
+## tests/test_siege_zone.gd checks that they still match the scene's.
 const GATE_POINT: Vector2 = Vector2(-20.0, 0.0)
 const CIRCLE_POINT: Vector2 = Vector2(-8.5, 0.0)
 const CIRCLE_RADIUS: float = 5.0
-## El recinto de la empalizada (40 x 40 m, docs/zonas/vado_gris.md), medido desde la puerta: profundidad y ancho.
+## The palisade enclosure (40 x 40 m, docs/zonas/vado_gris.md), measured from the gate: depth and width.
 const ENCLOSURE_SIZE: Vector2 = Vector2(40.0, 40.0)
-## La pasarela (GUE-45; docs/zonas/vado_gris.md): su suelo está 3,35 m por encima de la meseta del fuerte (10,2 m: a 13,55 m) y su eje
-## a 18,77 m del centro (el medio lado de 20 m, menos el radio de los troncos y la mitad de sus 2 m de ancho). Los bots
-## andan por el eje desde la cima de la rampa norte hasta la de la sur pasando por encima de la puerta (cara oeste).
+## The walkway (GUE-45; docs/zonas/vado_gris.md): its floor is 3.35 m above the fort plateau (10.2 m: at 13.55 m) and its axis
+## at 18.77 m from the centre (the 20 m half side, minus the radius of the logs and half of their 2 m width). The bots
+## walk along the axis from the top of the north ramp to that of the south one, passing over the gate (west face).
 const WALKWAY_HEIGHT: float = 13.55
 const WALKWAY_AXIS: float = 18.77
 const WALKWAY_PATH: Array[Vector2] = [
 	Vector2(7.0, -WALKWAY_AXIS), Vector2(-WALKWAY_AXIS, -WALKWAY_AXIS), Vector2(-WALKWAY_AXIS, WALKWAY_AXIS),
 	Vector2(7.0, WALKWAY_AXIS),
 ]
-## Rampa norte desde el patio: un punto entre la puerta y la torre pero fuera del círculo de captura (a 9,6 m de su
-## centro: con los puntos que recorría antes verify_vado_gris_routes.gd, (-6, -6) y (7, -5), quien subía cruzaba el
-## borde del círculo y disputaba la captura al pasar, y la recaptura de los bots se alargaba), delante del pie de la
-## rampa (x = 7, sube hacia -Z desde z = -10,87) y su cima, en el eje de la pasarela. La del sur es su reflejo.
+## North ramp from the courtyard: a point between the gate and the tower but outside the capture circle (9.6 m from its
+## centre: with the points verify_vado_gris_routes.gd used to walk, (-6, -6) and (7, -5), whoever went up crossed the
+## edge of the circle and contested the capture in passing, and the bots' recapture dragged on), in front of the foot of the
+## ramp (x = 7, it climbs towards -Z from z = -10.87) and its top, on the walkway axis. The south one is its mirror.
 const NORTH_RAMP: Array[Vector2] = [Vector2(-12.0, -9.0), Vector2(7.0, -8.0), Vector2(7.0, -WALKWAY_AXIS)]
 
-## Rutas desde el punto de aparición del norte (Vardheim): (x, z).
+## Routes from the northern spawn point (Vardheim): (x, z).
 const VARDHEIM_ROUTES: Dictionary = {
 	ApproachRoutes.BRIDGE: [
 		Vector2(-2.5, -132), Vector2(0, -116), Vector2(0, -78), Vector2(0, -62), Vector2(0, -47),

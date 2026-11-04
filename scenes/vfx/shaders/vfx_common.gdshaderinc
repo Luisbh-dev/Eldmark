@@ -1,20 +1,20 @@
-// Utilidades comunes de los sombreadores de efectos de golpe (ART-09).
-// Se incluye con: #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
+// Common utilities for the hit effect shaders (ART-09).
+// Included with: #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
 
-// Salida rápida y frenada al final: 1 - (1 - t)^3. Sirve para el estallido de un destello o un anillo.
+// Fast out and slowing at the end: 1 - (1 - t)^3. Good for the burst of a flash or a ring.
 float vfx_ease_out(float t) {
 	float u = 1.0 - clamp(t, 0.0, 1.0);
 	return 1.0 - u * u * u;
 }
 
-// Rotación 2D de [angle] radianes.
+// 2D rotation by [angle] radians.
 mat2 vfx_rot(float angle) {
 	float c = cos(angle);
 	float s = sin(angle);
 	return mat2(vec2(c, s), vec2(-s, c));
 }
 
-// Coordenadas dentro de la casilla [frame] de un atlas de [h_frames] x [v_frames] casillas.
+// Coordinates inside cell [frame] of an atlas of [h_frames] x [v_frames] cells.
 vec2 vfx_atlas_uv(vec2 uv, float frame, int h_frames, int v_frames) {
 	float total = float(h_frames * v_frames);
 	float index = mod(floor(frame), total);
@@ -23,7 +23,7 @@ vec2 vfx_atlas_uv(vec2 uv, float frame, int h_frames, int v_frames) {
 	return (uv + vec2(col, row)) / vec2(float(h_frames), float(v_frames));
 }
 
-// Matriz de modelo-vista que mira siempre a la cámara y conserva la escala del nodo o de la partícula.
+// Model-view matrix that always faces the camera and keeps the scale of the node or particle.
 mat4 vfx_billboard(mat4 view, mat4 inv_view, mat4 model) {
 	mat4 facing = view * mat4(inv_view[0], inv_view[1], inv_view[2], model[3]);
 	return facing * mat4(
@@ -33,9 +33,9 @@ mat4 vfx_billboard(mat4 view, mat4 inv_view, mat4 model) {
 			vec4(0.0, 0.0, 0.0, 1.0));
 }
 
-// Billboard cilíndrico: el quad conserva su eje X (el del nodo, en mundo) y gira alrededor de él para
-// enseñar la cara a la cámara. Sirve para lo que tiene una dirección (un chorro, un destello a lo largo
-// de una hoja): se ve desde cualquier lado sin dejar de apuntar hacia donde apunta.
+// Cylindrical billboard: the quad keeps its X axis (the node's, in world space) and rotates
+// around it to show its face to the camera. Good for things that have a direction (a jet, a flash
+// along a blade): it is seen from any side while still pointing where it points.
 mat4 vfx_axial_billboard(mat4 view, mat4 model, vec3 camera_position) {
 	vec3 axis = normalize(model[0].xyz);
 	vec3 to_camera = camera_position - model[3].xyz;
@@ -53,8 +53,8 @@ mat4 vfx_axial_billboard(mat4 view, mat4 model, vec3 camera_position) {
 			vec4(0.0, 0.0, 0.0, 1.0));
 }
 
-// Atenuación de partícula blanda: 0 donde el fragmento toca la geometría de detrás y 1 a
-// [distance_m] metros o más de ella. [raw_depth] es la lectura del búfer de profundidad.
+// Soft particle fade: 0 where the fragment touches the geometry behind it and 1 at [distance_m]
+// meters or more from it. [raw_depth] is the depth buffer reading.
 float vfx_soft_fade(float raw_depth, vec2 screen_uv, mat4 inv_projection, float fragment_view_z,
 		float distance_m) {
 	if (distance_m <= 0.0) {

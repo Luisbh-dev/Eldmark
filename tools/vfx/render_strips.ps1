@@ -1,23 +1,23 @@
-# Graba las tiras de fotogramas de los efectos de golpe (ART-09), la prueba a la sombra, la medición de una
-# refriega y el vídeo de demostración, y compone las hojas.
+# Records the frame strips of the hit effects (ART-09), the shadow test, the measurement of a
+# brawl and the demo video, and composes the sheets.
 #
-# Abre la vista previa (scenes/tests/vfx_preview.tscn) en ventana, una vez por efecto, con
-# --fixed-fps 60 para que sea determinista, y después une los fotogramas con compose_strips.py.
-# Las ventanas salen en la segunda pantalla si hay un override.cfg en la raíz (no se sube al repo).
+# It opens the preview (scenes/tests/vfx_preview.tscn) in a window, once per effect, with
+# --fixed-fps 60 so that it is deterministic, and then joins the frames with compose_strips.py.
+# Windows go to the second screen if there is an override.cfg in the root (not pushed to the repo).
 #
-# Uso, desde la raíz del proyecto:
+# Usage, from the project root:
 #   powershell -File tools/vfx/render_strips.ps1 [-Out build/vfx/strips] [-Camera game|demo] [-Field]
 #       [-Strips metal_side,flesh,...] [-Realms] [-Shade] [-Bench] [-Reel 60]
 #
-# Por defecto graba con la CÁMARA DEL JUEGO (campo de visión de 72 grados, por encima del hombro, a la
-# distancia de juego) sobre el terreno del Vado Gris, con su sol, sus sombras y su niebla: es lo que pide el
-# listón de docs/calidad.md. Con -Camera demo y sin -Field graba los primeros planos de siempre (campo de
-# visión de 40 grados sobre un suelo liso), útiles para revisar el detalle.
-# -Realms graba además la estela y el aura en los cuatro reinos (carpetas trail_r1..r4 y aura_r1..r4) y compone
-# las hojas de comparación. -Shade repite el polvo, la esquiva y la tela a la sombra de un techo que solo
-# proyecta sombra (carpeta shade) y compone sombra_vs_sol.png. -Bench mide una refriega de diez efectos
-# (bench.json). -Reel 60 graba el vídeo de demostración de 60 s (reel.avi, con Movie Maker; conviértelo con
-# ffmpeg -i reel.avi -c:v libx264 -crf 20 -pix_fmt yuv420p reel.mp4). Al final compone resumen.png.
+# By default it records with the GAME CAMERA (72 degree field of view, over the shoulder, at the
+# game distance) over the Vado Gris terrain, with its sun, its shadows and its fog: it is what the
+# bar in docs/calidad.md asks for. With -Camera demo and without -Field it records the usual close-ups (40 degree
+# field of view over a plain ground), useful for reviewing detail.
+# -Realms also records the trail and the aura in the four realms (folders trail_r1..r4 and aura_r1..r4) and composes
+# the comparison sheets. -Shade repeats the dust, the dodge and the cloth in the shade of a roof that only
+# casts shadow (folder shade) and composes sombra_vs_sol.png. -Bench measures a brawl of ten effects
+# (bench.json). -Reel 60 records the 60 s demo video (reel.avi, with Movie Maker; convert it with
+# ffmpeg -i reel.avi -c:v libx264 -crf 20 -pix_fmt yuv420p reel.mp4). At the end it composes resumen.png.
 param(
 	[string]$Out = "build/vfx/strips",
 	[ValidateSet("game", "demo")][string]$Camera = "game",
@@ -51,18 +51,18 @@ function Invoke-Preview([string[]]$PreviewArgs, [string[]]$EngineArgs = @()) {
 
 function Invoke-Strip([string]$Name, [string]$Folder, [int]$Realm, [string]$OutDir, [string[]]$Extra = @()) {
 	$previewArgs = @("--strip=$Name", "--out=$OutDir", "--realm=$Realm") + $scenario + $Extra
-	# Para las pruebas por reino se graba en <efecto>_r<n> sin pisar la tira normal.
+	# For the per-realm tests it records into <effect>_r<n> without overwriting the normal strip.
 	if ($Folder -ne $Name) {
 		$previewArgs += "--folder=$Folder"
 	}
 	Invoke-Preview $previewArgs
 }
 
-# Con "powershell -File" una lista separada por comas llega como un solo texto: se parte aquí.
+# With "powershell -File" a comma-separated list arrives as a single string: it is split here.
 $Strips = @($Strips | ForEach-Object { $_ -split "," })
 $strips = $Strips
 if ($Realms) {
-	# La estela y el aura se graban por reino; la normal sobra.
+	# The trail and the aura are recorded per realm; the normal one is redundant.
 	$strips = $Strips | Where-Object { $_ -ne "trail" -and $_ -ne "aura" }
 }
 foreach ($name in $strips) {

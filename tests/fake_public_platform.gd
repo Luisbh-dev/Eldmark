@@ -1,18 +1,19 @@
 class_name FakePublicPlatform
 extends RefCounted
-## La API pública de la plataforma de mentira para las pruebas del cliente (docs/plataforma.md §4 y §15 P8): el
-## [member PlatformApi.request_hook] de [method hook] contesta lo de §4.2 a §4.5 con un estado en memoria (una cuenta,
-## sus personajes, la entrada al mundo) y guarda cada llamada ([member calls]). Las respuestas se pueden guionizar por
-## ruta con [method script_next] y retrasar con [member delay_s].
+## The fake platform public API for client tests (docs/plataforma.md §4 and §15 P8): the
+## [member PlatformApi.request_hook] from [method hook] answers §4.2 to §4.5 with in-memory state
+## (one account, its characters, entering the world) and records each call ([member calls]).
+## Responses can be scripted per path with [method script_next] and delayed with
+## [member delay_s].
 ## [br][br]
-## Los cuerpos son los de la plataforma de Go: ids en cadena, apariencia y billete en base64, reinos por su id de
-## texto y fechas en Unix (§4.1).
+## The bodies are those of the Go platform: string ids, base64 appearance and ticket, realms by
+## their text id and dates in Unix (§4.1).
 
-## Una llamada recibida: [code]{method, path, body, token}[/code].
+## A received call: [code]{method, path, body, token}[/code].
 var calls: Array[Dictionary] = []
 var email: String = "prueba@eldmark.test"
 var password: String = "contraseña-larga"
-## Ámbito y restricción del inicio de sesión ([code]privacy[/code] = cuenta sancionada).
+## Scope and restriction of the login ([code]privacy[/code] = sanctioned account).
 var scope: String = "game"
 var restriction: Variant = null
 var account_realm: String = ""
@@ -20,14 +21,14 @@ var slots: int = 6
 var characters: Array[Dictionary] = []
 var next_character_id: int = 9007199254740993
 var terms_required: bool = false
-## La entrada al mundo: host, puerto, billete y DTLS (null = sin DTLS).
+## Entering the world: host, port, ticket and DTLS (null = no DTLS).
 var zone_host: String = "127.0.0.1"
 var zone_port: int = 24600
 var ticket: PackedByteArray = PackedByteArray()
 var dtls: Variant = null
-## Respuestas character_busy que dará enter antes de dar el billete.
+## Character_busy answers that enter will give before giving the ticket.
 var busy_answers: int = 0
-## Retraso de cada respuesta (s).
+## Delay of each response (s).
 var delay_s: float = 0.0
 var tree: SceneTree = null
 var _scripted: Dictionary = {}
@@ -41,7 +42,8 @@ func _init(p_tree: SceneTree) -> void:
 		ticket[i] = i
 
 
-## El gancho para [member PlatformApi.request_hook] de [param api] (que da el token de cada llamada).
+## The hook for [member PlatformApi.request_hook] of [param api] (which provides the token of each
+## call).
 func hook(api: PlatformApi) -> Callable:
 	return func(method: int, path: String, body: Variant) -> ApiResult:
 		calls.append({"method": method, "path": path, "body": body, "token": api.session.access_token})
@@ -50,14 +52,14 @@ func hook(api: PlatformApi) -> Callable:
 		return answer(method, path, body)
 
 
-## La próxima llamada a [param path] (que empieza por) recibe [param result], una vez.
+## The next call to [param path] (starts with) receives [param result], once.
 func script_next(path: String, result: ApiResult) -> void:
 	if not _scripted.has(path):
 		_scripted[path] = []
 	(_scripted[path] as Array).append(result)
 
 
-## Las llamadas a rutas que empiezan por [param prefix] (con [param method], o con cualquiera si es −1).
+## The calls to paths starting with [param prefix] (with [param method], or any if −1).
 func calls_to(prefix: String, method: int = -1) -> Array[Dictionary]:
 	var found: Array[Dictionary] = []
 	for call: Dictionary in calls:
@@ -66,7 +68,7 @@ func calls_to(prefix: String, method: int = -1) -> Array[Dictionary]:
 	return found
 
 
-## Un personaje como lo lista la plataforma.
+## A character as the platform lists it.
 func make_character(display_name: String, realm: String = "vardheim", level: int = 1,
 		deleted: bool = false) -> Dictionary:
 	var id: int = next_character_id

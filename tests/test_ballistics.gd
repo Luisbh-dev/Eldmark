@@ -1,6 +1,6 @@
 extends TestCase
-## Pruebas de [Ballistics] (docs/habilidades.md, sección 4.4): la posición de un proyectil tras n
-## ticks (entero o fraccionario) y la cuantización con la que viaja en el ENTITY_SPAWN.
+## Tests of [Ballistics] (docs/habilidades.md, section 4.4): the position of a projectile after n
+## ticks (integer or fractional) and the quantization with which it travels in the ENTITY_SPAWN.
 
 const GRAVITY: float = 6.0
 
@@ -8,46 +8,46 @@ const GRAVITY: float = 6.0
 func test_position_follows_the_formula() -> void:
 	var p0 := Vector3(1.0, 2.0, -3.0)
 	var v0 := Vector3(10.0, 5.0, -20.0)
-	assert_eq(Ballistics.position(p0, v0, GRAVITY, 0.0), p0, "en n = 0 está en el origen")
-	# Tras 60 ticks (1 s): p0 + v0 - (0, g/2, 0).
+	assert_eq(Ballistics.position(p0, v0, GRAVITY, 0.0), p0, "at n = 0 it is at the origin")
+	# After 60 ticks (1 s): p0 + v0 - (0, g/2, 0).
 	assert_vec_near(Ballistics.position(p0, v0, GRAVITY, 60.0), Vector3(11.0, 4.0, -23.0), 1e-5,
-			"tras un segundo")
-	# Tras 30 ticks (0,5 s): p0 + v0/2 - (0, g/8, 0).
+			"after one second")
+	# After 30 ticks (0.5 s): p0 + v0/2 - (0, g/8, 0).
 	assert_vec_near(Ballistics.position(p0, v0, GRAVITY, 30.0), Vector3(6.0, 3.75, -13.0), 1e-5,
-			"tras medio segundo")
-	# Un n fraccionario (el dibujo) cae entre los enteros y en la misma parábola.
+			"after half a second")
+	# A fractional n (the drawing) falls between the integers and on the same parabola.
 	var halfway: Vector3 = Ballistics.position(p0, v0, GRAVITY, 30.5)
 	var t: float = 30.5 / 60.0
 	assert_vec_near(halfway, p0 + v0 * t + Vector3(0.0, -0.5 * GRAVITY * t * t, 0.0), 1e-5,
-			"n fraccionario")
+			"fractional n")
 	assert_eq(Ballistics.position(p0, v0, GRAVITY, 45), Ballistics.position(p0, v0, GRAVITY, 45.0),
-			"n entero y n como float dan lo mismo (servidor y dibujo)")
+			"integer n and n as a float give the same (server and drawing)")
 
 
 func test_apex_and_symmetry() -> void:
-	# Lanzada hacia arriba a g m/s, sube durante 1 s y vuelve a su altura a los 2 s.
+	# Launched upward at g m/s, it rises for 1 s and returns to its height at 2 s.
 	var p0 := Vector3(0.0, 1.5, 0.0)
 	var v0 := Vector3(0.0, GRAVITY, 0.0)
 	var apex: Vector3 = Ballistics.position(p0, v0, GRAVITY, 60.0)
-	assert_near(apex.y, 1.5 + GRAVITY * 0.5, 1e-5, "cumbre a g/2 m sobre el origen")
+	assert_near(apex.y, 1.5 + GRAVITY * 0.5, 1e-5, "peak at g/2 m above the origin")
 	for n: int in [10, 30, 59]:
 		var before: Vector3 = Ballistics.position(p0, v0, GRAVITY, 60.0 - n)
 		var after: Vector3 = Ballistics.position(p0, v0, GRAVITY, 60.0 + n)
-		assert_near(before.y, after.y, 1e-5, "simétrica a %d ticks de la cumbre" % n)
-	assert_near(Ballistics.position(p0, v0, GRAVITY, 120.0).y, 1.5, 1e-5, "vuelve a su altura")
+		assert_near(before.y, after.y, 1e-5, "symmetric at %d ticks from the peak" % n)
+	assert_near(Ballistics.position(p0, v0, GRAVITY, 120.0).y, 1.5, 1e-5, "returns to its height")
 
 
 func test_flight_numbers_of_the_design() -> void:
-	# docs/habilidades.md, sección 2.4: el tensado máximo (70 m/s) tarda 0,71 s en 50 m y cae 1,5 m;
-	# el rápido (45 m/s), 1,11 s y 3,7 m.
+	# docs/habilidades.md, section 2.4: the maximum draw (70 m/s) takes 0.71 s over 50 m and drops 1.5 m;
+	# the quick one (45 m/s), 1.11 s and 3.7 m.
 	var drawn_ticks: float = 50.0 / 70.0 * 60.0
 	var drawn: Vector3 = Ballistics.position(Vector3.ZERO, Vector3(0.0, 0.0, -70.0), GRAVITY, drawn_ticks)
 	assert_near(drawn.z, -50.0, 1e-4, "50 m")
-	assert_near(drawn.y, -1.53, 0.01, "cae 1,5 m")
+	assert_near(drawn.y, -1.53, 0.01, "drops 1.5 m")
 	var quick_ticks: float = 50.0 / 45.0 * 60.0
 	var quick: Vector3 = Ballistics.position(Vector3.ZERO, Vector3(0.0, 0.0, -45.0), GRAVITY, quick_ticks)
 	assert_near(quick_ticks / 60.0, 1.11, 0.005, "1,11 s")
-	assert_near(quick.y, -3.70, 0.01, "cae 3,7 m")
+	assert_near(quick.y, -3.70, 0.01, "drops 3.7 m")
 
 
 func test_quantize_rounds_like_the_spawn() -> void:
@@ -56,30 +56,30 @@ func test_quantize_rounds_like_the_spawn() -> void:
 		return
 	var p0: Vector3 = result[0]
 	var v0: Vector3 = result[1]
-	assert_vec_near(p0, Vector3(1.23, -5.68, 100.01), 1e-4, "posición a 1 cm")
-	assert_vec_near(v0, Vector3(45.0, 0.0, 12.35), 1e-4, "velocidad a 1 cm/s")
-	# Es lo que da el registro de entidad (20 bits por eje) y el s16 de cm/s de la velocidad.
+	assert_vec_near(p0, Vector3(1.23, -5.68, 100.01), 1e-4, "position to 1 cm")
+	assert_vec_near(v0, Vector3(45.0, 0.0, 12.35), 1e-4, "velocity to 1 cm/s")
+	# It is what the entity record gives (20 bits per axis) and the s16 of cm/s of the velocity.
 	assert_eq(p0, NetMath.unpack_position(NetMath.pack_position(Vector3(1.234, -5.678, 100.006))),
-			"como NetMath.pack_position")
+			"like NetMath.pack_position")
 	assert_eq(v0.x, NetMath.dequantize_velocity(NetMath.quantize_velocity(44.999)),
-			"como NetMath.quantize_velocity")
-	# Idempotente: cuantizar lo cuantizado no cambia nada (el cliente repite la del servidor).
+			"like NetMath.quantize_velocity")
+	# Idempotent: quantizing what is already quantized changes nothing (the client repeats the server's).
 	var again: Array = Ballistics.quantize(p0, v0)
-	assert_eq(again[0], p0, "posición idempotente")
-	assert_eq(again[1], v0, "velocidad idempotente")
+	assert_eq(again[0], p0, "idempotent position")
+	assert_eq(again[1], v0, "idempotent velocity")
 
 
 func test_quantize_saturates_and_handles_nan() -> void:
 	var result: Array = Ballistics.quantize(Vector3(NAN, 0.0, 0.0), Vector3(400.0, -400.0, NAN))
 	var p0: Vector3 = result[0]
 	var v0: Vector3 = result[1]
-	assert_eq(p0.x, 0.0, "un NaN de posición es 0")
-	assert_eq(v0, Vector3(327.67, -327.68, 0.0), "la velocidad satura a s16 de cm/s y el NaN es 0")
+	assert_eq(p0.x, 0.0, "a NaN position is 0")
+	assert_eq(v0, Vector3(327.67, -327.68, 0.0), "the velocity saturates at s16 of cm/s and NaN is 0")
 
 
 func test_server_and_client_get_the_same_trajectory_from_the_spawn() -> void:
-	# El servidor vuela con lo cuantizado; el cliente lo recibe por el SPAWN (que cuantiza igual) y
-	# llama a la misma función: las posiciones de cada tick coinciden bit a bit.
+	# The server flies with the quantized values; the client receives them through the SPAWN (which quantizes the same way) and
+	# calls the same function: the positions of each tick match bit for bit.
 	var quantized: Array = Ballistics.quantize(Vector3(10.123, 1.4, -7.777), Vector3(31.2, 4.05, -30.01))
 	var spawn_p0: Vector3 = NetMath.unpack_position(NetMath.pack_position(quantized[0]))
 	var spawn_v0: Vector3 = Vector3(
@@ -91,7 +91,7 @@ func test_server_and_client_get_the_same_trajectory_from_the_spawn() -> void:
 		var server: Vector3 = Ballistics.position(quantized[0], quantized[1], GRAVITY, n)
 		var client: Vector3 = Ballistics.position(spawn_p0, spawn_v0, GRAVITY, float(n))
 		if server != client:
-			fail("tick %d: servidor %s, cliente %s" % [n, server, client])
+			fail("tick %d: server %s, client %s" % [n, server, client])
 			return
 
 
@@ -108,8 +108,8 @@ func test_solve_lead_hits_a_moving_target() -> void:
 		var velocity: Vector3 = case[1]
 		var speed: float = case[2]
 		var direction: Vector3 = Ballistics.solve_lead(origin, target, velocity, speed, GRAVITY)
-		assert_near(direction.length(), 1.0, 1e-5, "dirección unitaria")
-		# Recorre la parábola y busca el paso más cercano al blanco que se mueve.
+		assert_near(direction.length(), 1.0, 1e-5, "unit direction")
+		# Walks the parabola and looks for the step closest to the moving target.
 		var best: float = INF
 		var steps: int = 0
 		for n: int in 6000:
@@ -120,10 +120,10 @@ func test_solve_lead_hits_a_moving_target() -> void:
 			if gap < best:
 				best = gap
 				steps = n
-		assert_true(best < 0.02, "%s a %s m/s: la flecha pasa a %s m del blanco (n = %s)"
+		assert_true(best < 0.02, "%s at %s m/s: the arrow passes %s m from the target (n = %s)"
 				% [target, speed, best, steps * 0.05])
-	# Sin gravedad ni movimiento, la recta.
+	# Without gravity or movement, the straight line.
 	var straight: Vector3 = Ballistics.solve_lead(Vector3.ZERO, Vector3(0.0, 0.0, -10.0), Vector3.ZERO, 30.0, 0.0)
-	assert_vec_near(straight, Vector3(0.0, 0.0, -1.0), 1e-6, "recto")
+	assert_vec_near(straight, Vector3(0.0, 0.0, -1.0), 1e-6, "straight")
 	assert_eq(Ballistics.solve_lead(Vector3.ONE, Vector3.ONE, Vector3.ZERO, 30.0, 6.0), Vector3.FORWARD,
-			"sin distancia, hacia delante")
+			"with no distance, forward")

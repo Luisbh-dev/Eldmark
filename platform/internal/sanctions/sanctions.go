@@ -1,12 +1,12 @@
-// Package sanctions reúne las reglas de las sanciones y de los roles que comparten la API pública,
-// la interna y la CLI admin (plataforma.md §6.1, §9.1 y §9.5): la restricción vigente de una cuenta
-// (suspensión o expulsión), los silencios, los avisos pendientes, los textos para el jugador que
-// compone la plataforma, el rango de los roles, qué rol puede crear cada sanción, la creación de
-// una sanción con su autorización ([Create], la misma para la zona y para la CLI) y el rol que tenía
-// una cuenta en un instante ([RoleAt], para la comprobación S2 del guardado).
+// Package sanctions gathers the rules for sanctions and roles shared by the public API, the
+// internal one and the admin CLI (plataforma.md §6.1, §9.1 and §9.5): an account's active
+// restriction (suspension or ban), mutes, pending warnings, the player-facing texts that the
+// platform composes, the role ranking, which role can create each sanction, creating a sanction
+// with its authorization ([Create], the same for the zone and for the CLI) and the role an
+// account had at a given instant ([RoleAt], for the save's S2 check).
 //
-// Es una hoja: no importa ningún otro paquete de la plataforma salvo mail (la fecha de los
-// textos), así que la usan accounts, zones, persistence y social sin ciclos.
+// It is a leaf: it imports no other platform package except mail (the date in the texts), so
+// accounts, zones, persistence and social use it without cycles.
 package sanctions
 
 import (
@@ -19,7 +19,7 @@ import (
 	"eldmark/platform/internal/mail"
 )
 
-// Tipos de sanción (sanctions.kind).
+// Sanction types (sanctions.kind).
 const (
 	KindWarning    = "warning"
 	KindMute       = "mute"
@@ -28,7 +28,7 @@ const (
 	KindRename     = "rename"
 )
 
-// Roles de las cuentas (accounts.role), de menor a mayor.
+// Account roles (accounts.role), from lowest to highest.
 const (
 	RolePlayer    = "player"
 	RoleModerator = "moderator"
@@ -36,32 +36,33 @@ const (
 	RoleAdmin     = "admin"
 )
 
-// ShortLimit es lo que pueden durar el silencio de un moderador y la suspensión de un GM (§9.1).
+// ShortLimit is how long a moderator's mute and a GM's suspension can last (§9.1).
 const ShortLimit = 7 * 24 * time.Hour
 
-// MaxTextBytes es el tope de un texto para el jugador: el text_len del REJECT (§6.1).
+// MaxTextBytes is the cap of a player-facing text: the REJECT's text_len (§6.1).
 const MaxTextBytes = 255
 
-// NoEndUnix es la fecha Unix que va en until_unix de un silencio sin fin (9999-12-31 23:59:59
-// UTC): la zona compara números y un null la obligaría a otro caso. Ni la zona ni la CLI crean
-// silencios sin fin en la fase 5 (los dos exigen duración).
+// NoEndUnix is the Unix date that goes in until_unix of an open-ended mute (9999-12-31 23:59:59
+// UTC): the zone compares numbers and a null would force it into another case. Neither the zone
+// nor the CLI creates open-ended mutes in phase 5 (both require a duration).
 const NoEndUnix int64 = 253402300799
 
-// Querier es una consulta dentro de la transacción o la conexión de quien llama.
+// Querier is a query inside the caller's transaction or connection.
 type Querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Restriction es una suspensión o expulsión vigente.
+// Restriction is an active suspension or ban.
 type Restriction struct {
-	Kind   string     // KindSuspension o KindBan
-	Until  *time.Time // nil: sin fin
+	Kind   string     // KindSuspension or KindBan
+	Until  *time.Time // nil: no end
 	Reason string
 }
 
-// Message es el texto para el jugador: «Tu cuenta está suspendida hasta el 3/11/2026 18:00 UTC:
-// motivo» o «Tu cuenta está expulsada: motivo», cortado a [MaxTextBytes].
+// Message is the player-facing text: "Tu cuenta está suspendida hasta el 3/11/2026 18:00 UTC:
+// motivo" (your account is suspended until …: reason) or "Tu cuenta está expulsada: motivo" (your
+// account is banned: reason), cut to [MaxTextBytes].
 func (r *Restriction) Message() string {
 	var msg string
 	switch {
@@ -78,8 +79,8 @@ func (r *Restriction) Message() string {
 	return Truncate(msg, MaxTextBytes)
 }
 
-// PendingDeletionMessage es el texto de una cuenta con el borrado pedido: «Tu cuenta se borrará el
-// …».
+// PendingDeletionMessage is the text for an account with deletion requested: "Tu cuenta se
+// borrará el …" (your account will be deleted on …).
 func PendingDeletionMessage(purgeAfter *time.Time) string {
 	if purgeAfter == nil {
 		return "Tu cuenta se va a borrar"
@@ -87,7 +88,7 @@ func PendingDeletionMessage(purgeAfter *time.Time) string {
 	return "Tu cuenta se borrará el " + mail.FormatDate(*purgeAfter)
 }
 
-// Truncate corta s a max bytes como mucho sin partir un carácter.
+// Truncate cuts s to at most max bytes without splitting a character.
 func Truncate(s string, max int) string {
 	if len(s) <= max {
 		return s
@@ -99,14 +100,14 @@ func Truncate(s string, max int) string {
 	return s
 }
 
-// restrictionSQL elige, por cuenta, la restricción que manda: una expulsión sobre una suspensión
-// y, entre suspensiones, la que acaba más tarde.
+// restrictionSQL picks, per account, the restriction that prevails: a ban over a suspension and,
+// among suspensions, the one that ends latest.
 const restrictionSQL = `select distinct on (account_id) account_id, kind, ends_at, reason from sanctions
 	where account_id = any($1) and revoked_at is null and kind in ('suspension', 'ban')
 	  and starts_at <= $2 and (ends_at is null or ends_at > $2)
 	order by account_id, (kind = 'ban') desc, ends_at desc nulls first`
 
-// Active devuelve la suspensión o expulsión vigente de la cuenta a la hora now, o nil.
+// Active returns the account's active suspension or ban at time now, or nil.
 func Active(ctx context.Context, q Querier, accountID int64, now time.Time) (*Restriction, error) {
 	all, err := ActiveMany(ctx, q, []int64{accountID}, now)
 	if err != nil {
@@ -115,7 +116,7 @@ func Active(ctx context.Context, q Querier, accountID int64, now time.Time) (*Re
 	return all[accountID], nil
 }
 
-// ActiveMany es [Active] de varias cuentas a la vez; las que no tienen restricción no salen.
+// ActiveMany is [Active] for several accounts at once; those without a restriction are not returned.
 func ActiveMany(ctx context.Context, q Querier, accountIDs []int64, now time.Time) (map[int64]*Restriction, error) {
 	out := map[int64]*Restriction{}
 	if len(accountIDs) == 0 {
@@ -137,8 +138,8 @@ func ActiveMany(ctx context.Context, q Querier, accountIDs []int64, now time.Tim
 	return out, rows.Err()
 }
 
-// Mutes devuelve, por cuenta, hasta cuándo dura su silencio vigente a la hora now (el que acaba más
-// tarde), en Unix; uno sin fin da [NoEndUnix]. Las cuentas sin silencio no salen.
+// Mutes returns, per account, until when its active mute lasts at time now (the one that ends
+// latest), in Unix time; an open-ended one gives [NoEndUnix]. Accounts without a mute are not returned.
 func Mutes(ctx context.Context, q Querier, accountIDs []int64, now time.Time) (map[int64]int64, error) {
 	out := map[int64]int64{}
 	if len(accountIDs) == 0 {
@@ -166,7 +167,7 @@ func Mutes(ctx context.Context, q Querier, accountIDs []int64, now time.Time) (m
 	return out, rows.Err()
 }
 
-// Rank es el rango de un rol (player 0, moderator 1, gm 2, admin 3); uno desconocido, -1.
+// Rank is the rank of a role (player 0, moderator 1, gm 2, admin 3); an unknown one, -1.
 func Rank(role string) int {
 	switch role {
 	case RolePlayer:
@@ -181,10 +182,9 @@ func Rank(role string) int {
 	return -1
 }
 
-// MinRole es el rol mínimo que puede crear una sanción de ese tipo y esa duración (§9.1): el aviso
-// y el silencio de hasta 7 días, moderator; la suspensión de hasta 7 días y el renombrado, gm; la
-// suspensión más larga, la expulsión y el silencio de más de 7 días, admin («Todo»). Un tipo
-// desconocido, "" (nadie).
+// MinRole is the minimum role that can create a sanction of that type and duration (§9.1):
+// warning and mute of up to 7 days, moderator; suspension of up to 7 days and rename, gm; longer
+// suspension, ban and mute of more than 7 days, admin ("All"). An unknown type, "" (nobody).
 func MinRole(kind string, d time.Duration) string {
 	switch kind {
 	case KindWarning:

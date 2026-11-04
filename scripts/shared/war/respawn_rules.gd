@@ -1,28 +1,29 @@
 class_name RespawnRules
 extends RefCounted
-## Dónde puede reaparecer un jugador (docs/fuerte.md, sección 5; amplía docs/combate.md, sección 5).
-## Una función pura que el servidor usa para validar la elección y el cliente para ofrecer solo
-## puntos válidos: los dos calculan lo mismo con la misma lista de marcadores.
+## Where a player can respawn (docs/fuerte.md, section 5; extends docs/combate.md, section 5). A
+## pure function that the server uses to validate the choice and the client to offer only valid
+## points: both compute the same thing from the same marker list.
 ## [br][br]
-## El índice de un punto es su posición en la lista de [i]todos[/i] los marcadores del grupo
-## [constant Zones.RESPAWN_GROUP] de la escena, en el orden de la escena (campamentos primero; el
-## generador del Vado Gris lo mantiene estable), no en una lista filtrada por reino.
+## A point's index is its position in the list of [i]all[/i] markers of the
+## [constant Zones.RESPAWN_GROUP] group in the scene, in scene order (camps first; the Vado Gris
+## generator keeps it stable), not in a list filtered by realm.
 ## [br][br]
-## Un punto vale para un jugador de [param realm] si es:
-## [br]- de su campamento: el marcador lleva el metadato [constant Zones.REALM_META] con su reino;
-## [br]- del interior de una fortaleza (metadato [constant Zones.FORTRESS_META] con el id de la
-## fortaleza) que es de su reino, está en GARRISONED y no está «atacada»
+## A point is valid for a player of [param realm] if it is:
+## [br]- from their camp: the marker carries the [constant Zones.REALM_META] metadata with their
+## realm;
+## [br]- inside a fort (metadata [constant Zones.FORTRESS_META] with the fort's id) that belongs to
+## their realm, is in GARRISONED and is not "under attack"
 ## ([code]tick ≥ under_attack_until_tick[/code]).
-## [br]Los campamentos de otros reinos y las fortalezas ajenas, neutrales, en otra fase o atacadas no
-## valen. Los marcadores sin ninguno de los dos metadatos no se ofrecen nunca.
+## [br]Other realms' camps and forts that are foreign, neutral, in another phase or under attack are
+## not valid. Markers with neither metadata are never offered.
 ## [br][br]
-## Compartido: no depende del cliente ni del servidor.
+## Shared: depends on neither the client nor the server.
 
 
-## Índices (de [param points]) de los puntos en los que puede reaparecer un jugador del reino
-## [param realm] (código de red) en el tick [param tick], en orden. [param fortresses] asocia el id
-## de cada fortaleza (el metadato [code]fortress[/code] de sus marcadores, como [StringName] o
-## [String]) con su [FortressState]; una fortaleza que falta aquí no vale.
+## Indices (into [param points]) of the points where a player of realm [param realm] (network
+## code) can respawn at tick [param tick], in order. [param fortresses] maps the id of each fort
+## (the [code]fortress[/code] metadata of its markers, as [StringName] or [String]) to its
+## [FortressState]; a fort missing here is not valid.
 static func points_for(realm: int, points: Array[Node3D], fortresses: Dictionary, tick: int) -> PackedInt32Array:
 	var valid := PackedInt32Array()
 	for index: int in points.size():
@@ -31,7 +32,7 @@ static func points_for(realm: int, points: Array[Node3D], fortresses: Dictionary
 	return valid
 
 
-## true si [param point] vale para el reino [param realm] en el tick [param tick] (ver la clase).
+## true if [param point] is valid for realm [param realm] at tick [param tick] (see the class).
 static func is_point_valid(realm: int, point: Node3D, fortresses: Dictionary, tick: int) -> bool:
 	if point == null or not RealmCatalog.is_realm_code(realm):
 		return false

@@ -1,12 +1,14 @@
 extends TestCase
-## [ZoneDtls] (docs/plataforma.md §10.2, P9c): el certificado y la clave DTLS de la zona. Lee el CN del DER (el
-## [X509Certificate] de Godot no lo da), comprueba que la clave es la del certificado y no deja pasar un PEM roto sin
-## un motivo claro (ni con errores del motor). Además, el registro con el certificado y su nombre, la salida con código
-## 1 de un servidor con un certificado que no vale y la comparación de [code]tools/load_test.gd --dtls-compare[/code].
+## [ZoneDtls] (docs/plataforma.md §10.2, P9c): the zone's DTLS certificate and key. It reads the CN from
+## the DER (Godot's [X509Certificate] does not expose it), checks that the key is the certificate's and
+## does not let a broken PEM through without a clear reason (nor with engine errors). Also covered: the
+## registration with the certificate and its name, the exit with code 1 of a server with a certificate
+## that is not valid, and the comparison of [code]tools/load_test.gd --dtls-compare[/code].
 ## [br][br]
-## Los PEM de [code]tests/fixtures/dtls/[/code] se hicieron con OpenSSL 3.0 (válidos 100 años): [code]zone_*[/code],
-## RSA 2048 con CN y subjectAltName [code]zona-pruebas.eldmark.test[/code]; [code]other_*[/code], EC P-256 con el CN
-## delante de la organización; [code]no_cn_cert.pem[/code], la clave de [code]zone_key.pem[/code] sin CN.
+## The PEMs in [code]tests/fixtures/dtls/[/code] were made with OpenSSL 3.0 (valid for 100 years):
+## [code]zone_*[/code], RSA 2048 with CN and subjectAltName [code]zona-pruebas.eldmark.test[/code];
+## [code]other_*[/code], EC P-256 with the CN before the organization; [code]no_cn_cert.pem[/code], the
+## key of [code]zone_key.pem[/code] with no CN.
 
 const DIR: String = "res://tests/fixtures/dtls/"
 const ZONE_CERT: String = DIR + "zone_cert.pem"
@@ -32,27 +34,27 @@ func _text(path: String) -> String:
 	return FileAccess.get_file_as_string(path)
 
 
-# --- Certificado y clave ------------------------------------------------------------------------
+# --- Certificate and key ------------------------------------------------------------------------
 
 func test_the_name_is_the_cn_of_the_certificate_and_the_key_is_its_own() -> void:
 	var dtls: ZoneDtls = ZoneDtls.load_files(ZONE_CERT, ZONE_KEY)
-	assert_eq(dtls.error, "", "el certificado de las pruebas vale")
+	assert_eq(dtls.error, "", "the test certificate is valid")
 	assert_true(dtls.is_valid())
-	assert_eq(dtls.common_name, ZONE_NAME, "el CN del sujeto")
-	assert_eq(dtls.certificate_pem, _text(ZONE_CERT), "el PEM tal cual, para el registro")
-	assert_not_null(dtls.server_options, "las opciones del servidor para NetTransport.host")
+	assert_eq(dtls.common_name, ZONE_NAME, "the subject's CN")
+	assert_eq(dtls.certificate_pem, _text(ZONE_CERT), "the PEM as is, for the registration")
+	assert_not_null(dtls.server_options, "the server options for NetTransport.host")
 
 
 func test_an_ec_certificate_with_the_cn_first_also_gives_its_name() -> void:
 	var dtls: ZoneDtls = ZoneDtls.from_pem(_text(OTHER_CERT), _text(OTHER_KEY))
-	assert_eq(dtls.error, "", "EC P-256 vale")
-	assert_eq(dtls.common_name, "otra-zona.eldmark.test", "el CN aunque vaya antes que la organización")
+	assert_eq(dtls.error, "", "EC P-256 is valid")
+	assert_eq(dtls.common_name, "otra-zona.eldmark.test", "the CN even when it comes before the organization")
 
 
 func test_a_key_that_is_not_the_certificates_does_not_load() -> void:
 	for pair: Array in [[ZONE_CERT, OTHER_KEY], [OTHER_CERT, ZONE_KEY]]:
 		var dtls: ZoneDtls = ZoneDtls.load_files(pair[0], pair[1])
-		assert_false(dtls.is_valid(), "%s con %s no vale" % [pair[0].get_file(), pair[1].get_file()])
+		assert_false(dtls.is_valid(), "%s with %s is not valid" % [pair[0].get_file(), pair[1].get_file()])
 		assert_eq(dtls.error, "La clave DTLS no es la del certificado")
 		assert_null(dtls.server_options)
 
@@ -79,53 +81,53 @@ func test_missing_or_broken_files_give_a_reason_without_engine_errors() -> void:
 	]
 	for entry: Array in cases:
 		var dtls: ZoneDtls = entry[0]
-		assert_false(dtls.is_valid(), "no vale: %s" % entry[1])
-		assert_true(dtls.error.contains(String(entry[1])), "«%s» dice «%s»" % [dtls.error, entry[1]])
+		assert_false(dtls.is_valid(), "not valid: %s" % entry[1])
+		assert_true(dtls.error.contains(String(entry[1])), "\"%s\" says \"%s\"" % [dtls.error, entry[1]])
 
 
 func test_a_truncated_or_altered_der_never_breaks_the_reader() -> void:
 	var der: PackedByteArray = ZoneDtls.pem_blocks(_text(ZONE_CERT), "CERTIFICATE")[0]
 	var full: Dictionary = ZoneDtls.certificate_fields(der)
 	assert_eq(full["common_name"], ZONE_NAME)
-	assert_eq((full["public_key"] as PackedByteArray)[0], 0x30, "la subjectPublicKeyInfo es una SEQUENCE")
-	# Cortado por cualquier sitio: nunca da otro nombre ni falla con un error.
+	assert_eq((full["public_key"] as PackedByteArray)[0], 0x30, "the subjectPublicKeyInfo is a SEQUENCE")
+	# Cut at any point: it never gives a different name or fails with an error.
 	for length: int in range(0, der.size(), 7):
 		var fields: Dictionary = ZoneDtls.certificate_fields(der.slice(0, length))
-		assert_true(fields.is_empty(), "cortado a %d B no se entiende" % length)
-	# Con una longitud que se sale del certificado.
+		assert_true(fields.is_empty(), "cut to %d B it is not understood" % length)
+	# With a length that goes beyond the certificate.
 	var altered: PackedByteArray = der.duplicate()
 	altered[1] = 0x84
-	assert_true(ZoneDtls.certificate_fields(altered).is_empty(), "longitud imposible")
-	assert_true(ZoneDtls.certificate_fields(PackedByteArray()).is_empty(), "vacío")
+	assert_true(ZoneDtls.certificate_fields(altered).is_empty(), "impossible length")
+	assert_true(ZoneDtls.certificate_fields(PackedByteArray()).is_empty(), "empty")
 
 
 func test_pem_blocks_skips_bad_base64_and_reads_every_block() -> void:
 	var two: String = _text(ZONE_CERT) + "\n" + _text(OTHER_CERT)
-	assert_eq(ZoneDtls.pem_blocks(two, "CERTIFICATE").size(), 2, "una cadena de dos certificados")
+	assert_eq(ZoneDtls.pem_blocks(two, "CERTIFICATE").size(), 2, "a chain of two certificates")
 	var chain: ZoneDtls = ZoneDtls.from_pem(two, _text(ZONE_KEY))
-	assert_eq(chain.common_name, ZONE_NAME, "el nombre y la clave son los del primero de la cadena")
+	assert_eq(chain.common_name, ZONE_NAME, "the name and the key are those of the first in the chain")
 	assert_eq(ZoneDtls.pem_blocks("-----BEGIN CERTIFICATE-----\nAB=C\n-----END CERTIFICATE-----", "CERTIFICATE").size(),
-			0, "relleno en medio")
+			0, "padding in the middle")
 	assert_eq(ZoneDtls.pem_blocks("-----BEGIN CERTIFICATE-----\nABC\n-----END CERTIFICATE-----", "CERTIFICATE").size(),
-			0, "longitud que no es múltiplo de 4")
+			0, "length that is not a multiple of 4")
 
 
-# --- Registro ----------------------------------------------------------------------------------
+# --- Registration ------------------------------------------------------------------------------
 
 func test_the_registration_sends_the_certificate_and_its_name() -> void:
 	var config := ServerConfig.from_args(PackedStringArray(["--zone=test_world", "--dtls-cert=%s" % ZONE_CERT,
 			"--dtls-key=%s" % ZONE_KEY]))
 	assert_eq(config.dtls_cert_path, ZONE_CERT, "--dtls-cert")
 	assert_eq(config.dtls_key_path, ZONE_KEY, "--dtls-key")
-	assert_null(config.dtls, "los argumentos no cargan nada: lo hace ServerMain")
+	assert_null(config.dtls, "the arguments load nothing: ServerMain does that")
 	var plain: Dictionary = ZonePlatform.registration_body(config)
-	assert_null(plain["dtls_cert_pem"], "sin DTLS cargado, null")
+	assert_null(plain["dtls_cert_pem"], "with no DTLS loaded, null")
 	assert_null(plain["dtls_name"])
 	config.dtls = ZoneDtls.load_files(config.dtls_cert_path, config.dtls_key_path)
 	var body: Dictionary = ZonePlatform.registration_body(config)
-	assert_eq(body["dtls_cert_pem"], _text(ZONE_CERT), "el PEM del certificado")
+	assert_eq(body["dtls_cert_pem"], _text(ZONE_CERT), "the certificate's PEM")
 	assert_eq(body["dtls_name"], ZONE_NAME, "su CN")
-	# Ida y vuelta por JSON, como lo manda PlatformClient.
+	# Round trip through JSON, as PlatformClient sends it.
 	var json := JSON.new()
 	assert_eq(json.parse(JSON.stringify(body)), OK)
 	assert_eq((json.data as Dictionary)["dtls_name"], ZONE_NAME)
@@ -153,12 +155,12 @@ func test_a_server_with_a_certificate_that_does_not_work_exits_with_one() -> voi
 		pids.append(pid)
 		logs.append(log_path)
 	for i: int in cases.size():
-		if not assert_true(await _wait_for_exit(pids[i]), "el servidor %d sale solo" % i):
+		if not assert_true(await _wait_for_exit(pids[i]), "server %d exits on its own" % i):
 			continue
-		assert_eq(OS.get_process_exit_code(pids[i]), 1, "código 1 (%s)" % cases[i][1])
+		assert_eq(OS.get_process_exit_code(pids[i]), 1, "code 1 (%s)" % cases[i][1])
 		var text: String = FileAccess.get_file_as_string(logs[i])
-		assert_true(text.contains(String(cases[i][1])), "el registro dice por qué (%s)" % cases[i][1])
-		assert_false(text.contains("escuchando en el puerto"), "no abre el puerto")
+		assert_true(text.contains(String(cases[i][1])), "the log says why (%s)" % cases[i][1])
+		assert_false(text.contains("escuchando en el puerto"), "it does not open the port")
 
 
 func _wait_for_exit(pid: int) -> bool:
@@ -189,18 +191,18 @@ func test_the_dtls_comparison_averages_each_side_and_applies_the_ten_percent() -
 	assert_eq(comparison["plain_runs"], 2)
 	assert_eq(comparison["dtls_runs"], 2)
 	var tick: Dictionary = (comparison["figures"] as Dictionary)["tick_p99_us"]
-	assert_near(float(tick["plain"]), 11000.0, 0.01, "media sin DTLS")
-	assert_near(float(tick["dtls"]), 11600.0, 0.01, "media con DTLS")
-	assert_near(float(comparison["tick_p99_rise"]), 600.0 / 11000.0, 1e-6, "sube un 5,5 %")
-	assert_true(bool(comparison["criterion_met"]), "por debajo del 10 %")
+	assert_near(float(tick["plain"]), 11000.0, 0.01, "mean without DTLS")
+	assert_near(float(tick["dtls"]), 11600.0, 0.01, "mean with DTLS")
+	assert_near(float(comparison["tick_p99_rise"]), 600.0 / 11000.0, 1e-6, "goes up 5.5 %")
+	assert_true(bool(comparison["criterion_met"]), "below 10 %")
 	assert_near(float(((comparison["figures"] as Dictionary)["net_p50_us"] as Dictionary)["rise"]), 0.2, 1e-6,
-			"la sección net sube un 20 %")
-	assert_eq((comparison["passes"] as Array).size(), 4, "las cuatro pasadas, para ver el ruido")
+			"the net section goes up 20 %")
+	assert_eq((comparison["passes"] as Array).size(), 4, "all four passes, to see the noise")
 	summaries.append(_summary(true, 20000, 1500))
-	assert_false(bool(LoadTestScript.dtls_comparison(summaries)["criterion_met"]), "una pasada mucho peor lo rompe")
+	assert_false(bool(LoadTestScript.dtls_comparison(summaries)["criterion_met"]), "a much worse pass breaks it")
 	var only_plain: Array[Dictionary] = [_summary(false, 10000, 900)]
 	var missing: Dictionary = LoadTestScript.dtls_comparison(only_plain)
-	assert_false(bool(missing["criterion_met"]), "sin pasadas con DTLS no hay criterio")
+	assert_false(bool(missing["criterion_met"]), "with no DTLS passes there is no criterion")
 	assert_true(missing.has("error"))
 
 
@@ -209,7 +211,7 @@ func test_the_load_test_passes_the_certificate_to_the_server_and_the_swarms() ->
 	assert_eq(LoadTestScript.dtls_server_args(run), PackedStringArray(["--dtls-cert=/c.pem", "--dtls-key=/k.pem"]))
 	assert_eq(LoadTestScript.dtls_swarm_args(run), PackedStringArray(["--dtls-cert=/c.pem",
 			"--dtls-name=%s" % ZONE_NAME]))
-	assert_true(FileAccess.file_exists(LoadTestScript.DTLS_TEST_CERT), "el certificado por defecto existe")
-	assert_true(FileAccess.file_exists(LoadTestScript.DTLS_TEST_KEY), "la clave por defecto existe")
+	assert_true(FileAccess.file_exists(LoadTestScript.DTLS_TEST_CERT), "the default certificate exists")
+	assert_true(FileAccess.file_exists(LoadTestScript.DTLS_TEST_KEY), "the default key exists")
 	var dtls: ZoneDtls = ZoneDtls.load_files(LoadTestScript.DTLS_TEST_CERT, LoadTestScript.DTLS_TEST_KEY)
-	assert_eq(dtls.common_name, LoadTestScript.DTLS_TEST_NAME, "el nombre por defecto es el CN del certificado")
+	assert_eq(dtls.common_name, LoadTestScript.DTLS_TEST_NAME, "the default name is the certificate's CN")

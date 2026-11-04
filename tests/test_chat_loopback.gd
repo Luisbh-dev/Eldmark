@@ -1,18 +1,18 @@
 extends TestCase
-## Integración del chat con ENet real sobre 127.0.0.1 en un solo proceso (SOC-04, docs/social.md secciones
-## 1, 5 y 12): un [ZoneServer] y varios [NetClient] bots, dos de Vardheim y uno de Solmarch en la misma
-## zona. La prueba de aceptación del filtro por reino mira los [b]bytes recibidos[/b] por el cliente del
-## otro reino (todos los paquetes que le llegan), no lo que pinta: ninguno puede contener el texto de un
-## mensaje que no era para él, ni ser un CHAT_MESSAGE.
+## Chat integration with real ENet over 127.0.0.1 in a single process (SOC-04, docs/social.md sections
+## 1, 5 and 12): a [ZoneServer] and several [NetClient] bots, two from Vardheim and one from Solmarch in the same
+## zone. The acceptance test of the realm filter looks at the [b]bytes received[/b] by the other realm's
+## client (all the packets that reach it), not at what it draws: none may contain the text of a
+## message that was not for it, or be a CHAT_MESSAGE.
 ## [br][br]
-## También se prueba el saneado de lo que llega por la red, el alcance de «decir», los ritmos con sus avisos
-## (al jugador y al peer), el susurro a un enemigo (la misma respuesta que a quien no existe), los mensajes
-## mal formados y el informe. La lógica por separado, sin red, está en test_chat_router.gd.
+## It also tests the sanitizing of what arrives over the network, the reach of "say", the rate limits with their warnings
+## (to the player and to the peer), whispering to an enemy (the same response as to someone who does not exist), malformed
+## messages and the report. The logic on its own, without network, is in test_chat_router.gd.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ZONE_ID: String = "test_world"
-## Fotogramas de física como mucho que se espera a una condición (10 s).
+## Physics frames at most that a condition is waited for (10 s).
 const WAIT_FRAMES: int = 600
 
 var _root: Node
@@ -21,7 +21,7 @@ var _server: ZoneServer
 var _port: int = 0
 var _clients: Array[NetClient] = []
 var _client_viewports: Array[SubViewport] = []
-# Por cliente (clave: el NetClient): lo que le ha llegado de chat y todos sus paquetes en bruto.
+# Per client (key: the NetClient): the chat that has reached it and all its raw packets.
 var _inboxes: Dictionary = {}
 var _raw_packets: Dictionary = {}
 
@@ -51,7 +51,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers --------------------------------------------------------------------------------
 
 func _start_server() -> void:
 	_port = NetHarness.free_udp_port()
@@ -64,7 +64,7 @@ func _start_server() -> void:
 	await wait_physics_frames(3)
 
 
-# Un bot que además apunta el chat que recibe y todos los paquetes que le llegan.
+# A bot that also records the chat it receives and all the packets that reach it.
 func _add_bot(realm: int, bot_seed: int) -> NetClient:
 	var viewport: SubViewport = NetHarness.make_world_viewport(_root, "")
 	_client_viewports.append(viewport)
@@ -96,7 +96,7 @@ func _all_in_world() -> bool:
 	return true
 
 
-# Entran todos y se quedan quietos en su punto de aparición.
+# They all get in and stay still at their spawn point.
 func _join_all_and_freeze() -> bool:
 	if not await _wait_until(_all_in_world):
 		return false
@@ -115,7 +115,7 @@ func _raw(client: NetClient) -> Array[PackedByteArray]:
 	return _raw_packets[client]
 
 
-# Los mensajes del inbox que no son del sistema.
+# The inbox messages that are not from the system.
 func _chat_lines(client: NetClient) -> Array[NetMessages.ChatMessage]:
 	var lines: Array[NetMessages.ChatMessage] = []
 	for message: NetMessages.ChatMessage in _inbox(client):
@@ -144,7 +144,7 @@ func _peer_of(client: NetClient) -> ServerPeer:
 	return null
 
 
-# true si algún paquete en bruto de [param client] lleva los bytes UTF-8 de [param token].
+# true if any raw packet of [param client] carries the UTF-8 bytes of [param token].
 func _any_packet_contains(client: NetClient, token: String) -> bool:
 	var needle: PackedByteArray = token.to_utf8_buffer()
 	for packet: PackedByteArray in _raw(client):
@@ -162,152 +162,152 @@ func _chat_packet_count(client: NetClient) -> int:
 	return count
 
 
-# --- Pruebas ----------------------------------------------------------------------------------
+# --- Tests ----------------------------------------------------------------------------------
 
-## El corazón de SOC-04: el cliente del otro reino no recibe NINGÚN paquete con el texto, en ninguno de los
-## canales, aunque esté a 3 m del emisor y en la misma zona.
+## The heart of SOC-04: the other realm's client receives NO packet with the text, in any of the
+## channels, even if it is 3 m from the sender and in the same zone.
 func test_the_enemy_realm_never_receives_a_packet_with_the_text() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
 	var cora: NetClient = _add_bot(SOLMARCH, 3)
-	if not assert_true(await _join_all_and_freeze(), "entran los tres"):
+	if not assert_true(await _join_all_and_freeze(), "all three get in"):
 		return
-	# El enemigo, junto a Ana: «decir» le alcanzaría si el servidor no filtrase por reino.
+	# The enemy, next to Ana: "say" would reach it if the server did not filter by realm.
 	_server.teleport(cora.get_net_id(), Vector3(-19.0, 0.0, 2.0))
 	await wait_physics_frames(10)
 	var secrets: PackedStringArray = ["secretoDecir", "secretoZona", "secretoSusurro", "secretoEnemigo"]
 
-	assert_true(ana.send_chat(ChatChannel.Id.SAY, "", secrets[0]), "Ana dice")
-	assert_true(ana.send_chat(ChatChannel.Id.ZONE, "", secrets[1]), "Ana habla por la zona")
-	assert_true(ana.send_chat(ChatChannel.Id.WHISPER, _name_of(bruno), secrets[2]), "Ana susurra a Bruno")
-	assert_true(ana.send_chat(ChatChannel.Id.WHISPER, _name_of(cora), secrets[3]), "Ana susurra a Cora")
+	assert_true(ana.send_chat(ChatChannel.Id.SAY, "", secrets[0]), "Ana says")
+	assert_true(ana.send_chat(ChatChannel.Id.ZONE, "", secrets[1]), "Ana speaks in the zone channel")
+	assert_true(ana.send_chat(ChatChannel.Id.WHISPER, _name_of(bruno), secrets[2]), "Ana whispers to Bruno")
+	assert_true(ana.send_chat(ChatChannel.Id.WHISPER, _name_of(cora), secrets[3]), "Ana whispers to Cora")
 	var arrived: bool = await _wait_until(func() -> bool:
 		return (_chat_lines(ana).size() >= 3 and _chat_lines(bruno).size() >= 3
 				and not _system_texts(ana).is_empty()))
-	assert_true(arrived, "llegan los mensajes a Ana y a Bruno")
-	# Margen para que llegara cualquier fuga.
+	assert_true(arrived, "the messages reach Ana and Bruno")
+	# Margin for any leak to arrive.
 	await wait_physics_frames(60)
 
-	# Los destinatarios legítimos.
-	assert_eq(_chat_lines(bruno).size(), 3, "Bruno recibe el «decir», la zona y el susurro")
+	# The legitimate recipients.
+	assert_eq(_chat_lines(bruno).size(), 3, "Bruno receives the say message, the zone one and the whisper")
 	var channels: Array[int] = []
 	for line: NetMessages.ChatMessage in _chat_lines(bruno):
 		channels.append(line.channel)
-		assert_eq(line.sender, _name_of(ana), "emisor")
-		assert_eq(line.sender_realm, VARDHEIM, "reino del emisor")
-	assert_eq(channels, [ChatChannel.Id.SAY, ChatChannel.Id.ZONE, ChatChannel.Id.WHISPER], "en orden")
-	assert_eq(_chat_lines(ana).size(), 3, "Ana recibe la copia de sus tres mensajes")
-	# A Ana se le contesta que Cora «no está conectada»: lo mismo que si no existiera.
+		assert_eq(line.sender, _name_of(ana), "sender")
+		assert_eq(line.sender_realm, VARDHEIM, "sender's realm")
+	assert_eq(channels, [ChatChannel.Id.SAY, ChatChannel.Id.ZONE, ChatChannel.Id.WHISPER], "in order")
+	assert_eq(_chat_lines(ana).size(), 3, "Ana receives the copy of her three messages")
+	# Ana is told that Cora is "no está conectada" (not online): the same as if she did not exist.
 	assert_eq(_system_texts(ana), PackedStringArray(["«%s» no está conectado." % _name_of(cora)]),
-			"respuesta a un susurro a un enemigo")
+			"response to a whisper to an enemy")
 
-	# El enemigo: ni un paquete de chat, y ninguno con los textos, en bruto.
-	assert_eq(_chat_packet_count(cora), 0, "Cora no recibe ningún CHAT_MESSAGE")
-	assert_true(_inbox(cora).is_empty(), "ni siquiera del sistema")
+	# The enemy: not a single chat packet, and none with the texts, raw.
+	assert_eq(_chat_packet_count(cora), 0, "Cora receives no CHAT_MESSAGE")
+	assert_true(_inbox(cora).is_empty(), "not even a system one")
 	for secret: String in secrets:
-		assert_false(_any_packet_contains(cora, secret), "ningún paquete de Cora lleva «%s»" % secret)
-	# Y el susurro fallido tampoco llegó a Bruno.
-	assert_false(_any_packet_contains(bruno, secrets[3]), "Bruno no recibe el susurro dirigido a Cora")
-	assert_true(_any_packet_contains(bruno, secrets[0]), "control: el análisis de bytes encuentra el texto de Bruno")
+		assert_false(_any_packet_contains(cora, secret), "no packet of Cora's carries \"%s\"" % secret)
+	# And the failed whisper did not reach Bruno either.
+	assert_false(_any_packet_contains(bruno, secrets[3]), "Bruno does not receive the whisper addressed to Cora")
+	assert_true(_any_packet_contains(bruno, secrets[0]), "control: the byte analysis finds Bruno's text")
 
 
 func test_say_reaches_thirty_meters_and_zone_does_not_care_about_distance() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
-	if not assert_true(await _join_all_and_freeze(), "entran los dos"):
+	if not assert_true(await _join_all_and_freeze(), "both get in"):
 		return
 	_server.teleport(bruno.get_net_id(), Vector3(15.0, 0.0, 0.0))
 	await wait_physics_frames(10)
 	var distance: float = _server.get_registry().get_entity(ana.get_net_id()).get_position().distance_to(
 			_server.get_registry().get_entity(bruno.get_net_id()).get_position())
-	assert_true(distance > 30.0, "Bruno está a más de 30 m de Ana (%.1f)" % distance)
+	assert_true(distance > 30.0, "Bruno is more than 30 m from Ana (%.1f)" % distance)
 	ana.send_chat(ChatChannel.Id.SAY, "", "no te llego")
 	ana.send_chat(ChatChannel.Id.ZONE, "", "esto sí te llega")
 	assert_true(await _wait_until(func() -> bool: return not _chat_lines(bruno).is_empty()),
-			"llega algo a Bruno")
+			"something reaches Bruno")
 	await wait_physics_frames(30)
 	var lines: Array[NetMessages.ChatMessage] = _chat_lines(bruno)
-	assert_eq(lines.size(), 1, "solo la zona")
-	assert_eq(lines[0].channel, ChatChannel.Id.ZONE, "canal zona")
-	assert_false(_any_packet_contains(bruno, "no te llego"), "el «decir» lejano no llegó en bruto")
-	# Ana ve sus dos copias.
-	assert_eq(_chat_lines(ana).size(), 2, "Ana recibe sus dos mensajes")
+	assert_eq(lines.size(), 1, "only the zone one")
+	assert_eq(lines[0].channel, ChatChannel.Id.ZONE, "zone channel")
+	assert_false(_any_packet_contains(bruno, "no te llego"), "the distant \"say\" did not arrive raw")
+	# Ana sees her two copies.
+	assert_eq(_chat_lines(ana).size(), 2, "Ana receives her two messages")
 
 
 func test_text_is_sanitized_by_the_server_even_if_the_client_does_not() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
-	if not assert_true(await _join_all_and_freeze(), "entran los dos"):
+	if not assert_true(await _join_all_and_freeze(), "both get in"):
 		return
-	# Un cliente tramposo manda el CHAT_SEND a mano, sin sanear.
+	# A cheating client sends the CHAT_SEND by hand, unsanitized.
 	var message := NetMessages.ChatSend.new()
 	message.channel = ChatChannel.Id.SAY
 	message.text = "  [b]Hola[/b]\t\n  [color=red]mundo[/color]\u0007  "
 	ana.get_transport().send(NetClient.SERVER_PEER_ID, NetProtocol.CH_RELIABLE, message.encode())
-	assert_true(await _wait_until(func() -> bool: return not _chat_lines(bruno).is_empty()), "llega")
-	assert_eq(_chat_lines(bruno)[0].text, "Hola mundo", "saneado en el servidor")
-	assert_false(_any_packet_contains(bruno, "[b]"), "y los corchetes no cruzan la red")
+	assert_true(await _wait_until(func() -> bool: return not _chat_lines(bruno).is_empty()), "it arrives")
+	assert_eq(_chat_lines(bruno)[0].text, "Hola mundo", "sanitized on the server")
+	assert_false(_any_packet_contains(bruno, "[b]"), "and the brackets do not cross the network")
 
 
 func test_rate_limit_warns_the_player_and_counts_strikes_after_ten_discards() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
-	if not assert_true(await _join_all_and_freeze(), "entran los dos"):
+	if not assert_true(await _join_all_and_freeze(), "both get in"):
 		return
 	var peer: ServerPeer = _peer_of(ana)
-	if not assert_not_null(peer, "el servidor conoce a Ana"):
+	if not assert_not_null(peer, "the server knows Ana"):
 		return
 	var strikes_before: int = peer.strikes_total
-	# Dieciséis mensajes distintos en un instante (caben en la ráfaga del transporte): cinco pasan, once se
-	# descartan; los diez primeros descartes son gratis y el undécimo suma un aviso del peer.
+	# Sixteen distinct messages in an instant (they fit in the transport's burst): five go through, eleven are
+	# dropped; the first ten drops are free and the eleventh adds a peer warning.
 	for i: int in 16:
-		assert_true(ana.send_chat(ChatChannel.Id.ZONE, "", "mensaje %d" % i), "se envía el %d" % i)
+		assert_true(ana.send_chat(ChatChannel.Id.ZONE, "", "mensaje %d" % i), "number %d is sent" % i)
 	assert_true(await _wait_until(func() -> bool:
 		return _chat_lines(bruno).size() >= 5 and not _system_texts(ana).is_empty()),
-			"llegan cinco y el aviso")
+			"five arrive and the warning")
 	await wait_physics_frames(30)
-	assert_eq(_chat_lines(bruno).size(), 5, "Bruno recibe solo la ráfaga de cinco")
-	assert_eq(_system_texts(ana).size(), 1, "un solo aviso al jugador, aunque se descartaran once")
-	assert_eq(_system_texts(ana)[0], ChatRouter.TEXT_TOO_FAST, "«Hablas demasiado rápido.»")
-	assert_eq(peer.strikes_total - strikes_before, 1, "once descartes suman un aviso del peer")
-	assert_eq(peer.chat.discards, 11, "once descartes")
-	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "y Ana sigue dentro")
+	assert_eq(_chat_lines(bruno).size(), 5, "Bruno receives only the burst of five")
+	assert_eq(_system_texts(ana).size(), 1, "a single warning to the player, even though eleven were dropped")
+	assert_eq(_system_texts(ana)[0], ChatRouter.TEXT_TOO_FAST, "\"Hablas demasiado rápido.\" (You speak too fast.)")
+	assert_eq(peer.strikes_total - strikes_before, 1, "eleven drops add a peer warning")
+	assert_eq(peer.chat.discards, 11, "eleven drops")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "and Ana stays in")
 
 
 func test_whispering_an_enemy_and_a_nobody_get_the_same_answer() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var cora: NetClient = _add_bot(SOLMARCH, 3)
-	if not assert_true(await _join_all_and_freeze(), "entran los dos"):
+	if not assert_true(await _join_all_and_freeze(), "both get in"):
 		return
-	# Con otras mayúsculas y sin tildes, que es como lo escribe un jugador.
+	# With other capitals and without accents, which is how a player types it.
 	ana.send_chat(ChatChannel.Id.WHISPER, _name_of(cora).to_upper(), "hola enemigo")
 	ana.send_chat(ChatChannel.Id.WHISPER, "Nadie", "hola nadie")
 	assert_true(await _wait_until(func() -> bool: return _system_texts(ana).size() >= 2),
-			"dos respuestas")
+			"two responses")
 	await wait_physics_frames(20)
 	var texts: PackedStringArray = _system_texts(ana)
-	assert_eq(texts[0], "«%s» no está conectado." % _name_of(cora).to_upper(), "al enemigo")
-	assert_eq(texts[1], "«Nadie» no está conectado.", "a nadie")
+	assert_eq(texts[0], "«%s» no está conectado." % _name_of(cora).to_upper(), "to the enemy")
+	assert_eq(texts[1], "«Nadie» no está conectado.", "to no one")
 	assert_eq(texts[0].replace(_name_of(cora).to_upper(), "X"), texts[1].replace("Nadie", "X"),
-			"misma frase")
-	assert_true(_inbox(cora).is_empty(), "el enemigo no se entera de nada")
-	assert_false(_any_packet_contains(cora, "hola enemigo"), "ni en bruto")
+			"same phrase")
+	assert_true(_inbox(cora).is_empty(), "the enemy notices nothing")
+	assert_false(_any_packet_contains(cora, "hola enemigo"), "not even raw")
 
 
 func test_malformed_chat_adds_strikes() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
-	if not assert_true(await _join_all_and_freeze(), "entra"):
+	if not assert_true(await _join_all_and_freeze(), "gets in"):
 		return
 	var peer: ServerPeer = _peer_of(ana)
 	var before: int = peer.strikes_total
 	var transport: NetTransport = ana.get_transport()
-	# Truncado, canal del sistema, susurro sin destinatario y UTF-8 inválido.
+	# Truncated, system channel, whisper with no recipient and invalid UTF-8.
 	transport.send(NetClient.SERVER_PEER_ID, NetProtocol.CH_RELIABLE, PackedByteArray([0x40, 0, 0]))
 	transport.send(NetClient.SERVER_PEER_ID, NetProtocol.CH_RELIABLE,
 			PackedByteArray([0x40, ChatChannel.Id.SYSTEM, 0, 2, 0, 0x68, 0x69]))
@@ -316,39 +316,39 @@ func test_malformed_chat_adds_strikes() -> void:
 	transport.send(NetClient.SERVER_PEER_ID, NetProtocol.CH_RELIABLE,
 			PackedByteArray([0x40, ChatChannel.Id.SAY, 0, 2, 0, 0xFF, 0xFE]))
 	assert_true(await _wait_until(func() -> bool: return peer.strikes_total - before >= 4),
-			"cuatro avisos")
-	assert_eq(peer.strikes_total - before, 4, "exactamente cuatro")
-	assert_true(_inbox(ana).is_empty(), "y no se reparte nada")
-	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "no se expulsa por cuatro")
+			"four warnings")
+	assert_eq(peer.strikes_total - before, 4, "exactly four")
+	assert_true(_inbox(ana).is_empty(), "and nothing is distributed")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "it is not kicked for four")
 
 
 func test_the_client_api_refuses_what_the_server_would_drop() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
-	assert_false(ana.send_chat(ChatChannel.Id.SAY, "", "demasiado pronto"), "antes de estar en el mundo")
-	if not assert_true(await _join_all_and_freeze(), "entra"):
+	assert_false(ana.send_chat(ChatChannel.Id.SAY, "", "demasiado pronto"), "before being in the world")
+	if not assert_true(await _join_all_and_freeze(), "gets in"):
 		return
-	assert_false(ana.send_chat(ChatChannel.Id.SAY, "", "   "), "texto vacío")
-	assert_false(ana.send_chat(ChatChannel.Id.SAY, "", "[b][/b]"), "solo BBCode")
-	assert_false(ana.send_chat(ChatChannel.Id.SYSTEM, "", "hola"), "el canal del sistema")
-	assert_false(ana.send_chat(99, "", "hola"), "un canal que no existe")
-	assert_false(ana.send_chat(ChatChannel.Id.WHISPER, "  ", "hola"), "un susurro sin destinatario")
-	assert_true(ana.send_chat(ChatChannel.Id.SAY, "Pepe", "hola"), "el destinatario se ignora fuera del susurro")
-	assert_eq(ana.get_stats()["chat_sent"], 1, "solo se envió uno")
+	assert_false(ana.send_chat(ChatChannel.Id.SAY, "", "   "), "empty text")
+	assert_false(ana.send_chat(ChatChannel.Id.SAY, "", "[b][/b]"), "BBCode only")
+	assert_false(ana.send_chat(ChatChannel.Id.SYSTEM, "", "hola"), "the system channel")
+	assert_false(ana.send_chat(99, "", "hola"), "a channel that does not exist")
+	assert_false(ana.send_chat(ChatChannel.Id.WHISPER, "  ", "hola"), "a whisper with no recipient")
+	assert_true(ana.send_chat(ChatChannel.Id.SAY, "Pepe", "hola"), "the recipient is ignored outside whispers")
+	assert_eq(ana.get_stats()["chat_sent"], 1, "only one was sent")
 
 
 func test_the_report_counts_the_chat_of_the_session() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
-	if not assert_true(await _join_all_and_freeze(), "entran los dos"):
+	if not assert_true(await _join_all_and_freeze(), "both get in"):
 		return
 	ana.send_chat(ChatChannel.Id.ZONE, "", "para el informe")
-	assert_true(await _wait_until(func() -> bool: return not _chat_lines(bruno).is_empty()), "llega")
-	assert_eq(bruno.get_stats()["chat_received"], 1, "Bruno cuenta uno recibido")
+	assert_true(await _wait_until(func() -> bool: return not _chat_lines(bruno).is_empty()), "it arrives")
+	assert_eq(bruno.get_stats()["chat_received"], 1, "Bruno counts one received")
 	var path: String = NetHarness.build_path("test_chat_loopback_report.json")
-	assert_eq(_server.write_report(path), OK, "se escribe el informe")
+	assert_eq(_server.write_report(path), OK, "the report is written")
 	var report: Dictionary = NetHarness.read_report(path)
 	var chat: Dictionary = report.get("social", {}).get("chat", {})
-	assert_eq(chat.get("routed", 0), 1, "un mensaje enrutado")
-	assert_eq(chat.get("delivered_copies", 0), 2, "dos copias")
+	assert_eq(chat.get("routed", 0), 1, "one routed message")
+	assert_eq(chat.get("delivered_copies", 0), 2, "two copies")

@@ -1,14 +1,14 @@
 extends TestCase
-## Pruebas de la validación del HELLO ([ServerAuth]): cada motivo de REJECT, el orden de las
-## comprobaciones, el tope de conexiones por IP con la excepción de loopback y el
-## [AuthProvider] (docs/red.md, secciones 3 y 12).
+## Tests for HELLO validation ([ServerAuth]): each REJECT reason, the order of the
+## checks, the per-IP connection cap with the loopback exception and the
+## [AuthProvider] (docs/red.md, sections 3 and 12).
 
 const SIM_HASH: int = 0xA1B2C3D4
 const REMOTE_ADDRESS: String = "203.0.113.7"
 const PEER_ID: int = 7
 
 
-## Proveedor de prueba: cuenta las llamadas y devuelve lo que se le pida.
+## Test provider: counts the calls and returns whatever it is asked to.
 class CountingProvider extends AuthProvider:
 	var calls: int = 0
 	var result: int = NetProtocol.Result.OK
@@ -52,34 +52,34 @@ func _make_hello() -> NetMessages.Hello:
 func test_valid_hello_is_accepted() -> void:
 	var auth: ServerAuth = _make_auth()
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-			"un HELLO correcto")
-	# Y también si pasa por el cable.
+			"a correct HELLO")
+	# And also if it goes over the wire.
 	var decoded: NetMessages.Hello = NetMessages.Hello.decode(_make_hello().encode())
-	if assert_not_null(decoded, "el HELLO se decodifica"):
+	if assert_not_null(decoded, "the HELLO is decoded"):
 		assert_eq(auth.validate(PEER_ID, decoded, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-				"un HELLO decodificado")
+				"a decoded HELLO")
 
 
 func test_malformed_hello_is_rejected() -> void:
 	assert_eq(_make_auth().validate(PEER_ID, null, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.MALFORMED,
-			"sin HELLO (el decode devolvió null)")
+			"no HELLO (decode returned null)")
 
 
 func test_reject_version() -> void:
 	var hello: NetMessages.Hello = _make_hello()
 	hello.protocol_version = NetProtocol.PROTOCOL_VERSION + 1
 	assert_eq(_make_auth().validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.VERSION,
-			"versión más nueva")
+			"newer version")
 	hello.protocol_version = 0
 	assert_eq(_make_auth().validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.VERSION,
-			"versión 0")
+			"version 0")
 
 
 func test_reject_sim_hash() -> void:
 	var hello: NetMessages.Hello = _make_hello()
 	hello.sim_hash = SIM_HASH ^ 1
 	assert_eq(_make_auth().validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.SIM_HASH,
-			"huella distinta")
+			"different fingerprint")
 
 
 func test_reject_realm_none_and_out_of_range() -> void:
@@ -88,7 +88,7 @@ func test_reject_realm_none_and_out_of_range() -> void:
 		var hello: NetMessages.Hello = _make_hello()
 		hello.realm = realm
 		assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.REALM,
-				"el reino %d no vale" % realm)
+				"realm %d is not valid" % realm)
 
 
 func test_every_real_realm_is_accepted_when_allowed_is_empty() -> void:
@@ -98,7 +98,7 @@ func test_every_real_realm_is_accepted_when_allowed_is_empty() -> void:
 		var hello: NetMessages.Hello = _make_hello()
 		hello.realm = realm
 		assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-				"el reino %d se admite si la zona no restringe" % realm)
+				"realm %d is admitted if the zone does not restrict" % realm)
 
 
 func test_reject_realm_not_allowed_in_zone() -> void:
@@ -107,23 +107,23 @@ func test_reject_realm_not_allowed_in_zone() -> void:
 	var hello: NetMessages.Hello = _make_hello()
 	hello.realm = NetProtocol.Realm.ASKARRA
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.REALM,
-			"Askarra no está admitido en la zona")
+			"Askarra is not admitted in the zone")
 	hello.realm = NetProtocol.Realm.SOLMARCH
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-			"Solmarch sí")
+			"Solmarch is")
 	hello.realm = NetProtocol.Realm.NONE
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.REALM,
-			"NONE se rechaza siempre")
+			"NONE is always rejected")
 
 
 func test_reject_name() -> void:
 	var auth: ServerAuth = _make_auth()
 	var bad_names: Array[String] = [
 		"", "A", "ab", "x".repeat(25), "   ", " \t ", "Ana\nBruno", "Ana" + char(127),
-		# 24 caracteres de 3 bytes: 72 B, más que los 48 B del formato.
+		# 24 characters of 3 bytes: 72 B, more than the format's 48 B.
 		"€".repeat(24),
-		# Reglas de NameRules (SOC-01): sin espacios ni dígitos ni signos, con mayúscula inicial,
-		# 16 letras como máximo y sin reservados.
+		# NameRules rules (SOC-01): no spaces, digits or symbols, with an initial capital,
+		# 16 letters at most and no reserved names.
 		"Ana B", "Jugador-0001", "Ana1", "ana", "Anabcdefghijklmnopq", "Admin", "ADMINISTRADOR",
 		"Vardheim", "Capitán",
 	]
@@ -131,7 +131,7 @@ func test_reject_name() -> void:
 		var hello: NetMessages.Hello = _make_hello()
 		hello.display_name = display_name
 		assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.NAME,
-				"nombre no válido: '%s'" % display_name.c_escape())
+				"invalid name: '%s'" % display_name.c_escape())
 
 
 func test_name_length_boundaries() -> void:
@@ -143,25 +143,25 @@ func test_name_length_boundaries() -> void:
 		var hello: NetMessages.Hello = _make_hello()
 		hello.display_name = display_name
 		assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-				"nombre válido: '%s' (%d caracteres, %d B)" % [display_name, display_name.length(),
+				"valid name: '%s' (%d characters, %d B)" % [display_name, display_name.length(),
 				display_name.to_utf8_buffer().size()])
-	assert_true(ServerAuth.is_valid_name("Ñ" + "ñ".repeat(15)), "16 letras de 2 B: caben")
-	assert_false(ServerAuth.is_valid_name("Ñ" + "ñ".repeat(16)), "17 letras no caben")
-	assert_false(ServerAuth.is_valid_name("ab"), "dos letras no bastan")
-	# El tope del protocolo (24 caracteres) sigue siendo el límite del cable, por encima de NameRules.
-	assert_false(ServerAuth.is_valid_name("A" + "x".repeat(24)), "25 caracteres no caben en el HELLO")
+	assert_true(ServerAuth.is_valid_name("Ñ" + "ñ".repeat(15)), "16 letters of 2 B: they fit")
+	assert_false(ServerAuth.is_valid_name("Ñ" + "ñ".repeat(16)), "17 letters do not fit")
+	assert_false(ServerAuth.is_valid_name("ab"), "two letters are not enough")
+	# The protocol cap (24 characters) remains the wire limit, above NameRules.
+	assert_false(ServerAuth.is_valid_name("A" + "x".repeat(24)), "25 characters do not fit in the HELLO")
 	assert_eq(_make_auth().check_name("A" + "x".repeat(24)), NameRules.Reason.TOO_LONG,
-			"y se informa como demasiado largo")
+			"and it is reported as too long")
 
 
 func test_check_name_reports_the_reason() -> void:
 	var auth: ServerAuth = _make_auth()
-	assert_eq(auth.check_name("Ana"), NameRules.Reason.OK, "válido")
-	assert_eq(auth.check_name("Ana B"), NameRules.Reason.HAS_SPACE, "espacio")
-	assert_eq(auth.check_name("Ana1"), NameRules.Reason.HAS_DIGIT, "dígito")
-	assert_eq(auth.check_name("ana"), NameRules.Reason.NOT_CAPITALIZED, "minúscula")
-	assert_eq(auth.check_name("Admin"), NameRules.Reason.RESERVED, "reservado")
-	assert_eq(auth.check_name("ab"), NameRules.Reason.TOO_SHORT, "corto")
+	assert_eq(auth.check_name("Ana"), NameRules.Reason.OK, "valid")
+	assert_eq(auth.check_name("Ana B"), NameRules.Reason.HAS_SPACE, "space")
+	assert_eq(auth.check_name("Ana1"), NameRules.Reason.HAS_DIGIT, "digit")
+	assert_eq(auth.check_name("ana"), NameRules.Reason.NOT_CAPITALIZED, "lowercase")
+	assert_eq(auth.check_name("Admin"), NameRules.Reason.RESERVED, "reserved")
+	assert_eq(auth.check_name("ab"), NameRules.Reason.TOO_SHORT, "short")
 
 
 func test_duplicate_name_is_rejected() -> void:
@@ -171,21 +171,21 @@ func test_duplicate_name_is_rejected() -> void:
 	var hello: NetMessages.Hello = _make_hello()
 	hello.display_name = "Carla"
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 2, 0), NetProtocol.Result.OK,
-			"un nombre libre entra")
-	# Mismo nombre, y con las variantes de mayúsculas y tildes que lo harían ambiguo.
+			"a free name gets in")
+	# Same name, and with the uppercase and accent variants that would make it ambiguous.
 	for display_name: String in ["Álvaro", "Alvaro", "ALVARO", "ÁLVARO", "AlVaRo", "Bruno", "BRUNO"]:
 		hello.display_name = display_name
 		assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 2, 0), NetProtocol.Result.NAME,
-				"'%s' ya está conectado" % display_name)
+				"'%s' is already connected" % display_name)
 		assert_eq(auth.check_name(display_name), NameRules.Reason.TAKEN,
-				"el motivo de '%s' es TAKEN" % display_name)
+				"the reason for '%s' is TAKEN" % display_name)
 	hello.display_name = "Alvaro"
 	assert_true(auth.is_name_connected("Alvaro"), "is_name_connected")
-	assert_false(auth.is_name_connected("Carla"), "Carla no está")
-	# Cuando el otro jugador se va, el nombre queda libre (la fuente se consulta en cada HELLO).
+	assert_false(auth.is_name_connected("Carla"), "Carla is not there")
+	# When the other player leaves, the name becomes free (the source is queried on every HELLO).
 	connected.remove_at(0)
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 1, 0), NetProtocol.Result.OK,
-			"libre tras irse el jugador")
+			"free after the player leaves")
 
 
 func test_duplicate_name_is_checked_after_the_rules_and_before_the_cap() -> void:
@@ -193,62 +193,62 @@ func test_duplicate_name_is_checked_after_the_rules_and_before_the_cap() -> void
 	auth.set_connected_names_source(func() -> PackedStringArray: return PackedStringArray(["Ana"]))
 	var hello: NetMessages.Hello = _make_hello()
 	hello.display_name = "Ana"
-	# Un nombre repetido se informa antes que el servidor lleno (orden de la sección 3).
+	# A repeated name is reported before a full server (order of section 3).
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.NAME,
-			"NAME antes que FULL")
-	# Sin fuente de nombres no se comprueba nada.
+			"NAME before FULL")
+	# Without a name source nothing is checked.
 	assert_eq(_make_auth().validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-			"sin fuente de nombres conectados")
-	# Una fuente inválida (un Callable vacío) tampoco rompe nada.
+			"without a source of connected names")
+	# An invalid source (an empty Callable) does not break anything either.
 	var no_source: ServerAuth = _make_auth()
 	no_source.set_connected_names_source(Callable())
 	assert_eq(no_source.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-			"Callable vacío")
+			"empty Callable")
 
 
 func test_reject_full() -> void:
 	var auth: ServerAuth = _make_auth(null, PackedInt32Array(), _make_config(4, 2))
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 3, 0), NetProtocol.Result.OK,
-			"con una plaza libre")
+			"with one free slot")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 4, 0), NetProtocol.Result.FULL,
-			"con tantos jugadores como plazas")
+			"with as many players as slots")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 9, 0), NetProtocol.Result.FULL,
-			"con más jugadores que plazas")
+			"with more players than slots")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), "127.0.0.1", 4, 0), NetProtocol.Result.FULL,
-			"loopback tampoco se salta el cupo")
+			"loopback does not skip the cap either")
 
 
 func test_filler_fakes_do_not_make_the_server_full() -> void:
-	# GUE-43: los falsos de relleno de --max-realm-diff no ocupan plazas de personas.
+	# GUE-43: the --max-realm-diff filler fake players do not take human slots.
 	var auth: ServerAuth = _make_auth(null, PackedInt32Array(), _make_config(4, 2))
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 4, 0, 4), NetProtocol.Result.OK,
-			"lleno solo de relleno: entra (y quien llama retira a uno)")
+			"full only of filler: it gets in (and the caller removes one)")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 4, 0, 1), NetProtocol.Result.OK,
-			"tres plazas de verdad y una de relleno: entra")
+			"three real slots and one filler: it gets in")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 5, 0, 1), NetProtocol.Result.FULL,
-			"con cuatro que no son relleno ya no hay plaza aunque quede un falso de relleno")
+			"with four non-filler there is no slot even if a filler fake player remains")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 4, 0, 0), NetProtocol.Result.FULL,
-			"sin relleno, el cupo de siempre (los falsos que no son de relleno sí cuentan)")
+			"without filler, the usual cap (non-filler fake players do count)")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 2, 0, 9), NetProtocol.Result.OK,
-			"un recuento de relleno mayor que el de jugadores no da plazas de más")
+			"a filler count greater than the player count gives no extra slots")
 	var hello: NetMessages.Hello = _make_hello()
 	hello.display_name = "x"
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 0, 4), NetProtocol.Result.NAME,
-			"el relleno no se salta las otras comprobaciones")
+			"the filler does not skip the other checks")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 4, 2, 4), NetProtocol.Result.TOO_MANY_CONNECTIONS,
-			"ni el tope por IP")
+			"nor the per-IP cap")
 
 
 func test_reject_too_many_connections_from_address() -> void:
 	var auth: ServerAuth = _make_auth(null, PackedInt32Array(), _make_config(64, 4))
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 3), NetProtocol.Result.OK,
-			"con 3 conexiones abiertas aún cabe la cuarta")
+			"with 3 open connections a fourth still fits")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 4),
-			NetProtocol.Result.TOO_MANY_CONNECTIONS, "con 4 abiertas ya no")
+			NetProtocol.Result.TOO_MANY_CONNECTIONS, "with 4 open it no longer does")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 50),
-			NetProtocol.Result.TOO_MANY_CONNECTIONS, "ni con muchas más")
+			NetProtocol.Result.TOO_MANY_CONNECTIONS, "nor with many more")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), "2001:db8::1", 0, 4),
-			NetProtocol.Result.TOO_MANY_CONNECTIONS, "también con IPv6")
+			NetProtocol.Result.TOO_MANY_CONNECTIONS, "also with IPv6")
 
 
 func test_loopback_is_exempt_from_the_per_ip_limit() -> void:
@@ -256,36 +256,36 @@ func test_loopback_is_exempt_from_the_per_ip_limit() -> void:
 	for address: String in ["127.0.0.1", "::1", "localhost", "LOCALHOST", "127.0.0.2",
 			"::ffff:127.0.0.1"]:
 		assert_eq(auth.validate(PEER_ID, _make_hello(), address, 0, 100), NetProtocol.Result.OK,
-				"%s es loopback: sin tope por IP" % address)
+				"%s is loopback: no per-IP cap" % address)
 	for address: String in ["10.0.0.1", "192.168.1.5", "128.0.0.1", "1127.0.0.1", ""]:
 		assert_eq(auth.validate(PEER_ID, _make_hello(), address, 0, 4),
-				NetProtocol.Result.TOO_MANY_CONNECTIONS, "'%s' no es loopback" % address)
+				NetProtocol.Result.TOO_MANY_CONNECTIONS, "'%s' is not loopback" % address)
 	assert_true(ServerAuth.is_loopback("127.0.0.1"), "is_loopback(127.0.0.1)")
 	assert_true(ServerAuth.is_loopback("::1"), "is_loopback(::1)")
 	assert_true(ServerAuth.is_loopback("localhost"), "is_loopback(localhost)")
 	assert_false(ServerAuth.is_loopback("8.8.8.8"), "is_loopback(8.8.8.8)")
 
 
-## El tope por IP cuenta las direcciones IPv6 por prefijo /64: cada dirección de un /64 es otra IP
-## para el atacante, que suele tener un /64 entero (hallazgo S2).
+## The per-IP cap counts IPv6 addresses by /64 prefix: each address in a /64 is another IP
+## for the attacker, who usually has a whole /64 (finding S2).
 func test_address_group_counts_ipv6_by_slash_64() -> void:
-	assert_eq(ServerAuth.address_group("203.0.113.7"), "203.0.113.7", "IPv4 tal cual")
+	assert_eq(ServerAuth.address_group("203.0.113.7"), "203.0.113.7", "IPv4 as is")
 	assert_eq(ServerAuth.address_group("::ffff:203.0.113.7"), "203.0.113.7",
-			"IPv4 mapeada en IPv6 = su IPv4")
+			"IPv4 mapped into IPv6 = its IPv4")
 	var a: String = ServerAuth.address_group("2001:db8:1:2:aaaa:bbbb:cccc:dddd")
-	assert_eq(a, ServerAuth.address_group("2001:0DB8:0001:0002::1"), "mismo /64, distinta forma")
-	assert_eq(a, ServerAuth.address_group("2001:db8:1:2::"), "y con el final comprimido")
-	assert_eq(a, ServerAuth.address_group("2001:db8:1:2:ffff:ffff:ffff:ffff"), "y otra dirección")
-	assert_true(a != ServerAuth.address_group("2001:db8:1:3::1"), "otro /64")
-	assert_true(a != ServerAuth.address_group("2001:db8:2:2::1"), "otro /64 (tercer grupo)")
+	assert_eq(a, ServerAuth.address_group("2001:0DB8:0001:0002::1"), "same /64, different form")
+	assert_eq(a, ServerAuth.address_group("2001:db8:1:2::"), "and with the tail compressed")
+	assert_eq(a, ServerAuth.address_group("2001:db8:1:2:ffff:ffff:ffff:ffff"), "and another address")
+	assert_true(a != ServerAuth.address_group("2001:db8:1:3::1"), "another /64")
+	assert_true(a != ServerAuth.address_group("2001:db8:2:2::1"), "another /64 (third group)")
 	assert_eq(ServerAuth.address_group("2001:db8::5"), ServerAuth.address_group("2001:db8:0:0::9"),
-			"la compresión :: en medio se expande")
+			"the :: compression in the middle is expanded")
 	assert_eq(ServerAuth.address_group("fe80::1%eth0"), ServerAuth.address_group("fe80::2"),
-			"la zona de ámbito no cuenta")
-	assert_eq(ServerAuth.address_group(""), "", "sin dirección, vacío")
-	assert_eq(ServerAuth.address_group("no-es-una-ip"), "no-es-una-ip", "lo que no se entiende, tal cual")
-	assert_eq(ServerAuth.address_group("1:2:3:4:5:6:7:8:9"), "1:2:3:4:5:6:7:8:9", "demasiados grupos")
-	assert_eq(ServerAuth.address_group("1::2::3"), "1::2::3", "dos compresiones")
+			"the scope zone does not count")
+	assert_eq(ServerAuth.address_group(""), "", "without an address, empty")
+	assert_eq(ServerAuth.address_group("no-es-una-ip"), "no-es-una-ip", "what is not understood, as is")
+	assert_eq(ServerAuth.address_group("1:2:3:4:5:6:7:8:9"), "1:2:3:4:5:6:7:8:9", "too many groups")
+	assert_eq(ServerAuth.address_group("1::2::3"), "1::2::3", "two compressions")
 
 
 func test_reject_ticket_from_provider() -> void:
@@ -293,25 +293,25 @@ func test_reject_ticket_from_provider() -> void:
 	provider.result = NetProtocol.Result.TICKET
 	var auth: ServerAuth = _make_auth(provider)
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 0), NetProtocol.Result.TICKET,
-			"el proveedor rechaza")
-	assert_eq(provider.calls, 1, "se le ha preguntado una vez")
+			"the provider rejects")
+	assert_eq(provider.calls, 1, "it has been asked once")
 
 	assert_eq(_make_auth(AuthProvider.new()).validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 0),
-			NetProtocol.Result.TICKET, "el proveedor base no deja pasar a nadie")
+			NetProtocol.Result.TICKET, "the base provider lets nobody through")
 	assert_eq(ServerAuth.new(_make_config(), SIM_HASH, PackedInt32Array(), null).validate(PEER_ID,
 			_make_hello(), REMOTE_ADDRESS, 0, 0), NetProtocol.Result.TICKET,
-			"sin proveedor tampoco")
+			"without a provider neither")
 
 
 func test_dev_auth_provider_accepts_declared_identity() -> void:
 	var provider := DevAuthProvider.new()
 	assert_eq(provider.authenticate(PEER_ID, _make_hello()), NetProtocol.Result.OK,
-			"acepta el reino y el nombre que declara el cliente")
-	assert_false(provider.uses_tickets(), "sin billetes")
-	assert_false(provider.on_platform_event(PlatformEvent.new()), "no atiende eventos de la plataforma")
-	assert_true(provider.take_completed().is_empty(), "nunca deja nada pendiente")
+			"accepts the realm and name the client declares")
+	assert_false(provider.uses_tickets(), "without tickets")
+	assert_false(provider.on_platform_event(PlatformEvent.new()), "does not handle platform events")
+	assert_true(provider.take_completed().is_empty(), "never leaves anything pending")
 	assert_eq(AuthProvider.new().authenticate(PEER_ID, _make_hello()), NetProtocol.Result.TICKET,
-			"la base no autentica")
+			"the base does not authenticate")
 
 
 func test_provider_is_asked_last_and_only_when_everything_else_passes() -> void:
@@ -332,48 +332,48 @@ func test_provider_is_asked_last_and_only_when_everything_else_passes() -> void:
 	auth.validate(PEER_ID, bad_name, REMOTE_ADDRESS, 0, 0)
 	auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 4, 0)
 	auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 2)
-	assert_eq(provider.calls, 0, "ningún rechazo previo llega al proveedor")
+	assert_eq(provider.calls, 0, "no earlier rejection reaches the provider")
 
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-			"y con todo en regla sí")
-	assert_eq(provider.calls, 1, "el proveedor decide al final")
+			"and with everything in order it does")
+	assert_eq(provider.calls, 1, "the provider decides last")
 
 
 func test_checks_run_in_the_documented_order() -> void:
 	var auth: ServerAuth = _make_auth(null, PackedInt32Array(), _make_config(4, 2))
 	var hello: NetMessages.Hello = _make_hello()
-	# Todo mal a la vez: se informa del primer fallo, en el orden de la sección 3.
+	# Everything wrong at once: the first failure is reported, in the order of section 3.
 	hello.protocol_version = 99
 	hello.sim_hash = 1
 	hello.realm = 0
 	hello.display_name = "x"
-	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.VERSION, "versión")
+	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.VERSION, "version")
 	hello.protocol_version = NetProtocol.PROTOCOL_VERSION
-	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.SIM_HASH, "huella")
+	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.SIM_HASH, "fingerprint")
 	hello.sim_hash = SIM_HASH
-	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.REALM, "reino")
+	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.REALM, "realm")
 	hello.realm = NetProtocol.Realm.SOLMARCH
-	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.NAME, "nombre")
+	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.NAME, "name")
 	hello.display_name = "Bruno"
-	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.FULL, "cupo")
+	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 2), NetProtocol.Result.FULL, "cap")
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 2), NetProtocol.Result.TOO_MANY_CONNECTIONS,
-			"conexiones por IP")
-	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 1), NetProtocol.Result.OK, "todo en regla")
+			"connections per IP")
+	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 1), NetProtocol.Result.OK, "everything in order")
 
 
 func test_every_reject_reason_has_a_spanish_text() -> void:
-	# Cada motivo que ServerAuth puede devolver tiene su texto para el REJECT.
+	# Every reason ServerAuth can return has its text for the REJECT.
 	for result: int in [NetProtocol.Result.VERSION, NetProtocol.Result.SIM_HASH,
 			NetProtocol.Result.REALM, NetProtocol.Result.FULL, NetProtocol.Result.TICKET,
 			NetProtocol.Result.MALFORMED, NetProtocol.Result.TOO_MANY_CONNECTIONS,
 			NetProtocol.Result.NAME]:
 		var text: String = NetProtocol.result_text(result)
-		assert_false(text.is_empty(), "texto del motivo %d" % result)
+		assert_false(text.is_empty(), "text of reason %d" % result)
 		assert_false(text == NetProtocol.result_text(-1),
-				"el motivo %d tiene un texto propio" % result)
+				"reason %d has its own text" % result)
 
 
-# --- Equilibrio de reinos (GUE-42) ------------------------------------------------------------------
+# --- Realm balance (GUE-42) -------------------------------------------------------------------
 
 func _unbalanced_auth(max_diff: int, counts: PackedInt32Array, provider: AuthProvider = null) -> ServerAuth:
 	var config: ServerConfig = _make_config(16, 2)
@@ -388,22 +388,22 @@ func test_reject_imbalance_when_the_realm_would_lead_by_more_than_the_limit() ->
 	var auth: ServerAuth = _unbalanced_auth(2, PackedInt32Array([3, 1, 0]))
 	var hello: NetMessages.Hello = _make_hello()
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.IMBALANCE,
-			"Vardheim pasaría a 4 contra 1: 3 de ventaja, más que 2")
+			"Vardheim would go to 4 against 1: a lead of 3, more than 2")
 	hello.realm = NetProtocol.Realm.SOLMARCH
-	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.OK, "Solmarch, el corto, entra")
+	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.OK, "Solmarch, the short one, gets in")
 	var edge: ServerAuth = _unbalanced_auth(2, PackedInt32Array([2, 1, 0]))
 	hello.realm = NetProtocol.Realm.VARDHEIM
-	assert_eq(edge.validate(PEER_ID, hello, REMOTE_ADDRESS, 3, 0), NetProtocol.Result.OK, "3 contra 1: justo 2 de ventaja, vale")
+	assert_eq(edge.validate(PEER_ID, hello, REMOTE_ADDRESS, 3, 0), NetProtocol.Result.OK, "3 against 1: exactly a lead of 2, fine")
 
 
 func test_the_imbalance_check_is_off_without_a_limit_or_a_source() -> void:
 	var hello: NetMessages.Hello = _make_hello()
 	assert_eq(_unbalanced_auth(0, PackedInt32Array([9, 0, 0])).validate(PEER_ID, hello, REMOTE_ADDRESS, 9, 0),
-			NetProtocol.Result.OK, "con 0 no hay límite")
+			NetProtocol.Result.OK, "with 0 there is no limit")
 	var config: ServerConfig = _make_config()
 	config.max_realm_diff = 1
 	var no_source: ServerAuth = _make_auth(null, PackedInt32Array(), config)
-	assert_eq(no_source.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK, "sin recuento no se rechaza")
+	assert_eq(no_source.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK, "without a count it is not rejected")
 
 
 func test_imbalance_comes_after_the_other_checks_and_the_provider() -> void:
@@ -411,22 +411,22 @@ func test_imbalance_comes_after_the_other_checks_and_the_provider() -> void:
 	var hello: NetMessages.Hello = _make_hello()
 	hello.display_name = "ab"
 	assert_eq(_unbalanced_auth(1, counts).validate(PEER_ID, hello, REMOTE_ADDRESS, 5, 0), NetProtocol.Result.NAME,
-			"un nombre mal escrito se dice antes")
+			"a misspelled name is reported first")
 	hello = _make_hello()
 	assert_eq(_unbalanced_auth(1, counts).validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.IMBALANCE)
 	var provider := CountingProvider.new()
 	provider.result = NetProtocol.Result.TICKET
 	assert_eq(_unbalanced_auth(1, counts, provider).validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.TICKET,
-			"un billete malo se dice antes que el desequilibrio")
+			"a bad ticket is reported before the imbalance")
 	provider = CountingProvider.new()
 	assert_eq(_unbalanced_auth(1, counts, provider).validate(PEER_ID, hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.IMBALANCE)
-	assert_eq(provider.calls, 1, "el proveedor se consulta igualmente")
+	assert_eq(provider.calls, 1, "the provider is still queried")
 	assert_eq(_unbalanced_auth(1, counts).validate(PEER_ID, hello, REMOTE_ADDRESS, 16, 0), NetProtocol.Result.FULL,
-			"y un servidor lleno, también antes")
+			"and a full server, also first")
 
 
-## Con billetes (docs/plataforma.md §5.4) el reino y el nombre del HELLO no se miran: ni REALM, ni NAME (aunque
-## el nombre sea el de alguien conectado), ni IMBALANCE; el proveedor recibe el peer y puede dejarlo pendiente.
+## With tickets (docs/plataforma.md §5.4) the HELLO's realm and name are not checked: neither REALM, nor NAME (even if
+## the name is that of someone connected), nor IMBALANCE; the provider receives the peer and may leave it pending.
 func test_with_tickets_the_realm_and_name_of_the_hello_are_ignored() -> void:
 	var provider := CountingProvider.new()
 	provider.tickets = true
@@ -440,16 +440,16 @@ func test_with_tickets_the_realm_and_name_of_the_hello_are_ignored() -> void:
 	hello.realm = NetProtocol.Realm.ASKARRA
 	hello.display_name = "Bruna"
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), AuthProvider.PENDING,
-			"ni REALM ni NAME: decide el proveedor")
-	assert_eq(provider.last_peer_id, PEER_ID, "el proveedor recibe el peer")
+			"neither REALM nor NAME: the provider decides")
+	assert_eq(provider.last_peer_id, PEER_ID, "the provider receives the peer")
 	hello.display_name = "x"
 	hello.realm = NetProtocol.Realm.NONE
 	assert_eq(auth.validate(PEER_ID, hello, REMOTE_ADDRESS, 0, 0), AuthProvider.PENDING,
-			"tampoco un nombre o un reino que no valen")
+			"not even an invalid name or realm")
 	provider.result = NetProtocol.Result.OK
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
-			"sin IMBALANCE aunque el reino declarado desequilibre")
+			"no IMBALANCE even if the declared realm unbalances")
 	assert_eq(auth.validate(PEER_ID, _make_hello(), REMOTE_ADDRESS, 4, 0), NetProtocol.Result.FULL,
-			"el cupo sí se mira")
+			"the cap is checked")
 	assert_true(auth.is_realm_allowed(NetProtocol.Realm.VARDHEIM) and not auth.is_realm_allowed(
-			NetProtocol.Realm.ASKARRA), "la zona mira el reino de la reclamación con is_realm_allowed")
+			NetProtocol.Realm.ASKARRA), "the zone checks the claim's realm with is_realm_allowed")

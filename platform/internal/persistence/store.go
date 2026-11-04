@@ -27,15 +27,15 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// SaveFormat es la versión del sobre del guardado (§7.1, §7.3).
+// SaveFormat is the version of the save envelope (§7.1, §7.3).
 const SaveFormat = 1
 
-// ticketGrace es el margen de caducidad del billete en la reclamación (§5.3: expires_at > now − 5 s).
+// ticketGrace is the ticket expiry margin on claim (§5.3: expires_at > now − 5 s).
 const ticketGrace = 5 * time.Second
 
-// Store es la persistencia del personaje en la plataforma (§5.3, §7.3, TEC-25): la reclamación
-// que consume el billete y toma el arrendamiento, el guardado con su idempotencia por (lease_id,
-// seq) y la liberación. El contenido del progreso lo lee y lo escribe [ProgressStore].
+// Store is the platform's character persistence (§5.3, §7.3, TEC-25): the claim that consumes
+// the ticket and takes the lease, the save with its (lease_id, seq) idempotency, and the
+// release. The progress contents are read and written by [ProgressStore].
 type Store struct {
 	pool     *pgxpool.Pool
 	progress ProgressStore
@@ -44,16 +44,16 @@ type Store struct {
 	log      *slog.Logger
 }
 
-// StoreOptions son las dependencias del almacén.
+// StoreOptions are the store's dependencies.
 type StoreOptions struct {
 	Pool     *pgxpool.Pool
 	Progress ProgressStore
-	Clock    clock.Clock // por defecto, el del sistema
+	Clock    clock.Clock // defaults to the system clock
 	LeaseTTL time.Duration
 	Log      *slog.Logger
 }
 
-// NewStore prepara el almacén.
+// NewStore prepares the store.
 func NewStore(o StoreOptions) (*Store, error) {
 	if o.Pool == nil || o.Progress == nil || o.LeaseTTL <= 0 {
 		return nil, errors.New("persistence: faltan dependencias")
@@ -67,7 +67,7 @@ func NewStore(o StoreOptions) (*Store, error) {
 	return &Store{pool: o.Pool, progress: o.Progress, clock: o.Clock, leaseTTL: o.LeaseTTL, log: o.Log}, nil
 }
 
-// PvP son los totales de GUE-19 de un personaje (la sección pvp, §7.1, §8).
+// PvP holds a character's GUE-19 totals (the pvp section, §7.1, §8).
 type PvP struct {
 	Kills      jsonx.Int `json:"kills"`
 	Deaths     jsonx.Int `json:"deaths"`
@@ -77,7 +77,7 @@ type PvP struct {
 	DefendS    jsonx.Int `json:"defend_s"`
 }
 
-// Errores de la reclamación y del guardado (§6.1).
+// Claim and save errors (§6.1).
 
 func errTicketInvalid() *httpx.Error {
 	return zones.Conflict("ticket_invalid", "El billete no vale")
@@ -101,8 +101,8 @@ func errSeqConflict() *httpx.Error {
 	return zones.Conflict("seq_conflict", "Ese seq ya se aplicó con otro cuerpo")
 }
 
-// errAccountBlocked es el 403 account_blocked de §6.1 con kind, until_unix y reason, y el texto
-// para el jugador que compone la plataforma (255 B como mucho).
+// errAccountBlocked is the account_blocked 403 from §6.1 with kind, until_unix and reason, plus
+// the player-facing text composed by the platform (255 B at most).
 func errAccountBlocked(kind string, until *time.Time, reason, message string) *httpx.Error {
 	var untilUnix *int64
 	if until != nil {
@@ -114,16 +114,16 @@ func errAccountBlocked(kind string, until *time.Time, reason, message string) *h
 		Extra:   map[string]any{"kind": kind, "until_unix": untilUnix, "reason": reason}}
 }
 
-// ClaimResult es lo que trae la reclamación (§6): el arrendamiento, la cuenta, el personaje, la
-// sección progress (ProgressStore.Load, en la misma transacción) y los totales pvp.
+// ClaimResult is what the claim returns (§6): the lease, the account, the character, the
+// progress section (ProgressStore.Load, in the same transaction) and the pvp totals.
 type ClaimResult struct {
 	LeaseID         [16]byte
 	InstanceStatus  string
 	AccountID       int64
 	Role            string
-	MutedUntilUnix  int64 // 0: sin silencio
+	MutedUntilUnix  int64 // 0: not muted
 	IgnoredAccounts []int64
-	Warnings        []sanctions.Warning // avisos que la cuenta aún no ha visto en el mundo (§9.5)
+	Warnings        []sanctions.Warning // warnings the account has not yet seen in the world (§9.5)
 	CharacterID     int64
 	WorldID         int16
 	Realm           int16
@@ -132,26 +132,28 @@ type ClaimResult struct {
 	PvP             PvP
 }
 
-// Claim es la reclamación (§5.3): en una transacción, con el orden de bloqueos instancia (for
-// share: el trabajo de perdidas y el latido esperan) → cuenta → billete → arrendamiento,
+// Claim is the claim (§5.3): in one transaction, with the lock order instance (for share: the
+// lost-instances job and the heartbeat wait) → account → ticket → lease,
 //
-//  1. la instancia tiene que seguir live (si no, su 409);
-//  2. bloquea la fila de la cuenta del personaje y mira si está suspendida, expulsada o con el
-//     borrado pedido, sin responder todavía;
-//  3. el personaje tiene que estar vivo y ser del mundo de la instancia (si no, 409 ticket_invalid);
-//  4. bloquea el billete: de esta instancia y este personaje, sin usar, sin caducar (con 5 s de
-//     margen) y de una sesión sin revocar (si no, 409 ticket_invalid);
-//  5. solo ahora, con la cuenta bloqueada del paso 2, 403 account_blocked (con el motivo y la
-//     fecha): sin un billete válido nadie sabe nada de la cuenta (§5.3); si no, consume el billete;
-//  6. ningún otro personaje de la cuenta en el mundo con un arrendamiento vivo (409 character_busy);
-//  7. toma el arrendamiento si está libre o caducado (expires_at ≤ ahora, lo contrario de «vivo»; si
-//     no, 409 character_busy), con un lease_id nuevo, seq a 0 y sin hash;
-//  8. lee progress con ProgressStore.Load y los totales pvp en la misma transacción, y de la cuenta
-//     el silencio, los ignorados y los avisos que aún no ha visto (los de después de la última
-//     entrada al mundo de cualquiera de sus personajes, sanctions.PendingWarnings; esa entrada la
-//     anota el primer guardado del arrendamiento, no la reclamación).
+//  1. the instance must still be live (otherwise its 409);
+//  2. lock the character's account row and check whether it is suspended, banned or has
+//     deletion requested, without answering yet;
+//  3. the character must be alive and belong to the instance's world (otherwise 409
+//     ticket_invalid);
+//  4. lock the ticket: it must be for this instance and this character, unused, unexpired (with
+//     a 5 s margin) and from a non-revoked session (otherwise 409 ticket_invalid);
+//  5. only now, with the account locked from step 2, 403 account_blocked (with the reason and
+//     the date): without a valid ticket nobody learns anything about the account (§5.3);
+//     otherwise, consume the ticket;
+//  6. no other character of the account in the world with a live lease (409 character_busy);
+//  7. take the lease if it is free or expired (expires_at ≤ now, the opposite of "live";
+//     otherwise 409 character_busy), with a new lease_id, seq at 0 and no hash;
+//  8. read progress with ProgressStore.Load and the pvp totals in the same transaction, and
+//     from the account the mute, the ignored list and the warnings it has not yet seen (those
+//     after the last world entry of any of its characters, sanctions.PendingWarnings; that
+//     entry is recorded by the lease's first save, not by the claim).
 //
-// Cualquier error deshace la transacción: el billete no queda consumido.
+// Any error rolls back the transaction: the ticket is not left consumed.
 func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characterID int64) (*ClaimResult, error) {
 	now := s.clock.Now()
 	var res *ClaimResult
@@ -210,8 +212,8 @@ func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characte
 		if err != nil {
 			return err
 		}
-		// El motivo y la fecha de una sanción solo los ve quien trae un billete válido de ese
-		// personaje para esta instancia; el error deshace la transacción y el billete sigue sin usar.
+		// The reason and date of a sanction are seen only by whoever brings a valid ticket for that
+		// character and this instance; the error rolls back the transaction and the ticket stays unused.
 		switch {
 		case restriction != nil:
 			return errAccountBlocked(restriction.Kind, restriction.Until, restriction.Reason, restriction.Message())
@@ -290,7 +292,7 @@ func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characte
 	return res, nil
 }
 
-// SaveRequest es el sobre de un guardado ya leído (§7.3).
+// SaveRequest is the envelope of an already parsed save (§7.3).
 type SaveRequest struct {
 	CharacterID  int64
 	InstanceID   [16]byte
@@ -302,7 +304,7 @@ type SaveRequest struct {
 	PvP          *PvP
 }
 
-// SaveResult es la respuesta de un guardado: {applied, duplicate, save_version, instance_status}.
+// SaveResult is the response to a save: {applied, duplicate, save_version, instance_status}.
 type SaveResult struct {
 	CharacterID    int64  `json:"-"`
 	Applied        bool   `json:"applied"`
@@ -311,7 +313,7 @@ type SaveResult struct {
 	InstanceStatus string `json:"instance_status"`
 }
 
-// envelope es el sobre tal cual llega; pvp se lee aparte para exigir sus seis totales.
+// envelope is the envelope as it arrives; pvp is read separately to require its six totals.
 type envelope struct {
 	SaveFormat     *jsonx.Int      `json:"save_format"`
 	CharacterID    *jsonx.ID       `json:"character_id"`
@@ -326,16 +328,16 @@ type envelope struct {
 
 func envelopeError(detail string) error { return &InvalidSaveError{Check: "envelope", Detail: detail} }
 
-// maxPvPInt4 es el tope de los totales pvp que guarda character_pvp_stats en int (int4): kills,
-// deaths, assists, captures y defend_s; gate_damage es bigint (hasta el 2^53 − 1 de jsonx.Int).
+// maxPvPInt4 is the cap on the pvp totals that character_pvp_stats stores as int (int4): kills,
+// deaths, assists, captures and defend_s; gate_damage is bigint (up to jsonx.Int's 2^53 − 1).
 const maxPvPInt4 = math.MaxInt32
 
-// ParseEnvelope lee el sobre del guardado estricto (§7.3), sin tocar la base: claves conocidas,
-// save_format 1, character_id igual a routeID, ids y seq (≥ 1) válidos, reason de 1 a 5, progress
-// presente y, si llega, pvp con sus seis totales enteros ≥ 0 que caben en su columna (los int4,
-// hasta 2^31 − 1: si no, pgx no podía codificarlos y la respuesta era un 500 que la zona reintentaba
-// sin fin). Cualquier fallo es *InvalidSaveError con Check "envelope". routeID 0 no compara (un
-// guardado dentro de un lote).
+// ParseEnvelope reads the strict save envelope (§7.3) without touching the database: known keys,
+// save_format 1, character_id equal to routeID, valid ids and seq (≥ 1), reason from 1 to 5,
+// progress present and, if present, pvp with its six integer totals ≥ 0 that fit their column
+// (the int4 ones, up to 2^31 − 1: otherwise pgx could not encode them and the response was a 500
+// that the zone retried endlessly). Any failure is an *InvalidSaveError with Check "envelope".
+// routeID 0 skips the comparison (a save inside a batch).
 func ParseEnvelope(raw []byte, routeID int64) (SaveRequest, error) {
 	var env envelope
 	if err := jsonx.DecodeBytes(raw, &env); err != nil {
@@ -401,7 +403,7 @@ func ParseEnvelope(raw []byte, routeID int64) (SaveRequest, error) {
 	return req, nil
 }
 
-// lease es la fila de character_leases bloqueada de un guardado.
+// lease is the locked character_leases row of a save.
 type lease struct {
 	worldID     int16
 	leaseID     [16]byte
@@ -432,7 +434,7 @@ func lockLeases(ctx context.Context, tx pgx.Tx, ids []int64) (map[int64]*lease, 
 	return out, rows.Err()
 }
 
-// seqState es lo que dice el paso 3 de §7.3 de un guardado.
+// seqState is what step 3 of §7.3 says about a save.
 type seqState int
 
 const (
@@ -440,8 +442,8 @@ const (
 	seqDuplicate
 )
 
-// checkLease hace los pasos 2 y 3 de §7.3: arrendamiento (lease_lost) y seq (duplicate,
-// seq_conflict o stale_seq).
+// checkLease performs steps 2 and 3 of §7.3: lease (lease_lost) and seq (duplicate,
+// seq_conflict or stale_seq).
 func checkLease(l *lease, req SaveRequest, hash []byte) (seqState, error) {
 	if l == nil || l.leaseID != req.LeaseID || l.claimedBy != req.InstanceID {
 		return 0, errLeaseLost()
@@ -457,11 +459,12 @@ func checkLease(l *lease, req SaveRequest, hash []byte) (seqState, error) {
 	return seqNew, nil
 }
 
-// apply hace el paso 4 de §7.3 de un guardado nuevo: ProgressStore.Apply (S1–S8), los totales pvp
-// con greatest y el arrendamiento (last_seq, hash, last_save_version y, con release_lease, libre).
-// El primer guardado del arrendamiento (last_seq 0) anota además la entrada al mundo:
-// characters.last_entered_at = la hora de su reclamación. Así un aviso (§9.5) se da por visto
-// cuando el personaje llegó al mundo, no cuando la zona lo reclamó y lo soltó sin dejarle entrar.
+// apply performs step 4 of §7.3 for a new save: ProgressStore.Apply (S1–S8), the pvp totals
+// with greatest, and the lease (last_seq, hash, last_save_version and, with release_lease, free).
+// The lease's first save (last_seq 0) also records the world entry:
+// characters.last_entered_at = the time of its claim. This way a warning (§9.5) counts as seen
+// when the character reached the world, not when the zone claimed it and released it without
+// letting it in.
 func (s *Store) apply(ctx context.Context, tx pgx.Tx, inst *zones.Instance, l *lease, req SaveRequest, hash []byte,
 	now time.Time) (int64, error) {
 	key := SaveKey{WorldID: l.worldID, CharacterID: req.CharacterID, InstanceID: req.InstanceID, ZoneID: inst.ZoneID}
@@ -496,13 +499,13 @@ func (s *Store) apply(ctx context.Context, tx pgx.Tx, inst *zones.Instance, l *l
 	return version, err
 }
 
-// Save es el guardado de un personaje (§7.3). raw son los bytes del sobre tal cual llegaron (su
-// SHA-256 es la huella del paso 3) y req el sobre ya leído con [ParseEnvelope]. En una
-// transacción: bloquea el arrendamiento; sin fila, con otro lease_id o con otro claimed_by, 409
-// lease_lost; con el mismo seq y el mismo cuerpo, duplicate con el save_version de cuando se
-// aplicó (sin llamar a Apply); con el mismo seq y otro cuerpo, seq_conflict; con uno menor,
-// stale_seq; si no, aplica. Si algo falla no se escribe nada; los errores siguen la regla de §7.3
-// ([SaveError]).
+// Save is a character's save (§7.3). raw is the envelope's bytes as they arrived (their
+// SHA-256 is the fingerprint of step 3) and req the envelope already parsed with
+// [ParseEnvelope]. In one transaction: lock the lease; with no row, another lease_id or another
+// claimed_by, 409 lease_lost; with the same seq and the same body, duplicate with the
+// save_version from when it was applied (without calling Apply); with the same seq and another
+// body, seq_conflict; with a lower one, stale_seq; otherwise, apply. If anything fails nothing
+// is written; errors follow the rule of §7.3 ([SaveError]).
 func (s *Store) Save(ctx context.Context, characterID int64, raw []byte, req SaveRequest) (SaveResult, error) {
 	results, err := s.save(ctx, req.InstanceID, [][]byte{raw}, []SaveRequest{req})
 	if err != nil {
@@ -511,9 +514,9 @@ func (s *Store) Save(ctx context.Context, characterID int64, raw []byte, req Sav
 	return results[0], nil
 }
 
-// SaveMany guarda varios personajes en una transacción (§6: comercio y correo, fase 6): todos o
-// ninguno. Todos los sobres son de la instancia instance; o todos son nuevos o todos repetidos (una
-// mezcla es 409 seq_conflict). Los arrendamientos se bloquean en orden de character_id.
+// SaveMany saves several characters in one transaction (§6: trade and mail, phase 6): all or
+// none. All envelopes belong to instance instance; either all are new or all are repeats (a
+// mix is 409 seq_conflict). Leases are locked in character_id order.
 func (s *Store) SaveMany(ctx context.Context, instance [16]byte, raws [][]byte, reqs []SaveRequest) ([]SaveResult, error) {
 	return s.save(ctx, instance, raws, reqs)
 }
@@ -587,7 +590,7 @@ func (s *Store) save(ctx context.Context, instance [16]byte, raws [][]byte, reqs
 	return results, nil
 }
 
-// characterError es un error de un guardado de un lote, con el personaje en el cuerpo.
+// characterError is an error of a save within a batch, with the character in the body.
 type characterError struct {
 	err         error
 	characterID int64
@@ -606,12 +609,12 @@ func withCharacter(err error, characterID int64, many bool) error {
 	return &characterError{err: err, characterID: characterID}
 }
 
-// SaveError convierte un error del guardado en su respuesta con la regla de §7.3: el error del sobre
-// y *InvalidSaveError, 400 invalid_save con check y detail; SQLSTATE de clase 22 o 23 o P0001
-// (también en el COMMIT), 400 invalid_save con check S8 y el SQLSTATE y la restricción en detail; 40001 y
-// 40P01 tras los reintentos, sin conexión o plazo vencido, 503 db_unavailable; un *httpx.Error, tal
-// cual; cualquier otro, nil (500 internal, que registra quien llama). En un lote, el cuerpo lleva
-// además el character_id del guardado que falló.
+// SaveError converts a save error into its response using the rule of §7.3: the envelope error
+// and *InvalidSaveError, 400 invalid_save with check and detail; SQLSTATE of class 22 or 23 or
+// P0001 (also on COMMIT), 400 invalid_save with check S8 and the SQLSTATE and constraint in
+// detail; 40001 and 40P01 after the retries, no connection or expired deadline, 503
+// db_unavailable; an *httpx.Error, as is; any other, nil (500 internal, which the caller logs).
+// In a batch, the body also carries the character_id of the save that failed.
 func SaveError(err error) *httpx.Error {
 	var resp *httpx.Error
 	var invalid *InvalidSaveError
@@ -657,9 +660,9 @@ func invalidSave(check, detail string) *httpx.Error {
 		Fields: map[string]string{"check": check, "detail": sanctions.Truncate(detail, 500)}}
 }
 
-// Release libera el arrendamiento sin guardar (§6: el cliente no llegó a aparecer, o tras un
-// invalid_save). Con otro lease_id o claimed_by, 409 lease_lost; uno ya libre con el mismo
-// lease_id, nada (204).
+// Release frees the lease without saving (§6: the client never showed up, or after an
+// invalid_save). With another lease_id or claimed_by, 409 lease_lost; one already free with the
+// same lease_id, nothing (204).
 func (s *Store) Release(ctx context.Context, characterID int64, instance, leaseID [16]byte) error {
 	now := s.clock.Now()
 	return db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {

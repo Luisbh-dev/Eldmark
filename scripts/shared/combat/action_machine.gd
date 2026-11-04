@@ -1,99 +1,99 @@
 class_name ActionMachine
 extends RefCounted
-## Máquina de acciones del combate (docs/combate.md, sección 3, y docs/habilidades.md, sección 3):
-## ataques ligeros en combo, ataque fuerte cargado, bloqueo con parada, esquiva, resistencia,
-## habilidades, consumibles, cambio de arma, efectos de movimiento y lo que impone el servidor
-## (controles, muerte, derribado, levantar y rematar). Es una función determinista de
-## ([CombatState], [PlayerInput], suelo): sin reloj, sin aleatoriedad y sin leer nada que no viaje en
+## Combat action machine (docs/combate.md, section 3, and docs/habilidades.md, section 3):
+## chained light attacks, charged heavy attack, block with parry, dodge, stamina,
+## abilities, consumables, weapon swap, movement effects and what the server imposes
+## (controls, death, knocked down, revive and execute). It is a deterministic function of
+## ([CombatState], [PlayerInput], ground): no clock, no randomness and nothing read that does not travel in
 ## [PlayerState].
 ## [br][br]
-## [method step] la llama [method PlayerCharacter.simulate] al principio de cada tick, antes del
-## movimiento, y devuelve en un [ActionMachine.Output] cómo debe moverse el personaje ese tick.
-## El resto de funciones estáticas son consultas (las usan el servidor, el animador y la barra de
-## acciones) y las órdenes que impone el servidor ([method impose_stagger]...).
+## [method step] is called by [method PlayerCharacter.simulate] at the start of each tick, before
+## movement, and returns in an [ActionMachine.Output] how the character must move that tick.
+## The remaining static functions are queries (used by the server, the animator and the action
+## bar) and the orders imposed by the server ([method impose_stagger]...).
 ## [br][br]
-## [b]Orden de cada tick[/b] (con [code]t = input.tick[/code]; docs/habilidades.md, sección 3.3): 0)
-## camino rápido; 1) acciones que terminan; 2) efectos de movimiento que caducan; 3) regeneración de
-## resistencia; 4) entradas: 4a fines por entrada (canalización, levantar y rematar), 4b el búfer y 4c
-## los flancos nuevos con prioridad DODGE > ABILITY_1 > ABILITY_2 > ABILITY_3 > CONSUMABLE_1 >
-## CONSUMABLE_2 > PRIMARY > SWAP > BLOCK; 5) el compromiso de una habilidad o un consumible; 6) el
-## [ActionMachine.Output]. Habilidades, consumibles, cambio de arma, canalizaciones y efectos de
-## movimiento viven en [AbilityRules] (la máquina partida en dos archivos); esta sigue siendo la
-## entrada.
+## [b]Order of each tick[/b] (with [code]t = input.tick[/code]; docs/habilidades.md, section 3.3): 0)
+## fast path; 1) actions that end; 2) movement effects that expire; 3) stamina
+## regeneration; 4) inputs: 4a ends by input (channel, revive and execute), 4b the buffer and 4c
+## the new edges with priority DODGE > ABILITY_1 > ABILITY_2 > ABILITY_3 > CONSUMABLE_1 >
+## CONSUMABLE_2 > PRIMARY > SWAP > BLOCK; 5) the commit of an ability or a consumable; 6) the
+## [ActionMachine.Output]. Abilities, consumables, weapon swap, channels and movement effects
+## live in [AbilityRules] (the machine split into two files); this one is still the
+## entry point.
 ## [br][br]
-## [b]Flancos.[/b] Los saca de los bits [constant CombatState.FLAG_DODGE_HELD] y compañeros de
-## [member CombatState.combat_flags] y de los bits 1-6 de [member CombatState.combat_flags2] (el nivel
-## de cada botón en el tick anterior), así que la firma de [method step] no necesita
-## [member PlayerCharacter.prev_buttons]. Una entrada sustituida ([constant PlayerInput.SUBSTITUTED])
-## repite los botones y por tanto no crea flancos; además no suma a [member CombatState.primary_held],
-## no convierte un ligero en carga, no lanza el fuerte al llegar a la carga máxima (la carga se congela
-## hasta [member CombatRules.input_buffer_ticks] ticks más; si el silencio sigue, se cancela), no abre
-## ventanas de parada, no corta una canalización por moverse y no suelta lo que se mantiene (una
-## canalización, levantar o rematar). Ninguna pérdida inventa una habilidad, un cambio de arma ni una
-## poción.
+## [b]Edges.[/b] They are derived from the bits [constant CombatState.FLAG_DODGE_HELD] and companions of
+## [member CombatState.combat_flags] and from bits 1-6 of [member CombatState.combat_flags2] (the level
+## of each button on the previous tick), so the signature of [method step] does not need
+## [member PlayerCharacter.prev_buttons]. A substituted input ([constant PlayerInput.SUBSTITUTED])
+## repeats the buttons and therefore creates no edges; furthermore it does not add to [member CombatState.primary_held],
+## does not turn a light attack into a charge, does not fire the heavy attack on reaching maximum charge (the charge freezes
+## for up to [member CombatRules.input_buffer_ticks] more ticks; if the silence continues, it is canceled), does not open
+## parry windows, does not cut a channel for moving and does not release what is held (a
+## channel, revive or execute). No loss invents an ability, a weapon swap or a
+## potion.
 ## [br][br]
-## [b]Búfer.[/b] Una ranura ([member CombatState.buffered]: tipo y ticks que le quedan): un flanco que
-## no se puede ejecutar ahora la ocupa (la última pulsación gana) y se ejecuta en el primer tick en que
-## se pueda, dentro de [member CombatRules.input_buffer_ticks]; un flanco que no tiene sentido (ranura
-## vacía, sin cargas, sin arma alternativa, [member WeaponTicks.can_block] falso, avance con ROOT) se
-## descarta.
+## [b]Buffer.[/b] One slot ([member CombatState.buffered]: type and ticks remaining): an edge that
+## cannot be executed now takes it (the last press wins) and is executed on the first tick on which it
+## can be, within [member CombatRules.input_buffer_ticks]; an edge that makes no sense (empty
+## slot, no charges, no alternate weapon, [member WeaponTicks.can_block] false, advance with ROOT) is
+## dropped.
 ## [br][br]
-## [b]Historial.[/b] [method defense_flags] da los bits 3-7 de [StateHistory]; el byte que graba el
-## servidor es [code](flags del registro & 0b111) | defense_flags[/code]
-## ([constant EntityRecord.HISTORY_FLAGS_MASK]; lo enmascaran [code]ZoneServer._record_history[/code] y
-## [method Combatant.freeze]): el bit 3 del registro de red (ranura 2 activa, docs/habilidades.md,
-## sección 5.2) no entra nunca, porque en el historial el bit 3 es [constant DEFENSE_BLOCKING].
+## [b]History.[/b] [method defense_flags] gives bits 3-7 of [StateHistory]; the byte the
+## server records is [code](record flags & 0b111) | defense_flags[/code]
+## ([constant EntityRecord.HISTORY_FLAGS_MASK]; masked by [code]ZoneServer._record_history[/code] and
+## [method Combatant.freeze]): bit 3 of the network record (slot 2 active, docs/habilidades.md,
+## section 5.2) never gets in, because in the history bit 3 is [constant DEFENSE_BLOCKING].
 
-## Cómo debe moverse el personaje este tick (lo aplica [method PlayerCharacter.simulate]).
+## How the character must move this tick (applied by [method PlayerCharacter.simulate]).
 class Output:
-	## Fracción de la velocidad de carrera permitida ([code]wish * run_speed * move_scale[/code]).
+	## Fraction of the run speed allowed ([code]wish * run_speed * move_scale[/code]).
 	var move_scale: float = 1.0
-	## Velocidad hacia delante (m/s) que se suma a la de carrera.
+	## Forward speed (m/s) added to the run speed.
 	var lunge_speed: float = 0.0
-	## Giro hacia la cámara (rad/s) aunque el personaje esté quieto; 0 = no gira; -1 = el giro
-	## normal de simulate() (solo al moverse).
+	## Turn toward the camera (rad/s) even if the character is standing still; 0 = does not turn; -1 = the normal
+	## turn of simulate() (only when moving).
 	var turn_rate: float = -1.0
-	## El yaw salta a look_yaw este tick.
+	## The yaw snaps to look_yaw this tick.
 	var snap_yaw: bool = false
-	## La velocidad horizontal es [member velocity] y se impone sin aceleración.
+	## The horizontal speed is [member velocity] and is forced with no acceleration.
 	var forced_velocity: bool = false
 	var velocity: Vector3 = Vector3.ZERO
 	var allow_jump: bool = true
 	var allow_sprint: bool = true
-	## true en toda acción menos NONE: la velocidad objetivo es
-	## [code]wish * run_speed * move_scale[/code], sin los multiplicadores de ir hacia atrás o de
-	## lado ni el esprint.
+	## true in every action except NONE: the target speed is
+	## [code]wish * run_speed * move_scale[/code], without the multipliers for moving backward or
+	## sideways nor sprint.
 	var scaled_movement: bool = false
-	## Efectos de movimiento (docs/habilidades.md, sección 3.4): multiplica la velocidad objetivo no
-	## impuesta en todas las acciones (NONE y el esprint incluidos); la esquiva, el avance de una
-	## habilidad y el empuje no.
+	## Movement effects (docs/habilidades.md, section 3.4): multiplies the non-forced target speed
+	## in all actions (NONE and sprint included); the dodge, an ability's advance and the
+	## knockback are not affected.
 	var speed_factor: float = 1.0
-	## Enraizado (ROOT): sin salto y, en el aire, frena como con [code]move_scale[/code] 0.
+	## Rooted (ROOT): no jump and, in the air, it brakes as with [code]move_scale[/code] 0.
 	var rooted: bool = false
 
 
-## Estado de una casilla de la barra de acciones ([method ability_status]).
+## State of an action bar slot ([method ability_status]).
 enum AbilityStatus { READY, COOLDOWN, BLOCKED, EMPTY, NO_CHARGES }
 
-## Fases de un ataque o una habilidad ([method phase]).
+## Phases of an attack or an ability ([method phase]).
 const PHASE_WINDUP: int = 0
 const PHASE_ACTIVE: int = 1
 const PHASE_RECOVERY: int = 2
 const PHASE_NONE: int = 3
 
-## Bits de [method defense_flags] (siguen a los de [StateHistory]: bit 0 suelo, bits 1-2
-## teletransporte).
+## Bits of [method defense_flags] (they follow those of [StateHistory]: bit 0 ground, bits 1-2
+## teleport).
 const DEFENSE_BLOCKING: int = 1 << 3
 const DEFENSE_PARRY: int = 1 << 4
 const DEFENSE_INVULNERABLE: int = 1 << 5
 const DEFENSE_DEAD: int = 1 << 6
-## Bloqueo ancho: la canalización que bloquea (el muro de escudos) lo da junto a
-## [constant DEFENSE_BLOCKING]; el servidor usa entonces el cono y el coste de las reglas
-## ([member CombatRules.ability_block_angle_deg]) en vez de los del arma.
+## Wide block: the blocking channel (the shield wall) gives it together with
+## [constant DEFENSE_BLOCKING]; the server then uses the cone and cost from the rules
+## ([member CombatRules.ability_block_angle_deg]) instead of the weapon's.
 const DEFENSE_WIDE_BLOCK: int = 1 << 7
 
-## Casillas de [method ability_status] de los dos consumibles (las 0-2 son las habilidades del arma
-## activa).
+## Slots of [method ability_status] for the two consumables (0-2 are the active weapon's
+## abilities).
 const STATUS_SLOT_CONSUMABLE_1: int = 3
 const STATUS_SLOT_CONSUMABLE_2: int = 4
 
@@ -112,10 +112,10 @@ const _DOWNED: int = CombatState.Action.DOWNED
 const _REVIVE: int = CombatState.Action.REVIVE
 const _EXECUTE: int = CombatState.Action.EXECUTE
 
-## Por debajo de esta longitud el movimiento no da dirección a la esquiva (se esquiva hacia atrás).
+## Below this length the movement gives the dodge no direction (it dodges backward).
 const _DODGE_MIN_MOVE: float = 0.1
-## Botones que sacan del camino rápido: los de combate. AIM_LEFT (un nivel que solo lee la puntería),
-## INTERACT (lo atiende el servidor), salto y esprint no.
+## Buttons that take it off the fast path: the combat ones. AIM_LEFT (a level that only reads aiming),
+## INTERACT (handled by the server), jump and sprint do not.
 const _COMBAT_BUTTONS: int = (
 	PlayerInput.DODGE | PlayerInput.PRIMARY | PlayerInput.BLOCK | PlayerInput.ABILITY_1
 	| PlayerInput.ABILITY_2 | PlayerInput.ABILITY_3 | PlayerInput.SWAP_WEAPON
@@ -125,29 +125,29 @@ const _HELD_FLAGS: int = (
 	CombatState.FLAG_DODGE_HELD | CombatState.FLAG_BLOCK_HELD | CombatState.FLAG_PRIMARY_HELD
 )
 
-# Resultado de intentar una esquiva: no se puede ahora (va al búfer), empezó, o se descarta por
-# falta de resistencia (o por estar enraizado). Los mismos valores que AbilityRules.RETRY, STARTED y
+# Result of trying a dodge: it cannot be done now (goes to the buffer), it started, or it is dropped for
+# lack of stamina (or for being rooted). The same values as AbilityRules.RETRY, STARTED and
 # DROPPED.
 const _DODGE_RETRY: int = 0
 const _DODGE_STARTED: int = 1
 const _DODGE_DROPPED: int = 2
 
 
-## Avanza la máquina un tick con [param input] y devuelve cómo se mueve el personaje.
-## [param grounded] es si estaba en el suelo al empezar el tick.
+## Advances the machine one tick with [param input] and returns how the character moves.
+## [param grounded] is whether it was on the ground at the start of the tick.
 static func step(c: CombatState, input: PlayerInput, grounded: bool) -> ActionMachine.Output:
 	var out := Output.new()
 	var data: CombatTables = CombatCatalog.tables()
 	var t: int = input.tick
 
-	# Niveles y flancos de los botones (el bit SUBSTITUTED no es un botón).
+	# Button levels and edges (the SUBSTITUTED bit is not a button).
 	var down: int = input.buttons & ~PlayerInput.SUBSTITUTED
 	var previous: int = c.combat_flags
 	var previous2: int = c.combat_flags2
 
-	# Camino rápido, el de casi todos los ticks: sin acción, sin botones de combate (ni pulsados
-	# ni recién soltados), nada pendiente y sin efectos de movimiento. Solo puede cambiar la
-	# resistencia al regenerar. No busca el arma ni recorre las ranuras de habilidades.
+	# Fast path, the one for almost every tick: no action, no combat buttons (neither pressed
+	# nor just released), nothing pending and no movement effects. Only the
+	# stamina can change when regenerating. It does not look up the weapon nor walk the ability slots.
 	if c.action == _NONE and c.buffered == 0 and c.primary_held == 0 \
 			and (down & _COMBAT_BUTTONS) == 0 \
 			and (previous & (_HELD_FLAGS | CombatState.FLAG_NO_STAMINA)) == 0 \
@@ -204,12 +204,12 @@ static func step(c: CombatState, input: PlayerInput, grounded: bool) -> ActionMa
 	return out
 
 
-# --- Consultas --------------------------------------------------------------------------------
+# --- Queries ----------------------------------------------------------------------------------
 
-## Fase de la acción en [param tick]: [constant PHASE_WINDUP] (anticipación, carga o lanzamiento),
-## [constant PHASE_ACTIVE] (golpe activo, o activo o canalización de una habilidad),
-## [constant PHASE_RECOVERY] o [constant PHASE_NONE] (la acción no tiene fases: también SWAP, DOWNED,
-## REVIVE y EXECUTE).
+## Phase of the action at [param tick]: [constant PHASE_WINDUP] (windup, charge or cast),
+## [constant PHASE_ACTIVE] (active hit, or the active phase or channel of an ability),
+## [constant PHASE_RECOVERY] or [constant PHASE_NONE] (the action has no phases: also SWAP, DOWNED,
+## REVIVE and EXECUTE).
 static func phase(c: CombatState, tick: int) -> int:
 	if c.action == _CHARGE:
 		return PHASE_WINDUP
@@ -231,17 +231,17 @@ static func phase(c: CombatState, tick: int) -> int:
 	return PHASE_RECOVERY
 
 
-## true si hay un ataque en su golpe activo en [param tick] (solo LIGHT y HEAVY; el golpe de una
-## habilidad lo da [method active_hit]).
+## true if an attack is in its active hit at [param tick] (only LIGHT and HEAVY; an
+## ability's hit is given by [method active_hit]).
 static func is_attack_active(c: CombatState, tick: int) -> bool:
 	if c.action != _LIGHT and c.action != _HEAVY:
 		return false
 	return phase(c, tick) == PHASE_ACTIVE
 
 
-## El golpe que [param c] tiene activo en [param tick]: el ataque en su golpe activo o el golpe
-## sintetizado ([member AbilityTicks.hit]) de la habilidad en su activo o su canalización; null si no
-## hay ninguno. Sin forma ([member AttackTicks.shape] null) el golpe no prueba a nadie.
+## The hit that [param c] has active at [param tick]: the attack in its active hit or the
+## synthesized hit ([member AbilityTicks.hit]) of the ability in its active phase or channel; null if there
+## is none. With no shape ([member AttackTicks.shape] null) the hit tests nobody.
 static func active_hit(c: CombatState, tick: int) -> AttackTicks:
 	match c.action:
 		_LIGHT, _HEAVY:
@@ -261,8 +261,8 @@ static func active_hit(c: CombatState, tick: int) -> AttackTicks:
 	return null
 
 
-## true si [param tick] es el compromiso de la acción: el primer tick activo de un LIGHT, un HEAVY o
-## una ABILITY (cuando salen los proyectiles y se fijan reutilizaciones y cargas).
+## true if [param tick] is the commit of the action: the first active tick of a LIGHT, a HEAVY or
+## an ABILITY (when projectiles are released and cooldowns and charges are set).
 static func is_commit_tick(c: CombatState, tick: int) -> bool:
 	match c.action:
 		_LIGHT, _HEAVY:
@@ -274,22 +274,22 @@ static func is_commit_tick(c: CombatState, tick: int) -> bool:
 	return false
 
 
-## Estado de la casilla [param slot] de la barra de acciones en [param tick]: 0-2 las habilidades
-## del arma activa, [constant STATUS_SLOT_CONSUMABLE_1] y [constant STATUS_SLOT_CONSUMABLE_2] los
-## consumibles. Devuelve un [enum AbilityStatus] (ver [method AbilityRules.status_of]).
+## State of action bar slot [param slot] at [param tick]: 0-2 the active
+## weapon's abilities, [constant STATUS_SLOT_CONSUMABLE_1] and [constant STATUS_SLOT_CONSUMABLE_2] the
+## consumables. Returns an [enum AbilityStatus] (see [method AbilityRules.status_of]).
 static func ability_status(c: CombatState, slot: int, tick: int) -> int:
 	return AbilityRules.status_of(c, slot, tick)
 
 
-## true si el personaje está bloqueando (incluida la ventana de parada y la canalización que bloquea,
-## el muro de escudos).
+## true if the character is blocking (including the parry window and the blocking channel,
+## the shield wall).
 static func is_blocking(c: CombatState, tick: int) -> bool:
 	if c.action == _ABILITY:
 		return AbilityRules.is_blocking_channel(c, CombatCatalog.ability(c.action_id), tick)
 	return c.action == _BLOCK
 
 
-## true si [param tick] cae en la ventana de parada abierta al empezar el bloqueo.
+## true if [param tick] falls within the parry window opened when the block starts.
 static func is_parry_window(c: CombatState, tick: int) -> bool:
 	if c.action != _BLOCK:
 		return false
@@ -301,7 +301,7 @@ static func is_parry_window(c: CombatState, tick: int) -> bool:
 	return elapsed >= 0 and elapsed < rules.parry_window_ticks
 
 
-## true si [param tick] cae en los ticks de invulnerabilidad de la esquiva.
+## true if [param tick] falls within the dodge's invulnerability ticks.
 static func is_invulnerable(c: CombatState, tick: int) -> bool:
 	if c.action != _DODGE:
 		return false
@@ -313,10 +313,10 @@ static func is_invulnerable(c: CombatState, tick: int) -> bool:
 			and relative < weapon.dodge.invulnerable_to_ticks
 
 
-## Banderas defensivas de [param tick] para [StateHistory]: [constant DEFENSE_BLOCKING],
-## [constant DEFENSE_PARRY], [constant DEFENSE_INVULNERABLE], [constant DEFENSE_DEAD] y
-## [constant DEFENSE_WIDE_BLOCK] (con BLOCKING, en la canalización que bloquea). Un derribado no
-## tiene ninguna defensa.
+## Defensive flags of [param tick] for [StateHistory]: [constant DEFENSE_BLOCKING],
+## [constant DEFENSE_PARRY], [constant DEFENSE_INVULNERABLE], [constant DEFENSE_DEAD] and
+## [constant DEFENSE_WIDE_BLOCK] (with BLOCKING, in the blocking channel). A knocked down character has
+## no defense.
 static func defense_flags(c: CombatState, tick: int) -> int:
 	var flags: int = 0
 	if c.action == _BLOCK:
@@ -334,10 +334,10 @@ static func defense_flags(c: CombatState, tick: int) -> int:
 	return flags
 
 
-## Byte de acción del registro de red (docs/habilidades.md, sección 5.5): bits 0-3 la acción, 4-5
-## la fase ([method phase]) y 6-7 el paso del combo del ligero en curso o, en una ABILITY, su ranura
-## (0-2; 3 = un consumible). En las demás acciones, 0 ([ActionWire] pone ahí el contador de reinicio
-## de las que lo llevan).
+## Action byte of the network record (docs/habilidades.md, section 5.5): bits 0-3 the action, 4-5
+## the phase ([method phase]) and 6-7 the step of the light combo in progress or, in an ABILITY, its slot
+## (0-2; 3 = a consumable). In the other actions, 0 ([ActionWire] puts the restart counter there
+## for those that carry one).
 static func action_byte(c: CombatState, tick: int) -> int:
 	var step_bits: int = 0
 	if c.action == _LIGHT:
@@ -351,14 +351,14 @@ static func action_byte(c: CombatState, tick: int) -> int:
 	return (c.action & 15) | (phase(c, tick) << 4) | (step_bits << 6)
 
 
-# --- Lo que impone el servidor ----------------------------------------------------------------
-# Todas van seguidas de CombatDirector.commit_state (redondeo por encode/decode). Las que cambian la
-# acción y cortan una canalización comprometida fijan su reutilización en ese tick.
+# --- What the server imposes ------------------------------------------------------------------
+# All of them are followed by CombatDirector.commit_state (rounding by encode/decode). Those that change the
+# action and cut a committed channel set its cooldown on that tick.
 
-## Tambaleo hasta [param until_tick] (exclusivo) con un empuje horizontal (x, z) en m/s que decae
-## linealmente. Interrumpe lo que hiciera el personaje y borra el búfer, la pulsación y el combo.
-## El empuje se redondea a cm/s, igual que al pasar por [method PlayerState.encode]. No hace nada
-## sobre un derribado ni un muerto.
+## Stagger until [param until_tick] (exclusive) with a horizontal knockback (x, z) in m/s that decays
+## linearly. Interrupts whatever the character was doing and clears the buffer, the press and the combo.
+## The knockback is rounded to cm/s, just as when passing through [method PlayerState.encode]. It does nothing
+## to a knocked down or dead character.
 static func impose_stagger(c: CombatState, tick: int, until_tick: int, knockback: Vector2) -> void:
 	if c.action == _DOWNED or c.action == _DEAD:
 		return
@@ -370,8 +370,8 @@ static func impose_stagger(c: CombatState, tick: int, until_tick: int, knockback
 	c.knockback = CombatState.quantize_knockback(knockback)
 
 
-## Aturdimiento hasta [param until_tick] (exclusivo): el personaje solo frena. No hace nada sobre un
-## derribado ni un muerto.
+## Stun until [param until_tick] (exclusive): the character only brakes. It does nothing to a
+## knocked down or dead character.
 static func impose_stun(c: CombatState, tick: int, until_tick: int) -> void:
 	if c.action == _DOWNED or c.action == _DEAD:
 		return
@@ -383,7 +383,7 @@ static func impose_stun(c: CombatState, tick: int, until_tick: int) -> void:
 	c.knockback = Vector2.ZERO
 
 
-## Muerte: el personaje solo frena (la gravedad sigue) hasta [method reset_for_respawn].
+## Death: the character only brakes (gravity continues) until [method reset_for_respawn].
 static func impose_death(c: CombatState, tick: int) -> void:
 	_leave_imposed(c, tick)
 	c.action = _DEAD
@@ -393,9 +393,9 @@ static func impose_death(c: CombatState, tick: int) -> void:
 	c.knockback = Vector2.ZERO
 
 
-## Derribado (docs/habilidades.md, sección 4.5): DOWNED con [code]action_tick = tick[/code]; borra el
-## búfer, la pulsación, el combo y las ranuras de movimiento. Se arrastra a
-## [member CombatRules.downed_move_scale] y no termina solo.
+## Knocked down (docs/habilidades.md, section 4.5): DOWNED with [code]action_tick = tick[/code]; clears the
+## buffer, the press, the combo and the movement slots. It crawls at
+## [member CombatRules.downed_move_scale] and does not end on its own.
 static func impose_downed(c: CombatState, tick: int) -> void:
 	_leave_imposed(c, tick)
 	c.action = _DOWNED
@@ -406,7 +406,7 @@ static func impose_downed(c: CombatState, tick: int) -> void:
 	clear_move_effects(c)
 
 
-## Levantado: NONE con [code]action_tick = tick[/code].
+## Revived: NONE with [code]action_tick = tick[/code].
 static func impose_revived(c: CombatState, tick: int) -> void:
 	_leave_imposed(c, tick)
 	c.action = _NONE
@@ -416,9 +416,9 @@ static func impose_revived(c: CombatState, tick: int) -> void:
 	c.knockback = Vector2.ZERO
 
 
-## Levantar o rematar ([param action] REVIVE o EXECUTE; cualquier otra no hace nada) con
-## [code]action_tick = tick[/code]. Acaba sola al cumplir [member CombatTables.revive_ticks] o
-## [member CombatTables.execute_ticks], con una entrada real sin INTERACT o con una esquiva.
+## Revive or execute ([param action] REVIVE or EXECUTE; any other does nothing) with
+## [code]action_tick = tick[/code]. It ends on its own on reaching [member CombatTables.revive_ticks] or
+## [member CombatTables.execute_ticks], with a real input without INTERACT or with a dodge.
 static func impose_interact(c: CombatState, tick: int, action: int) -> void:
 	if action != _REVIVE and action != _EXECUTE:
 		return
@@ -430,20 +430,20 @@ static func impose_interact(c: CombatState, tick: int, action: int) -> void:
 	c.knockback = Vector2.ZERO
 
 
-## Interrupción (docs/habilidades.md, sección 4.2): NONE, cortando beber, un lanzamiento marcado,
-## levantar o rematar, y conservando el [member CombatState.action_tick] de lo que corta (como al
-## acabar sin más). Antes del compromiso no hay reutilización ni gasto: solo un margen de
-## [constant AbilityTicks.REARM_TICKS] ticks antes de otro consumible (o de la misma ranura), para que un
-## remoto vea el NONE entre los dos (el byte de acción no los distingue; revisión de H5).
+## Interruption (docs/habilidades.md, section 4.2): NONE, cutting drinking, a marked cast,
+## revive or execute, and keeping the [member CombatState.action_tick] of what it cuts (as when
+## ending normally). Before the commit there is no cooldown or spending: only a margin of
+## [constant AbilityTicks.REARM_TICKS] ticks before another consumable (or the same slot), so that a
+## remote sees the NONE between the two (the action byte does not tell them apart; H5 review).
 static func impose_interrupt(c: CombatState, tick: int) -> void:
 	AbilityRules.rearm_after_interrupt(c, tick)
 	_leave_imposed(c, tick)
 	_to_none(c)
 
 
-## Ocupa una ranura de efecto de movimiento con [param effect_id] ([StatusTicks]) hasta
-## [param until_tick] (exclusivo): el mismo efecto alarga su ranura ([code]until = max[/code]); si no,
-## una ranura libre; si no hay, sustituye a la que acaba antes.
+## Occupies a movement effect slot with [param effect_id] ([StatusTicks]) until
+## [param until_tick] (exclusive): the same effect extends its slot ([code]until = max[/code]); otherwise
+## a free slot; if there is none, it replaces the one that ends soonest.
 static func impose_move_effect(c: CombatState, effect_id: int, until_tick: int) -> void:
 	if effect_id <= 0:
 		return
@@ -464,9 +464,9 @@ static func impose_move_effect(c: CombatState, effect_id: int, until_tick: int) 
 	c.move_effect_until[earliest] = until_tick
 
 
-## Vacía la ranura de efecto de movimiento que ocupa [param effect_id] (si alguna lo lleva): el
-## servidor la quita cuando el efecto se va antes de tiempo (su autor se da de baja, muere quien lo
-## lleva).
+## Empties the movement effect slot occupied by [param effect_id] (if any holds it): the
+## server removes it when the effect leaves early (its author drops out, or whoever
+## carries it dies).
 static func remove_move_effect(c: CombatState, effect_id: int) -> void:
 	for i: int in CombatState.MOVE_EFFECT_SLOTS:
 		if c.move_effect_ids[i] == effect_id:
@@ -474,31 +474,30 @@ static func remove_move_effect(c: CombatState, effect_id: int) -> void:
 			c.move_effect_until[i] = 0
 
 
-## Vacía las dos ranuras de efectos de movimiento.
+## Empties both movement effect slots.
 static func clear_move_effects(c: CombatState) -> void:
 	for i: int in CombatState.MOVE_EFFECT_SLOTS:
 		c.move_effect_ids[i] = 0
 		c.move_effect_until[i] = 0
 
 
-## Pone a 0 todas las reutilizaciones (las seis de las habilidades y la compartida de los
-## consumibles).
+## Sets all cooldowns to 0 (the six ability ones and the consumables' shared one).
 static func reset_cooldowns(c: CombatState) -> void:
 	c.ability_ready.fill(0)
 	c.consumable_ready_tick = 0
 
 
-## Cambia [b]solo[/b] las cargas de los consumibles (empaquetadas como
-## [member CombatState.consumable_charges]): la recarga del campamento y el comando 16 no tocan arma,
-## reutilizaciones, ranuras ni la acción en curso.
+## Changes [b]only[/b] the consumable charges (packed as
+## [member CombatState.consumable_charges]): the camp refill and command 16 do not touch the weapon,
+## cooldowns, slots or the current action.
 static func set_charges(c: CombatState, charges: int) -> void:
 	c.consumable_charges = charges & 0xFF
 
 
-## Equipo al aparecer (personaje recién creado o muerto): [param weapon_1] activa,
-## [param weapon_2] en la otra ranura (0 = ninguna), reutilizaciones a 0, [param charges] y ranuras
-## de movimiento vacías; conserva los bits de los botones pulsados. Sobre un vivo fuerza antes NONE
-## (la acción en curso podía ser de otra arma) y borra búfer, pulsación y combo.
+## Loadout on spawn (newly created or dead character): [param weapon_1] active,
+## [param weapon_2] in the other slot (0 = none), cooldowns at 0, [param charges] and empty movement
+## slots; keeps the pressed button bits. On a living character it first forces NONE
+## (the current action could belong to another weapon) and clears buffer, press and combo.
 static func set_loadout(c: CombatState, weapon_1: int, weapon_2: int, charges: int) -> void:
 	if c.action != _DEAD:
 		_clear_transient(c)
@@ -514,15 +513,15 @@ static func set_loadout(c: CombatState, weapon_1: int, weapon_2: int, charges: i
 	clear_move_effects(c)
 
 
-## Pone las armas de las dos ranuras del equipo (docs/progresion.md §4.1) [b]sin reiniciar nada más[/b]:
-## [param weapon_1] y [param weapon_2] son las de las ranuras 1 y 2 (0 = vacía) y [param second_active], la
-## ranura activa (bit0 de [member CombatState.combat_flags2]). [member CombatState.weapon_id] y
-## [member CombatState.alt_weapon_id] quedan según la activa, [code]ability_ready[0..2][/code] con los
-## [code]ready_*[/code] del arma activa y [code][3..5][/code] con los de la otra (ticks absolutos, 3 valores;
-## los que falten, 0). Con la ranura 1 vacía y la 2 activa, [code]alt_weapon_id[/code] es 0 (no hay SWAP).
-## No toca [member CombatState.consumable_ready_tick], las cargas, las ranuras de movimiento, los botones ni
-## nada más. Solo con [code]action[/code] NONE: si no, no hace nada y registra el error (el inventario nunca
-## la llama entonces: NOT_NOW). La impone el servidor al final del tick, como [method set_loadout].
+## Sets the weapons of the two loadout slots (docs/progresion.md §4.1) [b]without resetting anything else[/b]:
+## [param weapon_1] and [param weapon_2] are those of slots 1 and 2 (0 = empty) and [param second_active] the
+## active slot (bit0 of [member CombatState.combat_flags2]). [member CombatState.weapon_id] and
+## [member CombatState.alt_weapon_id] follow the active one, [code]ability_ready[0..2][/code] gets the
+## [code]ready_*[/code] of the active weapon and [code][3..5][/code] those of the other (absolute ticks, 3 values;
+## missing ones, 0). With slot 1 empty and slot 2 active, [code]alt_weapon_id[/code] is 0 (no SWAP).
+## It does not touch [member CombatState.consumable_ready_tick], the charges, the movement slots, the buttons or
+## anything else. Only with [code]action[/code] NONE: otherwise it does nothing and logs the error (the inventory never
+## calls it then: NOT_NOW). The server imposes it at the end of the tick, like [method set_loadout].
 static func set_weapons(c: CombatState, weapon_1: int, weapon_2: int, second_active: bool,
 		ready_1: PackedInt64Array, ready_2: PackedInt64Array) -> void:
 	if c.action != _NONE:
@@ -541,11 +540,11 @@ static func set_weapons(c: CombatState, weapon_1: int, weapon_2: int, second_act
 		c.combat_flags2 &= ~CombatState.FLAG2_SECOND_SLOT
 
 
-## Deja el combate como al aparecer por primera vez (resistencia llena, sin acción, control,
-## parada, reutilizaciones ni efectos de movimiento) con el equipo de la plantilla: [param weapon_1]
-## activa, [param weapon_2] en la otra ranura y [param charges]. Conserva los niveles de los botones
-## (bits 3-5 de [member CombatState.combat_flags] y 1-6 de [member CombatState.combat_flags2]); los
-## comandos de depuración (resistencia infinita, sin reutilizaciones) no.
+## Leaves combat as on first spawn (full stamina, no action, control,
+## parry, cooldowns or movement effects) with the template's loadout: [param weapon_1]
+## active, [param weapon_2] in the other slot and [param charges]. Keeps the button levels
+## (bits 3-5 of [member CombatState.combat_flags] and 1-6 of [member CombatState.combat_flags2]); the
+## debug commands (infinite stamina, no cooldowns) are not kept.
 static func reset_for_respawn(c: CombatState, tick: int, weapon_1: int, weapon_2: int,
 		charges: int) -> void:
 	var rules: CombatRules = CombatCatalog.rules()
@@ -558,30 +557,30 @@ static func reset_for_respawn(c: CombatState, tick: int, weapon_1: int, weapon_2
 	c.combat_flags2 = held2
 
 
-## Resta [param amount] de resistencia (sin bajar de 0), retrasa la regeneración y, si llega a 0,
-## activa el agotamiento. No hace nada con la resistencia infinita.
+## Subtracts [param amount] of stamina (not going below 0), delays regeneration and, on reaching 0,
+## triggers exhaustion. It does nothing with infinite stamina.
 static func drain_stamina(c: CombatState, amount: int, tick: int) -> void:
 	_spend(c, amount, tick, CombatCatalog.tables())
 
 
-# Antes de imponer otra acción: la canalización comprometida que se corta fija su reutilización, y
-# se borran el búfer, la pulsación y el combo.
+# Before imposing another action: a committed channel being cut sets its cooldown, and
+# the buffer, the press and the combo are cleared.
 static func _leave_imposed(c: CombatState, tick: int) -> void:
 	AbilityRules.close_channel(c, CombatCatalog.tables(), tick, true)
 	_clear_transient(c)
 
 
-# --- Fin de acciones y resistencia ------------------------------------------------------------
+# --- End of actions and stamina ---------------------------------------------------------------
 
-# Paso 1: las acciones con duración que ya han terminado vuelven a NONE. DOWNED y DEAD no terminan
-# solos.
+# Step 1: actions with a duration that have already finished go back to NONE. DOWNED and DEAD do not end
+# on their own.
 static func _finish_expired(c: CombatState, data: CombatTables, weapon: WeaponTicks,
 		t: int) -> void:
 	match c.action:
 		_LIGHT, _HEAVY:
 			var attack: AttackTicks = data.attack(c.action_id)
 			if attack == null or t >= c.action_tick + attack.total_ticks:
-				# Sin una pulsación que enlace (PRIMARY guardada o enlace), el combo vuelve a empezar.
+				# Without a press that links (a stored PRIMARY or a link), the combo starts over.
 				var kind: int = c.buffered_type()
 				var linked: bool = c.action == _LIGHT and attack != null \
 						and (kind == CombatState.BUFFER_PRIMARY or kind == CombatState.BUFFER_LINK)
@@ -607,8 +606,8 @@ static func _finish_expired(c: CombatState, data: CombatTables, weapon: WeaponTi
 				_to_none(c)
 
 
-# Paso 3: regeneración de resistencia (no en BLOCK, CHARGE, DODGE ni en la canalización que
-# bloquea).
+# Step 3: stamina regeneration (not in BLOCK, CHARGE, DODGE or in the channel that
+# blocks).
 static func _regenerate(c: CombatState, data: CombatTables, t: int) -> void:
 	if t < c.stamina_regen_tick:
 		return
@@ -637,23 +636,23 @@ static func _spend(c: CombatState, amount: int, t: int, data: CombatTables) -> v
 		c.combat_flags |= CombatState.FLAG_EXHAUSTED
 
 
-# true si el agotamiento impide esquivar, bloquear, cargar o el muro (la resistencia infinita lo
-# ignora).
+# true if exhaustion prevents dodging, blocking, charging or the wall (infinite stamina
+# ignores it).
 static func _is_blocked_by_exhaustion(c: CombatState) -> bool:
 	return (c.combat_flags & CombatState.FLAG_EXHAUSTED) != 0 \
 			and (c.combat_flags & CombatState.FLAG_INFINITE_STAMINA) == 0
 
 
-# true si se puede pagar [param cost] (la resistencia infinita siempre puede).
+# true if [param cost] can be paid (infinite stamina always can).
 static func _can_pay(c: CombatState, cost: int) -> bool:
 	if (c.combat_flags & CombatState.FLAG_INFINITE_STAMINA) != 0:
 		return true
 	return c.stamina >= cost
 
 
-# --- Entradas ---------------------------------------------------------------------------------
+# --- Inputs -----------------------------------------------------------------------------------
 
-# Paso 4: 4a fines por entrada, 4b el búfer y 4c los flancos nuevos por prioridad.
+# Step 4: 4a ends by input, 4b the buffer and 4c the new edges by priority.
 static func _run_inputs(c: CombatState, out: Output, input: PlayerInput,
 		data: CombatTables, weapon: WeaponTicks, grounded: bool, down: int, edges: int) -> void:
 	var t: int = input.tick
@@ -664,12 +663,12 @@ static func _run_inputs(c: CombatState, out: Output, input: PlayerInput,
 		c.primary_held = 0
 		return
 
-	# 4a: soltar el botón de una canalización (o moverse, si lo dice el dato) y soltar INTERACT.
+	# 4a: releasing a channel's button (or moving, if the data says so) and releasing INTERACT.
 	if real:
 		AbilityRules.end_by_input(c, input, data, down)
 
-	# 4b: el búfer, con prioridad sobre los flancos de este tick. Un cambio de arma del búfer cambia el
-	# arma ya en este tick.
+	# 4b: the buffer, with priority over this tick's edges. A weapon swap from the buffer changes the
+	# weapon already on this tick.
 	_run_buffer(c, input, data, weapon, rules, grounded, down)
 	if c.weapon_id != weapon.id:
 		weapon = data.weapon(c.weapon_id)
@@ -677,7 +676,7 @@ static func _run_inputs(c: CombatState, out: Output, input: PlayerInput,
 			return
 
 	# 4c: DODGE > ABILITY_1 > ABILITY_2 > ABILITY_3 > CONSUMABLE_1 > CONSUMABLE_2 > PRIMARY > SWAP >
-	# BLOCK. Un flanco que no puede ejecutarse ahora va al búfer (la última pulsación gana).
+	# BLOCK. An edge that cannot be executed now goes to the buffer (the last press wins).
 	if (edges & PlayerInput.DODGE) != 0:
 		if _try_dodge(c, input, data, weapon, grounded) == _DODGE_RETRY:
 			_store_buffer(c, rules, CombatState.BUFFER_DODGE)
@@ -704,8 +703,8 @@ static func _run_inputs(c: CombatState, out: Output, input: PlayerInput,
 	_run_block(c, t, rules, weapon, grounded, real, down, edges)
 
 
-# Ejecuta lo que hubiera en el búfer en el primer tick en que se pueda; si no, le resta un tick. El
-# despacho es por tipo (docs/habilidades.md, sección 3.1).
+# Executes whatever was in the buffer on the first tick on which it can be; otherwise, subtracts a tick from it. The
+# dispatch is by type (docs/habilidades.md, section 3.1).
 static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 		weapon: WeaponTicks, rules: CombatRules, grounded: bool, down: int) -> void:
 	var kind: int = c.buffered_type()
@@ -732,19 +731,19 @@ static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 		c.buffered = 0
 		return
 	if kind == CombatState.BUFFER_LINK:
-		# El enlace espera a que acabe el ligero; si ya no hay ligero en curso (terminó sin poder
-		# encadenar, o lo cortó otra acción) pasa a ser una pulsación guardada normal.
+		# The link waits for the light attack to end; if there is no longer a light attack in progress (it ended without being able to
+		# chain, or another action cut it) it becomes a normal stored press.
 		if c.action != _LIGHT:
 			_store_buffer(c, rules, CombatState.BUFFER_PRIMARY)
 		return
 	remaining -= 1
 	if remaining <= 0:
 		c.buffered = 0
-		# Una pulsación que caduca sin haber empezado nada, con el ligero anterior ya terminado (el
-		# enlace no pudo ejecutarse, p. ej. en el aire), no deja el combo a medias: el siguiente
-		# ligero vuelve a ser el primero. Con un ligero en curso, su propio final lo decide. Vale para
-		# cualquier tipo (docs/habilidades.md, sección 3.1): también una esquiva o una habilidad que
-		# sustituyó en el búfer a la pulsación que enlazaba.
+		# A press that expires without having started anything, with the previous light attack already finished (the
+		# link could not be executed, e.g. in the air), does not leave the combo half-done: the next
+		# light attack is the first one again. With a light attack in progress, its own end decides. Applies to
+		# any type (docs/habilidades.md, section 3.1): also a dodge or an ability that
+		# replaced in the buffer the press that was linking.
 		if c.action != _LIGHT:
 			c.combo_step = 0
 	else:
@@ -755,10 +754,10 @@ static func _store_buffer(c: CombatState, rules: CombatRules, kind: int) -> void
 	c.buffered = CombatState.pack_buffer(kind, clampi(rules.input_buffer_ticks, 1, 15))
 
 
-# Intenta una esquiva en el tick de [param input]. Devuelve _DODGE_STARTED si empezó,
-# _DODGE_RETRY si ahora no se puede (por la acción en curso o por estar en el aire: va al búfer) y
-# _DODGE_DROPPED si falló por falta de resistencia o agotamiento (se descarta y se avisa a la
-# interfaz) o por estar enraizado (se descarta sin aviso).
+# Tries a dodge on the tick of [param input]. Returns _DODGE_STARTED if it started,
+# _DODGE_RETRY if it cannot be done now (because of the current action or being in the air: it goes to the buffer) and
+# _DODGE_DROPPED if it failed for lack of stamina or exhaustion (it is dropped and the
+# UI is notified) or for being rooted (it is dropped without notice).
 static func _try_dodge(c: CombatState, input: PlayerInput, data: CombatTables,
 		weapon: WeaponTicks, grounded: bool) -> int:
 	var t: int = input.tick
@@ -782,7 +781,7 @@ static func _try_dodge(c: CombatState, input: PlayerInput, data: CombatTables,
 		c.combat_flags |= CombatState.FLAG_NO_STAMINA
 		return _DODGE_DROPPED
 	_spend(c, dodge.stamina_cost, t, data)
-	# Desde una canalización, la acaba (con su reutilización si ya se comprometió).
+	# From a channel, it ends it (with its cooldown if it already committed).
 	AbilityRules.close_channel(c, data, t, false)
 	_clear_link(c)
 	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
@@ -795,16 +794,16 @@ static func _try_dodge(c: CombatState, input: PlayerInput, data: CombatTables,
 	return _DODGE_STARTED
 
 
-# Yaw del mundo hacia el que se esquiva: la dirección del movimiento relativa a la cámara, o hacia
-# atrás si no hay movimiento.
+# World yaw toward which the dodge goes: the movement direction relative to the camera, or backward
+# if there is no movement.
 static func _dodge_yaw(input: PlayerInput) -> float:
 	if input.move.length() < _DODGE_MIN_MOVE:
 		return input.look_yaw + PI
 	return input.look_yaw + atan2(-input.move.x, input.move.y)
 
 
-# true si el personaje puede empezar un ataque ahora: en el suelo y sin acción, bloqueando, en la
-# parte cancelable de una esquiva o en la recuperación de una habilidad (o desde su
+# true if the character can start an attack now: on the ground and with no action, blocking, in the
+# cancelable part of a dodge or in an ability's recovery (or from its
 # cancel_to_attack_from).
 static func _can_start_attack(c: CombatState, t: int, data: CombatTables, weapon: WeaponTicks,
 		grounded: bool) -> bool:
@@ -822,8 +821,8 @@ static func _can_start_attack(c: CombatState, t: int, data: CombatTables, weapon
 	return false
 
 
-# Empieza el siguiente ligero del combo si se puede. Devuelve true si la pulsación queda
-# consumida (el ligero empezó o se descartó por falta de resistencia).
+# Starts the next light attack of the combo if possible. Returns true if the press is
+# consumed (the light attack started or was dropped for lack of stamina).
 static func _try_start_light(c: CombatState, t: int, data: CombatTables,
 		weapon: WeaponTicks, grounded: bool) -> bool:
 	if not _can_start_attack(c, t, data, weapon, grounded):
@@ -846,8 +845,8 @@ static func _try_start_light(c: CombatState, t: int, data: CombatTables,
 	c.action_tick = t
 	c.combo_step = (index + 1) % count
 	c.charge_ticks = 0
-	# Es de la pulsación viva si el botón sigue abajo (flanco de este tick, o búfer o enlace que ella
-	# dejó): mantenerla lo convierte en carga.
+	# It belongs to the live press if the button is still down (this tick's edge, or the buffer or link it
+	# left): holding it turns it into a charge.
 	if c.primary_held > 0 and (c.combat_flags & CombatState.FLAG_PRIMARY_HELD) != 0:
 		c.combat_flags |= CombatState.FLAG_LIGHT_OF_PRESS
 	else:
@@ -855,7 +854,7 @@ static func _try_start_light(c: CombatState, t: int, data: CombatTables,
 	return true
 
 
-# PRIMARY: flanco, mantenido y soltado.
+# PRIMARY: edge, held and released.
 static func _run_primary(c: CombatState, out: Output, t: int, data: CombatTables,
 		weapon: WeaponTicks, rules: CombatRules, grounded: bool, real: bool, down: int,
 		edges: int) -> void:
@@ -864,8 +863,8 @@ static func _run_primary(c: CombatState, out: Output, t: int, data: CombatTables
 		c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 		return
 	if (edges & PlayerInput.PRIMARY) != 0:
-		# Mientras se carga, una pulsación nueva (tras soltar y esperar a la carga mínima) no hace
-		# nada: la carga ya está decidida.
+		# While charging, a new press (after releasing and waiting for the minimum charge) does
+		# nothing: the charge is already decided.
 		if c.action == _CHARGE:
 			return
 		c.primary_held = 1
@@ -879,9 +878,9 @@ static func _run_primary(c: CombatState, out: Output, t: int, data: CombatTables
 		_try_charge(c, out, t, data, weapon)
 
 
-# Guarda una pulsación de PRIMARY que no se puede ejecutar ahora. Dentro de la ventana de combo de
-# un ligero (o hasta input_buffer_ticks antes) es un enlace, que espera a que acabe la
-# recuperación; en cualquier otro caso es una pulsación normal del búfer.
+# Stores a PRIMARY press that cannot be executed now. Within a light attack's combo window
+# (or up to input_buffer_ticks before it) it is a link, which waits for the
+# recovery to end; in any other case it is a normal buffer press.
 static func _buffer_primary(c: CombatState, t: int, data: CombatTables,
 		rules: CombatRules) -> void:
 	if c.action == _LIGHT:
@@ -894,16 +893,16 @@ static func _buffer_primary(c: CombatState, t: int, data: CombatTables,
 	_store_buffer(c, rules, CombatState.BUFFER_PRIMARY)
 
 
-# Convierte el ligero en carga del fuerte si todavía está en la anticipación, lo empezó esta
-# pulsación y hay resistencia.
+# Converts the light attack into a heavy attack charge if it is still in the windup, this press
+# started it and there is stamina.
 static func _try_charge(c: CombatState, out: Output, t: int, data: CombatTables,
 		weapon: WeaponTicks) -> void:
 	var attack: AttackTicks = data.attack(c.action_id)
 	if attack == null or t - c.action_tick >= attack.windup_ticks:
 		return
-	# Si el ligero empezó antes de la pulsación viva, no es suyo. (No se deduce de primary_held: solo
-	# cuenta ticks reales, y con una entrada sustituida de por medio t - primary_held + 1 deja de ser
-	# el tick de la pulsación.)
+	# If the light attack started before the live press, it is not its own. (It is not deduced from primary_held: it only
+	# counts real ticks, and with a substituted input in between t - primary_held + 1 stops being
+	# the tick of the press.)
 	if (c.combat_flags & CombatState.FLAG_LIGHT_OF_PRESS) == 0:
 		return
 	var heavy: AttackTicks = data.attack(weapon.heavy_id)
@@ -920,7 +919,7 @@ static func _try_charge(c: CombatState, out: Output, t: int, data: CombatTables,
 	out.snap_yaw = true
 
 
-# Carga: lanza el fuerte al soltar (esperando a la carga mínima) o al llegar a la máxima.
+# Charge: releases the heavy attack on release (waiting for the minimum charge) or on reaching the maximum.
 static func _run_charge(c: CombatState, t: int, data: CombatTables, real: bool,
 		down: int) -> void:
 	if c.action != _CHARGE:
@@ -935,9 +934,9 @@ static func _run_charge(c: CombatState, t: int, data: CombatTables, real: bool,
 		if real and charge >= heavy.charge_max_ticks:
 			_launch_heavy(c, t, heavy, data)
 		elif not real and charge >= heavy.charge_max_ticks + data.rules.input_buffer_ticks:
-			# El cliente lleva más del búfer de entradas callado con la carga al máximo: se cancela
-			# sin lanzar ni gastar. Si no, un cliente que deja de enviar (con la conexión viva)
-			# guardaría el fuerte cargado todo el tiempo que quisiera y lo soltaría al instante.
+			# The client has been silent for more than the input buffer with the charge at maximum: it is canceled
+			# without releasing or spending. Otherwise, a client that stops sending (with the connection alive)
+			# would hold the charged heavy attack as long as it wanted and release it instantly.
 			_to_none(c)
 	elif charge >= heavy.charge_min_ticks:
 		_launch_heavy(c, t, heavy, data)
@@ -956,9 +955,9 @@ static func _launch_heavy(c: CombatState, t: int, heavy: AttackTicks, data: Comb
 	c.combo_step = 0
 
 
-# BLOCK: a nivel. Empieza desde NONE (también al acabar otra acción con el botón pulsado); solo un
-# flanco real abre la ventana de parada, y solo si ha pasado el enfriamiento. Con un arma que no
-# bloquea (el arco), no hace nada.
+# BLOCK: level-based. Starts from NONE (also when another action ends with the button pressed); only a
+# real edge opens the parry window, and only if the cooldown has passed. With a weapon that does not
+# block (the bow), it does nothing.
 static func _run_block(c: CombatState, t: int, rules: CombatRules, weapon: WeaponTicks,
 		grounded: bool, real: bool, down: int, edges: int) -> void:
 	var block_down: bool = (down & PlayerInput.BLOCK) != 0
@@ -978,10 +977,10 @@ static func _run_block(c: CombatState, t: int, rules: CombatRules, weapon: Weapo
 		c.parry_ready_tick = t + rules.parry_cooldown_ticks
 
 
-# --- Movimiento permitido ---------------------------------------------------------------------
+# --- Allowed movement -------------------------------------------------------------------------
 
-# Paso 6: la tabla de movimiento de docs/combate.md, sección 3.3, ampliada en docs/habilidades.md,
-# sección 3.4, para la acción en curso.
+# Step 6: the movement table from docs/combate.md, section 3.3, extended in docs/habilidades.md,
+# section 3.4, for the current action.
 static func _fill_output(c: CombatState, out: Output, data: CombatTables,
 		weapon: WeaponTicks, t: int) -> void:
 	match c.action:
@@ -1050,20 +1049,20 @@ static func _fill_output(c: CombatState, out: Output, data: CombatTables,
 			AbilityRules.fill_output(c, out, data, t)
 
 
-# --- Utilidades -------------------------------------------------------------------------------
+# --- Utilities --------------------------------------------------------------------------------
 
-# Bit de [param flag] si [param button] está abajo en [param down].
+# Bit of [param flag] if [param button] is down in [param down].
 static func _level(down: int, button: int, flag: int) -> int:
 	return flag if (down & button) != 0 else 0
 
 
-# [param button] si el bit [param flag] está en [param held] y no lo estaba en [param previous].
+# [param button] if bit [param flag] is in [param held] and was not in [param previous].
 static func _edge(held: int, previous: int, flag: int, button: int) -> int:
 	return button if (held & flag) != 0 and (previous & flag) == 0 else 0
 
 
-# Vuelve a NONE conservando el action_tick de lo que acaba (la muestra antigua del bloqueo lo usa:
-# docs/habilidades.md, sección 4.2).
+# Goes back to NONE keeping the action_tick of what ends (the old block sample uses it:
+# docs/habilidades.md, section 4.2).
 static func _to_none(c: CombatState) -> void:
 	c.action = _NONE
 	c.action_id = 0
@@ -1071,7 +1070,7 @@ static func _to_none(c: CombatState) -> void:
 	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 
 
-# Borra un enlace de combo pendiente: ya no tiene sentido cuando empieza otra acción.
+# Clears a pending combo link: it no longer makes sense once another action starts.
 static func _clear_link(c: CombatState) -> void:
 	if c.buffered_type() == CombatState.BUFFER_LINK:
 		c.buffered = 0

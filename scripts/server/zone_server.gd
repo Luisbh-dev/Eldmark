@@ -1,309 +1,318 @@
 class_name ZoneServer
 extends Node
-## Servidor autoritativo de una zona (docs/red.md, secciones 3, 8, 9, 10, 11, 12 y 13).
+## Authoritative server of a zone (docs/red.md, sections 3, 8, 9, 10, 11, 12 and 13).
 ## [br][br]
-## Une las piezas puras del servidor ([NetEntityRegistry], [InputQueue], [SnapshotBuilder],
-## [StateHistory], [ServerAuth], [InterestPolicy], [ServerMetrics]...) con el transporte
-## ([NetTransport]) y el mundo de la zona. El cliente solo envía intenciones: el servidor simula a
-## todos los jugadores, nunca acepta un estado del cliente.
+## It joins the pure server pieces ([NetEntityRegistry], [InputQueue], [SnapshotBuilder],
+## [StateHistory], [ServerAuth], [InterestPolicy], [ServerMetrics]...) with the transport
+## ([NetTransport]) and the zone world. The client only sends intents: the server simulates all
+## players and never accepts a state from the client.
 ## [br][br]
-## [b]Orden del tick[/b] ([method _physics_process], prioridad -100; es normativo):
+## [b]Tick order[/b] ([method _physics_process], priority -100; it is normative):
 ## [codeblock]
-## poll             recibir: autenticación, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
-##                  RESPAWN_REQUEST, DEBUG_COMMAND, LOADOUT_SELECT (la plantilla pendiente), el chat y
-##                  los grupos (SocialService), INVENTORY_REQUEST e INVENTORY_SYNC_REQUEST (RATE y a la cola
-##                  del progreso, progresion.md §4.2); y las líneas de la consola. Con la plataforma
-##                  (docs/plataforma.md §14.3), después: ZonePlatform.take_events() repartido por kind en
-##                  el orden de llegada (claim al AuthProvider, heartbeat a la zona y sus mutes a la
-##                  moderación, fortress a FortressPersistence, ignore, report y sanction a ModerationService;
-##                  instance_closed al final), AuthProvider.take_completed() (cada 200: reino, cupo y WELCOME) y los
-##                  VERIFYING vencidos (7 s en tiempo real desde la conexión, REJECT UNAVAILABLE)
-## tick += 1        s es el tick que se simula
-## bajas            desconexión, LEAVE o expulsión -> SocialService.on_peer_left (sale de su grupo, el
-##                  mando pasa al más antiguo, se cancelan sus invitaciones), DESPAWN (motivo 1) y el id
-##                  en cuarentena; la baja de un derribado es antes su muerte (DEATH y KILL)
-## cerebros (paso 0) los PNJ piensan con el estado tras s - 1 y empujan su entrada de s a su InputQueue
-##                  (cada 6 ticks; entre medias repiten su plan)
-## simular          todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente,
-##                  con la entrada de InputQueue.take(s); _check_motion. Justo antes de la suya, cada
-##                  falso piensa (su BotBrain, con su estado de combate tras s - 1 para el kit de H5) y
-##                  empuja su entrada de s; las vistas de asedio, sus objetivos y, para los de asedio
-##                  (F6b), los golpes avisados en curso y los aliados se reúnen una vez por tick. Después,
-##                  CONSUME: lo que ha bebido cada uno con inventario sale de su bolsa (progresion.md §4.4)
-## combate          CombatDirector.process_tick(), pasos 2 a 9 de docs/habilidades.md, sección 4.1:
-##                  congelar (golpe activo, compromiso y muro de cada uno), disparos y efectos propios
-##                  de quien compromete un ataque o una habilidad, resolver los golpes de ataques y
-##                  habilidades (también contra las puertas de los fuertes) y el vuelo de los
-##                  proyectiles, aplicar (daño, bloqueo, controles, efectos al objetivo, interrupciones,
-##                  derribos y muertes), efectos de estado (pulsos y caducidades), el derribado
-##                  (desangrado, levantar y rematar), entorno (caída, volúmenes letales, y < -100),
-##                  reapariciones con su plantilla (con inventario, con su equipo), la recarga del campamento
-##                  (con inventario, CAMP_REFILL de la bolsa) y publicar la vida; los
-##                  ENTITY_EVENT y los ENTITY_SPAWN y ENTITY_DESPAWN de los proyectiles salen aquí, y
-##                  al final, los avisos TELEGRAPH de los ataques fuertes de PNJ que empiezan en s; con cada
-##                  muerte, las recompensas (progresion.md §6.2): la del PNJ a sus contribuyentes y los
-##                  méritos de PvP del KILL (y el LEVEL_UP de quien sube)
-## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
-##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE,
-##                  capturas y tiempo defendiendo en el marcador, y la recompensa de captura y los méritos
-##                  de objetivo (progresion.md §6.2); con la plataforma, FortressPersistence.step:
-##                  el registro de la que ha cambiado (docs/plataforma.md §8); /atascado; cuerpos que se
-##                  quedan tras una baja en combate
-## PNJ              NpcSpawnerSystem.step(): altas y retiradas de PNJ según los generadores y las
-##                  fortalezas, cadáveres
-## altas            los READY pendientes: el jugador aparece con el estado «tras s» y el equipo de su
-##                  inventario (progresion.md §8; sin él, el de su plantilla: la pendiente o la de por
-##                  defecto), SPAWN, LOADOUT, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE; con la
-##                  plataforma, CharacterSaver.track en cuanto existe la entidad
-## inventario       ProgressService.apply_pending: las peticiones del tick en orden de llegada, con su
-##                  INVENTORY_DELTA y las armas y cargas impuestas; flush: WALLET_UPDATE y PROGRESS_UPDATE
-## guardados        con la plataforma, CharacterSaver.step(s): los críticos marcados y los puntos de
-##                  control que tocan (docs/plataforma.md §7.2); la foto se toma aquí, tras las altas
-## social          SocialService.step(): caducan las invitaciones de grupo (PARTY_INVITATION caducada y
-##                  aviso a quien invitó) y cada grupo manda su PARTY_STATUS (2 Hz, escalonado por el id
-##                  del grupo) con el estado ya tras las altas
-## historial        StateHistory.record() de todas las entidades, ya con lo impuesto
-## snapshots        SnapshotBuilder.begin(); interés cada 6 ticks, escalonado; un SNAPSHOT a cada
-##                  cliente cada 2 ticks, escalonado por la paridad de su net_id; el SCOREBOARD de la
-##                  zona cada 2 s
-## flush            vaciar lo enviado
-## métricas         ServerMetrics y, cada 10 s, una línea en el registro
+## poll             receive: authentication, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
+##                  RESPAWN_REQUEST, DEBUG_COMMAND, LOADOUT_SELECT (the pending template), chat and
+##                  parties (SocialService), INVENTORY_REQUEST and INVENTORY_SYNC_REQUEST (RATE and into
+##                  the progress queue, progresion.md §4.2); and the console lines. With the platform
+##                  (docs/plataforma.md §14.3), afterwards: ZonePlatform.take_events() dispatched by kind in
+##                  arrival order (claim to the AuthProvider, heartbeat to the zone and its mutes to
+##                  moderation, fortress to FortressPersistence, ignore, report and sanction to
+##                  ModerationService; instance_closed last), AuthProvider.take_completed() (each 200: realm,
+##                  capacity and WELCOME) and the expired VERIFYING peers (7 s in real time since connecting,
+##                  REJECT UNAVAILABLE)
+## tick += 1        s is the tick being simulated
+## removals         disconnect, LEAVE or kick -> SocialService.on_peer_left (leaves its party, leadership
+##                  passes to the oldest member, its invitations are cancelled), DESPAWN (reason 1) and the id
+##                  goes into quarantine; the removal of a knocked-down player is preceded by their death (DEATH and KILL)
+## brains (step 0)  NPCs think with the state after s - 1 and push their input for s into their InputQueue
+##                  (every 6 ticks; in between they repeat their plan)
+## simulate         all entities with a body (players, fakes and NPCs) by ascending net_id,
+##                  with the input from InputQueue.take(s); _check_motion. Right before its own, each
+##                  fake thinks (its BotBrain, with its combat state after s - 1 for the H5 kit) and
+##                  pushes its input for s; the siege views, their targets and, for the siege bots
+##                  (F6b), the telegraphed strikes in progress and the allies are gathered once per tick.
+##                  Then, CONSUME: what each inventory-backed player drank is removed from their bag
+##                  (progresion.md §4.4)
+## combat           CombatDirector.process_tick(), steps 2 to 9 of docs/habilidades.md, section 4.1:
+##                  freeze (active hit, commitment and wall of each), shots and own effects
+##                  of whoever commits an attack or an ability, resolve the hits of attacks and
+##                  abilities (also against the fort gates) and the flight of
+##                  projectiles, apply (damage, block, controls, effects on the target, interrupts,
+##                  knockdowns and deaths), status effects (pulses and expirations), the knocked-down state
+##                  (bleed-out, revive and finish off), environment (fall, lethal volumes, and < -100),
+##                  respawns with their template (with inventory, with their equipment), the camp refill
+##                  (with inventory, CAMP_REFILL of the bag) and publish health; the
+##                  ENTITY_EVENT and the ENTITY_SPAWN and ENTITY_DESPAWN of projectiles go out here, and
+##                  at the end, the TELEGRAPH notices of the NPC heavy attacks starting at s; with each
+##                  death, the rewards (progresion.md §6.2): the NPC's to its contributors and the
+##                  PvP merits of the KILL (and the LEVEL_UP of whoever levels up)
+## forts            FortressController.step() (step 4b): presence in the circle, state advance of
+##                  each fortress, gate layers (they apply from s + 1), WAR notices and OBJECT_STATE,
+##                  captures and defending time on the scoreboard, and the capture reward and objective merits
+##                  (progresion.md §6.2); with the platform, FortressPersistence.step:
+##                  the record of the one that changed (docs/plataforma.md §8); /atascado (unstuck); bodies that
+##                  remain after a removal in combat
+## NPCs             NpcSpawnerSystem.step(): NPC spawns and withdrawals according to the spawners and
+##                  fortresses, corpses
+## spawns           the pending READYs: the player appears with the state "after s" and the equipment from their
+##                  inventory (progresion.md §8; without it, that of their template: the pending one or the
+##                  default), SPAWN, LOADOUT, INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE; with the
+##                  platform, CharacterSaver.track as soon as the entity exists
+## inventory        ProgressService.apply_pending: the requests of the tick in arrival order, with their
+##                  INVENTORY_DELTA and the imposed weapons and charges; flush: WALLET_UPDATE and PROGRESS_UPDATE
+## saves            with the platform, CharacterSaver.step(s): the marked criticals and the checkpoints
+##                  that are due (docs/plataforma.md §7.2); the snapshot is taken here, after the spawns
+## social          SocialService.step(): party invitations expire (expired PARTY_INVITATION and a
+##                  notice to whoever invited) and each party sends its PARTY_STATUS (2 Hz, staggered by the
+##                  party id) with the state already after the spawns
+## history          StateHistory.record() of all entities, already with what was imposed
+## snapshots        SnapshotBuilder.begin(); interest every 6 ticks, staggered; one SNAPSHOT to each
+##                  client every 2 ticks, staggered by the parity of its net_id; the zone SCOREBOARD
+##                  every 2 s
+## flush            flush what was sent
+## metrics          ServerMetrics and, every 10 s, a line in the log
 ## [/codeblock]
-## Las altas van después de simular, así que la primera simulación de un jugador nuevo es la del
-## tick [code]s + 1[/code], sin desfase de un tick. Las bajas van antes de simular.
+## Spawns go after simulating, so the first simulation of a new player is that of tick
+## [code]s + 1[/code], with no one-tick offset. Removals go before simulating.
 ## [br][br]
-## [b]Conexión[/b] (sección 3): el HELLO llega por [signal NetTransport.auth_received] y lo valida
-## [ServerAuth]; con éxito se responde WELCOME y [method NetTransport.complete_auth] (el peer pasa a
-## [constant ServerPeer.State.LOADING]) y, si no, REJECT y un corte ordenado. Nada se envía por
-## [code]send[/code] hasta que llega [signal NetTransport.peer_connected]. El jugador aparece al
-## final del tick en el que llega CLIENT_READY.
+## [b]Connection[/b] (section 3): the HELLO arrives through [signal NetTransport.auth_received] and is
+## validated by [ServerAuth]; on success WELCOME is answered and [method NetTransport.complete_auth]
+## (the peer moves to [constant ServerPeer.State.LOADING]) and, otherwise, REJECT and an orderly
+## disconnect. Nothing is sent through [code]send[/code] until [signal NetTransport.peer_connected]
+## arrives. The player appears at the end of the tick in which CLIENT_READY arrives.
 ## [br][br]
-## [b]Con la plataforma[/b] (docs/plataforma.md §5.2, [TicketAuthProvider] y [ZonePlatform]): un HELLO con
-## billete válido deja al peer en [constant ServerPeer.State.VERIFYING] (cuenta para el cupo) mientras la
-## plataforma lo reclama; con el 200, la zona mira que admite su reino (REALM) y que cabe (FULL) y le manda el
-## WELCOME con el reino y el nombre del personaje, nunca los del HELLO. Una baja en VERIFYING cancela la espera
-## (si la reclamación llega después, se libera); una en LOADING libera el arrendamiento sin guardar.
+## [b]With the platform[/b] (docs/plataforma.md §5.2, [TicketAuthProvider] and [ZonePlatform]): a HELLO
+## with a valid ticket leaves the peer in [constant ServerPeer.State.VERIFYING] (it counts toward capacity)
+## while the platform claims it; on the 200, the zone checks that it admits its realm (REALM) and that
+## there is room (FULL) and sends it the WELCOME with the realm and the character name, never those from
+## the HELLO. A removal in VERIFYING cancels the wait (if the claim arrives later, it is released); one in
+## LOADING releases the lease without saving.
 ## [br][br]
-## [b]Guardados[/b] (docs/plataforma.md §7.2, [CharacterSaver], [method get_saver]): cada cuerpo con arrendamiento
-## se guarda en su punto de control y en los eventos críticos; al irse el cuerpo (CLIENT_LEAVE, desconexión o fin
-## de la salida en combate) sale su final con [code]release_lease[/code], en el orden [code]finish[/code] →
-## [code]ScoreKeeper.forget[/code] → (progresion.md) [code]on_departure[/code]. Un guardado rechazado de forma
-## definitiva o un [code]revoked[/code] [code]lease_lost[/code] es la baja sin guardado: [code]drop[/code],
-## expulsión con el cuerpo fuera en el acto (sin salida en combate) y lo demás de la salida. Los demás
-## [code]revoked[/code] del latido expulsan con su texto y guardado final (uno con otro lease_id no expulsa a
-## nadie); su [code]maintenance[/code] avisa a los 10, 5 y 1 min, a los 30 s y a los 10 s y pide el cierre a su
-## hora. [method stop] (el cierre ordenado de los cinco disparadores) y [method close_instance] (el de §6.1) mandan
-## los finales de todos y esperan a que la plataforma los conteste antes de terminar.
+## [b]Saves[/b] (docs/plataforma.md §7.2, [CharacterSaver], [method get_saver]): each body with a lease
+## is saved at its checkpoint and on critical events; when the body leaves (CLIENT_LEAVE, disconnect or end
+## of the in-combat exit) its final save goes out with [code]release_lease[/code], in the order
+## [code]finish[/code] → [code]ScoreKeeper.forget[/code] → (progresion.md) [code]on_departure[/code]. A
+## save that is definitively rejected or a [code]revoked[/code] [code]lease_lost[/code] is a removal
+## without saving: [code]drop[/code], a kick with the body removed immediately (no in-combat exit) and
+## the rest of the exit. The other [code]revoked[/code] responses of the heartbeat kick with their text and a
+## final save (one with a different lease_id kicks nobody); its [code]maintenance[/code] warns at 10, 5 and
+## 1 min, at 30 s and at 10 s and requests the shutdown at its time. [method stop] (the orderly shutdown
+## of the five triggers) and [method close_instance] (the one from §6.1) send everyone's final saves and
+## wait for the platform to answer them before finishing.
 ## [br][br]
-## [b]Progreso[/b] (docs/progresion.md §4, §8 y §9, [ProgressService], [method get_progress]): con plataforma, el
-## registro de la reclamación se prepara antes del WELCOME (si no se puede leer, REJECT UNAVAILABLE y liberación), la
-## baja en LOADING lo descarta y el alta lo ata al cuerpo; sin ella, cada jugador con peer es un personaje efímero
-## (§9.4). El alta aplica la regla de volver al mundo, da el kit de la primera entrada (crítico) y equipa al jugador
-## con su inventario en lugar de la plantilla; LOADOUT_SELECT ya no cambia nada tras ella. La sección
-## [code]progress[/code] de los guardados es la primera de [CharacterSaver]. Los bloques de ids llegan como eventos
-## [code]id_block[/code]. El inventario va por la red (0x50–0x55) y la recarga del campamento repone la bolsa.
-## Las recompensas (§6.2): los méritos de PvP salen del KILL (solo con una víctima persistente de otro reino), la de
-## un PNJ de su DEATH (a quien hizo al menos el 10 % del daño, salvo un defensor de una fortaleza en un ciclo forzado),
-## y la de captura y los méritos de objetivo, de [FortressController]; subir de nivel manda LEVEL_UP al dueño y a los
-## de su reino que lo tienen relevante. Con plataforma y [code]--fake-players[/code] no se paga nada. Los comandos de
-## GM de la progresión (§10, [ProgressCommands]: consola, [code]/gm[/code] y DEBUG_COMMAND 40–43) cambian el personaje
-## en una sola operación GM o REVERSAL con su rastro, guardado crítico y auditoría; con plataforma, el 16 también.
+## [b]Progress[/b] (docs/progresion.md §4, §8 and §9, [ProgressService], [method get_progress]): with the
+## platform, the claim record is prepared before the WELCOME (if it cannot be read, REJECT UNAVAILABLE and
+## release), a removal in LOADING discards it and the spawn binds it to the body; without it, each player
+## with a peer is an ephemeral character (§9.4). The spawn applies the return-to-world rule, gives the
+## first-entry kit (critical) and equips the player with their inventory instead of the template;
+## LOADOUT_SELECT no longer changes anything after it. The [code]progress[/code] section of the saves is
+## the first one of [CharacterSaver]. The id blocks arrive as [code]id_block[/code] events. The inventory
+## travels over the network (0x50–0x55) and the camp refill replenishes the bag. The rewards (§6.2): PvP
+## merits come from the KILL (only with a persistent victim of another realm), an NPC's from its DEATH (to
+## whoever did at least 10 % of the damage, except a defender of a fortress in a forced cycle), and the
+## capture reward and objective merits, from [FortressController]; leveling up sends LEVEL_UP to the owner
+## and to those of their realm who have it relevant. With the platform and [code]--fake-players[/code]
+## nothing is paid out. The progression GM commands (§10, [ProgressCommands]: console, [code]/gm[/code] and
+## DEBUG_COMMAND 40–43) change the character in a single GM or REVERSAL operation with its trail, critical
+## save and audit; with the platform, 16 too.
 ## [br][br]
-## [b]Moderación[/b] (docs/plataforma.md §9, [ModerationService], [method get_moderation]): el canal GM del chat lleva
-## [code]/gm[/code] (por el [CommandRegistry], con el rol de la reclamación), [code]/ignorar[/code],
-## [code]/designorar[/code] y [code]/reportar[/code]; con la plataforma, DEBUG_COMMAND exige además el rol mínimo de
-## cada comando. Un GM invisible ([method set_gm_invisible]) no entra en el interés de nadie, no hace ni recibe daño, no
-## es blanco de PNJ ni de bots y no cuenta en el círculo ni en el marcador. Los comandos que mueven, curan o muestran a
-## un personaje lo marcan con [member NetEntity.gm_forced] (con plataforma). El chat es por personaje
-## ([method SocialService.on_peer_joined]); los silencios, los ignorados y el anillo de reportes los aplica [ChatRouter];
-## la auditoría y los mensajes van a los lotes de la plataforma; los avisos de la moderación salen al entrar.
+## [b]Moderation[/b] (docs/plataforma.md §9, [ModerationService], [method get_moderation]): the chat GM
+## channel carries [code]/gm[/code] (through the [CommandRegistry], with the claim's role),
+## [code]/ignorar[/code] (ignore), [code]/designorar[/code] (unignore) and [code]/reportar[/code]
+## (report); with the platform, DEBUG_COMMAND additionally requires the minimum role of each command. An
+## invisible GM ([method set_gm_invisible]) does not enter anyone's interest, neither deals nor receives
+## damage, is not a target of NPCs or bots and does not count in the circle or on the scoreboard. The
+## commands that move, heal or show a character mark it with [member NetEntity.gm_forced] (with the
+## platform). Chat is per character ([method SocialService.on_peer_joined]); mutes, ignored players and
+## the report ring are applied by [ChatRouter]; the audit and messages go to the platform batches;
+## moderation notices go out on entry.
 ## [br][br]
-## [b]Seguridad[/b] (sección 12): limitadores por peer, avisos con expulsión a los 50 en 600 ticks
-## (NOTICE de expulsión y corte), tope de conexiones por IP, tipos de mensaje inesperados según el
-## estado de la sesión y comandos de depuración solo con [code]--debug-commands[/code].
+## [b]Security[/b] (section 12): per-peer limiters, warnings with a kick at 50 in 600 ticks (kick NOTICE
+## and disconnect), a cap on connections per IP, unexpected message types according to the session state
+## and debug commands only with [code]--debug-commands[/code].
 ## [br][br]
-## [b]Jugadores falsos[/b] ([method add_fake_player]): jugadores sin red cuyas entradas salen de un
-## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga. Con un
-## [FillerKeeper] ([method set_filler_keeper], [code]--max-realm-diff[/code]) los de relleno siguen las altas y
-## bajas de personas y no ocupan sus plazas: un HELLO que llega con el servidor lleno solo por ellos entra, uno le aparta
-## la suya y se va cuando esa persona entra en el mundo (GUE-43; docs/fuerte.md, sección 7). Los de combate y
-## asedio ven a sus enemigos (y los de asedio, a los PNJ que defienden el fuerte) con su velocidad y su derribo
-## ([BotTarget]) y, desde H5, pelean con el kit de la fase 4 (docs/habilidades.md, sección 7.1): leen su estado de
-## combate y su vida del servidor y los de combate levantan a los aliados derribados (los de asedio siguen su plan).
-## Los de asedio, además, evitan los golpes avisados de los PNJ y cuentan a los suyos en la reunión (F6b).
+## [b]Fake players[/b] ([method add_fake_player]): network-less players whose inputs come from a
+## [BotBrain] and go straight into their [InputQueue]; they serve for tests and load. With a
+## [FillerKeeper] ([method set_filler_keeper], [code]--max-realm-diff[/code]) the filler bots follow the
+## joins and leaves of people and do not take their slots: a HELLO that arrives with the server full only
+## because of them gets in, one displaces one of theirs and it leaves when that person enters the world
+## (GUE-43; docs/fuerte.md, section 7). Combat and siege bots see their enemies (and the siege ones, the
+## NPCs defending the fort) with their velocity and knockdown ([BotTarget]) and, since H5, fight with the
+## phase 4 kit (docs/habilidades.md, section 7.1): they read their combat state and health from the
+## server and the combat ones revive knocked-down allies (the siege ones follow their plan). The siege
+## ones also avoid the telegraphed strikes of NPCs and count their own in the rally (F6b).
 ## [br][br]
-## [b]Combate[/b] (docs/combate.md): un [CombatDirector] lleva la vida, los golpes con rebobinado, las
-## muertes y las reapariciones; los PNJ ([method add_npc], el maniquí de entrenamiento) son cuerpos
-## simulados en el mismo bucle que los jugadores; los comandos de depuración y la consola pasan por el
-## [CommandRegistry] y [code]--combat-log[/code] deja una línea por golpe resuelto. Un [NpcSpawnerSystem]
-## ([method get_npc_system]) crea y retira los PNJ de los generadores de la zona (Huecos, Capitán del Vado,
-## guarnición del dueño y Guardianes de la Puerta) con el cerebro [HfsmBrain]; [code]--no-npcs[/code] lo apaga.
+## [b]Combat[/b] (docs/combate.md): a [CombatDirector] carries health, hits with rewind, deaths and
+## respawns; NPCs ([method add_npc], the training dummy) are bodies simulated in the same loop as
+## players; the debug commands and the console go through the [CommandRegistry] and
+## [code]--combat-log[/code] leaves one line per resolved hit. An [NpcSpawnerSystem]
+## ([method get_npc_system]) creates and withdraws the NPCs of the zone spawners (the Hollow, the Ford
+## Captain, the owner's garrison and the Gate Guardians) with the [HfsmBrain] brain; [code]--no-npcs[/code]
+## turns it off.
 ## [br][br]
-## [b]Fortalezas[/b] (docs/fuerte.md): un [FortressController] lleva el estado de cada fortaleza de la zona,
-## su puerta (blanco de los golpes), los avisos de guerra y el OBJECT_STATE; [method get_fortresses] lo
-## expone a los PNJ. Con la plataforma (docs/plataforma.md §8, GUE-19), [FortressPersistence] aplica en
-## [method start], antes de abrir el puerto, los registros que cargó [ZonePlatform], los escribe al cambiar y manda
-## los eventos de captura y reinicio al historial; el [ScoreKeeper] registra la sección [code]pvp[/code] de los
-## guardados (detrás de [code]progress[/code]) con los totales de la reclamación más los de la sesión. La
-## reaparición quita [member NetEntity.gm_forced]. [code]--battle-log[/code] deja los eventos de guerra y las muertes
-## en JSON Lines.
-## Quien sale o se desconecta en combate deja el cuerpo [constant LINGER_TICKS] ticks en el mundo
-## (GUE-41), el comando /atascado ([UnstuckTracker]) teletransporta a quien lo pide y el marcador
-## ([ScoreKeeper]) se manda a toda la zona cada [constant SCOREBOARD_INTERVAL_TICKS] ticks.
+## [b]Fortresses[/b] (docs/fuerte.md): a [FortressController] carries the state of each fortress of the
+## zone, its gate (target of hits), the war notices and the OBJECT_STATE; [method get_fortresses] exposes
+## it to the NPCs. With the platform (docs/plataforma.md §8, GUE-19), [FortressPersistence] applies in
+## [method start], before opening the port, the records that [ZonePlatform] loaded, writes them on change
+## and sends the capture and reset events to the history; the [ScoreKeeper] registers the [code]pvp[/code]
+## section of the saves (behind [code]progress[/code]) with the claim totals plus those of the session.
+## Respawning clears [member NetEntity.gm_forced]. [code]--battle-log[/code] leaves the war events and
+## deaths in JSON Lines.
+## Whoever leaves or disconnects in combat leaves the body in the world for [constant LINGER_TICKS] ticks
+## (GUE-41), the /atascado command ([UnstuckTracker]) teleports whoever requests it and the scoreboard
+## ([ScoreKeeper]) is sent to the whole zone every [constant SCOREBOARD_INTERVAL_TICKS] ticks.
 
-## Se emite al terminar cada tick, ya enviado todo lo del tick.
+## Emitted at the end of each tick, once everything for the tick has been sent.
 signal tick_finished(tick: int)
-## Un jugador (de red) ha entrado en el mundo.
+## A (network) player has entered the world.
 signal player_joined(peer_id: int, net_id: int)
-## Un jugador (de red) ha salido del mundo.
+## A (network) player has left the world.
 signal player_left(peer_id: int, net_id: int)
-## La cuenta atrás de un cierre pedido por la consola ([code]shutdown <s>[/code]) ha llegado a 0:
-## quien lleva el proceso ([ServerMain]) debe cerrar el servidor.
+## The countdown of a shutdown requested through the console ([code]shutdown <s>[/code]) has reached 0:
+## whoever runs the process ([ServerMain]) must shut the server down.
 signal shutdown_requested(reason: String)
-## La plataforma ha cerrado esta instancia ([code]instance_lost[/code], [code]instance_replaced[/code] o
-## [code]instance_stopped[/code], docs/plataforma.md §6.1): lo atiende [ServerMain].
+## The platform has closed this instance ([code]instance_lost[/code], [code]instance_replaced[/code] or
+## [code]instance_stopped[/code], docs/plataforma.md §6.1): [ServerMain] handles it.
 signal instance_closed(code: String)
 
-## Escena del personaje. En el servidor se le libera el nodo [code]Visual[/code].
+## Character scene. On the server its [code]Visual[/code] node is freed.
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
-## Distancia máxima que puede recorrer un personaje en un tick (la velocidad terminal da 0,83 m).
+## Maximum distance a character can travel in one tick (terminal velocity gives 0.83 m).
 const MAX_STEP_DISTANCE: float = 1.5
-## Por debajo de esta altura el personaje muere (cae fuera del mundo).
+## Below this height the character dies (falls out of the world).
 const FALL_LIMIT_Y: float = CombatDirector.VOID_LIMIT_Y
-## Cada cuántos ticks se recalcula el interés de cada peer (escalonado por net_id).
+## How many ticks between recomputations of each peer's interest (staggered by net_id).
 const INTEREST_INTERVAL_TICKS: int = 6
-## Ticks que un peer puede estar cargando la zona sin enviar CLIENT_READY (60 s).
+## Ticks a peer may spend loading the zone without sending CLIENT_READY (60 s).
 const LOADING_TIMEOUT_TICKS: int = 3600
-## Cada cuántos ticks se vuelca a disco el registro de estados (1 s): si matan al servidor, lo
-## anterior no se pierde.
+## How many ticks between flushes of the state log to disk (1 s): if the server is killed, what came
+## before is not lost.
 const STATE_LOG_FLUSH_TICKS: int = 60
-## Cada cuántos ticks se escribe la línea de métricas en el registro (10 s).
+## How many ticks between metrics lines written to the log (10 s).
 const METRICS_LOG_TICKS: int = 600
-## Ticks durante los que no puede volver a entrar quien ha sido expulsado (30 s): su IP o, desde
-## loopback, su nombre reciben un REJECT nada más conectar.
+## Ticks during which a kicked player cannot rejoin (30 s): their IP or, from loopback, their name
+## receive a REJECT right on connecting.
 const KICK_COOLDOWN_TICKS: int = 1800
-## Margen (ticks) que se suma al RTT de ENet y al retardo del simulador al acotar el RTT que declara
-## el cliente con sus acks: los snapshots salen cada 2 ticks y hay que procesarlos.
+## Margin (ticks) added to the ENet RTT and to the simulator delay when bounding the RTT the client
+## declares with its acks: snapshots go out every 2 ticks and have to be processed.
 const RTT_SLACK_TICKS: int = 3
-## Motivo del aviso por cada paquete que el transporte descarta por no ser del protocolo.
+## Reason of the warning for each packet that the transport discards for not being part of the protocol.
 const DISCARDED_REASON: String = "paquete ajeno al protocolo"
-## Ticks que un peer puede estar conectado sin enviar el HELLO (1,5 s). Mucho menos que los 10 s de
-## la autenticación de [SceneMultiplayer]: una conexión ociosa ocupa una de las plazas de ENet.
+## Ticks a peer may stay connected without sending the HELLO (1.5 s). Much less than the 10 s of
+## [SceneMultiplayer] authentication: an idle connection takes up one of the ENet slots.
 const HELLO_TIMEOUT_TICKS: int = 90
-## Motivo con el que el informe cuenta (en [code]rejects[/code]) las conexiones cortadas por no
-## mandar el HELLO a tiempo.
+## Reason with which the report counts (in [code]rejects[/code]) the connections cut for not sending
+## the HELLO in time.
 const HELLO_TIMEOUT_REASON: String = "sin HELLO a tiempo"
-## Cada cuántos ticks se comprueba el plazo del HELLO.
+## How many ticks between checks of the HELLO deadline.
 const HELLO_CHECK_TICKS: int = 10
-## Plazo de un peer en VERIFYING desde que conectó (ms, en tiempo real): pasado, REJECT UNAVAILABLE. Menos que el
-## [constant NetTransport.AUTH_TIMEOUT_SECONDS] de 10 s, así que el REJECT siempre llega (docs/plataforma.md §5.2).
+## Deadline of a peer in VERIFYING since it connected (ms, real time): once past, REJECT UNAVAILABLE.
+## Less than the 10 s [constant NetTransport.AUTH_TIMEOUT_SECONDS], so the REJECT always arrives
+## (docs/plataforma.md §5.2).
 const VERIFY_TIMEOUT_MS: int = 7000
-## Motivo con el que se registra el plazo de VERIFYING vencido.
+## Reason with which the expired VERIFYING deadline is logged.
 const VERIFY_TIMEOUT_REASON: String = "la plataforma no ha contestado a tiempo"
-## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
+## Ticks to wait, after [method stop], for the peers to leave before closing the transport.
 const STOP_DRAIN_TICKS: int = 30
-## Ticks que se espera como mucho, tras [method stop] o [method close_instance], a que la plataforma conteste los
-## guardados finales y no quede nada en cola ni en vuelo (10 s, docs/plataforma.md §7.2 y §6.1).
+## Ticks to wait at most, after [method stop] or [method close_instance], for the platform to answer
+## the final saves and for nothing to remain queued or in flight (10 s, docs/plataforma.md §7.2 and §6.1).
 const SAVE_DRAIN_TICKS: int = 600
-## NOTICE de expulsión del cierre de §6.1, tras los guardados finales.
+## Kick NOTICE of the §6.1 shutdown, after the final saves.
 const INSTANCE_CLOSED_TEXT: String = "El servidor de la zona se ha reiniciado: vuelve a entrar"
-## NOTICE de la baja sin guardado (§7.3): un guardado rechazado y un lease_lost.
+## NOTICE of the removal without saving (§7.3): a rejected save and a lease_lost.
 const SAVE_REJECTED_TEXT: String = "No se ha podido guardar tu personaje; vuelve a entrar"
 const LEASE_LOST_TEXT: String = "Tu personaje ha entrado en otro servidor"
-## Segundos antes del mantenimiento de la plataforma en los que se avisa (docs/plataforma.md §7.2 y §12).
+## Seconds before the platform maintenance at which a warning is given (docs/plataforma.md §7.2 and §12).
 const MAINTENANCE_NOTICE_SECONDS: Array[int] = [600, 300, 60, 30, 10]
-## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
+## Tick sections that appear in the metrics line (the same ones the loop measures).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"platform", &"npc_brains", &"sim", &"combat", &"combat_resolve",
 		&"combat_projectiles", &"combat_events", &"war", &"npc", &"social", &"history", &"snapshot", &"flush"]
-## Secciones de [ServerMetrics] de los PNJ: los cerebros (paso 0) y el sistema de generadores.
+## [ServerMetrics] sections for NPCs: the brains (step 0) and the spawner system.
 const SECTION_NPC_BRAINS: StringName = &"npc_brains"
-## Sección de las métricas con el reparto de los eventos de la plataforma y los finales de las reclamaciones (dentro
-## de «net»; docs/plataforma.md §16).
+## Metrics section with the dispatch of platform events and the finals of the claims (inside
+## "net"; docs/plataforma.md §16).
 const SECTION_PLATFORM: StringName = &"platform"
 const SECTION_NPC: StringName = &"npc"
-## Sección de [ServerMetrics] del paso de las fortalezas (4b del tick).
+## [ServerMetrics] section for the fortress step (4b of the tick).
 const SECTION_WAR: StringName = &"war"
-## Sección de [ServerMetrics] del paso social (caducidad de invitaciones y PARTY_STATUS). El chat y los
-## mensajes de grupo que llegan se atienden en el poll y cuentan en la sección «net».
+## [ServerMetrics] section for the social step (invitation expiry and PARTY_STATUS). Incoming chat and
+## party messages are handled in the poll and count in the "net" section.
 const SECTION_SOCIAL: StringName = &"social"
-## Cada cuántos ticks se manda el SCOREBOARD a toda la zona (2 s).
+## How many ticks between SCOREBOARD sends to the whole zone (2 s).
 const SCOREBOARD_INTERVAL_TICKS: int = 120
-## Ticks que el cuerpo de quien sale o se desconecta «en combate» sigue en el mundo, quieto y atacable
-## (15 s, GUE-41).
+## Ticks that the body of whoever leaves or disconnects "in combat" stays in the world, still and
+## attackable (15 s, GUE-41).
 const LINGER_TICKS: int = 900
-## Usos de /atascado que conserva el informe (los más recientes).
+## Uses of /atascado (unstuck) kept by the report (the most recent ones).
 const MAX_LOGGED_UNSTUCK: int = 200
-## Sección de [ServerMetrics] del envío de los ENTITY_EVENT (dentro de la de combate).
+## [ServerMetrics] section for sending the ENTITY_EVENT messages (inside the combat one).
 const SECTION_COMBAT_EVENTS: StringName = &"combat_events"
-## Fichas de jugador y expulsiones que el informe conserva (las más recientes); lo anterior se resume
-## en totales. Sin tope, un cliente que entra y sale en bucle haría crecer la memoria sin límite.
+## Player records and kicks that the report keeps (the most recent ones); anything older is summarized
+## in totals. Without a cap, a client that joins and leaves in a loop would make memory grow without limit.
 const MAX_LOGGED_PLAYERS: int = 1000
 const MAX_LOGGED_KICKS: int = 200
-## Avisos de error de física que se escriben en el registro (el resto solo se cuenta).
+## Physics error warnings written to the log (the rest are only counted).
 const MAX_LOGGED_PHYSICS_ERRORS: int = 10
-## Coordenada máxima (en valor absoluto) que admite un teletransporte de depuración.
+## Maximum coordinate (in absolute value) that a debug teleport accepts.
 const MAX_TELEPORT_COORDINATE: float = 5000.0
-## Texto del NOTICE de cierre por defecto.
+## Text of the default shutdown NOTICE.
 const DEFAULT_SHUTDOWN_TEXT: String = "El servidor se está cerrando"
-## Maniquíes de entrenamiento como mucho (los de las zonas y los del comando spawn_dummy).
+## Training dummies at most (those of the zones and those of the spawn_dummy command).
 const MAX_DUMMIES: int = 16
-## Distancia (m) delante del jugador a la que aparece un maniquí del comando spawn_dummy.
+## Distance (m) in front of the player at which a dummy from the spawn_dummy command appears.
 const DUMMY_SPAWN_DISTANCE: float = 3.0
-## Nombre del maniquí de entrenamiento.
+## Name of the training dummy.
 const DUMMY_NAME: String = "Maniquí"
-## Nombre de los jugadores falsos ([method add_fake_player]) con su número: «Bot-01». El guion y las cifras lo dejan
-## fuera de [NameRules] a propósito: el cliente no ofrece acciones sociales a un nombre que no las cumple
-## ([code]SocialTarget.is_social_target[/code]), porque un falso no tiene conexión y el servidor contestaría «no está
-## conectado» a la invitación o al susurro (docs/social.md, sección 12.6).
+## Name of the fake players ([method add_fake_player]) with their number: "Bot-01". The hyphen and the
+## digits deliberately leave it outside [NameRules]: the client does not offer social actions to a name that
+## does not satisfy them ([code]SocialTarget.is_social_target[/code]), because a fake has no connection and
+## the server would answer "not connected" to the invitation or the whisper (docs/social.md, section 12.6).
 const FAKE_NAME_FORMAT: String = "Bot-%02d"
-## Cabecera del registro de combate (--combat-log).
+## Header of the combat log (--combat-log).
 const COMBAT_LOG_HEADER: String = "tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño"
-## Segundos restantes en los que una cuenta atrás de cierre avisa a los jugadores.
+## Remaining seconds at which a shutdown countdown warns the players.
 const SHUTDOWN_NOTICE_SECONDS: Array[int] = [60, 30, 10, 5, 4, 3, 2, 1]
-## Trazo (m) del rayo con el que se busca el suelo bajo un punto de maniquí.
+## Length (m) of the ray used to find the ground under a dummy point.
 const _GROUND_PROBE_UP: float = 4.0
 const _GROUND_PROBE_DOWN: float = 12.0
-## Trazo de la sonda que decide si un punto de aparición está en el suelo.
+## Length of the probe that decides whether a spawn point is on the ground.
 const _PROBE_UP: float = 0.1
 const _PROBE_DOWN: float = 0.3
-## Ticks de cada hueco de la ventana de la medida del RTT, y huecos que la forman.
+## Ticks of each bucket of the RTT measurement window, and the buckets that make it up.
 const _RTT_BUCKET_TICKS: int = 30
 const _RTT_BUCKETS: int = 4
 const _INT_MAX: int = 0x7FFFFFFF
 
 enum _RunState { IDLE, RUNNING, STOPPING, STOPPED }
 
-## Política de interés: qué entidades ve cada jugador. La base lo considera todo relevante.
+## Interest policy: which entities each player sees. The base considers everything relevant.
 var interest_policy: InterestPolicy = InterestPolicy.new():
 	set(value):
 		interest_policy = value if value != null else InterestPolicy.new()
 		_snapshot_builder = SnapshotBuilder.new(interest_policy)
-## Escribe en el registro las altas, las bajas, las expulsiones y las métricas.
+## Writes joins, leaves, kicks and metrics to the log.
 var log_enabled: bool = true
-## Ticks que un peer puede estar cargando la zona sin enviar CLIENT_READY antes de que se le
-## expulse ([constant LOADING_TIMEOUT_TICKS] por defecto; las pruebas lo acortan).
+## Ticks a peer may spend loading the zone without sending CLIENT_READY before being kicked
+## ([constant LOADING_TIMEOUT_TICKS] by default; tests shorten it).
 var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
-## Ticks que un peer puede estar conectado sin enviar el HELLO antes de que se le corte
-## ([constant HELLO_TIMEOUT_TICKS] por defecto; las pruebas lo cambian).
+## Ticks a peer may stay connected without sending the HELLO before being disconnected
+## ([constant HELLO_TIMEOUT_TICKS] by default; tests change it).
 var hello_timeout_ticks: int = HELLO_TIMEOUT_TICKS
-## Plazo de VERIFYING en ms ([constant VERIFY_TIMEOUT_MS] por defecto; las pruebas lo cambian).
+## VERIFYING deadline in ms ([constant VERIFY_TIMEOUT_MS] by default; tests change it).
 var verify_timeout_ms: int = VERIFY_TIMEOUT_MS
-## Ticks de enfriamiento tras una expulsión ([constant KICK_COOLDOWN_TICKS] por defecto; las pruebas
-## lo cambian).
+## Cooldown ticks after a kick ([constant KICK_COOLDOWN_TICKS] by default; tests change it).
 var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS
-## Solo pruebas: si es válido, se le pasa [code](peer_id: int, address: String) -> String[/code] y
-## devuelve la dirección con la que se trata al peer. Sirve para fingir que unos clientes de
-## loopback vienen de una IP externa y así probar el tope de conexiones por IP, del que el loopback
-## está exento.
+## Tests only: if valid, it is called with [code](peer_id: int, address: String) -> String[/code] and
+## returns the address with which the peer is treated. It is used to pretend that some loopback clients
+## come from an external IP and thus test the per-IP connection cap, from which loopback is exempt.
 var remote_address_override: Callable = Callable()
-## Ticks que el cuerpo de quien sale o se desconecta en combate sigue en el mundo
-## ([constant LINGER_TICKS] por defecto; las pruebas lo acortan).
+## Ticks that the body of whoever leaves or disconnects in combat stays in the world
+## ([constant LINGER_TICKS] by default; tests shorten it).
 var linger_ticks: int = LINGER_TICKS
-## Fichas de jugador y expulsiones que conserva el informe ([constant MAX_LOGGED_PLAYERS] y
-## [constant MAX_LOGGED_KICKS] por defecto; las pruebas los acortan).
+## Player records and kicks that the report keeps ([constant MAX_LOGGED_PLAYERS] and
+## [constant MAX_LOGGED_KICKS] by default; tests shorten them).
 var max_logged_players: int = MAX_LOGGED_PLAYERS
 var max_logged_kicks: int = MAX_LOGGED_KICKS
-## Tope de la espera de los guardados al cerrar ([constant SAVE_DRAIN_TICKS] por defecto; las pruebas lo cambian).
+## Cap on the wait for saves on shutdown ([constant SAVE_DRAIN_TICKS] by default; tests change it).
 var save_drain_ticks: int = SAVE_DRAIN_TICKS
 
 var _run_state: _RunState = _RunState.IDLE
@@ -312,27 +321,27 @@ var _world: Node3D
 var _transport: NetTransport
 var _auth: ServerAuth
 var _auth_provider: AuthProvider = null
-## La plataforma (null sin [code]--platform[/code]: personajes efímeros, docs/progresion.md §9.4).
+## The platform (null without [code]--platform[/code]: ephemeral characters, docs/progresion.md §9.4).
 var _platform: ZonePlatform = null
-## Los guardados de los cuerpos con arrendamiento (solo con la plataforma).
+## The saves of the bodies with a lease (only with the platform).
 var _saver: CharacterSaver = null
-## El progreso de los personajes (docs/progresion.md §9); su sección es la primera de [member _saver].
+## Character progress (docs/progresion.md §9); its section is the first one of [member _saver].
 var _progress: ProgressService = null
 var _sim_hash: int = 0
 var _tick: int = 0
 var _drain_ticks: int = 0
-# Ticks de la espera a que los peers se vayan (desde el NOTICE de cierre).
+# Ticks of the wait for peers to leave (since the shutdown NOTICE).
 var _peer_drain_ticks: int = 0
-# Cierre de §6.1: el NOTICE de expulsión sale cuando los guardados finales ya tienen respuesta.
+# §6.1 shutdown: the kick NOTICE goes out when the final saves already have an answer.
 var _kick_after_saves: bool = false
-# Motivo del guardado final (CharacterSaver.Reason) del cuerpo que se queda tras una salida en combate.
+# Reason for the final save (CharacterSaver.Reason) of the body that remains after an in-combat exit.
 var _lingering_save_reasons: Dictionary[int, int] = {}
-# Mantenimiento anunciado por el latido: su hora Unix (0 = ninguno), su texto y los avisos ya dados (segundos de
-# MAINTENANCE_NOTICE_SECONDS).
+# Maintenance announced by the heartbeat: its Unix time (0 = none), its text and the warnings already
+# given (seconds of MAINTENANCE_NOTICE_SECONDS).
 var _maintenance_at_unix: int = 0
 var _maintenance_message: String = ""
 var _maintenance_announced: Array[int] = []
-# El último mantenimiento cuya hora ya llegó: el latido puede seguir anunciándolo hasta que la zona se para.
+# The last maintenance whose time has already arrived: the heartbeat may keep announcing it until the zone stops.
 var _maintenance_fired_at_unix: int = 0
 var _registry: NetEntityRegistry = NetEntityRegistry.new()
 var _history: StateHistory = StateHistory.new()
@@ -340,36 +349,36 @@ var _metrics: ServerMetrics = ServerMetrics.new()
 var _snapshot_builder: SnapshotBuilder
 var _spawn_picker: SpawnPicker
 var _players_root: Node3D
-# peer_id -> peer (en cualquier estado).
+# peer_id -> peer (in any state).
 var _peers: Dictionary[int, ServerPeer] = {}
-# Peers en el mundo, para repartir los snapshots.
+# Peers in the world, to distribute the snapshots.
 var _world_peers: Array[ServerPeer] = []
-# net_id -> cola de entradas (de los jugadores de red y de los falsos).
+# net_id -> input queue (of network players and fakes).
 var _queues: Dictionary[int, InputQueue] = {}
-# net_id -> cerebro de cada jugador falso.
+# net_id -> brain of each fake player.
 var _fakes: Dictionary[int, BotBrain] = {}
-# Los falsos de relleno de --max-realm-diff (null sin equilibrio; ver set_filler_keeper).
+# The filler fakes of --max-realm-diff (null without balancing; see set_filler_keeper).
 var _filler_keeper: FillerKeeper = null
-# net_id -> cerebro de cada PNJ (maniquíes).
+# net_id -> brain of each NPC (dummies).
 var _npcs: Dictionary[int, BotBrain] = {}
 var _combat: CombatDirector
 var _fortresses: FortressController = null
 var _npc_system: NpcSpawnerSystem = null
 var _scores: ScoreKeeper = ScoreKeeper.new()
-# Los registros de las fortalezas y su historial en la plataforma (docs/plataforma.md §8); null sin ella.
+# The fortress records and their history on the platform (docs/plataforma.md §8); null without it.
 var _fortress_persistence: FortressPersistence = null
 var _battle_log: BattleLog = null
 var _unstuck: UnstuckTracker = UnstuckTracker.new()
-# Chat y grupos (SOC-04, SOC-06); se crea en start().
+# Chat and parties (SOC-04, SOC-06); created in start().
 var _social: SocialService = null
-## La moderación (docs/plataforma.md §9, P7b): /gm, ignorados, reportes, silencios, auditoría y lote de chat.
+## Moderation (docs/plataforma.md §9, P7b): /gm, ignored players, reports, mutes, audit and chat batch.
 var _moderation: ModerationService = null
 var _unstuck_log: Array[Dictionary] = []
 var _unstuck_uses: int = 0
-# net_id -> tick en el que se retira el cuerpo de quien salió en combate (GUE-41).
+# net_id -> tick at which the body of whoever left in combat is removed (GUE-41).
 var _lingering: Dictionary[int, int] = {}
 var _lingering_total: int = 0
-# Clave del nombre -> net_id de quien está canalizando /atascado.
+# Name key -> net_id of whoever is channeling /atascado (unstuck).
 var _unstuck_players: Dictionary[String, int] = {}
 var _object_states_sent: int = 0
 var _telegraphs_sent: int = 0
@@ -378,51 +387,51 @@ var _safe_areas: SafeAreas
 var _commands: CommandRegistry = CommandRegistry.new()
 var _console: ServerConsole = null
 var _combat_log: FileAccess = null
-# Tick en el que se cumple la cuenta atrás de un cierre pedido por la consola (-1 = ninguna).
+# Tick at which the countdown of a shutdown requested through the console expires (-1 = none).
 var _shutdown_tick: int = -1
 var _shutdown_announced: Dictionary[int, bool] = {}
 var _events_sent: int = 0
 var _event_bytes_sent: int = 0
-# Proyectiles (docs/habilidades.md, sección 4.4): los peers que recibieron el ENTITY_SPAWN de cada uno (los
-# mismos reciben su ENTITY_DESPAWN) y lo enviado.
+# Projectiles (docs/habilidades.md, section 4.4): the peers that received the ENTITY_SPAWN of each one
+# (the same ones receive its ENTITY_DESPAWN) and what was sent.
 var _projectile_viewers: Dictionary[int, PackedInt32Array] = {}
 var _projectile_messages_sent: int = 0
 var _projectile_bytes_sent: int = 0
 var _dummies_created: int = 0
-# Caché de objetivos de los bots de combate: tick de la última vez, posiciones e ids por reino, y qué
-# reinos son hostiles entre sí.
+# Cache of targets for the combat bots: tick of the last time, positions and ids per realm, and which
+# realms are hostile to each other.
 var _targets_tick: int = -1
 var _targets_by_realm: Dictionary = {}
 var _targets_ids_by_realm: Dictionary = {}
-# Por reino, 1 si el objetivo del mismo índice es un PNJ (lo que buscan primero los falsos SIEGE).
+# Per realm, 1 if the target at the same index is an NPC (what the SIEGE fakes look for first).
 var _targets_npc_by_realm: Dictionary = {}
-# Kit de los falsos (H5): la velocidad de cada objetivo y si está derribado, en el mismo orden.
+# Fakes' kit (H5): the velocity of each target and whether it is knocked down, in the same order.
 var _targets_velocity_by_realm: Dictionary = {}
 var _targets_downed_by_realm: Dictionary = {}
 var _hostile_cache: Dictionary = {}
-# Asedio de los falsos con cerebro SIEGE (GUE-15): la vista de cada fortaleza, que comparten todos y se pone al
-# día en cada tick, y las rutas de aproximación de la zona (data/routes/<zona>.tres; null si no hay).
+# Siege of the fakes with the SIEGE brain (GUE-15): the view of each fortress, shared by all and updated
+# every tick, and the approach routes of the zone (data/routes/<zone>.tres; null if there are none).
 var _siege_views: Dictionary[StringName, SiegeView] = {}
 var _siege_routes: ApproachRoutes = null
 var _siege_routes_loaded: bool = false
-# Golpes avisados (TELEGRAPH) que los falsos SIEGE evitan (F6b): tick de la lista, los golpes en curso de los PNJ y el
-# reino de cada PNJ que golpea.
+# Telegraphed strikes (TELEGRAPH) that the SIEGE fakes avoid (F6b): tick of the list, the NPCs' strikes in
+# progress and the realm of each striking NPC.
 var _threats_tick: int = -1
 var _threats: Array[BotBrain.Threat] = []
 var _threat_realms: PackedInt32Array = PackedInt32Array()
-# Jugadores vivos por reino (posiciones e ids) con los que los falsos SIEGE cuentan a los suyos en el punto de reunión
-# (GUE-44), y el tick de la lista.
+# Living players per realm (positions and ids) with which the SIEGE fakes count their own at the rally
+# point (GUE-44), and the tick of the list.
 var _allies_tick: int = -1
 var _allies_by_realm: Dictionary[int, PackedVector3Array] = {}
 var _ally_ids_by_realm: Dictionary[int, PackedInt32Array] = {}
-# peer_id -> medida del RTT en ticks.
+# peer_id -> RTT measurement in ticks.
 var _rtt: Dictionary[int, _RttWindow] = {}
-# Peers con CLIENT_READY recibido, en orden de llegada.
+# Peers with CLIENT_READY received, in arrival order.
 var _pending_ready: Array[int] = []
-# Peers que se van (bajas del tick siguiente).
+# Peers that are leaving (removals of the next tick).
 var _leaving: Array[int] = []
-# net_id -> ficha del jugador vivo; _player_log guarda las últimas max_logged_players, también las de
-# los que se han ido (las más viejas de los que se fueron se resumen en _archived_*).
+# net_id -> record of the living player; _player_log keeps the last max_logged_players, including those
+# who have left (the oldest of those who left are summarized in _archived_*).
 var _player_by_net: Dictionary[int, _PlayerRecord] = {}
 var _player_log: Array[_PlayerRecord] = []
 var _archived_players: int = 0
@@ -434,7 +443,7 @@ var _archived_too_early: int = 0
 var _fake_counter: int = 0
 var _peak_players: int = 0
 var _players_at_stop: int = 0
-# Estado de las fortalezas en el cierre, para el informe que se escribe después de stop().
+# State of the fortresses at shutdown, for the report written after stop().
 var _war_fortresses_at_stop: Array[Dictionary] = []
 var _joined_total: int = 0
 var _left_total: int = 0
@@ -442,7 +451,7 @@ var _strikes_total: int = 0
 var _strike_reasons: Dictionary[String, int] = {}
 var _kicks: Array[Dictionary] = []
 var _kicks_total: int = 0
-# Clave («ip:<grupo>» o «name:<nombre normalizado>») -> tick hasta el que no puede volver a entrar.
+# Key ("ip:<group>" or "name:<normalized name>") -> tick until which it cannot rejoin.
 var _kick_until: Dictionary[String, int] = {}
 var _rejects: Dictionary[String, int] = {}
 var _physics_errors: int = 0
@@ -451,20 +460,20 @@ var _respawns: int = 0
 var _synced_wire_in: int = 0
 var _synced_wire_out: int = 0
 var _log_last_usec: int = 0
-# Reloj de ticks «reales» (a la cadencia nominal), para saber cuántos ticks ha perdido el servidor
-# entre dos polls. _clock_origin_usec es el instante de start().
+# "Real" tick clock (at the nominal rate), to know how many ticks the server has lost between two polls.
+# _clock_origin_usec is the instant of start().
 var _clock_origin_usec: int = 0
 var _last_poll_real_tick: int = 0
 var _log_last_wire_out: int = 0
 var _log_last_wire_in: int = 0
 var _state_log: FileAccess = null
-# net_id -> 1 si la entrada del tick se sustituyó (solo se rellena con --state-log).
+# net_id -> 1 if the tick's input was substituted (only filled with --state-log).
 var _substituted_now: Dictionary[int, int] = {}
-# Jugadores falsos que se van en el siguiente tick (remove_fake_player), y los de relleno que se retiran sin muerte
-# aunque estén derribados (retire_filler).
+# Fake players that leave on the next tick (remove_fake_player), and filler ones that are withdrawn without
+# dying even if knocked down (retire_filler).
 var _fake_leaving: Array[int] = []
 var _fake_leaving_quietly: Dictionary[int, bool] = {}
-# Medidas de la carga (informe): µs de simulate() por llamada y de construir snapshots.
+# Load measurements (report): µs of simulate() per call and of building snapshots.
 var _simulate_calls: int = 0
 var _simulate_usec_total: int = 0
 var _simulate_usec_max: int = 0
@@ -474,7 +483,7 @@ var _snapshot_bytes_max: int = 0
 var _snapshot_build_usec: int = 0
 
 
-## Ficha de un jugador para el informe: lo que se sabe de él mientras está y al irse.
+## Player record for the report: what is known about them while present and on leaving.
 class _PlayerRecord:
 	var net_id: int = 0
 	var peer_id: int = 0
@@ -497,11 +506,11 @@ class _PlayerRecord:
 	var queue: InputQueue = null
 	var peer: ServerPeer = null
 	var entity: NetEntity = null
-	## Última posición conocida (la de ahora mientras el jugador está; la de la baja, después).
+	## Last known position (the current one while the player is present; the removal one, afterwards).
 	var last_position: Vector3 = Vector3.ZERO
 
 
-	# Copia los contadores vivos de la cola y del peer y la posición del personaje.
+	# Copies the live counters of the queue and the peer and the character position.
 	func refresh() -> void:
 		if queue != null:
 			substituted = queue.substitutions_total
@@ -517,8 +526,8 @@ class _PlayerRecord:
 			last_position = entity.get_position()
 
 
-	# El jugador se va en el tick [param tick]: copia los contadores y la posición y suelta la cola,
-	# el peer y la entidad, que si no se quedarían en memoria mientras la ficha siga en el informe.
+	# The player leaves at tick [param tick]: copies the counters and the position and releases the queue,
+	# the peer and the entity, which would otherwise stay in memory while the record remains in the report.
 	func close(tick: int) -> void:
 		refresh()
 		left_tick = tick
@@ -552,7 +561,7 @@ class _PlayerRecord:
 		}
 
 
-## Mínimo y máximo del RTT en ticks de los últimos 90-120 ticks, en cuatro huecos de 30 ticks.
+## Minimum and maximum RTT in ticks over the last 90-120 ticks, in four buckets of 30 ticks.
 class _RttWindow:
 	var _ids: PackedInt32Array = PackedInt32Array()
 	var _mins: PackedInt32Array = PackedInt32Array()
@@ -579,7 +588,7 @@ class _RttWindow:
 		_maxs[slot] = maxi(_maxs[slot], sample)
 
 
-	# Mínimo de la ventana, o -1 si no hay muestras en ella.
+	# Minimum of the window, or -1 if there are no samples in it.
 	func get_min(now_tick: int) -> int:
 		var current: int = now_tick / _RTT_BUCKET_TICKS
 		var best: int = _INT_MAX
@@ -589,7 +598,7 @@ class _RttWindow:
 		return best if best != _INT_MAX else -1
 
 
-	# Máximo de la ventana, o -1 si no hay muestras en ella.
+	# Maximum of the window, or -1 if there are no samples in it.
 	func get_max(now_tick: int) -> int:
 		var current: int = now_tick / _RTT_BUCKET_TICKS
 		var best: int = -1
@@ -605,7 +614,7 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# No hay nada que simular hasta start().
+	# There is nothing to simulate until start().
 	set_physics_process(false)
 
 
@@ -613,23 +622,24 @@ func _exit_tree() -> void:
 	_release_resources()
 
 
-# --- API pública ------------------------------------------------------------------------------
+# --- Public API -------------------------------------------------------------------------------
 
-## Pone en marcha el servidor de la zona [param world] (que ya debe estar en el árbol, igual que
-## este nodo) con [param config].
-## [br]- Calcula el [code]sim_hash[/code] sobre una instancia del personaje dentro del árbol.
-## [br]- Si [param transport] todavía no escucha, aplica [member ServerConfig.net_sim_spec] y abre
-## [member ServerConfig.port] con sitio para [member ServerConfig.max_players] más 4 conexiones (las
-## 4 de más permiten contestar «servidor lleno» con un REJECT), por DTLS si hay [member ServerConfig.dtls]
-## (docs/plataforma.md §10.2). Si ya escucha, lo usa tal cual.
-## [br]- [param transport] puede ser null: el servidor corre sin red, solo con jugadores falsos
-## ([method add_fake_player]), que es lo que usan las pruebas.
-## [br]- [param auth_provider] decide la identidad de los clientes ([DevAuthProvider] sin plataforma,
-## [TicketAuthProvider] con ella).
-## [br]- [param platform] es la plataforma ya arrancada ([signal ZonePlatform.startup_finished]); null sin
-## [code]--platform[/code]. Sus eventos se reparten en el paso «poll» de cada tick, y las fortalezas que cargó
-## ([method ZonePlatform.fortress_records]) se aplican aquí antes de abrir el puerto (docs/plataforma.md §8).
-## Devuelve el error de [method NetTransport.host] si no se puede abrir el puerto.
+## Starts the server of zone [param world] (which must already be in the tree, like this node) with
+## [param config].
+## [br]- Computes the [code]sim_hash[/code] over a character instance inside the tree.
+## [br]- If [param transport] is not listening yet, applies [member ServerConfig.net_sim_spec] and opens
+## [member ServerConfig.port] with room for [member ServerConfig.max_players] plus 4 connections (the
+## extra 4 allow answering "server full" with a REJECT), over DTLS if there is a [member ServerConfig.dtls]
+## (docs/plataforma.md §10.2). If it is already listening, it uses it as is.
+## [br]- [param transport] may be null: the server runs without a network, with fake players only
+## ([method add_fake_player]), which is what tests use.
+## [br]- [param auth_provider] decides the identity of the clients ([DevAuthProvider] without the platform,
+## [TicketAuthProvider] with it).
+## [br]- [param platform] is the already started platform ([signal ZonePlatform.startup_finished]); null
+## without [code]--platform[/code]. Its events are dispatched in the "poll" step of each tick, and the
+## fortresses it loaded ([method ZonePlatform.fortress_records]) are applied here before opening the port
+## (docs/plataforma.md §8).
+## Returns the error of [method NetTransport.host] if the port cannot be opened.
 func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		auth_provider: AuthProvider, platform: ZonePlatform = null) -> Error:
 	if _run_state != _RunState.IDLE:
@@ -646,7 +656,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		_saver = CharacterSaver.new(_platform, maxi(config.save_interval_s, 1) * Engine.physics_ticks_per_second)
 		_saver.log_sink = Callable(self, "_log")
 		_saver.save_rejected.connect(_on_save_rejected)
-	# La sección progress se registra la primera (progresion.md §9.2): antes que ninguna otra.
+	# The progress section is registered first (progresion.md §9.2): before any other.
 	_progress = ProgressService.new()
 	_progress.log_sink = Callable(self, "_log")
 	_progress.send_sink = Callable(self, "_progress_send")
@@ -654,7 +664,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_progress.notice_sink = Callable(self, "_send_notice")
 	_progress.level_up_sink = Callable(self, "_announce_level_up")
 	_progress.setup(self, _platform, _saver, _commands)
-	# La sección pvp, detrás de progress (docs/plataforma.md §7.1 y §8).
+	# The pvp section, behind progress (docs/plataforma.md §7.1 and §8).
 	if _saver != null:
 		_scores.attach(_saver)
 	_players_root = Node3D.new()
@@ -671,10 +681,10 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
 	_combat.event_emitted.connect(_on_combat_event)
 	_combat.metrics = _metrics
-	# Quien tiene inventario reaparece con su equipo y repone su bolsa en el campamento (progresion.md §4.4 y §8).
+	# Whoever has an inventory respawns with their equipment and refills their bag at the camp (progresion.md §4.4 and §8).
 	_combat.loadout_source = _progress.loadout_for
 	_combat.camp_step = _progress.camp_step
-	# Los proyectiles toman su id del espacio de las entidades (con su cuarentena).
+	# Projectiles take their id from the entity id space (with its quarantine).
 	_combat.projectiles.registry = _registry
 	_combat.projectiles.spawned.connect(_on_projectile_spawned)
 	_combat.projectiles.despawned.connect(_on_projectile_despawned)
@@ -682,7 +692,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_war_fortresses_at_stop = []
 	_setup_fortresses(world)
 	if _platform != null:
-		# El estado guardado de cada fortaleza, antes de abrir el puerto y de que los PNJ lo lean (§8 paso 4).
+		# The saved state of each fortress, before opening the port and before the NPCs read it (§8 step 4).
 		_fortress_persistence = FortressPersistence.new(_platform, _fortresses)
 		_fortress_persistence.log_sink = Callable(self, "_log")
 		_fortress_persistence.load_records(_platform.fortress_records(), _tick)
@@ -692,20 +702,20 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_register_commands()
 	_social = SocialService.new(Callable(self, "_social_peers"), Callable(self, "_social_send"),
 			Callable(self, "_add_strike"))
-	# La moderación (docs/plataforma.md §9): sus comandos de /gm, el canal GM del chat y, con la plataforma, los lotes
-	# de auditoría y de chat.
+	# Moderation (docs/plataforma.md §9): its /gm commands, the GM chat channel and, with the platform, the audit
+	# and chat batches.
 	_moderation = ModerationService.new()
 	_moderation.log_sink = Callable(self, "_log")
 	_moderation.setup(self, _platform, _commands, _social)
-	# Los comandos de GM de la progresión contestan por el chat y, sin plataforma, fechan sus operaciones con la hora
-	# del sistema (progresion.md P5d).
+	# The progression GM commands answer through chat and, without the platform, date their operations with the
+	# system time (progresion.md P5d).
 	_progress.reply_sink = Callable(self, "_progress_reply")
 	_progress.clock_unix = _moderation.now_unix
 	if _transport != null:
 		_connect_transport()
 		if not _transport.is_server():
 			_transport.set_net_sim_spec(config.net_sim_spec)
-			# Con el certificado de la zona, por DTLS (docs/plataforma.md §10.2, P9c).
+			# With the zone certificate, over DTLS (docs/plataforma.md §10.2, P9c).
 			var error: Error = _transport.host(config.port, config.max_players + 4,
 					config.dtls.server_options if config.dtls != null else null)
 			if error != OK:
@@ -727,20 +737,20 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	return OK
 
 
-## Cierra el servidor (el cierre ordenado de docs/plataforma.md §7.2, el de los cinco disparadores): avisa a
-## todos los clientes con un NOTICE de cierre (código [constant NetProtocol.NoticeCode.SHUTDOWN]) con
-## [param notice_text] (por defecto, un texto estándar), libera a los peers en LOADING y cancela a los de
-## VERIFYING, pide el corte ordenado de cada peer, manda el guardado final de cada cuerpo con arrendamiento
-## (también los que se quedan tras una salida en combate) y libera a todos los personajes. Los datos del informe
-## se conservan ([method write_report]). Termina cuando los peers se han ido (o pasados
-## [constant STOP_DRAIN_TICKS] ticks) y la plataforma ha contestado los guardados y no tiene nada en cola ni en
-## vuelo (o pasados [member save_drain_ticks]); [method is_stopped] dice cuándo.
+## Shuts the server down (the orderly shutdown of docs/plataforma.md §7.2, that of the five triggers): warns
+## all clients with a shutdown NOTICE (code [constant NetProtocol.NoticeCode.SHUTDOWN]) with
+## [param notice_text] (by default, a standard text), releases the peers in LOADING and cancels those in
+## VERIFYING, requests the orderly disconnect of each peer, sends the final save of each body with a lease
+## (also those that remain after an in-combat exit) and releases all characters. The report data is
+## kept ([method write_report]). It finishes when the peers have left (or after
+## [constant STOP_DRAIN_TICKS] ticks) and the platform has answered the saves and has nothing queued or in
+## flight (or after [member save_drain_ticks]); [method is_stopped] says when.
 func stop(notice_text: String = "") -> void:
 	if _run_state != _RunState.RUNNING:
 		return
 	_log("Cerrando el servidor de la zona '%s' (tick %d)" % [_config.zone_id, _tick])
 	_players_at_stop = get_player_count()
-	# Lo que haya cambiado de las fortalezas sale antes de vaciar el mundo (la instancia sigue viva hasta la baja).
+	# Whatever changed in the fortresses goes out before emptying the world (the instance stays live until the removal).
 	if _fortress_persistence != null:
 		_fortress_persistence.flush(_tick)
 	if _transport != null:
@@ -761,19 +771,20 @@ func stop(notice_text: String = "") -> void:
 	_begin_drain(false)
 
 
-## El cierre de docs/plataforma.md §6.1, cuando la plataforma da la instancia por perdida, sustituida o parada
-## ([param code]; lo llama [ServerMain] con [signal instance_closed]): primero el guardado final de todos y la
-## liberación de los de LOADING, sin echar a nadie (la zona deja de leer sus entradas y de dar recompensas); los
-## de VERIFYING reciben REJECT UNAVAILABLE. Cuando la plataforma ha contestado los finales y no queda nada
-## pendiente (o pasados [member save_drain_ticks]), NOTICE de expulsión «El servidor de la zona se ha reiniciado:
-## vuelve a entrar» a todos y desconexión: quien vuelve a entrar enseguida carga su final, no el anterior.
+## The shutdown of docs/plataforma.md §6.1, when the platform deems the instance lost, replaced or stopped
+## ([param code]; [ServerMain] calls it with [signal instance_closed]): first the final save of everyone and the
+## release of those in LOADING, without kicking anyone (the zone stops reading their inputs and giving rewards);
+## those in VERIFYING receive REJECT UNAVAILABLE. Once the platform has answered the finals and nothing is
+## pending (or after [member save_drain_ticks]), a kick NOTICE "El servidor de la zona se ha reiniciado:
+## vuelve a entrar" (the zone server has restarted: rejoin) to everyone and disconnect: whoever rejoins right away
+## loads their final save, not the previous one.
 func close_instance(code: String) -> void:
 	if _run_state != _RunState.RUNNING:
 		return
 	_log("La plataforma ha cerrado esta instancia (%s): guardados finales antes de echar a nadie (tick %d)"
 			% [code, _tick])
 	_players_at_stop = get_player_count()
-	# Las fortalezas ya no son de esta instancia: ni registros ni eventos.
+	# The fortresses no longer belong to this instance: no records and no events.
 	if _fortress_persistence != null:
 		_fortress_persistence.close()
 	if _transport != null:
@@ -789,56 +800,56 @@ func close_instance(code: String) -> void:
 	_begin_drain(true)
 
 
-## true cuando [method stop] o [method close_instance] han terminado: los peers se han ido y los guardados
-## tienen respuesta (o se agotó la espera) y el transporte está cerrado.
+## true when [method stop] or [method close_instance] have finished: the peers have left and the saves
+## have an answer (or the wait ran out) and the transport is closed.
 func is_stopped() -> bool:
 	return _run_state == _RunState.STOPPED
 
 
-## Los guardados de la zona (null sin plataforma): [code]ProgressService[/code] registra aquí su sección y marca
-## los críticos (docs/progresion.md §9.2).
+## The zone saves (null without the platform): [code]ProgressService[/code] registers its section here and marks
+## the criticals (docs/progresion.md §9.2).
 func get_saver() -> CharacterSaver:
 	return _saver
 
 
-## El progreso de los personajes (docs/progresion.md §9); null antes de [method start].
+## Character progress (docs/progresion.md §9); null before [method start].
 func get_progress() -> ProgressService:
 	return _progress
 
 
-## La configuración con la que se arrancó (null antes de [method start]).
+## The configuration the server was started with (null before [method start]).
 func get_config() -> ServerConfig:
 	return _config
 
 
-## La hora Unix del mantenimiento anunciado por el latido (0 = ninguno).
+## The Unix time of the maintenance announced by the heartbeat (0 = none).
 func get_maintenance_at_unix() -> int:
 	return _maintenance_at_unix
 
 
-## Tick actual: el último que se ha simulado (0 antes de empezar). El primero es el 1.
+## Current tick: the last one simulated (0 before starting). The first one is 1.
 func get_tick() -> int:
 	return _tick
 
 
-## El peer con ese id (en cualquier estado) o null.
+## The peer with that id (in any state) or null.
 func get_peer(peer_id: int) -> ServerPeer:
 	return _peers.get(peer_id)
 
 
-## Ids de todos los peers conocidos, ordenados.
+## Ids of all known peers, sorted.
 func get_peer_ids() -> PackedInt32Array:
 	var ids := PackedInt32Array(_peers.keys())
 	ids.sort()
 	return ids
 
 
-## Jugadores que cuentan para el cupo: los peers que verifican su billete con la plataforma (docs/plataforma.md
-## §5.2: varias entradas a la vez no pasan de max_players), los aceptados (cargando la zona o ya dentro) y los
-## jugadores falsos. Los que aún no han mandado el HELLO o se van (también los falsos con la baja pedida, que
-## desaparecen al empezar el siguiente tick) no cuentan. Los falsos de relleno sí cuentan aquí, pero ceden su
-## plaza a las personas (ver [method set_filler_keeper]): mientras una persona carga la zona en la plaza que le ha
-## apartado uno, cuentan los dos (uno de más), y el falso se va cuando ella entra en el mundo.
+## Players that count toward capacity: the peers verifying their ticket with the platform (docs/plataforma.md
+## §5.2: several simultaneous entries do not exceed max_players), the accepted ones (loading the zone or already
+## inside) and the fake players. Those that have not yet sent the HELLO or are leaving (also fakes with a
+## requested removal, which disappear at the start of the next tick) do not count. Filler fakes do count here, but
+## yield their slot to people (see [method set_filler_keeper]): while a person loads the zone in the slot a fake
+## set aside for them, both count (one too many), and the fake leaves when the person enters the world.
 func get_player_count() -> int:
 	var count: int = _fakes.size() - _fake_leaving.size()
 	for peer: ServerPeer in _peers.values():
@@ -848,10 +859,10 @@ func get_player_count() -> int:
 	return count
 
 
-## Personas por reino (Vardheim, Solmarch, Askarra; ver [RealmBalance]): los clientes aceptados de verdad,
-## cargando la zona o ya dentro (con [param in_world_only], solo los que ya están dentro). Los jugadores falsos y
-## los cuerpos que quedan tras una baja en combate no cuentan. [param excluded] no se cuenta (el que acaba de
-## entrar, para su WELCOME). Es el recuento del WELCOME y el del REJECT 9 IMBALANCE.
+## People per realm (Vardheim, Solmarch, Askarra; see [RealmBalance]): the truly accepted clients, loading the
+## zone or already inside (with [param in_world_only], only those already inside). Fake players and the bodies
+## that remain after an in-combat removal do not count. [param excluded] is not counted (the one who just
+## entered, for their WELCOME). It is the count of the WELCOME and of the REJECT 9 IMBALANCE.
 func get_realm_counts(in_world_only: bool = false, excluded: ServerPeer = null) -> PackedInt32Array:
 	var counts: PackedInt32Array = RealmBalance.empty_counts()
 	for peer: ServerPeer in _peers.values():
@@ -864,15 +875,14 @@ func get_realm_counts(in_world_only: bool = false, excluded: ServerPeer = null) 
 	return counts
 
 
-## Entradas del enfriamiento tras expulsiones (vigentes o aún sin purgar). Se purgan al apuntar la
-## siguiente expulsión, así que el diccionario no crece más que las expulsiones de los últimos
-## [constant KICK_COOLDOWN_TICKS] ticks.
+## Entries of the cooldown after kicks (in force or not yet purged). They are purged when the next kick is
+## recorded, so the dictionary does not grow beyond the kicks of the last [constant KICK_COOLDOWN_TICKS] ticks.
 func get_cooldown_count() -> int:
 	return _kick_until.size()
 
 
-## Nombres de los jugadores presentes en la zona: los peers aceptados (cargando o ya dentro) y los
-## jugadores falsos. [ServerAuth] rechaza con NAME un HELLO cuyo nombre repite alguno de ellos.
+## Names of the players present in the zone: the accepted peers (loading or already inside) and the fake
+## players. [ServerAuth] rejects with NAME a HELLO whose name repeats any of them.
 func get_connected_names() -> PackedStringArray:
 	var names := PackedStringArray()
 	for peer: ServerPeer in _peers.values():
@@ -882,7 +892,7 @@ func get_connected_names() -> PackedStringArray:
 		var record: _PlayerRecord = _player_by_net.get(net_id)
 		if record != null:
 			names.append(record.display_name)
-	# El nombre de quien salió en combate sigue reservado mientras su cuerpo está en el mundo (GUE-41).
+	# The name of whoever left in combat stays reserved while their body is in the world (GUE-41).
 	for net_id: int in _lingering:
 		var body: NetEntity = _registry.get_entity(net_id)
 		if body != null:
@@ -902,40 +912,40 @@ func get_metrics() -> ServerMetrics:
 	return _metrics
 
 
-## El director del combate (vida, golpes, muertes y reapariciones). null antes de [method start].
+## The combat director (health, hits, deaths and respawns). null before [method start].
 func get_combat() -> CombatDirector:
 	return _combat
 
 
-## Plazos del combate en ticks (reaparición, protección...). Las pruebas los acortan.
+## Combat deadlines in ticks (respawn, protection...). Tests shorten them.
 func get_combat_timing() -> CombatTiming:
 	return _combat.timing if _combat != null else null
 
 
-## Registro de comandos de administración (red y consola).
+## Registry of administration commands (network and console).
 func get_commands() -> CommandRegistry:
 	return _commands
 
 
-## Zonas seguras de la zona.
+## Safe areas of the zone.
 func get_safe_areas() -> SafeAreas:
 	return _safe_areas
 
 
-## Las fortalezas de la zona (estado, puerta, avisos). null antes de [method start]. Es la interfaz de
-## los generadores de PNJ: [method FortressController.get_fortress_state],
-## [method FortressController.on_captain_died] y [method FortressController.set_guards_alive].
+## The fortresses of the zone (state, gate, notices). null before [method start]. It is the interface of the
+## NPC spawners: [method FortressController.get_fortress_state],
+## [method FortressController.on_captain_died] and [method FortressController.set_guards_alive].
 func get_fortresses() -> FortressController:
 	return _fortresses
 
 
-## El sistema de generadores de PNJ (puestos, navegación, fichas). null antes de [method start] o con
+## The NPC spawner system (posts, navigation, records). null before [method start] or with
 ## [code]--no-npcs[/code].
 func get_npc_system() -> NpcSpawnerSystem:
 	return _npc_system
 
 
-## net_id de todos los PNJ con cuerpo (los de los generadores, los maniquíes y los sueltos), ordenados.
+## net_id of all NPCs with a body (those of the spawners, the dummies and the loose ones), sorted.
 func get_npc_ids() -> Array[int]:
 	var ids: Array[int] = []
 	ids.assign(_npcs.keys())
@@ -943,49 +953,49 @@ func get_npc_ids() -> Array[int]:
 	return ids
 
 
-## El cerebro del PNJ [param net_id], o null.
+## The brain of NPC [param net_id], or null.
 func get_npc_brain(net_id: int) -> BotBrain:
 	return _npcs.get(net_id)
 
 
-## El espacio de física del mundo del servidor (línea de visión de los PNJ). null antes de [method start].
+## The physics space of the server world (NPC line of sight). null before [method start].
 func get_physics_space() -> PhysicsDirectSpaceState3D:
 	return _players_root.get_world_3d().direct_space_state if _players_root != null else null
 
 
-## El marcador de la batalla (bajas, muertes, asistencias, daño a la puerta, círculo, capturas, tiempo defendiendo
-## y méritos); con la plataforma, también la sección [code]pvp[/code] de los guardados.
+## The battle scoreboard (kills, deaths, assists, gate damage, circle, captures, defending time and merits);
+## with the platform, also the [code]pvp[/code] section of the saves.
 func get_scores() -> ScoreKeeper:
 	return _scores
 
 
-## Los registros de las fortalezas en la plataforma (docs/plataforma.md §8); null sin plataforma.
+## The fortress records on the platform (docs/plataforma.md §8); null without the platform.
 func get_fortress_persistence() -> FortressPersistence:
 	return _fortress_persistence
 
 
-## El control del comando /atascado (canalizaciones y reutilizaciones).
+## The control of the /atascado (unstuck) command (channelings and reuses).
 func get_social() -> SocialService:
 	return _social
 
 
-## La moderación (docs/plataforma.md §9, P7b); null antes de [method start].
+## Moderation (docs/plataforma.md §9, P7b); null before [method start].
 func get_moderation() -> ModerationService:
 	return _moderation
 
 
-## Los peers que están en el mundo con su personaje.
+## The peers that are in the world with their character.
 func get_world_peers() -> Array[ServerPeer]:
 	return _world_peers
 
 
-## NOTICE informativo a [param peer] (solo si está en el mundo).
+## Informational NOTICE to [param peer] (only if it is in the world).
 func send_notice(peer: ServerPeer, text: String) -> void:
 	_send_notice(peer, text)
 
 
-## Expulsa a [param peer] con el NOTICE [param notice_text] y su guardado final (motivo 5, [code]KICK[/code]), con el
-## enfriamiento de siempre; [param reason] queda en el registro y en el informe (la moderación, P7b).
+## Kicks [param peer] with the NOTICE [param notice_text] and its final save (reason 5, [code]KICK[/code]), with
+## the usual cooldown; [param reason] stays in the log and in the report (moderation, P7b).
 func kick_peer(peer: ServerPeer, reason: String, notice_text: String) -> void:
 	if _transport == null:
 		peer.kicked = true
@@ -994,9 +1004,10 @@ func kick_peer(peer: ServerPeer, reason: String, notice_text: String) -> void:
 	_kick(peer, reason, true, notice_text)
 
 
-## Hace invisible (o visible) a [param entity] (docs/plataforma.md §9.1, [code]/gm invisible[/code]): deja de entrar
-## en el interés de los demás, y cada peer recibe en el acto su ENTITY_DESPAWN (o su ENTITY_SPAWN al volver). No hace ni
-## recibe daño, no cuenta en el círculo ni en el marcador y no cobra ([member NetEntity.gm_invisible]).
+## Makes [param entity] invisible (or visible) (docs/plataforma.md §9.1, [code]/gm invisible[/code]): it stops
+## entering other players' interest, and each peer immediately receives its ENTITY_DESPAWN (or its ENTITY_SPAWN
+## on return). It neither deals nor receives damage, does not count in the circle or on the scoreboard and
+## does not earn rewards ([member NetEntity.gm_invisible]).
 func set_gm_invisible(entity: NetEntity, invisible: bool) -> void:
 	if entity.gm_invisible == invisible:
 		return
@@ -1026,9 +1037,9 @@ func get_unstuck() -> UnstuckTracker:
 	return _unstuck
 
 
-## La clave de [param entity] en el [UnstuckTracker]: con la plataforma, [code]"character:<id>"[/code] (la del
-## temporizador [code]unstuck[/code] que se guarda, docs/progresion.md §8); sin ella, la de su nombre (volver a
-## entrar con el mismo nombre no salta la reutilización).
+## The key of [param entity] in the [UnstuckTracker]: with the platform, [code]"character:<id>"[/code] (that of
+## the saved [code]unstuck[/code] timer, docs/progresion.md §8); without it, that of its name (rejoining with the
+## same name does not skip the reuse cooldown).
 func unstuck_key_of(entity: NetEntity) -> String:
 	var character_id: int = _progress.character_id_of(entity.net_id) if _progress != null else 0
 	if character_id > 0:
@@ -1036,8 +1047,8 @@ func unstuck_key_of(entity: NetEntity) -> String:
 	return NameRules.normalize_key(entity.display_name)
 
 
-## Coloca a [param entity] en [param position] mirando a [param yaw] (la regla de volver al mundo de las zonas SAFE,
-## docs/progresion.md §8) si el sitio vale: finito, dentro de los límites de la zona y con suelo. true si lo coloca.
+## Places [param entity] at [param position] facing [param yaw] (the return-to-world rule of the SAFE zones,
+## docs/progresion.md §8) if the spot is valid: finite, within the zone limits and with ground. true if it places it.
 func place_returning(entity: NetEntity, position: Vector3, yaw: float) -> bool:
 	if entity == null or entity.get_character() == null or not _is_valid_teleport_target(position) \
 			or not is_finite(yaw) or not _probe_grounded(position):
@@ -1046,31 +1057,31 @@ func place_returning(entity: NetEntity, position: Vector3, yaw: float) -> bool:
 	return true
 
 
-## Cuerpos que siguen en el mundo tras la baja de un jugador en combate (GUE-41).
+## Bodies that remain in the world after the removal of a player in combat (GUE-41).
 func get_lingering_count() -> int:
 	return _lingering.size()
 
 
-## true si [param net_id] es el cuerpo de un jugador que ha salido en combate y espera su retirada.
+## true if [param net_id] is the body of a player who left in combat and is waiting to be removed.
 func is_lingering(net_id: int) -> bool:
 	return _lingering.has(net_id)
 
 
-## Huella de la simulación ([method NetProtocol.compute_sim_hash]) que el servidor exige a los
-## clientes en el HELLO.
+## Simulation fingerprint ([method NetProtocol.compute_sim_hash]) that the server requires from clients in the
+## HELLO.
 func get_sim_hash() -> int:
 	return _sim_hash
 
 
-## Crea un jugador sin red de [param realm] (un código de [enum NetProtocol.Realm]): en cada tick,
-## antes de simular, su entrada sale de [code]brain.next_input()[/code], cuantizada y con el tick
-## correspondiente, y entra directamente en su [InputQueue]. Aparece con la plantilla de equipo
-## [param template_id] (0 = la de por defecto; [code]--fake-loadout[/code]) y la conserva al reaparecer.
-## Al morir pide la reaparición en cuanto se puede ([member Combatant.requests_respawn_on_death]), como una
-## persona que pulsa el botón o un [code]SwarmBot[/code]: con oleadas, reaparece en la primera que le toca.
-## Devuelve su [code]net_id[/code], o -1 si el servidor no está en marcha, está lleno
-## ([member ServerConfig.max_players]) o no quedan ids. Se puede llamar entre dos ticks; el jugador aparece
-## con el estado «tras el último tick» y su primera simulación es la del siguiente.
+## Creates a network-less player of [param realm] (a code of [enum NetProtocol.Realm]): on each tick, before
+## simulating, its input comes from [code]brain.next_input()[/code], quantized and with the corresponding tick,
+## and goes straight into its [InputQueue]. It appears with the equipment template [param template_id] (0 = the
+## default one; [code]--fake-loadout[/code]) and keeps it when respawning. On death it requests the respawn as
+## soon as it can ([member Combatant.requests_respawn_on_death]), like a person pressing the button or a
+## [code]SwarmBot[/code]: with waves, it respawns in the first one that applies to it. Returns its
+## [code]net_id[/code], or -1 if the server is not running, is full ([member ServerConfig.max_players]) or no
+## ids are left. It can be called between two ticks; the player appears with the state "after the last tick" and
+## its first simulation is the next one.
 func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int:
 	if _run_state != _RunState.RUNNING or brain == null:
 		return -1
@@ -1089,8 +1100,7 @@ func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int:
 	if fighter and not brain.has_enemy_finder():
 		brain.set_enemy_finder(_find_enemy_target.bind(entity.net_id))
 	if fighter and not brain.has_combat_source():
-		# El kit de la fase 4 (H5): el estado de combate del servidor tras el último tick, la vida y los aliados
-		# derribados.
+		# The phase 4 kit (H5): the server's combat state after the last tick, the health and the knocked-down allies.
 		brain.set_combat_source(_fake_combat_state.bind(entity.net_id))
 		brain.set_health_source(_fake_health_fraction.bind(entity.net_id))
 		brain.set_ally_finder(_find_downed_ally.bind(entity.net_id))
@@ -1103,7 +1113,7 @@ func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int:
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_ally_counter():
 		brain.set_ally_counter(_count_allies.bind(entity.net_id))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_line_of_sight():
-		# El arco del kit solo tira si la flecha llega (la empalizada, la puerta cerrada, también la propia).
+		# The kit's bow only fires if the arrow lands (the palisade, the closed gate, also its own).
 		brain.set_line_of_sight(_bot_line_of_sight)
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
 	record.is_fake = true
@@ -1115,10 +1125,10 @@ func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int:
 	return entity.net_id
 
 
-## La vista de asedio de la fortaleza [param fortress_id] (vacío = la primera de la zona) que usan los
-## jugadores falsos con el cerebro [constant BotBrain.Pattern.SIEGE]: se crea la primera vez que se pide, lleva
-## las posiciones de la puerta y el círculo y se pone al día en cada tick con el estado vivo de la fortaleza
-## ([method SiegeView.update_from_state]). null si la zona no tiene fortalezas.
+## The siege view of fortress [param fortress_id] (empty = the first of the zone) used by fake players with the
+## [constant BotBrain.Pattern.SIEGE] brain: it is created the first time it is requested, carries the gate and
+## circle positions and is updated every tick with the live state of the fortress
+## ([method SiegeView.update_from_state]). null if the zone has no fortresses.
 func get_siege_view(fortress_id: StringName = &"") -> SiegeView:
 	if _fortresses == null or not _fortresses.has_fortresses():
 		return null
@@ -1142,7 +1152,7 @@ func get_siege_view(fortress_id: StringName = &"") -> SiegeView:
 	return view
 
 
-## Las rutas de aproximación de la zona (data/routes/<zona>.tres), o null si no tiene.
+## The approach routes of the zone (data/routes/<zone>.tres), or null if it has none.
 func get_approach_routes() -> ApproachRoutes:
 	if not _siege_routes_loaded:
 		_siege_routes_loaded = true
@@ -1152,23 +1162,23 @@ func get_approach_routes() -> ApproachRoutes:
 	return _siege_routes
 
 
-## Le da al servidor los falsos de relleno de [code]--max-realm-diff[/code] (GUE-42 y GUE-43; los crea y los
-## conecta [ServerMain]; null los quita). Desde entonces el servidor le avisa de las altas
-## ([method FillerKeeper.on_person_joined]) y bajas ([method FillerKeeper.on_person_left]) de personas y de cada
-## falso que se va ([method FillerKeeper.forget]), y los falsos de relleno no ocupan plazas de personas: el FULL
-## solo cuenta a las personas y a los demás falsos ([method ServerAuth.validate]), y si un HELLO que se acepta
-## encuentra el servidor lleno, un falso de relleno le aparta su plaza ([method FillerKeeper.reserve_seat]) y se va
-## cuando esa persona entra en el mundo. Si se va antes, la plaza se libera ([method FillerKeeper.release_seat]) sin
-## que ningún falso se haya movido: un HELLO seguido de una desconexión, en bucle, no saca a nadie del combate ni manda
-## altas y bajas a los demás. Nunca entran más personas que [member ServerConfig.max_players].
+## Gives the server the filler fakes of [code]--max-realm-diff[/code] (GUE-42 and GUE-43; [ServerMain] creates
+## and connects them; null removes them). From then on the server notifies it of the joins
+## ([method FillerKeeper.on_person_joined]) and leaves ([method FillerKeeper.on_person_left]) of people and of each
+## fake that leaves ([method FillerKeeper.forget]), and the filler fakes do not take people's slots: FULL
+## only counts people and the other fakes ([method ServerAuth.validate]), and if an accepted HELLO
+## finds the server full, a filler fake sets aside its slot for them ([method FillerKeeper.reserve_seat]) and leaves
+## when that person enters the world. If they leave earlier, the slot is released ([method FillerKeeper.release_seat])
+## without any fake having moved: a HELLO followed by a disconnect, in a loop, pulls nobody out of combat nor sends
+## joins and leaves to the others. No more people ever enter than [member ServerConfig.max_players].
 func set_filler_keeper(keeper: FillerKeeper) -> void:
 	_filler_keeper = keeper
 
 
-## Da de baja al jugador falso [param net_id] al empezar el siguiente tick: DESPAWN (motivo 1) a quien
-## lo veía y el id en cuarentena, como si se hubiera desconectado. Devuelve false si no es un jugador
-## falso (o ya se va). Sirve para las altas y bajas de las pruebas de carga. Si está derribado, su baja es antes
-## una muerte (DEATH y KILL), como la de cualquiera que sale derribado.
+## Removes fake player [param net_id] at the start of the next tick: DESPAWN (reason 1) to whoever
+## saw it and the id into quarantine, as if it had disconnected. Returns false if it is not a fake
+## player (or is already leaving). Used for the joins and leaves of load tests. If it is knocked down, its removal is
+## preceded by a death (DEATH and KILL), like that of anyone who leaves knocked down.
 func remove_fake_player(net_id: int) -> bool:
 	if _run_state != _RunState.RUNNING or not _fakes.has(net_id) or _fake_leaving.has(net_id):
 		return false
@@ -1176,10 +1186,10 @@ func remove_fake_player(net_id: int) -> bool:
 	return true
 
 
-## Retira al falso de relleno [param net_id] que cede su sitio a una persona (GUE-42 y GUE-43; lo pide
-## [FillerKeeper]): como [method remove_fake_player], pero su baja nunca es una muerte, ni aunque esté derribado (solo
-## DESPAWN, sin DEATH ni KILL para quien lo derribó): que entre una persona no mata a nadie (revisión de la integración
-## de las habilidades). Devuelve false si no es un jugador falso (o ya se va).
+## Withdraws filler fake [param net_id], which yields its slot to a person (GUE-42 and GUE-43; requested by
+## [FillerKeeper]): like [method remove_fake_player], but its removal is never a death, not even if it is knocked
+## down (only DESPAWN, no DEATH or KILL for whoever knocked it down): a person entering kills nobody (review of
+## the abilities integration). Returns false if it is not a fake player (or is already leaving).
 func retire_filler(net_id: int) -> bool:
 	if not remove_fake_player(net_id):
 		return false
@@ -1187,17 +1197,17 @@ func retire_filler(net_id: int) -> bool:
 	return true
 
 
-## true si retirar ya al jugador falso [param net_id] no corta nada: no está derribado ni levantando o rematando a
-## nadie (muerto esperando a reaparecer, también). El [member FillerKeeper.calm_check] de los falsos de relleno.
+## true if withdrawing fake player [param net_id] right now cuts nothing off: it is not knocked down nor reviving or
+## finishing off anyone (dead and waiting to respawn, too). The [member FillerKeeper.calm_check] of the filler fakes.
 func is_fake_calm(net_id: int) -> bool:
 	var combatant: Combatant = _combat.get_combatant(net_id)
 	return combatant == null or (not combatant.is_downed() and not combatant.is_interacting())
 
 
-## Teletransporte autoritativo del jugador [param net_id] a [param position]: velocidad 0, estado
-## redondeado por [code]encode/decode[/code] (el que reconstruirá el cliente) y contador de
-## teletransporte +1 (módulo 4), para que los clientes no interpolen el salto. Conserva el yaw y
-## las pulsaciones previas. No hace nada con un id desconocido o una posición que no es finita.
+## Authoritative teleport of player [param net_id] to [param position]: velocity 0, state rounded by
+## [code]encode/decode[/code] (the one the client will reconstruct) and teleport counter +1 (modulo 4), so
+## clients do not interpolate the jump. It keeps the yaw and the previous key presses. It does nothing with an
+## unknown id or a position that is not finite.
 func teleport(net_id: int, position: Vector3) -> void:
 	var entity: NetEntity = _registry.get_entity(net_id)
 	if entity == null or entity.get_character() == null or not position.is_finite():
@@ -1206,13 +1216,13 @@ func teleport(net_id: int, position: Vector3) -> void:
 	_teleports += 1
 
 
-## Crea un PNJ humanoide de nombre [param display_name] y bando [param realm] (0 = los Huecos, hostiles
-## a todos) en [param position] mirando a [param yaw]: un [PlayerCharacter] simulado en el mismo bucle
-## que los jugadores con las entradas de [param brain] (como las de un jugador falso), con vida y
-## grabado en el historial. Con [param immortal] es un maniquí: la vida no baja de 1 y se cura del todo
-## a los 5 s sin daño. Devuelve su [code]net_id[/code], o -1 si el servidor no está en marcha o no
-## quedan ids. Con [param definition] (una [NpcDefinition]) el PNJ toma de ella su vida, su arma, si ignora las
-## zonas seguras y su número del catálogo (el [code]npc_def_id[/code] del ENTITY_SPAWN).
+## Creates a humanoid NPC named [param display_name] on side [param realm] (0 = the Hollow, hostile to
+## everyone) at [param position] facing [param yaw]: a [PlayerCharacter] simulated in the same loop as the
+## players with the inputs of [param brain] (like those of a fake player), with health and recorded in the
+## history. With [param immortal] it is a dummy: health does not drop below 1 and it heals fully after 5 s
+## without damage. Returns its [code]net_id[/code], or -1 if the server is not running or no ids are left. With
+## [param definition] (an [NpcDefinition]) the NPC takes from it its health, its weapon, whether it ignores safe
+## zones and its catalog number (the [code]npc_def_id[/code] of the ENTITY_SPAWN).
 func add_npc(brain: BotBrain, display_name: String, realm: int, position: Vector3, yaw: float,
 		immortal: bool = false, definition: NpcDefinition = null) -> int:
 	if _run_state != _RunState.RUNNING or brain == null:
@@ -1224,7 +1234,7 @@ func add_npc(brain: BotBrain, display_name: String, realm: int, position: Vector
 	_npcs[entity.net_id] = brain
 	var combatant: Combatant = _combat.get_combatant(entity.net_id)
 	if definition != null:
-		# Su definición manda: vida, arma, zona segura y el número que ve el cliente (modelo y barra de jefe).
+		# Its definition rules: health, weapon, safe zone and the number the client sees (model and boss bar).
 		entity.npc_def_id = NpcCatalog.number_of(definition.id)
 		combatant.max_health = definition.max_health
 		combatant.health = definition.max_health
@@ -1241,7 +1251,7 @@ func add_npc(brain: BotBrain, display_name: String, realm: int, position: Vector
 	return entity.net_id
 
 
-## Da de baja al PNJ [param net_id] (DESPAWN a quien lo veía). Devuelve false si no es un PNJ.
+## Removes NPC [param net_id] (DESPAWN to whoever saw it). Returns false if it is not an NPC.
 func remove_npc(net_id: int) -> bool:
 	var entity: NetEntity = _registry.get_entity(net_id)
 	if entity == null or not _npcs.has(net_id):
@@ -1250,9 +1260,9 @@ func remove_npc(net_id: int) -> bool:
 	return true
 
 
-## Crea un maniquí de entrenamiento (PNJ inmortal del bando neutral) en [param position] mirando a
-## [param yaw], con el modo [param mode] ([enum NpcBrain.Mode]). La posición se baja al suelo si hay
-## uno debajo. Devuelve su net_id, o -1 si no cabe ([constant MAX_DUMMIES]) o no se puede crear.
+## Creates a training dummy (immortal NPC of the neutral side) at [param position] facing
+## [param yaw], with mode [param mode] ([enum NpcBrain.Mode]). The position is lowered to the ground if there is
+## one below. Returns its net_id, or -1 if there is no room ([constant MAX_DUMMIES]) or it cannot be created.
 func spawn_dummy(position: Vector3, yaw: float, mode: int = NpcBrain.Mode.STILL) -> int:
 	if get_dummy_count() >= MAX_DUMMIES:
 		return -1
@@ -1260,8 +1270,8 @@ func spawn_dummy(position: Vector3, yaw: float, mode: int = NpcBrain.Mode.STILL)
 			_ground_position(position), yaw, true)
 
 
-## Coloca un maniquí quieto en cada marcador del grupo [code]dummy_points[/code] de la zona (uno en
-## el mundo de pruebas y uno junto a cada campamento del Vado Gris). Devuelve cuántos ha creado.
+## Places a still dummy at each marker of the zone's [code]dummy_points[/code] group (one in
+## the test world and one next to each camp of Vado Gris). Returns how many it created.
 func spawn_zone_dummies() -> int:
 	var created: int = 0
 	for marker: Node3D in NetZones.get_dummy_points(_world):
@@ -1271,10 +1281,10 @@ func spawn_zone_dummies() -> int:
 	return created
 
 
-## Doble de pruebas del capitán de [param fortress_id] mientras no hay generador de PNJ: un PNJ mortal
-## y quieto en el [code]CaptainSpawn[/code] de la fortaleza, del bando del dueño, registrado como su
-## capitán ([method FortressController.register_captain]). Al morir (de un golpe o con
-## [code]fort_kill_captain[/code]) abre el círculo de captura. Devuelve su net_id, o -1 si no se puede.
+## Test double of the captain of [param fortress_id] while there is no NPC spawner: a mortal, still NPC
+## at the fortress's [code]CaptainSpawn[/code], on the owner's side, registered as its
+## captain ([method FortressController.register_captain]). On death (from a hit or with
+## [code]fort_kill_captain[/code]) it opens the capture circle. Returns its net_id, or -1 if it cannot.
 func spawn_captain_double(fortress_id: StringName) -> int:
 	if _fortresses == null:
 		return -1
@@ -1291,7 +1301,7 @@ func spawn_captain_double(fortress_id: StringName) -> int:
 	return net_id
 
 
-## Maniquíes vivos (PNJ inmortales).
+## Living dummies (immortal NPCs).
 func get_dummy_count() -> int:
 	var count: int = 0
 	for net_id: int in _npcs:
@@ -1301,54 +1311,54 @@ func get_dummy_count() -> int:
 	return count
 
 
-## Ejecuta una línea de la consola ([code]kick Ana[/code]) y devuelve la respuesta. Es lo que hace el
-## servidor con cada línea de la entrada estándar; las pruebas la llaman directamente.
+## Executes a console line ([code]kick Ana[/code]) and returns the response. It is what the server does with
+## each line of standard input; tests call it directly.
 func console_command(line: String) -> String:
 	return _commands.execute_console(line)
 
 
-## Arranca la consola de la entrada estándar (hilo lector, sin bloquear el tick). Devuelve false si no
-## hay entrada estándar utilizable o ya estaba en marcha.
+## Starts the standard input console (reader thread, without blocking the tick). Returns false if there is no
+## usable standard input or it was already running.
 func start_console() -> bool:
 	if _console == null:
 		_console = ServerConsole.new()
 	return _console.start()
 
 
-## La consola ([ServerConsole]), o null si no se ha arrancado ni se le ha dado una línea.
+## The console ([ServerConsole]), or null if it has not been started nor given a line.
 func get_console() -> ServerConsole:
 	return _console
 
 
-## Mete una línea en la cola de la consola como si se hubiera escrito en la entrada estándar; se
-## ejecuta al principio del siguiente tick.
+## Pushes a line into the console queue as if it had been typed on standard input; it is executed at the start
+## of the next tick.
 func push_console_line(line: String) -> void:
 	if _console == null:
 		_console = ServerConsole.new()
 	_console.push_line(line)
 
 
-## Escribe el informe JSON de la ejecución en [param path] (los directorios que falten se crean).
-## Claves:
+## Writes the JSON report of the run to [param path] (missing directories are created).
+## Keys:
 ## [codeblock]
 ## version, zone, port, ticks, tick_rate, sim_hash
-## closed    false mientras el servidor está en marcha (informe periódico), true tras stop()
+## closed    false while the server is running (periodic report), true after stop()
 ## players   {current, at_stop, fake, peak, joined_total, left_total, archived}
-## inputs    {consumed, substituted, late, too_early, substituted_percent}  (solo jugadores de red)
-## bytes     {wire_in, wire_out, app_in, app_out}  (acumulados; ver NetTransport.get_byte_counters)
+## inputs    {consumed, substituted, late, too_early, substituted_percent}  (network players only)
+## bytes     {wire_in, wire_out, app_in, app_out}  (cumulative; see NetTransport.get_byte_counters)
 ## strikes   {total, by_reason, kicks_total}
-## kicks     [{tick, peer_id, net_id, name, reason}]  (las últimas max_logged_kicks)
-## rejects   {motivo: veces}
+## kicks     [{tick, peer_id, net_id, name, reason}]  (the last max_logged_kicks)
+## rejects   {reason: times}
 ## physics_errors, teleports, respawns
-## simulate  {calls, total_us, avg_us, max_us}        µs de cada PlayerCharacter.simulate()
-## snapshots {sent, bytes, avg_bytes, max_bytes, build_us, avg_build_us}   build_us: construir cada
-##           snapshot y encolarlo (sin el cálculo del interés ni el envío real de ENet)
-## metrics   ServerMetrics.summary() (p50/p99/máx de cada sección en µs, KB/s, jugadores...)
-## npcs      NpcSpawnerSystem.get_report(): puestos, PNJ vivos, altas, muertes, ataques fuertes avisados,
-##           fichas de ataque, rutas calculadas...
-## player_list  una ficha por jugador que ha pasado por el servidor (también los que se fueron),
-##           las últimas max_logged_players; de las anteriores solo quedan los totales
-##           (players.archived cuenta las fichas resumidas)
+## simulate  {calls, total_us, avg_us, max_us}        µs of each PlayerCharacter.simulate()
+## snapshots {sent, bytes, avg_bytes, max_bytes, build_us, avg_build_us}   build_us: building each
+##           snapshot and queuing it (without the interest computation or the real ENet send)
+## metrics   ServerMetrics.summary() (p50/p99/max of each section in µs, KB/s, players...)
+## npcs      NpcSpawnerSystem.get_report(): posts, living NPCs, spawns, deaths, telegraphed heavy attacks,
+##           attack tokens, computed routes...
+## player_list  one record per player who has passed through the server (also those who left),
+##           the last max_logged_players; of the earlier ones only the totals remain
+##           (players.archived counts the summarized records)
 ## [/codeblock]
 func write_report(path: String) -> Error:
 	if path.is_empty():
@@ -1366,7 +1376,7 @@ func write_report(path: String) -> Error:
 	return OK
 
 
-# --- Bucle del tick ---------------------------------------------------------------------------
+# --- Tick loop --------------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
 	if _run_state == _RunState.STOPPING:
@@ -1386,7 +1396,7 @@ func _physics_process(delta: float) -> void:
 	_metrics.end_section(SECTION_PLATFORM)
 	_metrics.end_section(&"net")
 	if _run_state != _RunState.RUNNING:
-		# El cierre de la instancia (instance_closed) ya ha vaciado el mundo: no queda nada que simular.
+		# The instance shutdown (instance_closed) has already emptied the world: there is nothing left to simulate.
 		return
 
 	_tick += 1
@@ -1404,7 +1414,7 @@ func _physics_process(delta: float) -> void:
 	_refresh_siege_views()
 	_progress.before_simulate(s)
 	_simulate_players(s, delta)
-	# CONSUME (progresion.md §4.4): lo que ha bebido cada uno sale de su bolsa, tras el paso 1.
+	# CONSUME (progresion.md §4.4): what each player drank is removed from their bag, after step 1.
 	_progress.after_simulate(s)
 	_metrics.end_section(&"sim")
 
@@ -1413,7 +1423,7 @@ func _physics_process(delta: float) -> void:
 	_emit_npc_telegraphs(s)
 	_metrics.end_section(&"combat")
 
-	# Paso 4b (docs/fuerte.md, 1.7): las fortalezas, con lo que ha dejado el combate.
+	# Step 4b (docs/fuerte.md, 1.7): the fortresses, with what combat left behind.
 	_metrics.begin_section(SECTION_WAR)
 	_fortresses.step(s)
 	if _fortress_persistence != null:
@@ -1427,12 +1437,12 @@ func _physics_process(delta: float) -> void:
 	_check_shutdown_countdown(s)
 	_check_maintenance()
 	if _run_state != _RunState.RUNNING:
-		# Una cuenta atrás cumplida ha cerrado el servidor en este tick (stop ya ha vaciado el mundo).
+		# A completed countdown has shut the server down on this tick (stop has already emptied the world).
 		return
 
 	_process_arrivals(s)
-	# Las peticiones de inventario del tick, tras las altas y antes de la foto de los guardados (progresion.md §4.2),
-	# y los WALLET_UPDATE y PROGRESS_UPDATE agrupados.
+	# The inventory requests of the tick, after the spawns and before the saves snapshot (progresion.md §4.2),
+	# and the grouped WALLET_UPDATE and PROGRESS_UPDATE.
 	_progress.apply_pending(s)
 	_progress.flush(s)
 	if _saver != null:
@@ -1462,12 +1472,12 @@ func _physics_process(delta: float) -> void:
 	tick_finished.emit(s)
 
 
-# Si el servidor ha perdido ticks respecto al reloj (un parón del proceso: Godot solo recupera 8 por
-# fotograma), los clientes siguieron enviando un lote por tick y todo llega junto en este poll, con
-# el tick del servidor sin avanzar: el cubo no se recargaría y lo más nuevo se descartaría como
-# exceso de ritmo. Se da a cada peer el crédito de los ticks perdidos (ver
-# ServerPeer.grant_stall_credit). Los ticks reales son un reloj entero, así que la suma de lo
-# concedido no pasa de los ticks que de verdad han transcurrido.
+# If the server has lost ticks relative to the clock (a process stall: Godot only catches up 8 per
+# frame), clients kept sending one batch per tick and everything arrives together in this poll, with
+# the server tick not advancing: the bucket would not refill and the newest would be discarded as
+# exceeding the rate. Each peer is given the credit of the lost ticks (see
+# ServerPeer.grant_stall_credit). Real ticks are an integer clock, so the sum of what is
+# granted never exceeds the ticks that have actually elapsed.
 func _grant_stall_credit() -> void:
 	var elapsed_usec: int = Time.get_ticks_usec() - _clock_origin_usec
 	var real_tick: int = elapsed_usec * Engine.physics_ticks_per_second / 1000000
@@ -1479,9 +1489,9 @@ func _grant_stall_credit() -> void:
 		peer.grant_stall_credit(_tick, missed_ticks)
 
 
-# Paso 0 del tick (docs/fuerte.md, 1.7): los cerebros de los PNJ piensan con el estado de los cuerpos tras s - 1
-# (antes de simular a nadie) y empujan su entrada de s a su cola, por net_id ascendente. Entre pensamientos
-# repiten su plan.
+# Step 0 of the tick (docs/fuerte.md, 1.7): the NPC brains think with the state of the bodies after s - 1
+# (before simulating anyone) and push their input for s into their queue, by ascending net_id. Between thinks
+# they repeat their plan.
 func _run_npc_brains(s: int) -> void:
 	if _npcs.is_empty():
 		return
@@ -1502,9 +1512,9 @@ func _run_npc_brains(s: int) -> void:
 		queue.push(generated.quantized(), 0, s)
 
 
-# Aviso TELEGRAPH (docs/fuerte.md, sección 5) de cada ataque fuerte que un PNJ lanza en el tick [param s]: la zona
-# de peligro (un sector delante de él, con el alcance del golpe) y los ticks que faltan hasta el impacto, para que
-# el cliente la dibuje y la rellene. Los ligeros no se avisan: su anticipación ya se ve en el movimiento.
+# TELEGRAPH notice (docs/fuerte.md, section 5) of each heavy attack an NPC launches at tick [param s]: the danger
+# zone (a sector in front of it, with the reach of the hit) and the ticks remaining until impact, so the
+# client draws and fills it. Light attacks are not telegraphed: their windup is already visible in the movement.
 func _emit_npc_telegraphs(s: int) -> void:
 	for net_id: int in _npcs:
 		var entity: NetEntity = _registry.get_entity(net_id)
@@ -1523,8 +1533,8 @@ func _emit_npc_telegraphs(s: int) -> void:
 				roundi(attack.shape.range_m * 100.0), attack.windup_ticks), PackedInt32Array([net_id]))
 
 
-# Pone al día las vistas de asedio con el estado vivo de las fortalezas (el de después del tick anterior, como los
-# cerebros de los PNJ): lo que ven los falsos con cerebro SIEGE al decidir su entrada del tick s.
+# Updates the siege views with the live state of the fortresses (the one after the previous tick, like the NPC
+# brains): what the fakes with a SIEGE brain see when deciding their input for tick s.
 func _refresh_siege_views() -> void:
 	for fortress_id: StringName in _siege_views:
 		var state: FortressState = _fortresses.get_fortress_state(fortress_id)
@@ -1532,8 +1542,8 @@ func _refresh_siege_views() -> void:
 			_siege_views[fortress_id].update_from_state(state)
 
 
-# Simula a todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente con la
-# entrada de take(s).
+# Simulates all entities with a body (players, fakes and NPCs) by ascending net_id with the
+# input from take(s).
 func _simulate_players(s: int, delta: float) -> void:
 	var inputs_consumed: int = 0
 	var inputs_substituted: int = 0
@@ -1545,7 +1555,7 @@ func _simulate_players(s: int, delta: float) -> void:
 			continue
 		var before: Vector3 = character.global_position
 		var brain: BotBrain = _fakes.get(entity.net_id)
-		# Los PNJ ya empujaron su entrada en el paso 0 (_run_npc_brains); los falsos la generan aquí.
+		# NPCs already pushed their input in step 0 (_run_npc_brains); the fakes generate it here.
 		var synthetic: bool = brain != null or _npcs.has(entity.net_id)
 		if brain != null:
 			var generated: PlayerInput = brain.next_input(s, before, character.yaw)
@@ -1554,7 +1564,7 @@ func _simulate_players(s: int, delta: float) -> void:
 		elif _npcs.has(entity.net_id):
 			pass
 		elif _lingering.has(entity.net_id):
-			# El cuerpo de quien salió en combate: entradas neutras de verdad (sin botones), quieto.
+			# The body of whoever left in combat: truly neutral inputs (no buttons), standing still.
 			synthetic = true
 			queue.push(NetProtocol.neutral_input(s, character.yaw), 0, s)
 		var substitutions_before: int = queue.substitutions_total
@@ -1581,10 +1591,10 @@ func _simulate_players(s: int, delta: float) -> void:
 		_metrics.add_counter(ServerMetrics.COUNTER_SUBSTITUTIONS, inputs_substituted)
 
 
-# El servidor no acepta estado del cliente, así que estas comprobaciones solo detectan errores
-# propios: un salto de más de 1,5 m en un tick se anota como error de física, y una posición que no
-# es finita devuelve al jugador a su punto de aparición. (Caer por debajo de FALL_LIMIT_Y es una
-# muerte: la resuelve el paso de combate.) Un muerto no se comprueba: su cuerpo lo coloca el combate.
+# The server does not accept client state, so these checks only detect its own errors: a jump of more
+# than 1.5 m in one tick is logged as a physics error, and a position that is not finite sends the
+# player back to their spawn point. (Falling below FALL_LIMIT_Y is a death: the combat step resolves it.)
+# A dead player is not checked: their body is placed by combat.
 func _check_motion(entity: NetEntity, before: Vector3) -> void:
 	var character: PlayerCharacter = entity.get_character()
 	if character.combat.action == CombatState.Action.DEAD:
@@ -1603,8 +1613,8 @@ func _check_motion(entity: NetEntity, before: Vector3) -> void:
 				spawn.origin])
 
 
-# Coloca al personaje en [param position] con el [param yaw] dado y velocidad 0. El estado pasa por
-# encode/decode (es el que reconstruirá el cliente) y el contador de teletransporte sube.
+# Places the character at [param position] with the given [param yaw] and velocity 0. The state goes through
+# encode/decode (it is the one the client will reconstruct) and the teleport counter goes up.
 func _place(entity: NetEntity, position: Vector3, yaw: float) -> void:
 	var character: PlayerCharacter = entity.get_character()
 	var state: PlayerState = character.get_state()
@@ -1618,9 +1628,9 @@ func _place(entity: NetEntity, position: Vector3, yaw: float) -> void:
 	entity.teleport_counter = (entity.teleport_counter + 1) & EntityRecord.TELEPORT_MASK
 
 
-# --- Altas y bajas ----------------------------------------------------------------------------
+# --- Joins and leaves -------------------------------------------------------------------------
 
-# Da de alta, con el estado «tras s», a los peers cuyo CLIENT_READY llegó en este tick.
+# Spawns, with the state "after s", the peers whose CLIENT_READY arrived on this tick.
 func _process_arrivals(s: int) -> void:
 	if _pending_ready.is_empty():
 		return
@@ -1635,16 +1645,16 @@ func _process_arrivals(s: int) -> void:
 			_kick(peer, "no queda sitio en la zona", false)
 			continue
 		if peer.claimed != null:
-			# Desde aquí el arrendamiento es del cuerpo: se guarda (track antes de ProgressService.on_arrival, que
-			# puede marcarlo crítico) y su final sale cuando se va (docs/plataforma.md §7.2).
+			# From here the lease belongs to the body: it is saved (track before ProgressService.on_arrival, which
+			# may mark it critical) and its final save goes out when it leaves (docs/plataforma.md §7.2).
 			entity.is_staff = peer.claimed.is_staff()
-			# Los totales pvp de la reclamación: la base de su sección (docs/plataforma.md §8).
+			# The pvp totals from the claim: the base of its section (docs/plataforma.md §8).
 			_scores.load_totals(entity.net_id, peer.claimed.pvp)
 			if _saver != null:
 				_saver.track(entity.net_id, peer.claimed.character_id, peer.claimed.lease_id, s)
-		# El progreso (progresion.md §9.1 paso 4): el preparado o, sin plataforma, uno efímero se ata al cuerpo; la
-		# regla de volver al mundo, el kit de la primera entrada (crítico en el step de este tick), nivel y apariencia
-		# para el SPAWN, y el equipo de su inventario en lugar de la plantilla.
+		# Progress (progresion.md §9.1 step 4): the prepared one or, without the platform, an ephemeral one is bound to
+		# the body; the return-to-world rule, the first-entry kit (critical in this tick's step), level and appearance
+		# for the SPAWN, and the equipment from its inventory instead of the template.
 		var loadout: ProgressService.Loadout = _progress.on_arrival(entity, peer, s) if _progress != null else null
 		peer.entity = entity
 		peer.input_queue = _queues[entity.net_id]
@@ -1652,11 +1662,11 @@ func _process_arrivals(s: int) -> void:
 		var record: _PlayerRecord = _player_by_net[entity.net_id]
 		record.peer = peer
 		_world_peers.append(peer)
-		# Con la plataforma, el chat es por personaje: recupera el estado si salió hace poco, y toma de la reclamación su
-		# cuenta, las que ignora y su silencio (docs/plataforma.md §9.2).
+		# With the platform, chat is per character: it recovers the state if it left recently, and takes from the claim
+		# its account, the players it ignores and its mute (docs/plataforma.md §9.2).
 		_social.on_peer_joined(peer, s)
-		# Con inventario, su equipo; si no, la plantilla pendiente (LOADOUT_SELECT, también antes de CLIENT_READY) o
-		# la de por defecto: el SPAWN ya sale con sus armas y sus cargas, y el LOADOUT detrás.
+		# With an inventory, its equipment; otherwise, the pending template (LOADOUT_SELECT, also before CLIENT_READY) or
+		# the default one: the SPAWN already goes out with its weapons and charges, and the LOADOUT after it.
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
 		if loadout != null:
 			_combat.equip_inventory(combatant, loadout.weapon_1, loadout.weapon_2, loadout.second_active,
@@ -1667,10 +1677,10 @@ func _process_arrivals(s: int) -> void:
 		_announce_arrival(entity, peer, s)
 		if combatant.template_id > 0 or loadout != null:
 			_combat.announce_loadout(combatant, s, true)
-		# INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE tras el SPAWN propio (progresion.md §9.1 paso 5).
+		# INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE after the own SPAWN (progresion.md §9.1 step 5).
 		if _progress != null:
 			_progress.after_spawn(entity, peer, s)
-		# Los avisos de la moderación que la cuenta no ha visto (docs/plataforma.md §9.5).
+		# The moderation notices the account has not seen (docs/plataforma.md §9.5).
 		_moderation.on_arrival(peer)
 		player_joined.emit(peer_id, entity.net_id)
 		if _filler_keeper != null:
@@ -1680,8 +1690,8 @@ func _process_arrivals(s: int) -> void:
 				entity.get_position(), get_player_count()])
 
 
-# Crea la entidad y el personaje de un jugador en un punto de aparición de su reino y le da su
-# combate. Ver _create_body.
+# Creates the entity and the character of a player at a spawn point of their realm and gives it its
+# combat. See _create_body.
 func _create_player(display_name: String, realm: int, owner_peer: int, s: int) -> NetEntity:
 	var spawn: Transform3D = _spawn_picker.pick(realm)
 	var entity: NetEntity = _create_body(NetProtocol.EntityKind.PLAYER, display_name, realm,
@@ -1707,10 +1717,10 @@ func _create_player(display_name: String, realm: int, owner_peer: int, s: int) -
 	return entity
 
 
-# Crea la entidad de tipo [param kind] con su cuerpo (un PlayerCharacter) en [param spawn_origin]
-# mirando a [param spawn_yaw], su cola de entradas, su pista del historial y su combate. El estado es
-# «el estado tras s», redondeado por encode/decode; la cola empieza con el tick s ya consumido y la
-# entrada neutra como última aplicada. null si no quedan ids.
+# Creates the entity of type [param kind] with its body (a PlayerCharacter) at [param spawn_origin]
+# facing [param spawn_yaw], its input queue, its history track and its combat. The state is
+# "the state after s", rounded by encode/decode; the queue starts with tick s already consumed and the
+# neutral input as the last applied. null if no ids are left.
 func _create_body(kind: int, display_name: String, realm: int, owner_peer: int, s: int,
 		spawn_origin: Vector3, spawn_yaw: float) -> NetEntity:
 	var entity: NetEntity = _registry.allocate(kind, s)
@@ -1723,8 +1733,8 @@ func _create_body(kind: int, display_name: String, realm: int, owner_peer: int, 
 	var character: PlayerCharacter = _instantiate_character()
 	character.name = ("Player%d" if kind == NetProtocol.EntityKind.PLAYER else "Npc%d") % entity.net_id
 	_players_root.add_child(character)
-	# Después de _ready() (que reescribe la máscara): las puertas cerradas de los fuertes paran a
-	# los reinos que no son su dueño. El cliente hace lo mismo con su personaje local.
+	# After _ready() (which rewrites the mask): the closed gates of the forts stop the realms that are not
+	# their owner. The client does the same with its local character.
 	character.set_realm_collision(realm)
 	var state := PlayerState.new()
 	state.position = spawn_origin
@@ -1743,8 +1753,8 @@ func _create_body(kind: int, display_name: String, realm: int, owner_peer: int, 
 	return entity
 
 
-# Mantiene el anillo del informe en max_logged_players fichas: saca la más antigua de las de quien ya
-# se ha ido (las de quien sigue dentro se quedan, aunque el anillo se pase) y la resume en totales.
+# Keeps the report ring at max_logged_players records: removes the oldest of those of someone who has
+# already left (those of whoever is still inside stay, even if the ring overflows) and summarizes it in totals.
 func _trim_player_log() -> void:
 	while _player_log.size() > max_logged_players:
 		var index: int = -1
@@ -1766,11 +1776,11 @@ func _trim_player_log() -> void:
 			_archived_too_early += record.too_early
 
 
-# Mensajes de un alta (sección 3): el SPAWN propio, los de todo lo relevante para el recién
-# llegado y el suyo para quien lo tenga por relevante. [param peer] es null en un jugador falso.
-# El SPAWN de un jugador lleva su nivel solo hacia su reino (protocolo 7, docs/progresion.md §7.3): el del
-# recién llegado se codifica una vez por reino receptor (tres variantes como mucho) y los de los demás hacia él,
-# con su reino.
+# Messages of a spawn (section 3): the own SPAWN, those of everything relevant to the newcomer and theirs
+# for whoever considers them relevant. [param peer] is null for a fake player.
+# A player's SPAWN carries their level only toward their realm (protocol 7, docs/progresion.md §7.3): the
+# newcomer's is encoded once per receiving realm (three variants at most) and those of the others toward them,
+# with their realm.
 func _announce_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> void:
 	var spawn_by_realm: Dictionary[int, PackedByteArray] = {}
 	if peer != null:
@@ -1790,8 +1800,8 @@ func _announce_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> void:
 			_send(other_peer, NetProtocol.CH_RELIABLE, spawn_by_realm[other.realm])
 
 
-# Cierra la sesión de los peers que se van: DESPAWN (motivo 1) a quien los tenía por relevantes, id
-# en cuarentena, personaje liberado y pista del historial borrada.
+# Closes the session of the peers that are leaving: DESPAWN (reason 1) to whoever had them as relevant, id
+# into quarantine, character released and history track deleted.
 func _process_departures(s: int) -> void:
 	_process_lingering(s)
 	_process_fake_departures(s)
@@ -1807,13 +1817,13 @@ func _process_departures(s: int) -> void:
 		_rtt.erase(peer_id)
 		_social.on_peer_left(peer, s)
 		if peer.entity == null:
-			# Se va sin haber entrado: si el relleno le había apartado una plaza, se libera (GUE-43; ningún falso se
-			# había ido).
+			# Leaves without having entered: if the filler had set aside a slot for them, it is released (GUE-43; no fake
+			# had left).
 			if _filler_keeper != null:
 				_filler_keeper.release_seat(peer_id)
 			continue
 		var entity: NetEntity = peer.entity
-		# Fuera de la lista antes de nada: lo que salga de su baja (la muerte de un derribado) ya no es para él.
+		# Out of the list first of all: whatever comes out of their removal (the death of a knocked-down player) is no longer for them.
 		_world_peers.erase(peer)
 		var save_reason: int = CharacterSaver.Reason.KICK if peer.kicked else CharacterSaver.Reason.LOGOUT
 		var lingers: bool = not peer.drop_body_at_once and _should_linger(entity, s)
@@ -1834,7 +1844,7 @@ func _process_departures(s: int) -> void:
 				entity.net_id, get_player_count(), linger_note])
 
 
-# Bajas de los jugadores falsos pedidas con remove_fake_player().
+# Removals of fake players requested with remove_fake_player().
 func _process_fake_departures(s: int) -> void:
 	if _fake_leaving.is_empty():
 		return
@@ -1854,12 +1864,13 @@ func _process_fake_departures(s: int) -> void:
 				get_player_count()])
 
 
-# Quita al jugador del mundo: DESPAWN a quien lo veía, id en cuarentena y personaje liberado. La baja de un
-# derribado (salida, desconexión, --fake-churn, fin del cuerpo de GUE-41) es antes una muerte en ese tick: DEATH
-# y KILL con quien le hizo el último daño o lo derribó, y la fuente «desangrado» (docs/habilidades.md, 4.5). Sin
-# [param bleed] (el falso de relleno que cede su sitio a una persona, retire_filler), no: solo el DESPAWN. Con la
-# plataforma, la «Salida» de docs/plataforma.md §7.2: el guardado final ([param save_reason]) antes de
-# ScoreKeeper.forget; tras una baja sin guardado (drop) ese finish no hace nada.
+# Removes the player from the world: DESPAWN to whoever saw them, id into quarantine and character released.
+# The removal of a knocked-down player (exit, disconnect, --fake-churn, end of the GUE-41 body) is preceded by a
+# death on that tick: DEATH and KILL with whoever did them the last damage or knocked them down, and the
+# "bled out" source (docs/habilidades.md, 4.5). Without [param bleed] (the filler fake yielding its slot to a
+# person, retire_filler), it does not: only the DESPAWN. With the platform, the "Exit" of docs/plataforma.md
+# §7.2: the final save ([param save_reason]) before ScoreKeeper.forget; after a removal without saving (drop)
+# that finish does nothing.
 func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true,
 		save_reason: int = CharacterSaver.Reason.LOGOUT) -> void:
 	var net_id: int = entity.net_id
@@ -1905,7 +1916,7 @@ func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true,
 		_metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, -1)
 
 
-# Libera a todos los jugadores (cierre del servidor), sin enviar DESPAWN. Los guardados finales ya han salido
+# Releases all players (server shutdown), without sending DESPAWN. The final saves have already gone out
 # (_wind_down).
 func _clear_players() -> void:
 	for entity: NetEntity in _registry.get_sorted().duplicate():
@@ -1941,7 +1952,7 @@ func _clear_players() -> void:
 			-_metrics.get_counter(ServerMetrics.COUNTER_PLAYERS))
 
 
-# Peers que llevan demasiado cargando la zona sin enviar CLIENT_READY.
+# Peers that have spent too long loading the zone without sending CLIENT_READY.
 func _check_loading_timeouts(s: int) -> void:
 	if s % 60 != 0:
 		return
@@ -1951,9 +1962,9 @@ func _check_loading_timeouts(s: int) -> void:
 			_kick(peer, "se agotó el tiempo de carga de la zona")
 
 
-# Peers que llevan demasiado conectados sin mandar el HELLO: cada conexión ociosa ocupa una plaza de
-# ENet (max_players + 4) hasta que vence el plazo de 5 s de SceneMultiplayer, y reabrirla cuesta un
-# RTT. Se cortan con un plazo propio mucho más corto, sin REJECT (no hay nada a lo que contestar).
+# Peers that have been connected too long without sending the HELLO: each idle connection takes an ENet slot
+# (max_players + 4) until the 5 s deadline of SceneMultiplayer expires, and reopening it costs one
+# RTT. They are cut with their own much shorter deadline, without REJECT (there is nothing to answer).
 func _check_hello_timeouts(s: int) -> void:
 	if s % HELLO_CHECK_TICKS != 0:
 		return
@@ -1967,10 +1978,10 @@ func _check_hello_timeouts(s: int) -> void:
 			_mark_leaving(peer)
 
 
-# --- Historial, interés y snapshots -----------------------------------------------------------
+# --- History, interest and snapshots ----------------------------------------------------------
 
-# StateHistory.record() de todas las entidades (y el CSV de --state-log), tras simular y dar de
-# alta: es el estado «tras s».
+# StateHistory.record() of all entities (and the --state-log CSV), after simulating and spawning: it is the
+# state "after s".
 func _record_history(s: int) -> void:
 	for entity: NetEntity in _registry.get_sorted():
 		if entity.kind == NetProtocol.EntityKind.STRUCTURE:
@@ -1984,9 +1995,9 @@ func _record_history(s: int) -> void:
 			yaw = character.yaw
 			if character.grounded:
 				flags |= EntityRecord.FLAG_GROUNDED
-			# Banderas defensivas (bloqueo, parada, invulnerable, muerto, bloqueo ancho) para el
-			# rebobinado, sobre los bits 0-2 del registro: el bit 3 del registro (ranura 2, que aquí no se
-			# escribe) nunca entra, porque en el historial es DEFENSE_BLOCKING (docs/habilidades.md, 3.6).
+			# Defensive flags (block, parry, invulnerable, dead, wide block) for the rewind, over bits 0-2 of the record:
+			# bit 3 of the record (slot 2, which is not written here) never gets in, because in the history it is
+			# DEFENSE_BLOCKING (docs/habilidades.md, 3.6).
 			flags = (flags & EntityRecord.HISTORY_FLAGS_MASK) \
 					| ActionMachine.defense_flags(character.combat, s)
 		else:
@@ -1994,7 +2005,7 @@ func _record_history(s: int) -> void:
 			if is_instance_valid(entity.node):
 				yaw = entity.node.rotation.y
 		_history.record(s, entity.net_id, position, yaw, flags)
-		# El registro de estados es solo de jugadores: un PNJ no tiene cliente con el que compararse.
+		# The state log is for players only: an NPC has no client to compare against.
 		if _state_log != null and character != null \
 				and entity.kind == NetProtocol.EntityKind.PLAYER:
 			_state_log.store_line("%d,%d,%d,%s" % [s, entity.net_id,
@@ -2009,8 +2020,8 @@ func _record_history(s: int) -> void:
 	_substituted_now.clear()
 
 
-# Interés escalonado y un SNAPSHOT a cada cliente cada SNAPSHOT_INTERVAL_TICKS ticks, escalonado
-# por la paridad de su net_id.
+# Staggered interest and one SNAPSHOT to each client every SNAPSHOT_INTERVAL_TICKS ticks, staggered
+# by the parity of its net_id.
 func _send_snapshots(s: int) -> void:
 	if _world_peers.is_empty() or _transport == null:
 		return
@@ -2036,7 +2047,7 @@ func _send_snapshots(s: int) -> void:
 	_snapshot_build_usec += Time.get_ticks_usec() - build_start
 
 
-# Recalcula lo que ve [param peer]: cada cambio genera un SPAWN o un DESPAWN (motivo 0).
+# Recomputes what [param peer] sees: each change generates a SPAWN or a DESPAWN (reason 0).
 func _refresh_interest(peer: ServerPeer, entities: Array[NetEntity], s: int) -> void:
 	var observer: NetEntity = peer.entity
 	for entity: NetEntity in entities:
@@ -2059,8 +2070,8 @@ func _refresh_interest(peer: ServerPeer, entities: Array[NetEntity], s: int) -> 
 			_send(peer, NetProtocol.CH_RELIABLE, despawn.encode())
 
 
-# Las entidades con ALWAYS_RELEVANT no pasan por la política. Un GM invisible no entra en el interés de nadie más
-# (docs/plataforma.md §9.1), con la política que sea.
+# Entities with ALWAYS_RELEVANT do not go through the policy. An invisible GM does not enter anyone else's
+# interest (docs/plataforma.md §9.1), whatever the policy.
 func _is_relevant(observer: NetEntity, entity: NetEntity, was_relevant: bool) -> bool:
 	if entity.gm_invisible and entity != observer:
 		return false
@@ -2074,7 +2085,7 @@ func _send(peer: ServerPeer, channel: int, bytes: PackedByteArray) -> void:
 		_transport.send(peer.peer_id, channel, bytes)
 
 
-# Lo que el servicio social necesita del servidor: los peers en el mundo y enviar por el canal fiable.
+# What the social service needs from the server: the peers in the world and sending over the reliable channel.
 func _social_peers() -> Array[ServerPeer]:
 	return _world_peers
 
@@ -2084,27 +2095,27 @@ func _social_send(peer_id: int, bytes: PackedByteArray) -> void:
 		_transport.send(peer_id, NetProtocol.CH_RELIABLE, bytes)
 
 
-# Lo que manda el progreso (INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE): por el canal fiable y
-# solo al dueño (progresion.md §4.6).
+# What progress sends (INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE): over the reliable
+# channel and only to the owner (progresion.md §4.6).
 func _progress_send(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	_send(peer, NetProtocol.CH_RELIABLE, bytes)
 
 
-# Una línea de respuesta de un comando de GM de la progresión por el canal del sistema del chat (progresion.md P5d).
+# A reply line from a progression GM command over the chat system channel (progresion.md P5d).
 func _progress_reply(peer: ServerPeer, text: String) -> void:
 	if _social != null and peer != null and peer.state == ServerPeer.State.IN_WORLD:
 		_social.get_chat().send_system(peer, text, _tick)
 
 
-# --- Combate: eventos, enemigos, suelo ----------------------------------------------------------
+# --- Combat: events, enemies, ground ------------------------------------------------------------
 
-# Un evento de combate: ENTITY_EVENT (canal fiable) a los dueños de las entidades implicadas
-# (víctima, atacante, asesino y asistentes) y a quien tenga relevante a cualquiera de ellas. Los KILL y los
-# DOWNED van a toda la zona (el registro de bajas lo ve todo el mundo, docs/fuerte.md sección 6, y
-# docs/habilidades.md, sección 5.4). STATUS, HEAL e INTERACT van a los dueños de los implicados y a quien
-# tenga relevante al afectado (no al autor). LOADOUT ([signal CombatDirector.event_emitted]): la del dueño
-# ([param involved] con el jugador) solo a él; la pública ([param involved] vacío, cargas 0) a quien tenga
-# relevante al jugador, sin el dueño. Antes de enviarlo se apunta en el marcador y en el registro de batalla.
+# A combat event: ENTITY_EVENT (reliable channel) to the owners of the entities involved
+# (victim, attacker, killer and assistants) and to whoever has any of them as relevant. KILL and
+# DOWNED go to the whole zone (everyone sees the kill feed, docs/fuerte.md section 6, and
+# docs/habilidades.md, section 5.4). STATUS, HEAL and INTERACT go to the owners of those involved and to whoever
+# has the affected one as relevant (not the author). LOADOUT ([signal CombatDirector.event_emitted]): the owner's
+# ([param involved] with the player) only to them; the public one ([param involved] empty, charges 0) to whoever has
+# the player as relevant, without the owner. Before sending it, it is recorded on the scoreboard and in the battle log.
 func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
 	_track_battle(event)
 	if _transport == null or _world_peers.is_empty():
@@ -2119,7 +2130,7 @@ func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array
 			or kind == NetMessages.EntityEvent.Kind.INTERACT:
 		seen_by = PackedInt32Array([event.net_id])
 	elif kind == NetMessages.EntityEvent.Kind.LOADOUT:
-		# La del dueño no la ve nadie más; la pública, quien lo tenga relevante.
+		# The owner's is seen by nobody else; the public one, by whoever has them as relevant.
 		seen_by = PackedInt32Array() if not involved.is_empty() else PackedInt32Array([event.net_id])
 	for peer: ServerPeer in _world_peers:
 		if kind == NetMessages.EntityEvent.Kind.LOADOUT and involved.is_empty() \
@@ -2138,8 +2149,8 @@ func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array
 	_metrics.end_section(SECTION_COMBAT_EVENTS)
 
 
-# Alta de un proyectil (docs/habilidades.md, sección 4.4): ENTITY_SPAWN de kind 3 (canal fiable) al dueño del
-# tirador y a quien lo tenga relevante, en ese momento. Se apunta quién lo recibió para mandarle la baja.
+# Spawn of a projectile (docs/habilidades.md, section 4.4): ENTITY_SPAWN of kind 3 (reliable channel) to the
+# shooter's owner and to whoever has them as relevant, at that moment. It records who received it to send them the removal.
 func _on_projectile_spawned(spawn: NetMessages.EntitySpawn, involved: PackedInt32Array) -> void:
 	if _transport == null or _world_peers.is_empty():
 		return
@@ -2163,8 +2174,8 @@ func _on_projectile_spawned(spawn: NetMessages.EntitySpawn, involved: PackedInt3
 	_metrics.end_section(SECTION_COMBAT_EVENTS)
 
 
-# Baja de un proyectil: ENTITY_DESPAWN (motivo 4 impacto o 5 caducado) a los que recibieron su alta y siguen
-# en el mundo, aunque ya no tengan relevante al tirador.
+# Removal of a projectile: ENTITY_DESPAWN (reason 4 impact or 5 expired) to those who received its spawn and are still
+# in the world, even if they no longer have the shooter as relevant.
 func _on_projectile_despawned(projectile_id: int, tick: int, reason: int,
 		_involved: PackedInt32Array) -> void:
 	var viewers: PackedInt32Array = _projectile_viewers.get(projectile_id, PackedInt32Array())
@@ -2185,10 +2196,10 @@ func _on_projectile_despawned(projectile_id: int, tick: int, reason: int,
 		_projectile_bytes_sent += bytes.size()
 
 
-# Marcador y registro de batalla: una muerte suma una muerte a la víctima (si es un jugador) y queda en el
-# registro; un KILL suma una baja al asesino y una asistencia a cada asistente (si son jugadores). La reaparición
-# quita la marca de un comando de GM (gm_forced, docs/progresion.md §6.2). Las recompensas (progresion.md §6.2): la
-# muerte de un PNJ paga a sus contribuyentes y el KILL de un jugador, los méritos de PvP.
+# Scoreboard and battle log: a death adds a death to the victim (if a player) and goes into the
+# log; a KILL adds a kill to the killer and an assist to each assistant (if players). Respawning
+# clears the GM command flag (gm_forced, docs/progresion.md §6.2). Rewards (progresion.md §6.2): an NPC's
+# death pays its contributors and a player's KILL, the PvP merits.
 func _track_battle(event: NetMessages.EntityEvent) -> void:
 	match event.event:
 		NetMessages.EntityEvent.Kind.RESPAWN:
@@ -2216,9 +2227,9 @@ func _track_battle(event: NetMessages.EntityEvent) -> void:
 			_reward_kill(event)
 
 
-# Los méritos de PvP de un KILL (progresion.md §6.2; los provisionales del marcador hasta PRG-09): los de la baja al
-# asesino y los de la asistencia a cada asistente. ProgressService solo los paga con una víctima persistente de otro
-# reino.
+# The PvP merits of a KILL (progresion.md §6.2; the scoreboard's provisional ones until PRG-09): those of the kill
+# to the killer and those of the assist to each assistant. ProgressService only pays them with a persistent victim of
+# another realm.
 func _reward_kill(event: NetMessages.EntityEvent) -> void:
 	if _progress == null or not _is_player(event.net_id):
 		return
@@ -2228,10 +2239,10 @@ func _reward_kill(event: NetMessages.EntityEvent) -> void:
 				event.tick)
 
 
-# La recompensa de un PNJ que muere en el tick [param s] (progresion.md §6.2) a quienes hicieron al menos el 10 % del
-# daño de la ventana. Se mira en su DEATH, que llega aquí antes que a FortressController: el defensor sigue
-# registrado y la marca de cambio forzado es la de su muerte (fort_kill_captain la pone antes de matar). Un defensor de
-# una fortaleza en un ciclo forzado no paga nada.
+# The reward of an NPC that dies at tick [param s] (progresion.md §6.2) to those who did at least 10 % of the
+# damage in the window. It is checked on its DEATH, which arrives here before FortressController: the defender is
+# still registered and the forced-change flag is that of its death (fort_kill_captain sets it before killing). A
+# defender of a fortress in a forced cycle pays nothing.
 func _reward_npc_death(victim: NetEntity, s: int) -> void:
 	if _progress == null:
 		return
@@ -2246,8 +2257,8 @@ func _reward_npc_death(victim: NetEntity, s: int) -> void:
 		_progress.on_npc_killed(definition, combatant.ledger.contributors(s), s)
 
 
-# La definición del PNJ [param entity] (la del sistema de generadores, que puede sustituir la del catálogo en las
-# pruebas), o null si no tiene.
+# The definition of NPC [param entity] (that of the spawner system, which may override the catalog's in tests), or
+# null if it has none.
 func _npc_definition_of(entity: NetEntity) -> NpcDefinition:
 	var definition: NpcDefinition = NpcCatalog.get_by_number(entity.npc_def_id) if entity.npc_def_id > 0 else null
 	if definition != null and _npc_system != null:
@@ -2255,8 +2266,8 @@ func _npc_definition_of(entity: NetEntity) -> NpcDefinition:
 	return definition
 
 
-# ENTITY_EVENT LEVEL_UP de [param net_id], que sube a [param level] en el tick [param s] (progresion.md §6.3): al
-# dueño y a los de su reino que lo tienen relevante, para el efecto; al enemigo no le llega.
+# ENTITY_EVENT LEVEL_UP of [param net_id], who goes up to [param level] at tick [param s] (progresion.md §6.3): to the
+# owner and to those of their realm who have them as relevant, for the effect; it does not reach the enemy.
 func _announce_level_up(net_id: int, level: int, s: int) -> void:
 	var entity: NetEntity = _registry.get_entity(net_id)
 	if entity == null or _transport == null or _world_peers.is_empty():
@@ -2274,19 +2285,19 @@ func _is_player(net_id: int) -> bool:
 	return entity != null and entity.kind == NetProtocol.EntityKind.PLAYER
 
 
-# Un punto de aparición del reino (para colocar a quien cae fuera del mundo mientras está muerto).
+# A spawn point of the realm (to place whoever falls out of the world while dead).
 func _pick_spawn_point(realm: int) -> Transform3D:
 	return _spawn_picker.pick(realm)
 
 
-# El enemigo vivo (o derribado) más cercano a [param position] para el jugador falso [param net_id] (el cerebro de
-# combate de BotBrain): un BotTarget con sus pies, su velocidad y si está derribado (lo que usa el kit para el tiro
-# adelantado del arco y para rematar, H5), o null si no hay ninguno que pueda atacar o ser atacado: los maniquíes,
-# los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en la zona segura de su
-# reino (o no está en pie) no ataca. Los objetivos se reúnen una vez por tick y por reino (con muchos bots, cada uno
-# recorre solo los candidatos de los reinos que le son hostiles). Con [param npcs_only], solo los PNJ (el buscador de
-# defensores del cerebro SIEGE, F6b). «Más cercano» con la altura pesada (BotBrain.target_distance_squared, GUE-45):
-# el de su nivel antes que el de la pasarela.
+# The nearest living (or knocked-down) enemy to [param position] for fake player [param net_id] (the combat brain
+# of BotBrain): a BotTarget with its feet, its velocity and whether it is knocked down (what the kit uses for the
+# bow's lead shot and for finishing off, H5), or null if there is none that can attack or be attacked: dummies,
+# protected ones and those in their realm's safe zone do not count, and whoever is in their realm's safe zone (or
+# is not standing) does not attack. Targets are gathered once per tick and per realm (with many bots, each one
+# only traverses the candidates of the realms hostile to it). With [param npcs_only], only NPCs (the defender finder
+# of the SIEGE brain, F6b). "Nearest" with height weighted (BotBrain.target_distance_squared, GUE-45): the one on
+# its own level before the one on the walkway.
 func _find_enemy_target(position: Vector3, net_id: int, npcs_only: bool = false) -> Variant:
 	var me: Combatant = _combat.get_combatant(net_id)
 	if me == null or not me.is_alive() or _safe_areas.contains_own(me.get_realm(), position):
@@ -2317,20 +2328,20 @@ func _find_enemy_target(position: Vector3, net_id: int, npcs_only: bool = false)
 			_targets_ids_by_realm[best_realm][best_index])
 
 
-# Kit de los falsos (H5): el estado de combate del jugador falso [param net_id] tras el último tick (null si ya
-# no está).
+# The fakes' kit (H5): the combat state of fake player [param net_id] after the last tick (null if it is no longer
+# there).
 func _fake_combat_state(net_id: int) -> CombatState:
 	var entity: NetEntity = _registry.get_entity(net_id)
 	var character: PlayerCharacter = entity.get_character() if entity != null else null
 	return character.combat if character != null else null
 
 
-# Kit de los falsos de asedio: la línea de tiro del arco (BotBrain.set_line_of_sight) en el mundo del servidor.
+# The siege fakes' kit: the bow's line of fire (BotBrain.set_line_of_sight) in the server world.
 func _bot_line_of_sight(from_feet: Vector3, to_feet: Vector3, left_shoulder: bool) -> bool:
 	return BotBrain.bow_sight_clear(get_physics_space(), from_feet, to_feet, left_shoulder)
 
 
-# Kit de los falsos: la fracción de vida del jugador falso [param net_id] (0 derribado o muerto).
+# The fakes' kit: the health fraction of fake player [param net_id] (0 knocked down or dead).
 func _fake_health_fraction(net_id: int) -> float:
 	var combatant: Combatant = _combat.get_combatant(net_id)
 	if combatant == null or combatant.max_health <= 0:
@@ -2338,8 +2349,8 @@ func _fake_health_fraction(net_id: int) -> float:
 	return float(combatant.health) / float(combatant.max_health)
 
 
-# Kit de los falsos: los pies del aliado derribado (un jugador de su reino) más cercano a [param position] para el
-# jugador falso [param net_id], o null. Sin derribados en la zona no recorre a nadie.
+# The fakes' kit: the feet of the knocked-down ally (a player of their realm) nearest to [param position] for fake
+# player [param net_id], or null. With nobody knocked down in the zone it traverses no one.
 func _find_downed_ally(position: Vector3, net_id: int) -> Variant:
 	if _combat.downed.downed_count() == 0:
 		return null
@@ -2360,10 +2371,10 @@ func _find_downed_ally(position: Vector3, net_id: int) -> Variant:
 	return best
 
 
-# Los golpes avisados (TELEGRAPH) en curso que pueden dañar al jugador falso [param net_id] (el cerebro SIEGE, F6b):
-# los fuertes de los PNJ de un reino hostil desde que empiezan hasta que acaba su ventana activa, con la posición y el
-# rumbo del PNJ en este momento (gira y avanza un poco mientras carga) y el alcance del golpe. La lista se reúne una
-# vez por tick.
+# The telegraphed strikes (TELEGRAPH) in progress that can damage fake player [param net_id] (the SIEGE brain, F6b):
+# the heavy attacks of NPCs of a hostile realm from when they start until their active window ends, with the NPC's
+# position and heading at this moment (it turns and advances a little while charging) and the reach of the hit. The
+# list is gathered once per tick.
 func _find_threats(_position: Vector3, net_id: int) -> Array[BotBrain.Threat]:
 	var found: Array[BotBrain.Threat] = []
 	var me: Combatant = _combat.get_combatant(net_id)
@@ -2377,10 +2388,10 @@ func _find_threats(_position: Vector3, net_id: int) -> Array[BotBrain.Threat]:
 	return found
 
 
-# Cuántos jugadores vivos del reino del jugador falso [param net_id], sin contarle a él, están a menos de [param radius]
-# metros en horizontal de [param center] (el contador de aliados del cerebro SIEGE para la reunión, GUE-44). Cuentan
-# personas y falsos, no los PNJ ni los cuerpos de quien salió en combate. Las posiciones se reúnen una vez por tick, así
-# que todos los que esperan en el mismo tick ven el mismo recuento y salen a la vez.
+# How many living players of the realm of fake player [param net_id], not counting itself, are within [param radius]
+# meters horizontally of [param center] (the SIEGE brain's ally counter for the rally, GUE-44). People and fakes
+# count, not NPCs nor the bodies of those who left in combat. Positions are gathered once per tick, so everyone waiting
+# on the same tick sees the same count and leaves at once.
 func _count_allies(center: Vector3, radius: float, net_id: int) -> int:
 	var me: Combatant = _combat.get_combatant(net_id)
 	if me == null:
@@ -2404,10 +2415,10 @@ func _count_allies(center: Vector3, radius: float, net_id: int) -> int:
 	return count
 
 
-# Reúne, por reino, las posiciones de los jugadores vivos (personas y falsos) en este tick. Un derribado (H3c) no está
-# vivo: no cuenta en la reunión ni como uno de los suyos peleando en el fuerte. Lo mismo que los bots del cliente
-# (BotAllySight para --bot, SwarmBot.is_standing_record para --bots), que lo ven por su acción dibujada, DOWNED: su vida
-# publicada no es 0 (Combatant.publish la da como la de derribado).
+# Gathers, per realm, the positions of living players (people and fakes) on this tick. A knocked-down one (H3c) is not
+# alive: it does not count in the rally nor as one of their own fighting at the fort. The same as the client bots
+# (BotAllySight for --bot, SwarmBot.is_standing_record for --bots), which see it through its drawn action, DOWNED: its
+# published health is not 0 (Combatant.publish gives it as that of the knocked-down).
 func _rebuild_ally_cache() -> void:
 	_allies_tick = _tick
 	_allies_by_realm.clear()
@@ -2424,7 +2435,8 @@ func _rebuild_ally_cache() -> void:
 		_ally_ids_by_realm[realm].append(other.get_id())
 
 
-# Reúne los fuertes avisados de los PNJ que siguen en curso tras el último tick (los que avisa _emit_npc_telegraphs).
+# Gathers the telegraphed heavy attacks of NPCs that are still in progress after the last tick (those announced by
+# _emit_npc_telegraphs).
 func _rebuild_threats() -> void:
 	_threats_tick = _tick
 	_threats.clear()
@@ -2445,7 +2457,7 @@ func _rebuild_threats() -> void:
 		_threat_realms.append(entity.realm)
 
 
-# Reúne, por reino, las posiciones de quien puede ser objetivo de un bot de combate en este tick.
+# Gathers, per realm, the positions of whoever can be a combat bot's target on this tick.
 func _rebuild_target_cache() -> void:
 	_targets_tick = _tick
 	_targets_by_realm.clear()
@@ -2474,7 +2486,7 @@ func _rebuild_target_cache() -> void:
 		_targets_downed_by_realm[realm].append(1 if other.is_downed() else 0)
 
 
-# true si un bot de [param my_realm] puede dañar a uno de [param other_realm] en esta zona.
+# true if a bot of [param my_realm] can damage one of [param other_realm] in this zone.
 func _is_hostile_realm(my_realm: int, other_realm: int) -> bool:
 	var key: int = my_realm * 16 + other_realm
 	if not _hostile_cache.has(key):
@@ -2483,9 +2495,9 @@ func _is_hostile_realm(my_realm: int, other_realm: int) -> bool:
 	return _hostile_cache[key]
 
 
-# El suelo bajo [param position]: el punto donde un rayo desde unos metros más arriba toca el mundo, o
-# [param position] si no hay suelo debajo. El rayo va ligeramente inclinado: los verticales pueden fallar
-# contra HeightMapShape3D.
+# The ground under [param position]: the point where a ray from a few meters above touches the world, or
+# [param position] if there is no ground below. The ray is slightly tilted: vertical ones can miss
+# against HeightMapShape3D.
 func _ground_position(position: Vector3) -> Vector3:
 	var space: PhysicsDirectSpaceState3D = _players_root.get_world_3d().direct_space_state
 	var from: Vector3 = position + Vector3(0.0, _GROUND_PROBE_UP, 0.0)
@@ -2521,16 +2533,16 @@ func _close_combat_log() -> void:
 		_combat_log = null
 
 
-# --- Comandos y consola ------------------------------------------------------------------------
+# --- Commands and console ----------------------------------------------------------------------
 
-# Registra los comandos de administración: los seis de red (ids fijos de NetProtocol) con su versión
-# de consola, y los que son solo de consola.
-# Cada comando con su rol mínimo para /gm y, con la plataforma, para DEBUG_COMMAND (docs/plataforma.md §9.1): gm por
-# defecto (los de red: teletransporte, vida, fuerte); kick, announce y shutdown, y sus nombres de /gm anuncio y apagar,
-# de admin (la expulsión de la zona de los moderadores es /gm expulsar, de ModerationService). Los que crean o conservan
-# valor de un personaje persistente o se saltan su equipo piden admin (progresion.md §10, P5d): el 5 set_weapon y el
-# 13 cooldowns_off, también por /gm; el 16 refill, por DEBUG_COMMAND (por /gm es una operación GM como item_give, con
-# gm). Los de §10 (40–43 y los de consola) los registra ProgressService.setup.
+# Registers the administration commands: the six network ones (fixed NetProtocol ids) with their console
+# version, and those that are console-only.
+# Each command with its minimum role for /gm and, with the platform, for DEBUG_COMMAND (docs/plataforma.md §9.1): gm by
+# default (the network ones: teleport, health, fort); kick, announce and shutdown, and their /gm names anuncio and apagar,
+# admin (the kick from the zone by moderators is /gm expulsar, from ModerationService). Those that create or keep
+# value of a persistent character or skip their equipment require admin (progresion.md §10, P5d): 5 set_weapon and
+# 13 cooldowns_off, also through /gm; 16 refill, through DEBUG_COMMAND (through /gm it is a GM operation like item_give, with
+# gm). Those of §10 (40–43 and the console ones) are registered by ProgressService.setup.
 func _register_commands() -> void:
 	var admin: StringName = CommandRegistry.ROLE_ADMIN
 	var gm: StringName = CommandRegistry.ROLE_GM
@@ -2563,7 +2575,7 @@ func _register_commands() -> void:
 	_commands.register(&"players", "players", _console_players)
 
 
-# Ejecuta las líneas que ha escrito alguien en la consola desde el tick anterior.
+# Executes the lines someone has typed in the console since the previous tick.
 func _run_console_lines() -> void:
 	if _console == null:
 		return
@@ -2573,7 +2585,7 @@ func _run_console_lines() -> void:
 			_log(response)
 
 
-# Un jugador, jugador falso o PNJ por net_id o por nombre (sin distinguir mayúsculas), o null.
+# A player, fake player or NPC by net_id or by name (case-insensitive), or null.
 func _find_entity(text: String) -> NetEntity:
 	var wanted: String = text.strip_edges()
 	if wanted.is_valid_int():
@@ -2593,7 +2605,7 @@ func _is_valid_teleport_target(target: Vector3) -> bool:
 			and absf(target.z) <= MAX_TELEPORT_COORDINATE
 
 
-# Posición de un maniquí del comando spawn_dummy: delante del jugador, mirando hacia él.
+# Position of a dummy from the spawn_dummy command: in front of the player, facing them.
 func _dummy_spawn_for(entity: NetEntity) -> Transform3D:
 	var yaw: float = entity.get_character().yaw
 	var forward: Vector3 = Basis(Vector3.UP, yaw) * Vector3.FORWARD
@@ -2607,21 +2619,21 @@ func _combatant_of_peer(ctx: CommandRegistry.Context) -> Combatant:
 	return _combat.get_combatant(ctx.peer.entity.net_id)
 
 
-# Con la plataforma, un comando de GM que mueve, cura o muestra a un personaje lo marca hasta su reaparición
-# (progresion.md §6.2; docs/plataforma.md §9.1): no entra en la lista de capturas ni cobra méritos ni PNJ.
+# With the platform, a GM command that moves, heals or shows a character flags it until it respawns
+# (progresion.md §6.2; docs/plataforma.md §9.1): it does not enter the capture list nor earn merits or NPC rewards.
 func _mark_gm_forced(entity: NetEntity) -> void:
 	if _platform != null and entity != null and entity.kind == NetProtocol.EntityKind.PLAYER:
 		entity.gm_forced = true
 
 
-# El jugador (o falso o PNJ) que nombra [param text] para un comando, apuntado como su objetivo en la auditoría.
+# The player (or fake or NPC) that [param text] names for a command, recorded as its target in the audit.
 func _command_target(ctx: CommandRegistry.Context, text: String) -> NetEntity:
 	var entity: NetEntity = _find_entity(text)
 	ctx.target = entity
 	return entity
 
 
-# -- Comandos de red (actúan sobre quien los envía) --
+# -- Network commands (they act on whoever sends them) --
 
 func _net_teleport(ctx: CommandRegistry.Context) -> int:
 	if ctx.payload.size() != NetMessages.DebugCommand.TELEPORT_PAYLOAD_SIZE:
@@ -2684,13 +2696,13 @@ func _net_set_weapon(ctx: CommandRegistry.Context) -> int:
 	if CombatCatalog.weapon(weapon_id) == null:
 		ctx.note = "arma %d inexistente" % weapon_id
 		return CommandRegistry.Result.BAD_ARGUMENTS
-	# El 5 es set_loadout con el arma en la ranura 1 (docs/habilidades.md, sección 3.5), con su LOADOUT.
+	# 5 is set_loadout with the weapon in slot 1 (docs/habilidades.md, section 3.5), with its LOADOUT.
 	if not _combat.set_weapon(combatant, weapon_id, _tick + 1):
 		return CommandRegistry.Result.REFUSED
 	return CommandRegistry.Result.OK
 
 
-# 13 cooldowns_off (docs/habilidades.md, sección 5.1): u8 0 o 1, el bit 7 de combat_flags2.
+# 13 cooldowns_off (docs/habilidades.md, section 5.1): u8 0 or 1, bit 7 of combat_flags2.
 func _net_cooldowns_off(ctx: CommandRegistry.Context) -> int:
 	var combatant: Combatant = _combatant_of_peer(ctx)
 	if combatant == null:
@@ -2703,8 +2715,8 @@ func _net_cooldowns_off(ctx: CommandRegistry.Context) -> int:
 	return CommandRegistry.Result.OK
 
 
-# 14 apply_status: u8 status_id y u16 ticks (0 = los del dato). Se lo aplica quien lo envía, sin autor, en
-# el tick que va a simular el servidor.
+# 14 apply_status: u8 status_id and u16 ticks (0 = those from the data). It is applied to whoever sends it, with no
+# author, on the tick the server is about to simulate.
 func _net_apply_status(ctx: CommandRegistry.Context) -> int:
 	var combatant: Combatant = _combatant_of_peer(ctx)
 	if combatant == null:
@@ -2722,8 +2734,8 @@ func _net_apply_status(ctx: CommandRegistry.Context) -> int:
 	return CommandRegistry.Result.OK
 
 
-# 15 down (docs/habilidades.md, sección 4.5): se derriba a sí mismo sin autor (al desangrarse, DEATH sin KILL), en
-# el tick que va a simular el servidor. Rechazado fuera de las zonas RVR, en la zona segura propia o sin estar vivo.
+# 15 down (docs/habilidades.md, section 4.5): knocks itself down with no author (on bleeding out, DEATH without KILL),
+# on the tick the server is about to simulate. Rejected outside RvR zones, in one's own safe zone or when not alive.
 func _net_down(ctx: CommandRegistry.Context) -> int:
 	if not ctx.payload.is_empty():
 		return CommandRegistry.Result.BAD_ARGUMENTS
@@ -2733,9 +2745,9 @@ func _net_down(ctx: CommandRegistry.Context) -> int:
 	return CommandRegistry.Result.OK
 
 
-# 16 refill: repone las cargas de los consumibles de su plantilla (set_charges, con LOADOUT al dueño). Con
-# inventario, sin plataforma, un CAMP_REFILL forzado de su bolsa (progresion.md §4.4); con plataforma, una operación
-# GM con un GM_GRANT por lo que falta y note «debug» (progresion.md §4.4 y §10, P5d; pide admin).
+# 16 refill: restores the charges of the consumables of its template (set_charges, with LOADOUT to the owner). With an
+# inventory, without the platform, a forced CAMP_REFILL of its bag (progresion.md §4.4); with the platform, a GM
+# operation with a GM_GRANT for what is missing and the note "debug" (progresion.md §4.4 and §10, P5d; requires admin).
 func _net_refill(ctx: CommandRegistry.Context) -> int:
 	if not ctx.payload.is_empty():
 		return CommandRegistry.Result.BAD_ARGUMENTS
@@ -2783,10 +2795,10 @@ func _net_unstuck(ctx: CommandRegistry.Context) -> int:
 			else CommandRegistry.Result.REFUSED
 
 
-# -- Comandos de consola --
+# -- Console commands --
 
-# Teletransporta ya al jugador al punto seguro más cercano de su reino (sin canalización ni
-# reutilización: es una herramienta de administración).
+# Teleports the player right away to the nearest safe point of their realm (with no channeling or
+# reuse cooldown: it is an administration tool).
 func _console_unstuck(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 1:
 		return "Uso: unstuck <jugador>"
@@ -2798,8 +2810,8 @@ func _console_unstuck(ctx: CommandRegistry.Context) -> String:
 	return "%s llevado al punto seguro más cercano de su reino" % entity.display_name
 
 
-# teleport <jugador> <x> <y> <z>, o teleport <jugador> <otro> (junto al otro). Con la plataforma marca al que se
-# mueve (gm_forced, progresion.md §6.2).
+# teleport <player> <x> <y> <z>, or teleport <player> <other> (next to the other). With the platform it flags the one
+# who moves (gm_forced, progresion.md §6.2).
 func _console_teleport(ctx: CommandRegistry.Context) -> String:
 	var usage: String = "Uso: teleport <jugador> <x> <y> <z> | teleport <jugador> <otro jugador>"
 	if ctx.args.size() != 4 and ctx.args.size() != 2:
@@ -2945,8 +2957,8 @@ func _console_down(ctx: CommandRegistry.Context) -> String:
 	return "%s derribado" % combatant.entity.display_name
 
 
-# refill <jugador>: sin plataforma, como el 16; con ella, a quien tiene inventario, la operación GM del 16 con el
-# motivo escrito (refill <jugador> <motivo…>; progresion.md P5d).
+# refill <player>: without the platform, like 16; with it, for whoever has an inventory, the GM operation of 16 with the
+# written reason (refill <player> <reason…>; progresion.md P5d).
 func _console_refill(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.is_empty() or (ctx.args.size() != 1 and _platform == null):
 		return "Uso: refill <jugador>" + (" <motivo…>" if _platform != null else "")
@@ -3042,13 +3054,13 @@ func _console_players(_ctx: CommandRegistry.Context) -> String:
 	return "%d entidades: %s" % [lines.size(), "; ".join(lines)]
 
 
-# El combate de quien nombra [param text]; con [param ctx], queda como objetivo del comando en la auditoría.
+# The combat of whoever [param text] names; with [param ctx], it becomes the command's target in the audit.
 func _combatant_by_name(text: String, ctx: CommandRegistry.Context = null) -> Combatant:
 	var entity: NetEntity = _command_target(ctx, text) if ctx != null else _find_entity(text)
 	return _combat.get_combatant(entity.net_id) if entity != null else null
 
 
-# NOTICE informativo a todos los jugadores que están en el mundo. Devuelve cuántos lo reciben.
+# Informational NOTICE to all players in the world. Returns how many receive it.
 func _broadcast_notice(text: String) -> int:
 	if _transport == null:
 		return 0
@@ -3061,7 +3073,7 @@ func _broadcast_notice(text: String) -> int:
 	return _world_peers.size()
 
 
-# Cuenta atrás de un cierre pedido por la consola: avisos en los segundos señalados y, al llegar a 0,
+# Countdown of a shutdown requested through the console: warnings at the indicated seconds and, on reaching 0,
 # shutdown_requested.
 func _check_shutdown_countdown(s: int) -> void:
 	if _shutdown_tick < 0:
@@ -3079,8 +3091,8 @@ func _check_shutdown_countdown(s: int) -> void:
 		_broadcast_notice("El servidor se cerrará en %d s" % seconds_left)
 
 
-# El mantenimiento que trae el latido (docs/plataforma.md §6 y §12): {at_unix, message} o null (ninguno, o
-# cancelado). Un at_unix nuevo vuelve a empezar los avisos.
+# The maintenance brought by the heartbeat (docs/plataforma.md §6 and §12): {at_unix, message} or null (none, or
+# cancelled). A new at_unix restarts the warnings.
 func _set_maintenance(value: Variant) -> void:
 	var maintenance: Dictionary = value if value is Dictionary else {}
 	if maintenance.is_empty() or not PlatformJson.is_int(maintenance.get("at_unix"), 1, PlatformJson.MAX_SAFE_INT):
@@ -3104,9 +3116,9 @@ func _set_maintenance(value: Variant) -> void:
 			Time.get_datetime_string_from_unix_time(at_unix, true), at_unix - _platform.now_unix()])
 
 
-# Avisos del mantenimiento a los 10, 5 y 1 min, a los 30 s y a los 10 s (los que ya han pasado al anunciarse se
-# juntan en un aviso con lo que queda) y, a su hora, el cierre ordenado (shutdown_requested), como el resto de
-# disparadores. La hora es la de la plataforma (ZonePlatform.now_unix).
+# Maintenance warnings at 10, 5 and 1 min, at 30 s and at 10 s (those already past when announced are
+# merged into one warning with what remains) and, at its time, the orderly shutdown (shutdown_requested), like the rest
+# of the triggers. The time is the platform's (ZonePlatform.now_unix).
 func _check_maintenance() -> void:
 	if _maintenance_at_unix <= 0 or _platform == null:
 		return
@@ -3127,8 +3139,7 @@ func _check_maintenance() -> void:
 		_broadcast_notice(maintenance_notice_text(remaining, _maintenance_message))
 
 
-## El NOTICE del mantenimiento a [param remaining] segundos (en minutos desde 60 s), con el texto de la
-## plataforma si lo hay.
+## The maintenance NOTICE at [param remaining] seconds (in minutes from 60 s), with the platform's text if there is one.
 static func maintenance_notice_text(remaining: int, message: String) -> String:
 	var left: String = "%d s" % remaining
 	if remaining >= 60:
@@ -3139,10 +3150,10 @@ static func maintenance_notice_text(remaining: int, message: String) -> String:
 	return text
 
 
-# --- Fortalezas, marcador, salida en combate y /atascado -------------------------------------------
+# --- Fortresses, scoreboard, in-combat exit and /atascado -------------------------------------------
 
-# Crea el controlador de las fortalezas de la zona y lo conecta con el combate: los golpes a la puerta,
-# los DEATH y HIT de los defensores, los puntos de reaparición que valen y las oleadas.
+# Creates the zone's fortress controller and connects it with combat: hits on the gate, the DEATH and HIT of
+# defenders, the respawn points that are valid and the waves.
 func _setup_fortresses(world: Node3D) -> void:
 	_fortresses = FortressController.new()
 	_fortresses.score_keeper = _scores
@@ -3155,19 +3166,19 @@ func _setup_fortresses(world: Node3D) -> void:
 	_fortresses.gate_damage_started.connect(_on_gate_damage_started)
 	_combat.event_emitted.connect(_fortresses.on_combat_event)
 	_combat.structure_hit.connect(_fortresses.on_structure_hit)
-	# Las recompensas (progresion.md §6.2): la de captura y los méritos de objetivo.
+	# Rewards (progresion.md §6.2): the capture reward and objective merits.
 	if _progress != null:
 		_fortresses.fortress_captured.connect(_progress.on_capture)
 		_fortresses.objective_time.connect(_progress.on_objective_ticks)
 	_combat.set_structure_targets(_fortresses.get_structure_targets())
 	_combat.fortress_states = Callable(_fortresses, "get_states")
 	if _fortresses.has_fortresses():
-		# Oleadas de reaparición cada 10 s en las zonas con fortaleza (GUE-14).
+		# Respawn waves every 10 s in zones with a fortress (GUE-14).
 		_combat.timing.respawn_wave_ticks = CombatTiming.WAVE_TICKS
 
 
-# Crea el sistema de generadores de PNJ de la zona (puestos, navegación, fichas) y lo conecta con el combate y las
-# fortalezas, salvo con --no-npcs.
+# Creates the zone's NPC spawner system (posts, navigation, records) and connects it with combat and the
+# fortresses, except with --no-npcs.
 func _setup_npcs(world: Node3D) -> void:
 	if _config.no_npcs:
 		return
@@ -3176,17 +3187,17 @@ func _setup_npcs(world: Node3D) -> void:
 	_npc_system.setup(self, world, _config.zone_id)
 
 
-# El tick que va a simular el servidor: el de las órdenes de depuración que llegan en el poll.
+# The tick the server is about to simulate: that of the debug commands that arrive in the poll.
 func _next_tick() -> int:
 	return _tick + 1
 
 
-# Los jugadores (de red y falsos, no los PNJ) que pueden contar en el círculo: vivos, con la última
-# entrada real que han mandado y sin ser el cuerpo que queda tras una baja. Los GM invisibles no están.
+# The players (network and fake, not NPCs) that may count in the circle: alive, with the last real
+# input they sent and not being the body left after a removal. Invisible GMs are not included.
 func _presence_candidates(_tick_now: int) -> Array:
 	var candidates: Array = []
 	for entity: NetEntity in _registry.get_sorted():
-		# Un GM invisible no cuenta en el círculo (docs/plataforma.md §9.1).
+		# An invisible GM does not count in the circle (docs/plataforma.md §9.1).
 		if entity.kind != NetProtocol.EntityKind.PLAYER or entity.gm_invisible:
 			continue
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
@@ -3203,8 +3214,8 @@ func _presence_candidates(_tick_now: int) -> Array:
 	return candidates
 
 
-# Los pies de los personajes vivos o derribados (jugadores y PNJ): los que impiden cerrar la puerta si solapan
-# el vano (docs/habilidades.md, sección 4.5: la puerta no se repara con un derribado en el vano).
+# The feet of living or knocked-down characters (players and NPCs): those that prevent closing the gate if they overlap
+# the doorway (docs/habilidades.md, section 4.5: the gate is not repaired with a knocked-down player in the doorway).
 func _gate_blockers() -> PackedVector3Array:
 	var positions := PackedVector3Array()
 	for entity: NetEntity in _registry.get_sorted():
@@ -3216,7 +3227,7 @@ func _gate_blockers() -> PackedVector3Array:
 	return positions
 
 
-# Mata al PNJ capitán registrado (para fort_kill_captain). Devuelve false si no se puede.
+# Kills the registered captain NPC (for fort_kill_captain). Returns false if it cannot.
 func _kill_captain_npc(net_id: int) -> bool:
 	var combatant: Combatant = _combat.get_combatant(net_id)
 	if combatant == null or combatant.is_dead() or combatant.immortal:
@@ -3225,7 +3236,7 @@ func _kill_captain_npc(net_id: int) -> bool:
 	return true
 
 
-# Un aviso de guerra a toda la zona (ENTITY_EVENT WAR) y al registro de batalla.
+# A war notice to the whole zone (ENTITY_EVENT WAR) and to the battle log.
 func _on_war_event(event: NetMessages.EntityEvent) -> void:
 	if _battle_log != null:
 		var fortress_id: StringName = _fortresses.get_fortress_id_of(event.net_id)
@@ -3240,7 +3251,7 @@ func _on_war_event(event: NetMessages.EntityEvent) -> void:
 		_event_bytes_sent += bytes.size()
 
 
-# El OBJECT_STATE de una fortaleza a toda la zona (canal fiable).
+# The OBJECT_STATE of a fortress to the whole zone (reliable channel).
 func _on_object_state(object_state: NetMessages.ObjectState) -> void:
 	_object_states_sent += 1
 	if _transport == null or _world_peers.is_empty():
@@ -3260,13 +3271,13 @@ func _on_gate_damage_started(fortress_id: StringName, tick: int) -> void:
 			gate.global_position if gate != null else Vector3.ZERO)
 
 
-# El marcador de la zona a todos los jugadores (páginas de 66 filas como mucho).
+# The zone scoreboard to all players (pages of at most 66 rows).
 func _send_scoreboard() -> void:
 	if _transport == null or _world_peers.is_empty():
 		return
 	var ids: Array[int] = []
 	for entity: NetEntity in _registry.get_sorted():
-		# Un GM invisible no sale en el marcador (docs/plataforma.md §9.1).
+		# An invisible GM does not appear on the scoreboard (docs/plataforma.md §9.1).
 		if entity.kind == NetProtocol.EntityKind.PLAYER and not entity.gm_invisible:
 			ids.append(entity.net_id)
 	var rows: Array[NetMessages.ScoreRow] = _scores.build_rows(ids)
@@ -3277,9 +3288,9 @@ func _send_scoreboard() -> void:
 	_scoreboards_sent += 1
 
 
-# -- Salida y desconexión en combate (GUE-41) --
+# -- Exit and disconnect in combat (GUE-41) --
 
-# true si quien se va ha dado o recibido daño hace menos de 10 s y sigue vivo: su cuerpo se queda.
+# true if whoever leaves has dealt or received damage less than 10 s ago and is still alive: their body stays.
 func _should_linger(entity: NetEntity, s: int) -> bool:
 	if entity.kind != NetProtocol.EntityKind.PLAYER or _run_state != _RunState.RUNNING:
 		return false
@@ -3287,8 +3298,8 @@ func _should_linger(entity: NetEntity, s: int) -> bool:
 	return combatant != null and combatant.is_alive() and combatant.is_in_combat(s)
 
 
-# El cuerpo queda LINGER_TICKS ticks en el mundo con entradas neutras (quieto, sin botones), atacable, sin
-# contar en el círculo y con el nombre reservado. Deja de ser de ningún peer.
+# The body stays LINGER_TICKS ticks in the world with neutral inputs (still, no buttons), attackable, not
+# counting in the circle and with its name reserved. It stops belonging to any peer.
 func _start_lingering(entity: NetEntity, s: int) -> void:
 	var net_id: int = entity.net_id
 	var record: _PlayerRecord = _player_by_net.get(net_id)
@@ -3304,8 +3315,8 @@ func _start_lingering(entity: NetEntity, s: int) -> void:
 	_lingering_total += 1
 
 
-# Retira los cuerpos cuyo plazo ha vencido o a los que han matado (su muerte ya se acreditó como cualquier
-# otra).
+# Removes the bodies whose deadline has expired or that have been killed (their death was already credited like any
+# other).
 func _process_lingering(s: int) -> void:
 	if _lingering.is_empty():
 		return
@@ -3317,14 +3328,14 @@ func _process_lingering(s: int) -> void:
 		var combatant: Combatant = _combat.get_combatant(net_id)
 		if s >= _lingering[net_id] or combatant == null or combatant.is_dead():
 			_log("Se retira el cuerpo de %s (net_id %d)" % [entity.display_name, net_id])
-			# Ahora sale su guardado final (docs/plataforma.md §7.2: «al irse el cuerpo»).
+			# Now its final save goes out (docs/plataforma.md §7.2: "when the body leaves").
 			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED, true,
 					_lingering_save_reasons.get(net_id, CharacterSaver.Reason.LOGOUT))
 
 
 # -- /atascado (MUN-41) --
 
-# UNSTUCK_REQUEST o comando 7: empieza la canalización si procede y avisa al jugador de cómo ha ido.
+# UNSTUCK_REQUEST or command 7: starts the channeling if applicable and tells the player how it went.
 func _request_unstuck(peer: ServerPeer) -> int:
 	var entity: NetEntity = peer.entity
 	var combatant: Combatant = _combat.get_combatant(entity.net_id) if entity != null else null
@@ -3352,7 +3363,7 @@ func _request_unstuck(peer: ServerPeer) -> int:
 	return result
 
 
-# Avanza las canalizaciones de /atascado: el combate o la muerte las interrumpen y al final se teletransporta.
+# Advances the /atascado channelings: combat or death interrupts them and at the end the player is teleported.
 func _process_unstuck(s: int) -> void:
 	for key: String in _unstuck.get_channeling():
 		var entity: NetEntity = _registry.get_entity(_unstuck_players.get(key, 0))
@@ -3371,14 +3382,14 @@ func _process_unstuck(s: int) -> void:
 				_send_notice(peer, "/atascado: interrumpido")
 		else:
 			_teleport_unstuck(entity, s)
-			# Con la plataforma, la reutilización se guarda como el temporizador unstuck (progresion.md §8).
+			# With the platform, the reuse cooldown is saved as the unstuck timer (progresion.md §8).
 			_progress.set_timer(entity.net_id, ProgressService.TIMER_UNSTUCK, _unstuck.get_ready_at(key), s)
 			if peer != null:
 				_send_notice(peer, "/atascado: ya estás en un punto seguro de tu reino")
 
 
-# Teletransporta a [param entity] al punto de reaparición válido más cercano de su reino (o, si no hay,
-# a un punto de aparición) y anota el uso (zona, posición de origen y de destino) para arreglar el mapa.
+# Teleports [param entity] to the nearest valid respawn point of its realm (or, if there is none,
+# to a spawn point) and records the use (zone, origin and destination position) to fix the map.
 func _teleport_unstuck(entity: NetEntity, s: int) -> void:
 	var from: Vector3 = entity.get_position()
 	var destination: Transform3D = _nearest_safe_point(entity, s)
@@ -3395,7 +3406,7 @@ func _teleport_unstuck(entity: NetEntity, s: int) -> void:
 			entity.net_id, _config.zone_id, from, destination.origin])
 
 
-# El punto de reaparición que vale para el reino de [param entity] más cercano a ella.
+# The respawn point that is valid for the realm of [param entity] nearest to it.
 func _nearest_safe_point(entity: NetEntity, s: int) -> Transform3D:
 	var points: Array[Node3D] = _combat.get_all_respawn_points()
 	var position: Vector3 = entity.get_position()
@@ -3420,7 +3431,7 @@ func _send_notice(peer: ServerPeer, text: String) -> void:
 	_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, notice.encode())
 
 
-# -- Registro de batalla (GUE-17) --
+# -- Battle log (GUE-17) --
 
 func _open_battle_log() -> void:
 	if _config.battle_log_path.is_empty():
@@ -3447,7 +3458,7 @@ func _close_battle_log() -> void:
 		_battle_log = null
 
 
-# --- Transporte -------------------------------------------------------------------------------
+# --- Transport --------------------------------------------------------------------------------
 
 func _connect_transport() -> void:
 	_transport.peer_authenticating.connect(_on_peer_authenticating)
@@ -3475,7 +3486,7 @@ func _disconnect_transport() -> void:
 		_transport.packets_discarded.disconnect(_on_packets_discarded)
 
 
-# Un cliente ha conectado y empieza a autenticarse: se espera su HELLO.
+# A client has connected and starts authenticating: its HELLO is awaited.
 func _on_peer_authenticating(peer_id: int) -> void:
 	if _run_state != _RunState.RUNNING:
 		return
@@ -3486,22 +3497,21 @@ func _on_peer_authenticating(peer_id: int) -> void:
 	peer.connected_tick = _tick
 	peer.connected_at_msec = Time.get_ticks_msec()
 	_peers[peer_id] = peer
-	# Quien ha sido expulsado hace poco no vuelve a entrar en un RTT con los avisos a 0 y los cubos
-	# llenos: su IP recibe un REJECT nada más conectar (se reutiliza TOO_MANY_CONNECTIONS para no
-	# subir PROTOCOL_VERSION).
+	# Whoever was kicked recently does not get back in within an RTT with warnings at 0 and full buckets: their IP
+	# receives a REJECT right on connecting (TOO_MANY_CONNECTIONS is reused so as not to bump PROTOCOL_VERSION).
 	if _is_cooling_down(_cooldown_key_for_address(peer.remote_address)):
 		_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
 		return
-	# El tope por IP se aplica ya al conectar, no solo al llegar el HELLO: una IP que abre conexiones
-	# sin mandar nada ocuparía todas las plazas de ENet y los clientes legítimos quedarían sin
-	# respuesta. Las que pasan del tope reciben un REJECT y se cortan.
+	# The per-IP cap is applied already on connect, not only when the HELLO arrives: an IP that opens connections
+	# without sending anything would take up all the ENet slots and legitimate clients would be left without a
+	# response. Those that exceed the cap receive a REJECT and are cut.
 	if _connections_from(peer) >= _config.max_connections_per_ip \
 			and not ServerAuth.is_loopback(peer.remote_address):
 		_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
 
 
-# HELLO: se valida y se contesta WELCOME (y complete_auth) o REJECT (y corte ordenado). Con billete, el peer
-# queda en VERIFYING hasta que la plataforma conteste a la reclamación (_apply_auth_outcome).
+# HELLO: it is validated and answered with WELCOME (and complete_auth) or REJECT (and orderly disconnect). With a ticket,
+# the peer stays in VERIFYING until the platform answers the claim (_apply_auth_outcome).
 func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 	var peer: ServerPeer = _peers.get(peer_id)
 	if peer == null or _run_state != _RunState.RUNNING or peer.state == ServerPeer.State.LEAVING:
@@ -3535,8 +3545,8 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 	_welcome(peer, hello.realm, hello.display_name)
 
 
-# WELCOME y complete_auth: el peer pasa a LOADING con [param realm] y [param display_name] (los del HELLO sin
-# plataforma; los de la reclamación con ella).
+# WELCOME and complete_auth: the peer moves to LOADING with [param realm] and [param display_name] (those of the HELLO
+# without the platform; those of the claim with it).
 func _welcome(peer: ServerPeer, realm: int, display_name: String) -> void:
 	peer.state = ServerPeer.State.LOADING
 	peer.realm = realm
@@ -3556,11 +3566,11 @@ func _welcome(peer: ServerPeer, realm: int, display_name: String) -> void:
 		_mark_leaving(peer)
 
 
-# --- Plataforma (docs/plataforma.md §5.2 y §14.3) ------------------------------------------------
+# --- Platform (docs/plataforma.md §5.2 and §14.3) ------------------------------------------------
 
-# Paso «poll» con la plataforma: los eventos, por kind y en orden de llegada (instance_closed al final), los
-# finales del AuthProvider y los VERIFYING vencidos. Mientras se cierra (STOPPING) solo cuentan las respuestas de
-# los guardados y de las reclamaciones (las que llegan tarde se liberan): el latido ya no expulsa ni avisa.
+# "poll" step with the platform: the events, by kind and in arrival order (instance_closed last), the finals of the
+# AuthProvider and the expired VERIFYING peers. While shutting down (STOPPING) only the responses to saves and claims
+# count (those that arrive late are released): the heartbeat no longer kicks or warns.
 func _poll_platform() -> void:
 	var running: bool = _run_state == _RunState.RUNNING
 	if _platform != null:
@@ -3598,14 +3608,14 @@ func _poll_platform() -> void:
 		_check_verify_timeouts()
 
 
-# El final de una reclamación (tabla de §5.2). Con OK, en orden: (1) la zona admite el reino del personaje
-# (REALM); (2) cabe (FULL); (3) ProgressService.prepare (progresion.md §9.1: si el registro no se puede leer,
-# UNAVAILABLE con «No se ha podido cargar el personaje» y alerta); (4) WELCOME con el reino y el nombre del
-# personaje. Si falla alguno, REJECT y se libera el arrendamiento.
+# The outcome of a claim (table of §5.2). With OK, in order: (1) the zone admits the character's realm
+# (REALM); (2) there is room (FULL); (3) ProgressService.prepare (progresion.md §9.1: if the record cannot be read,
+# UNAVAILABLE with "No se ha podido cargar el personaje" (the character could not be loaded) and an alert); (4) WELCOME
+# with the realm and the character name. If any fails, REJECT and the lease is released.
 func _apply_auth_outcome(outcome: AuthOutcome) -> void:
 	var peer: ServerPeer = _peers.get(outcome.peer_id)
 	if peer == null or peer.state != ServerPeer.State.VERIFYING:
-		# Se fue en el mismo tick: el proveedor ya no lo esperaba, pero por si acaso no queda nada colgado.
+		# It left on the same tick: the provider was no longer waiting for it, but just in case nothing is left hanging.
 		if outcome.result == NetProtocol.Result.OK and outcome.claimed != null and _platform != null:
 			_platform.release(outcome.claimed.character_id, outcome.claimed.lease_id)
 		return
@@ -3617,7 +3627,7 @@ func _apply_auth_outcome(outcome: AuthOutcome) -> void:
 	if not _auth.is_realm_allowed(claimed.realm):
 		rejection = NetProtocol.Result.REALM
 	else:
-		# Él ya cuenta en _occupied_seats (VERIFYING): el cupo se mira sin él, como en ServerAuth.
+		# It already counts in _occupied_seats (VERIFYING): capacity is checked without it, as in ServerAuth.
 		var others: int = _occupied_seats() - 1
 		if others - _filler_seats() >= _config.max_players \
 				or not _make_room_for(peer, claimed.realm, claimed.display_name, others):
@@ -3639,8 +3649,8 @@ func _apply_auth_outcome(outcome: AuthOutcome) -> void:
 				claimed.character_id, claimed.account_id, claimed.role, peer.peer_id])
 
 
-# Los peers en VERIFYING desde hace más de verify_timeout_ms (tiempo real, desde la conexión): REJECT
-# UNAVAILABLE. Si la reclamación llega después, el proveedor la libera.
+# Peers in VERIFYING for more than verify_timeout_ms (real time, since connecting): REJECT
+# UNAVAILABLE. If the claim arrives later, the provider releases it.
 func _check_verify_timeouts() -> void:
 	var now: int = Time.get_ticks_msec()
 	for peer: ServerPeer in _peers.values():
@@ -3649,10 +3659,10 @@ func _check_verify_timeouts() -> void:
 			_reject(peer, NetProtocol.Result.UNAVAILABLE)
 
 
-# Respuesta del latido: los revoked (§6) y el mantenimiento (§12). Cada revoked lleva el lease_id; el que no casa
-# con el arrendamiento actual del personaje en esta zona no expulsa a nadie. lease_lost es la baja sin guardado
-# (sin liberar: el arrendamiento ya no es de la zona); los demás expulsan con el texto de la plataforma y guardado
-# final al irse el cuerpo (en LOADING, liberación sin guardar). Los mutes van a la moderación (§9.5).
+# Heartbeat response: the revoked ones (§6) and maintenance (§12). Each revoked carries the lease_id; one that does not
+# match the character's current lease in this zone kicks nobody. lease_lost is the removal without saving
+# (without releasing: the lease is no longer the zone's); the others kick with the platform's text and a final save
+# when the body leaves (in LOADING, release without saving). Mutes go to moderation (§9.5).
 func _on_heartbeat_event(event: PlatformEvent) -> void:
 	if not event.is_success():
 		return
@@ -3679,16 +3689,16 @@ func _revoke(character_id: int, lease_id: String, reason: String, text: String) 
 			continue
 		_log("La plataforma revoca a %s (personaje %d): %s" % [peer.display_name, character_id, reason])
 		if lease_lost:
-			# La baja sin guardado (§7.2): el arrendamiento ya no es de esta zona, así que ni se libera ni se
-			# guarda, y el cuerpo sale en el acto (sin salida en combate).
+			# The removal without saving (§7.2): the lease is no longer this zone's, so it is neither released nor
+			# saved, and the body leaves immediately (no in-combat exit).
 			if peer.entity != null and _saver != null:
 				_saver.drop(peer.entity.net_id, CharacterSaver.LEASE_LOST)
 			peer.claimed = null
 			peer.drop_body_at_once = true
 		_kick(peer, reason, false, text if not text.is_empty() else "Tu sesión ha terminado: vuelve a entrar")
 		return
-	# Un cuerpo que se queda tras una salida en combate: con lease_lost sale ya, sin guardado ni liberación. Con los
-	# demás motivos su dueño ya se fue: el final sale cuando se retire.
+	# A body that remains after an in-combat exit: with lease_lost it leaves now, without saving or release. With the
+	# other reasons its owner already left: the final save goes out when it is withdrawn.
 	if lease_lost and _saver != null:
 		var net_id: int = _saver.net_id_of(character_id, lease_id)
 		if net_id > 0 and _lingering.has(net_id):
@@ -3697,10 +3707,10 @@ func _revoke(character_id: int, lease_id: String, reason: String, text: String) 
 			_lingering[net_id] = 0
 
 
-# Un guardado rechazado de forma definitiva antes de su final (CharacterSaver.save_rejected, docs/plataforma.md
-# §7.2 y §7.3): la baja sin guardado. (1) drop, que libera salvo con lease_lost; (2) NOTICE y expulsión con el
-# cuerpo fuera en el acto, sin salida en combate (el que se quedaba tras una salida en combate se retira ya); (3)
-# ScoreKeeper.forget y ProgressService.on_departure, en la baja del cuerpo, cuyo finish ya no hace nada.
+# A save definitively rejected before its final (CharacterSaver.save_rejected, docs/plataforma.md
+# §7.2 and §7.3): the removal without saving. (1) drop, which releases except with lease_lost; (2) NOTICE and kick with
+# the body removed immediately, no in-combat exit (the one that remained after an in-combat exit is withdrawn now); (3)
+# ScoreKeeper.forget and ProgressService.on_departure, on the body's removal, whose finish no longer does anything.
 func _on_save_rejected(net_id: int, character_id: int, code: String) -> void:
 	if _saver != null:
 		_saver.drop(net_id, code)
@@ -3722,9 +3732,9 @@ func _on_save_rejected(net_id: int, character_id: int, code: String) -> void:
 		_mark_leaving(peer)
 
 
-# Un peer que deja VERIFYING o LOADING sin llegar al mundo (§5.2): en VERIFYING se cancela la espera de su
-# reclamación; en LOADING se libera su arrendamiento sin guardar y se descarta su progreso preparado
-# (ProgressService.cancel_prepared, progresion.md §9.1 paso 3).
+# A peer that leaves VERIFYING or LOADING without reaching the world (§5.2): in VERIFYING the wait for its
+# claim is cancelled; in LOADING its lease is released without saving and its prepared progress is discarded
+# (ProgressService.cancel_prepared, progresion.md §9.1 step 3).
 func _leave_auth_states(peer: ServerPeer) -> void:
 	match peer.state:
 		ServerPeer.State.VERIFYING:
@@ -3738,7 +3748,7 @@ func _leave_auth_states(peer: ServerPeer) -> void:
 				peer.claimed = null
 
 
-# Autenticación completada en los dos lados: ya se puede enviar a este peer.
+# Authentication completed on both sides: it is now possible to send to this peer.
 func _on_peer_connected(peer_id: int) -> void:
 	var peer: ServerPeer = _peers.get(peer_id)
 	if peer == null or peer.state != ServerPeer.State.LOADING:
@@ -3757,10 +3767,9 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_mark_leaving(peer)
 
 
-# El transporte ha descartado [param count] paquetes de este peer por no ser del protocolo (SYS que no
-# es autenticación antes del HELLO; después, cualquier cosa que no sea un paquete de aplicación): un
-# cliente de verdad nunca los manda. Cada uno suma un aviso; a los 50 se le expulsa. Con más de 50
-# de golpe no hace falta contarlos todos.
+# The transport has discarded [param count] packets from this peer for not being part of the protocol (SYS that is not
+# authentication before the HELLO; afterwards, anything that is not an application packet): a real client never
+# sends them. Each adds a warning; at 50 it is kicked. With more than 50 at once there is no need to count them all.
 func _on_packets_discarded(peer_id: int, count: int) -> void:
 	var peer: ServerPeer = _peers.get(peer_id)
 	if peer == null or _run_state != _RunState.RUNNING or peer.state == ServerPeer.State.LEAVING:
@@ -3778,7 +3787,7 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 	if peer.state == ServerPeer.State.LEAVING:
 		return
 	var msg_type: int = NetMessages.peek_type(bytes)
-	# Limitadores por peer: lo que sobra se descarta y suma un aviso.
+	# Per-peer limiters: what exceeds them is discarded and adds a warning.
 	var limiter: RateLimiter = peer.limiter_unreliable \
 			if msg_type == NetProtocol.MSG_INPUT_BATCH else peer.limiter_reliable
 	if not limiter.try_consume(_tick) or not peer.limiter_bytes.try_consume(_tick,
@@ -3804,10 +3813,10 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 		NetProtocol.MSG_LOADOUT_SELECT:
 			_handle_loadout_select(peer, bytes)
 		NetProtocol.MSG_INVENTORY_REQUEST, NetProtocol.MSG_INVENTORY_SYNC_REQUEST:
-			# El inventario (progresion.md §4.2 y §4.6): RATE al llegar y la cola de ProgressService.apply_pending.
+			# The inventory (progresion.md §4.2 and §4.6): RATE on arrival and the ProgressService.apply_pending queue.
 			_progress.handle_packet(peer, bytes)
 		_:
-			# El chat y los grupos (0x40 a 0x4F) los atiende el servicio social.
+			# Chat and parties (0x40 to 0x4F) are handled by the social service.
 			if not _social.handle_packet(peer, msg_type, bytes, _tick):
 				_add_strike(peer, "tipo de mensaje inesperado (0x%02X)" % msg_type)
 
@@ -3820,11 +3829,11 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if batch == null:
 		_add_strike(peer, "lote de entradas mal formado")
 		return
-	# El retardo de interpolación del cliente no pasa de 12 ticks (× 8): más es un cliente falso.
+	# The client's interpolation delay does not exceed 12 ticks (× 8): more is a fake client.
 	peer.interp_delay_q = mini(batch.interp_delay_q, NetProtocol.MAX_INTERP_DELAY_Q)
 	if batch.interp_delay_q > NetProtocol.MAX_INTERP_DELAY_Q:
 		_add_strike(peer, "retardo de interpolación fuera de rango")
-	# El ack no puede ir por delante del servidor ni retroceder; con él se mide el RTT en ticks.
+	# The ack cannot go ahead of the server nor go backward; with it the RTT is measured in ticks.
 	if batch.ack_snapshot_tick > 0 and batch.ack_snapshot_tick <= _tick \
 			and batch.ack_snapshot_tick >= peer.ack_snapshot_tick:
 		peer.ack_snapshot_tick = batch.ack_snapshot_tick
@@ -3837,7 +3846,7 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		var plausible: int = _max_plausible_rtt_ticks(peer)
 		peer.rtt_ticks = mini(maxi(window.get_min(next_tick), 0), plausible)
 		peer.rtt_peak_ticks = mini(maxi(window.get_max(next_tick), peer.rtt_ticks), plausible)
-	# Cota inferior del RTT: el de ENet, que el cliente no controla (lo usa el rebobinado como mínimo).
+	# Lower bound of the RTT: ENet's, which the client does not control (used by the rewind as a minimum).
 	if _transport != null:
 		peer.rtt_floor_ticks = floori(_transport.get_rtt_ms(peer.peer_id)
 				* float(Engine.physics_ticks_per_second) / 1000.0)
@@ -3845,11 +3854,11 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		peer.input_queue.push(batch.inputs[i], batch.view_offsets_q[i], _tick + 1)
 
 
-# Cota del RTT en ticks que puede declarar un cliente con sus acks. El ack lo decide el cliente: uno
-# que atrasara sus acks se haría pasar por alguien con lag y obtendría el rebobinado máximo de la fase
-# 3. La cota sale de fuentes que no controla: el RTT de ENet, el retardo que añade el simulador de
-# red del propio servidor y un margen. (El --net-sim del cliente no cuenta: en producción sería
-# fingir lag; para probar con lag se usa el del servidor.)
+# Bound on the RTT in ticks that a client can declare with its acks. The ack is decided by the client: one
+# that delayed its acks would pass for someone with lag and obtain the maximum phase 3 rewind.
+# The bound comes from sources it does not control: ENet's RTT, the delay added by the server's own
+# network simulator and a margin. (The client's --net-sim does not count: in production it would be
+# faking lag; to test with lag, the server's is used.)
 func _max_plausible_rtt_ticks(peer: ServerPeer) -> int:
 	var enet_ticks: int = 0
 	var sim_ticks: int = 0
@@ -3889,8 +3898,8 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if command == null:
 		_add_strike(peer, "comando de depuración mal formado")
 		return
-	# Con la plataforma, además de --debug-commands, el rol mínimo del comando (docs/plataforma.md §9.1) con el de la
-	# reclamación; sin él, un aviso y nada se ejecuta.
+	# With the platform, in addition to --debug-commands, the command's minimum role (docs/plataforma.md §9.1) with that of the
+	# claim; without it, a warning and nothing is executed.
 	var role: StringName = &""
 	if _platform != null:
 		role = peer.claimed.role if peer.claimed != null else CommandRegistry.ROLE_PLAYER
@@ -3899,8 +3908,8 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		CommandRegistry.Result.FORBIDDEN:
 			_add_strike(peer, "comando de depuración sin permiso (%d)" % command.command)
 		CommandRegistry.Result.UNKNOWN:
-			# Un id fijo del protocolo cuyo manejador no existe en este servidor (el de un comando que se haya
-			# quitado, o el de npc_debug con --no-npcs) se acepta sin hacer nada: no es un cliente defectuoso.
+			# A fixed protocol id whose handler does not exist on this server (that of a command that has been
+			# removed, or that of npc_debug with --no-npcs) is accepted without doing anything: it is not a faulty client.
 			if not NetProtocol.DEBUG_COMMAND_IDS.values().has(command.command):
 				_add_strike(peer, "comando de depuración desconocido (%d)" % command.command)
 		CommandRegistry.Result.BAD_ARGUMENTS:
@@ -3908,10 +3917,10 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 					% command.command)
 
 
-# RESPAWN_REQUEST: un muerto pide reaparecer en el punto point_index de la lista estática de la zona
-# (NetZones.get_all_respawn_points). Fuera de plazo (vivo, o mucho antes de poder) es un aviso; un índice que
-# ya no vale (un campamento ajeno, un fuerte que ha cambiado de manos o está atacado) no lo es: el estado del
-# cliente va atrasado y se usa el primer campamento válido de su reino.
+# RESPAWN_REQUEST: a dead player asks to respawn at point point_index of the zone's static list
+# (NetZones.get_all_respawn_points). Out of the window (alive, or long before being able to) is a warning; an index that
+# is no longer valid (an enemy camp, a fort that has changed hands or is under attack) is not: the client's state is
+# stale and the first valid camp of its realm is used.
 func _handle_respawn_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if peer.state != ServerPeer.State.IN_WORLD:
 		_add_strike(peer, "petición de reaparición antes de entrar en el mundo")
@@ -3925,8 +3934,8 @@ func _handle_respawn_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		_add_strike(peer, "petición de reaparición fuera de plazo")
 
 
-# UNSTUCK_REQUEST (/atascado, docs/fuerte.md sección 5): sin necesidad de --debug-commands. Canalización
-# de 10 s fuera de combate, que el combate interrumpe, con 5 min de reutilización; ver _request_unstuck.
+# UNSTUCK_REQUEST (/atascado, docs/fuerte.md section 5): no need for --debug-commands. A 10 s channeling
+# out of combat, interrupted by combat, with a 5 min reuse cooldown; see _request_unstuck.
 func _handle_unstuck_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if peer.state != ServerPeer.State.IN_WORLD:
 		_add_strike(peer, "petición de /atascado antes de entrar en el mundo")
@@ -3937,9 +3946,9 @@ func _handle_unstuck_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	_request_unstuck(peer)
 
 
-# LOADOUT_SELECT (docs/habilidades.md, secciones 4.6 y 5.1): la plantilla de la siguiente aparición. Vale en
-# LOADING (desde el WELCOME, antes de CLIENT_READY) e IN_WORLD; ya ha pasado por el limitador de fiables. 0 = la
-# de por defecto, sin aviso; un id que no existe o no se puede elegir cuenta un aviso y no cambia nada.
+# LOADOUT_SELECT (docs/habilidades.md, sections 4.6 and 5.1): the template for the next spawn. Valid in
+# LOADING (from the WELCOME, before CLIENT_READY) and IN_WORLD; it has already gone through the reliable limiter. 0 = the
+# default one, with no warning; an id that does not exist or cannot be chosen counts a warning and changes nothing.
 func _handle_loadout_select(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if peer.state != ServerPeer.State.LOADING and peer.state != ServerPeer.State.IN_WORLD:
 		_add_strike(peer, "LOADOUT_SELECT inesperado")
@@ -3953,13 +3962,13 @@ func _handle_loadout_select(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		if template == null or not template.selectable:
 			_add_strike(peer, "plantilla de equipo no válida (%d)" % select.template_id)
 			return
-	# Quien tiene inventario ya tiene su equipo: tras el alta no cambia nada (progresion.md §2.5).
+	# Whoever has an inventory already has their equipment: after the spawn nothing changes (progresion.md §2.5).
 	if peer.entity != null and _progress.has_inventory(peer.entity.net_id):
 		return
 	peer.pending_template_id = select.template_id
 
 
-# Suma un aviso y expulsa al peer si llega al límite (50 en 600 ticks).
+# Adds a warning and kicks the peer if it reaches the limit (50 in 600 ticks).
 func _add_strike(peer: ServerPeer, reason: String) -> void:
 	_strikes_total += 1
 	_strike_reasons[reason] = _strike_reasons.get(reason, 0) + 1
@@ -3967,9 +3976,9 @@ func _add_strike(peer: ServerPeer, reason: String) -> void:
 		_kick(peer, reason)
 
 
-# NOTICE de expulsión y corte ordenado. El motivo queda en el informe. Con [param cooldown], su IP (o,
-# desde loopback, su nombre o su personaje) no puede volver a entrar durante kick_cooldown_ticks. Con
-# [param notice_text] el NOTICE lleva ese texto tal cual (el de un revoked de la plataforma).
+# Kick NOTICE and orderly disconnect. The reason stays in the report. With [param cooldown], their IP (or,
+# from loopback, their name or their character) cannot rejoin for kick_cooldown_ticks. With
+# [param notice_text] the NOTICE carries that text as is (that of a platform revoked).
 func _kick(peer: ServerPeer, reason: String, cooldown: bool = true, notice_text: String = "") -> void:
 	if peer.state == ServerPeer.State.LEAVING:
 		return
@@ -3997,9 +4006,9 @@ func _kick(peer: ServerPeer, reason: String, cooldown: bool = true, notice_text:
 	_mark_leaving(peer)
 
 
-# Apunta el enfriamiento de un peer expulsado y purga los vencidos. Por IP (las IPv6, por /64) salvo
-# desde loopback, donde no hay tope por IP y se usa el nombre normalizado, si ya lo había dado (con billete, el
-# personaje: character:<id>, docs/plataforma.md §5.4).
+# Records the cooldown of a kicked peer and purges the expired ones. By IP (IPv6, by /64) except
+# from loopback, where there is no per-IP cap and the normalized name is used, if it had already been given (with a ticket, the
+# character: character:<id>, docs/plataforma.md §5.4).
 func _start_cooldown(peer: ServerPeer) -> void:
 	var key: String = _cooldown_key_for_address(peer.remote_address)
 	if key.is_empty():
@@ -4012,15 +4021,15 @@ func _start_cooldown(peer: ServerPeer) -> void:
 	_kick_until[key] = _tick + kick_cooldown_ticks
 
 
-# Clave de enfriamiento por dirección, o vacía si es loopback o no se conoce.
+# Cooldown key by address, or empty if it is loopback or unknown.
 func _cooldown_key_for_address(address: String) -> String:
 	if address.is_empty() or ServerAuth.is_loopback(address):
 		return ""
 	return "ip:" + ServerAuth.address_group(address)
 
 
-# Clave de enfriamiento por identidad: solo desde loopback, que no tiene tope por IP. Con billete, el personaje
-# ([param character_id] > 0); sin él, el nombre del HELLO.
+# Cooldown key by identity: only from loopback, which has no per-IP cap. With a ticket, the character
+# ([param character_id] > 0); without it, the HELLO name.
 func _cooldown_key_for_identity(address: String, display_name: String, character_id: int) -> String:
 	if not ServerAuth.is_loopback(address):
 		return ""
@@ -4043,8 +4052,8 @@ func _mark_leaving(peer: ServerPeer) -> void:
 	_leaving.append(peer.peer_id)
 
 
-# REJECT y corte ordenado: lo encolado sale antes de cortar. [param text] vacío = el de
-# NetProtocol.result_text (el informe cuenta siempre por ese, no por el texto propio).
+# REJECT and orderly disconnect: what is queued goes out before cutting. [param text] empty = that of
+# NetProtocol.result_text (the report always counts by that, not by the custom text).
 func _reject(peer: ServerPeer, result: int, text: String = "") -> void:
 	var reject := NetMessages.Reject.new()
 	reject.result = result
@@ -4058,7 +4067,7 @@ func _reject(peer: ServerPeer, result: int, text: String = "") -> void:
 	_mark_leaving(peer)
 
 
-# Falsos de relleno vivos, sin los que ya tienen la baja pedida (esos ya no cuentan en get_player_count).
+# Living filler fakes, without those with a requested removal (those no longer count in get_player_count).
 func _live_fillers() -> int:
 	if _filler_keeper == null:
 		return 0
@@ -4069,28 +4078,28 @@ func _live_fillers() -> int:
 	return count
 
 
-# Plazas que el relleno tiene apartadas para personas que aún cargan la zona (GUE-43): como mucho, una por falso de
-# relleno vivo. Cada una es un jugador de más hasta que esa persona entra en el mundo y su falso se va.
+# Slots the filler has set aside for people still loading the zone (GUE-43): at most one per living filler
+# fake. Each one is one player too many until that person enters the world and their fake leaves.
 func _reserved_seats() -> int:
 	if _filler_keeper == null:
 		return 0
 	return mini(_filler_keeper.reserved_count(), _live_fillers())
 
 
-# Plazas ocupadas para el cupo: los jugadores de get_player_count() menos los falsos de relleno que ya han apartado su
-# plaza a alguien (se van cuando entra).
+# Slots occupied for capacity: the players of get_player_count() minus the filler fakes that have already set aside
+# their slot for someone (they leave when that person enters).
 func _occupied_seats() -> int:
 	return get_player_count() - _reserved_seats()
 
 
-# Falsos de relleno que aún pueden ceder su plaza a una persona (GUE-43): los vivos que no la han apartado ya.
+# Filler fakes that can still yield their slot to a person (GUE-43): the living ones that have not already set it aside.
 func _filler_seats() -> int:
 	return maxi(_live_fillers() - _reserved_seats(), 0)
 
 
-# Un HELLO aceptado con el servidor lleno solo por los falsos de relleno: el guardián le aparta la plaza de uno, que se
-# va cuando la persona entra en el mundo (FillerKeeper.on_person_joined). false si no hay sitio (no debería pasar:
-# ServerAuth ya ha comprobado que el relleno basta). [param occupied] son las plazas ocupadas sin contarle a él.
+# An accepted HELLO with the server full only because of filler fakes: the keeper sets aside the slot of one, which
+# leaves when the person enters the world (FillerKeeper.on_person_joined). false if there is no room (it should not
+# happen: ServerAuth has already checked that the filler suffices). [param occupied] is the occupied slots not counting them.
 func _make_room_for(peer: ServerPeer, realm: int, display_name: String, occupied: int) -> bool:
 	if occupied < _config.max_players:
 		return true
@@ -4103,8 +4112,8 @@ func _make_room_for(peer: ServerPeer, realm: int, display_name: String, occupied
 	return true
 
 
-# Conexiones abiertas desde la misma IP que [param peer], sin contarlo a él (las IPv6 se cuentan por
-# prefijo /64, ver ServerAuth.address_group).
+# Open connections from the same IP as [param peer], not counting it (IPv6 ones are counted by
+# /64 prefix, see ServerAuth.address_group).
 func _connections_from(peer: ServerPeer) -> int:
 	if peer.remote_address.is_empty():
 		return 0
@@ -4117,9 +4126,9 @@ func _connections_from(peer: ServerPeer) -> int:
 	return count
 
 
-# Lo común a stop() y close_instance(): cierra las fichas del informe, manda el guardado final de cada cuerpo con
-# arrendamiento (con el motivo SHUTDOWN) antes de vaciar el mundo, cierra los registros y pide a la plataforma que
-# saque ya lo pendiente (begin_flush).
+# What stop() and close_instance() have in common: closes the report records, sends the final save of each body with a
+# lease (with the SHUTDOWN reason) before emptying the world, closes the logs and asks the platform to
+# push out whatever is pending (begin_flush).
 func _wind_down() -> void:
 	for record: _PlayerRecord in _player_by_net.values():
 		record.close(_tick)
@@ -4146,8 +4155,8 @@ func _wind_down() -> void:
 		_platform.begin_flush()
 
 
-# Pasa a STOPPING, o termina ya si no hay peers ni nada pendiente en la plataforma. Con [param kick_after_saves]
-# (el cierre de §6.1) los peers reciben su NOTICE de expulsión cuando los guardados ya tienen respuesta.
+# Moves to STOPPING, or finishes right away if there are no peers and nothing pending on the platform. With [param kick_after_saves]
+# (the §6.1 shutdown) the peers receive their kick NOTICE when the saves already have an answer.
 func _begin_drain(kick_after_saves: bool) -> void:
 	_drain_ticks = 0
 	_peer_drain_ticks = 0
@@ -4159,14 +4168,14 @@ func _begin_drain(kick_after_saves: bool) -> void:
 		_run_state = _RunState.STOPPING
 
 
-# true si los guardados tienen todos su respuesta definitiva y la plataforma no tiene nada en cola ni en vuelo.
+# true if the saves all have their definitive answer and the platform has nothing queued or in flight.
 func _saves_settled() -> bool:
 	return (_saver == null or _saver.pending_count() == 0) and (_platform == null or _platform.is_flushed())
 
 
-# Tras stop() o close_instance(): sigue sondeando la red y la plataforma (las respuestas de los guardados finales y
-# las reclamaciones que llegan tarde) hasta que los guardados están contestados (o pasan save_drain_ticks) y los
-# peers se han ido (o pasan STOP_DRAIN_TICKS desde su NOTICE).
+# After stop() or close_instance(): keeps polling the network and the platform (the answers to the final saves and
+# the claims that arrive late) until the saves are answered (or save_drain_ticks pass) and the
+# peers have left (or STOP_DRAIN_TICKS pass since their NOTICE).
 func _drain_stop() -> void:
 	_drain_ticks += 1
 	if _transport != null:
@@ -4189,7 +4198,7 @@ func _drain_stop() -> void:
 		_finish_stop()
 
 
-# NOTICE de expulsión con [param text] y corte ordenado de todos los peers que quedan (el cierre de §6.1).
+# Kick NOTICE with [param text] and orderly disconnect of all remaining peers (the §6.1 shutdown).
 func _kick_everyone(text: String) -> void:
 	if _transport == null:
 		return
@@ -4210,10 +4219,10 @@ func _finish_stop() -> void:
 	set_physics_process(false)
 
 
-# --- Auxiliares -------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
-# Personaje del servidor: una instancia de player_character.tscn sin su nodo Visual (mallas), sin
-# proceso propio. Solo ZoneServer lo simula.
+# Server character: an instance of player_character.tscn without its Visual node (meshes), without its own
+# process. Only ZoneServer simulates it.
 func _instantiate_character() -> PlayerCharacter:
 	var character: PlayerCharacter = PLAYER_SCENE.instantiate() as PlayerCharacter
 	var visual: Node = character.get_node_or_null(^"Visual")
@@ -4226,7 +4235,7 @@ func _instantiate_character() -> PlayerCharacter:
 	return character
 
 
-# Huella de la simulación, calculada sobre una instancia dentro del árbol después de _ready().
+# Simulation fingerprint, computed over an instance inside the tree after _ready().
 func _compute_sim_hash() -> int:
 	var character: PlayerCharacter = _instantiate_character()
 	_players_root.add_child(character)
@@ -4236,9 +4245,9 @@ func _compute_sim_hash() -> int:
 	return hash_value
 
 
-# true si hay suelo justo bajo [param position] (a menos de lo que alcanza el ajuste al suelo del
-# personaje): el estado de aparición nace entonces con grounded = true. El rayo va ligeramente
-# inclinado porque los verticales pueden fallar contra HeightMapShape3D.
+# true if there is ground right under [param position] (within what the character's ground snap
+# reaches): the spawn state is then born with grounded = true. The ray is slightly tilted
+# because vertical ones can miss against HeightMapShape3D.
 func _probe_grounded(position: Vector3) -> bool:
 	var space: PhysicsDirectSpaceState3D = _players_root.get_world_3d().direct_space_state
 	var from: Vector3 = position + Vector3(0.0, _PROBE_UP, 0.0)
@@ -4248,13 +4257,13 @@ func _probe_grounded(position: Vector3) -> bool:
 	return not space.intersect_ray(query).is_empty()
 
 
-# Yaw (misma convención que Node3D.rotation.y) hacia el que mira una base.
+# Yaw (same convention as Node3D.rotation.y) that a basis faces.
 static func _yaw_of(transform: Transform3D) -> float:
 	var forward: Vector3 = -transform.basis.z
 	return atan2(-forward.x, -forward.z)
 
 
-# Acumula los bytes de ENet del transporte en las métricas.
+# Accumulates the transport's ENet bytes into the metrics.
 func _sync_byte_counters() -> void:
 	if _transport == null or not is_instance_valid(_transport):
 		return
@@ -4294,9 +4303,9 @@ func _release_resources() -> void:
 	_disconnect_transport()
 
 
-# Línea de métricas cada 10 s: duración del tick, jugadores, entradas sustituidas, ancho de banda y, al final, los PNJ
-# que se simulan en ese momento (los de guerra y los maniquíes; GUE-16: la carga con PNJ los sigue a lo largo de la
-# batalla).
+# Metrics line every 10 s: tick duration, players, substituted inputs, bandwidth and, at the end, the NPCs
+# simulated at that moment (the war ones and the dummies; GUE-16: the load with NPCs follows them throughout the
+# battle).
 func _log_metrics(s: int) -> void:
 	_sync_byte_counters()
 	var now_usec: int = Time.get_ticks_usec()
@@ -4346,7 +4355,7 @@ func _build_report() -> Dictionary:
 		"ticks": _tick,
 		"tick_rate": Engine.physics_ticks_per_second,
 		"sim_hash": _sim_hash,
-		# Si el puerto se abrió por DTLS (docs/plataforma.md §10.2; el transporte ya está cerrado en el informe final).
+		# Whether the port was opened over DTLS (docs/plataforma.md §10.2; the transport is already closed in the final report).
 		"dtls": _config != null and _config.dtls != null and _transport != null,
 		"closed": _run_state == _RunState.STOPPING or _run_state == _RunState.STOPPED,
 		"players": {
@@ -4405,8 +4414,8 @@ func _combat_stat(stat: StringName) -> int:
 	return _combat.stats.get(stat, 0) if _combat != null else 0
 
 
-# Resumen del combate para el informe: los contadores del director, los eventos enviados y la
-# puntuación de sospecha por peer (solo los sospechosos).
+# Combat summary for the report: the director's counters, the events sent and the
+# suspicion score per peer (only the suspicious ones).
 func _combat_report() -> Dictionary:
 	var suspicious: Array[Dictionary] = []
 	for record: _PlayerRecord in _player_log:
@@ -4418,14 +4427,14 @@ func _combat_report() -> Dictionary:
 	if _combat != null:
 		for stat: StringName in _combat.stats:
 			report[String(stat)] = _combat.stats[stat]
-		# Los efectos de estado (docs/habilidades.md, 4.3): aplicados, quitados, pulsos y vida curada.
+		# Status effects (docs/habilidades.md, 4.3): applied, removed, pulses and health healed.
 		for stat: StringName in _combat.status.stats:
 			report[String(stat)] = _combat.status.stats[stat]
-		# Los proyectiles (docs/habilidades.md, 4.4): disparos, impactos, bajas, criba y pico de vivos.
+		# Projectiles (docs/habilidades.md, 4.4): shots, impacts, kills, culling and peak of living ones.
 		for stat: StringName in _combat.projectiles.stats:
 			report[String(stat)] = _combat.projectiles.stats[stat]
 		report["projectiles_live"] = _combat.projectiles.live_count()
-		# El derribado (docs/habilidades.md, 4.5): derribos, levantados, rematados, desangrados e interacciones.
+		# The knocked-down state (docs/habilidades.md, 4.5): knockdowns, revives, finishers, bleed-outs and interactions.
 		for stat: StringName in _combat.downed.stats:
 			report[String(stat)] = _combat.downed.stats[stat]
 		report["downed_now"] = _combat.downed.downed_count()
@@ -4439,7 +4448,7 @@ func _combat_report() -> Dictionary:
 	return report
 
 
-# Resumen de los PNJ para el informe: lo del sistema de generadores y los avisos de ataques fuertes.
+# NPC summary for the report: what the spawner system has and the heavy attack notices.
 func _npc_report() -> Dictionary:
 	var report: Dictionary = _npc_system.get_report() if _npc_system != null else {}
 	report["npcs_now"] = _npcs.size()
@@ -4447,11 +4456,11 @@ func _npc_report() -> Dictionary:
 	return report
 
 
-# Resumen de la guerra para el informe: el estado de cada fortaleza, el marcador, las salidas en combate y los
-# usos de /atascado.
+# War summary for the report: the state of each fortress, the scoreboard, the in-combat exits and the
+# uses of /atascado (unstuck).
 func _war_report() -> Dictionary:
-	# Tras stop() el controlador ya no tiene fortalezas (se liberan con los jugadores): el informe final
-	# lleva su estado en el momento del cierre.
+	# After stop() the controller no longer has fortresses (they are freed with the players): the final report
+	# carries their state at the moment of shutdown.
 	var fortresses: Array[Dictionary] = _fortress_entries()
 	if fortresses.is_empty():
 		fortresses = _war_fortresses_at_stop
@@ -4471,7 +4480,7 @@ func _war_report() -> Dictionary:
 	}
 
 
-# El estado de cada fortaleza viva para el informe.
+# The state of each live fortress for the report.
 func _fortress_entries() -> Array[Dictionary]:
 	var fortresses: Array[Dictionary] = []
 	if _fortresses == null:

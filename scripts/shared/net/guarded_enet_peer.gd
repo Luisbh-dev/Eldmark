@@ -1,69 +1,69 @@
 class_name GuardedEnetPeer
 extends MultiplayerPeerExtension
-## Envoltorio del [ENetMultiplayerPeer] del servidor que filtra los paquetes antes de que los vea
-## [SceneMultiplayer] (docs/red.md, secciones 2 y 12).
+## Wrapper around the server's [ENetMultiplayerPeer] that filters packets before [SceneMultiplayer]
+## sees them (docs/red.md, sections 2 and 12).
 ## [br][br]
-## [b]Por qué.[/b] [SceneMultiplayer] procesa dentro de [code]poll()[/code] todo lo que llega, y solo
-## entrega a la aplicación los paquetes RAW de los peers ya admitidos. Un cliente ENet sin
-## [SceneMultiplayer] (un atacante) que mande otra cosa antes del HELLO o después de él (RPC, rutas
-## simplificadas, SPAWN, órdenes de sistema...) hacía que el motor registrase un error por paquete
-## (cada uno con su traza de GDScript: 2000 paquetes eran 742 KB de registro y un tick de 28 ms), que
-## esos paquetes no pasaran por los limitadores ni sumaran avisos, y que antes del HELLO solo los
-## cortase el [code]auth_timeout[/code] de 5 s (hallazgo S1 de la revisión de la fase 2).
+## [b]Why.[/b] [SceneMultiplayer] processes everything that arrives inside [code]poll()[/code], and only
+## delivers to the application the RAW packets of already admitted peers. An ENet client without
+## [SceneMultiplayer] (an attacker) that sent anything else before or after the HELLO (RPCs, simplified
+## paths, SPAWN, system commands...) made the engine log one error per packet
+## (each with its GDScript trace: 2000 packets were 742 KB of log and a 28 ms tick), those
+## packets bypassed the limiters and added no warnings, and before the HELLO only the 5 s
+## [code]auth_timeout[/code] cut them off (finding S1 of the phase 2 review).
 ## [br][br]
-## [b]Qué deja pasar.[/b] Con el formato interno de [SceneMultiplayer] (el byte 0 &amp; 7 es el
-## comando; RAW = 3, SYS = 7; el byte 1 de un SYS es el subcomando; AUTH = 0):
-## [br]- A un peer que aún no está admitido (le falta su confirmación o la nuestra): solo mensajes
-## de autenticación, es decir, SYS + AUTH, de como mucho [constant MAX_AUTH_BYTES] bytes y como mucho
-## [constant MAX_AUTH_PAYLOADS] con contenido (el HELLO) más una confirmación de 2 bytes.
-## [br]- A un peer admitido (los dos lados han confirmado): solo RAW.
-## [br]Todo lo demás se descarta aquí, sin error del motor, y se cuenta: al final de cada
-## [method poll] se emite [signal packets_discarded] con el número por peer, para que el servidor
-## sume avisos. Un peer silenciado con [method mute_peer] (el servidor ya lo está cortando) se
-## descarta sin contar.
+## [b]What it lets through.[/b] With [SceneMultiplayer]'s internal format (byte 0 &amp; 7 is the
+## command; RAW = 3, SYS = 7; byte 1 of a SYS is the subcommand; AUTH = 0):
+## [br]- To a peer that is not yet admitted (missing its confirmation or ours): only authentication
+## messages, that is, SYS + AUTH, of at most [constant MAX_AUTH_BYTES] bytes and at most
+## [constant MAX_AUTH_PAYLOADS] with content (the HELLO) plus a 2-byte confirmation.
+## [br]- To an admitted peer (both sides have confirmed): only RAW.
+## [br]Everything else is discarded here, with no engine error, and counted: at the end of each
+## [method poll] [signal packets_discarded] is emitted with the number per peer, so that the server
+## adds up warnings. A peer silenced with [method mute_peer] (the server is already cutting it off) is
+## discarded without counting.
 ## [br][br]
-## [b]Estado.[/b] El envoltorio sabe que un peer está admitido porque ve pasar, en un sentido,
-## la confirmación de 2 bytes [code][SYS, AUTH][/code] del otro lado y, en el otro, la nuestra
-## ([method _put_packet_script]): [SceneMultiplayer] admite al peer exactamente cuando se han
-## cruzado las dos. Si una versión futura del motor cambiara ese formato, el apretón de manos
-## dejaría de completarse y las pruebas de [code]test_net_sim.gd[/code] lo detectarían.
+## [b]State.[/b] The wrapper knows a peer is admitted because it sees pass, in one direction,
+## the other side's 2-byte confirmation [code][SYS, AUTH][/code] and, in the other, ours
+## ([method _put_packet_script]): [SceneMultiplayer] admits the peer exactly when both have
+## crossed. If a future engine version changed that format, the handshake
+## would stop completing and the [code]test_net_sim.gd[/code] tests would detect it.
 ## [br][br]
-## [b]Atajo.[/b] Para los peers que [SceneMultiplayer] ya ha admitido de verdad ([member admitted],
-## que rellena el dueño con sus señales), los paquetes RAW no pasan por la cola de
-## [SceneMultiplayer]: se entregan directamente a [member raw_sink]. Es el camino caliente (las
-## entradas de todos los jugadores, cada tick) y así el filtro apenas cuesta algo por paquete.
-## Medido con 64 clientes mandando 48 000 paquetes en total (cinco repeticiones alternadas): 9,4 µs
-## por paquete sin filtro, 9,9 µs con filtro y atajo (+0,6 µs, +6 %, el nivel del ruido de la
-## medida: 0,05 ms por tick con 64 jugadores) y 11,3 µs con filtro y sin atajo (+25 %). Un paquete de
-## un peer que se admite en esta misma llamada a [method poll] va por la cola, detrás de su
-## confirmación, para que el orden se conserve.
+## [b]Shortcut.[/b] For peers that [SceneMultiplayer] has truly admitted ([member admitted],
+## which the owner fills with its signals), RAW packets do not go through
+## [SceneMultiplayer]'s queue: they are delivered directly to [member raw_sink]. It is the hot path (the
+## inputs of all players, every tick) and this way the filter costs almost nothing per packet.
+## Measured with 64 clients sending 48,000 packets in total (five alternating repetitions): 9.4 µs
+## per packet without filter, 9.9 µs with filter and shortcut (+0.6 µs, +6%, the noise level of the
+## measurement: 0.05 ms per tick with 64 players) and 11.3 µs with filter and no shortcut (+25%). A packet from
+## a peer that is admitted during this same call to [method poll] goes through the queue, behind its
+## confirmation, so that order is preserved.
 ## [br][br]
-## Compartido: no lee el reloj ni depende de cliente ni de servidor.
+## Shared: it does not read the clock nor depend on client or server.
 
-## Se emite al final de [method poll], una vez por peer del que se han descartado paquetes en esa
-## llamada.
+## Emitted at the end of [method poll], once per peer from which packets were discarded in that
+## call.
 signal packets_discarded(peer_id: int, count: int)
 
-## Comandos de [SceneMultiplayer] (los 3 bits bajos del byte 0).
+## [SceneMultiplayer] commands (the low 3 bits of byte 0).
 const COMMAND_MASK: int = 7
 const COMMAND_RAW: int = 3
 const COMMAND_SYS: int = 7
-## Subcomando de autenticación dentro de SYS (byte 1).
+## Authentication subcommand within SYS (byte 1).
 const SYS_AUTH: int = 0
-## Mensajes de autenticación con contenido que se admiten de un peer sin admitir: el HELLO.
+## Authentication messages with content that are accepted from a non-admitted peer: the HELLO.
 const MAX_AUTH_PAYLOADS: int = 3
-## Tamaño máximo de un mensaje de autenticación (el HELLO más grande cabe de sobra).
+## Maximum size of an authentication message (the largest HELLO fits with room to spare).
 const MAX_AUTH_BYTES: int = 1200
-## Tamaño máximo de paquete que declara a [SceneMultiplayer] (el mismo que ENetMultiplayerPeer).
+## Maximum packet size it declares to [SceneMultiplayer] (the same as ENetMultiplayerPeer).
 const MAX_PACKET_SIZE: int = 1 << 24
-## Paquetes como mucho que se procesan en cada [method poll]; el resto se queda en la cola de ENet
-## para la siguiente. Acota lo que cuesta una inundación en un solo tick.
+## At most this many packets are processed in each [method poll]; the rest stay in ENet's queue
+## for the next one. Bounds the cost of a flood in a single tick.
 const MAX_PACKETS_PER_POLL: int = 4096
 
-## Peers que [SceneMultiplayer] ya ha admitido (la clave es el id). Lo rellena el dueño.
+## Peers that [SceneMultiplayer] has already admitted (the key is the id). Filled by the owner.
 var admitted: Dictionary = {}
-## [code](peer_id: int, payload: PackedByteArray) -> void[/code]: recibe los paquetes RAW de los
-## peers de [member admitted], sin la cabecera de un byte.
+## [code](peer_id: int, payload: PackedByteArray) -> void[/code]: receives the RAW packets of the
+## peers in [member admitted], without the one-byte header.
 var raw_sink: Callable = Callable()
 
 var _inner: ENetMultiplayerPeer = null
@@ -71,39 +71,39 @@ var _target_peer: int = 0
 var _transfer_channel: int = 0
 var _transfer_mode: int = MultiplayerPeer.TRANSFER_MODE_RELIABLE
 
-# Cola de lo que pasa el filtro y recogerá SceneMultiplayer, en columnas. _head es el siguiente.
+# Queue of what passes the filter and SceneMultiplayer will pick up, in columns. _head is the next one.
 var _queue_peers: PackedInt32Array = PackedInt32Array()
 var _queue_packets: Array[PackedByteArray] = []
 var _head: int = 0
 
-# Por peer (id -> true / contador): confirmación recibida, confirmación enviada, mensajes de
-# autenticación con contenido admitidos, silenciado.
+# Per peer (id -> true / counter): confirmation received, confirmation sent, authentication
+# messages with content admitted, muted.
 var _remote_confirmed: Dictionary = {}
 var _local_confirmed: Dictionary = {}
 var _auth_payloads: Dictionary = {}
 var _muted: Dictionary = {}
-# Descartes de la llamada a poll() en curso: id -> cuántos.
+# Discards of the current poll() call: id -> how many.
 var _discarded: Dictionary = {}
-# Total de paquetes descartados desde que se creó (sin contar los de peers silenciados).
+# Total packets discarded since it was created (not counting those of muted peers).
 var _discarded_total: int = 0
 
 
-## Envuelve a [param inner], que ya debe estar creado (como servidor o como cliente) y no usarse
-## desde otro sitio como peer de multijugador. Después hay que dárselo a [SceneMultiplayer] a este
-## objeto en vez de a [param inner].
+## Wraps [param inner], which must already be created (as server or client) and not be used
+## elsewhere as a multiplayer peer. Afterwards this object must be given to [SceneMultiplayer]
+## instead of [param inner].
 func attach(inner: ENetMultiplayerPeer) -> void:
 	_inner = inner
 	_inner.peer_connected.connect(_on_inner_peer_connected)
 	_inner.peer_disconnected.connect(_on_inner_peer_disconnected)
 
 
-## Deja de vigilar los paquetes de [param peer_id]: todo lo que mande se descarta sin contar. Lo usa
-## el transporte cuando el servidor ya está cortando a ese peer.
+## Stops watching the packets of [param peer_id]: everything it sends is discarded without counting. Used by
+## the transport when the server is already cutting that peer off.
 func mute_peer(peer_id: int) -> void:
 	_muted[peer_id] = true
 
 
-## Paquetes descartados en total por no ser del protocolo (sin contar los de peers silenciados).
+## Total packets discarded for not belonging to the protocol (not counting those of muted peers).
 func get_discarded_total() -> int:
 	return _discarded_total
 
@@ -118,7 +118,7 @@ func _poll() -> void:
 
 
 func _drain_inner() -> void:
-	# Lo recogido en la llamada anterior ya se ha consumido: se reinicia la cola.
+	# What was picked up in the previous call has already been consumed: the queue is reset.
 	if _head > 0 and _head >= _queue_packets.size():
 		_reset_queue()
 	var handled: int = 0
@@ -130,14 +130,14 @@ func _drain_inner() -> void:
 		if _muted.has(sender):
 			continue
 		if admitted.has(sender):
-			# Atajo: un peer que SceneMultiplayer ya ha admitido solo puede mandar RAW, y esos
-			# paquetes se entregan al dueño directamente (sin pasar por la cola de SceneMultiplayer).
+			# Shortcut: a peer that SceneMultiplayer has already admitted can only send RAW, and those
+			# packets are delivered to the owner directly (without going through SceneMultiplayer's queue).
 			if bytes.size() > 0 and (bytes[0] & COMMAND_MASK) == COMMAND_RAW:
 				raw_sink.call(sender, bytes.slice(1))
 			else:
 				_discarded[sender] = int(_discarded.get(sender, 0)) + 1
 			continue
-		# Un paquete vacío es el que devuelve get_packet() ante un error.
+		# An empty packet is what get_packet() returns on error.
 		if not _accepts(sender, bytes):
 			_discarded[sender] = int(_discarded.get(sender, 0)) + 1
 			continue
@@ -153,7 +153,7 @@ func _drain_inner() -> void:
 		packets_discarded.emit(peer_id, count)
 
 
-# true si el paquete de [param sender] es de los que SceneMultiplayer espera en su estado.
+# true if the packet from [param sender] is of the kind SceneMultiplayer expects in its state.
 func _accepts(sender: int, bytes: PackedByteArray) -> bool:
 	var size: int = bytes.size()
 	if size == 0:
@@ -164,7 +164,7 @@ func _accepts(sender: int, bytes: PackedByteArray) -> bool:
 	if command != COMMAND_SYS or size < 2 or bytes[1] != SYS_AUTH:
 		return false
 	if size == 2:
-		# La confirmación del otro lado, una sola vez.
+		# The other side's confirmation, only once.
 		if _remote_confirmed.has(sender):
 			return false
 		_remote_confirmed[sender] = true
@@ -186,8 +186,8 @@ func _get_packet_peer() -> int:
 	return _queue_peers[_head] if _head < _queue_peers.size() else 0
 
 
-# SceneMultiplayer solo usa el modo y el canal de un paquete en las órdenes de sistema que se
-# retransmiten (SYS RELAY), que aquí no pasan, así que no se guardan.
+# SceneMultiplayer only uses a packet's mode and channel in the system commands that are
+# relayed (SYS RELAY), which do not get through here, so they are not stored.
 func _get_packet_mode() -> int:
 	return MultiplayerPeer.TRANSFER_MODE_RELIABLE
 
@@ -207,8 +207,8 @@ func _get_packet_script() -> PackedByteArray:
 func _put_packet_script(buffer: PackedByteArray) -> Error:
 	if _inner == null:
 		return ERR_UNCONFIGURED
-	# Nuestra confirmación de autenticación: a partir de aquí, y con la del otro lado, el peer
-	# queda admitido.
+	# Our authentication confirmation: from here on, and together with the other side's, the peer
+	# is admitted.
 	if buffer.size() == 2 and buffer[0] == COMMAND_SYS and buffer[1] == SYS_AUTH \
 			and _target_peer > 0:
 		_local_confirmed[_target_peer] = true
@@ -290,7 +290,7 @@ func _get_connection_status() -> int:
 	return _inner.get_connection_status()
 
 
-# --- Internos ---------------------------------------------------------------------------------
+# --- Internals --------------------------------------------------------------------------------
 
 func _reset_queue() -> void:
 	_queue_peers.clear()
@@ -298,7 +298,7 @@ func _reset_queue() -> void:
 	_head = 0
 
 
-# Un id de peer nuevo empieza sin estado: el motor reutiliza ids.
+# A new peer id starts with no state: the engine reuses ids.
 func _on_inner_peer_connected(peer_id: int) -> void:
 	_forget_peer(peer_id)
 	peer_connected.emit(peer_id)

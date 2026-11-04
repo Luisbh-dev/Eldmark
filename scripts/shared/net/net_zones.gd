@@ -1,43 +1,44 @@
 class_name NetZones
 extends RefCounted
-## Único contacto de la red con [Zones] (docs/red.md, sección 1.5): zona por defecto, ruta de la
-## escena de cada zona, reinos admitidos y lectura de [code]--zone=[/code] y [code]--realm=[/code].
+## The network's only contact with [Zones] (docs/red.md, section 1.5): default zone, scene path of
+## each zone, admitted realms, and reading of [code]--zone=[/code] and [code]--realm=[/code].
 ## [br][br]
-## En la red el reino viaja como código de [enum NetProtocol.Realm] y la zona como su id de texto
-## (ASCII, 32 bytes como mucho). Esta clase traduce en los dos sentidos entre esos códigos y los
-## [StringName] de [Zones]. Si [Zones] cambia, solo hay que tocar este archivo.
+## On the network the realm travels as an [enum NetProtocol.Realm] code and the zone as its text id
+## (ASCII, 32 bytes at most). This class translates in both directions between those codes and the
+## [StringName]s of [Zones]. If [Zones] changes, only this file needs touching.
 
 const _ZONE_ARG_PREFIX: String = "--zone="
 const _REALM_ARG_PREFIX: String = "--realm="
 
 
-## Id de la zona que sirve o carga un proceso sin [code]--zone[/code].
-## Grupo de los puntos de reaparición (el de [Zones]), para quien no puede nombrar [Zones].
+## Id of the zone that a process without [code]--zone[/code] serves or loads.
+## Group of respawn points (the one from [Zones]), for code that cannot name [Zones].
 const RESPAWN_GROUP: StringName = Zones.RESPAWN_GROUP
 
 static func default_zone_id() -> String:
 	return String(Zones.DEFAULT_ZONE)
 
 
-## Ruta de la escena de [param zone_id], o una cadena vacía si la zona no existe.
+## Scene path of [param zone_id], or an empty string if the zone does not exist.
 static func scene_path(zone_id: String) -> String:
 	return Zones.get_scene_path(StringName(zone_id))
 
 
-## true si [param zone_id] es una zona RVR (reino contra reino, [method Zones.get_pvp_mode]): donde los reinos
-## enemigos se dañan y un jugador derribado por otro queda derribado (docs/habilidades.md, sección 4.5).
+## true if [param zone_id] is an RvR zone (realm versus realm, [method Zones.get_pvp_mode]): where
+## enemy realms damage each other and a player knocked down by another stays knocked down
+## (docs/habilidades.md, section 4.5).
 static func is_rvr(zone_id: String) -> bool:
 	return Zones.get_pvp_mode(StringName(zone_id)) == Zones.PvpMode.RVR
 
 
-## Aforo por defecto del servidor de [param zone_id] cuando no se pasa [code]--max-players[/code]
-## ([method Zones.get_max_players]); 0 si la zona no tiene uno propio.
+## Default capacity of the [param zone_id] server when [code]--max-players[/code] is not passed
+## ([method Zones.get_max_players]); 0 if the zone has none of its own.
 static func max_players(zone_id: String) -> int:
 	return Zones.get_max_players(StringName(zone_id))
 
 
-## Códigos de [enum NetProtocol.Realm] admitidos en [param zone_id], según [RealmCatalog]. Vacío
-## = todos: es lo que devuelve para una zona sin restricción registrada.
+## [enum NetProtocol.Realm] codes admitted in [param zone_id], according to [RealmCatalog]. Empty
+## = all: this is what it returns for a zone with no registered restriction.
 static func allowed_realms(zone_id: String) -> PackedInt32Array:
 	var codes := PackedInt32Array()
 	for id: StringName in RealmCatalog.allowed_realm_ids(StringName(zone_id)):
@@ -45,9 +46,9 @@ static func allowed_realms(zone_id: String) -> PackedInt32Array:
 	return codes
 
 
-## Valor de [code]--zone=<id>[/code] en [param args] (sin espacios ni comillas y en minúsculas),
-## o una cadena vacía si no viene. No comprueba que la zona exista: para eso está
-## [method scene_path].
+## Value of [code]--zone=<id>[/code] in [param args] (without spaces or quotes and in lowercase),
+## or an empty string if absent. It does not check that the zone exists: that is what
+## [method scene_path] is for.
 static func parse_zone_arg(args: PackedStringArray) -> String:
 	for arg: String in args:
 		if arg.begins_with(_ZONE_ARG_PREFIX):
@@ -55,8 +56,8 @@ static func parse_zone_arg(args: PackedStringArray) -> String:
 	return ""
 
 
-## Reino de [code]--realm=<reino>[/code] en [param args], o [constant NetProtocol.Realm.NONE] si
-## no viene o no es un reino válido.
+## Realm from [code]--realm=<realm>[/code] in [param args], or [constant NetProtocol.Realm.NONE]
+## if absent or not a valid realm.
 static func parse_realm_arg(args: PackedStringArray) -> int:
 	for arg: String in args:
 		if arg.begins_with(_REALM_ARG_PREFIX):
@@ -64,9 +65,9 @@ static func parse_realm_arg(args: PackedStringArray) -> int:
 	return NetProtocol.Realm.NONE
 
 
-## Ruta de la malla de navegación horneada de la zona [param zone_id] (docs/fuerte.md, sección 4.1): el
-## archivo [code]<escena>_navmesh.tres[/code] junto a la escena de la zona, o una cadena vacía si la zona
-## no existe o no tiene malla (entonces los PNJ no usan la navegación).
+## Path of the baked navigation mesh of zone [param zone_id] (docs/fuerte.md, section 4.1): the
+## [code]<scene>_navmesh.tres[/code] file next to the zone scene, or an empty string if the zone
+## does not exist or has no mesh (in which case NPCs do not use navigation).
 static func navmesh_path(zone_id: String) -> String:
 	var scene: String = scene_path(zone_id)
 	if scene.is_empty():
@@ -75,14 +76,14 @@ static func navmesh_path(zone_id: String) -> String:
 	return path if ResourceLoader.exists(path) else ""
 
 
-## Generadores de PNJ de la zona [param zone] (grupo [constant Zones.NPC_SPAWNER_GROUP], que debe estar
-## en el árbol), en el orden de la escena.
+## NPC spawners of zone [param zone] (group [constant Zones.NPC_SPAWNER_GROUP], which must be in
+## the tree), in scene order.
 static func get_npc_spawners(zone: Node) -> Array[Node3D]:
 	return Zones.get_group_nodes(zone, Zones.NPC_SPAWNER_GROUP)
 
 
-## Posiciones, en el orden de la escena, de los marcadores de la ruta de patrulla [param route] de la
-## zona [param zone] (grupo [constant Zones.PATROL_GROUP] con el metadato [constant Zones.PATROL_ROUTE_META]).
+## Positions, in scene order, of the markers of patrol route [param route] of zone [param zone]
+## (group [constant Zones.PATROL_GROUP] with the metadata [constant Zones.PATROL_ROUTE_META]).
 static func get_patrol_route(zone: Node, route: StringName) -> PackedVector3Array:
 	var points := PackedVector3Array()
 	if route.is_empty():
@@ -93,8 +94,8 @@ static func get_patrol_route(zone: Node, route: StringName) -> PackedVector3Arra
 	return points
 
 
-## Código de reino a partir de su nombre («vardheim», «Solmarch»...; sin distinguir mayúsculas
-## ni espacios). [constant NetProtocol.Realm.NONE] si no es un reino.
+## Realm code from its name ("vardheim", "Solmarch"...; case- and space-insensitive).
+## [constant NetProtocol.Realm.NONE] if it is not a realm.
 static func realm_from_name(text: String) -> int:
 	var id: StringName = StringName(_clean_value(text))
 	if not RealmCatalog.is_realm(id):
@@ -102,23 +103,23 @@ static func realm_from_name(text: String) -> int:
 	return RealmCatalog.code_of(id)
 
 
-## Id en [RealmCatalog] (y en [Zones]) del reino con código [param realm]; vacío si no es un
-## reino jugable (el neutral de los Huecos tampoco lo es).
+## Id in [RealmCatalog] (and in [Zones]) of the realm with code [param realm]; empty if it is not a
+## playable realm (the neutral one of the Hollow is not either).
 static func realm_name(realm: int) -> StringName:
 	var id: StringName = RealmCatalog.id_of_code(realm)
 	return id if RealmCatalog.is_realm(id) else &""
 
 
-## Punto de aparición del reino [param realm] en la zona [param zone] (que debe estar en el
-## árbol): el primero de ese reino o, si no hay ninguno, el primero de la zona. null si la zona
-## no tiene puntos de aparición.
+## Spawn point of realm [param realm] in zone [param zone] (which must be in the tree): the first
+## one for that realm or, if there is none, the first of the zone. null if the zone has no spawn
+## points.
 static func find_spawn_point(zone: Node, realm: int) -> Node3D:
 	return Zones.find_spawn_point(zone, realm_name(realm))
 
 
-## Puntos de aparición de la zona [param zone] (que debe estar en el árbol), en el orden de la
-## escena: los del reino [param realm] o, con [constant NetProtocol.Realm.NONE] (o un código que no
-## es un reino jugable), los de toda la zona.
+## Spawn points of zone [param zone] (which must be in the tree), in scene order: those of realm
+## [param realm] or, with [constant NetProtocol.Realm.NONE] (or a code that is not a playable
+## realm), those of the whole zone.
 static func get_spawn_points(zone: Node, realm: int = NetProtocol.Realm.NONE) -> Array[Node3D]:
 	var realm_id: StringName = realm_name(realm)
 	if realm_id.is_empty():
@@ -126,25 +127,25 @@ static func get_spawn_points(zone: Node, realm: int = NetProtocol.Realm.NONE) ->
 	return Zones.get_spawn_points(zone, realm_id)
 
 
-## Puntos de reaparición del reino [param realm] en la zona [param zone] (que debe estar en el
-## árbol), en el orden de la escena ([method Zones.get_respawn_points]). Si el reino no tiene puntos
-## propios (o el código no es un reino jugable), todos los de la zona. Es la lista común del servidor
-## y del cliente: el índice del RESPAWN_REQUEST va sobre ella.
+## Respawn points of realm [param realm] in zone [param zone] (which must be in the tree), in
+## scene order ([method Zones.get_respawn_points]). If the realm has no points of its own (or the
+## code is not a playable realm), all those of the zone. It is the list shared by server and
+## client: the RESPAWN_REQUEST index refers to it.
 static func get_respawn_points(zone: Node, realm: int) -> Array[Node3D]:
 	var realm_id: StringName = realm_name(realm)
 	if not realm_id.is_empty():
 		var own: Array[Node3D] = Zones.get_respawn_points(zone, realm_id)
 		if not own.is_empty():
 			return own
-	# Sin puntos del reino (o sin reino): todos los de la zona, como hace SpawnPicker al aparecer.
+	# No points for the realm (or no realm): all those of the zone, as SpawnPicker does when spawning.
 	return Zones.get_respawn_points(zone, &"")
 
 
-## Todos los puntos de reaparición de la zona [param zone] (que debe estar en el árbol), de todos los
-## reinos y de las fortalezas, en el orden de la escena: la lista [b]estática[/b] sobre la que va el
-## índice de RESPAWN_REQUEST y RESPAWN (docs/fuerte.md, sección 5). Qué puntos valen para un jugador lo
-## decide [method RespawnRules.points_for]. Una zona sin ningún nodo del grupo
-## [constant RESPAWN_GROUP] usa sus puntos de aparición.
+## All respawn points of zone [param zone] (which must be in the tree), of all realms and of the
+## forts, in scene order: the [b]static[/b] list that the RESPAWN_REQUEST and RESPAWN index
+## refers to (docs/fuerte.md, section 5). Which points are valid for a player is decided by
+## [method RespawnRules.points_for]. A zone with no node in the group
+## [constant RESPAWN_GROUP] uses its spawn points.
 static func get_all_respawn_points(zone: Node) -> Array[Node3D]:
 	var all_points: Array[Node3D] = Zones.get_group_nodes(zone, Zones.RESPAWN_GROUP)
 	if all_points.is_empty():
@@ -152,8 +153,8 @@ static func get_all_respawn_points(zone: Node) -> Array[Node3D]:
 	return all_points
 
 
-## Nodos de las fortalezas de la zona [param zone] (grupo [constant Zones.FORTRESS_GROUP]) que
-## tienen el metadato [constant Zones.FORTRESS_DEFINITION_META], en el orden de la escena.
+## Fort nodes of zone [param zone] (group [constant Zones.FORTRESS_GROUP]) that have the
+## metadata [constant Zones.FORTRESS_DEFINITION_META], in scene order.
 static func get_fortress_nodes(zone: Node) -> Array[Node3D]:
 	var result: Array[Node3D] = []
 	for node: Node3D in Zones.get_group_nodes(zone, Zones.FORTRESS_GROUP):
@@ -162,35 +163,35 @@ static func get_fortress_nodes(zone: Node) -> Array[Node3D]:
 	return result
 
 
-## Metadato con el reino de un punto de aparición o de reaparición (el de un campamento).
+## Metadata with the realm of a spawn or respawn point (that of a camp).
 static func realm_meta() -> StringName:
 	return Zones.REALM_META
 
 
-## Metadato de la fortaleza con su definición: la ruta del [code].tres[/code] (o la propia
-## [FortressDefinition], que usan las pruebas).
+## Fort metadata with its definition: the path of the [code].tres[/code] (or the
+## [FortressDefinition] itself, which tests use).
 static func fortress_definition_meta() -> StringName:
 	return Zones.FORTRESS_DEFINITION_META
 
 
-## Zonas seguras de la zona [param zone] (grupo [constant Zones.SAFE_AREA_GROUP]).
+## Safe areas of zone [param zone] (group [constant Zones.SAFE_AREA_GROUP]).
 static func get_safe_areas(zone: Node) -> Array[Node3D]:
 	return Zones.get_group_nodes(zone, Zones.SAFE_AREA_GROUP)
 
 
-## Volúmenes letales de la zona [param zone] (grupo [constant Zones.LETHAL_GROUP]).
+## Lethal volumes of zone [param zone] (group [constant Zones.LETHAL_GROUP]).
 static func get_lethal_volumes(zone: Node) -> Array[Node3D]:
 	return Zones.get_group_nodes(zone, Zones.LETHAL_GROUP)
 
 
-## Puntos de los maniquíes de entrenamiento de la zona [param zone] (grupo
+## Training dummy points of zone [param zone] (group
 ## [constant Zones.DUMMY_GROUP]).
 static func get_dummy_points(zone: Node) -> Array[Node3D]:
 	return Zones.get_group_nodes(zone, Zones.DUMMY_GROUP)
 
 
-## Código de red del reino del metadato [code]realm[/code] de [param node] (un punto de aparición o
-## una zona segura), o -1 si no tiene el metadato o no es un reino jugable.
+## Network code of the realm in the [code]realm[/code] metadata of [param node] (a spawn point or
+## a safe area), or -1 if it has no metadata or it is not a playable realm.
 static func node_realm_code(node: Node) -> int:
 	var id: StringName = Zones.get_spawn_realm(node)
 	if not RealmCatalog.is_realm(id):
@@ -198,12 +199,12 @@ static func node_realm_code(node: Node) -> int:
 	return RealmCatalog.code_of(id)
 
 
-## Radio (m) de una zona segura ([method Zones.get_safe_area_radius]).
+## Radius (m) of a safe area ([method Zones.get_safe_area_radius]).
 static func safe_area_radius(area: Node) -> float:
 	return Zones.get_safe_area_radius(area)
 
 
-## Grupo de nodos que marca los puntos de aparición de una zona (para avisos y registros).
+## Node group that marks the spawn points of a zone (for warnings and logs).
 static func spawn_group() -> StringName:
 	return Zones.SPAWN_GROUP
 

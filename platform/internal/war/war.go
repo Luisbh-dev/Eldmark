@@ -1,6 +1,6 @@
-// Package war es la parte de la API interna de la guerra persistente (plataforma.md §6 y §8,
-// GUE-19): los registros de las fortalezas, que solo puede leer y escribir la zona a la que
-// pertenecen, con versión para no pisarse, y el lote de eventos de guerra (fortress_events).
+// Package war is the part of the internal API for the persistent war (plataforma.md §6 and §8,
+// GUE-19): the fort records, which only the zone they belong to can read and write, versioned so
+// they do not overwrite each other, and the batch of war events (fortress_events).
 package war
 
 import (
@@ -25,7 +25,7 @@ import (
 
 var fortressIDPattern = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
 
-// Service es el servicio de las fortalezas y los eventos de guerra.
+// Service is the service for forts and war events.
 type Service struct {
 	pool  *pgxpool.Pool
 	guard *zones.Guard
@@ -33,7 +33,7 @@ type Service struct {
 	log   *slog.Logger
 }
 
-// Options son las dependencias del servicio.
+// Options are the service's dependencies.
 type Options struct {
 	Pool  *pgxpool.Pool
 	Guard *zones.Guard
@@ -41,7 +41,7 @@ type Options struct {
 	Log   *slog.Logger
 }
 
-// New prepara el servicio.
+// New prepares the service.
 func New(o Options) (*Service, error) {
 	if o.Pool == nil || o.Guard == nil {
 		return nil, errors.New("war: faltan dependencias")
@@ -55,7 +55,7 @@ func New(o Options) (*Service, error) {
 	return &Service{pool: o.Pool, guard: o.Guard, clock: o.Clock, log: o.Log}, nil
 }
 
-// Mount monta las rutas, todas con el token de zona.
+// Mount mounts the routes, all with the zone token.
 func (s *Service) Mount(r zones.Router) {
 	zone := func(pattern string, h http.HandlerFunc) { r.HandleInternal(pattern, s.guard.Zone(h)) }
 	zone("GET /internal/v1/fortresses", s.list)
@@ -67,15 +67,15 @@ func (s *Service) fail(w http.ResponseWriter, r *http.Request, err error) {
 	zones.Fail(w, r, s.log, err)
 }
 
-// FortressView es una fortaleza en el GET.
+// FortressView is a fort in the GET.
 type FortressView struct {
 	FortressID string          `json:"fortress_id"`
 	Record     json.RawMessage `json:"record"`
 	Version    int64           `json:"version"`
 }
 
-// Fortresses devuelve los registros de las fortalezas de la zona de la instancia en su mundo
-// (lista vacía: ninguno, el primer arranque).
+// Fortresses returns the records of the forts of the instance's zone in its world (empty list:
+// none, the first startup).
 func (s *Service) Fortresses(ctx context.Context, inst *zones.Instance) ([]FortressView, error) {
 	rows, err := s.pool.Query(ctx, `select fortress_id, record, version from fortresses
 		where world_id = $1 and zone_id = $2 order by fortress_id`, inst.WorldID, inst.ZoneID)
@@ -104,7 +104,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"fortresses": list})
 }
 
-// PutRequest es el cuerpo del PUT de una fortaleza.
+// PutRequest is the body of a fort's PUT.
 type PutRequest struct {
 	ZoneInstanceID  string          `json:"zone_instance_id"`
 	ExpectedVersion jsonx.Int       `json:"expected_version"`
@@ -117,10 +117,10 @@ func errVersionConflict(version int64) *httpx.Error {
 	return e
 }
 
-// Put escribe el registro de una fortaleza (§8) si su versión es la esperada, y devuelve la nueva.
-// El primer PUT de un fortress_id (expected_version 0) crea su fila con la zona de la instancia; uno
-// de una fortaleza de otra zona es 403 forbidden; una versión que no casa, 409 version_conflict con
-// la versión actual (la zona reenvía su registro con ella).
+// Put writes a fort's record (§8) if its version is the expected one, and returns the new one.
+// The first PUT for a fortress_id (expected_version 0) creates its row with the instance's zone;
+// one for a fort of another zone is 403 forbidden; a version that does not match, 409
+// version_conflict with the current version (the zone resends its record with it).
 func (s *Service) Put(ctx context.Context, inst *zones.Instance, fortressID string, expected int64,
 	record json.RawMessage) (int64, error) {
 	now := s.clock.Now()
@@ -140,7 +140,7 @@ func (s *Service) Put(ctx context.Context, inst *zones.Instance, fortressID stri
 					values ($1, $2, $3, $4, 1, $5, $6) on conflict (world_id, fortress_id) do nothing returning version`,
 					inst.WorldID, fortressID, inst.ZoneID, record, now, inst.ID).Scan(&version)
 				if errors.Is(err, pgx.ErrNoRows) {
-					continue // otra la creó a la vez: se mira la suya
+					continue // another one created it at the same time: look at its own
 				}
 				return err
 			}
@@ -202,7 +202,7 @@ func (s *Service) put(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]int64{"version": version})
 }
 
-// event es un evento de guerra válido del lote.
+// event is a valid war event of the batch.
 type event struct {
 	key        string
 	fortressID string
@@ -211,10 +211,10 @@ type event struct {
 	at         time.Time
 }
 
-// Events inserta los eventos de guerra de un lote (§8: {key, fortress_id, event, realm, at_unix})
-// en fortress_events con on conflict do nothing (reenviar no duplica) y devuelve las claves
-// rechazadas: una entrada sin algún campo o con uno que no vale, con una key que no es de la
-// instancia, o de una fortaleza que ya existe con otra zona.
+// Events inserts the war events of a batch (§8: {key, fortress_id, event, realm, at_unix}) into
+// fortress_events with on conflict do nothing (resending does not duplicate) and returns the
+// rejected keys: an entry missing a field or with an invalid one, with a key that does not belong
+// to the instance, or for a fort that already exists with another zone.
 func (s *Service) Events(ctx context.Context, inst *zones.Instance, entries []json.RawMessage) ([]string, error) {
 	keys := zones.NewKeyChecker(inst, s.pool)
 	rejected := []string{}
@@ -235,8 +235,8 @@ func (s *Service) Events(ctx context.Context, inst *zones.Instance, entries []js
 				}
 				zoneOf[ev.fortressID] = zone
 			}
-			// Una fortaleza que aún no tiene registro vale: el evento puede llegar antes que su
-			// primer PUT, que va por otra cola (§6).
+			// A fort that has no record yet is valid: the event may arrive before its first PUT, which goes
+			// through another queue (§6).
 			ok = zone == "" || zone == inst.ZoneID
 		}
 		if !ok {

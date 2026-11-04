@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Regenera los iconos de la interfaz (ART-12): capas SVG, rasterizado con el motor, pintura y fondos.
+# Regenerates the interface icons (ART-12): SVG layers, rasterisation with the engine, painting and backgrounds.
 #
-#   GODOT=/ruta/a/godot tools/ui/icons/build_icons.sh [nombre_de_icono ...]
+#   GODOT=/path/to/godot tools/ui/icons/build_icons.sh [icon_name ...]
 #
-# 1. make_icons.py layers   dibuja las figuras y escribe sus capas SVG en build/iconos/capas.
-# 2. rasterize_icons.gd     las rasteriza con el motor (ThorVG): una imagen por capa.
-# 3. make_icons.py paint    compone las capas con grano, oclusión y luz de borde y escribe los PNG de
-#                           assets/ui/icons (figuras, small/ y backgrounds/).
-# Con nombres de icono al final solo se rehacen esos (los fondos no). Después hay que importar los
-# recursos nuevos con `godot --headless --path . --import`; las láminas de muestra y la prueba en el
-# motor salen de `make_sheets.py` y `engine_test.gd` (ver su cabecera).
+# 1. make_icons.py layers   draws the shapes and writes their SVG layers to build/iconos/capas.
+# 2. rasterize_icons.gd     rasterises them with the engine (ThorVG): one image per layer.
+# 3. make_icons.py paint    composes the layers with grain, occlusion and edge light and writes the PNGs to
+#                           assets/ui/icons (shapes, small/ and backgrounds/).
+# With icon names at the end only those are rebuilt (not the backgrounds). Afterwards the new
+# resources must be imported with `godot --headless --path . --import`; the sample sheets and the in-engine
+# test come from `make_sheets.py` and `engine_test.gd` (see their header).
 set -euo pipefail
 
 cd "$(dirname "$0")/../../.."

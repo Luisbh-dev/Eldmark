@@ -1,8 +1,8 @@
-// Package db abre la base de la plataforma y clasifica sus errores con la regla de plataforma.md
-// §7.3: un error de integridad (SQLSTATE de clase 23, o P0001 del disparador de solo añadir) o de
-// datos (clase 22: un NUL en jsonb, una fecha o un número fuera de rango) es determinista y no se
-// reintenta; 40001 y 40P01 se reintentan con la transacción entera; sin conexión o con el plazo
-// vencido, la base no está disponible (503).
+// Package db opens the platform's database and classifies its errors with the rule of
+// plataforma.md §7.3: an integrity error (class 23 SQLSTATE, or P0001 from the append-only
+// trigger) or a data error (class 22: a NUL in jsonb, a date or a number out of range) is
+// deterministic and is not retried; 40001 and 40P01 are retried with the whole transaction; with
+// no connection or with the deadline expired, the database is unavailable (503).
 package db
 
 import (
@@ -19,21 +19,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ApplicationName es el application_name de las conexiones de la plataforma (pg_stat_activity).
+// ApplicationName is the application_name of the platform's connections (pg_stat_activity).
 const ApplicationName = "eldmark-platform"
 
-// MinPoolConns es el tamaño mínimo del pool si la cadena no trae pool_max_conns. El de pgx
-// (max(4, núcleos)) no basta: cada trabajo periódico de app tiene una conexión con su
-// pg_try_advisory_lock y otra para su trabajo, y con cuatro trabajos y cuatro conexiones se
-// bloquean entre ellos (y a las API) hasta que vence el plazo del más corto.
+// MinPoolConns is the pool's minimum size if the string does not carry pool_max_conns. pgx's
+// (max(4, cores)) is not enough: each periodic job in app holds one connection with its
+// pg_try_advisory_lock and another for its work, and with four jobs and four connections they block
+// each other (and the APIs) until the shortest one's deadline expires.
 const MinPoolConns = 16
 
-// Open prepara el pool de conexiones. No conecta todavía: la primera petición abre la primera
-// conexión, así que una base caída al arrancar no impide levantar /health y /ready.
+// Open prepares the connection pool. It does not connect yet: the first request opens the first
+// connection, so a database that is down at startup does not prevent bringing up /health and
+// /ready.
 func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
-		// El error de pgx no repite la contraseña, pero tampoco hace falta la cadena.
+		// pgx's error does not repeat the password, but the string is not needed either.
 		return nil, errors.New("db: la cadena de conexión no se entiende")
 	}
 	if !strings.Contains(url, "pool_max_conns") && cfg.MaxConns < MinPoolConns {
@@ -42,12 +43,12 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if _, ok := cfg.ConnConfig.RuntimeParams["application_name"]; !ok {
 		cfg.ConnConfig.RuntimeParams["application_name"] = ApplicationName
 	}
-	// Las fechas salen siempre en UTC, sea cual sea la zona del servidor.
+	// Dates always come out in UTC, whatever the server's time zone.
 	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
 	return pgxpool.NewWithConfig(ctx, cfg)
 }
 
-// Ping comprueba que la base responde a «select 1» antes del plazo (/ready usa 1 s).
+// Ping checks that the database responds to "select 1" before the deadline (/ready uses 1 s).
 func Ping(ctx context.Context, pool *pgxpool.Pool, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -55,16 +56,16 @@ func Ping(ctx context.Context, pool *pgxpool.Pool, timeout time.Duration) error 
 	return pool.QueryRow(ctx, "select 1").Scan(&one)
 }
 
-// Kind es la clase de un error de la base según plataforma.md §7.3.
+// Kind is the class of a database error according to plataforma.md §7.3.
 type Kind int
 
-// Clases de error.
+// Error classes.
 const (
-	KindOther       Kind = iota // cualquier otro: 500 internal
-	KindIntegrity               // clase 23 o P0001: determinista, 400 invalid_save en el guardado
-	KindRetryable               // 40001 o 40P01: se reintenta la transacción; agotados, 503
-	KindUnavailable             // sin conexión, plazo vencido, servidor parándose: 503
-	KindData                    // clase 22 (excepción de datos): determinista, como la de integridad
+	KindOther       Kind = iota // any other: 500 internal
+	KindIntegrity               // class 23 or P0001: deterministic, 400 invalid_save in the save
+	KindRetryable               // 40001 or 40P01: the transaction is retried; once exhausted, 503
+	KindUnavailable             // no connection, deadline expired, server shutting down: 503
+	KindData                    // class 22 (data exception): deterministic, like the integrity one
 )
 
 func (k Kind) String() string {
@@ -81,7 +82,7 @@ func (k Kind) String() string {
 	return "otro"
 }
 
-// SQLState devuelve el SQLSTATE de un error de PostgreSQL, o "".
+// SQLState returns the SQLSTATE of a PostgreSQL error, or "".
 func SQLState(err error) string {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
@@ -90,7 +91,7 @@ func SQLState(err error) string {
 	return ""
 }
 
-// Constraint devuelve la restricción que saltó, o "".
+// Constraint returns the constraint that fired, or "".
 func Constraint(err error) string {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
@@ -99,13 +100,13 @@ func Constraint(err error) string {
 	return ""
 }
 
-// Deterministic dice si el error es de los que reintentar no arregla: integridad o datos (§7.3).
+// Deterministic says whether the error is one that retrying does not fix: integrity or data (§7.3).
 func Deterministic(err error) bool {
 	k := Classify(err)
 	return k == KindIntegrity || k == KindData
 }
 
-// Classify devuelve la clase del error.
+// Classify returns the error's class.
 func Classify(err error) Kind {
 	if err == nil {
 		return KindOther
@@ -134,22 +135,22 @@ func Classify(err error) Kind {
 	return KindOther
 }
 
-// MaxAttempts es cuántas veces corre como mucho una transacción de [InTx]: la primera y tres
-// reintentos ante 40001 o 40P01.
+// MaxAttempts is how many times a [InTx] transaction runs at most: the first and three retries on
+// 40001 or 40P01.
 const MaxAttempts = 4
 
-// ErrConflict envuelve el último error de una transacción que chocó con otras [MaxAttempts]
-// veces. [Classify] sigue dando [KindRetryable]: la respuesta es 503 db_unavailable.
+// ErrConflict wraps the last error of a transaction that clashed with others [MaxAttempts] times.
+// [Classify] still gives [KindRetryable]: the response is 503 db_unavailable.
 var ErrConflict = errors.New("db: la transacción chocó con otras demasiadas veces")
 
-// Beginner es lo que abre transacciones: *pgxpool.Pool, *pgx.Conn.
+// Beginner is what opens transactions: *pgxpool.Pool, *pgx.Conn.
 type Beginner interface {
 	BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error)
 }
 
-// InTx ejecuta fn en una transacción y la confirma. Si fn o el COMMIT fallan con 40001 o 40P01,
-// repite la transacción entera hasta [MaxAttempts] veces; cualquier otro error la deshace y se
-// devuelve tal cual (un error del COMMIT, como el de una restricción diferida, también).
+// InTx runs fn in a transaction and commits it. If fn or the COMMIT fail with 40001 or 40P01, it
+// repeats the whole transaction up to [MaxAttempts] times; any other error rolls it back and is
+// returned as is (an error from the COMMIT, like a deferred constraint's, too).
 func InTx(ctx context.Context, db Beginner, opts pgx.TxOptions, fn func(pgx.Tx) error) error {
 	var last error
 	for attempt := 1; attempt <= MaxAttempts; attempt++ {

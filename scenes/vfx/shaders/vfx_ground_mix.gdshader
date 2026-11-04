@@ -1,13 +1,13 @@
 shader_type spatial;
-// Polvo que se levanta del suelo, sobre un quad tumbado (el +Z del nodo es el suelo hacia arriba), con
-// luz y sombra de verdad: lo que cae a la sombra de un árbol o una muralla se oscurece, no brilla como
-// un cartel.
+// Dust kicked up from the ground, on a lying-down quad (the node's +Z is the ground, upward),
+// with real light and shadow: whatever falls in the shadow of a tree or a wall gets darker, it
+// does not glow like a sign.
 //
-// [mode]: 0 anillo bajo (solo caídas fuertes; textura de anillo) y 1 media luna de la esquiva (analítica:
-// gruesa por detrás del cuerpo, con las puntas hacia delante; el +Y del nodo es hacia atrás). En los dos
-// el polvo se deshace desde el borde con ruido a lo largo de la vida ([hold] es la fracción que aguanta
-// entero) en vez de bajar el alfa de golpe, y se funde con el suelo ([soft_distance]).
-// El color sale del tinte de instancia: el del material del suelo ([VfxPalette.ground], no el reino).
+// [mode]: 0 low ring (only hard landings; ring texture) and 1 dodge crescent (analytic: thick
+// behind the body, with the tips pointing forward; the node's +Y is backward). In both, the dust
+// breaks apart from the edge with noise over its lifetime ([hold] is the fraction it holds
+// whole) instead of dropping the alpha at once, and blends into the ground ([soft_distance]).
+// The color comes from the instance tint: the ground material's ([VfxPalette.ground], not the realm's).
 render_mode blend_mix, depth_draw_never, cull_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
@@ -18,17 +18,17 @@ uniform sampler2D depth_tex : hint_depth_texture, repeat_disable, filter_nearest
 uniform int mode = 0;
 uniform float start_scale = 0.4;
 uniform float end_scale = 1.0;
-// Velocidad del crecimiento (1 = tarda toda la vida; 4 = en un cuarto).
+// Growth speed (1 = takes the whole lifetime; 4 = a quarter of it).
 uniform float grow_speed = 3.0;
 uniform float hold = 0.15;
-// Cuánto roe el ruido el borde al deshacerse.
+// How much the noise eats the edge as it breaks apart.
 uniform float erosion = 0.7;
 uniform float brightness = 1.0;
 uniform float soft_distance = 0.12;
 uniform float opacity = 0.5;
-// Cuánto se desplaza la media luna hacia atrás (en unidades del quad) a lo largo de la vida.
+// How far the crescent drifts backward (in quad units) over its lifetime.
 uniform float drift = 0.25;
-// Luz: cuánto cuenta la luz directa (con sombra) y cuánto el ambiente.
+// Light: how much the direct light (with shadow) counts and how much the ambient does.
 uniform float light_gain = 0.9;
 instance uniform float progress : hint_range(0.0, 1.0) = 0.0;
 instance uniform vec4 tint : source_color = vec4(1.0);
@@ -55,7 +55,7 @@ void fragment() {
 		shape = t.a;
 		shade = t.r;
 	} else {
-		// Media luna: el círculo grande menos otro desplazado hacia delante (-Y).
+		// Crescent: the big circle minus another one shifted forward (-Y).
 		float outer = length(c * vec2(0.92, 1.0));
 		float inner = length((c - vec2(0.0, -0.5)) * vec2(1.0, 1.05));
 		float body = smoothstep(1.0, 0.72, outer) * smoothstep(0.82, 1.05, inner);

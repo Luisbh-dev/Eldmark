@@ -12,15 +12,15 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// IgnoreRequest es el cuerpo de POST y DELETE /internal/v1/ignores (§9.3). No lleva world_id: el
-// nombre se resuelve en el mundo de la instancia.
+// IgnoreRequest is the body of POST and DELETE /internal/v1/ignores (§9.3). It has no world_id:
+// the name is resolved in the instance's world.
 type IgnoreRequest struct {
 	ZoneInstanceID string   `json:"zone_instance_id"`
 	CharacterID    jsonx.ID `json:"character_id"`
 	TargetName     string   `json:"target_name"`
 }
 
-// IgnoreView es la respuesta de POST /internal/v1/ignores.
+// IgnoreView is the response of POST /internal/v1/ignores.
 type IgnoreView struct {
 	IgnoredAccountID jsonx.ID `json:"ignored_account_id"`
 	Name             string   `json:"name"`
@@ -30,10 +30,10 @@ func errIgnoreListFull() *httpx.Error {
 	return zones.Conflict("ignore_list_full", "Tu lista de ignorados está llena")
 }
 
-// Ignore guarda que la cuenta del personaje (con arrendamiento en la instancia; si no, 403) ignora
-// a la cuenta del personaje llamado name en el mundo de la instancia (404 si no hay nadie; 400 si
-// es la propia cuenta). Hasta [MaxIgnores] cuentas (409 ignore_list_full); volver a ignorar a la
-// misma cuenta actualiza el nombre.
+// Ignore records that the character's account (with a lease on the instance; otherwise 403)
+// ignores the account of the character named name in the instance's world (404 if there is
+// nobody; 400 if it is the account itself). Up to [MaxIgnores] accounts (409 ignore_list_full);
+// ignoring the same account again updates the name.
 func (s *Service) Ignore(ctx context.Context, inst *zones.Instance, characterID int64, name string) (*IgnoreView, error) {
 	var view *IgnoreView
 	err := db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -54,7 +54,7 @@ func (s *Service) Ignore(ctx context.Context, inst *zones.Instance, characterID 
 		if target.AccountID == account {
 			return zones.Validation(map[string]string{"target_name": "self"})
 		}
-		// La fila de la cuenta pone en serie las altas de la misma lista (el tope de 100).
+		// The account row serializes additions to the same list (the cap of 100).
 		if _, err := tx.Exec(ctx, `select 1 from accounts where account_id = $1 for no key update`, account); err != nil {
 			return err
 		}
@@ -79,9 +79,9 @@ func (s *Service) Ignore(ctx context.Context, inst *zones.Instance, characterID 
 	return view, err
 }
 
-// Unignore deja de ignorar: borra la fila de la cuenta del personaje llamado name en el mundo de la
-// instancia y la que guardó ese nombre (puede haber cambiado de nombre o de dueño). Sin ninguna,
-// nada (204).
+// Unignore stops ignoring: it deletes the row of the character named name's account in the
+// instance's world and the one that stored that name (it may have changed name or owner). With
+// neither, nothing (204).
 func (s *Service) Unignore(ctx context.Context, inst *zones.Instance, characterID int64, name string) error {
 	return db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		account, _, ok, err := inside(ctx, tx, characterID, inst)

@@ -17,9 +17,9 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// Purger purga personajes (plataforma.md §11.2): deja la lápida (la fila de characters sin nombre,
-// con purged_at) y lo de solo añadir del progreso, que la retención borra al año. Implementa
-// accounts.CharacterPurger.
+// Purger purges characters (plataforma.md §11.2): it leaves the tombstone (the characters row
+// without a name, with purged_at) and the append-only parts of the progression, which the retention
+// deletes after a year. It implements accounts.CharacterPurger.
 type Purger struct {
 	pool     *pgxpool.Pool
 	progress persistence.ProgressStore
@@ -27,7 +27,7 @@ type Purger struct {
 	log      *slog.Logger
 }
 
-// NewPurger prepara la purga de personajes.
+// NewPurger prepares the character purge.
 func NewPurger(pool *pgxpool.Pool, progress persistence.ProgressStore, c clock.Clock, log *slog.Logger) *Purger {
 	if c == nil {
 		c = clock.System{}
@@ -38,22 +38,22 @@ func NewPurger(pool *pgxpool.Pool, progress persistence.ProgressStore, c clock.C
 	return &Purger{pool: pool, progress: progress, clock: c, log: log}
 }
 
-// purgePath es el camino de una purga, que decide qué se vuelve a mirar con la fila bloqueada.
+// purgePath is the path of a purge, which decides what is checked again with the row locked.
 type purgePath int
 
 const (
-	pathExpired purgePath = iota // al vencer restore_until (trabajo horario)
-	pathAccount                  // con la cuenta: solo purged_at nulo (manda la cuenta)
+	pathExpired purgePath = iota // when restore_until expires (hourly job)
+	pathAccount                  // with the account: only null purged_at (the account rules)
 )
 
-// ErrBusy es un personaje con un arrendamiento vivo: no se purga (§11.2, paso 3).
+// ErrBusy is a character with a live lease: it is not purged (§11.2, step 3).
 var ErrBusy = errors.New("characters: el personaje tiene un arrendamiento vivo")
 
-// purge purga un personaje dentro de tx, con los bloqueos de §11.2 en el orden del guardado
-// (primero el arrendamiento, después la fila de characters): devuelve si lo purgó. Con un
-// arrendamiento vivo devuelve ErrBusy y no toca nada.
+// purge purges a character inside tx, with the §11.2 locks in the save order (first the lease, then
+// the characters row): it returns whether it purged it. With a live lease it returns ErrBusy and
+// touches nothing.
 func (p *Purger) purge(ctx context.Context, tx pgx.Tx, characterID int64, at time.Time, path purgePath) (bool, error) {
-	// 1. El arrendamiento, si hay fila.
+	// 1. The lease, if there is a row.
 	var leaseInstance *[16]byte
 	var leaseExpires *time.Time
 	err := tx.QueryRow(ctx, `select zone_instance_id, expires_at from character_leases where character_id = $1 for update`,
@@ -61,7 +61,7 @@ func (p *Purger) purge(ctx context.Context, tx pgx.Tx, characterID int64, at tim
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return false, err
 	}
-	// 2. La fila del personaje, y si sigue tocando.
+	// 2. The character's row, and whether it is still due.
 	var deletedAt, restoreUntil, purgedAt *time.Time
 	err = tx.QueryRow(ctx, `select deleted_at, restore_until, purged_at from characters where character_id = $1
 		for no key update`, characterID).Scan(&deletedAt, &restoreUntil, &purgedAt)
@@ -74,24 +74,24 @@ func (p *Purger) purge(ctx context.Context, tx pgx.Tx, characterID int64, at tim
 	switch path {
 	case pathExpired:
 		if deletedAt == nil || restoreUntil == nil || restoreUntil.After(at) || purgedAt != nil {
-			return false, nil // restaurado, aún en plazo o ya purgado
+			return false, nil // restored, still within the window or already purged
 		}
 	case pathAccount:
 		if purgedAt != nil {
 			return false, nil
 		}
 	}
-	// 3. Con un arrendamiento vivo no se purga: la vuelta siguiente lo reintenta.
+	// 3. With a live lease it is not purged: the next round retries it.
 	if leaseInstance != nil && leaseExpires != nil && leaseExpires.After(at) {
 		return false, ErrBusy
 	}
-	// 4. El progreso, la identidad y la lápida.
+	// 4. The progression, the identity and the tombstone.
 	if err := p.progress.Purge(ctx, tx, characterID); err != nil {
 		return false, err
 	}
 	if path == pathAccount {
-		// Con la cuenta, el nombre de un personaje vivo queda reservado 30 días (el de uno borrado
-		// ya tiene su reserva).
+		// With the account, a living character's name stays reserved 30 days (a deleted one's already has
+		// its reservation).
 		if _, err := tx.Exec(ctx, `update character_names set status = 'reserved', reserved_until = $2
 			where character_id = $1 and status = 'active'`, characterID, at.Add(NameReservation)); err != nil {
 			return false, err
@@ -118,10 +118,10 @@ func (p *Purger) purge(ctx context.Context, tx pgx.Tx, characterID int64, at tim
 	return true, nil
 }
 
-// PurgeAccountCharacters implementa accounts.CharacterPurger: purga, dentro de la transacción de
-// la purga de la cuenta (que ya bloqueó su fila), todos sus personajes sin purgar, vivos o
-// borrados. Si alguno tiene un arrendamiento vivo devuelve un error que envuelve
-// accounts.ErrCharactersBusy, y la cuenta no se purga.
+// PurgeAccountCharacters implements accounts.CharacterPurger: it purges, inside the account purge's
+// transaction (which already locked its row), all its unpurged characters, living or deleted. If
+// any has a live lease it returns an error that wraps accounts.ErrCharactersBusy, and the account
+// is not purged.
 func (p *Purger) PurgeAccountCharacters(ctx context.Context, tx pgx.Tx, accountID int64, at time.Time) error {
 	rows, err := tx.Query(ctx, `select character_id from characters where account_id = $1 and purged_at is null
 		order by character_id`, accountID)
@@ -143,12 +143,13 @@ func (p *Purger) PurgeAccountCharacters(ctx context.Context, tx pgx.Tx, accountI
 	return nil
 }
 
-// ReapplyPurge vuelve a purgar, tras restaurar una copia, un personaje que purge_log da por purgado
-// (admin reapply-purges, §11.2), en su propia transacción: el camino de la cuenta (basta purged_at
-// nulo, aunque la copia lo traiga vivo o borrado y aún restaurable) con at, el purged_at original
-// de purges.txt, en lugar de la hora; de él salen el año del libro y los 30 días del nombre.
-// Devuelve false si el personaje no existe en la copia o ya estaba purgado. reapply-purges borra
-// antes todos los arrendamientos; si aun así hay uno vivo, devuelve [ErrBusy] y no toca nada.
+// ReapplyPurge purges again, after restoring a backup, a character that purge_log considers purged
+// (admin reapply-purges, §11.2), in its own transaction: the account's path (a null purged_at is
+// enough, even if the backup brings it alive or deleted and still restorable) with at, the original
+// purged_at from purges.txt, instead of the current time; the ledger's year and the name's 30 days
+// derive from it. It returns false if the character does not exist in the backup or was already
+// purged. reapply-purges deletes all the leases beforehand; if one is still alive anyway, it
+// returns [ErrBusy] and touches nothing.
 func (p *Purger) ReapplyPurge(ctx context.Context, characterID int64, at time.Time) (bool, error) {
 	var done bool
 	err := db.InTx(ctx, p.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -159,9 +160,9 @@ func (p *Purger) ReapplyPurge(ctx context.Context, characterID int64, at time.Ti
 	return done, err
 }
 
-// PurgeExpired es el trabajo horario de los personajes borrados (§11.1): purga, cada uno en su
-// transacción, los que pasaron su restore_until. Uno con arrendamiento vivo se registra y queda
-// para la vuelta siguiente; los demás siguen.
+// PurgeExpired is the hourly job for deleted characters (§11.1): it purges, each in its own
+// transaction, those past their restore_until. One with a live lease is logged and left for the next
+// round; the others continue.
 func (p *Purger) PurgeExpired(ctx context.Context) error {
 	now := p.clock.Now()
 	rows, err := p.pool.Query(ctx, `select character_id from characters where deleted_at is not null
@@ -196,5 +197,5 @@ func (p *Purger) PurgeExpired(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// Purger devuelve la purga de personajes del servicio (la misma que recibe accounts).
+// Purger returns the service's character purge (the same one that accounts receives).
 func (s *Service) Purger() *Purger { return s.purger }

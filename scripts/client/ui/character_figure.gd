@@ -1,24 +1,25 @@
 class_name CharacterFigure
 extends SubViewportContainer
-## La figura 3D de la selección y la creación de personaje (docs/plataforma.md §13.2, UI-23 y UI-24): un
-## [SubViewport] con su propio mundo, un [PlayerCharacter] quieto con [HumanoidVisual] y la apariencia que se le da
-## ([method show_appearance], con [method AppearanceApplier.apply]) y una cámara orbital: arrastrar con el ratón la
-## gira alrededor de la figura y la rueda acerca o aleja. Sin apariencia (o con una que no vale para su pueblo), la de
-## por defecto del pueblo del reino ([method AppearanceApplier.resolve]).
+## The 3D figure for character selection and creation (docs/plataforma.md §13.2, UI-23 and UI-24): a
+## [SubViewport] with its own world, a still [PlayerCharacter] with [HumanoidVisual] and the appearance
+## it is given ([method show_appearance], with [method AppearanceApplier.apply]) and an orbital camera:
+## dragging with the mouse rotates it around the figure and the wheel zooms in or out. Without an
+## appearance (or with one that is not valid for its people), the default of the realm's people
+## ([method AppearanceApplier.resolve]).
 ## [br][br]
-## La figura se monta al entrar en el árbol. Encuadre y luz provisionales ([code]# TODO(arte)[/code], como la ventana
-## de personaje). Solo cliente.
+## The figure is assembled on entering the tree. Placeholder framing and lighting
+## ([code]# TODO(arte)[/code], like the character window). Client only.
 
 const PLAYER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 const DEFAULT_SIZE: Vector2i = Vector2i(360, 480)
-## Radianes que gira la cámara por píxel arrastrado.
+## Radians the camera turns per dragged pixel.
 const TURN_RATE: float = 0.01
-## Distancia de la cámara al centro de la figura: por defecto, mínima y máxima, y paso de la rueda.
+## Camera distance to the figure's center: default, minimum and maximum, and wheel step.
 const DEFAULT_DISTANCE: float = 3.3
 const MIN_DISTANCE: float = 1.6
 const MAX_DISTANCE: float = 5.0
 const ZOOM_STEP: float = 0.25
-## Altura del punto que mira la cámara.
+## Height of the point the camera looks at.
 const TARGET_HEIGHT: float = 0.95
 const CAMERA_FOV: float = 38.0
 const AMBIENT_COLOR: Color = Color(0.55, 0.55, 0.6, 1.0)
@@ -46,53 +47,53 @@ func _ready() -> void:
 	_build()
 
 
-## Enseña la apariencia de los 8 B [param bytes] de un personaje de [param realm] (código de
-## [enum NetProtocol.Realm]): la suya si vale para el pueblo del reino y, si no, la de por defecto.
+## Shows the appearance from the 8 B [param bytes] of a character of [param realm]
+## ([enum NetProtocol.Realm] code): its own if it is valid for the realm's people and, if not, the default one.
 func show_appearance(bytes: PackedByteArray, realm: int) -> void:
 	_realm = realm
 	_appearance = AppearanceApplier.resolve(bytes, realm)
 	_apply()
 
 
-## Enseña [param appearance] tal cual (la creación: lo que se está eligiendo).
+## Shows [param appearance] as is (creation: what is being chosen).
 func show_appearance_object(appearance: CharacterAppearance, realm: int) -> void:
 	_realm = realm
 	_appearance = appearance
 	_apply()
 
 
-## La apariencia que se enseña (null si ninguna).
+## The appearance being shown (null if none).
 func get_appearance() -> CharacterAppearance:
 	return _appearance
 
 
-## El [HumanoidVisual] de la figura (null hasta que entra en el árbol o si no se pudo montar).
+## The figure's [HumanoidVisual] (null until it enters the tree or if it could not be assembled).
 func get_visual() -> HumanoidVisual:
 	return _visual
 
 
-## El [PlayerCharacter] quieto de la figura (null hasta que entra en el árbol o si no se pudo montar).
+## The figure's still [PlayerCharacter] (null until it enters the tree or if it could not be assembled).
 func get_preview_character() -> PlayerCharacter:
 	return _preview
 
 
-## Ángulo de la cámara alrededor de la figura (radianes).
+## Camera angle around the figure (radians).
 func get_yaw() -> float:
 	return _yaw
 
 
-## Distancia de la cámara.
+## Camera distance.
 func get_distance() -> float:
 	return _distance
 
 
-## Gira la cámara lo que corresponde a arrastrar [param pixels] en horizontal.
+## Turns the camera by the amount corresponding to dragging [param pixels] horizontally.
 func orbit(pixels: float) -> void:
 	_yaw = wrapf(_yaw + pixels * TURN_RATE, -PI, PI)
 	_place_camera()
 
 
-## Acerca (negativo) o aleja (positivo) la cámara [param steps] pasos de la rueda.
+## Zooms the camera in (negative) or out (positive) by [param steps] wheel steps.
 func zoom(steps: float) -> void:
 	_distance = clampf(_distance + steps * ZOOM_STEP, MIN_DISTANCE, MAX_DISTANCE)
 	_place_camera()
@@ -114,7 +115,7 @@ func _build() -> void:
 	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.environment.ambient_light_color = AMBIENT_COLOR
 	_viewport.add_child(environment)
-	# TODO(arte): encuadre, luz y fondo provisionales hasta el visto bueno de UI-23 y UI-24 (docs/plataforma.md §15).
+	# TODO(arte): placeholder framing, lighting and background until UI-23 and UI-24 get sign-off (docs/plataforma.md §15).
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-35.0, 160.0, 0.0)
 	_viewport.add_child(light)
@@ -127,7 +128,7 @@ func _build() -> void:
 		push_warning("[Eldmark] No se pudo montar la figura del personaje")
 		return
 	_preview.name = "Personaje"
-	# Nadie simula a este personaje: sin esto el animador lo ve siempre en el aire y lo enseña en la pose de caída (UI-49).
+	# Nobody simulates this character: without this, the animator always sees it in the air and shows it in the fall pose (UI-49).
 	_preview.grounded = true
 	_viewport.add_child(_preview)
 	_visual = HumanoidVisual.install_replacing_placeholder(_preview)

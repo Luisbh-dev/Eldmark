@@ -1,13 +1,13 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área combate: golpe recibido en bloqueo.
+## Quality capture bench (TEC-50), combat area: hit received while blocking.
 ##
-## El servidor va como en [code]sc_remotos_bot.gd[/code] (sin PNJ, con un solo bot de combate enemigo). El cliente de captura
-## se queda delante del bot con el escudo arriba y sin atacar ([code]spar.gd[/code], modo [code]tank[/code]). Cada vez que
-## el cliente ve un golpe bloqueado ([code]damage_taken[/code] con la marca de bloqueo, ya temporizado para el
-## dibujo) la grabadora saca del anillo la tira del propio personaje, con el principio del golpe: la cámara del juego y una
-## cámara lateral propia. El juego no tiene un clip propio para recibir un golpe con el escudo: lo que enseña esta tira es
-## lo que ve un jugador hoy (y lo que tendrá que cambiar ART-48). El [code]meta.json[/code] lleva por fotograma la marca
-## [code]hit[/code] (BLOQUEADO, PARADA, GOLPE) de los golpes que cayeron en su intervalo.
+## The server runs as in [code]sc_remotos_bot.gd[/code] (no NPCs, with a single enemy combat bot). The capture client
+## stays in front of the bot with the shield up and without attacking ([code]spar.gd[/code], [code]tank[/code] mode). Every time
+## the client sees a blocked hit ([code]damage_taken[/code] with the block flag, already timed for
+## drawing) the recorder pulls the character's own strip out of the ring, with the start of the hit: the game camera and a
+## side camera of its own. The game has no clip of its own for taking a hit with the shield: what this strip shows is
+## what a player sees today (and what ART-48 will have to change). The [code]meta.json[/code] carries per frame the
+## [code]hit[/code] flag (BLOQUEADO "blocked", PARADA "parried", GOLPE "hit") of the hits that fell in its interval.
 
 const Recorder = preload("res://tools/quality/strip_recorder.gd")
 const Spar = preload("res://tools/quality/spar.gd")
@@ -15,7 +15,7 @@ const Specs = preload("res://tools/quality/strip_specs.gd")
 
 const MEET_YAW: float = 180.0
 const TIMEOUT_MS: int = 150000
-## Tomas de golpe bloqueado que se guardan, con su id.
+## Blocked-hit takes that are saved, with their id.
 const STRIP_IDS: Array[String] = ["com_bloqueo_recibir_golpe", "com_bloqueo_recibir_golpe_2", "com_bloqueo_recibir_golpe_3"]
 
 var d: Variant
@@ -83,7 +83,7 @@ func _tank_against(view: Object, t_end: int) -> void:
 	spar.stop()
 
 
-# Un golpe bloqueado nuevo dispara la siguiente tira (si no hay otra en curso).
+# A new blocked hit triggers the next strip (if none is in progress).
 func _watch_blocked_hits() -> void:
 	for e: Dictionary in d.hit_events:
 		if int(e["ms"]) <= _seen_ms:

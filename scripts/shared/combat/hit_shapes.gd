@@ -1,64 +1,64 @@
 class_name HitShapes
 extends RefCounted
-## Geometría de los golpes (docs/combate.md, sección 4.1): matemática pura, sin cuerpos de física,
-## salvo la línea de visión, que lanza un rayo contra el mundo.
+## Hit geometry (docs/combate.md, section 4.1): pure math, no physics bodies,
+## except line of sight, which casts a ray against the world.
 ## [br][br]
-## Todas las pruebas son de un volumen contra una cápsula vertical (la del personaje: radio
-## [constant CAPSULE_RADIUS] y altura [constant CAPSULE_HEIGHT] medidos desde los pies). La
-## orientación sigue la convención de [member PlayerCharacter.yaw]: yaw 0 mira hacia -Z.
+## All tests are of a volume against a vertical capsule (the character's: radius
+## [constant CAPSULE_RADIUS] and height [constant CAPSULE_HEIGHT] measured from the feet). The
+## orientation follows the convention of [member PlayerCharacter.yaw]: yaw 0 looks toward -Z.
 ## [br][br]
-## Compartido: lo usan el servidor (compensación de latencia), la puntería y los proyectiles
-## (docs/habilidades.md, sección 4.4: [method segment_capsule_fraction] y
-## [method segment_box_fraction]) y las pruebas; no depende de nada del cliente.
+## Shared: used by the server (lag compensation), aiming and projectiles
+## (docs/habilidades.md, section 4.4: [method segment_capsule_fraction] and
+## [method segment_box_fraction]) and the tests; it depends on nothing from the client.
 
-## Radio de la cápsula de un personaje (m), igual que el nodo [code]Collision[/code].
+## Radius of a character's capsule (m), equal to the [code]Collision[/code] node.
 const CAPSULE_RADIUS: float = 0.4
-## Altura de la cápsula de un personaje desde los pies (m).
+## Height of a character's capsule from the feet (m).
 const CAPSULE_HEIGHT: float = 1.8
-## Altura sobre los pies del atacante desde la que sale el rayo de la línea de visión (el pecho).
+## Height above the attacker's feet from which the line-of-sight ray starts (the chest).
 const LINE_OF_SIGHT_FROM_HEIGHT: float = 1.4
-## Altura sobre los pies de la víctima a la que llega el rayo de la línea de visión (su centro).
+## Height above the victim's feet that the line-of-sight ray reaches (their center).
 const LINE_OF_SIGHT_TO_HEIGHT: float = 0.9
-## Capas contra las que se lanza el rayo de la línea de visión: la del mundo (capa 1) y la de las
-## estructuras (capa 4, el cuerpo de vista de la puerta del fuerte: no para a nadie, pero no se
-## ve ni se golpea a través de ella).
+## Layers the line-of-sight ray is cast against: the world's (layer 1) and the
+## structures' (layer 4, the fort gate's sight body: it stops nobody, but nothing can be
+## seen or hit through it).
 const LINE_OF_SIGHT_MASK: int = PlayerCharacter.WORLD_COLLISION_LAYER | PlayerCharacter.STRUCTURE_LAYER
 
-## Por debajo de esta distancia horizontal dos puntos se consideran en el mismo sitio, y no hay
-## dirección entre ellos.
+## Below this horizontal distance two points are considered to be in the same place, and there is no
+## direction between them.
 const _MIN_DIRECTION_LENGTH: float = 0.0001
-## Tolerancia de las comparaciones de punto flotante en los bordes (m y radianes).
+## Tolerance of floating-point comparisons at the edges (m and radians).
 const _EPSILON: float = 0.000001
 
 
-## true si el sector anular con altura de [param shape], con su origen en [param origin] (los pies
-## del atacante) y orientado según [param yaw], toca la cápsula vertical de [param radius] y
-## [param height] que apoya en [param capsule_feet].
+## true if the annular sector with height of [param shape], with its origin at [param origin] (the attacker's
+## feet) and oriented according to [param yaw], touches the vertical capsule of [param radius] and
+## [param height] resting at [param capsule_feet].
 ## [br][br]
-## Tres condiciones a la vez, con los bordes incluidos:
-## [br]- distancia horizontal entre el origen y el eje de la cápsula en
+## Three conditions at once, with edges included:
+## [br]- horizontal distance between the origin and the capsule's axis within
 ## [code][inner_m - radius, range_m + radius][/code];
-## [br]- ángulo entre el yaw del atacante y la dirección al eje de la cápsula como mucho
-## [code]angle_deg / 2 + asin(radius / d)[/code] (el disco de la cápsula visto desde el origen
-## subtiende [code]asin(radius / d)[/code]); si el origen cae dentro del disco
-## ([code]d <= radius[/code]) no hay dirección y el ángulo no cuenta;
-## [br]- solape vertical de [code][height_min, height_max][/code] sobre los pies del atacante con
-## [code][0, height][/code] sobre los pies de la cápsula.
+## [br]- angle between the attacker's yaw and the direction to the capsule's axis at most
+## [code]angle_deg / 2 + asin(radius / d)[/code] (the capsule's disc seen from the origin
+## subtends [code]asin(radius / d)[/code]); if the origin falls inside the disc
+## ([code]d <= radius[/code]) there is no direction and the angle does not count;
+## [br]- vertical overlap of [code][height_min, height_max][/code] above the attacker's feet with
+## [code][0, height][/code] above the capsule's feet.
 static func sector_hits_capsule(origin: Vector3, yaw: float, shape: HitShape,
 		capsule_feet: Vector3, radius: float, height: float) -> bool:
-	# Altura.
+	# Height.
 	var shape_bottom: float = origin.y + shape.height_min
 	var shape_top: float = origin.y + shape.height_max
 	if shape_bottom > capsule_feet.y + height + _EPSILON or shape_top < capsule_feet.y - _EPSILON:
 		return false
-	# Distancia horizontal al eje.
+	# Horizontal distance to the axis.
 	var offset := Vector2(capsule_feet.x - origin.x, capsule_feet.z - origin.z)
 	var distance: float = offset.length()
 	if distance > shape.range_m + radius + _EPSILON:
 		return false
 	if distance < shape.inner_m - radius - _EPSILON:
 		return false
-	# Ángulo. Con el origen dentro del disco de la cápsula no hay dirección que comparar.
+	# Angle. With the origin inside the capsule's disc there is no direction to compare.
 	if distance <= radius:
 		return true
 	var forward: Vector3 = Basis(Vector3.UP, yaw) * Vector3.FORWARD
@@ -68,14 +68,14 @@ static func sector_hits_capsule(origin: Vector3, yaw: float, shape: HitShape,
 	return angle <= limit + _EPSILON
 
 
-## true si el segmento de [param a] a [param b] (un proyectil en un tick, por ejemplo) toca la
-## cápsula vertical de [param radius] y [param height] que apoya en [param capsule_feet]: la
-## distancia entre el segmento y el eje de la cápsula (de la altura del radio a la altura total
-## menos el radio) es como mucho el radio. Funciona con un segmento de longitud 0.
+## true if the segment from [param a] to [param b] (a projectile in one tick, for example) touches the
+## vertical capsule of [param radius] and [param height] resting at [param capsule_feet]: the
+## distance between the segment and the capsule's axis (from the radius height to the total height
+## minus the radius) is at most the radius. Works with a segment of length 0.
 static func segment_hits_capsule(a: Vector3, b: Vector3, capsule_feet: Vector3, radius: float,
 		height: float) -> bool:
-	# Eje de la cápsula: el segmento entre los centros de las dos semiesferas. Una cápsula más
-	# baja que dos radios se reduce a un punto a media altura.
+	# The capsule's axis: the segment between the centers of the two hemispheres. A capsule shorter
+	# than two radii reduces to a point at mid height.
 	var bottom_y: float = capsule_feet.y + minf(radius, height * 0.5)
 	var top_y: float = capsule_feet.y + maxf(height - radius, height * 0.5)
 	var axis_a := Vector3(capsule_feet.x, bottom_y, capsule_feet.z)
@@ -84,11 +84,11 @@ static func segment_hits_capsule(a: Vector3, b: Vector3, capsule_feet: Vector3, 
 	return squared <= radius * radius + _EPSILON
 
 
-## Fracción (0 a 1) del segmento de [param a] a [param b] en la que entra por primera vez en la
-## cápsula vertical de [param radius] y [param height] que apoya en [param capsule_feet] (el mismo
-## volumen que [method segment_hits_capsule]), o -1 si no la toca. Si [param a] ya está dentro,
-## 0 (docs/habilidades.md, sección 4.4: un proyectil que empieza su tick dentro de una cápsula).
-## La cápsula es la unión de un cilindro y dos esferas: la entrada es la primera de las tres.
+## Fraction (0 to 1) of the segment from [param a] to [param b] at which it first enters the
+## vertical capsule of [param radius] and [param height] resting at [param capsule_feet] (the same
+## volume as [method segment_hits_capsule]), or -1 if it does not touch it. If [param a] is already inside,
+## 0 (docs/habilidades.md, section 4.4: a projectile that starts its tick inside a capsule).
+## The capsule is the union of a cylinder and two spheres: the entry is the first of the three.
 static func segment_capsule_fraction(a: Vector3, b: Vector3, capsule_feet: Vector3, radius: float,
 		height: float) -> float:
 	var bottom_y: float = capsule_feet.y + minf(radius, height * 0.5)
@@ -100,7 +100,7 @@ static func segment_capsule_fraction(a: Vector3, b: Vector3, capsule_feet: Vecto
 		return 0.0
 	var direction: Vector3 = b - a
 	var best: float = INF
-	# Lateral del cilindro (eje vertical): solo cuenta si la entrada cae entre los dos centros.
+	# Side of the cylinder (vertical axis): it only counts if the entry falls between the two centers.
 	var flat_direction := Vector2(direction.x, direction.z)
 	var flat_offset := Vector2(a.x - capsule_feet.x, a.z - capsule_feet.z)
 	var quad_a: float = flat_direction.dot(flat_direction)
@@ -113,7 +113,7 @@ static func segment_capsule_fraction(a: Vector3, b: Vector3, capsule_feet: Vecto
 			var entry_y: float = a.y + direction.y * entry
 			if entry >= 0.0 and entry <= 1.0 and entry_y >= bottom_y and entry_y <= top_y:
 				best = entry
-	# Las dos semiesferas.
+	# The two hemispheres.
 	for center: Vector3 in [axis_a, axis_b]:
 		var entry_sphere: float = _segment_sphere_entry(a, direction, center, radius_squared)
 		if entry_sphere >= 0.0:
@@ -121,11 +121,11 @@ static func segment_capsule_fraction(a: Vector3, b: Vector3, capsule_feet: Vecto
 	return best if best <= 1.0 else -1.0
 
 
-## Fracción (0 a 1) del segmento de [param a] a [param b] en la que entra en la caja [param box]
-## (transformación de su centro; puede girar en cualquier eje) de medias dimensiones
-## [param half_extents], o -1 si no la toca; 0 si [param a] ya está dentro o en el borde (método de
-## las franjas en el espacio de la caja). Sirve para el muro de escudos que para proyectiles
-## (docs/habilidades.md, sección 4.4).
+## Fraction (0 to 1) of the segment from [param a] to [param b] at which it enters the box [param box]
+## (transform of its center; it can rotate on any axis) of half dimensions
+## [param half_extents], or -1 if it does not touch it; 0 if [param a] is already inside or on the edge (slab
+## method in the box's space). Used for the shield wall against projectiles
+## (docs/habilidades.md, section 4.4).
 static func segment_box_fraction(a: Vector3, b: Vector3, box: Transform3D,
 		half_extents: Vector3) -> float:
 	var inverse: Transform3D = box.affine_inverse()
@@ -155,26 +155,26 @@ static func segment_box_fraction(a: Vector3, b: Vector3, box: Transform3D,
 	return enter
 
 
-## true si el sector anular con altura de [param shape], con su origen en [param origin] (los pies
-## del atacante) y orientado según [param yaw], toca la caja [param box] de medias dimensiones
-## [param half_extents] (docs/fuerte.md, sección 3.3: la puerta del fuerte como blanco).
+## true if the annular sector with height of [param shape], with its origin at [param origin] (the attacker's
+## feet) and oriented according to [param yaw], touches the box [param box] of half dimensions
+## [param half_extents] (docs/fuerte.md, section 3.3: the fort gate as a target).
 ## [br][br]
-## [param box] es la transformación del [b]centro[/b] de la caja; solo se admite un giro en el eje Y
-## (o ninguno): la altura se toma de [code]box.origin.y ± half_extents.y[/code]. Los bordes cuentan
-## como contacto. Mismas tres condiciones que [method sector_hits_capsule], pero exactas para el
-## rectángulo en planta de la caja: se recorta con las dos semiplanos del cono del ataque y se
-## comprueba que alguna parte de lo que queda esté entre [code]inner_m[/code] y [code]range_m[/code]
-## del origen. Un sector de 360° o más no tiene cono; uno de entre 180° y 360° es la unión de dos
-## semiplanos.
+## [param box] is the transform of the box's [b]center[/b]; only a rotation about the Y axis is allowed
+## (or none): the height is taken from [code]box.origin.y ± half_extents.y[/code]. Edges count
+## as contact. The same three conditions as [method sector_hits_capsule], but exact for the
+## box's footprint rectangle: it is clipped with the two half-planes of the attack's cone and
+## it is checked that some part of what remains lies between [code]inner_m[/code] and [code]range_m[/code]
+## from the origin. A sector of 360° or more has no cone; one between 180° and 360° is the union of two
+## half-planes.
 static func sector_hits_box(origin: Vector3, yaw: float, shape: HitShape, box: Transform3D,
 		half_extents: Vector3) -> bool:
-	# Altura.
+	# Height.
 	var box_bottom: float = box.origin.y - half_extents.y
 	var box_top: float = box.origin.y + half_extents.y
 	if origin.y + shape.height_min > box_top + _EPSILON \
 			or origin.y + shape.height_max < box_bottom - _EPSILON:
 		return false
-	# Rectángulo en planta (x, z) de la caja, recorrido por el perímetro.
+	# Footprint rectangle (x, z) of the box, walked along the perimeter.
 	var rectangle: Array[Vector2] = []
 	for corner_signs: Vector2 in [Vector2(-1.0, -1.0), Vector2(1.0, -1.0), Vector2(1.0, 1.0),
 			Vector2(-1.0, 1.0)]:
@@ -191,7 +191,7 @@ static func sector_hits_box(origin: Vector3, yaw: float, shape: HitShape, box: T
 	else:
 		var ray_left: Vector2 = forward.rotated(half_angle)
 		var ray_right: Vector2 = forward.rotated(-half_angle)
-		# d dentro del cono <=> cross(ray_right, d) >= 0 y cross(d, ray_left) >= 0.
+		# d inside the cone <=> cross(ray_right, d) >= 0 and cross(d, ray_left) >= 0.
 		var normal_right := Vector2(-ray_right.y, ray_right.x)
 		var normal_left := Vector2(ray_left.y, -ray_left.x)
 		if half_angle <= PI * 0.5 + _EPSILON:
@@ -207,10 +207,10 @@ static func sector_hits_box(origin: Vector3, yaw: float, shape: HitShape, box: T
 	return false
 
 
-## true si la cápsula vertical de [param radius] y [param height] que apoya en [param capsule_feet]
-## solapa la caja [param box] (transformación de su centro, con giro solo en Y) de medias
-## dimensiones [param half_extents]. Sirve para saber si un personaje ocupa el vano de la puerta del
-## fuerte (docs/fuerte.md, sección 3.3: no se repara la puerta mientras alguien lo solape).
+## true if the vertical capsule of [param radius] and [param height] resting at [param capsule_feet]
+## overlaps the box [param box] (transform of its center, rotated only about Y) of half
+## dimensions [param half_extents]. Used to know whether a character occupies the fort's gate
+## opening (docs/fuerte.md, section 3.3: the gate is not repaired while someone overlaps it).
 static func capsule_overlaps_box(capsule_feet: Vector3, radius: float, height: float,
 		box: Transform3D, half_extents: Vector3) -> bool:
 	var local: Vector3 = box.affine_inverse() * capsule_feet
@@ -221,15 +221,15 @@ static func capsule_overlaps_box(capsule_feet: Vector3, radius: float, height: f
 	return dx * dx + dz * dz <= radius * radius + _EPSILON
 
 
-## true si no hay nada del mundo (ni la puerta cerrada de un fuerte) entre el pecho del atacante
-## y el centro de la víctima.
-## [param attacker_feet] y [param victim_feet] son las posiciones de los pies (el origen de cada
-## personaje); la función sube el origen del rayo [constant LINE_OF_SIGHT_FROM_HEIGHT] metros y su
-## destino [constant LINE_OF_SIGHT_TO_HEIGHT]. El rayo solo mira las capas del mundo y de las
-## estructuras ([constant LINE_OF_SIGHT_MASK]), así que los personajes y los bloqueos invisibles no
-## lo cortan.
-## [param space] es el espacio de física del mundo actual (no se rebobina: las paredes no se
-## mueven).
+## true if there is nothing from the world (nor a fort's closed gate) between the attacker's chest
+## and the victim's center.
+## [param attacker_feet] and [param victim_feet] are the feet positions (the origin of each
+## character); the function raises the ray's origin by [constant LINE_OF_SIGHT_FROM_HEIGHT] meters and its
+## destination by [constant LINE_OF_SIGHT_TO_HEIGHT]. The ray only looks at the world and
+## structure layers ([constant LINE_OF_SIGHT_MASK]), so characters and invisible blockers do not
+## cut it.
+## [param space] is the physics space of the current world (it is not rewound: walls do not
+## move).
 static func has_line_of_sight(space: PhysicsDirectSpaceState3D, attacker_feet: Vector3,
 		victim_feet: Vector3) -> bool:
 	var from: Vector3 = attacker_feet + Vector3(0.0, LINE_OF_SIGHT_FROM_HEIGHT, 0.0)
@@ -237,16 +237,16 @@ static func has_line_of_sight(space: PhysicsDirectSpaceState3D, attacker_feet: V
 	return is_ray_clear(space, from, to)
 
 
-## true si el rayo de [param from] a [param to] no choca con el mundo ni con las estructuras
-## ([constant LINE_OF_SIGHT_MASK]). Base de [method has_line_of_sight] con los puntos ya
-## calculados.
+## true if the ray from [param from] to [param to] does not hit the world or the structures
+## ([constant LINE_OF_SIGHT_MASK]). Basis of [method has_line_of_sight] with the points already
+## computed.
 ## [br][br]
-## Con [code]hit_from_inside[/code] (F6b y docs/habilidades.md, sección 4.4): un rayo que [b]empieza
-## dentro[/b] de una forma convexa choca en su origen. Sin eso, el dueño de un fuerte con los pies en el vano
-## de su puerta cerrada (el pecho queda dentro de la caja de vista de 0,5 m) golpearía desde dentro a quien
-## está fuera sin que los de fuera le vieran a él, porque el rayo que empieza dentro de una caja la ignora;
-## así la puerta cerrada corta los golpes en los dos sentidos: desde el vano ni se golpea ni se es golpeado.
-## Las mallas cóncavas y el terreno no cambian (Godot no tiene «dentro» para ellas).
+## With [code]hit_from_inside[/code] (F6b and docs/habilidades.md, section 4.4): a ray that [b]starts
+## inside[/b] a convex shape hits at its origin. Without that, the owner of a fort with their feet in the opening
+## of its closed gate (the chest ends up inside the 0.5 m sight box) would hit from inside whoever
+## is outside without those outside seeing them, because a ray that starts inside a box ignores it;
+## this way the closed gate cuts hits in both directions: from the opening you neither hit nor get hit.
+## Concave meshes and terrain do not change (Godot has no "inside" for them).
 static func is_ray_clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool:
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to,
 			LINE_OF_SIGHT_MASK)
@@ -254,10 +254,10 @@ static func is_ray_clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Ve
 	return space.intersect_ray(query).is_empty()
 
 
-## true si [param attacker_pos] está dentro del cono frontal de [param cone_deg] grados (ángulo
-## total, borde incluido) del defensor, medido en horizontal desde su yaw. Sirve para los conos
-## de bloqueo y de parada. Un atacante justo encima del defensor (sin dirección horizontal) cuenta
-## como delante.
+## true if [param attacker_pos] is inside the defender's front cone of [param cone_deg] degrees (total
+## angle, edge included), measured horizontally from their yaw. Used for the block
+## and parry cones. An attacker right above the defender (no horizontal direction) counts
+## as in front.
 static func is_in_front(defender_pos: Vector3, defender_yaw: float, attacker_pos: Vector3,
 		cone_deg: float) -> bool:
 	var offset := Vector2(attacker_pos.x - defender_pos.x, attacker_pos.z - defender_pos.z)
@@ -270,9 +270,9 @@ static func is_in_front(defender_pos: Vector3, defender_yaw: float, attacker_pos
 	return angle <= deg_to_rad(cone_deg) * 0.5 + _EPSILON
 
 
-## Cuadrado de la distancia mínima entre los segmentos [param p1]-[param q1] y
-## [param p2]-[param q2] (Ericson, «Real-Time Collision Detection», 5.1.9), con los casos de
-## segmentos de longitud 0 y paralelos.
+## Squared minimum distance between the segments [param p1]-[param q1] and
+## [param p2]-[param q2] (Ericson, "Real-Time Collision Detection", 5.1.9), handling the cases of
+## zero-length and parallel segments.
 static func _segment_segment_distance_squared(p1: Vector3, q1: Vector3, p2: Vector3,
 		q2: Vector3) -> float:
 	var d1: Vector3 = q1 - p1
@@ -309,9 +309,9 @@ static func _segment_segment_distance_squared(p1: Vector3, q1: Vector3, p2: Vect
 	return gap.dot(gap)
 
 
-# Fracción de [code]a + direction · f[/code] (f en [0, 1]) en la que el segmento entra en la esfera de
-# centro [param center] y radio² [param radius_squared], o -1 si no entra (o si [param a] está dentro:
-# eso lo mira quien llama).
+# Fraction of [code]a + direction · f[/code] (f in [0, 1]) at which the segment enters the sphere with
+# center [param center] and radius² [param radius_squared], or -1 if it does not enter (or if [param a] is inside:
+# the caller checks that).
 static func _segment_sphere_entry(a: Vector3, direction: Vector3, center: Vector3,
 		radius_squared: float) -> float:
 	var quad_a: float = direction.dot(direction)
@@ -329,8 +329,8 @@ static func _segment_sphere_entry(a: Vector3, direction: Vector3, center: Vector
 	return entry
 
 
-# Recorta el polígono convexo [param polygon] a los puntos p con dot(p - apex, normal) >= 0
-# (Sutherland-Hodgman). Devuelve el polígono resultante (vacío si no queda nada).
+# Clips the convex polygon [param polygon] to the points p with dot(p - apex, normal) >= 0
+# (Sutherland-Hodgman). Returns the resulting polygon (empty if nothing remains).
 static func _clip_to_half_plane(polygon: Array[Vector2], apex: Vector2,
 		normal: Vector2) -> Array[Vector2]:
 	var result: Array[Vector2] = []
@@ -351,8 +351,8 @@ static func _clip_to_half_plane(polygon: Array[Vector2], apex: Vector2,
 	return result
 
 
-# true si algún punto del polígono convexo [param polygon] (vértices en orden; puede ser un punto o
-# un segmento degenerado) está entre [param inner] y [param outer] del punto [param apex].
+# true if any point of the convex polygon [param polygon] (vertices in order; it may be a point or
+# a degenerate segment) is between [param inner] and [param outer] of the point [param apex].
 static func _polygon_reaches_ring(polygon: Array[Vector2], apex: Vector2, inner: float,
 		outer: float) -> bool:
 	if polygon.is_empty():
@@ -373,8 +373,8 @@ static func _polygon_reaches_ring(polygon: Array[Vector2], apex: Vector2, inner:
 	return nearest <= outer + _EPSILON and farthest >= inner - _EPSILON
 
 
-# true si [param point] está dentro (o en el borde) del polígono convexo [param polygon] de al menos
-# 3 vértices, en cualquier sentido de giro.
+# true if [param point] is inside (or on the edge of) the convex polygon [param polygon] of at least
+# 3 vertices, in either winding direction.
 static func _polygon_contains(polygon: Array[Vector2], point: Vector2) -> bool:
 	if polygon.size() < 3:
 		return false

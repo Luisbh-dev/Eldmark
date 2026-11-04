@@ -1,11 +1,11 @@
 extends TestCase
-## El [FortressController] solo, sin servidor ni red (docs/fuerte.md, secciones 1 a 3; GUE-08, GUE-10,
-## GUE-12 y GUE-13): se avanza a mano, tick a tick, con jugadores falsos que se colocan dentro o fuera del
-## círculo. Se comprueba la presencia (cada 6 ticks, vivos, conectados y activos), una captura completa
-## neutral -> Vardheim -> Solmarch con el capitán de los Huecos y el del dueño, la disputa y los
-## decaimientos, la consolidación, el ritmo del OBJECT_STATE, las capas de la puerta desde el tick
-## siguiente, la reparación aplazada mientras alguien ocupa el vano, los avisos de guerra en orden, la
-## interfaz con los PNJ, el reinicio periódico y los comandos de depuración.
+## The [FortressController] alone, with no server or network (docs/fuerte.md, sections 1 to 3; GUE-08, GUE-10,
+## GUE-12 and GUE-13): advanced by hand, tick by tick, with fake players placed inside or outside the
+## circle. It checks presence (every 6 ticks, alive, connected and active), a full neutral -> Vardheim -> Solmarch
+## capture with the Hollows' captain and the owner's, the dispute and the
+## decays, consolidation, the OBJECT_STATE rate, the gate layers from the next
+## tick, the repair deferred while someone occupies the doorway, the war notices in order, the
+## interface with the NPCs, the periodic reset and the debug commands.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -19,9 +19,9 @@ var _controller: FortressController
 var _definition: FortressDefinition
 var _war: Array[NetMessages.EntityEvent] = []
 var _object_states: Array[NetMessages.ObjectState] = []
-# Señales para los PNJ: [señal, tick, datos...].
+# Signals for the NPCs: [signal, tick, data...].
 var _npc_signals: Array[Array] = []
-# Jugadores falsos: net_id -> {realm, position, alive, connected, idle}.
+# Fake players: net_id -> {realm, position, alive, connected, idle}.
 var _players: Dictionary = {}
 var _bodies: PackedVector3Array = PackedVector3Array()
 var _tick: int = 0
@@ -48,7 +48,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _build(definition: FortressDefinition) -> void:
 	if is_instance_valid(_viewport):
@@ -86,8 +86,8 @@ func _build(definition: FortressDefinition) -> void:
 		_npc_signals.append([&"guards", tick, id]))
 
 
-## Candidatos a la presencia: un [FortressController.PlayerCandidate] por jugador falso, con la última
-## entrada en el tick actual (salvo los «idle»).
+## Presence candidates: one [FortressController.PlayerCandidate] per fake player, with the last
+## input on the current tick (except the \"idle\" ones).
 func _make_candidates(tick: int) -> Array:
 	var list: Array = []
 	for net_id: int in _players:
@@ -146,7 +146,7 @@ func _signal_names() -> Array[StringName]:
 	return names
 
 
-## Un luchador de [param realm] para dar golpes a la puerta.
+## A fighter of [param realm] to hit the gate.
 func _fighter(net_id: int, realm: int) -> Combatant:
 	return CombatFixture.make_fighter(_world, net_id, realm, Vector3.ZERO, 0.0,
 			CombatTiming.from_rules(CombatCatalog.rules()))
@@ -156,45 +156,45 @@ func _hit_gate(attacker: Combatant, amount: int, tick: int) -> void:
 	_controller.on_structure_hit(_controller.get_structure_targets()[0], attacker, amount, tick)
 
 
-# --- Alta --------------------------------------------------------------------------------------
+# --- Registration ------------------------------------------------------------------------------
 
 func test_setup_creates_the_structure_entity_and_the_gate_target() -> void:
 	assert_true(_controller.has_fortresses())
 	assert_eq(_controller.get_fortress_ids(), [FORTRESS] as Array[StringName])
 	var entity: NetEntity = _controller.get_entity(FORTRESS)
-	if not assert_not_null(entity, "la fortaleza tiene su entidad"):
+	if not assert_not_null(entity, "the fortress has its entity"):
 		return
 	assert_eq(entity.kind, NetProtocol.EntityKind.STRUCTURE)
-	assert_true((entity.flags & NetEntity.FLAG_ALWAYS_RELEVANT) != 0, "la ven todos los jugadores")
-	assert_eq(_registry.get_entity(entity.net_id), entity, "está en el registro de la zona")
+	assert_true((entity.flags & NetEntity.FLAG_ALWAYS_RELEVANT) != 0, "all the players see it")
+	assert_eq(_registry.get_entity(entity.net_id), entity, "it is in the zone registry")
 	var circle: Dictionary = _controller.get_circle(FORTRESS)
-	assert_vec_near(circle["center"], FortressFixture.circle_center(), 1e-4, "centro del marcador")
-	assert_eq(circle["radius"], 5.0, "el radio sale del marcador")
+	assert_vec_near(circle["center"], FortressFixture.circle_center(), 1e-4, "center of the marker")
+	assert_eq(circle["radius"], 5.0, "the radius comes from the marker")
 	var state: FortressState = _state()
 	assert_eq(state.owner, 0, "neutral")
 	assert_eq(state.phase, FortressState.Phase.GARRISONED)
 	assert_eq(state.gate_health, 900)
 	var targets: Array[StructureTarget] = _controller.get_structure_targets()
-	if assert_eq(targets.size(), 1, "la puerta es un blanco"):
+	if assert_eq(targets.size(), 1, "the gate is a target"):
 		assert_eq(targets[0].net_id, entity.net_id)
 		assert_vec_near(targets[0].box.origin, FortressFixture.gate_position() + Vector3(0.0, 2.15, 0.0),
-				1e-4, "la caja de la puerta, en su sitio")
+				1e-4, "the gate's box, in place")
 		assert_vec_near(targets[0].half_extents, Vector3(0.25, 2.15, 2.0), 1e-4)
-		assert_eq(targets[0].exclude.size(), 2, "los dos cuerpos de la puerta")
-		assert_true(targets[0].can_be_hit_by(VARDHEIM), "un fuerte neutral lo daña cualquier reino")
-		assert_false(targets[0].can_be_hit_by(0), "pero no los Huecos")
+		assert_eq(targets[0].exclude.size(), 2, "the gate's two bodies")
+		assert_true(targets[0].can_be_hit_by(VARDHEIM), "a neutral fort can be damaged by any realm")
+		assert_false(targets[0].can_be_hit_by(0), "but not by the Hollows")
 
 
 func test_the_spawn_message_carries_the_whole_state_of_the_fortress() -> void:
 	var entity: NetEntity = _controller.get_entity(FORTRESS)
 	var spawn: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(entity.encode_spawn(7, false))
-	if not assert_not_null(spawn, "el SPAWN de la estructura se decodifica"):
+	if not assert_not_null(spawn, "the structure's SPAWN decodes"):
 		return
 	assert_eq(spawn.kind, NetProtocol.EntityKind.STRUCTURE)
 	assert_eq(spawn.net_id, entity.net_id)
 	assert_eq(spawn.definition_id, String(FORTRESS))
 	assert_eq(spawn.spawn_tick, 7)
-	assert_eq(spawn.fields.size(), FortressFields.all_ids().size(), "los 17 campos")
+	assert_eq(spawn.fields.size(), FortressFields.all_ids().size(), "the 17 fields")
 	var client_state: FortressState = FortressState.initial(_definition, 0)
 	spawn.to_object_state().apply_to_fortress(client_state)
 	assert_eq(client_state.gate_health, 900)
@@ -205,17 +205,17 @@ func test_a_definition_with_a_bad_id_or_a_repeated_one_is_skipped() -> void:
 	var repeated: FortressDefinition = FortressFixture.make_definition()
 	var node := Node3D.new()
 	_world.add_child(node)
-	assert_eq(_controller.add_fortress(node, repeated, 0), 0, "el mismo id no se registra dos veces")
+	assert_eq(_controller.add_fortress(node, repeated, 0), 0, "the same id is not registered twice")
 	var other: FortressDefinition = FortressFixture.make_definition()
 	other.id = &"camión"
-	assert_eq(_controller.add_fortress(node, other, 0), 0, "un id que no es ASCII no cabe en el protocolo")
+	assert_eq(_controller.add_fortress(node, other, 0), 0, "an id that is not ASCII does not fit in the protocol")
 	assert_eq(_controller.get_fortress_ids().size(), 1)
 
 
-# --- Presencia ---------------------------------------------------------------------------------
+# --- Presence ----------------------------------------------------------------------------------
 
 func test_presence_is_counted_every_six_ticks_and_only_for_live_connected_active_players() -> void:
-	# Cerca del tick 3600 (60 s): quien no ha mandado nunca una entrada real lleva ya demasiado callado.
+	# Near tick 3600 (60 s): whoever has never sent a real input has already been quiet too long.
 	_tick = 3594
 	_put(1, VARDHEIM, _inside())
 	_put(2, VARDHEIM, _inside(Vector3(1.0, 0.0, 1.0)))
@@ -224,17 +224,17 @@ func test_presence_is_counted_every_six_ticks_and_only_for_live_connected_active
 	_put(5, SOLMARCH, _inside(), {"connected": false})
 	_put(6, ASKARRA, _inside(), {"idle": true})
 	_run(5)
-	assert_eq(_state().presence, PackedInt32Array([0, 0, 0, 0]), "aún no ha tocado recontar (tick 6)")
+	assert_eq(_state().presence, PackedInt32Array([0, 0, 0, 0]), "it is not yet time to recount (tick 6)")
 	_run(1)
 	assert_eq(_state().presence, PackedInt32Array([0, 2, 0, 0]),
-			"dos de Vardheim; el de fuera, el muerto, el desconectado y el que no manda entradas no cuentan")
-	# Un jugador entra y otro sale: no se nota hasta el siguiente recuento.
+			"two from Vardheim; the one outside, the dead one, the disconnected one and the one that sends no inputs do not count")
+	# One player enters and another leaves: it is not noticed until the next count.
 	_put(7, SOLMARCH, _inside())
 	_players.erase(2)
 	_run(5)
-	assert_eq(_state().presence, PackedInt32Array([0, 2, 0, 0]), "se mantiene entre recuentos")
+	assert_eq(_state().presence, PackedInt32Array([0, 2, 0, 0]), "it is held between counts")
 	_run(1)
-	assert_eq(_state().presence, PackedInt32Array([0, 1, 1, 0]), "y se actualiza en el tick 12")
+	assert_eq(_state().presence, PackedInt32Array([0, 1, 1, 0]), "and updated at tick 12")
 	assert_eq(_controller.get_presence(FORTRESS), PackedInt32Array([0, 1, 1, 0]))
 
 
@@ -246,71 +246,71 @@ func test_presence_has_the_cylinder_shape_and_the_activity_timeout() -> void:
 	_put(4, VARDHEIM, _inside(Vector3(0.0, -0.9, 0.0)))
 	_put(5, VARDHEIM, _inside(Vector3(0.0, -1.5, 0.0)))
 	_run(6)
-	assert_eq(_state().presence[VARDHEIM], 2, "el borde del radio y 0,9 m por debajo; no 5,1 m, 4,5 m de alto ni 1,5 bajo")
-	# Quien deja de mandar entradas 60 s deja de contar.
+	assert_eq(_state().presence[VARDHEIM], 2, "the edge of the radius and 0.9 m below; not 5.1 m, 4.5 m high or 1.5 below")
+	# Whoever stops sending inputs for 60 s stops counting.
 	_players.clear()
 	_put(8, VARDHEIM, _inside())
 	_run(6)
 	assert_eq(_state().presence[VARDHEIM], 1)
 	_players[8]["idle"] = true
 	_run(6)
-	assert_eq(_state().presence[VARDHEIM], 0, "sin entradas reales no cuenta")
+	assert_eq(_state().presence[VARDHEIM], 0, "without real inputs it does not count")
 
 
-# --- La máquina de captura: neutral -> Vardheim -> Solmarch -------------------------------------
+# --- The capture machine: neutral -> Vardheim -> Solmarch ---------------------------------------
 
 func test_a_full_capture_neutral_to_vardheim_to_solmarch_with_both_captains() -> void:
 	var mirror: FortressState = FortressState.initial(_definition, 0)
-	# Fuerte neutral, guardado por los Huecos: con el círculo inactivo, estar dentro no captura.
+	# Neutral fort, guarded by the Hollows: with the circle inactive, being inside does not capture.
 	_put(1, VARDHEIM, _inside())
 	_run(30)
-	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "con el capitán vivo el círculo no cuenta")
-	assert_true(_war.is_empty(), "y no hay avisos")
-	# Cae el capitán de los Huecos a manos de Vardheim.
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "with the captain alive the circle does not count")
+	assert_true(_war.is_empty(), "and there are no notices")
+	# The Hollows' captain falls at the hands of Vardheim.
 	assert_true(_controller.on_captain_died(FORTRESS, _tick + 1, VARDHEIM))
 	_run(1)
 	_run(6)
-	assert_eq(_state().phase, FortressState.Phase.CAPTURING, "con un solo reino dentro empieza la captura")
+	assert_eq(_state().phase, FortressState.Phase.CAPTURING, "with a single realm inside the capture starts")
 	assert_eq(_state().capture_realm, VARDHEIM)
-	assert_eq(_state().capture_rate, 12, "un atacante: 12 por tick")
-	# 120 ticks (2 s) con un atacante.
+	assert_eq(_state().capture_rate, 12, "one attacker: 12 per tick")
+	# 120 ticks (2 s) with one attacker.
 	_run(130)
-	assert_eq(_state().owner, VARDHEIM, "capturada")
+	assert_eq(_state().owner, VARDHEIM, "captured")
 	assert_eq(_state().phase, FortressState.Phase.CONSOLIDATING)
-	assert_eq(_gate().get_owner_realm(), VARDHEIM, "la puerta ya es de Vardheim")
-	assert_eq(_gate().collision_layer, FortGate.layers_for(VARDHEIM, false), "y sus capas, las de sus enemigos")
-	# El círculo no vale durante la consolidación: un Solmarch dentro no hace nada.
+	assert_eq(_gate().get_owner_realm(), VARDHEIM, "the gate is now Vardheim's")
+	assert_eq(_gate().collision_layer, FortGate.layers_for(VARDHEIM, false), "and its layers, those of its enemies")
+	# The circle does not count during consolidation: a Solmarch inside does nothing.
 	_put(2, SOLMARCH, _inside(Vector3(1.0, 0.0, 0.0)))
 	_players.erase(1)
 	_run(60)
 	assert_eq(_state().phase, FortressState.Phase.CONSOLIDATING)
 	assert_eq(_state().capture_realm, 0)
-	# Pasa la consolidación (120 ticks) y llegan la guarnición y el capitán de Vardheim.
+	# Consolidation passes (120 ticks) and Vardheim's garrison and captain arrive.
 	_run(80)
-	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "guarnición y capitán de Vardheim")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "Vardheim's garrison and captain")
 	assert_true(_state().captain_alive)
-	# Cae el capitán de Vardheim (el segundo capitán) y Solmarch, que ya estaba dentro, captura.
+	# Vardheim's captain (the second captain) falls and Solmarch, who was already inside, captures.
 	assert_true(_controller.on_captain_died(FORTRESS, _tick + 1, SOLMARCH))
 	_run(1)
 	_run(6)
 	assert_eq(_state().phase, FortressState.Phase.CAPTURING)
 	assert_eq(_state().capture_realm, SOLMARCH)
 	_run(130)
-	assert_eq(_state().owner, SOLMARCH, "capturada por Solmarch")
+	assert_eq(_state().owner, SOLMARCH, "captured by Solmarch")
 	assert_eq(_gate().get_owner_realm(), SOLMARCH)
 	_run(125)
-	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "y llega la guarnición de Solmarch")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "and Solmarch's garrison arrives")
 	_run(6)
 	assert_eq(_war_ids(), [WarEvents.CAPTAIN_DOWN, WarEvents.CAPTURE_STARTED, WarEvents.FORT_CAPTURED,
 			WarEvents.CAPTAIN_DOWN, WarEvents.CAPTURE_STARTED, WarEvents.FORT_CAPTURED] as Array[int],
-			"los avisos, en el orden en que ocurren")
+			"the notices, in the order they happen")
 	assert_eq(_war_realms(), [VARDHEIM, VARDHEIM, VARDHEIM, SOLMARCH, SOLMARCH, SOLMARCH] as Array[int],
-			"con el reino que acompaña a cada uno")
+			"with the realm that accompanies each one")
 	for event: NetMessages.EntityEvent in _war:
-		assert_eq(event.net_id, _controller.get_net_id(FORTRESS), "atados a la fortaleza")
+		assert_eq(event.net_id, _controller.get_net_id(FORTRESS), "tied to the fortress")
 	assert_eq(_signal_names(), [&"retired", &"garrison", &"retired", &"garrison"] as Array[StringName],
-			"los PNJ: se retiran los del dueño anterior y aparece la guarnición del nuevo")
-	# El cliente reconstruye lo mismo con los OBJECT_STATE.
+			"the NPCs: the previous owner's are removed and the new one's garrison appears")
+	# The client rebuilds the same with the OBJECT_STATEs.
 	for object_state: NetMessages.ObjectState in _object_states:
 		object_state.apply_to_fortress(mirror)
 	assert_eq(mirror.owner, SOLMARCH)
@@ -326,16 +326,16 @@ func test_the_garrison_signals_say_who_and_how_much_to_spawn() -> void:
 	_run(140)
 	var garrison: Array = _npc_signals[_signal_names().find(&"garrison")]
 	assert_eq(garrison[2], FORTRESS)
-	assert_eq(garrison[3], VARDHEIM, "la guarnición es del nuevo dueño")
-	assert_true(garrison[4], "entera: guardias y capitán")
-	# Si el capitán solo reaparece (nadie capturó), la guarnición sigue en pie.
+	assert_eq(garrison[3], VARDHEIM, "the garrison belongs to the new owner")
+	assert_true(garrison[4], "whole: guards and captain")
+	# If the captain just respawns (nobody captured), the garrison stays standing.
 	_npc_signals.clear()
 	_controller.on_captain_died(FORTRESS, _tick + 1, SOLMARCH)
 	_players.clear()
 	_run(31 * 60)
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
 	assert_eq(_signal_names(), [&"garrison"] as Array[StringName])
-	assert_false(_npc_signals[0][4], "solo vuelve el capitán")
+	assert_false(_npc_signals[0][4], "only the captain returns")
 
 
 func test_two_attackers_capture_faster_and_a_contested_circle_freezes() -> void:
@@ -343,23 +343,23 @@ func test_two_attackers_capture_faster_and_a_contested_circle_freezes() -> void:
 	_put(1, VARDHEIM, _inside())
 	_put(2, VARDHEIM, _inside(Vector3(1.0, 0.0, 0.0)))
 	_run(12)
-	assert_eq(_state().capture_rate, 16, "dos atacantes: 16 por tick")
-	# Entra un Solmarch: la captura se congela y sale el aviso de disputa.
+	assert_eq(_state().capture_rate, 16, "two attackers: 16 per tick")
+	# A Solmarch enters: the capture freezes and the dispute notice goes out.
 	_put(3, SOLMARCH, _inside(Vector3(-1.0, 0.0, 0.0)))
 	_run(12)
-	assert_true(_state().contested, "disputada")
-	assert_eq(_state().capture_rate, 0, "congelada")
+	assert_true(_state().contested, "disputed")
+	assert_eq(_state().capture_rate, 0, "frozen")
 	assert_true(_war_ids().has(WarEvents.CAPTURE_CONTESTED))
 	var progress: int = _state().progress_at(float(_tick))
 	_run(30)
-	assert_eq(_state().progress_at(float(_tick)), progress, "sin avanzar mientras dure")
-	assert_eq(_war_ids().count(WarEvents.CAPTURE_CONTESTED), 1, "el aviso sale al entrar en disputa, no cada vez")
-	# Se van los captores: con solo el enemigo dentro, el progreso retrocede deprisa.
+	assert_eq(_state().progress_at(float(_tick)), progress, "without advancing while it lasts")
+	assert_eq(_war_ids().count(WarEvents.CAPTURE_CONTESTED), 1, "the notice goes out on entering the dispute, not every time")
+	# The capturers leave: with only the enemy inside, progress rolls back fast.
 	_players.erase(1)
 	_players.erase(2)
 	_run(12)
-	assert_eq(_state().capture_rate, -24, "solo hay quien no captura: -24")
-	assert_true(_state().progress_at(float(_tick)) < progress, "retrocede deprisa")
+	assert_eq(_state().capture_rate, -24, "only those who do not capture are there: -24")
+	assert_true(_state().progress_at(float(_tick)) < progress, "it rolls back fast")
 
 
 func test_an_empty_circle_decays_slowly_after_the_delay() -> void:
@@ -370,12 +370,12 @@ func test_an_empty_circle_decays_slowly_after_the_delay() -> void:
 	assert_true(progress > 0)
 	_players.clear()
 	_run(18)
-	assert_eq(_state().capture_rate, 0, "primero se congela (hasta decay_after_empty_s = 1 s)")
+	assert_eq(_state().capture_rate, 0, "first it freezes (until decay_after_empty_s = 1 s)")
 	var frozen: int = _state().progress_at(float(_tick))
-	assert_true(frozen >= progress, "el progreso no retrocede mientras está congelado")
+	assert_true(frozen >= progress, "progress does not roll back while frozen")
 	_run(60)
-	assert_eq(_state().capture_rate, -4, "después decae a un tercio de la velocidad base")
-	assert_true(_state().progress_at(float(_tick)) < frozen, "y retrocede")
+	assert_eq(_state().capture_rate, -4, "then it decays at a third of the base speed")
+	assert_true(_state().progress_at(float(_tick)) < frozen, "and rolls back")
 
 
 func test_the_captain_comes_back_if_nobody_captures() -> void:
@@ -384,13 +384,13 @@ func test_the_captain_comes_back_if_nobody_captures() -> void:
 	assert_eq(_state().phase, FortressState.Phase.VULNERABLE)
 	assert_false(_state().captain_alive)
 	_run(30 * 60)
-	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "a los captain_respawn_s reaparece")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "at captain_respawn_s it respawns")
 	assert_true(_state().captain_alive)
 
 
 func test_capture_speed_multiplies_the_capture_rate() -> void:
 	assert_true(_controller.set_capture_speed(FORTRESS, 10))
-	assert_false(_controller.set_capture_speed(FORTRESS, 0), "el factor va de 1 a 255")
+	assert_false(_controller.set_capture_speed(FORTRESS, 0), "the factor goes from 1 to 255")
 	assert_false(_controller.set_capture_speed(FORTRESS, 256))
 	assert_false(_controller.set_capture_speed(&"nadie", 2))
 	_controller.on_captain_died(FORTRESS, 1, VARDHEIM)
@@ -398,24 +398,24 @@ func test_capture_speed_multiplies_the_capture_rate() -> void:
 	_run(12)
 	assert_eq(_state().capture_rate, 120, "12 x 10")
 	_run(30)
-	assert_eq(_state().owner, VARDHEIM, "la captura de 120 ticks termina en unos 12")
+	assert_eq(_state().owner, VARDHEIM, "the 120-tick capture ends in about 12")
 
 
-# --- Avisos y OBJECT_STATE --------------------------------------------------------------------
+# --- Notices and OBJECT_STATE -----------------------------------------------------------------
 
 func test_object_state_is_sent_at_most_every_six_ticks_with_only_the_changes() -> void:
 	_put(1, VARDHEIM, _inside())
 	_put(2, SOLMARCH, _inside(Vector3(40.0, 0.0, 0.0)))
 	_run(5)
-	assert_true(_object_states.is_empty(), "nada ha cambiado")
+	assert_true(_object_states.is_empty(), "nothing has changed")
 	_run(1)
-	assert_eq(_object_states.size(), 1, "la presencia cambia en el tick 6")
+	assert_eq(_object_states.size(), 1, "presence changes at tick 6")
 	var first: NetMessages.ObjectState = _object_states[0]
 	assert_eq(first.tick, 6)
 	assert_eq(first.net_id, _controller.get_net_id(FORTRESS))
-	assert_eq(first.fields.size(), 1, "solo el campo de presencia de Vardheim")
+	assert_eq(first.fields.size(), 1, "only Vardheim's presence field")
 	assert_eq(first.get_value(FortressFields.PRESENCE_BASE + VARDHEIM), 1)
-	# Más cambios, más seguidos que cada 6 ticks, se juntan.
+	# More changes, closer together than every 6 ticks, are merged.
 	_put(3, VARDHEIM, _inside(Vector3(0.5, 0.0, 0.0)))
 	_put(4, VARDHEIM, _inside(Vector3(0.0, 0.0, 0.5)))
 	_players.erase(1)
@@ -425,7 +425,7 @@ func test_object_state_is_sent_at_most_every_six_ticks_with_only_the_changes() -
 	for i: int in range(1, _object_states.size()):
 		gaps.append(_object_states[i].tick - _object_states[i - 1].tick)
 	for gap: int in gaps:
-		assert_true(gap >= FortressController.OBJECT_STATE_INTERVAL_TICKS, "como mucho uno cada 6 ticks")
+		assert_true(gap >= FortressController.OBJECT_STATE_INTERVAL_TICKS, "at most one every 6 ticks")
 
 
 func test_the_under_attack_field_is_only_sent_when_it_advances_a_minute() -> void:
@@ -443,16 +443,16 @@ func test_the_under_attack_field_is_only_sent_when_it_advances_a_minute() -> voi
 	for object_state: NetMessages.ObjectState in _object_states:
 		if object_state.has_field(FortressFields.UNDER_ATTACK_UNTIL_TICK):
 			sent.append(object_state.get_value(FortressFields.UNDER_ATTACK_UNTIL_TICK))
-	assert_eq(sent, [100 + 300] as Array[int], "el primer golpe marca el fuerte como atacado hasta 5 s más tarde")
-	# Otro golpe 10 ticks después: avanza 10 ticks, menos de 60. No se envía.
+	assert_eq(sent, [100 + 300] as Array[int], "the first hit marks the fort as attacked for 5 s more")
+	# Another hit 10 ticks later: it advances 10 ticks, less than 60. It is not sent.
 	hit.call(_tick + 10)
 	_run(30)
 	var count: int = 0
 	for object_state: NetMessages.ObjectState in _object_states:
 		if object_state.has_field(FortressFields.UNDER_ATTACK_UNTIL_TICK):
 			count += 1
-	assert_eq(count, 1, "un avance de menos de 60 ticks no merece otro mensaje")
-	# Mucho más tarde, otro golpe avanza más de 60 ticks: sale.
+	assert_eq(count, 1, "an advance of less than 60 ticks does not deserve another message")
+	# Much later, another hit advances more than 60 ticks: it goes out.
 	_run(600)
 	hit.call(_tick + 1)
 	_run(8)
@@ -470,19 +470,19 @@ func test_a_hit_on_a_defender_gives_one_under_attack_notice_per_minute() -> void
 	for tick: int in [10, 20, 30]:
 		_controller.on_combat_event(NetMessages.EntityEvent.hit(99, tick, attacker.net_id, 10, 0, 0, 1),
 				PackedInt32Array())
-	assert_eq(_war_ids(), [WarEvents.UNDER_ATTACK] as Array[int], "uno solo")
-	assert_eq(_war_realms(), [SOLMARCH] as Array[int], "con el reino del atacante")
+	assert_eq(_war_ids(), [WarEvents.UNDER_ATTACK] as Array[int], "just one")
+	assert_eq(_war_realms(), [SOLMARCH] as Array[int], "with the attacker's realm")
 	_controller.on_combat_event(NetMessages.EntityEvent.hit(99, 3700, attacker.net_id, 10, 0, 0, 1),
 			PackedInt32Array())
-	assert_eq(_war_ids().size(), 2, "pasado el minuto, otro")
-	# Un golpe a quien no es defensor no cuenta.
+	assert_eq(_war_ids().size(), 2, "after the minute, another")
+	# A hit on someone who is not a defender does not count.
 	_controller.on_combat_event(NetMessages.EntityEvent.hit(55, 3800, attacker.net_id, 10, 0, 0, 1),
 			PackedInt32Array())
 	assert_eq(_war_ids().size(), 2)
-	assert_true(_state().under_attack_until_tick >= 3700 + 300, "el fuerte cuenta como atacado")
+	assert_true(_state().under_attack_until_tick >= 3700 + 300, "the fort counts as attacked")
 
 
-# --- La puerta ---------------------------------------------------------------------------------
+# --- The gate ----------------------------------------------------------------------------------
 
 func test_gate_hits_lower_the_health_warn_and_break_the_gate() -> void:
 	var attacker: Combatant = _fighter(10, VARDHEIM)
@@ -490,19 +490,19 @@ func test_gate_hits_lower_the_health_warn_and_break_the_gate() -> void:
 	_hit_gate(attacker, 300, 11)
 	_hit_gate(attacker, 300, 12)
 	assert_eq(_state().gate_health, 300)
-	assert_eq(_war_ids(), [WarEvents.UNDER_ATTACK] as Array[int], "el primer golpe avisa; los siguientes, no")
-	assert_eq(_scores.get_entry(10).gate_damage, 600, "el daño a la puerta cuenta en el marcador")
+	assert_eq(_war_ids(), [WarEvents.UNDER_ATTACK] as Array[int], "the first hit warns; the following ones do not")
+	assert_eq(_scores.get_entry(10).gate_damage, 600, "damage to the gate counts on the scoreboard")
 	_hit_gate(attacker, 300, 13)
 	assert_eq(_state().gate_health, 0)
 	assert_eq(_war_ids(), [WarEvents.UNDER_ATTACK, WarEvents.GATE_BROKEN] as Array[int])
-	assert_eq(_war_realms(), [VARDHEIM, VARDHEIM] as Array[int], "quien la rompió")
-	assert_false(_gate().is_broken(), "las capas cambian al final del paso, no en el golpe")
+	assert_eq(_war_realms(), [VARDHEIM, VARDHEIM] as Array[int], "whoever broke it")
+	assert_false(_gate().is_broken(), "the layers change at the end of the step, not on the hit")
 	_tick = 13
 	_run(1)
-	assert_true(_gate().is_broken(), "rota desde el tick siguiente")
-	assert_eq(_gate().collision_layer, 0, "sin capas")
+	assert_true(_gate().is_broken(), "broken from the next tick")
+	assert_eq(_gate().collision_layer, 0, "without layers")
 	var target: StructureTarget = _controller.get_structure_targets()[0]
-	assert_false(target.can_be_hit_by(VARDHEIM), "una puerta rota no se daña")
+	assert_false(target.can_be_hit_by(VARDHEIM), "a broken gate cannot be damaged")
 
 
 func test_the_first_gate_damage_is_announced_once() -> void:
@@ -520,22 +520,22 @@ func test_a_gate_collision_change_goes_out_in_the_same_tick() -> void:
 	_object_states.clear()
 	_hit_gate(attacker, 900, 8)
 	_run(1)
-	if not assert_eq(_object_states.size(), 1, "la rotura sale ya, sin esperar al intervalo de 6 ticks"):
+	if not assert_eq(_object_states.size(), 1, "the breakage goes out right away, without waiting for the 6-tick interval"):
 		return
 	assert_eq(_object_states[0].tick, 8)
 	assert_eq(_object_states[0].get_value(FortressFields.GATE_HEALTH, -1), 0)
-	# Repararla (aquí con fort_reset) también cambia la colisión: sale en el mismo tick.
+	# Repairing it (here with fort_reset) also changes the collision: it goes out on the same tick.
 	_controller.reset_fortress(FORTRESS, 9)
 	_object_states.clear()
 	_run(1)
-	assert_eq(_object_states.size(), 1, "reparar la puerta sale en el mismo tick")
+	assert_eq(_object_states.size(), 1, "repairing the gate goes out on the same tick")
 	assert_eq(_object_states[0].tick, 9)
-	# Un golpe que no la rompe espera su turno.
+	# A hit that does not break it waits its turn.
 	_hit_gate(attacker, 100, 10)
 	_run(2)
-	assert_eq(_object_states.size(), 1, "un golpe que no rompe la puerta no sale antes de tiempo")
+	assert_eq(_object_states.size(), 1, "a hit that does not break the gate does not go out ahead of time")
 	_run(4)
-	assert_eq(_object_states.size(), 2, "pasado el intervalo de 6 ticks, sí")
+	assert_eq(_object_states.size(), 2, "after the 6-tick interval, it does")
 	assert_eq(_object_states[1].get_value(FortressFields.GATE_HEALTH, -1), 800)
 
 
@@ -546,11 +546,11 @@ func test_a_broken_gate_is_repaired_after_the_delay_without_damage() -> void:
 	_run(1)
 	assert_true(_gate().is_broken())
 	_run(19 * 60)
-	assert_true(_gate().is_broken(), "aún no han pasado 20 s sin daño")
+	assert_true(_gate().is_broken(), "20 s without damage have not passed yet")
 	_run(2 * 60)
-	assert_false(_gate().is_broken(), "reparada")
+	assert_false(_gate().is_broken(), "repaired")
 	assert_eq(_state().gate_health, 900)
-	assert_eq(_gate().collision_layer, FortGate.layers_for(0, false), "otra vez cerrada para los tres reinos")
+	assert_eq(_gate().collision_layer, FortGate.layers_for(0, false), "closed again for the three realms")
 
 
 func test_the_repair_waits_while_a_character_overlaps_the_doorway() -> void:
@@ -561,13 +561,13 @@ func test_the_repair_waits_while_a_character_overlaps_the_doorway() -> void:
 	var doorway: Vector3 = FortressFixture.gate_position()
 	_bodies = PackedVector3Array([doorway + Vector3(0.0, 0.0, 1.0)])
 	_run(21 * 60)
-	assert_true(_gate().is_broken(), "alguien ocupa el vano: la puerta sigue abierta")
-	assert_true(_controller.is_repair_pending(FORTRESS), "y la reparación espera")
-	assert_eq(_state().gate_health, 0, "la vida replicada sigue en 0, igual que la colisión")
-	# Alguien por encima, en la pasarela, no la retiene; en cuanto el vano queda libre, se repara.
+	assert_true(_gate().is_broken(), "someone occupies the doorway: the gate stays open")
+	assert_true(_controller.is_repair_pending(FORTRESS), "and the repair waits")
+	assert_eq(_state().gate_health, 0, "the replicated health stays at 0, like the collision")
+	# Someone above, on the walkway, does not hold it back; as soon as the doorway is free, it is repaired.
 	_bodies = PackedVector3Array([doorway + Vector3(0.0, 4.4, 0.0), doorway + Vector3(3.0, 0.0, 0.0)])
 	_run(1)
-	assert_false(_gate().is_broken(), "libre el vano, se repara en el tick siguiente")
+	assert_false(_gate().is_broken(), "doorway free, it is repaired on the next tick")
 	assert_false(_controller.is_repair_pending(FORTRESS))
 	assert_eq(_state().gate_health, 900)
 
@@ -581,18 +581,18 @@ func test_the_repair_after_a_capture_also_waits_for_a_free_doorway() -> void:
 	_controller.on_captain_died(FORTRESS, _tick + 1, VARDHEIM)
 	_put(1, VARDHEIM, _inside())
 	_run(150)
-	assert_eq(_state().owner, VARDHEIM, "se captura aunque la puerta no pueda cerrarse")
-	assert_true(_gate().is_broken(), "pero con alguien en el vano la puerta nueva espera")
+	assert_eq(_state().owner, VARDHEIM, "it is captured even though the gate cannot close")
+	assert_true(_gate().is_broken(), "but with someone in the doorway the new gate waits")
 	assert_eq(_state().gate_health, 0)
-	assert_eq(_gate().get_owner_realm(), VARDHEIM, "ya es de su nuevo dueño")
+	assert_eq(_gate().get_owner_realm(), VARDHEIM, "it already belongs to its new owner")
 	_bodies = PackedVector3Array()
 	_run(1)
 	assert_false(_gate().is_broken())
-	assert_eq(_state().gate_health, 900, "reparada al quedar libre")
+	assert_eq(_state().gate_health, 900, "repaired when it becomes free")
 
 
-# Revisión de la fase 4 (guerra): solo se aplaza la reparación de una puerta rota. La de una entera no cambia la
-# colisión y, aplazada, borraba el daño que llegaba mientras tanto (el dueño se quedaba en el vano de su puerta).
+# Phase 4 revision (war): only the repair of a broken gate is deferred. That of an intact one does not change the
+# collision and, deferred, erased the damage that arrived in the meantime (the owner stayed in the doorway of its gate).
 func test_a_whole_gate_is_repaired_at_once_with_someone_in_the_doorway_and_later_damage_stays() -> void:
 	var attacker: Combatant = _fighter(10, SOLMARCH)
 	assert_true(_controller.set_owner(FORTRESS, VARDHEIM, 1))
@@ -600,17 +600,17 @@ func test_a_whole_gate_is_repaired_at_once_with_someone_in_the_doorway_and_later
 	_run(1)
 	_hit_gate(attacker, 300, 2)
 	assert_eq(_state().gate_health, 600)
-	# Un defensor del dueño (cruza su propia puerta cerrada) se queda quieto en el vano.
+	# A defender of the owner (crosses its own closed gate) stands still in the doorway.
 	_bodies = PackedVector3Array([FortressFixture.gate_position() + Vector3(0.0, 0.05, 1.0)])
 	_run(20 * 60 + 30)
-	assert_eq(_state().gate_health, 900, "entera, se repara a su plazo aunque haya alguien en el vano")
-	assert_false(_controller.is_repair_pending(FORTRESS), "sin nada pendiente")
+	assert_eq(_state().gate_health, 900, "intact, it is repaired on schedule even if someone is in the doorway")
+	assert_false(_controller.is_repair_pending(FORTRESS), "with nothing pending")
 	_hit_gate(attacker, 500, _tick)
 	assert_eq(_state().gate_health, 400)
 	_run(5)
 	_bodies = PackedVector3Array()
 	_run(5)
-	assert_eq(_state().gate_health, 400, "el daño de después no se borra al quedar libre el vano")
+	assert_eq(_state().gate_health, 400, "the later damage is not erased when the doorway becomes free")
 	assert_false(_controller.is_repair_pending(FORTRESS))
 
 
@@ -624,17 +624,17 @@ func test_a_gate_broken_after_its_repair_came_due_waits_the_whole_delay_from_the
 	_run(20 * 60 + 30)
 	_hit_gate(attacker, 900, _tick)
 	var broken_at: int = _tick
-	assert_true(_state().is_gate_broken(), "rota")
+	assert_true(_state().is_gate_broken(), "broken")
 	_run(1)
 	assert_true(_gate().is_broken())
 	_bodies = PackedVector3Array()
 	_run(30)
-	assert_true(_gate().is_broken(), "libre el vano, sigue rota: ninguna reparación vieja la cierra")
+	assert_true(_gate().is_broken(), "doorway free, it stays broken: no old repair closes it")
 	assert_eq(_state().gate_health, 0)
 	_run(broken_at + 20 * 60 - _tick - 1)
-	assert_true(_gate().is_broken(), "aún no han pasado 20 s desde la rotura")
+	assert_true(_gate().is_broken(), "20 s have not passed since the breakage yet")
 	_run(2)
-	assert_false(_gate().is_broken(), "reparada a los 20 s de la rotura")
+	assert_false(_gate().is_broken(), "repaired 20 s after the breakage")
 	assert_eq(_state().gate_health, 900)
 
 
@@ -646,45 +646,45 @@ func test_an_owner_change_with_a_whole_damaged_gate_repairs_it_at_once_with_some
 	_bodies = PackedVector3Array([FortressFixture.gate_position() + Vector3(0.0, 0.05, 1.0)])
 	assert_true(_controller.set_owner(FORTRESS, SOLMARCH, _tick + 1))
 	_run(1)
-	assert_eq(_state().gate_health, 900, "entera: el cambio de dueño la deja reparada")
-	assert_false(_controller.is_repair_pending(FORTRESS), "sin nada pendiente")
-	assert_eq(_gate().collision_layer, FortGate.layers_for(SOLMARCH, false), "con las capas del dueño nuevo")
+	assert_eq(_state().gate_health, 900, "intact: the change of owner leaves it repaired")
+	assert_false(_controller.is_repair_pending(FORTRESS), "with nothing pending")
+	assert_eq(_gate().collision_layer, FortGate.layers_for(SOLMARCH, false), "with the new owner's layers")
 	_hit_gate(attacker, 500, _tick)
 	_bodies = PackedVector3Array()
 	_run(5)
-	assert_eq(_state().gate_health, 400, "y el daño de después no se borra al quedar libre el vano")
+	assert_eq(_state().gate_health, 400, "and the later damage is not erased when the doorway becomes free")
 
 
 func test_the_owner_change_swaps_which_realms_the_gate_stops() -> void:
 	_gate().set_state(0, false)
 	assert_eq(_gate().collision_layer, PlayerCharacter.realm_layer(VARDHEIM) | PlayerCharacter.realm_layer(SOLMARCH)
-			| PlayerCharacter.realm_layer(ASKARRA), "neutral: los tres")
+			| PlayerCharacter.realm_layer(ASKARRA), "neutral: all three")
 	assert_true(_controller.set_owner(FORTRESS, SOLMARCH, 3))
 	_tick = 3
 	_run(1)
 	assert_eq(_gate().collision_layer, PlayerCharacter.realm_layer(VARDHEIM) | PlayerCharacter.realm_layer(ASKARRA),
-			"de Solmarch: para a Vardheim y Askarra")
+			"Solmarch's: stops Vardheim and Askarra")
 	var target: StructureTarget = _controller.get_structure_targets()[0]
-	assert_false(target.can_be_hit_by(SOLMARCH), "el dueño no la daña")
+	assert_false(target.can_be_hit_by(SOLMARCH), "the owner does not damage it")
 	assert_true(target.can_be_hit_by(VARDHEIM))
 	assert_true(target.can_be_hit_by(ASKARRA))
 
 
-# --- Interfaz con los PNJ ---------------------------------------------------------------------
+# --- Interface with the NPCs ------------------------------------------------------------------
 
 func test_guards_that_are_missing_are_due_after_their_respawn_time() -> void:
 	_controller.set_guards_alive(FORTRESS, 4)
 	_run(10)
 	_controller.set_guards_alive(FORTRESS, 3)
 	_run(9 * 60)
-	assert_false(_signal_names().has(&"guards"), "aún no han pasado los 10 s de guard_respawn_s")
+	assert_false(_signal_names().has(&"guards"), "the 10 s of guard_respawn_s have not passed yet")
 	_run(70)
-	assert_eq(_signal_names(), [&"guards"] as Array[StringName], "toca reponer, y se avisa una vez")
+	assert_eq(_signal_names(), [&"guards"] as Array[StringName], "it is time to replenish, and a notice goes out once")
 	_run(120)
-	assert_eq(_signal_names().size(), 1, "no se repite mientras nadie conteste")
+	assert_eq(_signal_names().size(), 1, "it is not repeated while nobody answers")
 	_controller.set_guards_alive(FORTRESS, 4)
 	_run(60)
-	assert_eq(_signal_names().size(), 1, "con la guarnición entera ya no hace falta")
+	assert_eq(_signal_names().size(), 1, "with the garrison whole it is no longer needed")
 
 
 func test_the_registered_captain_opens_the_circle_when_it_dies() -> void:
@@ -695,14 +695,14 @@ func test_the_registered_captain_opens_the_circle_when_it_dies() -> void:
 	_controller.on_combat_event(NetMessages.EntityEvent.death(77, 20, killer.net_id, 1), PackedInt32Array())
 	assert_eq(_state().phase, FortressState.Phase.VULNERABLE)
 	assert_eq(_war_ids(), [WarEvents.CAPTAIN_DOWN] as Array[int])
-	assert_eq(_war_realms(), [SOLMARCH] as Array[int], "el reino de quien lo mató")
-	assert_eq(_controller.get_captain_net_id(FORTRESS), 0, "ya no hay capitán registrado")
-	# Otro DEATH cualquiera no hace nada.
+	assert_eq(_war_realms(), [SOLMARCH] as Array[int], "the realm of whoever killed it")
+	assert_eq(_controller.get_captain_net_id(FORTRESS), 0, "there is no registered captain anymore")
+	# Any other DEATH does nothing.
 	_controller.on_combat_event(NetMessages.EntityEvent.death(78, 21, killer.net_id, 1), PackedInt32Array())
 	assert_eq(_war_ids().size(), 1)
 
 
-# --- Reinicio -----------------------------------------------------------------------------------
+# --- Reset --------------------------------------------------------------------------------------
 
 func test_the_fortress_goes_back_to_neutral_on_its_own_when_the_definition_says_so() -> void:
 	await _build(FortressFixture.make_definition(2.0, 2.0, 3.0))
@@ -713,15 +713,15 @@ func test_the_fortress_goes_back_to_neutral_on_its_own_when_the_definition_says_
 	_npc_signals.clear()
 	_war.clear()
 	_run(3 * 60 - 2)
-	assert_eq(_state().owner, VARDHEIM, "aún no han pasado 3 s desde el último reinicio")
+	assert_eq(_state().owner, VARDHEIM, "3 s have not passed since the last reset yet")
 	_run(3)
-	assert_eq(_state().owner, 0, "vuelve a neutral")
+	assert_eq(_state().owner, 0, "goes back to neutral")
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
-	assert_true(_state().captain_alive, "con los Huecos y su Capitán")
+	assert_true(_state().captain_alive, "with the Hollows and their Captain")
 	assert_eq(_war_ids(), [WarEvents.FORT_RESET] as Array[int])
 	assert_eq(_war_realms(), [0] as Array[int])
 	assert_eq(_signal_names(), [&"retired", &"garrison"] as Array[StringName])
-	assert_eq(_npc_signals[1][3], 0, "la guarnición es la neutral")
+	assert_eq(_npc_signals[1][3], 0, "the garrison is the neutral one")
 	assert_eq(_gate().get_owner_realm(), 0)
 
 
@@ -740,11 +740,11 @@ func test_reset_leaves_the_players_inside_where_they_are() -> void:
 	_run(1)
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
 	assert_eq(_state().capture_progress_at_start, 0)
-	assert_eq(_players[1]["position"], _inside(), "el servidor no mueve a nadie")
+	assert_eq(_players[1]["position"], _inside(), "the server moves nobody")
 	assert_false(_controller.reset_fortress(&"nadie", 1))
 
 
-# --- Comandos de depuración --------------------------------------------------------------------
+# --- Debug commands ----------------------------------------------------------------------------
 
 func _register_commands() -> CommandRegistry:
 	var commands := CommandRegistry.new()
@@ -772,7 +772,7 @@ func test_the_four_commands_are_registered_with_their_fixed_network_ids() -> voi
 		assert_true(commands.has_command(command_name), String(command_name))
 	var missing: PackedStringArray = commands.missing_network_commands()
 	for command_name: String in ["fort_reset", "fort_owner", "fort_kill_captain", "fort_capture_speed"]:
-		assert_false(missing.has(command_name), "%s tiene manejador de red" % command_name)
+		assert_false(missing.has(command_name), "%s has a network handler" % command_name)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_reset"], 8)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_capture_speed"], 11)
 
@@ -783,29 +783,29 @@ func test_network_commands_act_on_the_nearest_fortress_and_validate_their_data()
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_OWNER, PackedByteArray([SOLMARCH])),
 			CommandRegistry.Result.OK)
 	assert_eq(_state().owner, SOLMARCH, "fort_owner solmarch")
-	assert_eq(_war_ids(), [WarEvents.FORT_CAPTURED] as Array[int], "avisa de la captura")
+	assert_eq(_war_ids(), [WarEvents.FORT_CAPTURED] as Array[int], "warns of the capture")
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_OWNER, PackedByteArray([9])),
-			CommandRegistry.Result.BAD_ARGUMENTS, "el reino va de 0 a 3")
+			CommandRegistry.Result.BAD_ARGUMENTS, "the realm goes from 0 to 3")
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_OWNER, PackedByteArray()),
-			CommandRegistry.Result.BAD_ARGUMENTS, "y lleva un byte")
+			CommandRegistry.Result.BAD_ARGUMENTS, "and carries one byte")
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_CAPTURE_SPEED, PackedByteArray([0])),
-			CommandRegistry.Result.BAD_ARGUMENTS, "el factor va de 1 a 255")
+			CommandRegistry.Result.BAD_ARGUMENTS, "the factor goes from 1 to 255")
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_CAPTURE_SPEED, PackedByteArray([20])),
 			CommandRegistry.Result.OK)
 	assert_eq(_state().capture_rate_multiplier, 20)
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_KILL_CAPTAIN, PackedByteArray()),
 			CommandRegistry.Result.OK)
-	assert_eq(_state().phase, FortressState.Phase.VULNERABLE, "el capitán ha muerto")
-	assert_eq(_war_realms().back(), VARDHEIM, "a manos del reino de quien lo manda")
+	assert_eq(_state().phase, FortressState.Phase.VULNERABLE, "the captain has died")
+	assert_eq(_war_realms().back(), VARDHEIM, "at the hands of the realm of whoever ordered it")
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_KILL_CAPTAIN, PackedByteArray()),
-			CommandRegistry.Result.REFUSED, "ya no guardaba el fuerte: rechazado sin aviso")
+			CommandRegistry.Result.REFUSED, "it no longer guarded the fort: rejected without notice")
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_RESET, PackedByteArray()),
 			CommandRegistry.Result.OK)
 	assert_eq(_state().owner, 0, "fort_reset")
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
 	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_FORT_RESET, PackedByteArray([1])),
-			CommandRegistry.Result.BAD_ARGUMENTS, "no lleva datos")
-	assert_true(commands.audit_total >= 8, "todo queda auditado")
+			CommandRegistry.Result.BAD_ARGUMENTS, "carries no data")
+	assert_true(commands.audit_total >= 8, "everything is audited")
 
 
 func test_console_commands_name_the_realm_and_the_fortress() -> void:
@@ -837,9 +837,9 @@ func test_kill_captain_goes_through_the_registered_captain_npc() -> void:
 		return true
 	_controller.register_captain(FORTRESS, 77)
 	assert_true(_controller.kill_captain(FORTRESS, 5, SOLMARCH))
-	assert_eq(killed, [77] as Array[int], "se mata al PNJ, no se da por muerto al capitán")
-	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "hasta que llegue su DEATH")
-	# Llega su muerte sin autor: el reino de quien ordenó matarlo.
+	assert_eq(killed, [77] as Array[int], "the NPC is killed, the captain is not considered dead")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "until its DEATH arrives")
+	# Its death with no author arrives: the realm of whoever ordered it killed.
 	_controller.on_combat_event(NetMessages.EntityEvent.death(77, 6, 0, 0), PackedInt32Array())
 	assert_eq(_state().phase, FortressState.Phase.VULNERABLE)
 	assert_eq(_war_realms(), [SOLMARCH] as Array[int])

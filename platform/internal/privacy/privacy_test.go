@@ -30,8 +30,8 @@ var ctx = context.Background()
 
 const day = 24 * time.Hour
 
-// newPlatform monta la plataforma con el almacén del progreso de verdad (lo que monta serve): la purga borra
-// de verdad el estado, la retención vacía el libro y la exportación lo lee.
+// newPlatform assembles the platform with the real progress store (what serve assembles): the
+// purge really deletes the state, the retention empties the ledger and the export reads it.
 func newPlatform(t *testing.T) *platformtest.Platform {
 	t.Helper()
 	rules, err := progress.LoadRules(gamedata.Raw())
@@ -45,14 +45,14 @@ func newPlatform(t *testing.T) *platformtest.Platform {
 
 func idText(id int64) string { return strconv.FormatInt(id, 10) }
 
-// deleteCharacter borra el personaje por la API pública (con su nombre de confirmación).
+// deleteCharacter deletes the character through the public API (with its confirmation name).
 func deleteCharacter(t *testing.T, p *platformtest.Platform, pl *platformtest.Player, id int64, name string) {
 	t.Helper()
 	platformtest.Expect(t, p.PublicDo("DELETE", "/v1/characters/"+idText(id), pl.Token,
 		map[string]any{"confirm_name": name}), http.StatusOK, "")
 }
 
-// run hace una vuelta de las retenciones y falla si da error.
+// run performs one pass of the retention jobs and fails on error.
 func run(t *testing.T, p *platformtest.Platform) privacy.Result {
 	t.Helper()
 	res, err := p.Privacy.Run(ctx)
@@ -62,9 +62,10 @@ func run(t *testing.T, p *platformtest.Platform) privacy.Result {
 	return res
 }
 
-// La exportación (§11.2) lleva todas las secciones y, en cada personaje, su progreso de ProgressStore.Export:
-// el registro y el libro de uno vivo, solo el libro de una lápida que lo conserva, y null en una lápida sin
-// libro. De la operación GM no sale ni el actor, ni la note, ni el detail.
+// The export (§11.2) carries every section and, for each character, its progress from
+// ProgressStore.Export: the record and the ledger of a live one, only the ledger of a tombstone
+// that keeps it, and null for a tombstone without a ledger. The GM operation exposes neither the
+// actor, nor the note, nor the detail.
 func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 	p := newPlatform(t)
 	gm := p.NewPlayer("gm@example.org")
@@ -77,7 +78,7 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 	bare := p.NewCharacter(pl, "Cora", "vardheim")
 	now := p.Clock.Now()
 
-	// El libro: una operación de juego y una GM de Aneira, y una de juego de Brenna.
+	// The ledger: one gameplay operation and one GM operation for Aneira, and one gameplay operation for Brenna.
 	p.Exec(`insert into economy_ops (op_id, kind, zone_id) values (5001, 1, 'vado_gris'), (5003, 1, 'vado_gris')`)
 	p.Exec(`insert into economy_ops (op_id, kind, actor_account_id, zone_id, note, detail)
 		values (5002, 4, $1, 'vado_gris', 'devolución del fallo 12',
@@ -88,7 +89,7 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 	p.Exec(`insert into item_events (op_id, character_id, def_id, uid, reason, count_delta)
 		values (5001, $1, 'potion_health', null, 64, -1)`, alive)
 
-	// Las demás secciones, con una fila cada una.
+	// The other sections, one row each.
 	p.Exec(`insert into entitlements (account_id, world_id, kind, quantity, source) values ($1, 1, 'character_slots', 2, 'grant')`,
 		pl.ID)
 	p.Exec(`insert into ignores (account_id, ignored_account_id, ignored_character_id, ignored_name) values ($1, $2, $3, 'Odalys')`,
@@ -101,7 +102,7 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 	p.Exec(`insert into chat_messages (world_id, zone_id, zone_channel, channel, sender_character_id, sender_account_id, text,
 		sent_at, message_key) values (1, 'vado_gris', 0, 2, $1, $2, 'hola', $3, 'k1')`, alive, pl.ID, now)
 
-	// Brenna y Cora, borrados y purgados a los 7 días: dos lápidas, una con libro.
+	// Brenna and Cora, deleted and purged after 7 days: two tombstones, one with a ledger.
 	deleteCharacter(t, p, pl, ledgered, "Brenna")
 	deleteCharacter(t, p, pl, bare, "Cora")
 	p.Clock.Advance(7*day + time.Second)
@@ -146,7 +147,7 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 		return out
 	}
 
-	// Aneira: el registro y sus dos operaciones; la GM, con el tipo, la fecha y el apunte.
+	// Aneira: the record and her two operations; the GM one, with the type, the date and the note.
 	prog, ok := chars[idText(alive)]["progress"].(map[string]any)
 	if !ok {
 		t.Fatalf("Aneira sin progreso: %v", chars[idText(alive)])
@@ -170,7 +171,7 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 		t.Errorf("evento de objeto: %v", ops["5001"])
 	}
 
-	// Brenna: lápida con libro → sin registro y con su operación. Cora: lápida sin libro → null.
+	// Brenna: tombstone with a ledger → no record and with her operation. Cora: tombstone without a ledger → null.
 	tomb := chars[idText(ledgered)]
 	prog, ok = tomb["progress"].(map[string]any)
 	if !ok || prog["record"] != nil || tomb["purged_at"] == nil || tomb["name"] != nil {
@@ -196,24 +197,25 @@ func sortedKeys(m map[string]any) []string {
 	return keys
 }
 
-// Las retenciones de la tabla de §11.1 borran lo que ha pasado su plazo y nada más: en cada tabla, una fila
-// un minuto pasada del plazo y otra un minuto dentro. Un reporte abierto al año pasa a dismissed (caducado)
-// y cuenta desde ahí; las sanciones de una cuenta purgada hace más de un año desaparecen y las de una purgada
-// hace menos, o las de una viva, no. Una segunda vuelta no hace nada.
+// The retention jobs in the §11.1 table delete what has passed its deadline and nothing else: in
+// each table, one row a minute past the deadline and another a minute within it. An open report
+// moves to dismissed (expired) after a year and counts from there; the sanctions of an account
+// purged more than a year ago disappear and those of one purged less than a year ago, or of a
+// live one, do not. A second pass does nothing.
 func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 	p := newPlatform(t)
 	now := p.Clock.Now()
-	old := func(d time.Duration) time.Time { return now.Add(-d - time.Minute) }    // pasado el plazo
-	recent := func(d time.Duration) time.Time { return now.Add(-d + time.Minute) } // dentro del plazo
+	old := func(d time.Duration) time.Time { return now.Add(-d - time.Minute) }    // past the deadline
+	recent := func(d time.Duration) time.Time { return now.Add(-d + time.Minute) } // within the deadline
 	pl := p.NewPlayer("ana@example.org")
 	id := p.NewCharacter(pl, "Aneira", "vardheim")
 	z := p.NewZone(1, "vado_gris", 0).Start()
 
-	// Accesos (30 días).
+	// Logins (30 days).
 	p.Exec(`insert into auth_events (account_id, kind, user_agent, at) values ($1, 'login', 'ret-viejo', $2),
 		($1, 'login', 'ret-nuevo', $3)`, pl.ID, old(privacy.AuthEventsRetention), recent(privacy.AuthEventsRetention))
-	// Sesiones: caducada hace más de 7 días (se borra, con su billete); caducada hace menos pero abierta hace
-	// más de 30 días (se queda sin IP ni agente); y una reciente, entera.
+	// Sessions: expired more than 7 days ago (deleted, along with its ticket); expired less than that
+	// ago but opened more than 30 days ago (loses its IP and agent); and a recent one, intact.
 	var gone, stripped, kept int64
 	session := func(created, refreshExpires time.Time, tag byte) int64 {
 		var sid int64
@@ -225,11 +227,11 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 	gone = session(old(privacy.ExpiredSessionRetention).Add(-12*time.Hour), old(privacy.ExpiredSessionRetention), 0xa1)
 	stripped = session(old(privacy.SessionAccessRetention), recent(privacy.ExpiredSessionRetention), 0xa2)
 	kept = session(recent(privacy.SessionAccessRetention), now.Add(time.Hour), 0xa3)
-	// Enlaces (7 días desde que caducan).
+	// Links (7 days from when they expire).
 	p.Exec(`insert into account_tokens (token_hash, account_id, purpose, email, expires_at, created_at)
 		values ('\xb1', $1, 'reset_password', null, $2, $2), ('\xb2', $1, 'revert_email', 'vieja@example.org', $3, $3)`,
 		pl.ID, old(privacy.ExpiredTokenRetention), recent(privacy.ExpiredTokenRetention))
-	// Billetes (1 día desde que caducan): uno de la sesión que se borra, dos de la reciente.
+	// Tickets (1 day from when they expire): one from the session that is deleted, two from the recent one.
 	ticket := func(ticketID int64, sid int64, expires time.Time) {
 		p.Exec(`insert into enter_tickets (ticket_id, world_id, character_id, session_id, zone_instance_id, issued_at,
 			expires_at) values ($1, 1, $2, $3, $4, $5, $5)`, ticketID, id, sid, z.ID, expires)
@@ -237,8 +239,8 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 	ticket(9001, gone, now)
 	ticket(9002, kept, old(privacy.TicketRetention))
 	ticket(9003, kept, recent(privacy.TicketRetention))
-	// Instancias terminadas (30 días): parada y sustituida hace más (con un bloque de ids, un arrendamiento y
-	// una fortaleza que la nombran), perdida hace menos; la viva no se toca.
+	// Finished instances (30 days): stopped and replaced more than that ago (with an id block, a lease
+	// and a fort that name them), lost less than that ago; the live one is not touched.
 	instance := func(uuid, status string, ended time.Time) {
 		p.Exec(`insert into zone_instances (zone_instance_id, world_id, zone_id, channel, public_host, public_port, realms,
 			build_id, protocol_version, record_format, max_players, status, started_at, ended_at)
@@ -254,11 +256,11 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 		values ($1, 1, $2, $2, $2, $3)`, id, replaced, old(privacy.InstanceRetention))
 	p.Exec(`insert into fortresses (world_id, fortress_id, zone_id, record, updated_by) values (1, 'f1', 'vado_gris', '{}', $1)`,
 		stopped)
-	// Correos de prueba (7 días).
+	// Test emails (7 days).
 	p.Exec(`insert into outbound_mail (to_email, template, body, created_at) values ('a@example.org', 'ret-viejo', '', $1),
 		('a@example.org', 'ret-nuevo', '', $2)`, old(privacy.MailRetention), recent(privacy.MailRetention))
-	// Reportes (1 año desde el cierre): cerrado hace más (con su prueba y la sanción que lo cita), cerrado hace
-	// menos, abierto desde hace más (se cierra ahora) y en revisión desde hace menos.
+	// Reports (1 year from closing): closed longer ago (with its evidence and the sanction that cites
+	// it), closed less long ago, open for longer (closed now) and under review for less time.
 	report := func(status string, created time.Time, closed *time.Time) int64 {
 		var rid int64
 		p.Scalar(&rid, `insert into reports (world_id, reporter_account_id, target_name, category, context, status,
@@ -273,11 +275,11 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 	r2 := report("dismissed", closedRecent.Add(-day), &closedRecent)
 	r3 := report("open", old(privacy.ReportRetention), nil)
 	r4 := report("in_review", recent(privacy.ReportRetention), nil)
-	// Auditoría (1 año).
+	// Audit (1 year).
 	p.Exec(`insert into audit_log (source, command, args, at) values ('platform', 'ret_viejo', '{}', $1),
 		('platform', 'ret_nuevo', '{}', $2)`, old(privacy.AuditRetention), recent(privacy.AuditRetention))
-	// Sanciones: de una cuenta purgada hace más de un año (una cita el reporte r2), de una purgada hace menos y
-	// una de hace dos años de una cuenta viva.
+	// Sanctions: from an account purged more than a year ago (one cites report r2), from one purged
+	// less than a year ago, and one from two years ago on a live account.
 	purgedLong := p.NewPlayer("vieja@example.org")
 	purgedShort := p.NewPlayer("reciente@example.org")
 	for acc, at := range map[int64]time.Time{purgedLong.ID: old(privacy.PurgedSanctionRetention),
@@ -295,13 +297,13 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 	sanction(purgedShort.ID, now.Add(-2*365*day))
 	sanction(pl.ID, now.Add(-2*365*day))
 	p.Exec(`insert into sanction_reports (sanction_id, report_id) values ($1, $2)`, s1, r2)
-	// Huellas de correos sancionados: vencida y vigente.
+	// Fingerprints of sanctioned emails: expired and active.
 	p.Exec(`insert into sanctioned_email_hashes (hmac, until) values ('\xc1', $1), ('\xc2', $2)`,
 		now.Add(-time.Minute), now.Add(time.Minute))
-	// Nombres reservados: vencido y en plazo (el activo de Aneira no se toca).
+	// Reserved names: expired and within the period (Aneira's active one is not touched).
 	p.Exec(`insert into character_names (world_id, name_key, status, reserved_until) values (1, 'vencido', 'reserved', $1),
 		(1, 'reservado', 'reserved', $2)`, now.Add(-time.Minute), now.Add(time.Minute))
-	// El chat no es de este trabajo (social.ChatRetentionJob): ni uno de hace un año se toca.
+	// Chat is not part of this job (social.ChatRetentionJob): not even a message from a year ago is touched.
 	p.Exec(`insert into chat_messages (world_id, zone_id, zone_channel, channel, sender_character_id, sender_account_id, text,
 		sent_at, message_key) values (1, 'vado_gris', 0, 2, $1, $2, 'hola', $3, 'k1')`, id, pl.ID, now.Add(-365*day))
 
@@ -372,7 +374,7 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 	if again := run(t, p); again.Total() != 0 {
 		t.Fatalf("una segunda vuelta borra más: %v", again)
 	}
-	// Al año del cierre automático, el reporte caducado se borra como cualquier cerrado.
+	// A year after the automatic close, the expired report is deleted like any closed one.
 	p.Clock.Advance(privacy.ReportRetention + time.Second)
 	run(t, p)
 	if n := p.Count(`select count(*) from reports where report_id = $1`, r3); n != 0 {
@@ -380,10 +382,11 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 	}
 }
 
-// La retención del libro (§11.1, progresion.md §3.5): al año de su purga, el libro de un personaje se borra
-// en varias transacciones (más de un lote de 10 000 apuntes) y después su lápida; la operación que comparte
-// con un personaje vivo se queda para él. Una lápida sin libro se borra también al año; una purgada dos días
-// después, y el vivo, se quedan. La cuenta y purge_log no se tocan.
+// The ledger retention (§11.1, progresion.md §3.5): a year after its purge, a character's ledger
+// is deleted in several transactions (more than one batch of 10 000 entries) and then its
+// tombstone; the operation it shares with a live character stays for that character. A tombstone
+// without a ledger is also deleted after a year; one purged two days later, and the live one,
+// stay. The account and purge_log are not touched.
 func TestLedgerRetentionEmptiesAndRemovesTombstones(t *testing.T) {
 	p := newPlatform(t)
 	pl := p.NewPlayer("ana@example.org")
@@ -422,14 +425,14 @@ func TestLedgerRetentionEmptiesAndRemovesTombstones(t *testing.T) {
 		t.Fatalf("lápidas: %d", n)
 	}
 
-	// Antes del año no se borra nada.
+	// Before the year, nothing is deleted.
 	p.Clock.Set(purgedAt.Add(progress.Retention - time.Second))
 	if res := run(t, p); res[privacy.StepLedger] != 0 || res[privacy.StepLedgerTombstones] != 0 {
 		t.Fatalf("antes del año: %v", res)
 	}
 	p.Clock.Set(purgedAt.Add(progress.Retention + time.Second))
 	res := run(t, p)
-	// Brenna: sus apuntes, el evento, sus dos participaciones y la operación 7001 (la 7002 es también de Aneira).
+	// Brenna: her entries, the event, her two participations and operation 7001 (7002 also belongs to Aneira).
 	if want := int64(entries + 1 + 1 + 2 + 1); res[privacy.StepLedger] != want || res[privacy.StepLedgerTombstones] != 2 {
 		t.Fatalf("al año: %v (se esperaban %d filas del libro y 2 lápidas)", res, want)
 	}
@@ -457,15 +460,16 @@ func TestLedgerRetentionEmptiesAndRemovesTombstones(t *testing.T) {
 	if again := run(t, p); again.Total() != 0 {
 		t.Fatalf("una segunda vuelta borra más: %v", again)
 	}
-	// La marca de la retención no sobrevive a su transacción: fuera, el libro sigue siendo de solo añadir.
+	// The retention flag does not survive its transaction: outside it, the ledger remains append-only.
 	if _, err := p.Pool.Exec(ctx, `delete from ledger_entries where character_id = $1`, alive); err == nil {
 		t.Fatal("se pudo borrar el libro fuera de la retención")
 	}
 }
 
-// Una restauración en el límite y la purga horaria a la vez (§4.4, §11.2): la restauración ve el último
-// segundo de plazo y la purga el primero después; gana una y el personaje queda entero (vivo, con nombre y
-// progreso, sin fila en purge_log) o purgado (lápida sin progreso y 404 a la restauración), nunca a medias.
+// A restore at the limit and the hourly purge at the same time (§4.4, §11.2): the restore sees
+// the last second of the deadline and the purge the first one after; one wins and the character
+// ends up whole (alive, with name and progress, no row in purge_log) or purged (tombstone without
+// progress and a 404 to the restore), never half and half.
 func TestRestoreAtTheLimitRacesTheHourlyPurge(t *testing.T) {
 	p := newPlatform(t)
 	outcomes := map[int]int{}
@@ -524,10 +528,10 @@ func TestRestoreAtTheLimitRacesTheHourlyPurge(t *testing.T) {
 	t.Logf("restaurados %d, purgados %d", outcomes[http.StatusOK], outcomes[http.StatusNotFound])
 }
 
-// Una cuenta expulsada exporta y pide la supresión con su sesión de privacidad, y se purga; su correo no
-// vuelve a registrarse hasta que vence su huella (un año desde la purga: la expulsión es permanente), que la
-// retención borra. Lo mismo con una suspendida que se suprime con purge-now: la huella dura hasta 90 días
-// tras el fin de la suspensión (§11.2).
+// A banned account exports and requests deletion with its privacy session, and is purged; its
+// email cannot register again until its fingerprint expires (a year from the purge: the ban is
+// permanent), which the retention job deletes. The same with a suspended one that is deleted with
+// purge-now: the fingerprint lasts up to 90 days after the end of the suspension (§11.2).
 func TestSanctionedAccountsArePurgedAndTheirEmailWaits(t *testing.T) {
 	p := newPlatform(t)
 	adm := p.NewPlayer("admin@example.org")
@@ -591,7 +595,7 @@ func TestSanctionedAccountsArePurgedAndTheirEmailWaits(t *testing.T) {
 		t.Fatal("pasado su plazo, el correo no se registra")
 	}
 
-	// Suspendida tres días y suprimida con purge-now.
+	// Suspended for three days and deleted with purge-now.
 	suspended := p.NewPlayer("suspendida@example.org")
 	ends := p.Clock.Now().Add(3 * day)
 	p.Exec(`insert into sanctions (account_id, kind, reason, author_account_id, starts_at, ends_at)

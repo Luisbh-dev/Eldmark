@@ -1,26 +1,26 @@
 class_name SettingsMenu
 extends UIWindow
-## Ventana de ajustes (UI-16): una pestaña por grupo (gráficos, audio, cámara e interfaz) con un
-## control por ajuste de [ClientSettings], generado a partir de su tabla: interruptor, lista
-## desplegable o deslizador con su valor al lado.
+## Settings window (UI-16): one tab per group (graphics, audio, camera and interface) with one control
+## per [ClientSettings] setting, generated from its table: toggle, dropdown list or slider with its value
+## next to it.
 ## [br][br]
-## Cada cambio va a [method ClientSettings.set_value]; quien aplica los ajustes en vivo
-## ([ClientServices]) escucha [signal ClientSettings.changed]. La ventana también escucha esa señal
-## para mantener los controles al día cuando el valor cambia por otro lado (al restaurar). Al cerrarla
-## se guardan los cambios ([method ClientSettings.save_if_dirty]).
+## Each change goes to [method ClientSettings.set_value]; whoever applies the settings live
+## ([ClientServices]) listens to [signal ClientSettings.changed]. The window also listens to that signal
+## to keep the controls up to date when the value changes elsewhere (on restore). When it is closed the
+## changes are saved ([method ClientSettings.save_if_dirty]).
 ## [br][br]
-## «Restaurar pestaña» devuelve a su valor por defecto los ajustes de la pestaña abierta y «Restaurar
-## todo» los de todas (con confirmación si se le ha dado un [UIConfirmDialog]). La resolución solo se
-## puede elegir en modo ventana. Se abre con F10 ([ClientServices]) y, como toda [UIWindow], se cierra
-## con Esc y libera el cursor mientras está abierta.
+## "Restaurar pestaña" (Restore tab) returns the settings of the open tab to their default value and
+## "Restaurar todo" (Restore all) those of all of them (with confirmation if given a
+## [UIConfirmDialog]). The resolution can only be chosen in windowed mode. It opens with F10
+## ([ClientServices]) and, like every [UIWindow], closes with Esc and frees the cursor while open.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Se pidió un cambio desde la ventana (el control de [param id] cambió el ajuste).
+## A change was requested from the window (the control of [param id] changed the setting).
 signal setting_changed(id: StringName)
 
 const WINDOW_WIDTH: float = 700.0
-## Alto mínimo de las pestañas, para que la ventana no cambie de tamaño al pasar de una a otra.
+## Minimum height of the tabs, so that the window does not change size when switching from one to another.
 const TABS_HEIGHT: float = 340.0
 const LABEL_WIDTH: float = 250.0
 const VALUE_WIDTH: float = 120.0
@@ -37,21 +37,21 @@ var _tabs: TabContainer = null
 var _restore_tab_button: Button = null
 var _restore_all_button: Button = null
 var _close_button_bottom: Button = null
-# Ajuste -> su control (CheckButton, OptionButton o HSlider) y su texto de valor.
+# Setting -> its control (CheckButton, OptionButton or HSlider) and its value text.
 var _controls: Dictionary = {}
 var _value_labels: Dictionary = {}
 var _syncing: bool = false
 
 
 func _init() -> void:
-	# Crea la barra de título y la columna de contenido de la ventana.
+	# Creates the window's title bar and content column.
 	super()
 	window_title = TITLE_TEXT
 	custom_minimum_size = Vector2(WINDOW_WIDTH, 0.0)
 
 
-## Monta la ventana con los ajustes de [param settings]. [param confirm] es el diálogo de
-## confirmación de «Restaurar todo» (sin él se restaura directamente). Se puede llamar una vez.
+## Assembles the window with the settings of [param settings]. [param confirm] is the confirmation
+## dialog for "Restaurar todo" (Restore all) (without it, it restores directly). It can be called once.
 func setup(settings: ClientSettings, confirm: UIConfirmDialog = null) -> void:
 	_settings = settings
 	_confirm = confirm
@@ -63,17 +63,17 @@ func setup(settings: ClientSettings, confirm: UIConfirmDialog = null) -> void:
 	UISounds.hook_all(self)
 
 
-## Los ajustes que edita la ventana.
+## The settings the window edits.
 func get_settings() -> ClientSettings:
 	return _settings
 
 
-## El control del ajuste [param id] (null si no existe).
+## The control of setting [param id] (null if it does not exist).
 func get_control(id: StringName) -> Control:
 	return _controls.get(id, null) as Control
 
 
-## El texto con el valor del ajuste [param id] (null si no es un rango).
+## The text with the value of setting [param id] (null if it is not a range).
 func get_value_label(id: StringName) -> Label:
 	return _value_labels.get(id, null) as Label
 
@@ -82,12 +82,12 @@ func get_tabs() -> TabContainer:
 	return _tabs
 
 
-## Identificador de la pestaña abierta ([constant ClientSettings.TAB_GRAPHICS]...).
+## Identifier of the open tab ([constant ClientSettings.TAB_GRAPHICS]...).
 func get_current_tab_id() -> StringName:
 	return ClientSettings.TABS[_tabs.current_tab]
 
 
-## Abre la pestaña [param tab] ([constant ClientSettings.TAB_AUDIO]...).
+## Opens tab [param tab] ([constant ClientSettings.TAB_AUDIO]...).
 func show_tab(tab: StringName) -> void:
 	var index: int = ClientSettings.TABS.find(tab)
 	if index >= 0:
@@ -102,13 +102,13 @@ func get_restore_all_button() -> Button:
 	return _restore_all_button
 
 
-## Devuelve a su valor por defecto los ajustes de la pestaña abierta.
+## Returns the open tab's settings to their default value.
 func restore_current_tab() -> void:
 	_settings.reset_tab(get_current_tab_id())
 
 
-## Devuelve a su valor por defecto todos los ajustes; con un diálogo de confirmación, lo abre y
-## espera su respuesta.
+## Returns all the settings to their default value; with a confirmation dialog, it opens it and waits for
+## its response.
 func restore_all() -> void:
 	if _confirm != null:
 		_confirm.open(CONFIRM_TITLE, CONFIRM_MESSAGE, RESTORE_ALL_TEXT, "Cancelar", true)
@@ -116,7 +116,7 @@ func restore_all() -> void:
 		_on_restore_confirmed()
 
 
-## Abre la ventana con los controles al día y el foco en el primer ajuste de la pestaña abierta.
+## Opens the window with the controls up to date and focus on the first setting of the open tab.
 func open() -> void:
 	if _settings != null:
 		_sync_all()
@@ -125,7 +125,7 @@ func open() -> void:
 		UIFocus.focus_first(_tabs.get_current_tab_control())
 
 
-# --- Montaje ----------------------------------------------------------------------------------
+# --- Assembly ---------------------------------------------------------------------------------
 
 func _build() -> void:
 	_tabs = TabContainer.new()
@@ -207,7 +207,7 @@ func _make_row(spec: Dictionary) -> HBoxContainer:
 	return row
 
 
-# --- Sincronía entre controles y ajustes ------------------------------------------------------
+# --- Synchronization between controls and settings --------------------------------------------
 
 func _on_control_changed(id: StringName, value: Variant) -> void:
 	if _syncing:
@@ -227,7 +227,7 @@ func _sync_all() -> void:
 	_refresh_dependencies()
 
 
-# Pone el control de [param id] al valor del ajuste sin disparar su señal.
+# Sets the control of [param id] to the setting's value without firing its signal.
 func _sync_control(id: StringName) -> void:
 	var control: Control = _controls.get(id, null) as Control
 	if control == null:
@@ -245,7 +245,7 @@ func _sync_control(id: StringName) -> void:
 	_syncing = false
 
 
-# La resolución solo vale en modo ventana.
+# The resolution only applies in windowed mode.
 func _refresh_dependencies() -> void:
 	var resolution: OptionButton = get_control(ClientSettings.RESOLUTION) as OptionButton
 	if resolution != null:

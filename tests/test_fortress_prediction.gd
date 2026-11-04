@@ -1,32 +1,32 @@
 extends TestCase
-## La puerta del fuerte en la predicción (docs/fuerte.md, sección 3.2): cliente y servidor simulan cada
-## tick con la misma puerta, también cuando la puerta cambia de dueño a mitad de camino y también en
-## las repeticiones de la reconciliación. Como en [code]test_prediction.gd[/code], el «servidor» y el
-## cliente son dos mundos de física separados (dos [SubViewport]); cada uno con un suelo plano y una
-## [FortGate]. El servidor cambia la puerta tras simular el tick [constant CHANGE_TICK] (paso 4b: vale
-## desde el siguiente) y el cliente se entera por un OBJECT_STATE sintético a través de
-## [FortressView], cuyo gancho [method FortressView.before_simulate] es el de [ClientPrediction].
+## The fort gate in prediction (docs/fuerte.md, section 3.2): client and server simulate each
+## tick with the same gate, also when the gate changes owner midway and also in
+## the replays of reconciliation. As in [code]test_prediction.gd[/code], the \"server\" and the
+## client are two separate physics worlds (two [SubViewport]s); each with a flat floor and a
+## [FortGate]. The server changes the gate after simulating tick [constant CHANGE_TICK] (step 4b: it is valid
+## from the next one) and the client finds out through a synthetic OBJECT_STATE via
+## [FortressView], whose hook [method FortressView.before_simulate] is that of [ClientPrediction].
 ## [br][br]
-## El jugador es de Vardheim y corre hacia el este contra la puerta cerrada de un fuerte neutral; en el
-## tick del cambio el fuerte pasa a ser suyo y la puerta se abre para él.
+## The player is from Vardheim and runs east against the closed gate of a neutral fort; on the
+## change tick the fort becomes theirs and the gate opens for them.
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 const GATE_SCENE_PATH: String = "res://scenes/world/props/fort/fort_gate.tscn"
 const DEFINITION_PATH: String = "res://data/fortresses/vado_gris.tres"
 const NET_ID: int = 900
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
-## Hacia +X (hacia dentro del fuerte): yaw -90°.
+## Towards +X (into the fort): yaw -90°.
 const YAW_EAST: float = -PI * 0.5
 const SPAWN_TICK: int = 10
 const FIRST_REAL_TICK: int = 14
 const SPAWN_POSITION: Vector3 = Vector3(-5.0, 0.0, 0.0)
-## Tick (del servidor) tras el que el fuerte pasa a ser de Vardheim: el jugador lleva ya un buen rato
-## parado contra la puerta.
+## Tick (of the server) after which the fort becomes Vardheim's: the player has already been standing
+## against the gate for a good while.
 const CHANGE_TICK: int = 150
-## Ticks que se simulan en total (el servidor) y x a partir de la que se ha cruzado la puerta.
+## Ticks simulated in total (the server) and x from which the gate has been crossed.
 const TOTAL_TICKS: int = 260
 const CROSSED_X: float = 2.0
-## Ticks de retraso con los que llegan los estados del servidor y cadencia de los snapshots.
+## Ticks of delay with which the server states arrive and cadence of the snapshots.
 const STATE_DELAY_FRAMES: int = 6
 const STATE_INTERVAL_TICKS: int = 2
 
@@ -45,13 +45,13 @@ var _model: ServerModel = null
 var _def: FortressDefinition = null
 var _dt: float = 1.0 / 60.0
 var _frame_counter: int = 0
-## Estados propios en camino hacia el cliente: {tick, state, due}.
+## Own states on their way to the client: {tick, state, due}.
 var _pending_states: Array[Dictionary] = []
-## Lo que vio el gancho: {tick, layers, replaying} por llamada.
+## What the hook saw: {tick, layers, replaying} per call.
 var _hook_log: Array[Dictionary] = []
 
 
-## Siempre avanza hacia el este.
+## It always advances east.
 class EastBrain extends BotBrain:
 	func _init() -> void:
 		super(1, BotBrain.Pattern.IDLE)
@@ -66,7 +66,7 @@ class EastBrain extends BotBrain:
 		return input
 
 
-## El servidor: aplica la entrada del tick o repite la última (la regla de sustitución de red.md, 8.2).
+## The server: applies the tick's input or repeats the last one (the substitution rule in red.md, 8.2).
 class ServerModel:
 	var character: PlayerCharacter
 	var dt: float = 1.0 / 60.0
@@ -142,8 +142,8 @@ func after_each() -> void:
 func test_client_and_server_simulate_every_tick_with_the_same_gate() -> void:
 	if not await _begin_session():
 		return
-	# El cliente sabe del cambio con antelación (el aviso llega cuando va por el tick 140): cada tick se
-	# simula con la puerta que tuvo, sin una sola diferencia.
+	# The client knows about the change in advance (the notice arrives when it is at tick 140): each tick is
+	# simulated with the gate it had, without a single difference.
 	var results: Array[Vector2i] = []
 	var announced: bool = false
 	for _frame: int in TOTAL_TICKS:
@@ -154,45 +154,45 @@ func test_client_and_server_simulate_every_tick_with_the_same_gate() -> void:
 		_client_tick(results)
 		var state: PlayerState = _server_tick()
 		var predicted: PlayerState = _prediction.get_predicted_state(_model.tick)
-		if not assert_not_null(predicted, "el anillo guarda el tick %d" % _model.tick):
+		if not assert_not_null(predicted, "the ring stores tick %d" % _model.tick):
 			return
 		if predicted.encode() != state.encode():
-			fail("el estado predicho del tick %d difiere del del servidor.\n  predicho: %s\n  servidor: %s"
+			fail("the predicted state of tick %d differs from the server's.\n  predicted: %s\n  server: %s"
 					% [_model.tick, predicted, state])
 			return
 	assert_true(announced)
 	assert_true(_model.states[CHANGE_TICK].position.x < -0.3 and _model.states[CHANGE_TICK].position.x > -0.8,
-			"hasta el cambio la puerta cerrada para al jugador contra ella (x = %.2f)"
+			"until the change the closed gate stops the player against it (x = %.2f)"
 			% _model.states[CHANGE_TICK].position.x)
 	assert_true(_model.states[_model.tick].position.x > CROSSED_X,
-			"y cuando el fuerte pasa a ser suyo cruza (x = %.2f)" % _model.states[_model.tick].position.x)
-	assert_true(results.size() > 100, "llegaron estados del servidor (%d)" % results.size())
+			"and when the fort becomes theirs they cross (x = %.2f)" % _model.states[_model.tick].position.x)
+	assert_true(results.size() > 100, "server states arrived (%d)" % results.size())
 	for entry: Vector2i in results:
 		if entry.y != ClientPrediction.Result.MATCH:
-			fail("el estado del tick %d no coincidió (resultado %d)" % [entry.x, entry.y])
+			fail("the state of tick %d did not match (result %d)" % [entry.x, entry.y])
 			return
 	var stats: Dictionary = _prediction.get_stats()
-	assert_eq(stats["corrections"], 0, "ninguna corrección")
-	assert_eq(stats["replays"], 0, "ninguna repetición")
-	assert_eq(stats["resimulated_ticks"], 0, "ningún tick vuelto a simular")
-	# El gancho se llamó una vez por tick simulado con la capa de ese tick: neutral hasta el cambio
-	# (inclusive) y de Vardheim desde el siguiente.
+	assert_eq(stats["corrections"], 0, "no correction")
+	assert_eq(stats["replays"], 0, "no replay")
+	assert_eq(stats["resimulated_ticks"], 0, "no tick re-simulated")
+	# The hook was called once per simulated tick with that tick's layer: neutral until the change
+	# (inclusive) and Vardheim's from the next one.
 	var neutral: int = FortGate.layers_for(0, false)
 	var owned: int = FortGate.layers_for(VARDHEIM, false)
 	assert_true(neutral != owned)
 	for entry: Dictionary in _hook_log:
 		var expected: int = neutral if int(entry["tick"]) <= CHANGE_TICK else owned
 		if int(entry["layers"]) != expected:
-			fail("el tick %d se simuló con las capas %d y debía ser %d" % [entry["tick"], entry["layers"], expected])
+			fail("tick %d was simulated with layers %d and should have been %d" % [entry["tick"], entry["layers"], expected])
 			return
-	assert_true(_hook_log.size() > TOTAL_TICKS - 20, "el gancho se llamó en (casi) cada tick (%d)" % _hook_log.size())
+	assert_true(_hook_log.size() > TOTAL_TICKS - 20, "the hook was called on (almost) every tick (%d)" % _hook_log.size())
 
 
 func test_a_late_notice_is_reconciled_and_the_replay_uses_the_gate_of_each_tick() -> void:
 	if not await _begin_session():
 		return
-	# El aviso llega tarde: cuando el cliente ya ha simulado 12 ticks de más contra una puerta que ya se
-	# había abierto en el servidor. La reconciliación repite esos ticks con la puerta que tuvo cada uno.
+	# The notice arrives late: when the client has already simulated 12 extra ticks against a gate that had already
+	# opened on the server. Reconciliation replays those ticks with the gate each one had.
 	var results: Array[Vector2i] = []
 	var announced: bool = false
 	var announced_at: int = 0
@@ -209,27 +209,27 @@ func test_a_late_notice_is_reconciled_and_the_replay_uses_the_gate_of_each_tick(
 	for entry: Vector2i in results:
 		if entry.y == ClientPrediction.Result.CORRECTED:
 			corrected.append(entry)
-	assert_true(corrected.size() >= 1, "el cliente se había equivocado de puerta: hay una corrección")
+	assert_true(corrected.size() >= 1, "the client had the wrong gate: there is a correction")
 	var last_bad: int = 0
 	for entry: Vector2i in results:
 		if entry.y != ClientPrediction.Result.MATCH:
 			last_bad = maxi(last_bad, entry.x)
 	for entry: Vector2i in results:
 		if entry.x > last_bad and entry.y != ClientPrediction.Result.MATCH:
-			fail("tras la última corrección el estado del tick %d debería coincidir" % entry.x)
+			fail("after the last correction the state of tick %d should match" % entry.x)
 			return
-	# Desde el tick de la última corrección el cliente es idéntico al servidor, bit a bit.
+	# From the tick of the last correction the client is identical to the server, bit for bit.
 	for tick: int in range(last_bad, _model.tick + 1):
 		var predicted: PlayerState = _prediction.get_predicted_state(tick)
 		if predicted == null or predicted.encode() != (_model.states[tick] as PlayerState).encode():
-			fail("el tick %d no quedó igual al servidor tras la reconciliación" % tick)
+			fail("tick %d was not equal to the server after reconciliation" % tick)
 			return
-	assert_true(_model.tick > last_bad + 10, "quedaron ticks por comprobar")
-	assert_true(_model.states[_model.tick].position.x > CROSSED_X, "el servidor cruzó")
-	assert_true(_prediction.get_predicted_state(_model.tick).position.x > CROSSED_X, "y el cliente también")
-	# En las repeticiones posteriores al aviso, cada tick se simuló con la puerta que tenía: neutral hasta
-	# el cambio y del dueño desde el siguiente. Antes del aviso, el cliente no podía saberlo y simuló todo
-	# (también las repeticiones de entonces) con la puerta neutral.
+	assert_true(_model.tick > last_bad + 10, "ticks were left to check")
+	assert_true(_model.states[_model.tick].position.x > CROSSED_X, "the server crossed")
+	assert_true(_prediction.get_predicted_state(_model.tick).position.x > CROSSED_X, "and the client too")
+	# In the replays after the notice, each tick was simulated with the gate it had: neutral until
+	# the change and the owner's from the next one. Before the notice, the client could not know and simulated everything
+	# (including the replays of that time) with the neutral gate.
 	var neutral: int = FortGate.layers_for(0, false)
 	var owned: int = FortGate.layers_for(VARDHEIM, false)
 	var replayed: int = 0
@@ -241,20 +241,20 @@ func test_a_late_notice_is_reconciled_and_the_replay_uses_the_gate_of_each_tick(
 			replayed += 1
 			var expected: int = neutral if tick <= CHANGE_TICK else owned
 			if layers != expected:
-				fail("la repetición del tick %d usó las capas %d y debía ser %d" % [tick, layers, expected])
+				fail("the replay of tick %d used layers %d and should have been %d" % [tick, layers, expected])
 				return
 		elif tick > CHANGE_TICK and tick <= announced_at and layers == neutral:
 			simulated_wrong_before_notice += 1
-	assert_true(replayed > 0, "hubo ticks repetidos tras el aviso (%d)" % replayed)
+	assert_true(replayed > 0, "there were replayed ticks after the notice (%d)" % replayed)
 	assert_true(simulated_wrong_before_notice >= 10,
-			"antes del aviso se simuló con la puerta vieja (%d ticks)" % simulated_wrong_before_notice)
+			"before the notice it was simulated with the old gate (%d ticks)" % simulated_wrong_before_notice)
 
 
 func test_without_the_hook_the_client_never_opens_the_gate_and_keeps_diverging() -> void:
 	if not await _begin_session():
 		return
-	# Control: sin el gancho la puerta del cliente se queda como estaba (la «vieja») y la predicción no
-	# converge, por mucho que el servidor corrija. Es lo que evita el gancho.
+	# Control: without the hook the client's gate stays as it was (the \"old\" one) and prediction does not
+	# converge, however much the server corrects. It is what the hook prevents.
 	_prediction.before_simulate = Callable()
 	var results: Array[Vector2i] = []
 	var announced: bool = false
@@ -265,19 +265,19 @@ func test_without_the_hook_the_client_never_opens_the_gate_and_keeps_diverging()
 			_view.on_object_state(_owner_change(CHANGE_TICK, VARDHEIM))
 		_client_tick(results)
 		_server_tick()
-	assert_true(_model.states[_model.tick].position.x > CROSSED_X, "el servidor cruza")
+	assert_true(_model.states[_model.tick].position.x > CROSSED_X, "the server crosses")
 	var not_matching: int = 0
 	for entry: Vector2i in results:
 		if entry.y != ClientPrediction.Result.MATCH:
 			not_matching += 1
-	assert_true(not_matching >= 5, "sin el gancho el cliente discrepa del servidor una y otra vez (%d)" % not_matching)
+	assert_true(not_matching >= 5, "without the hook the client disagrees with the server again and again (%d)" % not_matching)
 
 
 func test_a_broken_gate_lets_everybody_through_in_the_same_tick() -> void:
 	if not await _begin_session():
 		return
-	# La puerta se rompe (vida 0) en el tick 150: desde el 151 no tiene capas ni en el servidor ni en el
-	# cliente.
+	# The gate breaks (health 0) at tick 150: from 151 it has no layers on either the server or the
+	# client.
 	var results: Array[Vector2i] = []
 	var announced: bool = false
 	for _frame: int in TOTAL_TICKS:
@@ -289,17 +289,17 @@ func test_a_broken_gate_lets_everybody_through_in_the_same_tick() -> void:
 		var state: PlayerState = _server_tick(true)
 		var predicted: PlayerState = _prediction.get_predicted_state(_model.tick)
 		if predicted == null or predicted.encode() != state.encode():
-			fail("el tick %d difiere con la puerta rota" % _model.tick)
+			fail("tick %d differs with the gate broken" % _model.tick)
 			return
-	assert_true(_model.states[_model.tick].position.x > CROSSED_X, "cruza por la puerta rota")
+	assert_true(_model.states[_model.tick].position.x > CROSSED_X, "crosses through the broken gate")
 	for entry: Dictionary in _hook_log:
 		var expected: int = FortGate.layers_for(0, false) if int(entry["tick"]) <= CHANGE_TICK else 0
 		if int(entry["layers"]) != expected:
-			fail("el tick %d se simuló con las capas %d y debía ser %d" % [entry["tick"], entry["layers"], expected])
+			fail("tick %d was simulated with layers %d and should have been %d" % [entry["tick"], entry["layers"], expected])
 			return
 
 
-# --- Montaje ----------------------------------------------------------------------------------
+# --- Setup ------------------------------------------------------------------------------------
 
 func _begin_session() -> bool:
 	_server_viewport = _make_world("ServerWorld")
@@ -313,7 +313,7 @@ func _begin_session() -> bool:
 	_server = character_scene.instantiate() as PlayerCharacter
 	_server_viewport.add_child(_server)
 	_server.set_realm_collision(VARDHEIM)
-	# El cliente: la fortaleza de la escena (como la deja el generador) con la puerta dentro.
+	# The client: the scene's fortress (as the generator leaves it) with the gate inside.
 	var fort := Node3D.new()
 	fort.name = "Fuerte"
 	fort.add_to_group(Zones.FORTRESS_GROUP)
@@ -344,9 +344,9 @@ func _begin_session() -> bool:
 	_view.set_zone(_client_viewport)
 	_view.on_spawn(NetMessages.EntitySpawn.decode(NetMessages.EntitySpawn.for_fortress(NET_ID, 1,
 			"vado_gris_fort", FortressState.initial(_def, 1)).encode()))
-	if not assert_true(_view.is_bound(NET_ID), "la vista del cliente encuentra su fuerte"):
+	if not assert_true(_view.is_bound(NET_ID), "the client view finds its fort"):
 		return false
-	# El gancho de la predicción, con un registro de lo que ve en cada llamada.
+	# The prediction hook, with a log of what it sees on each call.
 	_prediction.before_simulate = func(tick: int) -> void:
 		_view.before_simulate(tick)
 		var known: FortressState = _view.get_latest_state(NET_ID)
@@ -385,7 +385,7 @@ func _make_world(world_name: String) -> SubViewport:
 
 # --- Ticks ------------------------------------------------------------------------------------
 
-# Un tick del cliente: llegan los estados que tocan, predice y manda la entrada.
+# A client tick: the due states arrive, it predicts and sends the input.
 func _client_tick(results: Array[Vector2i]) -> void:
 	while not _pending_states.is_empty() and _pending_states[0]["due"] <= _frame_counter:
 		var item: Dictionary = _pending_states.pop_front()
@@ -397,7 +397,7 @@ func _client_tick(results: Array[Vector2i]) -> void:
 	_frame_counter += 1
 
 
-# Un tick del servidor. Tras simularlo (paso 4b) aplica el cambio de la puerta: vale desde el siguiente.
+# A server tick. After simulating it (step 4b) it applies the gate change: valid from the next one.
 func _server_tick(broken: bool = false) -> PlayerState:
 	var state: PlayerState = _model.step()
 	if _model.tick == CHANGE_TICK:
@@ -414,7 +414,7 @@ func _server_tick(broken: bool = false) -> PlayerState:
 	return state
 
 
-# OBJECT_STATE (pasado por la red) con el nuevo dueño: pasa a CONSOLIDATING como tras una captura.
+# OBJECT_STATE (passed through the network) with the new owner: it goes to CONSOLIDATING as after a capture.
 func _owner_change(tick: int, owner_realm: int) -> NetMessages.ObjectState:
 	var message := NetMessages.ObjectState.new()
 	message.net_id = NET_ID

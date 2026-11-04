@@ -1,11 +1,10 @@
 class_name SocialPeers
 extends RefCounted
-## Búsquedas de jugadores que comparten el chat y los grupos (docs/social.md, secciones 1 y 12): quién
-## está en el mundo y quién se llama así. Funciones estáticas sobre la lista de peers que da el
-## [ZoneServer]; no guardan estado.
+## Lookups of players shared by chat and parties (docs/social.md, sections 1 and 12): who is in the world and who has a
+## given name. Static functions over the peer list given by the [ZoneServer]; they keep no state.
 
 
-## De [param peers], los que están dentro del mundo con su personaje ya creado.
+## From [param peers], those that are inside the world with their character already created.
 static func in_world(peers: Array[ServerPeer]) -> Array[ServerPeer]:
 	var result: Array[ServerPeer] = []
 	for peer: ServerPeer in peers:
@@ -14,16 +13,16 @@ static func in_world(peers: Array[ServerPeer]) -> Array[ServerPeer]:
 	return result
 
 
-## Clave de comparación del nombre de [param peer] ([method NameRules.normalize_key]), calculada una vez.
+## Comparison key of the name of [param peer] ([method NameRules.normalize_key]), computed once.
 static func name_key_of(peer: ServerPeer) -> String:
 	if peer.chat.name_key.is_empty():
 		peer.chat.name_key = NameRules.normalize_key(peer.display_name)
 	return peer.chat.name_key
 
 
-## El jugador de [param peers] que se llama [param name] (sin distinguir mayúsculas ni tildes) y es del
-## reino [param realm]; null si no hay ninguno. Un jugador de otro reino no se encuentra: para quien
-## busca es como si no estuviera conectado y no se revela que existe (docs/social.md, sección 1).
+## The player in [param peers] named [param name] (ignoring case and accents) and of realm [param realm]; null if there
+## is none. A player of another realm is not found: for the searcher it is as if they were not connected and it is not
+## revealed that they exist (docs/social.md, section 1).
 static func find_by_name(peers: Array[ServerPeer], name: String, realm: int) -> ServerPeer:
 	var key: String = NameRules.normalize_key(name)
 	if key.is_empty():
@@ -34,9 +33,9 @@ static func find_by_name(peers: Array[ServerPeer], name: String, realm: int) -> 
 	return null
 
 
-## El jugador de [param peers] que se llama [param name], sea del reino que sea (sin distinguir mayúsculas ni
-## tildes); null si no está. Solo para lo que funciona también con enemigos (ignorar, reportar, la moderación,
-## docs/social.md sección 1); el chat y los grupos usan [method find_by_name].
+## The player in [param peers] named [param name], of whatever realm (ignoring case and accents); null if not there.
+## Only for what also works with enemies (ignore, report, moderation, docs/social.md section 1); chat and parties use
+## [method find_by_name].
 static func find_any_by_name(peers: Array[ServerPeer], name: String) -> ServerPeer:
 	var key: String = NameRules.normalize_key(name)
 	if key.is_empty():
@@ -47,7 +46,7 @@ static func find_any_by_name(peers: Array[ServerPeer], name: String) -> ServerPe
 	return null
 
 
-## true si [param receiver] ignora la cuenta de [param sender] (docs/plataforma.md §9.3): no le llega lo que
-## [param sender] escribe, susurra o le invita. Sin plataforma nadie tiene cuenta y nadie ignora a nadie.
+## true if [param receiver] ignores the account of [param sender] (docs/plataforma.md §9.3): what [param sender] writes,
+## whispers or invites them to does not reach them. Without a platform nobody has an account and nobody ignores anyone.
 static func ignores(receiver: ServerPeer, sender: ServerPeer) -> bool:
 	return receiver != sender and receiver.chat.ignores_account(sender.chat.account_id)

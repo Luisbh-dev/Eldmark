@@ -1,23 +1,23 @@
 extends TestCase
-## Pruebas de la configuración de exportación (TEC-12): los dos presets de [code]export_presets.cfg[/code]
-## (cliente Windows y servidor dedicado Linux), que sus filtros dejan fuera [code]build/[/code],
-## [code]docs/[/code], [code]tests/[/code] y [code]platform/[/code] (el servicio en Go, que Godot ni
-## escanea por su [code].gdignore[/code]) sin quitar nada de lo que el juego carga, que los
-## scripts [code]tools/export.sh[/code] y [code]tools/export.ps1[/code] usan los mismos presets, y,
-## en un proceso aparte, que exportar el paquete del servidor ([code]--export-pack[/code], que no necesita
-## las plantillas de exportación) da un paquete recortado, con lo que hace falta y sin lo que sobra.
+## Tests for the export configuration (TEC-12): the two presets of [code]export_presets.cfg[/code]
+## (Windows client and Linux dedicated server), that their filters leave out [code]build/[/code],
+## [code]docs/[/code], [code]tests/[/code] and [code]platform/[/code] (the Go service, which Godot does not even
+## scan thanks to its [code].gdignore[/code]) without removing anything the game loads, that the
+## scripts [code]tools/export.sh[/code] and [code]tools/export.ps1[/code] use the same presets, and,
+## in a separate process, that exporting the server pack ([code]--export-pack[/code], which does not need
+## the export templates) yields a trimmed pack, with what is needed and without what is surplus.
 ## [br][br]
-## Exportar de verdad (el ejecutable) necesita las plantillas de exportación 4.7.2, que no se pueden
-## instalar desde las pruebas: eso se hace a mano con [code]tools/export.sh[/code] (ver el README).
+## Truly exporting (the executable) needs the 4.7.2 export templates, which cannot be
+## installed from the tests: that is done by hand with [code]tools/export.sh[/code] (see the README).
 
 const PRESETS_PATH: String = "res://export_presets.cfg"
 const CLIENT_PRESET: String = "Cliente Windows"
 const SERVER_PRESET: String = "Servidor Linux"
 const SCRIPT_SH: String = "res://tools/export.sh"
 const SCRIPT_PS1: String = "res://tools/export.ps1"
-## Carpetas que ningún paquete debe llevar.
+## Folders that no pack should carry.
 const FORBIDDEN_DIRS: Array[String] = ["build/", "docs/", "tests/", "tools/", "exports/", ".github/", "platform/"]
-## Carpetas y archivos que el juego carga y que ningún filtro puede quitar.
+## Folders and files that the game loads and that no filter can remove.
 const REQUIRED_PATHS: Array[String] = [
 	"project.godot", "default_bus_layout.tres", "export_presets.cfg",
 	"scripts/boot.gd", "scripts/shared/player_character.gd", "scripts/server/zone_server.gd",
@@ -32,14 +32,14 @@ const REQUIRED_PATHS: Array[String] = [
 	"addons/proton_scatter/LICENSE", "assets/LICENCIAS.md",
 ]
 const PACK_PATH: String = "res://build/export_test/server_pack.zip"
-## Segundos máximos de espera al proceso que exporta (la fase de una prueba admite 30).
+## Maximum seconds to wait for the exporting process (a test phase allows 30).
 const PACK_TIMEOUT_SECONDS: float = 26.0
 
 var _presets: ConfigFile = ConfigFile.new()
 
 
 func before_each() -> void:
-	assert_eq(_presets.load(PRESETS_PATH), OK, "export_presets.cfg se lee como archivo de ajustes")
+	assert_eq(_presets.load(PRESETS_PATH), OK, "export_presets.cfg is read as a settings file")
 
 
 func after_each() -> void:
@@ -47,7 +47,7 @@ func after_each() -> void:
 		DirAccess.remove_absolute(PACK_PATH)
 
 
-# El preset con el nombre dado ("preset.0", "preset.1"...).
+# The preset with the given name (\"preset.0\", \"preset.1\"...).
 func _section_of(preset_name: String) -> String:
 	for section: String in _presets.get_sections():
 		if section.begins_with("preset.") and not section.ends_with(".options") \
@@ -60,7 +60,7 @@ func _value(section: String, key: String) -> Variant:
 	return _presets.get_value(section, key, null)
 
 
-# Patrones de exclusión de un preset, ya separados.
+# Exclusion patterns of a preset, already split.
 func _excludes(section: String) -> PackedStringArray:
 	var result: PackedStringArray = PackedStringArray()
 	for pattern: String in String(_value(section, "exclude_filter")).split(","):
@@ -69,7 +69,7 @@ func _excludes(section: String) -> PackedStringArray:
 	return result
 
 
-# true si algún patrón de [param patterns] (con comodines * y ?) encaja con [param path].
+# true if any pattern in [param patterns] (with wildcards * and ?) matches [param path].
 func _matches_any(path: String, patterns: PackedStringArray) -> bool:
 	for pattern: String in patterns:
 		if path.match(pattern):
@@ -77,58 +77,58 @@ func _matches_any(path: String, patterns: PackedStringArray) -> bool:
 	return false
 
 
-# --- Los presets ------------------------------------------------------------------------------
+# --- The presets ------------------------------------------------------------------------------
 
 func test_there_are_exactly_the_two_presets() -> void:
 	var names: Array[String] = []
 	for section: String in _presets.get_sections():
 		if section.begins_with("preset.") and not section.ends_with(".options"):
 			names.append(String(_presets.get_value(section, "name")))
-			assert_true(_presets.has_section(section + ".options"), "%s tiene sus opciones" % section)
+			assert_true(_presets.has_section(section + ".options"), "%s has its options" % section)
 	names.sort()
 	assert_eq(names, [CLIENT_PRESET, SERVER_PRESET] as Array[String])
 
 
 func test_the_client_preset_is_windows_x86_64() -> void:
 	var section: String = _section_of(CLIENT_PRESET)
-	if not assert_false(section.is_empty(), "existe el preset del cliente"):
+	if not assert_false(section.is_empty(), "the client preset exists"):
 		return
 	assert_eq(_value(section, "platform"), "Windows Desktop")
-	assert_eq(_value(section, "dedicated_server"), false, "el cliente no es un servidor dedicado")
-	assert_eq(_value(section, "export_filter"), "all_resources", "el cliente lleva todos los recursos")
+	assert_eq(_value(section, "dedicated_server"), false, "the client is not a dedicated server")
+	assert_eq(_value(section, "export_filter"), "all_resources", "the client carries all the resources")
 	assert_eq(_presets.get_value(section + ".options", "binary_format/architecture"), "x86_64")
 	assert_eq(_presets.get_value(section + ".options", "binary_format/embed_pck"), false,
-			"el .pck va aparte, junto al ejecutable")
+			"the .pck goes separately, next to the executable")
 	assert_eq(_presets.get_value(section + ".options", "texture_format/s3tc_bptc"), true,
-			"texturas comprimidas para el escritorio")
+			"compressed textures for the desktop")
 	assert_true(String(_value(section, "export_path")).begins_with("exports/windows/"))
 	assert_true(String(_value(section, "export_path")).ends_with(".exe"))
 
 
 func test_the_server_preset_is_a_dedicated_linux_x86_64_server() -> void:
 	var section: String = _section_of(SERVER_PRESET)
-	if not assert_false(section.is_empty(), "existe el preset del servidor"):
+	if not assert_false(section.is_empty(), "the server preset exists"):
 		return
 	assert_eq(_value(section, "platform"), "Linux")
-	assert_eq(_value(section, "dedicated_server"), true, "exportación como servidor dedicado")
-	assert_eq(_value(section, "export_filter"), "customized", "con recorte de recursos por carpeta")
+	assert_eq(_value(section, "dedicated_server"), true, "export as dedicated server")
+	assert_eq(_value(section, "export_filter"), "customized", "with resource stripping by folder")
 	assert_eq(_presets.get_value(section + ".options", "binary_format/architecture"), "x86_64")
 	assert_eq(_presets.get_value(section + ".options", "texture_format/s3tc_bptc"), true,
-			"las texturas del terreno (Terrain3D las valida) se exportan comprimidas")
+			"the terrain textures (Terrain3D validates them) are exported compressed")
 	assert_true(String(_value(section, "export_path")).begins_with("exports/server/"))
 	assert_false(String(_value(section, "export_path")).ends_with(".exe"))
-	# Recorte: la capa visual fuera, pero nunca «remove» (las escenas de zona referencian modelos,
-	# materiales y animaciones y el servidor no podría cargarlas).
+	# Stripping: the visual layer out, but never \"remove\" (the zone scenes reference models,
+	# materials and animations and the server could not load them).
 	var files: Dictionary = _value(section, "customized_files")
 	for visual_dir: String in ["res://assets/models/", "res://assets/materials/",
 			"res://assets/audio/", "res://assets/animations/"]:
-		assert_eq(files.get(visual_dir), "strip", "%s se recorta" % visual_dir)
+		assert_eq(files.get(visual_dir), "strip", "%s is stripped" % visual_dir)
 	for path: String in files:
-		assert_eq(files[path], "strip", "%s: solo se recorta, nunca se quita" % path)
+		assert_eq(files[path], "strip", "%s: it is only stripped, never removed" % path)
 		assert_false(path.begins_with("res://scripts") or path.begins_with("res://scenes")
-				or path.begins_with("res://data"), "%s: el recorte no toca código, escenas ni datos" % path)
+				or path.begins_with("res://data"), "%s: the stripping does not touch code, scenes or data" % path)
 	assert_false(files.has("res://assets/textures/"),
-			"las texturas del terreno no se recortan: Terrain3D registraría errores al cargarlas")
+			"the terrain textures are not stripped: Terrain3D would log errors when loading them")
 
 
 func test_both_presets_keep_the_development_folders_out_but_the_licences_in() -> void:
@@ -136,34 +136,34 @@ func test_both_presets_keep_the_development_folders_out_but_the_licences_in() ->
 		var section: String = _section_of(preset_name)
 		var excludes: PackedStringArray = _excludes(section)
 		for dir: String in FORBIDDEN_DIRS:
-			assert_true(_matches_any(dir + "algo.txt", excludes), "%s excluye %s" % [preset_name, dir])
-			assert_true(_matches_any(dir + "sub/archivo.gd", excludes), "%s excluye %s en profundidad" % [preset_name, dir])
-		assert_true(_matches_any("scenes/tests/ui_gallery.tscn", excludes), "y las escenas de desarrollo")
+			assert_true(_matches_any(dir + "algo.txt", excludes), "%s excludes %s" % [preset_name, dir])
+			assert_true(_matches_any(dir + "sub/archivo.gd", excludes), "%s excludes %s in depth" % [preset_name, dir])
+		assert_true(_matches_any("scenes/tests/ui_gallery.tscn", excludes), "and the development scenes")
 		var includes: PackedStringArray = PackedStringArray()
 		for pattern: String in String(_value(section, "include_filter")).split(","):
 			includes.append(pattern.strip_edges())
 		for licence: String in ["addons/terrain_3d/LICENSE.txt", "addons/proton_scatter/LICENSE",
 				"assets/LICENCIAS.md"]:
-			assert_true(_matches_any(licence, includes), "%s lleva %s (la MIT lo exige)" % [preset_name, licence])
-			assert_true(FileAccess.file_exists("res://" + licence), "existe %s" % licence)
+			assert_true(_matches_any(licence, includes), "%s carries %s (the MIT license requires it)" % [preset_name, licence])
+			assert_true(FileAccess.file_exists("res://" + licence), "%s exists" % licence)
 
 
 func test_no_filter_removes_what_the_game_loads() -> void:
 	for preset_name: String in [CLIENT_PRESET, SERVER_PRESET]:
 		var excludes: PackedStringArray = _excludes(_section_of(preset_name))
 		for path: String in REQUIRED_PATHS:
-			assert_true(FileAccess.file_exists("res://" + path), "existe %s" % path)
-			assert_false(_matches_any(path, excludes), "%s no excluye %s" % [preset_name, path])
-		# Todas las escenas de zona y los scripts que cargan cliente y servidor.
+			assert_true(FileAccess.file_exists("res://" + path), "%s exists" % path)
+			assert_false(_matches_any(path, excludes), "%s does not exclude %s" % [preset_name, path])
+		# All the zone scenes and the scripts that client and server load.
 		for zone_id: StringName in Zones.get_zone_ids():
 			var scene: String = Zones.get_scene_path(zone_id).trim_prefix("res://")
-			assert_false(_matches_any(scene, excludes), "%s no excluye la zona %s" % [preset_name, zone_id])
+			assert_false(_matches_any(scene, excludes), "%s does not exclude the zone %s" % [preset_name, zone_id])
 		for dir: String in ["scripts/client", "scripts/server", "scripts/shared", "scripts/world"]:
 			for file_name: String in DirAccess.get_files_at("res://" + dir):
 				assert_false(_matches_any(dir + "/" + file_name, excludes),
-						"%s no excluye %s/%s" % [preset_name, dir, file_name])
-	# El filtro de pruebas no es tan amplio como para quitar nada más: la comprobación detecta lo que
-	# sí debe quedar fuera.
+						"%s does not exclude %s/%s" % [preset_name, dir, file_name])
+	# The test filter is not so broad as to remove anything else: the check detects what
+	# should be left out.
 	var sample: PackedStringArray = _excludes(_section_of(SERVER_PRESET))
 	assert_true(_matches_any("tests/test_case.gd", sample))
 	assert_true(_matches_any("docs/social.md", sample))
@@ -173,42 +173,42 @@ func test_no_filter_removes_what_the_game_loads() -> void:
 
 func test_exports_are_not_tracked() -> void:
 	var ignore: String = FileAccess.get_file_as_string("res://.gitignore")
-	assert_true(ignore.contains("/exports/"), "lo exportado no se versiona")
+	assert_true(ignore.contains("/exports/"), "what is exported is not versioned")
 	assert_true(ignore.contains("/build/"))
 
 
 func test_godot_does_not_scan_the_platform_service() -> void:
-	# platform/ es el servicio en Go (docs/plataforma.md §2.1): Godot no lo importa ni lo exporta.
-	assert_true(FileAccess.file_exists("res://platform/.gdignore"), "platform/ lleva .gdignore")
-	assert_true(FileAccess.file_exists("res://platform/go.mod"), "y es el módulo de Go")
+	# platform/ is the Go service (docs/plataforma.md §2.1): Godot neither imports nor exports it.
+	assert_true(FileAccess.file_exists("res://platform/.gdignore"), "platform/ carries .gdignore")
+	assert_true(FileAccess.file_exists("res://platform/go.mod"), "and is the Go module")
 
 
-# --- Los scripts de exportación ---------------------------------------------------------------
+# --- The export scripts -----------------------------------------------------------------------
 
 func test_the_export_scripts_use_the_presets_and_their_paths() -> void:
 	var server_out: String = String(_value(_section_of(SERVER_PRESET), "export_path"))
 	var client_out: String = String(_value(_section_of(CLIENT_PRESET), "export_path"))
 	for path: String in [SCRIPT_SH, SCRIPT_PS1]:
-		assert_true(FileAccess.file_exists(path), "existe %s" % path)
+		assert_true(FileAccess.file_exists(path), "%s exists" % path)
 		var text: String = FileAccess.get_file_as_string(path)
 		assert_true(text.contains("'%s'" % CLIENT_PRESET) or text.contains("\"%s\"" % CLIENT_PRESET),
-				"%s usa el preset «%s»" % [path, CLIENT_PRESET])
+				"%s uses the preset \"%s\"" % [path, CLIENT_PRESET])
 		assert_true(text.contains("'%s'" % SERVER_PRESET) or text.contains("\"%s\"" % SERVER_PRESET),
-				"%s usa el preset «%s»" % [path, SERVER_PRESET])
-		assert_true(text.contains(server_out), "%s escribe el servidor en %s" % [path, server_out])
-		assert_true(text.contains(client_out), "%s escribe el cliente en %s" % [path, client_out])
-		assert_true(text.contains("--export-pack"), "%s admite exportar solo el paquete" % path)
-		assert_true(text.contains("export_templates"), "%s comprueba las plantillas de exportación" % path)
-		assert_true(text.contains("lfs pull"), "%s avisa si faltan los objetos de LFS" % path)
-		assert_true(text.contains("--headless"), "%s exporta sin ventana" % path)
-		assert_true(text.contains("run-server.sh"), "%s deja el lanzador del servidor" % path)
+				"%s uses the preset \"%s\"" % [path, SERVER_PRESET])
+		assert_true(text.contains(server_out), "%s writes the server to %s" % [path, server_out])
+		assert_true(text.contains(client_out), "%s writes the client to %s" % [path, client_out])
+		assert_true(text.contains("--export-pack"), "%s supports exporting only the pack" % path)
+		assert_true(text.contains("export_templates"), "%s checks the export templates" % path)
+		assert_true(text.contains("lfs pull"), "%s warns if the LFS objects are missing" % path)
+		assert_true(text.contains("--headless"), "%s exports without a window" % path)
+		assert_true(text.contains("run-server.sh"), "%s leaves the server launcher" % path)
 	var shell: String = FileAccess.get_file_as_string(SCRIPT_SH)
-	assert_true(shell.begins_with("#!/usr/bin/env bash"), "export.sh es un script de bash")
-	assert_false(shell.contains("\r"), "con finales de línea LF")
-	# PowerShell 5.1 lee como ANSI un .ps1 sin BOM: con tildes necesita la marca UTF-8.
+	assert_true(shell.begins_with("#!/usr/bin/env bash"), "export.sh is a bash script")
+	assert_false(shell.contains("\r"), "with LF line endings")
+	# PowerShell 5.1 reads a .ps1 without a BOM as ANSI: with accents it needs the UTF-8 mark.
 	var ps_bytes: PackedByteArray = FileAccess.get_file_as_bytes(SCRIPT_PS1)
 	assert_true(ps_bytes.size() > 3 and ps_bytes[0] == 0xEF and ps_bytes[1] == 0xBB and ps_bytes[2] == 0xBF,
-			"export.ps1 lleva la marca UTF-8 (BOM)")
+			"export.ps1 carries the UTF-8 mark (BOM)")
 
 
 func test_the_shell_script_is_valid_and_dry_runs() -> void:
@@ -218,10 +218,10 @@ func test_the_shell_script_is_valid_and_dry_runs() -> void:
 	if not FileAccess.file_exists(SCRIPT_SH) or OS.execute("bash", ["--version"], []) != 0:
 		return
 	var syntax: Array = []
-	assert_eq(OS.execute("bash", ["-n", script], syntax, true), 0, "export.sh es sintácticamente correcto: %s" % [syntax])
-	assert_true((FileAccess.get_unix_permissions(SCRIPT_SH) & FileAccess.UNIX_EXECUTE_OWNER) != 0, "export.sh es ejecutable")
-	# El script busca Godot en GODOT o en el PATH; se le da el que ejecuta la prueba para no depender
-	# de que haya un «godot» en el PATH de la máquina.
+	assert_eq(OS.execute("bash", ["-n", script], syntax, true), 0, "export.sh is syntactically correct: %s" % [syntax])
+	assert_true((FileAccess.get_unix_permissions(SCRIPT_SH) & FileAccess.UNIX_EXECUTE_OWNER) != 0, "export.sh is executable")
+	# The script looks for Godot in GODOT or in the PATH; it is given the one running the test so as not to depend
+	# on there being a \"godot\" in the machine's PATH.
 	var previous_godot: String = OS.get_environment("GODOT")
 	OS.set_environment("GODOT", OS.get_executable_path())
 	var output: Array = []
@@ -231,18 +231,18 @@ func test_the_shell_script_is_valid_and_dry_runs() -> void:
 	else:
 		OS.set_environment("GODOT", previous_godot)
 	var text: String = String(output[0])
-	assert_eq(code, 0, "--dry-run termina bien: %s" % text)
-	assert_true(text.contains("--export-pack"), "con --pack-only exporta paquetes")
+	assert_eq(code, 0, "--dry-run ends well: %s" % text)
+	assert_true(text.contains("--export-pack"), "with --pack-only it exports packs")
 	assert_true(text.contains(CLIENT_PRESET.replace(" ", "\\ ")) and text.contains(SERVER_PRESET.replace(" ", "\\ ")),
-			"muestra los dos presets")
+			"it shows the two presets")
 	var bad: Array = []
-	assert_eq(OS.execute("bash", [script, "--opcion-inventada"], bad, true), 1, "una opción desconocida da error")
+	assert_eq(OS.execute("bash", [script, "--opcion-inventada"], bad, true), 1, "an unknown option gives an error")
 	var help: Array = []
 	assert_eq(OS.execute("bash", [script, "--help"], help, true), 0)
-	assert_true(String(help[0]).contains("--pack-only"), "la ayuda documenta las opciones")
+	assert_true(String(help[0]).contains("--pack-only"), "the help documents the options")
 
 
-# --- Un paquete de verdad ---------------------------------------------------------------------
+# --- A real pack ------------------------------------------------------------------------------
 
 func test_the_server_pack_exports_trimmed_and_without_development_folders() -> void:
 	var out: String = ProjectSettings.globalize_path(PACK_PATH)
@@ -250,7 +250,7 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 	var args: PackedStringArray = PackedStringArray(["--headless", "--path",
 			ProjectSettings.globalize_path("res://"), "--export-pack", SERVER_PRESET, out])
 	var pid: int = OS.create_process(OS.get_executable_path(), args)
-	if not assert_true(pid > 0, "se lanza el proceso de exportación"):
+	if not assert_true(pid > 0, "the export process launches"):
 		return
 	var waited: float = 0.0
 	while OS.is_process_running(pid) and waited < PACK_TIMEOUT_SECONDS:
@@ -258,13 +258,13 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 		waited += 0.25
 	if OS.is_process_running(pid):
 		OS.kill(pid)
-		fail("la exportación del paquete tardó más de %d s" % int(PACK_TIMEOUT_SECONDS))
+		fail("the pack export took more than %d s" % int(PACK_TIMEOUT_SECONDS))
 		return
-	assert_eq(OS.get_process_exit_code(pid), 0, "la exportación termina bien")
-	if not assert_true(FileAccess.file_exists(PACK_PATH), "se crea el paquete"):
+	assert_eq(OS.get_process_exit_code(pid), 0, "the export ends well")
+	if not assert_true(FileAccess.file_exists(PACK_PATH), "the pack is created"):
 		return
 	var zip: ZIPReader = ZIPReader.new()
-	if not assert_eq(zip.open(out), OK, "el paquete se abre"):
+	if not assert_eq(zip.open(out), OK, "the pack opens"):
 		return
 	var files: PackedStringArray = zip.get_files()
 	var total: int = 0
@@ -274,7 +274,7 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 	for dir: String in FORBIDDEN_DIRS + ["scenes/tests/"]:
 		for file_name: String in files:
 			if file_name.begins_with(dir):
-				fail("el paquete lleva %s" % file_name)
+				fail("the pack carries %s" % file_name)
 				break
 	for required: String in ["project.binary", "addons/terrain_3d/terrain.gdextension",
 			"addons/terrain_3d/LICENSE.txt", "assets/LICENCIAS.md",
@@ -283,7 +283,7 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 			"scenes/server/server_main.tscn.remap", "scripts/server/zone_server.gd.remap",
 			"data/characters/appearance_catalog.tres.remap", "data/progression/level_curve.tres.remap",
 			"data/items/weapon/sword_shield_vado.tres.remap", "data/items/consumable/potion_health.tres.remap"]:
-		assert_true(files.has(required), "el paquete lleva %s" % required)
-	assert_true(files.size() > 500, "y no está vacío (%d archivos)" % files.size())
-	# Recortado: la exportación completa del proyecto pasa de los 80 MB; el servidor ronda los 17.
-	assert_true(total < 35 * 1024 * 1024, "el paquete del servidor es pequeño (%d MB)" % roundi(float(total) / 1048576.0))
+		assert_true(files.has(required), "the pack carries %s" % required)
+	assert_true(files.size() > 500, "and it is not empty (%d files)" % files.size())
+	# Stripped: the full project export exceeds 80 MB; the server is around 17.
+	assert_true(total < 35 * 1024 * 1024, "the server pack is small (%d MB)" % roundi(float(total) / 1048576.0))

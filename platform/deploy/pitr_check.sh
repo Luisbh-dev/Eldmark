@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Prueba de la recuperación a un instante (docs/plataforma.md §12, TEC-28), toda en clústeres de
-# PostgreSQL efímeros: un primario con archive_command copia su WAL a una carpeta; pg_basebackup
-# toma la copia base; se escriben más filas, se apunta la hora y se borran casi todas; después se
-# restaura la copia base con restore_command, recovery_target_time y recovery.signal, y el clúster
-# recuperado tiene que tener todas las filas de antes del borrado (también las escritas tras la
-# copia base, que solo están en el WAL). Es el mismo procedimiento que en el VPS con WAL-G
-# (archive_command = wal-g wal-push, restore_command = wal-g wal-fetch); aquí el archivo es una
-# carpeta.
+# Point-in-time recovery test (docs/plataforma.md §12, TEC-28), all in ephemeral PostgreSQL
+# clusters: a primary with archive_command copies its WAL to a folder; pg_basebackup takes the base
+# backup; more rows are written, the time is noted and almost all of them are deleted; then the base
+# backup is restored with restore_command, recovery_target_time and recovery.signal, and the
+# recovered cluster has to have all the rows from before the deletion (including those written after
+# the base backup, which are only in the WAL). It is the same procedure as on the VPS with WAL-G
+# (archive_command = wal-g wal-push, restore_command = wal-g wal-fetch); here the archive is a
+# folder.
 #
-# Uso: pitr_check.sh       Sale con 0 si recupera lo que tiene que recuperar y con 1 si no.
+# Usage: pitr_check.sh       Exits 0 if it recovers what it should recover and 1 if not.
 #
-# Variables: ELDMARK_PG_BIN, ELDMARK_PG_USER (pglib.sh) y TMPDIR (corto: la ruta del socket).
+# Variables: ELDMARK_PG_BIN, ELDMARK_PG_USER (pglib.sh) and TMPDIR (short: the socket path).
 set -euo pipefail
 
 ELD_SCRIPT=pitr_check
@@ -41,14 +41,15 @@ mkdir -p "$work/s1" "$work/s2"
 eld_check_socket_dir "$work/s1"
 eld_as_pg_cmd mkdir -p "$archive"
 
-# 1. El primario, con el WAL archivado en una carpeta (en el VPS, WAL-G a S3 compatible).
+# 1. The primary, with the WAL archived in a folder (on the VPS, WAL-G to S3-compatible storage).
 eld_initdb "$primary"
 eld_as_pg_cmd sh -c "cat >> '$primary/postgresql.auto.conf'" <<CONF
 wal_level = replica
 archive_mode = on
 archive_command = 'test ! -f $archive/%f && cp %p $archive/%f'
 CONF
-# Solo fsync=off: full_page_writes y synchronous_commit como en el VPS, que el WAL es lo que se prueba.
+# Only fsync=off: full_page_writes and synchronous_commit as on the VPS, since the WAL is what is
+# being tested.
 eld_pg_start "$primary" "$work/primary.log" "-k '$work/s1' -c listen_addresses= -c fsync=off"
 p1="host=$work/s1 port=5432 user=$ELD_PG_SUPERUSER dbname=postgres"
 eld_psql "$p1" -c "create database eldmark"
@@ -56,18 +57,18 @@ p1="host=$work/s1 port=5432 user=$ELD_PG_SUPERUSER dbname=eldmark"
 eld_psql "$p1" -c "create table pitr_probe (id int primary key, note text not null)" \
 	-c "insert into pitr_probe select g, 'antes de la copia base' from generate_series(1, 1000) g"
 
-# 2. La copia base.
+# 2. The base backup.
 t0="$(eld_ms)"
 eld_as_pg pg_basebackup -d "host=$work/s1 port=5432 user=$ELD_PG_SUPERUSER" -D "$work/base" -X stream -c fast
 base_ms=$(($(eld_ms) - t0))
 
-# 3. Filas que solo estarán en el WAL, la hora objetivo y el borrado que se quiere deshacer.
+# 3. Rows that will only be in the WAL, the target time and the deletion to be undone.
 eld_psql "$p1" -c "insert into pitr_probe select g, 'tras la copia base' from generate_series(1001, 1500) g"
 target="$(eld_psql "$p1" -c "select clock_timestamp()")"
 sleep 1
 eld_psql "$p1" -c "delete from pitr_probe where id > 10"
-# Cierra el segmento del borrado y espera a que esté archivado: la recuperación tiene que ver una
-# transacción posterior a la hora objetivo para saber que ha llegado.
+# It closes the deletion's segment and waits for it to be archived: the recovery has to see a
+# transaction after the target time to know it has arrived.
 segment="$(eld_psql "$p1" -c "select pg_walfile_name(pg_switch_wal())")"
 for _ in $(seq 1 300); do
 	[ -f "$archive/$segment" ] && break
@@ -78,7 +79,7 @@ left="$(eld_psql "$p1" -c "select count(*) from pitr_probe")"
 [ "$left" -eq 10 ] || eld_die "el borrado ha dejado $left filas y no 10"
 eld_pg_stop "$primary" fast
 
-# 4. La recuperación: la copia base, el WAL archivado hasta la hora objetivo y promoción.
+# 4. The recovery: the base backup, the archived WAL up to the target time, and promotion.
 eld_as_pg_cmd cp -a "$work/base" "$restored"
 eld_as_pg_cmd chmod 0700 "$restored"
 eld_as_pg_cmd sh -c "cat >> '$restored/postgresql.auto.conf'" <<CONF
@@ -99,7 +100,7 @@ done
 	{ cat "$work/restored.log" >&2; eld_die "el clúster recuperado no sale de la recuperación en 60 s"; }
 recover_ms=$(($(eld_ms) - t0))
 
-# 5. Tiene que estar todo lo de antes del borrado, y nada más.
+# 5. Everything from before the deletion has to be there, and nothing else.
 summary="$(eld_psql "$p2" -F ' ' -c "select count(*), count(*) filter (where note = 'tras la copia base'),
 	min(id), max(id) from pitr_probe")"
 read -r rows after_base min_id max_id <<< "$summary"

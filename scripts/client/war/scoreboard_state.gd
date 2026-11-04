@@ -1,15 +1,15 @@
 class_name ScoreboardState
 extends RefCounted
-## Marcador de la zona tal como lo ve el cliente (docs/fuerte.md, sección 6; UI-41). Puro, sin nodos.
+## Zone scoreboard as the client sees it (docs/fuerte.md, section 6; UI-41). Pure, no nodes.
 ## [br][br]
-## El servidor manda el marcador cada 2 s a toda la zona y, con más de
-## [constant NetMessages.Scoreboard.MAX_ROWS] jugadores, lo parte en varias páginas
-## ([method NetMessages.Scoreboard.split]). Este objeto las junta: una página 0 (o un total de
-## páginas distinto) empieza un marcador nuevo, y cuando están todas las páginas del total se publica
-## entero y sustituye al anterior. Mientras tanto se sigue viendo el último marcador completo, así que
-## la lista no parpadea ni se queda a medias.
+## The server sends the scoreboard every 2 s to the whole zone and, with more than
+## [constant NetMessages.Scoreboard.MAX_ROWS] players, splits it into several pages
+## ([method NetMessages.Scoreboard.split]). This object assembles them: a page 0 (or a different total page
+## count) starts a new scoreboard, and when all the pages of the total are in, it is published whole and
+## replaces the previous one. Meanwhile the last complete scoreboard stays visible, so the list neither
+## flickers nor stays half-filled.
 
-## Cuántos marcadores completos se han publicado.
+## How many complete scoreboards have been published.
 var version: int = 0
 
 var _rows: Array[NetMessages.ScoreRow] = []
@@ -19,7 +19,7 @@ var _pages_received: int = 0
 var _updated_at_msec: int = 0
 
 
-## Anota una página. Devuelve true si con ella el marcador queda completo y se publica.
+## Records a page. Returns true if with it the scoreboard is complete and published.
 func apply(board: NetMessages.Scoreboard) -> bool:
 	if board == null:
 		return false
@@ -41,12 +41,12 @@ func apply(board: NetMessages.Scoreboard) -> bool:
 	return true
 
 
-## Filas del último marcador completo, en el orden del servidor.
+## Rows of the last complete scoreboard, in the server's order.
 func get_rows() -> Array[NetMessages.ScoreRow]:
 	return _rows.duplicate()
 
 
-## Fila del jugador [param net_id] (null si no figura).
+## Row of player [param net_id] (null if absent).
 func get_row(net_id: int) -> NetMessages.ScoreRow:
 	for row: NetMessages.ScoreRow in _rows:
 		if row.net_id == net_id:
@@ -54,23 +54,23 @@ func get_row(net_id: int) -> NetMessages.ScoreRow:
 	return null
 
 
-## Número de filas del último marcador completo.
+## Number of rows of the last complete scoreboard.
 func get_row_count() -> int:
 	return _rows.size()
 
 
-## Páginas recibidas desde que existe.
+## Pages received since it was created.
 func get_pages_received() -> int:
 	return _pages_received
 
 
-## Páginas que faltan para completar el marcador que se está juntando (0 si no hay ninguno a medias).
+## Pages missing to complete the scoreboard being assembled (0 if none is half-built).
 func get_pending_pages() -> int:
 	return maxi(_pending_count - _pending.size(), 0) if not _pending.is_empty() else 0
 
 
-## Ordena [param rows] para mostrarlas: más bajas primero, luego menos muertes, más asistencias y,
-## por último, el id para que el orden sea estable.
+## Sorts [param rows] for display: most kills first, then fewest deaths, most assists and, lastly, the id
+## so that the order is stable.
 static func sort_rows(rows: Array[NetMessages.ScoreRow]) -> Array[NetMessages.ScoreRow]:
 	var sorted: Array[NetMessages.ScoreRow] = rows.duplicate()
 	sorted.sort_custom(func(a: NetMessages.ScoreRow, b: NetMessages.ScoreRow) -> bool:

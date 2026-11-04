@@ -1,21 +1,21 @@
 extends TestCase
-## Integración de los grupos con ENet real sobre 127.0.0.1 en un solo proceso (SOC-06, docs/social.md sección
-## 12.4): un [ZoneServer] y varios [NetClient] bots, dos o tres de Vardheim y uno de Solmarch en la misma zona.
-## Los bots envían los mensajes de grupo a mano (el cliente de grupos es de SOC-08) y la prueba decodifica
-## lo que les llega en bruto. Flujos: invitar, aceptar, rechazar, la lista de miembros, el líder heredado al
-## salir, expulsar, ceder el mando, la invitación a un enemigo (rechazada sin que el enemigo se entere), el
-## canal de grupo del chat y el estado compacto a 2 Hz de un miembro fuera del radio de interés. La lógica por
-## separado, sin red, está en test_party_manager.gd.
+## Integration of parties with real ENet over 127.0.0.1 in a single process (SOC-06, docs/social.md
+## section 12.4): a [ZoneServer] and several bot [NetClient]s, two or three from Vardheim and one from
+## Solmarch in the same zone. The bots send the party messages by hand (the party client is SOC-08's)
+## and the test decodes what reaches them raw. Flows: invite, accept, decline, the member list, the
+## leader inherited on leaving, kick, hand over leadership, the invitation to an enemy (declined
+## without the enemy finding out), the chat party channel and the compact 2 Hz state of a member
+## outside the interest radius. The logic on its own, without a network, is in test_party_manager.gd.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ZONE_ID: String = "test_world"
 const WAIT_FRAMES: int = 600
-## Radio de interés de la política de la prueba (m): lo más lejano no sale en los snapshots.
+## Interest radius of the test policy (m): what is farther away does not appear in the snapshots.
 const INTEREST_RADIUS: float = 100.0
 
 
-## Política de interés que solo ve lo que está a menos de [constant INTEREST_RADIUS] m.
+## Interest policy that only sees what is within [constant INTEREST_RADIUS] m.
 class RangePolicy:
 	extends InterestPolicy
 
@@ -58,7 +58,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _start_server(policy: InterestPolicy = null) -> void:
 	_port = NetHarness.free_udp_port()
@@ -129,7 +129,7 @@ func _packets(client: NetClient, msg_type: int) -> Array[PackedByteArray]:
 	return found
 
 
-# Cuántos paquetes de grupo (0x48 a 0x4F) o de chat ha recibido [param client].
+# How many party packets (0x48 to 0x4F) or chat packets [param client] has received.
 func _social_packet_count(client: NetClient) -> int:
 	var count: int = 0
 	for packet: PackedByteArray in _raw(client):
@@ -164,131 +164,131 @@ func _send(client: NetClient, bytes: PackedByteArray) -> void:
 	client.get_transport().send(NetClient.SERVER_PEER_ID, NetProtocol.CH_RELIABLE, bytes)
 
 
-# Los envíos van por la API del cliente de verdad ([NetClient.send_party_invite] y compañía).
+# The sends go through the real client's API ([NetClient.send_party_invite] and company).
 func _invite(from: NetClient, target_name: String) -> void:
-	assert_true(from.send_party_invite(target_name), "el cliente envía PARTY_INVITE")
+	assert_true(from.send_party_invite(target_name), "the client sends PARTY_INVITE")
 
 
 func _respond(from: NetClient, inviter_name: String, accept: bool) -> void:
-	assert_true(from.send_party_response(inviter_name, accept), "el cliente envía PARTY_RESPONSE")
+	assert_true(from.send_party_response(inviter_name, accept), "the client sends PARTY_RESPONSE")
 
 
 func _party_manager() -> PartyManager:
 	return _server.get_social().get_party()
 
 
-# Ana invita a [param other] y este acepta; espera a que los dos tengan la lista con los dos.
+# Ana invites [param other] and they accept; waits for both to have the list with the two of them.
 func _join_party(leader: NetClient, other: NetClient) -> bool:
 	_invite(leader, _name_of(other))
 	if not await _wait_until(func() -> bool: return not _packets(other, NetProtocol.MSG_PARTY_INVITATION).is_empty()):
 		return false
 	_respond(other, _name_of(leader), true)
-	# La primera vez, la lista del líder está vacía y pasa a tener dos nombres (él y el recién llegado).
+	# The first time, the leader's list is empty and ends up with two names (themselves and the newcomer).
 	var expected: int = maxi(_roster_names(leader).size(), 1) + 1
 	return await _wait_until(func() -> bool:
 		return _roster_names(other).size() == expected and _roster_names(leader).size() == expected)
 
 
-# --- Pruebas ----------------------------------------------------------------------------------
+# --- Tests ------------------------------------------------------------------------------------
 
 func test_invite_accept_and_party_chat_with_the_realm_filter() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
 	var cora: NetClient = _add_bot(SOLMARCH, 3)
-	if not assert_true(await _join_all_and_freeze(), "entran los tres"):
+	if not assert_true(await _join_all_and_freeze(), "all three get in"):
 		return
 	_invite(ana, _name_of(bruno).to_upper())
 	assert_true(await _wait_until(func() -> bool:
-		return not _packets(bruno, NetProtocol.MSG_PARTY_INVITATION).is_empty()), "Bruno recibe la invitación")
+		return not _packets(bruno, NetProtocol.MSG_PARTY_INVITATION).is_empty()), "Bruno receives the invitation")
 	var offer: NetMessages.PartyInvitation = NetMessages.PartyInvitation.decode(
 			_packets(bruno, NetProtocol.MSG_PARTY_INVITATION)[0])
-	assert_eq(offer.state, NetMessages.PartyInvitation.State.OFFERED, "nueva")
-	assert_eq(offer.inviter, _name_of(ana), "de Ana, con su nombre canónico")
-	assert_true(offer.tick > _server.get_tick(), "que caduca en el futuro")
-	assert_true(offer.tick <= _server.get_tick() + PartyRules.INVITE_TTL_TICKS, "en 60 s como mucho")
+	assert_eq(offer.state, NetMessages.PartyInvitation.State.OFFERED, "new")
+	assert_eq(offer.inviter, _name_of(ana), "from Ana, with her canonical name")
+	assert_true(offer.tick > _server.get_tick(), "which expires in the future")
+	assert_true(offer.tick <= _server.get_tick() + PartyRules.INVITE_TTL_TICKS, "in 60 s at most")
 
 	_respond(bruno, _name_of(ana), true)
 	assert_true(await _wait_until(func() -> bool:
-		return _roster_names(ana).size() == 2 and _roster_names(bruno).size() == 2), "los dos reciben la lista")
+		return _roster_names(ana).size() == 2 and _roster_names(bruno).size() == 2), "both receive the list")
 	for client: NetClient in [ana, bruno]:
 		var roster: NetMessages.PartyRoster = _last_roster(client)
-		assert_eq(roster.members[0].display_name, _name_of(ana), "primero Ana")
-		assert_eq(roster.members[0].net_id, ana.get_net_id(), "con el net_id que le dio el servidor")
-		assert_eq(roster.members[1].display_name, _name_of(bruno), "después Bruno")
-		assert_eq(roster.members[1].net_id, bruno.get_net_id(), "con su net_id")
-		assert_eq(roster.get_leader_id(), ana.get_net_id(), "manda Ana")
-	assert_eq(_party_manager().get_party_count(), 1, "el servidor tiene un grupo")
-	# El estado de grupo del cliente (PartyState) refleja la lista, y la invitación se retiró de Bruno.
+		assert_eq(roster.members[0].display_name, _name_of(ana), "Ana first")
+		assert_eq(roster.members[0].net_id, ana.get_net_id(), "with the net_id the server gave her")
+		assert_eq(roster.members[1].display_name, _name_of(bruno), "then Bruno")
+		assert_eq(roster.members[1].net_id, bruno.get_net_id(), "with his net_id")
+		assert_eq(roster.get_leader_id(), ana.get_net_id(), "Ana is in charge")
+	assert_eq(_party_manager().get_party_count(), 1, "the server has a party")
+	# The client's party state (PartyState) reflects the list, and the invitation was withdrawn from Bruno.
 	var state: PartyState = bruno.get_party()
-	assert_eq(state.get_member_count(), 2, "Bruno ve a dos miembros")
-	assert_true(state.is_leader(ana.get_net_id()), "y que Ana manda")
-	assert_false(state.is_leader(bruno.get_net_id()), "y él no")
-	assert_null(state.get_current_invitation(), "sin invitaciones pendientes")
-	assert_eq(bruno.get_stats()["party_rosters"], 1, "una lista recibida")
+	assert_eq(state.get_member_count(), 2, "Bruno sees two members")
+	assert_true(state.is_leader(ana.get_net_id()), "and that Ana is in charge")
+	assert_false(state.is_leader(bruno.get_net_id()), "and he is not")
+	assert_null(state.get_current_invitation(), "without pending invitations")
+	assert_eq(bruno.get_stats()["party_rosters"], 1, "a received list")
 
-	# El canal de grupo del chat: solo los miembros, y Cora, del otro reino, nada.
-	assert_true(ana.send_chat(ChatChannel.Id.PARTY, "", "secretoGrupo"), "Ana habla al grupo")
+	# The chat party channel: only the members, and Cora, from the other realm, gets nothing.
+	assert_true(ana.send_chat(ChatChannel.Id.PARTY, "", "secretoGrupo"), "Ana speaks to the party")
 	assert_true(await _wait_until(func() -> bool:
-		return _chat_lines(bruno, ChatChannel.Id.PARTY) == 1), "llega a Bruno")
+		return _chat_lines(bruno, ChatChannel.Id.PARTY) == 1), "it reaches Bruno")
 	await wait_physics_frames(30)
-	assert_eq(_chat_lines(ana, ChatChannel.Id.PARTY), 1, "y a Ana, su copia")
-	assert_eq(_social_packet_count(cora), 0, "Cora no recibe ningún paquete de chat ni de grupo")
-	assert_false(_any_packet_contains(cora, "secretoGrupo"), "ni con el texto en bruto")
+	assert_eq(_chat_lines(ana, ChatChannel.Id.PARTY), 1, "and Ana, her copy")
+	assert_eq(_social_packet_count(cora), 0, "Cora receives no chat or party packet")
+	assert_false(_any_packet_contains(cora, "secretoGrupo"), "nor with the raw text")
 
 
 func test_inviting_an_enemy_is_refused_and_the_enemy_never_knows() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var cora: NetClient = _add_bot(SOLMARCH, 3)
-	if not assert_true(await _join_all_and_freeze(), "entran los dos"):
+	if not assert_true(await _join_all_and_freeze(), "both get in"):
 		return
 	_invite(ana, _name_of(cora))
 	_invite(ana, "Nadie")
-	assert_true(await _wait_until(func() -> bool: return _system_texts(ana).size() >= 2), "dos respuestas")
+	assert_true(await _wait_until(func() -> bool: return _system_texts(ana).size() >= 2), "two replies")
 	await wait_physics_frames(30)
-	assert_eq(_system_texts(ana)[0], "«%s» no está conectado." % _name_of(cora), "al enemigo")
-	assert_eq(_system_texts(ana)[1], "«Nadie» no está conectado.", "a nadie: la misma frase")
-	assert_eq(_social_packet_count(cora), 0, "Cora no recibe ni un paquete social")
-	assert_eq(_party_manager().get_pending_count(), 0, "no hay invitación")
-	# Cora intenta aceptar de todos modos, y se le dice que no tiene invitación.
+	assert_eq(_system_texts(ana)[0], "«%s» no está conectado." % _name_of(cora), "to the enemy")
+	assert_eq(_system_texts(ana)[1], "«Nadie» no está conectado.", "to nobody: the same phrase")
+	assert_eq(_social_packet_count(cora), 0, "Cora does not receive a single social packet")
+	assert_eq(_party_manager().get_pending_count(), 0, "there is no invitation")
+	# Cora tries to accept anyway, and is told she has no invitation.
 	_respond(cora, _name_of(ana), true)
-	assert_true(await _wait_until(func() -> bool: return not _system_texts(cora).is_empty()), "responde el servidor")
-	assert_eq(_system_texts(cora)[0], "No tienes ninguna invitación de «%s»." % _name_of(ana), "sin invitación")
-	assert_eq(_party_manager().get_party_count(), 0, "no hay grupo entre reinos")
-	assert_true(_packets(cora, NetProtocol.MSG_PARTY_ROSTER).is_empty(), "y Cora no ha recibido ninguna lista")
-	assert_true(_packets(ana, NetProtocol.MSG_PARTY_ROSTER).is_empty(), "ni Ana")
+	assert_true(await _wait_until(func() -> bool: return not _system_texts(cora).is_empty()), "the server replies")
+	assert_eq(_system_texts(cora)[0], "No tienes ninguna invitación de «%s»." % _name_of(ana), "without an invitation")
+	assert_eq(_party_manager().get_party_count(), 0, "there is no party across realms")
+	assert_true(_packets(cora, NetProtocol.MSG_PARTY_ROSTER).is_empty(), "and Cora has not received any list")
+	assert_true(_packets(ana, NetProtocol.MSG_PARTY_ROSTER).is_empty(), "nor has Ana")
 
 
 func test_declining_and_expiring_clear_the_invitation() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
-	if not assert_true(await _join_all_and_freeze(), "entran los dos"):
+	if not assert_true(await _join_all_and_freeze(), "both get in"):
 		return
 	_invite(ana, _name_of(bruno))
 	assert_true(await _wait_until(func() -> bool:
-		return not _packets(bruno, NetProtocol.MSG_PARTY_INVITATION).is_empty()), "llega")
+		return not _packets(bruno, NetProtocol.MSG_PARTY_INVITATION).is_empty()), "it arrives")
 	_respond(bruno, _name_of(ana), false)
 	var declined_text: String = "%s ha rechazado tu invitación." % _name_of(bruno)
-	assert_true(await _wait_until(func() -> bool: return _system_texts(ana).has(declined_text)), "Ana lo sabe")
-	assert_eq(_party_manager().get_party_count(), 0, "sin grupo")
+	assert_true(await _wait_until(func() -> bool: return _system_texts(ana).has(declined_text)), "Ana knows it")
+	assert_eq(_party_manager().get_party_count(), 0, "without a party")
 	assert_true(await _wait_until(func() -> bool: return _packets(bruno, NetProtocol.MSG_PARTY_INVITATION).size() == 2),
-			"llega el aviso de que la invitación ya no vale")
+			"the notice that the invitation is no longer valid arrives")
 	var offers: Array[PackedByteArray] = _packets(bruno, NetProtocol.MSG_PARTY_INVITATION)
 	assert_eq(NetMessages.PartyInvitation.decode(offers[offers.size() - 1]).state,
-			NetMessages.PartyInvitation.State.CANCELLED, "el aviso de Bruno se retira")
-	# Una invitación nueva que caduca (el paso del servidor con un tick 60 s más tarde).
+			NetMessages.PartyInvitation.State.CANCELLED, "Bruno's prompt is withdrawn")
+	# A new invitation that expires (the server step with a tick 60 s later).
 	await wait_physics_frames(130)
 	_invite(ana, _name_of(bruno))
 	assert_true(await _wait_until(func() -> bool: return _packets(bruno, NetProtocol.MSG_PARTY_INVITATION).size() == 3),
-			"la segunda invitación llega")
+			"the second invitation arrives")
 	_party_manager().step(_server.get_tick() + PartyRules.INVITE_TTL_TICKS + 1)
 	assert_true(await _wait_until(func() -> bool: return _packets(bruno, NetProtocol.MSG_PARTY_INVITATION).size() == 4),
-			"llega el aviso de caducidad")
+			"the expiry notice arrives")
 	offers = _packets(bruno, NetProtocol.MSG_PARTY_INVITATION)
-	assert_eq(NetMessages.PartyInvitation.decode(offers[3]).state, NetMessages.PartyInvitation.State.EXPIRED, "caducada")
-	assert_eq(_party_manager().get_pending_count(), 0, "sin pendientes")
+	assert_eq(NetMessages.PartyInvitation.decode(offers[3]).state, NetMessages.PartyInvitation.State.EXPIRED, "expired")
+	assert_eq(_party_manager().get_pending_count(), 0, "without pending ones")
 
 
 func test_leaving_kicking_and_the_inherited_lead() -> void:
@@ -296,35 +296,35 @@ func test_leaving_kicking_and_the_inherited_lead() -> void:
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
 	var cora: NetClient = _add_bot(VARDHEIM, 3)
-	if not assert_true(await _join_all_and_freeze(), "entran los tres"):
+	if not assert_true(await _join_all_and_freeze(), "all three get in"):
 		return
-	assert_true(await _join_party(ana, bruno), "Bruno se une")
+	assert_true(await _join_party(ana, bruno), "Bruno joins")
 	await wait_physics_frames(130)
-	assert_true(await _join_party(ana, cora), "Cora se une")
+	assert_true(await _join_party(ana, cora), "Cora joins")
 	assert_eq(_roster_names(cora), PackedStringArray([_name_of(ana), _name_of(bruno), _name_of(cora)]),
-			"orden de llegada")
+			"order of arrival")
 
-	# Ana cede el mando a Cora.
-	assert_true(ana.send_party_leader(_name_of(cora)), "Ana cede el mando")
+	# Ana hands leadership to Cora.
+	assert_true(ana.send_party_leader(_name_of(cora)), "Ana hands over leadership")
 	assert_true(await _wait_until(func() -> bool: return _last_roster(bruno).get_leader_id() == cora.get_net_id()),
-			"manda Cora")
-	# Bruno no puede expulsar a nadie.
-	assert_true(bruno.send_party_kick(_name_of(cora)), "Bruno intenta expulsar")
+			"Cora is in charge")
+	# Bruno cannot kick anyone.
+	assert_true(bruno.send_party_kick(_name_of(cora)), "Bruno tries to kick")
 	assert_true(await _wait_until(func() -> bool: return _system_texts(bruno).has("Solo el líder puede hacer eso.")),
-			"un miembro no expulsa")
-	assert_eq(_roster_names(bruno).size(), 3, "nadie se va")
-	# Cora, que manda, expulsa a Ana.
-	assert_true(cora.send_party_kick(_name_of(ana)), "Cora expulsa a Ana")
-	assert_true(await _wait_until(func() -> bool: return _last_roster(ana).is_empty()), "Ana recibe la lista vacía")
-	assert_true(_system_texts(ana).has("Has sido expulsado del grupo."), "y lo sabe")
-	assert_eq(_roster_names(cora), PackedStringArray([_name_of(bruno), _name_of(cora)]), "quedan Bruno y Cora")
-	assert_eq(_party_manager().get_party_count(), 1, "el grupo sigue")
-	# Cora sale: el grupo de uno se disuelve y Bruno queda sin grupo.
-	assert_true(cora.send_party_leave(), "Cora sale")
+			"a member does not kick")
+	assert_eq(_roster_names(bruno).size(), 3, "nobody leaves")
+	# Cora, who is in charge, kicks Ana.
+	assert_true(cora.send_party_kick(_name_of(ana)), "Cora kicks Ana")
+	assert_true(await _wait_until(func() -> bool: return _last_roster(ana).is_empty()), "Ana receives the empty list")
+	assert_true(_system_texts(ana).has("Has sido expulsado del grupo."), "and knows it")
+	assert_eq(_roster_names(cora), PackedStringArray([_name_of(bruno), _name_of(cora)]), "Bruno and Cora remain")
+	assert_eq(_party_manager().get_party_count(), 1, "the party continues")
+	# Cora leaves: the party of one dissolves and Bruno is left without a party.
+	assert_true(cora.send_party_leave(), "Cora leaves")
 	assert_true(await _wait_until(func() -> bool:
-		return _last_roster(bruno).is_empty() and _last_roster(cora).is_empty()), "los dos reciben la lista vacía")
-	assert_true(_system_texts(bruno).has("El grupo se ha disuelto."), "Bruno sabe que se disolvió")
-	assert_eq(_party_manager().get_party_count(), 0, "el servidor no tiene grupos")
+		return _last_roster(bruno).is_empty() and _last_roster(cora).is_empty()), "both receive the empty list")
+	assert_true(_system_texts(bruno).has("El grupo se ha disuelto."), "Bruno knows it dissolved")
+	assert_eq(_party_manager().get_party_count(), 0, "the server has no parties")
 
 
 func test_the_leader_leaving_the_zone_passes_the_lead_on() -> void:
@@ -332,32 +332,32 @@ func test_the_leader_leaving_the_zone_passes_the_lead_on() -> void:
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
 	var cora: NetClient = _add_bot(VARDHEIM, 3)
-	if not assert_true(await _join_all_and_freeze(), "entran los tres"):
+	if not assert_true(await _join_all_and_freeze(), "all three get in"):
 		return
-	assert_true(await _join_party(ana, bruno), "Bruno se une")
+	assert_true(await _join_party(ana, bruno), "Bruno joins")
 	await wait_physics_frames(130)
-	assert_true(await _join_party(ana, cora), "Cora se une")
+	assert_true(await _join_party(ana, cora), "Cora joins")
 	ana.leave()
 	assert_true(await _wait_until(func() -> bool:
-		return _roster_names(bruno).size() == 2 and _roster_names(cora).size() == 2), "la lista pierde a Ana")
-	assert_eq(_roster_names(bruno), PackedStringArray([_name_of(bruno), _name_of(cora)]), "Bruno y Cora")
-	assert_eq(_last_roster(cora).get_leader_id(), bruno.get_net_id(), "hereda Bruno, el siguiente más antiguo")
-	assert_true(_system_texts(bruno).has("%s ha salido del grupo." % _name_of(ana)), "se cuenta")
-	assert_true(_system_texts(bruno).has("%s es ahora el líder del grupo." % _name_of(bruno)), "y quién manda")
+		return _roster_names(bruno).size() == 2 and _roster_names(cora).size() == 2), "the list loses Ana")
+	assert_eq(_roster_names(bruno), PackedStringArray([_name_of(bruno), _name_of(cora)]), "Bruno and Cora")
+	assert_eq(_last_roster(cora).get_leader_id(), bruno.get_net_id(), "Bruno inherits, the next oldest")
+	assert_true(_system_texts(bruno).has("%s ha salido del grupo." % _name_of(ana)), "it is counted")
+	assert_true(_system_texts(bruno).has("%s es ahora el líder del grupo." % _name_of(bruno)), "and who is in charge")
 
 
 func test_member_status_reaches_a_member_outside_the_interest_radius() -> void:
 	await _start_server(RangePolicy.new())
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
-	if not assert_true(await _join_all_and_freeze(), "entran los dos"):
+	if not assert_true(await _join_all_and_freeze(), "both get in"):
 		return
-	assert_true(await _join_party(ana, bruno), "se agrupan")
+	assert_true(await _join_party(ana, bruno), "they form a party")
 	var far: Vector3 = Vector3(190.0, 0.0, 0.0)
 	_server.teleport(bruno.get_net_id(), far)
-	# Bruno sale del interés de Ana: su vista desaparece, pero el estado de grupo sigue llegando.
+	# Bruno leaves Ana's interest: his view disappears, but the party state keeps arriving.
 	assert_true(await _wait_until(func() -> bool: return ana.get_remote_world().get_view_count() == 0, 300),
-			"Ana ya no ve a Bruno en sus snapshots")
+			"Ana no longer sees Bruno in her snapshots")
 	var bruno_is_far: Callable = func() -> bool:
 		var received: Array[PackedByteArray] = _packets(ana, NetProtocol.MSG_PARTY_STATUS)
 		if received.is_empty():
@@ -368,30 +368,30 @@ func test_member_status_reaches_a_member_outside_the_interest_radius() -> void:
 				return true
 		return false
 	var reached: bool = await _wait_until(bruno_is_far, 300)
-	assert_true(reached, "el estado de Bruno a 210 m llega a Ana con su posición")
+	assert_true(reached, "Bruno's state at 210 m reaches Ana with his position")
 	var packets: Array[PackedByteArray] = _packets(ana, NetProtocol.MSG_PARTY_STATUS)
 	var last: NetMessages.PartyStatus = NetMessages.PartyStatus.decode(packets[packets.size() - 1])
-	assert_eq(last.members.size(), 2, "los dos miembros")
-	assert_eq(last.members[0].net_id, ana.get_net_id(), "Ana, la primera")
-	assert_eq(last.members[0].health_q, 255, "con la vida llena")
-	assert_eq(last.members[1].stamina_q, PartyRules.STAMINA_Q_MAX, "Bruno, con la resistencia llena")
-	# A 2 Hz: en un segundo llegan unos 2 (y a los dos miembros).
+	assert_eq(last.members.size(), 2, "the two members")
+	assert_eq(last.members[0].net_id, ana.get_net_id(), "Ana, the first")
+	assert_eq(last.members[0].health_q, 255, "with full health")
+	assert_eq(last.members[1].stamina_q, PartyRules.STAMINA_Q_MAX, "Bruno, with full stamina")
+	# At 2 Hz: in one second about 2 arrive (and for the two members).
 	var before: int = _packets(ana, NetProtocol.MSG_PARTY_STATUS).size()
 	await wait_physics_frames(120)
 	var gained: int = _packets(ana, NetProtocol.MSG_PARTY_STATUS).size() - before
-	assert_true(gained >= 3 and gained <= 5, "en 2 s llegan ~4 estados (%d)" % gained)
-	# El servidor lo cuenta en el informe.
+	assert_true(gained >= 3 and gained <= 5, "in 2 s ~4 states arrive (%d)" % gained)
+	# The server counts it in the report.
 	var report_path: String = NetHarness.build_path("test_party_loopback_report.json")
-	assert_eq(_server.write_report(report_path), OK, "se escribe el informe")
+	assert_eq(_server.write_report(report_path), OK, "the report is written")
 	var party_stats: Dictionary = NetHarness.read_report(report_path).get("social", {}).get("party", {})
-	assert_true(party_stats.get("status_sent", 0) > 0, "el informe cuenta los estados enviados")
-	assert_eq(party_stats.get("accepted", 0), 1, "y la invitación aceptada")
+	assert_true(party_stats.get("status_sent", 0) > 0, "the report counts the states sent")
+	assert_eq(party_stats.get("accepted", 0), 1, "and the accepted invitation")
 
 
 func test_malformed_party_messages_add_strikes() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
-	if not assert_true(await _join_all_and_freeze(), "entra"):
+	if not assert_true(await _join_all_and_freeze(), "gets in"):
 		return
 	var peer: ServerPeer = null
 	for peer_id: int in _server.get_peer_ids():
@@ -400,15 +400,15 @@ func test_malformed_party_messages_add_strikes() -> void:
 	_send(ana, PackedByteArray([0x48, 0]))
 	_send(ana, PackedByteArray([0x49, 5, 1, 65]))
 	_send(ana, PackedByteArray([0x4A, 1]))
-	# Tipos que solo manda el servidor.
+	# Types that only the server sends.
 	_send(ana, PackedByteArray([0x4E, 0, 0]))
 	_send(ana, PackedByteArray([0x47]))
-	assert_true(await _wait_until(func() -> bool: return peer.strikes_total - before >= 5), "cinco avisos")
-	assert_eq(peer.strikes_total - before, 5, "exactamente cinco")
-	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "no se expulsa por cinco")
+	assert_true(await _wait_until(func() -> bool: return peer.strikes_total - before >= 5), "five warnings")
+	assert_eq(peer.strikes_total - before, 5, "exactly five")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "nobody is kicked for five")
 
 
-# --- Más ayudantes ----------------------------------------------------------------------------
+# --- More helpers -----------------------------------------------------------------------------
 
 func _chat_lines(client: NetClient, channel: int) -> int:
 	var count: int = 0

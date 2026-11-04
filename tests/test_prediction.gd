@@ -1,45 +1,45 @@
 extends TestCase
-## Pruebas de la predicción del cliente ([ClientPrediction]), del suavizado de las correcciones
-## ([CorrectionSmoother]) y de los cambios de [LocalPlayerController] de la fase 2 (docs/red.md,
-## secciones 6, 16 y 17.7). No hay red: el «servidor» y el cliente son dos mundos de física
-## separados (dos [SubViewport] con [code]own_world_3d = true[/code]), cada uno con un
-## [PlayerCharacter] sobre un suelo con una rampa.
+## Tests of the client prediction ([ClientPrediction]), the smoothing of corrections
+## ([CorrectionSmoother]) and the phase 2 changes to [LocalPlayerController] (docs/red.md,
+## sections 6, 16 and 17.7). There is no network: the "server" and the client are two separate
+## physics worlds (two [SubViewport]s with [code]own_world_3d = true[/code]), each with a
+## [PlayerCharacter] on a ground with a ramp.
 ## [br][br]
-## El servidor se modela a mano con la regla de la sección 8.2 (sin depender de
-## [code]scripts/server/[/code]): aplica la entrada del tick si le ha llegado y, si no, repite la
-## última aplicada con todos sus botones y pone el movimiento a 0 pasados 6 ticks sin entradas
-## reales. Las entradas del servidor son las mismas (cuantizadas, tras pasar por
-## encode/decode) que genera el cliente.
+## The server is modeled by hand with the rule of section 8.2 (without depending on
+## [code]scripts/server/[/code]): it applies the tick's input if it has arrived and, if not, repeats
+## the last applied one with all its buttons and sets the movement to 0 after 6 ticks without real
+## inputs. The server's inputs are the same ones (quantized, after going through
+## encode/decode) that the client generates.
 ## [br][br]
-## Todo se simula dentro del tick de física con [code]delta = 1 / physics_ticks_per_second[/code],
-## como pide [method PlayerCharacter.simulate]. Varios ticks dentro de un mismo paso de física son
-## válidos (es lo que hace la reconciliación) y se usan donde no importa el reloj.
+## Everything is simulated inside the physics tick with [code]delta = 1 / physics_ticks_per_second[/code],
+## as [method PlayerCharacter.simulate] requires. Several ticks within the same physics step are
+## valid (that is what reconciliation does) and are used where the clock does not matter.
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 const WORLD_LAYER: int = PlayerCharacter.WORLD_COLLISION_LAYER
-## Tick del servidor en el que «aparece» el jugador, y primer tick con entrada real.
+## Server tick at which the player "appears", and first tick with real input.
 const SPAWN_TICK: int = 10
 const FIRST_REAL_TICK: int = 14
-## Seis metros delante de la rampa de 25°, que sube hacia -Z.
+## Six meters in front of the 25° ramp, which rises toward -Z.
 const SPAWN_POSITION: Vector3 = Vector3(20.0, 0.0, 6.0)
 const RAMP_FOOT: Vector3 = Vector3(20.0, -0.02, 0.0)
 const RAMP_ANGLE_DEG: float = 25.0
 const RAMP_LENGTH: float = 12.0
 const RAMP_WIDTH: float = 10.0
 const RAMP_THICKNESS: float = 0.5
-## Ticks de retraso con los que llegan los estados del servidor (6 ticks = 100 ms).
+## Ticks of delay with which the server states arrive (6 ticks = 100 ms).
 const STATE_DELAY_FRAMES: int = 6
-## Un estado propio cada 2 ticks, como los snapshots a 30 Hz.
+## One own state every 2 ticks, like snapshots at 30 Hz.
 const STATE_INTERVAL_TICKS: int = 2
-## Ticks de la ruta guionizada.
+## Ticks of the scripted route.
 const ROUTE_TICKS: int = 250
-## Ticks de la ruta de combate.
+## Ticks of the combat route.
 const COMBAT_ROUTE_TICKS: int = 300
-## Ticks que salta el hard reset hacia delante de la prueba de la regla de sustitución: más de
-## [constant NetProtocol.REPEAT_MOVE_TICKS], para ver cómo se repite el movimiento y cómo se anula.
+## Ticks that the hard reset jumps forward in the substitution rule test: more than
+## [constant NetProtocol.REPEAT_MOVE_TICKS], to see how the movement is repeated and how it is zeroed.
 const GAP_TICKS: int = 12
-## Altura (m) del suelo que la ruta tiene que pisar para dar por subida la rampa: un salto en llano
-## llega a ~1,5 m, así que 2 m solo se alcanzan subiendo por ella.
+## Height (m) of the ground that the route has to step on to count the ramp as climbed: a jump on flat ground
+## reaches ~1.5 m, so 2 m is only reached by climbing it.
 const MIN_RAMP_HEIGHT: float = 2.0
 
 var _server_viewport: SubViewport
@@ -57,13 +57,13 @@ var _dt: float = 1.0 / 60.0
 var _jumped_count: int = 0
 var _landed_count: int = 0
 var _pressed_actions: Array[StringName] = []
-## Estados propios del servidor en camino hacia el cliente: {tick, state, due} (due = fotograma
-## de cliente en el que llegan).
+## Server own states on their way to the client: {tick, state, due} (due = client frame
+## at which they arrive).
 var _pending_states: Array[Dictionary] = []
 var _frame_counter: int = 0
 
 
-## Cerebro cuyas entradas salen de una función del tick, y que recuerda lo último que vio.
+## Brain whose inputs come from a function of the tick, and which remembers the last thing it saw.
 class ScriptedBrain extends BotBrain:
 	var route: Callable
 	var calls: int = 0
@@ -84,17 +84,17 @@ class ScriptedBrain extends BotBrain:
 		return route.call(tick) as PlayerInput
 
 
-## El servidor de la prueba: la regla de sustitución de la sección 8.2 sobre un personaje real.
+## The test server: the substitution rule of section 8.2 on a real character.
 class ServerModel:
 	var character: PlayerCharacter
 	var dt: float = 1.0 / 60.0
 	var tick: int = 0
-	## Entradas recibidas todavía sin aplicar (tick -> entrada). Gana la primera copia.
+	## Inputs received that are not yet applied (tick -> input). The first copy wins.
 	var inbox: Dictionary = {}
 	var last_applied: PlayerInput = null
 	var last_real_tick: int = 0
 	var substitutions: int = 0
-	## Estado tras cada tick simulado (tick -> PlayerState).
+	## State after each simulated tick (tick -> PlayerState).
 	var states: Dictionary = {}
 
 
@@ -135,7 +135,7 @@ class ServerModel:
 		return input
 
 
-	## Simula el tick siguiente y devuelve el estado resultante.
+	## Simulates the next tick and returns the resulting state.
 	func step() -> PlayerState:
 		tick += 1
 		character.simulate(take(tick), dt)
@@ -173,7 +173,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Predicción: mismas entradas, mismo estado --------------------------------------------------
+# --- Prediction: same inputs, same state --------------------------------------------------------
 
 func test_prediction_matches_the_server_tick_by_tick() -> void:
 	if not await _begin_session(_route_input):
@@ -194,24 +194,24 @@ func test_prediction_matches_the_server_tick_by_tick() -> void:
 			yaw_wraps += 1
 		previous_yaw = state.yaw
 		var predicted: PlayerState = _prediction.get_predicted_state(_model.tick)
-		if not assert_not_null(predicted, "el anillo guarda el tick %d" % _model.tick):
+		if not assert_not_null(predicted, "the ring stores tick %d" % _model.tick):
 			return
 		if predicted.encode() != state.encode():
-			fail("el estado predicho del tick %d difiere del del servidor.\n  predicho: %s\n  servidor: %s"
+			fail("the predicted state of tick %d differs from the server's.\n  predicted: %s\n  server: %s"
 					% [_model.tick, predicted, state])
 			return
-	# Un salto en llano ya llega a ~1,5 m (8² / (2 · 22)): solo se está en la rampa si los pies, en el
-	# suelo, pasan de los 2 m (la ruta llega a unos 3,5 m).
+	# A jump on flat ground already reaches ~1.5 m (8² / (2 · 22)): you are only on the ramp if the feet, off the
+	# ground, exceed 2 m (the route reaches about 3.5 m).
 	assert_true(grounded_peak_height > MIN_RAMP_HEIGHT,
-			"la ruta sube por la rampa: pisa el suelo a más de %s m (máximo %.2f m)"
+			"the route climbs the ramp: it steps on ground above %s m (maximum %.2f m)"
 			% [MIN_RAMP_HEIGHT, grounded_peak_height])
-	assert_true(peak_height > 1.0, "y salta (altura máxima %s)" % peak_height)
-	assert_true(yaw_wraps >= 1, "la ruta gira cruzando ±PI (%d cruces)" % yaw_wraps)
-	assert_true(_jumped_count >= 2, "la ruta salta (%d saltos)" % _jumped_count)
+	assert_true(peak_height > 1.0, "and it jumps (maximum height %s)" % peak_height)
+	assert_true(yaw_wraps >= 1, "the route turns crossing ±PI (%d crossings)" % yaw_wraps)
+	assert_true(_jumped_count >= 2, "the route jumps (%d jumps)" % _jumped_count)
 	assert_true(_prediction.get_predicted_tick() > ClientPrediction.HISTORY_SIZE,
-			"la ruta da la vuelta a los anillos de 256 huecos")
+			"the route wraps around the 256-slot rings")
 	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1,
-			"el servidor solo sustituyó los ticks anteriores a la primera entrada real")
+			"the server only substituted the ticks before the first real input")
 
 
 func test_states_arriving_late_all_match_without_loss() -> void:
@@ -222,26 +222,26 @@ func test_states_arriving_late_all_match_without_loss() -> void:
 		await tree.physics_frame
 		_client_tick(results, [] as Array[int])
 		_server_tick()
-	assert_true(results.size() > 100, "llegaron estados (%d)" % results.size())
+	assert_true(results.size() > 100, "states arrived (%d)" % results.size())
 	for entry: Vector2i in results:
 		if entry.y != ClientPrediction.Result.MATCH:
-			fail("el estado del tick %d no coincidió (resultado %d)" % [entry.x, entry.y])
+			fail("the state of tick %d did not match (result %d)" % [entry.x, entry.y])
 			return
 	var stats: Dictionary = _prediction.get_stats()
-	assert_eq(stats["matches"], results.size(), "todos coinciden")
-	assert_eq(stats["corrections"], 0, "ninguna corrección")
-	assert_eq(stats["replays"], 0, "ninguna repetición")
-	assert_eq(stats["hard_resets"], 0, "ningún hard reset")
-	assert_eq(stats["resimulated_ticks"], 0, "ningún tick vuelto a simular")
-	assert_eq(stats["max_correction"], 0.0, "corrección máxima 0")
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "el suavizador no se usó")
+	assert_eq(stats["matches"], results.size(), "all match")
+	assert_eq(stats["corrections"], 0, "no correction")
+	assert_eq(stats["replays"], 0, "no replay")
+	assert_eq(stats["hard_resets"], 0, "no hard reset")
+	assert_eq(stats["resimulated_ticks"], 0, "no tick re-simulated")
+	assert_eq(stats["max_correction"], 0.0, "maximum correction 0")
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "the smoother was not used")
 
 
 func test_a_substituted_tick_is_reconciled_and_converges_exactly() -> void:
 	if not await _begin_session(_route_input):
 		return
-	# El tick 31 es el primero con movimiento: si se pierde, el servidor repite la entrada
-	# neutra y arranca un tick tarde.
+	# Tick 31 is the first with movement: if it is lost, the server repeats the neutral input
+	# and starts one tick late.
 	var lost: Array[int] = [31]
 	var results: Array[Vector2i] = []
 	for _frame: int in ROUTE_TICKS:
@@ -249,44 +249,44 @@ func test_a_substituted_tick_is_reconciled_and_converges_exactly() -> void:
 		_client_tick(results, lost)
 		_server_tick()
 	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 1,
-			"el servidor sustituyó el tick perdido")
+			"the server substituted the lost tick")
 	var corrected: Array[Vector2i] = _results_with(results, ClientPrediction.Result.CORRECTED)
-	assert_eq(corrected.size(), 1, "una sola reconciliación")
+	assert_eq(corrected.size(), 1, "a single reconciliation")
 	if corrected.size() != 1:
 		return
 	var first_bad: int = corrected[0].x
-	assert_true(first_bad >= 31 and first_bad <= 32, "el primer estado distinto es el 31 o el 32 (%d)"
+	assert_true(first_bad >= 31 and first_bad <= 32, "the first different state is 31 or 32 (%d)"
 			% first_bad)
 	for entry: Vector2i in results:
 		if entry.x > first_bad and entry.y != ClientPrediction.Result.MATCH:
-			fail("tras reconciliar, el estado del tick %d debería coincidir (resultado %d)"
+			fail("after reconciling, the state of tick %d should match (result %d)"
 					% [entry.x, entry.y])
 			return
 		if entry.x < first_bad and entry.y != ClientPrediction.Result.MATCH:
-			fail("antes de la pérdida, el estado del tick %d debería coincidir" % entry.x)
+			fail("before the loss, the state of tick %d should match" % entry.x)
 			return
-	# Desde el primer estado reconciliado, el cliente queda bit a bit igual al servidor.
+	# From the first reconciled state, the client ends up bit for bit equal to the server.
 	for tick: int in range(first_bad, _model.tick + 1):
 		var predicted: PlayerState = _prediction.get_predicted_state(tick)
 		if predicted == null or predicted.encode() != (_model.states[tick] as PlayerState).encode():
-			fail("el tick %d no quedó igual al servidor tras la reconciliación" % tick)
+			fail("tick %d did not end up equal to the server after the reconciliation" % tick)
 			return
 	var stats: Dictionary = _prediction.get_stats()
-	assert_eq(stats["replays"], 1, "una repetición")
-	assert_eq(stats["corrections"], 1, "una corrección de más de 1 mm")
-	assert_eq(stats["hard_resets"], 0, "sin hard reset")
+	assert_eq(stats["replays"], 1, "one replay")
+	assert_eq(stats["corrections"], 1, "a correction of more than 1 mm")
+	assert_eq(stats["hard_resets"], 0, "without hard reset")
 	assert_true(stats["max_correction"] > 0.005 and stats["max_correction"] < 0.2,
-			"el error fue de pocos centímetros (%s m)" % stats["max_correction"])
-	assert_eq(stats["last_correction"], stats["max_correction"], "última corrección")
+			"the error was a few centimeters (%s m)" % stats["max_correction"])
+	assert_eq(stats["last_correction"], stats["max_correction"], "last correction")
 	assert_true(stats["resimulated_ticks"] > 5 and stats["resimulated_ticks"] < 30,
-			"se repitieron unos 10 ticks (%s)" % stats["resimulated_ticks"])
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "y el desfase ya decayó")
+			"about 10 ticks were replayed (%s)" % stats["resimulated_ticks"])
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "and the offset has already decayed")
 
 
 func test_a_lost_jump_is_reconciled_without_repeating_the_sound() -> void:
 	if not await _begin_session(_route_input):
 		return
-	# El salto se pulsa en los ticks 100-102: perdidos los tres, el servidor nunca salta.
+	# The jump is pressed on ticks 100-102: with all three lost, the server never jumps.
 	var lost: Array[int] = [100, 101, 102]
 	var results: Array[Vector2i] = []
 	var jumps_before_replays: int = -1
@@ -296,37 +296,37 @@ func test_a_lost_jump_is_reconciled_without_repeating_the_sound() -> void:
 		_server_tick()
 		if _prediction.get_predicted_tick() == 102:
 			jumps_before_replays = _jumped_count
-	assert_eq(jumps_before_replays, 1, "el cliente salta una vez al predecir el tick 100")
+	assert_eq(jumps_before_replays, 1, "the client jumps once when predicting tick 100")
 	assert_true(_results_with(results, ClientPrediction.Result.CORRECTED).size() >= 1,
-			"el error de un salto se reconcilia")
+			"the error of a jump is reconciled")
 	var last_bad: int = 0
 	for entry: Vector2i in results:
 		if entry.y != ClientPrediction.Result.MATCH:
 			last_bad = maxi(last_bad, entry.x)
 	for entry: Vector2i in results:
 		if entry.x > last_bad and entry.y != ClientPrediction.Result.MATCH:
-			fail("tras la última corrección el estado del tick %d debería coincidir" % entry.x)
+			fail("after the last correction the state of tick %d should match" % entry.x)
 			return
 	for tick: int in range(last_bad, _model.tick + 1):
 		var predicted: PlayerState = _prediction.get_predicted_state(tick)
 		if predicted == null or predicted.encode() != (_model.states[tick] as PlayerState).encode():
-			fail("el tick %d no quedó igual al servidor" % tick)
+			fail("tick %d did not end up equal to the server" % tick)
 			return
 	assert_true(_prediction.get_stats()["max_correction"] > 0.3,
-			"la corrección del salto perdido es grande (%s m)" % _prediction.get_stats()["max_correction"])
-	assert_eq(_prediction.get_stats()["hard_resets"], 0, "sin hard reset")
-	# Las repeticiones vuelven a simular un salto (la entrada real llega un tick tarde) pero no
-	# emiten jumped ni landed: solo cuenta lo que se simuló en tiempo real.
-	assert_true(_jumped_count <= 2, "las repeticiones no emiten jumped (%d saltos)" % _jumped_count)
-	assert_true(_character.events_enabled, "los eventos vuelven a estar activados")
-	assert_false(_prediction.is_replaying(), "no se queda en modo repetición")
+			"the correction for the lost jump is large (%s m)" % _prediction.get_stats()["max_correction"])
+	assert_eq(_prediction.get_stats()["hard_resets"], 0, "without hard reset")
+	# The replays simulate a jump again (the real input arrives one tick late) but do not
+	# emit jumped or landed: only what was simulated in real time counts.
+	assert_true(_jumped_count <= 2, "the replays do not emit jumped (%d jumps)" % _jumped_count)
+	assert_true(_character.events_enabled, "events are enabled again")
+	assert_false(_prediction.is_replaying(), "it does not stay in replay mode")
 
 
 func test_a_late_first_real_input_is_reconciled() -> void:
 	if not await _begin_session(_walk_route):
 		return
-	# Las entradas de los ticks 14 y 15 (las dos primeras reales) llegan tarde: el servidor las
-	# sustituye con la entrada neutra del alta y el cliente lo corrige.
+	# The inputs of ticks 14 and 15 (the first two real ones) arrive late: the server
+	# substitutes them with the neutral spawn input and the client corrects it.
 	var lost: Array[int] = [FIRST_REAL_TICK, FIRST_REAL_TICK + 1]
 	var results: Array[Vector2i] = []
 	for _frame: int in 120:
@@ -334,20 +334,20 @@ func test_a_late_first_real_input_is_reconciled() -> void:
 		_client_tick(results, lost)
 		_server_tick()
 	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 2,
-			"el servidor sustituyó el avance neutro y los dos ticks perdidos")
+			"the server substituted the neutral advance and the two lost ticks")
 	var last_bad: int = _last_result_tick_not(results, ClientPrediction.Result.MATCH)
-	assert_true(last_bad > 0, "hubo reconciliaciones")
+	assert_true(last_bad > 0, "there were reconciliations")
 	assert_true(_results_with(results, ClientPrediction.Result.HARD_RESET).is_empty(),
-			"sin hard reset")
-	assert_true(last_bad <= FIRST_REAL_TICK + 3, "y solo en los primeros ticks (%d)" % last_bad)
+			"without hard reset")
+	assert_true(last_bad <= FIRST_REAL_TICK + 3, "and only in the first ticks (%d)" % last_bad)
 	_assert_converged_since(last_bad)
 
 
 func test_a_long_loss_burst_is_reconciled_repeatedly_and_converges() -> void:
 	if not await _begin_session(_walk_route):
 		return
-	# Doce ticks seguidos perdidos: el servidor repite el movimiento 6 ticks y después se queda
-	# quieto (8.2); con cada estado que llega, el cliente vuelve a reconciliar.
+	# Twelve consecutive ticks lost: the server repeats the movement for 6 ticks and then stays
+	# still (8.2); with every state that arrives, the client reconciles again.
 	var lost: Array[int] = []
 	for tick: int in range(40, 52):
 		lost.append(tick)
@@ -356,24 +356,24 @@ func test_a_long_loss_burst_is_reconciled_repeatedly_and_converges() -> void:
 		await tree.physics_frame
 		_client_tick(results, lost)
 		_server_tick()
-	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 12, "doce sustituciones")
+	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 12, "twelve substitutions")
 	var corrected: Array[Vector2i] = _results_with(results, ClientPrediction.Result.CORRECTED)
-	assert_true(corrected.size() >= 4, "varias reconciliaciones seguidas (%d)" % corrected.size())
+	assert_true(corrected.size() >= 4, "several consecutive reconciliations (%d)" % corrected.size())
 	assert_true(_results_with(results, ClientPrediction.Result.HARD_RESET).is_empty(),
-			"sin hard reset")
+			"without hard reset")
 	var last_bad: int = _last_result_tick_not(results, ClientPrediction.Result.MATCH)
-	assert_true(last_bad >= 50 and last_bad <= 53, "la última diferencia es de cuando acaba la "
-			+ "pérdida (%d)" % last_bad)
+	assert_true(last_bad >= 50 and last_bad <= 53, "the last difference is from when the "
+			+ "loss ends (%d)" % last_bad)
 	_assert_converged_since(last_bad)
 	var stats: Dictionary = _prediction.get_stats()
-	assert_true(stats["max_correction"] > 0.2, "el servidor se paró y el error fue grande (%s m)"
+	assert_true(stats["max_correction"] > 0.2, "the server stopped and the error was large (%s m)"
 			% stats["max_correction"])
 	assert_true(stats["max_correction"] < ClientPrediction.SNAP_DISTANCE,
-			"pero se suavizó, sin saltar")
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "y el desfase acabó anulándose")
+			"but it was smoothed, without jumping")
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "and the offset ended up zeroing out")
 
 
-# --- Combate: acciones a medias, pérdidas y entradas sustituidas ---------------------------------
+# --- Combat: half-finished actions, losses and substituted inputs --------------------------------
 
 func test_combat_route_matches_the_server_tick_by_tick() -> void:
 	if not await _begin_session(_combat_route):
@@ -386,25 +386,25 @@ func test_combat_route_matches_the_server_tick_by_tick() -> void:
 		var state: PlayerState = _server_tick()
 		actions_seen[state.combat.action] = true
 		var predicted: PlayerState = _prediction.get_predicted_state(_model.tick)
-		if not assert_not_null(predicted, "el anillo guarda el tick %d" % _model.tick):
+		if not assert_not_null(predicted, "the ring stores tick %d" % _model.tick):
 			return
 		if predicted.encode() != state.encode():
-			fail("el estado predicho del tick %d difiere del del servidor.\n  predicho: %s\n  servidor: %s"
+			fail("the predicted state of tick %d differs from the server's.\n  predicted: %s\n  server: %s"
 					% [_model.tick, predicted, state])
 			return
 	for action: int in [CombatState.Action.LIGHT, CombatState.Action.HEAVY,
 			CombatState.Action.CHARGE, CombatState.Action.BLOCK, CombatState.Action.DODGE]:
-		assert_true(actions_seen.has(action), "la ruta pasa por la acción %d" % action)
+		assert_true(actions_seen.has(action), "the route goes through action %d" % action)
 	var stats: Dictionary = _prediction.get_stats()
-	assert_eq(stats["replays"], 0, "ninguna repetición")
-	assert_eq(stats["corrections"], 0, "ninguna corrección")
-	assert_true(stats["matches"] > 100, "llegaron estados que coincidieron (%d)" % stats["matches"])
+	assert_eq(stats["replays"], 0, "no replay")
+	assert_eq(stats["corrections"], 0, "no correction")
+	assert_true(stats["matches"] > 100, "states that matched arrived (%d)" % stats["matches"])
 
 
 func test_a_lost_attack_press_is_reconciled_and_converges() -> void:
 	if not await _begin_session(_combat_route):
 		return
-	# La pulsación que empieza el primer ligero (tick 40) se pierde: el servidor no ataca.
+	# The press that starts the first light attack (tick 40) is lost: the server does not attack.
 	var lost: Array[int] = [40]
 	var results: Array[Vector2i] = []
 	var diverged_in_combat: bool = false
@@ -415,25 +415,25 @@ func test_a_lost_attack_press_is_reconciled_and_converges() -> void:
 		var predicted: PlayerState = _prediction.get_predicted_state(_model.tick)
 		if predicted != null and predicted.combat.action != state.combat.action:
 			diverged_in_combat = true
-	assert_true(diverged_in_combat, "el cliente y el servidor llegaron a tener acciones distintas")
+	assert_true(diverged_in_combat, "the client and the server ended up with different actions")
 	var corrected: Array[Vector2i] = _results_with(results, ClientPrediction.Result.CORRECTED)
-	assert_true(corrected.size() >= 1, "se reconcilió con una acción a medias")
+	assert_true(corrected.size() >= 1, "it reconciled with a half-finished action")
 	assert_true(_results_with(results, ClientPrediction.Result.HARD_RESET).is_empty(),
-			"sin hard reset")
+			"without hard reset")
 	var last_bad: int = _last_result_tick_not(results, ClientPrediction.Result.MATCH)
-	assert_true(last_bad > 0 and last_bad < 100, "el desacuerdo se resuelve pronto (%d)" % last_bad)
-	# La ruta es más larga que el anillo de 256 ticks: se comprueba el último tramo.
+	assert_true(last_bad > 0 and last_bad < 100, "the disagreement is resolved soon (%d)" % last_bad)
+	# The route is longer than the 256-tick ring: the last stretch is checked.
 	_assert_converged_since(maxi(last_bad, _model.tick - 150))
-	# Tras reconciliar, el resto de la ruta (esquiva, bloqueo, carga...) sale igual en los dos.
+	# After reconciling, the rest of the route (dodge, block, charge...) comes out the same on both.
 	assert_eq(_prediction.get_predicted_state(_model.tick).combat.stamina,
-			(_model.states[_model.tick] as PlayerState).combat.stamina, "misma resistencia")
+			(_model.states[_model.tick] as PlayerState).combat.stamina, "same stamina")
 
 
 func test_lost_inputs_in_the_middle_of_a_charge_are_reconciled_and_converge() -> void:
 	if not await _begin_session(_combat_route):
 		return
-	# Se pierden 6 ticks de la carga del fuerte (200-239 pulsado): el servidor repite el botón con
-	# la marca de entrada sustituida, así que no suma pulsación ni lanza al llegar a la máxima.
+	# 6 ticks of the heavy attack's charge are lost (200-239 held): the server repeats the button with
+	# the substituted-input mark, so it adds no press and does not throw on reaching the maximum.
 	var lost: Array[int] = [212, 213, 214, 215, 216, 217]
 	var results: Array[Vector2i] = []
 	var server_held_froze: bool = false
@@ -445,102 +445,102 @@ func test_lost_inputs_in_the_middle_of_a_charge_are_reconciled_and_converge() ->
 		if predicted != null and _model.tick == 217 and predicted.combat.primary_held \
 				> state.combat.primary_held:
 			server_held_froze = true
-	assert_true(server_held_froze, "las entradas sustituidas no suman a primary_held en el servidor")
-	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 6, "seis sustituciones")
+	assert_true(server_held_froze, "substituted inputs do not add to primary_held on the server")
+	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 6, "six substitutions")
 	assert_true(_results_with(results, ClientPrediction.Result.CORRECTED).size() >= 1,
-			"se reconcilia la diferencia")
+			"the difference is reconciled")
 	var last_bad: int = _last_result_tick_not(results, ClientPrediction.Result.MATCH)
-	assert_true(last_bad > 0, "hubo diferencias")
+	assert_true(last_bad > 0, "there were differences")
 	_assert_converged_since(maxi(last_bad, _model.tick - 150))
 	assert_true(_prediction.get_stats()["max_correction"] < ClientPrediction.SNAP_DISTANCE,
-			"y se corrigió sin saltar")
+			"and it was corrected without jumping")
 
 
 func test_replays_fill_gaps_with_substituted_inputs() -> void:
 	if not await _begin_session(_idle_route):
 		return
-	# Un hard reset muy atrasado obliga a repetir ticks cuya entrada ya salió del anillo: se
-	# sustituyen como lo haría el servidor, con la marca de entrada sustituida. Las neutras con las
-	# que arranca la predicción también la llevan, porque el servidor las sustituye.
+	# A very late hard reset forces replaying ticks whose input has already left the ring: they are
+	# substituted as the server would, with the substituted-input mark. The neutral ones the
+	# prediction starts with also carry it, because the server substitutes them.
 	var first_input: PlayerInput = _prediction.get_input(SPAWN_TICK + 1)
-	if assert_not_null(first_input, "la predicción guardó las entradas neutras del arranque"):
+	if assert_not_null(first_input, "the prediction stored the startup neutral inputs"):
 		assert_eq(first_input.buttons & PlayerInput.SUBSTITUTED, PlayerInput.SUBSTITUTED,
-				"y llevan la marca de sustituida")
+				"and they carry the substituted mark")
 	for _i: int in 20:
 		_prediction.step()
 	var real: PlayerInput = _prediction.get_input(_prediction.get_predicted_tick())
-	assert_eq(real.buttons & PlayerInput.SUBSTITUTED, 0, "las entradas generadas no la llevan")
+	assert_eq(real.buttons & PlayerInput.SUBSTITUTED, 0, "the generated inputs do not carry it")
 	_prediction._begin_substitution(_prediction.get_predicted_tick())
 	var substitute: PlayerInput = _prediction._input_or_substitute(
 			_prediction.get_predicted_tick() + 10)
 	assert_eq(substitute.buttons & PlayerInput.SUBSTITUTED, PlayerInput.SUBSTITUTED,
-			"la sustituta de una repetición lleva la marca")
+			"the replacement of a replay carries the mark")
 
 
 func test_replays_do_not_emit_jump_or_landing_events() -> void:
 	if not await _begin_session(_route_input):
 		return
-	# Sin estados del servidor por el camino: se predice hasta justo después del salto del tick 100
-	# (que el cliente emite una vez, en tiempo real) y llega un estado anterior al salto que
-	# difiere un poco. La repetición vuelve a saltar en el tick 100, pero sin emitir nada.
+	# Without server states on the way: it predicts until just after the jump of tick 100
+	# (which the client emits once, in real time) and a state from before the jump arrives that
+	# differs a little. The replay jumps again on tick 100, but without emitting anything.
 	while _prediction.get_predicted_tick() < 108:
 		_prediction.step()
 	var jumps: int = _jumped_count
 	var landings: int = _landed_count
-	assert_eq(jumps, 1, "se saltó una vez en tiempo real")
+	assert_eq(jumps, 1, "it jumped once in real time")
 	var wrong: PlayerState = _prediction.get_predicted_state(99).duplicate_state()
 	wrong.position += Vector3(0.0, 0.0, 0.05)
 	var result: int = _prediction.on_server_state(99, wrong, false)
-	assert_eq(result, ClientPrediction.Result.CORRECTED, "se reconcilia")
-	assert_eq(_jumped_count, jumps, "la repetición del salto no emite jumped")
-	assert_eq(_landed_count, landings, "ni landed")
-	assert_true(_character.events_enabled, "events_enabled vuelve a true")
-	assert_true(_character.velocity.y > 0.0, "y el salto sí se repitió: sigue subiendo")
-	assert_false(_character.grounded, "en el aire")
+	assert_eq(result, ClientPrediction.Result.CORRECTED, "it reconciles")
+	assert_eq(_jumped_count, jumps, "the jump replay does not emit jumped")
+	assert_eq(_landed_count, landings, "nor landed")
+	assert_true(_character.events_enabled, "events_enabled goes back to true")
+	assert_true(_character.velocity.y > 0.0, "and the jump was indeed replayed: it keeps rising")
+	assert_false(_character.grounded, "in the air")
 
 
-# --- Arranque, anillos y estados que no encajan -------------------------------------------------
+# --- Startup, rings and states that do not fit --------------------------------------------------
 
 func test_start_advances_with_neutral_input_and_without_events() -> void:
 	if not await _build_session():
 		return
 	await tree.physics_frame
-	assert_null(_prediction.step(), "step() antes de start() no hace nada")
-	assert_false(_prediction.is_started(), "sin arrancar")
-	# En el aire, a 1 cm del suelo: durante el avance neutro aterriza y emitiría landed.
+	assert_null(_prediction.step(), "step() before start() does nothing")
+	assert_false(_prediction.is_started(), "without starting")
+	# In the air, 1 cm from the ground: during the neutral advance it lands and would emit landed.
 	var spawn := PlayerState.new()
 	spawn.position = SPAWN_POSITION + Vector3(0.0, 0.01, 0.0)
 	spawn.grounded = false
 	spawn.yaw = 1.25
 	spawn = PlayerState.decode(spawn.encode())
 	_prediction.start(SPAWN_TICK, spawn, FIRST_REAL_TICK)
-	assert_true(_prediction.is_started(), "arrancada")
-	assert_eq(_prediction.get_predicted_tick(), FIRST_REAL_TICK - 1, "predicho hasta justo antes de P0")
-	assert_eq(_prediction.get_first_real_tick(), FIRST_REAL_TICK, "primer tick con entrada real")
-	assert_true(_character.grounded, "el personaje aterrizó durante el avance neutro")
-	assert_eq(_landed_count, 0, "pero el avance neutro no emite landed")
-	assert_true(_character.events_enabled, "y deja events_enabled como estaba")
-	assert_null(_prediction.get_input(SPAWN_TICK), "el tick de aparición no tiene entrada")
-	assert_not_null(_prediction.get_predicted_state(SPAWN_TICK), "pero sí estado")
-	assert_true(_prediction.get_predicted_state(SPAWN_TICK).equals_exact(spawn), "el de aparición")
+	assert_true(_prediction.is_started(), "started")
+	assert_eq(_prediction.get_predicted_tick(), FIRST_REAL_TICK - 1, "predicted until just before P0")
+	assert_eq(_prediction.get_first_real_tick(), FIRST_REAL_TICK, "first tick with real input")
+	assert_true(_character.grounded, "the character landed during the neutral advance")
+	assert_eq(_landed_count, 0, "but the neutral advance does not emit landed")
+	assert_true(_character.events_enabled, "and leaves events_enabled as it was")
+	assert_null(_prediction.get_input(SPAWN_TICK), "the spawn tick has no input")
+	assert_not_null(_prediction.get_predicted_state(SPAWN_TICK), "but it does have state")
+	assert_true(_prediction.get_predicted_state(SPAWN_TICK).equals_exact(spawn), "the spawn one")
 	var neutral: PlayerInput = NetProtocol.neutral_input(0, spawn.yaw)
 	for tick: int in range(SPAWN_TICK + 1, FIRST_REAL_TICK):
 		var input: PlayerInput = _prediction.get_input(tick)
-		if not assert_not_null(input, "entrada neutra del tick %d" % tick):
+		if not assert_not_null(input, "neutral input of tick %d" % tick):
 			return
-		assert_eq(input.tick, tick, "con su tick")
-		assert_eq(input.move, Vector2.ZERO, "sin movimiento")
+		assert_eq(input.tick, tick, "with its tick")
+		assert_eq(input.move, Vector2.ZERO, "no movement")
 		assert_eq(input.buttons, PlayerInput.SUBSTITUTED,
-				"sin botones y con la marca de sustituida (el servidor las sustituye)")
-		assert_near(input.look_yaw, neutral.look_yaw, 1e-9, "mirando al yaw cuantizado del alta")
-	assert_null(_prediction.get_input(FIRST_REAL_TICK), "todavía no hay entrada real")
+				"without buttons and with the substituted mark (the server substitutes them)")
+		assert_near(input.look_yaw, neutral.look_yaw, 1e-9, "looking at the quantized yaw of the spawn")
+	assert_null(_prediction.get_input(FIRST_REAL_TICK), "there is no real input yet")
 	var stepped: PlayerInput = _prediction.step()
-	assert_eq(stepped.tick, FIRST_REAL_TICK, "el primer paso es el tick P0")
-	assert_eq(_prediction.get_predicted_tick(), FIRST_REAL_TICK, "y avanza el predicho")
-	assert_eq(_prediction.get_input(FIRST_REAL_TICK), stepped, "queda guardada")
+	assert_eq(stepped.tick, FIRST_REAL_TICK, "the first step is tick P0")
+	assert_eq(_prediction.get_predicted_tick(), FIRST_REAL_TICK, "and the predicted one advances")
+	assert_eq(_prediction.get_input(FIRST_REAL_TICK), stepped, "it is stored")
 	assert_true(_prediction.get_predicted_state(FIRST_REAL_TICK).equals_exact(_character.get_state()),
-			"con el estado resultante")
-	assert_eq(_controller.get_tick(), FIRST_REAL_TICK, "el controlador generó el tick pedido")
+			"with the resulting state")
+	assert_eq(_controller.get_tick(), FIRST_REAL_TICK, "the controller generated the requested tick")
 
 
 func test_rings_keep_the_last_256_ticks_with_their_tags() -> void:
@@ -549,16 +549,16 @@ func test_rings_keep_the_last_256_ticks_with_their_tags() -> void:
 	for _i: int in 300:
 		_prediction.step()
 	var last: int = _prediction.get_predicted_tick()
-	assert_eq(last, FIRST_REAL_TICK - 1 + 300, "300 pasos")
+	assert_eq(last, FIRST_REAL_TICK - 1 + 300, "300 steps")
 	for tick: int in range(last - ClientPrediction.HISTORY_SIZE + 1, last + 1):
 		var input: PlayerInput = _prediction.get_input(tick)
 		var state: PlayerState = _prediction.get_predicted_state(tick)
 		if input == null or state == null or input.tick != tick:
-			fail("el tick %d debería estar en los anillos" % tick)
+			fail("tick %d should be in the rings" % tick)
 			return
 	for tick: int in [last - ClientPrediction.HISTORY_SIZE, SPAWN_TICK, 0, -5, last + 1, last + 300]:
-		assert_null(_prediction.get_input(tick), "la entrada del tick %d no está" % tick)
-		assert_null(_prediction.get_predicted_state(tick), "ni su estado")
+		assert_null(_prediction.get_input(tick), "the input of tick %d is not there" % tick)
+		assert_null(_prediction.get_predicted_state(tick), "nor its state")
 
 
 func test_stale_and_repeated_server_states_are_ignored() -> void:
@@ -568,19 +568,19 @@ func test_stale_and_repeated_server_states_are_ignored() -> void:
 		_prediction.step()
 	var tick: int = _prediction.get_predicted_tick() - 10
 	var state: PlayerState = _prediction.get_predicted_state(tick).duplicate_state()
-	assert_eq(_prediction.on_server_state(tick, state, false), ClientPrediction.Result.MATCH, "primero")
+	assert_eq(_prediction.on_server_state(tick, state, false), ClientPrediction.Result.MATCH, "first")
 	assert_eq(_prediction.on_server_state(tick, state, false), ClientPrediction.Result.IGNORED,
-			"repetido")
+			"repeated")
 	var older: PlayerState = _prediction.get_predicted_state(tick - 4).duplicate_state()
 	older.position += Vector3(1.0, 0.0, 0.0)
 	assert_eq(_prediction.on_server_state(tick - 4, older, false), ClientPrediction.Result.IGNORED,
-			"más antiguo que el último reconciliado: nunca reconcilia")
+			"older than the last reconciled one: it never reconciles")
 	assert_eq(_prediction.on_server_state(tick + 2, null, false), ClientPrediction.Result.IGNORED,
-			"un estado null se ignora")
+			"a null state is ignored")
 	var stats: Dictionary = _prediction.get_stats()
-	assert_eq(stats["matches"], 1, "una coincidencia")
-	assert_eq(stats["ignored"], 3, "tres ignorados")
-	assert_eq(stats["replays"], 0, "sin repeticiones")
+	assert_eq(stats["matches"], 1, "a match")
+	assert_eq(stats["ignored"], 3, "three ignored")
+	assert_eq(stats["replays"], 0, "without replays")
 
 
 func test_a_state_ahead_of_the_prediction_is_a_hard_reset() -> void:
@@ -597,25 +597,25 @@ func test_a_state_ahead_of_the_prediction_is_a_hard_reset() -> void:
 	ahead = PlayerState.decode(ahead.encode())
 	_smoother.add_offset(Vector3(0.2, 0.0, 0.0))
 	var result: int = _prediction.on_server_state(predicted_tick + 5, ahead, false)
-	assert_eq(result, ClientPrediction.Result.HARD_RESET, "llega por delante de lo predicho")
+	assert_eq(result, ClientPrediction.Result.HARD_RESET, "arrives ahead of what was predicted")
 	assert_eq(_prediction.get_predicted_tick(), predicted_tick + 5,
-			"el tick predicho pasa a ser el del servidor (TickSync recupera la antelación)")
-	assert_true(_character.get_state().equals_exact(ahead), "el personaje queda en el estado del servidor")
+			"the predicted tick becomes the server's (TickSync recovers the lead)")
+	assert_true(_character.get_state().equals_exact(ahead), "the character ends up in the server's state")
 	assert_true(_prediction.get_predicted_state(predicted_tick + 5).equals_exact(ahead),
-			"y se guarda en el anillo")
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "sin suavizado")
-	assert_eq(_prediction.get_stats()["hard_resets"], 1, "un hard reset")
+			"and it is stored in the ring")
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "without smoothing")
+	assert_eq(_prediction.get_stats()["hard_resets"], 1, "a hard reset")
 	var stepped: PlayerInput = _prediction.step()
-	assert_eq(stepped.tick, predicted_tick + 6, "el siguiente paso continúa desde ahí")
+	assert_eq(stepped.tick, predicted_tick + 6, "the next step continues from there")
 	assert_eq(_prediction.on_server_state(predicted_tick + 5, ahead, false),
-			ClientPrediction.Result.IGNORED, "y ese estado ya está reconciliado")
+			ClientPrediction.Result.IGNORED, "and that state is already reconciled")
 
 
-## Un estado de un tick que ya salió del anillo: el cliente ya no conoce la última entrada que el
-## servidor aplicó en él, así que sustituye con una neutra (con los botones del estado y sin
-## movimiento) hasta el primer tick que sigue en el anillo. Es una aproximación inevitable del cliente,
-## no la regla de [InputQueue] (que repetiría el movimiento de esa entrada 6 ticks): el oráculo
-## reimplementa la aproximación. La regla de verdad se comprueba contra [InputQueue] en
+## A state from a tick that has already left the ring: the client no longer knows the last input the
+## server applied in it, so it substitutes a neutral one (with the state's buttons and without
+## movement) until the first tick that is still in the ring. It is an unavoidable approximation of the
+## client, not the rule of [InputQueue] (which would repeat that input's movement for 6 ticks): the oracle
+## reimplements the approximation. The real rule is checked against [InputQueue] in
 ## [method test_client_substitution_matches_the_real_input_queue_across_a_gap].
 func test_hard_reset_to_an_old_tick_replays_with_the_neutral_approximation_of_the_client() -> void:
 	if not await _begin_session(_route_input):
@@ -624,7 +624,7 @@ func test_hard_reset_to_an_old_tick_replays_with_the_neutral_approximation_of_th
 		_prediction.step()
 	var last: int = _prediction.get_predicted_tick()
 	var old_tick: int = 40
-	assert_null(_prediction.get_predicted_state(old_tick), "el tick %d ya salió del anillo" % old_tick)
+	assert_null(_prediction.get_predicted_state(old_tick), "tick %d has already left the ring" % old_tick)
 	var old_state := PlayerState.new()
 	old_state.position = SPAWN_POSITION
 	old_state.grounded = true
@@ -633,9 +633,9 @@ func test_hard_reset_to_an_old_tick_replays_with_the_neutral_approximation_of_th
 	old_state.last_input_tick = old_tick
 	old_state = PlayerState.decode(old_state.encode())
 
-	# Oráculo: se repite desde ese estado con la aproximación del cliente (la última entrada aplicada
-	# es neutra con los botones del estado y, sin entradas reales, sin movimiento) hasta el primer
-	# tick que sigue en el anillo, y después con las entradas guardadas.
+	# Oracle: it replays from that state with the client's approximation (the last applied input
+	# is neutral with the state's buttons and, without real inputs, without movement) until the first
+	# tick that is still in the ring, and afterward with the stored inputs.
 	var first_stored: int = last - ClientPrediction.HISTORY_SIZE + 1
 	_server.set_state(old_state)
 	var substituted: PlayerInput = NetProtocol.neutral_input(old_tick, old_state.yaw)
@@ -643,32 +643,32 @@ func test_hard_reset_to_an_old_tick_replays_with_the_neutral_approximation_of_th
 	for tick: int in range(old_tick + 1, last + 1):
 		var input: PlayerInput = _prediction.get_input(tick)
 		if input == null:
-			assert_true(tick < first_stored, "solo faltan entradas anteriores al anillo")
+			assert_true(tick < first_stored, "only inputs before the ring are missing")
 			input = substituted.duplicate_input()
 			input.tick = tick
 		_server.simulate(input, _dt)
 	var expected: PlayerState = _server.get_state()
 
 	var result: int = _prediction.on_server_state(old_tick, old_state, false)
-	assert_eq(result, ClientPrediction.Result.HARD_RESET, "un estado fuera del anillo es un hard reset")
-	assert_eq(_prediction.get_predicted_tick(), last, "el tick predicho no cambia")
+	assert_eq(result, ClientPrediction.Result.HARD_RESET, "a state outside the ring is a hard reset")
+	assert_eq(_prediction.get_predicted_tick(), last, "the predicted tick does not change")
 	assert_true(_character.get_state().equals_exact(expected),
-			"tras repetir con sustitución queda como el oráculo.\n  cliente: %s\n  oráculo: %s"
+			"after replaying with substitution it ends up as the oracle.\n  client: %s\n  oracle: %s"
 			% [_character.get_state(), expected])
 	assert_true(_prediction.get_predicted_state(last).equals_exact(expected),
-			"y el anillo guarda el estado nuevo")
-	assert_eq(_prediction.get_stats()["resimulated_ticks"], last - old_tick, "ticks vueltos a simular")
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "un hard reset no suaviza")
+			"and the ring stores the new state")
+	assert_eq(_prediction.get_stats()["resimulated_ticks"], last - old_tick, "ticks re-simulated")
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "a hard reset does not smooth")
 
 
-## La regla de sustitución está en [InputQueue.take] (el servidor), en
-## [code]ClientPrediction._input_or_substitute[/code] (el cliente, al repetir con huecos en el anillo)
-## y, a mano, en [ServerModel]. Aquí el cliente se compara con la [InputQueue] [b]real[/b]: un hueco en
-## el anillo (un [method ClientPrediction.hard_reset] hacia delante, que salta [constant GAP_TICKS]
-## ticks) seguido de una repetición desde el último tick con entrada conocida. El servidor recibe las
-## mismas entradas, sin las del hueco; sus estados y los que deja la repetición del cliente tienen que
-## ser idénticos bit a bit en cada tick. El hueco dura más de 6 ticks: el movimiento se repite los
-## primeros 6 y después se anula, con SPRINT y JUMP mantenidos en la última entrada conocida.
+## The substitution rule lives in [InputQueue.take] (the server), in
+## [code]ClientPrediction._input_or_substitute[/code] (the client, when replaying with gaps in the ring)
+## and, by hand, in [ServerModel]. Here the client is compared with the [b]real[/b] [InputQueue]: a gap in
+## the ring (a forward [method ClientPrediction.hard_reset], which skips [constant GAP_TICKS]
+## ticks) followed by a replay from the last tick with a known input. The server receives the
+## same inputs, without those of the gap; its states and those left by the client's replay have to be
+## bit-for-bit identical at every tick. The gap lasts more than 6 ticks: the movement is repeated for the
+## first 6 and then zeroed, with SPRINT and JUMP held from the last known input.
 func test_client_substitution_matches_the_real_input_queue_across_a_gap() -> void:
 	if not await _begin_session(_route_input):
 		return
@@ -678,20 +678,20 @@ func test_client_substitution_matches_the_real_input_queue_across_a_gap() -> voi
 	var known_input: PlayerInput = _prediction.get_input(last_known)
 	assert_true(known_input.move != Vector2.ZERO and (known_input.buttons & PlayerInput.SPRINT) != 0
 			and (known_input.buttons & PlayerInput.JUMP) != 0,
-			"la última entrada conocida se mueve, esprinta y tiene el salto pulsado")
+			"the last known input moves, sprints and has the jump pressed")
 	var last_state: PlayerState = _prediction.get_predicted_state(last_known).duplicate_state()
 
-	# El hueco: el cliente salta GAP_TICKS ticks sin predecirlos y sigue con entradas reales.
+	# The gap: the client skips GAP_TICKS ticks without predicting them and continues with real inputs.
 	var after_gap: int = last_known + GAP_TICKS
 	_prediction.hard_reset(after_gap, last_state)
 	var end_tick: int = after_gap + 20
 	while _prediction.get_predicted_tick() < end_tick:
 		_prediction.step()
-	assert_null(_prediction.get_input(last_known + 1), "el anillo tiene un hueco justo después")
-	assert_null(_prediction.get_input(after_gap), "hasta el tick del salto")
-	assert_not_null(_prediction.get_input(after_gap + 1), "y vuelve a tener entradas")
+	assert_null(_prediction.get_input(last_known + 1), "the ring has a gap right after")
+	assert_null(_prediction.get_input(after_gap), "up to the jump tick")
+	assert_not_null(_prediction.get_input(after_gap + 1), "and has inputs again")
 
-	# El servidor de verdad: la misma cola, con las mismas entradas salvo las del hueco.
+	# The real server: the same queue, with the same inputs except those of the gap.
 	var queue := InputQueue.new()
 	queue.reset(SPAWN_TICK, NetProtocol.neutral_input(SPAWN_TICK, _spawn_state().yaw))
 	_server.set_state(_spawn_state())
@@ -703,22 +703,22 @@ func test_client_substitution_matches_the_real_input_queue_across_a_gap() -> voi
 		_server.simulate(queue.take(tick), _dt)
 		server_states[tick] = _server.get_state()
 	assert_eq(queue.substitutions_total, FIRST_REAL_TICK - SPAWN_TICK - 1 + GAP_TICKS,
-			"el servidor sustituyó el avance neutro y el hueco")
+			"the server substituted the neutral advance and the gap")
 
-	# El cliente repite desde el último tick conocido: sustituye los del hueco con su copia de la regla.
+	# The client replays from the last known tick: it substitutes those of the gap with its copy of the rule.
 	_prediction.hard_reset(last_known, last_state)
 	for tick: int in range(last_known, end_tick + 1):
 		var client_state: PlayerState = _prediction.get_predicted_state(tick)
-		if not assert_not_null(client_state, "el cliente guarda el tick %d" % tick):
+		if not assert_not_null(client_state, "the client stores tick %d" % tick):
 			return
 		if not client_state.equals_exact(server_states[tick]):
-			fail("el tick %d (%s del hueco) difiere de la InputQueue real.\n  cliente:  %s\n  servidor: %s"
+			fail("tick %d (%s of the gap) differs from the real InputQueue.\n  client:  %s\n  server: %s"
 					% [tick, "dentro" if tick <= after_gap else "después", client_state, server_states[tick]])
 			return
-	assert_eq(_prediction.get_stats()["resimulated_ticks"], end_tick - last_known, "se repitió todo el hueco")
+	assert_eq(_prediction.get_stats()["resimulated_ticks"], end_tick - last_known, "the whole gap was replayed")
 
 
-# --- Suavizado -------------------------------------------------------------------------------
+# --- Smoothing -------------------------------------------------------------------------------
 
 func test_smoothing_keeps_visual_still_and_decays_below_one_millimetre_in_30_ticks() -> void:
 	if not await _begin_session(_idle_route):
@@ -735,15 +735,15 @@ func test_smoothing_keeps_visual_still_and_decays_below_one_millimetre_in_30_tic
 
 	var result: int = _prediction.on_server_state(tick, wrong, false)
 	_smoother.physics_step()
-	assert_eq(result, ClientPrediction.Result.CORRECTED, "el estado desplazado se reconcilia")
+	assert_eq(result, ClientPrediction.Result.CORRECTED, "the displaced state is reconciled")
 	assert_vec_near(_character.global_position, body_before + Vector3(0.02, 0.0, 0.0), 1e-5,
-			"el cuerpo se corrige de golpe")
+			"the body is corrected at once")
 	assert_vec_near(_visual.global_position, visual_before, 0.001,
-			"la posición global de Visual no salta más de 1 mm en la transición")
+			"the global position of Visual does not jump more than 1 mm in the transition")
 	assert_vec_near(_camera_target.global_position, camera_before, 0.001,
-			"ni la de CameraTarget")
-	assert_vec_near(_smoother.get_offset(), Vector3(-0.02, 0.0, 0.0), 1e-5, "el desfase es el error")
-	assert_eq(_prediction.get_stats()["corrections"], 1, "cuenta como corrección (más de 1 mm)")
+			"nor that of CameraTarget")
+	assert_vec_near(_smoother.get_offset(), Vector3(-0.02, 0.0, 0.0), 1e-5, "the offset is the error")
+	assert_eq(_prediction.get_stats()["corrections"], 1, "counts as a correction (more than 1 mm)")
 
 	var offset: float = _smoother.get_offset().length()
 	var half_life_checked: bool = false
@@ -752,21 +752,21 @@ func test_smoothing_keeps_visual_still_and_decays_below_one_millimetre_in_30_tic
 		_prediction.step()
 		_smoother.physics_step()
 		var current: float = _smoother.get_offset().length()
-		assert_true(current <= offset + 1e-9, "el desfase solo decrece (tick %d)" % i)
+		assert_true(current <= offset + 1e-9, "the offset only decreases (tick %d)" % i)
 		offset = current
 		if i == 6:
 			half_life_checked = true
-			assert_near(current, 0.01, 0.0006, "semivida de 6 ticks")
+			assert_near(current, 0.01, 0.0006, "half-life of 6 ticks")
 		if current == 0.0 and below_one_mm_at < 0:
 			below_one_mm_at = i
 		assert_vec_near(_visual.global_position - _character.global_position,
-				_smoother.get_offset(), 1e-5, "Visual lleva el desfase (tick %d)" % i)
-	assert_true(half_life_checked, "se comprobó la semivida")
+				_smoother.get_offset(), 1e-5, "Visual carries the offset (tick %d)" % i)
+	assert_true(half_life_checked, "the half-life was checked")
 	assert_true(below_one_mm_at > 0 and below_one_mm_at <= 30,
-			"el desfase baja de 1 mm antes de 30 ticks (a los %d)" % below_one_mm_at)
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "y se anula")
-	assert_eq(_visual.position, Vector3.ZERO, "Visual vuelve exactamente a su sitio")
-	assert_eq(_camera_target.position, Vector3(0.0, 1.6, 0.0), "y CameraTarget también")
+			"the offset drops below 1 mm before 30 ticks (at %d)" % below_one_mm_at)
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "and is zeroed")
+	assert_eq(_visual.position, Vector3.ZERO, "Visual returns exactly to its place")
+	assert_eq(_camera_target.position, Vector3(0.0, 1.6, 0.0), "and CameraTarget too")
 
 
 func test_smoothing_survives_many_small_corrections() -> void:
@@ -780,12 +780,12 @@ func test_smoothing_survives_many_small_corrections() -> void:
 		var wrong: PlayerState = _prediction.get_predicted_state(tick).duplicate_state()
 		wrong.position += Vector3(0.0, 0.0, 0.004)
 		assert_eq(_prediction.on_server_state(tick, wrong, false), ClientPrediction.Result.CORRECTED,
-				"corrección %d" % i)
+				"correction %d" % i)
 		accumulated += Vector3(0.0, 0.0, -0.004)
 		_smoother.physics_step()
 		_prediction.step()
-	assert_true(_smoother.get_offset().length() > 0.004, "los desfases se acumulan")
-	assert_true(_smoother.get_offset().length() < accumulated.length(), "y decaen mientras tanto")
+	assert_true(_smoother.get_offset().length() > 0.004, "the offsets accumulate")
+	assert_true(_smoother.get_offset().length() < accumulated.length(), "and decay in the meantime")
 
 
 func test_correction_above_three_metres_jumps_without_smoothing() -> void:
@@ -800,15 +800,15 @@ func test_correction_above_three_metres_jumps_without_smoothing() -> void:
 	var before: Vector3 = _character.global_position
 	var result: int = _prediction.on_server_state(tick, wrong, false)
 	_smoother.physics_step()
-	assert_eq(result, ClientPrediction.Result.CORRECTED, "se reconcilia")
+	assert_eq(result, ClientPrediction.Result.CORRECTED, "it reconciles")
 	assert_vec_near(_character.global_position, before + Vector3(5.0, 0.0, 0.0), 1e-4,
-			"el cuerpo salta al estado del servidor")
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "con más de 3 m no hay suavizado")
-	assert_eq(_visual.position, Vector3.ZERO, "Visual está en su sitio: salto directo")
-	assert_eq(_camera_target.position, Vector3(0.0, 1.6, 0.0), "CameraTarget también")
+			"the body jumps to the server's state")
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "beyond 3 m there is no smoothing")
+	assert_eq(_visual.position, Vector3.ZERO, "Visual is in its place: direct jump")
+	assert_eq(_camera_target.position, Vector3(0.0, 1.6, 0.0), "CameraTarget too")
 	assert_vec_near(_visual.global_position, _character.global_position, 1e-5,
-			"Visual sigue al cuerpo")
-	assert_near(_prediction.get_stats()["max_correction"], 5.0, 1e-3, "la corrección fue de 5 m")
+			"Visual follows the body")
+	assert_near(_prediction.get_stats()["max_correction"], 5.0, 1e-3, "the correction was 5 m")
 
 
 func test_teleport_flag_skips_smoothing_even_for_small_errors() -> void:
@@ -821,18 +821,18 @@ func test_teleport_flag_skips_smoothing_even_for_small_errors() -> void:
 	wrong.position += Vector3(0.05, 0.0, 0.0)
 	var result: int = _prediction.on_server_state(tick, wrong, true)
 	_smoother.physics_step()
-	assert_eq(result, ClientPrediction.Result.CORRECTED, "se reconcilia")
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "un teletransporte nunca se suaviza")
-	assert_eq(_visual.position, Vector3.ZERO, "Visual en su sitio")
+	assert_eq(result, ClientPrediction.Result.CORRECTED, "it reconciles")
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "a teleport is never smoothed")
+	assert_eq(_visual.position, Vector3.ZERO, "Visual in its place")
 
-	# Con el contador de teletransporte cambiado se repite aunque el estado coincida exactamente.
+	# With the teleport counter changed it is replayed even if the state matches exactly.
 	var same_tick: int = _prediction.get_predicted_tick() - 2
 	var same: PlayerState = _prediction.get_predicted_state(same_tick).duplicate_state()
 	var matches_before: int = _prediction.get_stats()["matches"]
 	assert_eq(_prediction.on_server_state(same_tick, same, true), ClientPrediction.Result.CORRECTED,
-			"con teleported no se da por bueno un estado igual")
-	assert_eq(_prediction.get_stats()["matches"], matches_before, "no cuenta como coincidencia")
-	assert_eq(_smoother.get_offset(), Vector3.ZERO, "y tampoco se suaviza")
+			"with teleported an identical state is not taken as good")
+	assert_eq(_prediction.get_stats()["matches"], matches_before, "it does not count as a match")
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "and it is not smoothed either")
 
 
 func test_offset_is_applied_in_local_space_for_a_character_turned_90_degrees() -> void:
@@ -848,28 +848,28 @@ func test_offset_is_applied_in_local_space_for_a_character_turned_90_degrees() -
 	_prediction.start(SPAWN_TICK, spawn, FIRST_REAL_TICK)
 	for _i: int in 20:
 		_prediction.step()
-	assert_near(_character.yaw, PI / 2.0, 1e-6, "el personaje está girado 90 grados")
+	assert_near(_character.yaw, PI / 2.0, 1e-6, "the character is turned 90 degrees")
 	var tick: int = _prediction.get_predicted_tick() - 4
 	var wrong: PlayerState = _prediction.get_predicted_state(tick).duplicate_state()
 	wrong.position += Vector3(0.03, 0.0, 0.0)
 	var visual_before: Vector3 = _visual.global_position
 	var result: int = _prediction.on_server_state(tick, wrong, false)
 	_smoother.physics_step()
-	assert_eq(result, ClientPrediction.Result.CORRECTED, "se reconcilia")
+	assert_eq(result, ClientPrediction.Result.CORRECTED, "it reconciles")
 
 	var world_offset := Vector3(-0.03, 0.0, 0.0)
-	assert_vec_near(_smoother.get_offset(), world_offset, 1e-5, "el desfase está en el mundo")
-	# Con el yaw a +90° el personaje mira hacia -X del mundo (su -Z local), así que un desfase de
-	# -0,03 en X del mundo es -0,03 en Z local.
+	assert_vec_near(_smoother.get_offset(), world_offset, 1e-5, "the offset is in the world")
+	# With the yaw at +90° the character looks toward the world's -X (its local -Z), so an offset of
+	# -0.03 in the world's X is -0.03 in local Z.
 	var local_offset: Vector3 = _character.basis.inverse() * world_offset
-	assert_vec_near(local_offset, Vector3(0.0, 0.0, -0.03), 1e-5, "el desfase local esperado")
-	assert_vec_near(_visual.position, local_offset, 1e-5, "Visual: base + basis⁻¹ · desfase")
+	assert_vec_near(local_offset, Vector3(0.0, 0.0, -0.03), 1e-5, "the expected local offset")
+	assert_vec_near(_visual.position, local_offset, 1e-5, "Visual: base + basis⁻¹ · offset")
 	assert_vec_near(_camera_target.position, Vector3(0.0, 1.6, 0.0) + local_offset, 1e-5,
-			"CameraTarget: base + basis⁻¹ · desfase")
+			"CameraTarget: base + basis⁻¹ · offset")
 	assert_vec_near(_visual.global_position, visual_before, 0.001,
-			"y en el mundo Visual no se movió más de 1 mm")
+			"and in the world Visual did not move more than 1 mm")
 	assert_vec_near(_visual.global_position - _character.global_position, world_offset, 1e-5,
-			"el desfase en el mundo es el mismo")
+			"the offset in the world is the same")
 
 
 func test_smoother_lets_the_camera_target_follow_the_same_offset() -> void:
@@ -880,24 +880,24 @@ func test_smoother_lets_the_camera_target_follow_the_same_offset() -> void:
 	var smoother := CorrectionSmoother.new()
 	smoother.setup(_character, targets)
 	smoother.physics_step()
-	assert_eq(_visual.position, Vector3.ZERO, "sin desfase, todo en su sitio")
+	assert_eq(_visual.position, Vector3.ZERO, "without offset, everything in its place")
 	smoother.add_offset(Vector3(0.0, 0.1, 0.0))
-	assert_vec_near(smoother.get_offset(), Vector3(0.0, 0.1, 0.0), 1e-9, "el desfase incluye lo pendiente")
-	assert_eq(_visual.position, Vector3.ZERO, "pero hasta physics_step() no se aplica")
+	assert_vec_near(smoother.get_offset(), Vector3(0.0, 0.1, 0.0), 1e-9, "the offset includes what is pending")
+	assert_eq(_visual.position, Vector3.ZERO, "but it is not applied until physics_step()")
 	smoother.physics_step()
-	assert_vec_near(_visual.position, Vector3(0.0, 0.1, 0.0), 1e-6, "ya aplicado, sin decaer aún")
-	assert_vec_near(_camera_target.position, Vector3(0.0, 1.7, 0.0), 1e-6, "en CameraTarget también")
+	assert_vec_near(_visual.position, Vector3(0.0, 0.1, 0.0), 1e-6, "already applied, without decaying yet")
+	assert_vec_near(_camera_target.position, Vector3(0.0, 1.7, 0.0), 1e-6, "in CameraTarget too")
 	smoother.physics_step()
 	assert_near(_visual.position.y, 0.1 * pow(0.5, 1.0 / CorrectionSmoother.HALF_LIFE_TICKS), 1e-6,
-			"el siguiente tick decae con la semivida")
+			"the next tick decays with the half-life")
 	smoother.clear()
-	assert_eq(smoother.get_offset(), Vector3.ZERO, "clear() anula el desfase")
-	assert_eq(_visual.position, Vector3.ZERO, "y devuelve Visual a su sitio")
-	assert_eq(_camera_target.position, Vector3(0.0, 1.6, 0.0), "y CameraTarget")
+	assert_eq(smoother.get_offset(), Vector3.ZERO, "clear() zeroes the offset")
+	assert_eq(_visual.position, Vector3.ZERO, "and returns Visual to its place")
+	assert_eq(_camera_target.position, Vector3(0.0, 1.6, 0.0), "and CameraTarget")
 	smoother.add_offset(Vector3(0.0005, 0.0, 0.0))
 	smoother.physics_step()
-	assert_eq(smoother.get_offset(), Vector3.ZERO, "por debajo de 1 mm se anula")
-	assert_eq(_visual.position, Vector3.ZERO, "sin tocar nada")
+	assert_eq(smoother.get_offset(), Vector3.ZERO, "below 1 mm it is zeroed")
+	assert_eq(_visual.position, Vector3.ZERO, "without touching anything")
 
 
 # --- LocalPlayerController ---------------------------------------------------------------------
@@ -915,15 +915,15 @@ func test_controller_with_auto_step_keeps_the_sandbox_behaviour() -> void:
 	_character.set_state(_spawn_state())
 	for _i: int in 5:
 		await tree.physics_frame
-	assert_eq(_controller.get_tick(), emitted.size(), "get_tick() cuenta las entradas")
-	assert_true(emitted.size() >= 4, "una entrada por paso de física (%d)" % emitted.size())
+	assert_eq(_controller.get_tick(), emitted.size(), "get_tick() counts the inputs")
+	assert_true(emitted.size() >= 4, "one input per physics step (%d)" % emitted.size())
 	var history: Array[PlayerInput] = _controller.get_input_history()
-	assert_eq(history.size(), emitted.size(), "el historial las guarda")
+	assert_eq(history.size(), emitted.size(), "the history stores them")
 	for i: int in emitted.size():
-		assert_eq(history[i].tick, i + 1, "el historial va de la más antigua a la más nueva")
-		assert_eq(emitted[i].tick, i + 1, "input_generated emite la entrada del tick")
-		assert_eq(simulated_at_emission[i], i, "se emite antes de simularla")
-	assert_eq(_character.last_input_tick, emitted.size(), "y se simula la entrada del tick")
+		assert_eq(history[i].tick, i + 1, "the history goes from the oldest to the newest")
+		assert_eq(emitted[i].tick, i + 1, "input_generated emits the tick's input")
+		assert_eq(simulated_at_emission[i], i, "it is emitted before simulating it")
+	assert_eq(_character.last_input_tick, emitted.size(), "and the tick's input is simulated")
 
 
 func test_controller_without_auto_step_only_builds_inputs_when_asked() -> void:
@@ -944,28 +944,28 @@ func test_controller_without_auto_step_only_builds_inputs_when_asked() -> void:
 	_controller.set_bot(_brain)
 	for _i: int in 4:
 		await tree.physics_frame
-	assert_eq(emitted.size(), 0, "con auto_step = false no genera entradas solo")
-	assert_eq(_controller.get_tick(), 0, "ni avanza el tick")
-	assert_eq(_character.last_input_tick, 0, "ni simula")
-	assert_vec_near(_character.global_position, SPAWN_POSITION, 1e-6, "el personaje no se movió")
+	assert_eq(emitted.size(), 0, "with auto_step = false it does not generate inputs on its own")
+	assert_eq(_controller.get_tick(), 0, "nor advance the tick")
+	assert_eq(_character.last_input_tick, 0, "nor simulate")
+	assert_vec_near(_character.global_position, SPAWN_POSITION, 1e-6, "the character did not move")
 
 	var position_before: Vector3 = _character.global_position
 	var input: PlayerInput = _controller.build_input(77)
-	assert_eq(input.tick, 77, "build_input(tick) construye la entrada del tick pedido")
-	assert_eq(_controller.get_tick(), 77, "get_tick() es el último pedido")
-	assert_true(input.buttons == PlayerInput.JUMP, "con los botones del bot")
+	assert_eq(input.tick, 77, "build_input(tick) builds the input of the requested tick")
+	assert_eq(_controller.get_tick(), 77, "get_tick() is the last requested")
+	assert_true(input.buttons == PlayerInput.JUMP, "with the bot's buttons")
 	var quantized: PlayerInput = input.quantized()
-	assert_eq(input.encode(), quantized.encode(), "ya está cuantizada")
-	assert_ne_float(input.move.x, 0.123456, "el movimiento está cuantizado")
-	assert_true(input.look_yaw >= 0.0 and input.look_yaw < TAU, "y el yaw envuelto a [0, TAU)")
-	assert_eq(emitted.size(), 1, "emite input_generated")
-	assert_eq(emitted[0], input, "con la misma entrada")
-	assert_eq(_controller.get_input_history().size(), 1, "y la guarda en el historial")
-	assert_eq(_controller.get_input_history()[0], input, "la misma")
-	assert_eq(_character.last_input_tick, 0, "pero no simula")
-	assert_vec_near(_character.global_position, position_before, 1e-9, "ni mueve al personaje")
+	assert_eq(input.encode(), quantized.encode(), "it is already quantized")
+	assert_ne_float(input.move.x, 0.123456, "the movement is quantized")
+	assert_true(input.look_yaw >= 0.0 and input.look_yaw < TAU, "and the yaw wrapped to [0, TAU)")
+	assert_eq(emitted.size(), 1, "emits input_generated")
+	assert_eq(emitted[0], input, "with the same input")
+	assert_eq(_controller.get_input_history().size(), 1, "and stores it in the history")
+	assert_eq(_controller.get_input_history()[0], input, "the same")
+	assert_eq(_character.last_input_tick, 0, "but does not simulate")
+	assert_vec_near(_character.global_position, position_before, 1e-9, "nor move the character")
 	await tree.physics_frame
-	assert_eq(emitted.size(), 1, "un paso de física después sigue sin generar nada")
+	assert_eq(emitted.size(), 1, "one physics step later it still generates nothing")
 
 
 func test_controller_history_is_a_ring_of_256_inputs_in_order() -> void:
@@ -977,15 +977,15 @@ func test_controller_history_is_a_ring_of_256_inputs_in_order() -> void:
 	for tick: int in range(1, 301):
 		_controller.build_input(tick)
 	var history: Array[PlayerInput] = _controller.get_input_history()
-	assert_eq(history.size(), LocalPlayerController.HISTORY_SIZE, "256 entradas como mucho")
-	assert_eq(history[0].tick, 300 - 256 + 1, "la más antigua")
-	assert_eq(history[history.size() - 1].tick, 300, "la más nueva")
+	assert_eq(history.size(), LocalPlayerController.HISTORY_SIZE, "256 inputs at most")
+	assert_eq(history[0].tick, 300 - 256 + 1, "the oldest")
+	assert_eq(history[history.size() - 1].tick, 300, "the newest")
 	for i: int in range(1, history.size()):
 		if history[i].tick != history[i - 1].tick + 1:
-			fail("el historial no está ordenado en la posición %d" % i)
+			fail("the history is not ordered at position %d" % i)
 			return
 	history.clear()
-	assert_eq(_controller.get_input_history().size(), 256, "get_input_history() devuelve una copia")
+	assert_eq(_controller.get_input_history().size(), 256, "get_input_history() returns a copy")
 
 
 func test_controller_bot_inputs_come_from_the_brain_with_position_and_yaw() -> void:
@@ -999,17 +999,17 @@ func test_controller_bot_inputs_come_from_the_brain_with_position_and_yaw() -> v
 	_brain.route = _route_input
 	_controller.set_bot(_brain)
 	var input: PlayerInput = _controller.build_input(40)
-	assert_eq(_brain.calls, 1, "el bot genera la entrada")
-	assert_eq(_brain.last_tick, 40, "para el tick pedido")
+	assert_eq(_brain.calls, 1, "the bot generates the input")
+	assert_eq(_brain.last_tick, 40, "for the requested tick")
 	assert_vec_near(_brain.last_position, _character.global_position, 1e-6,
-			"con la posición del personaje")
-	assert_near(_brain.last_yaw, _character.yaw, 1e-9, "y su yaw")
-	assert_eq(input.encode(), _route_input(40).quantized().encode(), "la entrada es la del bot, cuantizada")
-	assert_eq(input.tick, 40, "con el tick pedido")
+			"with the character's position")
+	assert_near(_brain.last_yaw, _character.yaw, 1e-9, "and its yaw")
+	assert_eq(input.encode(), _route_input(40).quantized().encode(), "the input is the bot's, quantized")
+	assert_eq(input.tick, 40, "with the requested tick")
 	_controller.set_bot(null)
 	var device: PlayerInput = _controller.build_input(41)
-	assert_eq(_brain.calls, 1, "con set_bot(null) vuelve al dispositivo")
-	assert_eq(device.move, Vector2.ZERO, "que sin teclas no se mueve")
+	assert_eq(_brain.calls, 1, "with set_bot(null) it goes back to the device")
+	assert_eq(device.move, Vector2.ZERO, "which without keys does not move")
 
 
 func test_accumulated_presses_are_added_to_the_next_input_once() -> void:
@@ -1018,34 +1018,34 @@ func test_accumulated_presses_are_added_to_the_next_input_once() -> void:
 	_controller.auto_step = false
 	_controller.set_bot(null)
 	await tree.physics_frame
-	# Una acción pulsada por la API de Input solo cuenta como «recién pulsada» a partir del
-	# siguiente tick de física.
+	# An action pressed through the Input API only counts as "just pressed" from the
+	# next physics tick.
 	_press(&"jump")
 	_press(&"dodge")
 	await tree.physics_frame
-	# Tick de física sin paso: la pulsación se guarda aunque se suelte antes del siguiente.
-	assert_true(Input.is_action_just_pressed(&"jump"), "la acción se acaba de pulsar en este tick")
+	# Physics tick without a step: the press is stored even if it is released before the next one.
+	assert_true(Input.is_action_just_pressed(&"jump"), "the action was just pressed on this tick")
 	_controller.accumulate_presses()
 	Input.action_release(&"jump")
 	Input.action_release(&"dodge")
 	_pressed_actions.clear()
 	await tree.physics_frame
-	assert_false(Input.is_action_pressed(&"jump"), "ya no está pulsada")
+	assert_false(Input.is_action_pressed(&"jump"), "it is no longer pressed")
 	var first: PlayerInput = _controller.build_input(1)
 	assert_true(first.has(PlayerInput.JUMP) and first.has(PlayerInput.DODGE),
-			"el siguiente build_input() suma las pulsaciones guardadas (botones %d)" % first.buttons)
+			"the next build_input() adds the stored presses (buttons %d)" % first.buttons)
 	var second: PlayerInput = _controller.build_input(2)
-	assert_eq(second.buttons, 0, "y solo una vez")
+	assert_eq(second.buttons, 0, "and only once")
 
-	# Una tecla mantenida sigue en la entrada y no se duplica al acumular.
+	# A held key stays in the input and is not duplicated when accumulating.
 	_press(&"sprint")
 	await tree.physics_frame
 	_controller.accumulate_presses()
 	var third: PlayerInput = _controller.build_input(3)
-	assert_eq(third.buttons, PlayerInput.SPRINT, "una tecla mantenida: ni de menos ni de más")
+	assert_eq(third.buttons, PlayerInput.SPRINT, "a held key: neither too few nor too many")
 	await tree.physics_frame
 	var fourth: PlayerInput = _controller.build_input(4)
-	assert_eq(fourth.buttons, PlayerInput.SPRINT, "y sigue mientras se mantiene")
+	assert_eq(fourth.buttons, PlayerInput.SPRINT, "and it continues while held")
 
 
 func test_accumulate_presses_does_nothing_for_bots() -> void:
@@ -1057,18 +1057,18 @@ func test_accumulate_presses_does_nothing_for_bots() -> void:
 	await tree.physics_frame
 	_press(&"jump")
 	await tree.physics_frame
-	assert_true(Input.is_action_just_pressed(&"jump"), "la acción se acaba de pulsar en este tick")
+	assert_true(Input.is_action_just_pressed(&"jump"), "the action was just pressed on this tick")
 	_controller.accumulate_presses()
 	Input.action_release(&"jump")
 	_pressed_actions.clear()
 	await tree.physics_frame
-	assert_eq(_controller.build_input(1).buttons, 0, "la entrada de un bot no depende del teclado")
+	assert_eq(_controller.build_input(1).buttons, 0, "a bot's input does not depend on the keyboard")
 
 
-# --- Construcción de la escena de prueba -------------------------------------------------------
+# --- Building the test scene -------------------------------------------------------------------
 
-## Prepara los dos mundos y arranca la predicción con la ruta indicada. Hay que llamarla con
-## [code]await[/code]; al volver se está dentro del tick de física.
+## Prepares the two worlds and starts the prediction with the given route. It must be called with
+## [code]await[/code]; on return you are inside the physics tick.
 func _begin_session(route: Callable) -> bool:
 	if not await _build_session():
 		return false
@@ -1078,8 +1078,8 @@ func _begin_session(route: Callable) -> bool:
 	_model = ServerModel.new()
 	_model.start(_server, SPAWN_TICK, spawn, _dt)
 	_prediction.start(SPAWN_TICK, spawn, FIRST_REAL_TICK)
-	# El cliente avanza en neutro hasta justo antes de P0; el servidor irá por detrás
-	# (FIRST_REAL_TICK - 1 - SPAWN_TICK ticks) y sustituirá esos ticks con la regla de la 8.2.
+	# The client advances neutrally until just before P0; the server will lag behind
+	# (FIRST_REAL_TICK - 1 - SPAWN_TICK ticks) and will substitute those ticks with the rule of 8.2.
 	return true
 
 
@@ -1087,7 +1087,7 @@ func _build_session() -> bool:
 	_server_viewport = _make_world("ServerWorld")
 	_client_viewport = _make_world("ClientWorld")
 	var scene: PackedScene = load(CHARACTER_SCENE_PATH) as PackedScene
-	if not assert_not_null(scene, "no se pudo cargar %s" % CHARACTER_SCENE_PATH):
+	if not assert_not_null(scene, "could not load %s" % CHARACTER_SCENE_PATH):
 		return false
 	_server = scene.instantiate() as PlayerCharacter
 	_server_viewport.add_child(_server)
@@ -1112,7 +1112,7 @@ func _build_session() -> bool:
 	_smoother.setup(_character, targets)
 	_prediction = ClientPrediction.new()
 	_prediction.setup(_character, _controller, _smoother, _dt)
-	# Dos pasos de física para que los espacios registren los cuerpos recién añadidos.
+	# Two physics steps for the spaces to register the newly added bodies.
 	await wait_physics_frames(2)
 	return true
 
@@ -1147,7 +1147,7 @@ func _add_box(parent: Node, size: Vector3, center: Vector3, pitch: float) -> voi
 	parent.add_child(body)
 
 
-## Estado de aparición exacto (pasado por encode/decode, como lo impone el servidor).
+## Exact spawn state (passed through encode/decode, as the server imposes it).
 func _spawn_state() -> PlayerState:
 	var state := PlayerState.new()
 	state.position = SPAWN_POSITION
@@ -1155,17 +1155,17 @@ func _spawn_state() -> PlayerState:
 	return PlayerState.decode(state.encode())
 
 
-# --- Rutas guionizadas -------------------------------------------------------------------------
+# --- Scripted routes ---------------------------------------------------------------------------
 
-## Entrada neutra mirando al frente.
+## Neutral input looking straight ahead.
 func _idle_route(tick: int) -> PlayerInput:
 	var input := PlayerInput.new()
 	input.tick = tick
 	return input
 
 
-## Ruta de [constant ROUTE_TICKS] ticks: espera, esprinta hacia la rampa, sube saltando, gira sin
-## parar cruzando ±PI, retrocede saltando y se para.
+## Route of [constant ROUTE_TICKS] ticks: waits, sprints toward the ramp, climbs jumping, turns
+## nonstop crossing ±PI, backs up jumping and stops.
 func _route_input(tick: int) -> PlayerInput:
 	var input := PlayerInput.new()
 	input.tick = tick
@@ -1190,8 +1190,8 @@ func _route_input(tick: int) -> PlayerInput:
 	return input
 
 
-## Ruta de combate: camina hacia delante y ataca (ligero enlazado con el siguiente), esquiva, bloquea y
-## carga el fuerte (200-239 pulsado, se suelta tras la carga mínima).
+## Combat route: walks forward and attacks (light attack chained with the next), dodges, blocks and
+## charges the heavy attack (200-239 held, released after the minimum charge).
 func _combat_route(tick: int) -> PlayerInput:
 	var input := PlayerInput.new()
 	input.tick = tick
@@ -1212,12 +1212,11 @@ func _combat_route(tick: int) -> PlayerInput:
 	return input
 
 
-# --- Un tick de cliente y de servidor ----------------------------------------------------------
+# --- One client tick and one server tick -------------------------------------------------------
 
-## Un tick del cliente, en el orden de NetClient: llegan los estados propios que ya tocan, un paso
-## de predicción, el envío de la entrada (que se pierde si su tick está en [param lost]) y el
-## suavizador. Los resultados de [method ClientPrediction.on_server_state] se añaden a
-## [param results] como (tick, resultado).
+## One client tick, in NetClient's order: the own states that are due arrive, a prediction step,
+## the input is sent (and lost if its tick is in [param lost]) and the smoother runs. The results of
+## [method ClientPrediction.on_server_state] are appended to [param results] as (tick, result).
 func _client_tick(results: Array[Vector2i], lost: Array[int]) -> void:
 	while not _pending_states.is_empty() and _pending_states[0]["due"] <= _frame_counter:
 		var item: Dictionary = _pending_states.pop_front()
@@ -1231,7 +1230,7 @@ func _client_tick(results: Array[Vector2i], lost: Array[int]) -> void:
 	_frame_counter += 1
 
 
-## Un tick del servidor: aplica la entrada (o la sustituta) y encola el estado propio con retraso.
+## One server tick: it applies the input (or the substitute) and queues the own state with delay.
 func _server_tick() -> PlayerState:
 	var state: PlayerState = _model.step()
 	if _model.tick % STATE_INTERVAL_TICKS == 0:
@@ -1243,7 +1242,7 @@ func _server_tick() -> PlayerState:
 	return state
 
 
-## Marcha recta hacia delante desde la primera entrada real.
+## Straight march forward from the first real input.
 func _walk_route(tick: int) -> PlayerInput:
 	var input := PlayerInput.new()
 	input.tick = tick
@@ -1252,7 +1251,7 @@ func _walk_route(tick: int) -> PlayerInput:
 	return input
 
 
-## Tick más alto cuyo resultado no fue [param expected], o 0 si todos lo fueron.
+## Highest tick whose result was not [param expected], or 0 if all were.
 func _last_result_tick_not(results: Array[Vector2i], expected: int) -> int:
 	var last: int = 0
 	for entry: Vector2i in results:
@@ -1261,16 +1260,16 @@ func _last_result_tick_not(results: Array[Vector2i], expected: int) -> int:
 	return last
 
 
-## Desde [param tick], el cliente quedó bit a bit igual al servidor, y todos los estados que
-## llegaron después coincidieron.
+## From [param tick] on, the client ended up bit for bit equal to the server, and all the states that
+## arrived afterward matched.
 func _assert_converged_since(tick: int) -> void:
 	for t: int in range(tick, _model.tick + 1):
 		var predicted: PlayerState = _prediction.get_predicted_state(t)
 		var server_state: PlayerState = _model.states[t]
 		if predicted == null or predicted.encode() != server_state.encode():
-			fail("el tick %d no quedó igual al servidor tras la última reconciliación" % t)
+			fail("tick %d did not end up equal to the server after the last reconciliation" % t)
 			return
-	assert_true(_model.tick > tick + 10, "quedaron ticks por comprobar (hasta el %d)" % _model.tick)
+	assert_true(_model.tick > tick + 10, "ticks were left to check (up to %d)" % _model.tick)
 
 
 func _results_with(results: Array[Vector2i], wanted: int) -> Array[Vector2i]:

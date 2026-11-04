@@ -21,7 +21,7 @@ func TestEnterWithoutLiveZone(t *testing.T) {
 	if res.header.Get("Retry-After") == "" {
 		t.Error("503 sin Retry-After")
 	}
-	// Instancias que no valen: arrancando, perdida, llena o que no admite el reino.
+	// Instances that are not valid: starting, lost, full or not admitting the realm.
 	h.zone("vado_gris", 0, []int16{1, 2}, 0, 64, "starting")
 	h.zone("vado_gris", 1, []int16{1, 2}, 0, 64, "lost")
 	h.zone("vado_gris", 2, []int16{1, 2}, 64, 64, "live")
@@ -33,8 +33,9 @@ func TestEnterWithoutLiveZone(t *testing.T) {
 	}
 }
 
-// enter emite el billete de §5.1: firmado con la clave de ELDMARK_TICKET_SIGN_KEY, con el mundo, el
-// personaje, la huella de la zona, el canal y el reino, y 10 s de vida; y lo guarda en enter_tickets.
+// enter issues the §5.1 ticket: signed with the ELDMARK_TICKET_SIGN_KEY key, with the world, the
+// character, the zone fingerprint, the channel and the realm, and 10 s of life; and stores it in
+// enter_tickets.
 func TestEnterIssuesTheTicket(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -76,13 +77,13 @@ func TestEnterIssuesTheTicket(t *testing.T) {
 	if !sessionOK || !expires.Equal(h.clock.Now().Add(10*time.Second)) {
 		t.Fatalf("fila de enter_tickets: %v %v", sessionOK, expires)
 	}
-	// Otro enter da otro billete.
+	// Another enter gives another ticket.
 	again := h.enter(p, id)
 	h.expect(again, http.StatusOK, "")
 	if again.body["ticket"] == res.body["ticket"] || h.count(`select count(*) from enter_tickets`) != 2 {
 		t.Error("dos enter, dos billetes")
 	}
-	// Con DTLS, el certificado de la zona.
+	// With DTLS, the zone's certificate.
 	h.exec(`update zone_instances set dtls_cert_pem = '-----BEGIN CERTIFICATE-----x', dtls_name = 'vado-gris.eldmark'`)
 	res = h.enter(p, id)
 	dtls, _ := res.body["zone"].(map[string]any)["dtls"].(map[string]any)
@@ -91,9 +92,9 @@ func TestEnterIssuesTheTicket(t *testing.T) {
 	}
 }
 
-// enter elige la última zona si tiene una instancia viva que admite el reino (en su último canal
-// si está vivo y con sitio); si no, la de entrada; y dentro de la zona, el canal con menos
-// jugadores.
+// enter picks the last zone if it has a live instance that admits the realm (in its last channel if
+// alive and with room); otherwise, the entry one; and within the zone, the channel with the fewest
+// players.
 func TestEnterChoosesTheZone(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -111,49 +112,49 @@ func TestEnterChoosesTheZone(t *testing.T) {
 		z := res.body["zone"].(map[string]any)
 		return z["zone_id"].(string), z["channel"].(float64)
 	}
-	// Nunca ha entrado: la zona de entrada de su reino, en el canal con menos jugadores.
+	// Never entered: its realm's entry zone, in the channel with the fewest players.
 	if zone, ch := zoneOf(); zone != "vado_gris" || ch != 1 {
 		t.Fatalf("sin última zona: %s %v", zone, ch)
 	}
-	// Su última zona, en su último canal aunque tenga más jugadores.
+	// Its last zone, in its last channel even if it has more players.
 	h.progress.SetSummary(id, persistence.Summary{RaceID: "race_vardheim", Level: 3, LastZoneID: "eldrun", LastChannel: 1})
 	if zone, ch := zoneOf(); zone != "eldrun" || ch != 1 {
 		t.Fatalf("última zona y canal: %s %v", zone, ch)
 	}
-	// El último canal lleno: otro canal de la misma zona.
+	// The last channel full: another channel of the same zone.
 	h.exec(`update zone_instances set players = max_players where zone_id = 'eldrun' and channel = 1`)
 	if zone, ch := zoneOf(); zone != "eldrun" || ch != 0 {
 		t.Fatalf("último canal lleno: %s %v", zone, ch)
 	}
-	// La última zona ya no admite su reino: la de entrada.
+	// The last zone no longer admits its realm: the entry one.
 	h.exec(`update zone_instances set realms = '{2,3}' where zone_id = 'eldrun'`)
 	if zone, _ := zoneOf(); zone != "vado_gris" {
 		t.Fatalf("la última zona no admite el reino: %s", zone)
 	}
-	// La última zona sin instancias vivas: la de entrada.
+	// The last zone without live instances: the entry one.
 	h.exec(`update zone_instances set realms = '{1,2,3}', status = 'stopped' where zone_id = 'eldrun'`)
 	if zone, _ := zoneOf(); zone != "vado_gris" {
 		t.Fatalf("la última zona parada: %s", zone)
 	}
-	// La zona de entrada sin nada vivo: 503.
+	// The entry zone with nothing alive: 503.
 	h.exec(`update zone_instances set status = 'stopped'`)
-	h.advance(time.Minute, p) // el límite de 10 enter por minuto
+	h.advance(time.Minute, p) // the limit of 10 enters per minute
 	h.expect(h.enter(p, id), http.StatusServiceUnavailable, "zone_unavailable")
 }
 
-// Las comprobaciones de enter, en el orden de §4.5.
+// The enter checks, in the order of §4.5.
 func TestEnterChecks(t *testing.T) {
 	h := newHarness(t, func(c *config.Config) { c.RequireVerifiedEmail = true })
 	p := h.newPlayer("ana@example.org")
 	id := h.mustCreate(p, "Aneira", "vardheim")
 	h.zone("vado_gris", 0, []int16{1, 2}, 0, 64, "live")
 
-	// Correo sin verificar (ELDMARK_REQUIRE_VERIFIED_EMAIL).
+	// Unverified email (ELDMARK_REQUIRE_VERIFIED_EMAIL).
 	h.expect(h.enter(p, id), http.StatusForbidden, "email_unverified")
 	h.exec(`update accounts set email_verified_at = $2 where account_id = $1`, p.id, h.clock.Now())
 	h.expect(h.enter(p, id), http.StatusOK, "")
 
-	// Un texto nuevo por aceptar: terms_required con los documentos (antes que el correo).
+	// A new text to accept: terms_required with the documents (before the email).
 	h.exec(`update accounts set email_verified_at = null where account_id = $1`, p.id)
 	h.exec(`delete from legal_acceptances where account_id = $1 and kind = 'rules'`, p.id)
 	res := h.enter(p, id)
@@ -164,7 +165,7 @@ func TestEnterChecks(t *testing.T) {
 	h.exec(`insert into legal_acceptances (account_id, kind, version) values ($1, 'rules', 1)`, p.id)
 	h.exec(`update accounts set email_verified_at = $2 where account_id = $1`, p.id, h.clock.Now())
 
-	// Borrado pendiente: 403 (iniciar sesión sí funciona, para cancelarlo).
+	// Pending deletion: 403 (logging in does work, to cancel it).
 	h.expect(h.do(call{method: "POST", path: "/v1/account/deletion", token: p.token, body: map[string]any{"password": password}}),
 		http.StatusAccepted, "")
 	res = h.enter(p, id)
@@ -174,7 +175,7 @@ func TestEnterChecks(t *testing.T) {
 	}
 	h.expect(h.do(call{method: "DELETE", path: "/v1/account/deletion", token: p.token}), http.StatusNoContent, "")
 
-	// Mantenimiento del mundo: 503 salvo para admin.
+	// World maintenance: 503 except for admin.
 	h.exec(`update worlds set status = 'maintenance' where world_id = 1`)
 	h.expect(h.enter(p, id), http.StatusServiceUnavailable, "maintenance")
 	h.exec(`update accounts set role = 'admin' where account_id = $1`, p.id)
@@ -182,12 +183,12 @@ func TestEnterChecks(t *testing.T) {
 	h.exec(`update accounts set role = 'player' where account_id = $1`, p.id)
 	h.exec(`update worlds set status = 'open' where world_id = 1`)
 
-	// Un personaje borrado: 404.
+	// A deleted character: 404.
 	other := h.mustCreate(p, "Brenna", "vardheim")
 	h.expect(h.remove(p, other, "Brenna"), http.StatusOK, "")
 	h.expect(h.enter(p, other), http.StatusNotFound, "not_found")
 
-	// El límite de 10 por minuto y cuenta, con el cubo lleno otra vez.
+	// The limit of 10 per minute per account, with the bucket full again.
 	h.advance(time.Minute, p)
 	for range 10 {
 		h.expect(h.enter(p, id), http.StatusOK, "")
@@ -195,7 +196,7 @@ func TestEnterChecks(t *testing.T) {
 	h.expect(h.enter(p, id), http.StatusTooManyRequests, "rate_limited")
 }
 
-// Un solo personaje en el mundo por cuenta: con otro de la cuenta arrendado, character_busy.
+// A single character in the world per account: with another of the account leased, character_busy.
 func TestOneCharacterInTheWorldPerAccount(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -210,14 +211,14 @@ func TestOneCharacterInTheWorldPerAccount(t *testing.T) {
 			t.Errorf("retry_after_s: %s", res.raw)
 		}
 	}
-	// Liberado (zone_instance_id a null) o caducado, ya no cuenta.
+	// Released (zone_instance_id to null) or expired, it no longer counts.
 	h.exec(`update character_leases set zone_instance_id = null where character_id = $1`, first)
 	h.expect(h.enter(p, second), http.StatusOK, "")
 	h.lease(first, zone, h.clock.Now().Add(30*time.Second))
 	h.expect(h.enter(p, second), http.StatusConflict, "character_busy")
 	h.advance(31*time.Second, p)
 	h.expect(h.enter(p, second), http.StatusOK, "")
-	// El arrendamiento de otra cuenta no molesta.
+	// Another account's lease does not interfere.
 	q := h.newPlayer("otra@example.org")
 	other := h.mustCreate(q, "Corvo", "vardheim")
 	h.lease(other, zone, h.clock.Now().Add(30*time.Second))

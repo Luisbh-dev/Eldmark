@@ -1,23 +1,23 @@
 class_name PlatformJson
 extends RefCounted
-## Lectura estricta de los cuerpos de la API interna de la plataforma en la zona (docs/plataforma.md §4.1 y §6),
-## la misma que hace Go con [code]jsonx.ID[/code] y [code]jsonx.Int[/code].
+## Strict reading of the platform's internal API bodies in the zone (docs/plataforma.md §4.1 and §6),
+## the same as Go does with [code]jsonx.ID[/code] and [code]jsonx.Int[/code].
 ## [br][br]
-## [b]Ids[/b] ([code]character_id[/code], [code]account_id[/code], [code]ticket_id[/code], [code]first[/code] de
-## un bloque…): una cadena decimal de 0 a 2^63 − 1, sin signo, espacios ni ceros a la izquierda. Un número sin
-## comillas no vale: [JSON] lo leería como [code]float[/code] y perdería precisión por encima de 2^53.
-## [b]Enteros[/b]: un número exacto ([code]4[/code] o [code]4.0[/code]; Godot escribe [code]4.0[/code] al
-## volver a serializar lo que leyó). Ninguna comprobación registra errores del motor: un id de 30 cifras se
-## rechaza antes de llamar a [method String.to_int].
+## [b]Ids[/b] ([code]character_id[/code], [code]account_id[/code], [code]ticket_id[/code], [code]first[/code] of
+## a block…): a decimal string from 0 to 2^63 − 1, with no sign, spaces or leading zeros. A number without
+## quotes is not valid: [JSON] would read it as a [code]float[/code] and lose precision above 2^53.
+## [b]Integers[/b]: an exact number ([code]4[/code] or [code]4.0[/code]; Godot writes [code]4.0[/code] when
+## re-serializing what it read). No check logs engine errors: a 30-digit id is
+## rejected before calling [method String.to_int].
 
-## El mayor id de la plataforma (2^63 − 1).
+## The largest platform id (2^63 − 1).
 const MAX_ID: int = 0x7FFFFFFFFFFFFFFF
-## El mayor entero que un número JSON lleva exacto (2^53 − 1).
+## The largest integer a JSON number carries exactly (2^53 − 1).
 const MAX_SAFE_INT: int = (1 << 53) - 1
 const _MAX_ID_TEXT: String = "9223372036854775807"
 
 
-## true si [param value] es un id canónico (una cadena decimal) entre [param minimum] y 2^63 − 1.
+## true if [param value] is a canonical id (a decimal string) between [param minimum] and 2^63 − 1.
 static func is_id(value: Variant, minimum: int = 1) -> bool:
 	if typeof(value) != TYPE_STRING and typeof(value) != TYPE_STRING_NAME:
 		return false
@@ -28,24 +28,24 @@ static func is_id(value: Variant, minimum: int = 1) -> bool:
 		var code: int = text.unicode_at(i)
 		if code < 48 or code > 57:
 			return false
-	# Con 19 cifras se compara el texto antes de convertir: to_int() se quejaría al desbordar.
+	# With 19 digits the text is compared before converting: to_int() would complain on overflow.
 	if text.length() == _MAX_ID_TEXT.length() and text > _MAX_ID_TEXT:
 		return false
 	return text.to_int() >= minimum
 
 
-## El id de [param value], o -1 si no es un id canónico de al menos [param minimum].
+## The id of [param value], or -1 if it is not a canonical id of at least [param minimum].
 static func id_of(value: Variant, minimum: int = 1) -> int:
 	return String(value).to_int() if is_id(value, minimum) else -1
 
 
-## Un id como viaja en el JSON: su valor decimal en una cadena.
+## An id as it travels in the JSON: its decimal value in a string.
 static func id_text(number: int) -> String:
 	return str(number)
 
 
-## true si [param value] es un número entero exacto (int, o float sin parte fraccionaria) entre
-## [param minimum] y [param maximum].
+## true if [param value] is an exact integer number (int, or float with no fractional part) between
+## [param minimum] and [param maximum].
 static func is_int(value: Variant, minimum: int, maximum: int) -> bool:
 	match typeof(value):
 		TYPE_INT:
@@ -58,34 +58,34 @@ static func is_int(value: Variant, minimum: int, maximum: int) -> bool:
 	return false
 
 
-## El entero de [param key] en [param data] si existe y cabe en [[param minimum], [param maximum]]; si no,
+## The integer of [param key] in [param data] if it exists and fits in [[param minimum], [param maximum]]; otherwise,
 ## [param fallback].
 static func int_in(data: Dictionary, key: String, minimum: int, maximum: int, fallback: int) -> int:
 	var value: Variant = data.get(key)
 	return int(value) if is_int(value, minimum, maximum) else fallback
 
 
-## El texto de [param key] en [param data], o [param fallback] si no es una cadena.
+## The text of [param key] in [param data], or [param fallback] if it is not a string.
 static func text_in(data: Dictionary, key: String, fallback: String = "") -> String:
 	var value: Variant = data.get(key)
 	return String(value) if typeof(value) == TYPE_STRING else fallback
 
 
-## El diccionario de [param key] en [param data], o uno vacío si no lo es.
+## The dictionary of [param key] in [param data], or an empty one if it is not one.
 static func dict_in(data: Dictionary, key: String) -> Dictionary:
 	var value: Variant = data.get(key)
 	return value if value is Dictionary else {}
 
 
-## La lista de [param key] en [param data], o una vacía si no lo es.
+## The list of [param key] in [param data], or an empty one if it is not one.
 static func array_in(data: Dictionary, key: String) -> Array:
 	var value: Variant = data.get(key)
 	return value if value is Array else []
 
 
-## Lee [param raw] como JSON sin registrar errores del motor (nunca [method JSON.parse_string]: escribe un
-## ERROR ante un cuerpo vacío o roto). Devuelve [code]{"ok": bool, "data": Variant}[/code]: un cuerpo vacío es
-## [code]ok[/code] con [code]data[/code] null; uno que no es UTF-8 o no es JSON, [code]ok[/code] false.
+## Reads [param raw] as JSON without logging engine errors (never [method JSON.parse_string]: it writes an
+## ERROR on an empty or broken body). Returns [code]{"ok": bool, "data": Variant}[/code]: an empty body is
+## [code]ok[/code] with [code]data[/code] null; one that is not UTF-8 or not JSON, [code]ok[/code] false.
 static func parse(raw: PackedByteArray) -> Dictionary:
 	if raw.is_empty():
 		return {"ok": true, "data": null}

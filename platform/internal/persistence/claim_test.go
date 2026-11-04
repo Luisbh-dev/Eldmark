@@ -15,8 +15,8 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(testdb.Main(m)) }
 
-// La reclamación consume el billete, toma el arrendamiento y trae la cuenta, el personaje (con el
-// reino en su código), la sección progress del almacén y los totales pvp.
+// The claim consumes the ticket, takes the lease and brings the account, the character (with the
+// realm in its code), the store's progress section and the pvp totals.
 func TestClaim(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -66,9 +66,9 @@ func TestClaim(t *testing.T) {
 	if stored != lease {
 		t.Fatal(stored)
 	}
-	// Con el personaje dentro, enter da character_busy.
+	// With the character inside, enter gives character_busy.
 	platformtest.Expect(t, p.Enter(pl, id), 409, "character_busy")
-	// El primer guardado anota la entrada al mundo con la hora de la reclamación (los avisos, §9.5).
+	// The first save records the entry into the world with the claim's time (the notices, §9.5).
 	p.Clock.Advance(time.Minute)
 	platformtest.Expect(t, z.Save(id, z.SaveBody(id, lease, 1)), 200, "")
 	p.Scalar(&entered, `select last_entered_at = $2 from characters where character_id = $1`, id, claimedAt)
@@ -77,8 +77,8 @@ func TestClaim(t *testing.T) {
 	}
 }
 
-// Billete consumido, caducado, de otra instancia y de una sesión revocada: ticket_invalid, y el
-// billete que no se usó no queda consumido.
+// Consumed, expired, from another instance and from a revoked session ticket: ticket_invalid, and
+// the ticket that was not used is not left consumed.
 func TestClaimTicketInvalid(t *testing.T) {
 	p := platformtest.New(t)
 	z0 := p.NewZone(1, "vado_gris", 0).Start()
@@ -92,40 +92,40 @@ func TestClaimTicketInvalid(t *testing.T) {
 		}
 	}
 
-	// De otra instancia: el billete es de z0 (canal 0: los dos vacíos, gana el menor).
+	// From another instance: the ticket is z0's (channel 0: both empty, the lower wins).
 	ticket, instance := p.MustEnter(pl, id)
 	if instance != z0.ID {
 		t.Fatal(instance)
 	}
 	platformtest.Expect(t, z1.Claim(ticket, id), 409, "ticket_invalid")
 	notConsumed(ticket)
-	// De otro personaje.
+	// From another character.
 	other := p.NewCharacter(pl, "Bran", "vardheim")
 	platformtest.Expect(t, z0.Claim(ticket, other), 409, "ticket_invalid")
 	notConsumed(ticket)
-	// Caducado: a los 10 s y 5 de margen.
+	// Expired: after 10 s and 5 of margin.
 	p.Clock.Advance(15 * time.Second)
 	platformtest.Expect(t, z0.Claim(ticket, id), 409, "ticket_invalid")
 	notConsumed(ticket)
-	// Uno que no existe.
+	// One that does not exist.
 	platformtest.Expect(t, z0.Claim(ticket+1, id), 409, "ticket_invalid")
 
-	// De una sesión revocada: iniciar sesión otra vez revoca la del billete.
+	// From a revoked session: logging in again revokes the ticket's one.
 	p.Login(pl)
 	ticket, _ = p.MustEnter(pl, id)
 	p.Login(pl)
 	platformtest.Expect(t, z0.Claim(ticket, id), 409, "ticket_invalid")
 	notConsumed(ticket)
 
-	// Consumido: el segundo uso falla.
+	// Consumed: the second use fails.
 	ticket, _ = p.MustEnter(pl, id)
-	p.Clock.Advance(14 * time.Second) // dentro del margen de 5 s
+	p.Clock.Advance(14 * time.Second) // within the 5 s margin
 	z0.MustClaim(ticket, id)
 	platformtest.Expect(t, z0.Claim(ticket, id), 409, "ticket_invalid")
 }
 
-// character_busy no consume el billete: dos billetes del mismo personaje antes de reclamar; el
-// segundo choca con el arrendamiento del primero.
+// character_busy does not consume the ticket: two tickets of the same character before claiming; the
+// second clashes with the first's lease.
 func TestClaimBusyKeepsTheTicket(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -150,7 +150,7 @@ func TestClaimOnStartingInstance(t *testing.T) {
 	platformtest.Expect(t, z.Claim(ticket, id), 409, "instance_not_live")
 }
 
-// Una reclamación con un ticket_id de más de 2^53 vale (viaja en cadena, §4.1).
+// A claim with a ticket_id above 2^53 is valid (it travels as a string, §4.1).
 func TestClaimBigTicketID(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -162,7 +162,7 @@ func TestClaimBigTicketID(t *testing.T) {
 	res := z.Do("POST", "/internal/v1/claims", `{"zone_instance_id": "`+z.ID+`", "ticket_id": "`+
 		strconv.FormatInt(big, 10)+`", "character_id": "`+strconv.FormatInt(id, 10)+`"}`)
 	platformtest.Expect(t, res, 200, "")
-	// Un id sin comillas es 400.
+	// An unquoted id is 400.
 	res = z.Do("POST", "/internal/v1/claims", `{"zone_instance_id": "`+z.ID+`", "ticket_id": 5, "character_id": "1"}`)
 	platformtest.Expect(t, res, 400, "bad_request")
 }
@@ -178,8 +178,8 @@ func TestClaimDeletedCharacter(t *testing.T) {
 	platformtest.Expect(t, z.Claim(ticket, id), 409, "ticket_invalid")
 }
 
-// Con la cuenta suspendida, expulsada o con el borrado pedido: 403 account_blocked con kind,
-// until_unix, reason y un message de 255 B como mucho, que compone la plataforma.
+// With the account suspended, banned or with deletion requested: 403 account_blocked with kind,
+// until_unix, reason and a message of 255 B at most, composed by the platform.
 func TestClaimAccountBlocked(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -231,10 +231,10 @@ func TestClaimAccountBlocked(t *testing.T) {
 
 func ptr(t time.Time) *time.Time { return &t }
 
-// Sin un billete válido, la reclamación no dice nada de la cuenta (§5.3): con un ticket_id inventado
-// o el billete de otro personaje, uno suspendido o con el borrado pedido, de este mundo o de otro,
-// da el mismo 409 ticket_invalid que uno que no existe, sin kind, until_unix ni reason. Con su
-// billete, 403 account_blocked, y el billete sigue sin consumir.
+// Without a valid ticket, the claim says nothing about the account (§5.3): with an invented
+// ticket_id or another character's ticket, one suspended or with deletion requested, from this world
+// or another, it gives the same 409 ticket_invalid as one that does not exist, without kind,
+// until_unix or reason. With its ticket, 403 account_blocked, and the ticket is still unconsumed.
 func TestClaimRevealsNothingWithoutATicket(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -267,8 +267,8 @@ func TestClaimRevealsNothingWithoutATicket(t *testing.T) {
 	}
 }
 
-// Un DELETE y una reclamación del mismo personaje a la vez dejan o un borrado sin arrendamiento o
-// un vivo con él (bloquean los dos la fila de la cuenta).
+// A DELETE and a claim of the same character at once leave either a deletion without a lease or a
+// living character with one (both lock the account's row).
 func TestDeleteAndClaimAtOnce(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -307,8 +307,8 @@ func TestDeleteAndClaimAtOnce(t *testing.T) {
 	t.Logf("resultados: %v", outcomes)
 }
 
-// Dos reclamaciones a la vez de dos personajes de la misma cuenta: solo una gana y la otra da
-// character_busy; y enter del segundo con el primero dentro, también.
+// Two simultaneous claims of two characters of the same account: only one wins and the other gives
+// character_busy; and enter of the second with the first inside, too.
 func TestOneCharacterPerAccountInTheWorld(t *testing.T) {
 	p := platformtest.New(t)
 	z0 := p.NewZone(1, "vado_gris", 0).Start()
@@ -348,8 +348,8 @@ func TestOneCharacterPerAccountInTheWorld(t *testing.T) {
 	}
 }
 
-// Dos instancias reclaman a la vez el mismo personaje (con un billete cada una): una gana y la otra
-// recibe character_busy.
+// Two instances claim the same character at once (with one ticket each): one wins and the other
+// receives character_busy.
 func TestTwoInstancesClaimAtOnce(t *testing.T) {
 	p := platformtest.New(t)
 	z0 := p.NewZone(1, "vado_gris", 0).Start()

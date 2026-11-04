@@ -1,7 +1,7 @@
 extends TestCase
-## Pruebas de [NpcBrain] (el maniquí de entrenamiento: quieto, bloqueando o girando), del patrón
-## [constant BotBrain.Pattern.COMBAT] de [BotBrain] (busca al enemigo, se acerca, ataca, bloquea y
-## esquiva, con semilla) y de [ServerConsole] (la cola de líneas de la entrada estándar).
+## Tests of [NpcBrain] (the training dummy: standing still, blocking or turning), of the
+## [constant BotBrain.Pattern.COMBAT] pattern of [BotBrain] (finds the enemy, approaches, attacks,
+## blocks and dodges, with a seed) and of [ServerConsole] (the standard input line queue).
 
 
 # --- NpcBrain ---------------------------------------------------------------------------------
@@ -27,17 +27,17 @@ func test_block_mode_holds_block() -> void:
 func test_spin_mode_turns_a_full_circle_every_period_while_moving_just_enough_to_turn() -> void:
 	var brain := NpcBrain.new(NpcBrain.Mode.SPIN)
 	var first: PlayerInput = brain.next_input(100, Vector3.ZERO, 2.0)
-	assert_near(first.look_yaw, 2.0, 1e-6, "empieza donde estaba")
+	assert_near(first.look_yaw, 2.0, 1e-6, "starts where it was")
 	assert_true(first.move.length() > PlayerCharacter.FACING_MIN_WISH,
-			"se mueve lo justo para que el personaje gire hacia la cámara")
-	assert_true(first.move.length() < 0.2, "pero casi nada")
+			"it moves just enough for the character to turn toward the camera")
+	assert_true(first.move.length() < 0.2, "but hardly anything")
 	assert_eq(first.buttons, 0)
 	var quarter: PlayerInput = brain.next_input(100 + (NpcBrain.SPIN_PERIOD_TICKS >> 2),
 			Vector3.ZERO, 2.0)
 	assert_near(angle_difference(first.look_yaw, quarter.look_yaw), -PI / 2.0, 1e-4,
-			"un cuarto de vuelta")
+			"a quarter turn")
 	var full: PlayerInput = brain.next_input(100 + NpcBrain.SPIN_PERIOD_TICKS, Vector3.ZERO, 2.0)
-	assert_near(angle_difference(first.look_yaw, full.look_yaw), 0.0, 1e-4, "una vuelta entera")
+	assert_near(angle_difference(first.look_yaw, full.look_yaw), 0.0, 1e-4, "a full turn")
 
 
 func test_mode_names_round_trip() -> void:
@@ -62,9 +62,9 @@ func test_a_spinning_dummy_really_turns_in_the_world() -> void:
 		character.simulate(input.quantized(), 1.0 / 60.0)
 		tick += 1
 		await tree.physics_frame
-	# En 1,5 s da un cuarto de vuelta y casi no se desplaza.
-	assert_true(absf(angle_difference(character.yaw, yaw_start)) > 1.0, "gira")
-	assert_true(character.global_position.distance_to(start) < 1.5, "sin alejarse")
+	# In 1.5 s it makes a quarter turn and hardly moves.
+	assert_true(absf(angle_difference(character.yaw, yaw_start)) > 1.0, "turns")
+	assert_true(character.global_position.distance_to(start) < 1.5, "without moving away")
 	viewport.get_parent().remove_child(viewport)
 	viewport.free()
 
@@ -83,10 +83,10 @@ func test_combat_without_a_finder_wanders_like_the_walker() -> void:
 	for tick: int in range(1, 400):
 		var input: PlayerInput = brain.next_input(tick, Vector3.ZERO, 0.0)
 		assert_eq(input.buttons & (PlayerInput.PRIMARY | PlayerInput.BLOCK | PlayerInput.DODGE), 0,
-				"sin enemigo no pelea")
+				"without an enemy it does not fight")
 		if input.move != Vector2.ZERO:
 			moved += 1
-	assert_true(moved > 100, "pasea (%d ticks en marcha)" % moved)
+	assert_true(moved > 100, "it wanders (%d ticks running)" % moved)
 
 
 func test_combat_walks_to_the_enemy_and_sprints_when_far() -> void:
@@ -94,13 +94,13 @@ func test_combat_walks_to_the_enemy_and_sprints_when_far() -> void:
 	brain.set_enemy_finder(_finder(Vector3(0.0, 0.0, -20.0)))
 	assert_true(brain.has_enemy_finder())
 	var input: PlayerInput = brain.next_input(1, Vector3.ZERO, 1.0)
-	assert_near(angle_difference(input.look_yaw, 0.0), 0.0, 1e-4, "mira al enemigo (hacia -Z)")
-	assert_eq(input.move, Vector2(0.0, 1.0), "avanza")
-	assert_true(input.has(PlayerInput.SPRINT), "esprinta desde lejos")
+	assert_near(angle_difference(input.look_yaw, 0.0), 0.0, 1e-4, "looks at the enemy (toward -Z)")
+	assert_eq(input.move, Vector2(0.0, 1.0), "advances")
+	assert_true(input.has(PlayerInput.SPRINT), "sprints from afar")
 	input = brain.next_input(2, Vector3(0.0, 0.0, -14.0), 0.0)
-	assert_false(input.has(PlayerInput.SPRINT), "a menos de 8 m ya no")
+	assert_false(input.has(PlayerInput.SPRINT), "within 8 m it no longer does")
 	assert_eq(input.move, Vector2(0.0, 1.0))
-	# Un enemigo al este: yaw de -90° (-X es el yaw 90°; +X es -90°).
+	# An enemy to the east: yaw of -90° (-X is yaw 90°; +X is -90°).
 	var east := BotBrain.new(6, BotBrain.Pattern.COMBAT, Vector3.ZERO, 20.0)
 	east.set_enemy_finder(_finder(Vector3(10.0, 0.0, 0.0)))
 	assert_near(angle_difference(east.next_input(1, Vector3.ZERO, 0.0).look_yaw, -PI / 2.0), 0.0, 1e-4)
@@ -113,7 +113,7 @@ func test_combat_ignores_enemies_beyond_sight() -> void:
 	for tick: int in range(1, 300):
 		buttons |= brain.next_input(tick, Vector3.ZERO, 0.0).buttons \
 				& (PlayerInput.PRIMARY | PlayerInput.BLOCK | PlayerInput.DODGE)
-	assert_eq(buttons, 0, "demasiado lejos para pelear")
+	assert_eq(buttons, 0, "too far away to fight")
 
 
 func test_combat_stops_at_attack_distance_and_fights_with_every_action() -> void:
@@ -127,7 +127,7 @@ func test_combat_stops_at_attack_distance_and_fights_with_every_action() -> void
 	for tick: int in range(1, 3000):
 		var input: PlayerInput = brain.next_input(tick, Vector3.ZERO, 0.0)
 		seen |= input.buttons
-		assert_true(absf(angle_difference(input.look_yaw, 0.0)) < 1e-4, "siempre mirando al enemigo")
+		assert_true(absf(angle_difference(input.look_yaw, 0.0)) < 1e-4, "always looking at the enemy")
 		if input.has(PlayerInput.PRIMARY):
 			primary_run += 1
 		elif primary_run > 0:
@@ -137,15 +137,15 @@ func test_combat_stops_at_attack_distance_and_fights_with_every_action() -> void
 		if input.has(PlayerInput.DODGE):
 			dodge_moves.append(input.move)
 		if not input.has(PlayerInput.PRIMARY | PlayerInput.BLOCK | PlayerInput.DODGE):
-			assert_eq(input.move, Vector2.ZERO, "ya está a distancia de golpe: no avanza")
-	assert_true((seen & PlayerInput.PRIMARY) != 0, "ataca")
-	assert_true((seen & PlayerInput.BLOCK) != 0, "bloquea a veces")
-	assert_true((seen & PlayerInput.DODGE) != 0, "esquiva a veces")
-	assert_true(longest_primary >= 24, "alguna vez mantiene el ataque para cargar un fuerte (%d)" % longest_primary)
-	assert_true(tap_lengths.has(BotBrain.COMBAT_TAP_TICKS), "y casi siempre da toques de %d ticks"
+			assert_eq(input.move, Vector2.ZERO, "it is already within striking distance: it does not advance")
+	assert_true((seen & PlayerInput.PRIMARY) != 0, "attacks")
+	assert_true((seen & PlayerInput.BLOCK) != 0, "blocks sometimes")
+	assert_true((seen & PlayerInput.DODGE) != 0, "dodges sometimes")
+	assert_true(longest_primary >= 24, "sometimes it holds the attack to charge a heavy one (%d)" % longest_primary)
+	assert_true(tap_lengths.has(BotBrain.COMBAT_TAP_TICKS), "and almost always taps for %d ticks"
 			% BotBrain.COMBAT_TAP_TICKS)
 	for move: Vector2 in dodge_moves:
-		assert_true(move != Vector2.ZERO, "la esquiva lleva dirección")
+		assert_true(move != Vector2.ZERO, "the dodge has a direction")
 
 
 func test_combat_is_deterministic_with_the_seed() -> void:
@@ -159,11 +159,11 @@ func test_combat_is_deterministic_with_the_seed() -> void:
 		var a: PlayerInput = first.next_input(tick, Vector3.ZERO, 0.0)
 		var b: PlayerInput = second.next_input(tick, Vector3.ZERO, 0.0)
 		var c: PlayerInput = other.next_input(tick, Vector3.ZERO, 0.0)
-		assert_eq(a.buttons, b.buttons, "misma semilla, mismos botones (tick %d)" % tick)
+		assert_eq(a.buttons, b.buttons, "same seed, same buttons (tick %d)" % tick)
 		assert_eq(a.move, b.move)
 		if a.buttons != c.buttons:
 			differs = true
-	assert_true(differs, "otra semilla pelea distinto")
+	assert_true(differs, "another seed fights differently")
 
 
 func test_combat_target_is_refreshed_only_every_few_ticks() -> void:
@@ -174,7 +174,7 @@ func test_combat_target_is_refreshed_only_every_few_ticks() -> void:
 		return Vector3(0.0, 0.0, -10.0))
 	for tick: int in range(1, 41):
 		brain.next_input(tick, Vector3.ZERO, 0.0)
-	assert_eq(calls[0], 10, "busca cada %d ticks, no en todos" % BotBrain.COMBAT_RETARGET_TICKS)
+	assert_eq(calls[0], 10, "it searches every %d ticks, not on all of them" % BotBrain.COMBAT_RETARGET_TICKS)
 
 
 # --- ServerConsole ----------------------------------------------------------------------------
@@ -187,8 +187,8 @@ func test_console_queue_takes_lines_in_order_and_ignores_blank_ones() -> void:
 	console.push_line("")
 	console.push_line("  announce hola  ")
 	assert_eq(console.take_lines(), PackedStringArray(["kick Ana", "announce hola"]))
-	assert_eq(console.take_lines(), PackedStringArray(), "la cola queda vacía")
-	assert_false(console.is_running(), "sin arrancar el hilo no hay lector")
+	assert_eq(console.take_lines(), PackedStringArray(), "the queue ends up empty")
+	assert_false(console.is_running(), "without starting the thread there is no reader")
 	assert_false(console.has_reached_eof())
 
 
@@ -197,19 +197,19 @@ func test_console_queue_is_bounded() -> void:
 	for index: int in ServerConsole.MAX_PENDING_LINES + 30:
 		console.push_line("kick %d" % index)
 	var lines: PackedStringArray = console.take_lines()
-	assert_eq(lines.size(), ServerConsole.MAX_PENDING_LINES, "lo que sobra se descarta")
+	assert_eq(lines.size(), ServerConsole.MAX_PENDING_LINES, "the excess is discarded")
 	assert_eq(lines[0], "kick 0")
 
 
-## En Windows una lectura de stdin puede traer varias líneas juntas (una tubería que las manda de golpe):
-## la consola las separa en vez de ejecutar el texto entero como una sola orden.
+## On Windows a stdin read can bring several lines together (a pipe that sends them all at once):
+## the console splits them instead of running the whole text as a single command.
 func test_console_splits_a_read_with_several_lines() -> void:
 	var console := ServerConsole.new()
 	console.push_text("help\nplayers\r\nannounce Hola a todos\n\nshutdown 1")
 	assert_eq(console.take_lines(), PackedStringArray(
 			["help", "players", "announce Hola a todos", "shutdown 1"]),
-			"una línea por orden (LF y CRLF), sin vacías")
+			"one line per command (LF and CRLF), without empty ones")
 	console.push_text("kick Ana")
-	assert_eq(console.take_lines(), PackedStringArray(["kick Ana"]), "y una sola línea sigue valiendo")
+	assert_eq(console.take_lines(), PackedStringArray(["kick Ana"]), "and a single line is still valid")
 	console.push_text("")
-	assert_eq(console.take_lines(), PackedStringArray(), "un texto vacío no mete nada")
+	assert_eq(console.take_lines(), PackedStringArray(), "an empty text adds nothing")

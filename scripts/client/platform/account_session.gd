@@ -1,35 +1,35 @@
 class_name AccountSession
 extends RefCounted
-## La sesión de la cuenta en el cliente (docs/plataforma.md §4.2 y §14.4): los dos tokens, cuándo caduca el de
-## acceso, el ámbito ([code]game[/code] o [code]privacy[/code]), la restricción de una cuenta sancionada y la cuenta
-## de la última respuesta. Vive solo en memoria: nada de esto se escribe en disco (§0). La guarda [FrontMain] entre
-## escenas y la usa [PlatformApi] en cada llamada con sesión.
+## The account session on the client (docs/plataforma.md §4.2 and §14.4): the two tokens, when the access one
+## expires, the scope ([code]game[/code] or [code]privacy[/code]), the restriction of a sanctioned account and the account
+## from the last response. It lives only in memory: none of this is written to disk (§0). It is kept by [FrontMain] between
+## scenes and used by [PlatformApi] on every call with a session.
 ## [br][br]
-## Los plazos van en milisegundos de [method Time.get_ticks_msec] (el reloj del proceso, que no salta): la
-## plataforma da [code]access_expires_in[/code] en segundos y aquí se convierte al recibirlo. Solo cliente.
+## Deadlines are in milliseconds of [method Time.get_ticks_msec] (the process clock, which does not jump): the
+## platform gives [code]access_expires_in[/code] in seconds and it is converted here on receipt. Client only.
 
-## Antelación con la que se refresca el token de acceso antes de que caduque.
+## Lead time with which the access token is refreshed before it expires.
 const REFRESH_MARGIN_MSEC: int = 60000
 const SCOPE_GAME: String = "game"
 const SCOPE_PRIVACY: String = "privacy"
 
 var access_token: String = ""
 var refresh_token: String = ""
-## Cuándo caduca el token de acceso ([method Time.get_ticks_msec]).
+## When the access token expires ([method Time.get_ticks_msec]).
 var access_expires_msec: int = 0
-## Cuándo caduca la sesión entera (el refresco; 12 h desde el inicio, §4.2).
+## When the whole session expires (the refresh; 12 h from login, §4.2).
 var refresh_expires_msec: int = 0
-## [constant SCOPE_GAME] o [constant SCOPE_PRIVACY] (cuenta suspendida o expulsada: solo exportar, borrar la cuenta
-## y cerrar sesión).
+## [constant SCOPE_GAME] or [constant SCOPE_PRIVACY] (suspended or banned account: only export, delete the account
+## and log out).
 var scope: String = ""
-## [code]{code, until, reason}[/code] de la sanción de una sesión de privacidad; vacío si no hay.
+## [code]{code, until, reason}[/code] of the sanction of a privacy session; empty if there is none.
 var restriction: Dictionary = {}
-## La cuenta ([code]GET /v1/account[/code] o la del inicio de sesión): [code]account_id[/code] (cadena),
+## The account ([code]GET /v1/account[/code] or the login one): [code]account_id[/code] (string),
 ## [code]email[/code], [code]role[/code], [code]realms[/code], [code]slots[/code], [code]pending[/code]…
 var account: Dictionary = {}
 
 
-## La sesión de la respuesta de [code]POST /v1/sessions[/code] ([param data]) recibida en [param now_msec].
+## The session from the response of [code]POST /v1/sessions[/code] ([param data]) received at [param now_msec].
 static func from_login(data: Dictionary, now_msec: int) -> AccountSession:
 	var session := AccountSession.new()
 	session.apply_tokens(data, now_msec)
@@ -40,9 +40,9 @@ static func from_login(data: Dictionary, now_msec: int) -> AccountSession:
 	return session
 
 
-## Pone los tokens de un inicio de sesión o de un refresco ([param data]: [code]access_token[/code],
-## [code]access_expires_in[/code], [code]refresh_token[/code], [code]refresh_expires_in[/code] y [code]scope[/code])
-## recibidos en [param now_msec]. El refresco conserva el ámbito (§4.2).
+## Sets the tokens from a login or a refresh ([param data]: [code]access_token[/code],
+## [code]access_expires_in[/code], [code]refresh_token[/code], [code]refresh_expires_in[/code] and [code]scope[/code])
+## received at [param now_msec]. A refresh keeps the scope (§4.2).
 func apply_tokens(data: Dictionary, now_msec: int) -> void:
 	access_token = _text(data, "access_token")
 	refresh_token = _text(data, "refresh_token")
@@ -53,23 +53,23 @@ func apply_tokens(data: Dictionary, now_msec: int) -> void:
 		scope = new_scope
 
 
-## true si hay una sesión iniciada (con tokens).
+## true if there is a logged-in session (with tokens).
 func is_active() -> bool:
 	return not access_token.is_empty() and not refresh_token.is_empty()
 
 
-## true si es la sesión de privacidad de una cuenta sancionada (§4.2).
+## true if it is the privacy session of a sanctioned account (§4.2).
 func is_privacy() -> bool:
 	return scope == SCOPE_PRIVACY
 
 
-## true si el token de acceso caduca en menos de [constant REFRESH_MARGIN_MSEC] (o ya caducó) en
+## true if the access token expires in less than [constant REFRESH_MARGIN_MSEC] (or has already expired) at
 ## [param now_msec].
 func needs_refresh(now_msec: int) -> bool:
 	return is_active() and access_expires_msec - now_msec <= REFRESH_MARGIN_MSEC
 
 
-## Olvida la sesión (cerrar sesión, sesión perdida).
+## Forgets the session (logout, lost session).
 func clear() -> void:
 	access_token = ""
 	refresh_token = ""
@@ -80,7 +80,7 @@ func clear() -> void:
 	account = {}
 
 
-## El reino de la cuenta en [param world_id] (id de [RealmCatalog], [code]&""[/code] si aún no tiene), de
+## The account's realm in [param world_id] (id from [RealmCatalog], [code]&""[/code] if it has none yet), from
 ## [member account].
 func realm_in(world_id: int) -> StringName:
 	var realms: Variant = account.get("realms")

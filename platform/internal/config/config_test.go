@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Clave de billete de 32 B que no es la del vector.
+// A 32 B ticket key that is not the vector's.
 var goodKey = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0xA5}, 32))
 
 const dbURL = "postgres://eldmark:muy-secreta@127.0.0.1:5432/eldmark?sslmode=disable"
@@ -23,7 +23,7 @@ func zoneEntry(scope, token string) string {
 	return scope + ":" + hex.EncodeToString(sum[:])
 }
 
-// minimal es lo mínimo con lo que serve arranca en dev.
+// minimal is the minimum with which serve starts in dev.
 func minimal() map[string]string {
 	return map[string]string{
 		"ELDMARK_DATABASE_URL": dbURL,
@@ -60,7 +60,7 @@ func mustFail(t *testing.T, env map[string]string, wantInError ...string) string
 			t.Errorf("el error no dice %q:\n%s", want, msg)
 		}
 	}
-	// Ningún error repite un secreto.
+	// No error repeats a secret.
 	for _, secret := range []string{"muy-secreta", goodKey, "token-de-la-zona"} {
 		if strings.Contains(msg, secret) {
 			t.Errorf("el error repite un secreto:\n%s", msg)
@@ -118,11 +118,11 @@ func TestMissingVariablesDoNotStart(t *testing.T) {
 		env := minimal()
 		delete(env, name)
 		mustFail(t, env, name, "falta")
-		// Vacía cuenta como ausente.
+		// Empty counts as absent.
 		env[name] = "  "
 		mustFail(t, env, name, "falta")
 	}
-	// Con todo vacío, los tres problemas a la vez.
+	// With everything empty, the three problems at once.
 	msg := mustFail(t, map[string]string{})
 	if strings.Count(msg, "\n- ") != 3 {
 		t.Errorf("se dicen todos los problemas a la vez:\n%s", msg)
@@ -278,11 +278,11 @@ func TestMalformedValues(t *testing.T) {
 		env[name] = value
 		mustFail(t, env, name)
 	}
-	// Mismo puerto para las dos API.
+	// Same port for both APIs.
 	env := minimal()
 	env["ELDMARK_INTERNAL_ADDR"] = "127.0.0.1:24680"
 	mustFail(t, env, "misma dirección")
-	// Un reino abierto sin zona de entrada.
+	// An open realm without an entry zone.
 	env = minimal()
 	env["ELDMARK_OPEN_REALMS"] = "vardheim,solmarch,askarra"
 	mustFail(t, env, "askarra no tiene zona de entrada")
@@ -292,9 +292,9 @@ func TestMalformedValues(t *testing.T) {
 	}
 }
 
-// El TTL de los arrendamientos tiene que cubrir lo que tarda en darse por perdida una instancia sin
-// latido (3 × HEARTBEAT_S) más una vuelta del trabajo (min(5 s, HEARTBEAT_S)): si no, un arrendamiento
-// caduca con la instancia aún viva y un latido tardío lo renovaba (plataforma.md §2.3, §5.3).
+// The leases' TTL has to cover how long an instance without a heartbeat takes to be considered lost
+// (3 x HEARTBEAT_S) plus one round of the job (min(5 s, HEARTBEAT_S)): otherwise, a lease expires
+// with the instance still alive and a late heartbeat would renew it (plataforma.md §2.3, §5.3).
 func TestLeaseTTLCoversLostInstances(t *testing.T) {
 	for _, c := range []struct {
 		heartbeat, ttl string
@@ -321,12 +321,12 @@ func TestZoneTokens(t *testing.T) {
 		t.Errorf("dos alcances: %+v", c.ZoneTokens)
 	}
 	for _, bad := range []string{
-		"1:vado_gris:0",                   // sin hash
-		zoneEntry("0:vado_gris:0", "a"),   // mundo 0
-		zoneEntry("1:Vado:0", "a"),        // zona con mayúsculas
-		zoneEntry("1:vado_gris:256", "a"), // canal fuera de u8
-		"1:vado_gris:0:abcd",              // hash corto
-		zoneEntry("1:vado_gris:0", "a") + "," + zoneEntry("1:test_world:0", "a"), // un token, dos alcances
+		"1:vado_gris:0",                   // no hash
+		zoneEntry("0:vado_gris:0", "a"),   // world 0
+		zoneEntry("1:Vado:0", "a"),        // zone with uppercase letters
+		zoneEntry("1:vado_gris:256", "a"), // channel outside u8
+		"1:vado_gris:0:abcd",              // short hash
+		zoneEntry("1:vado_gris:0", "a") + "," + zoneEntry("1:test_world:0", "a"), // one token, two scopes
 	} {
 		env["ELDMARK_ZONE_TOKENS"] = bad
 		mustFail(t, env, "ELDMARK_ZONE_TOKENS")

@@ -1,14 +1,14 @@
 class_name AppearanceColor
 extends Resource
-## Un color de la apariencia (docs/progresion.md §7.2, ART-19): un tono de piel, un color de pelo (pelo,
-## barba y cejas) o un color de ojos de [AppearanceCatalog]. Como las piezas, su posición en la lista es
-## el índice que se guarda, así que las listas solo crecen.
+## A color of the appearance (docs/progresion.md §7.2, ART-19): a skin tone, a hair color (hair,
+## beard and eyebrows) or an eye color from [AppearanceCatalog]. Like parts, its position in the
+## list is the index that gets stored, so lists only grow.
 
-## Id estable ([code][a-z0-9_][/code]); lo congela [code]data/characters/appearance_ids.txt[/code].
+## Stable id ([code][a-z0-9_][/code]); frozen by [code]data/characters/appearance_ids.txt[/code].
 @export var id: StringName = &""
-## Nombre en español para la pantalla de creación.
+## Name in Spanish for the creation screen.
 @export var display_name: String = ""
-## Tinte que aplica el cliente al material.
+## Tint the client applies to the material.
 @export var color: Color = Color.WHITE
-## Textura propia (opcional y solo cliente), como ruta: el servidor no carga texturas.
+## Own texture (optional and client-only), as a path: the server does not load textures.
 @export var texture_path: String = ""

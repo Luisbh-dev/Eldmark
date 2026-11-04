@@ -1,19 +1,19 @@
-// Superficie de reino (docs/arte.md, 4.4): recolorea la textura de un kit para cada reino sin
-// tocar la malla.
+// Realm surface (docs/arte.md, 4.4): recolors a kit's texture for each realm without touching the
+// mesh.
 //
-// - Ajuste de color: desplazamiento de tono, saturación, brillo y contraste sobre la textura.
-// - "Colorear": lleva la textura hacia un color objetivo conservando su detalle de luminancia.
-//   Multiplicar solo oscurece; esto permite pasar de un ladrillo gris a caliza crema o de tejas
-//   de terracota a pizarra azul (paleta de docs/mundo.md, "Paleta por material").
-// - Capa extra en las caras que miran hacia arriba (nieve en Vardheim, musgo en Solmarch,
-//   ceniza en Eldrun), con un borde roto por la propia textura.
-// - Color de bando por instancia (instance uniform faction_color): estandartes y telas toman el
-//   color del dueño sin cambiar de material. faction_mix = 0 en piedra y madera.
-// - Proyección triplanar opcional para piezas cuyas UV no casan con la textura (Kenney,
-//   primitivas de blockout).
-// Cuerpo común de realm_surface.gdshader (piezas de una cara, cull_disabled) y de
-// realm_surface_closed.gdshader (mallas cerradas: troncos, lonas; cull_back, la mitad de
-// rasterizado en cada corte de sombra).
+// - Color adjustment: hue shift, saturation, brightness and contrast over the texture.
+// - "Colorize": pushes the texture toward a target color while keeping its luminance detail.
+//   Multiplying only darkens; this makes it possible to go from a gray brick to cream limestone or
+//   from terracotta tiles to blue slate (palette in docs/mundo.md, "Paleta por material").
+// - Extra layer on upward-facing faces (snow in Vardheim, moss in Solmarch, ash in Eldrun), with an
+//   edge broken up by the texture itself.
+// - Per-instance faction color (instance uniform faction_color): banners and cloths take the
+//   owner's color without changing material. faction_mix = 0 on stone and wood.
+// - Optional triplanar projection for pieces whose UVs do not match the texture (Kenney, blockout
+//   primitives).
+// Common body of realm_surface.gdshader (single-sided pieces, cull_disabled) and of
+// realm_surface_closed.gdshader (closed meshes: logs, canvas; cull_back, half the rasterization in
+// each shadow cascade).
 
 group_uniforms textura;
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable, hint_default_white;
@@ -22,10 +22,10 @@ uniform bool use_normal_map = false;
 uniform float normal_strength : hint_range(0.0, 2.0) = 1.0;
 uniform vec2 uv_scale = vec2(1.0, 1.0);
 uniform bool use_triplanar = false;
-// Repeticiones de la textura por metro en modo triplanar.
+// Texture repetitions per meter in triplanar mode.
 uniform float triplanar_scale = 0.25;
 uniform float triplanar_sharpness : hint_range(1.0, 16.0) = 6.0;
-// Recorte por alfa (estandartes con forma, rejas). 0 = opaco.
+// Alpha cutout (shaped banners, grilles). 0 = opaque.
 uniform float alpha_scissor : hint_range(0.0, 1.0) = 0.0;
 
 group_uniforms color;
@@ -34,22 +34,22 @@ uniform float saturation : hint_range(0.0, 2.0) = 1.0;
 uniform float brightness : hint_range(0.0, 3.0) = 1.0;
 uniform float contrast : hint_range(0.0, 3.0) = 1.0;
 uniform vec4 target_color : source_color = vec4(0.55, 0.55, 0.52, 1.0);
-// 0 = textura ajustada; 1 = color objetivo con el detalle de luminancia de la textura.
+// 0 = adjusted texture; 1 = target color with the texture's luminance detail.
 uniform float colorize : hint_range(0.0, 1.0) = 0.0;
-// Luminancia media de la textura: el detalle se mide respecto a ella.
+// Mean luminance of the texture: the detail is measured relative to it.
 uniform float reference_luminance : hint_range(0.05, 1.0) = 0.45;
 uniform float detail_strength : hint_range(0.0, 2.0) = 1.0;
-// Límites del detalle (luminancia / referencia): sin ellos las juntas claras del ladrillo
-// pasaban de 1 y se quemaban a blanco puro con colores objetivo claros (caliza de Solmarch).
+// Detail limits (luminance / reference): without them the light brick joints went above 1 and burned
+// out to pure white with light target colors (Solmarch limestone).
 uniform float detail_min : hint_range(0.0, 1.0) = 0.5;
 uniform float detail_max : hint_range(1.0, 3.0) = 1.4;
-// Ganancia final del albedo (después de colorear): para materiales muy claros.
+// Final albedo gain (after colorizing): for very light materials.
 uniform float albedo_gain : hint_range(0.0, 2.0) = 1.0;
 
 group_uniforms capa;
 uniform vec4 layer_color : source_color = vec4(0.9, 0.93, 0.95, 1.0);
 uniform float layer_amount : hint_range(0.0, 1.0) = 0.0;
-// Cuánto debe mirar hacia arriba la cara (1 = solo horizontales).
+// How far upward the face must point (1 = horizontals only).
 uniform float layer_threshold : hint_range(0.0, 1.0) = 0.6;
 uniform float layer_softness : hint_range(0.01, 1.0) = 0.2;
 uniform float layer_roughness : hint_range(0.0, 1.0) = 0.9;
@@ -107,7 +107,7 @@ void fragment() {
 	}
 	vec3 base = tex.rgb;
 
-	// Ajuste de tono, saturación, brillo y contraste.
+	// Hue, saturation, brightness and contrast adjustment.
 	vec3 hsv = rgb_to_hsv(base);
 	hsv.x = fract(hsv.x + hue_shift);
 	hsv.y = clamp(hsv.y * saturation, 0.0, 1.0);
@@ -115,16 +115,16 @@ void fragment() {
 	adjusted = (adjusted - 0.5) * contrast + 0.5;
 	adjusted = max(adjusted * brightness, vec3(0.0));
 
-	// Color objetivo con el detalle de la textura.
+	// Target color with the texture detail.
 	float lum = dot(base, vec3(0.299, 0.587, 0.114));
 	float detail = mix(1.0, clamp(lum / reference_luminance, detail_min, detail_max), detail_strength);
 	vec3 colorized = target_color.rgb * detail;
 	vec3 color = mix(adjusted, colorized, colorize);
 
-	// Color de bando.
+	// Faction color.
 	color = mix(color, faction_color.rgb * detail, faction_mix);
 
-	// Capa en las caras que miran arriba, con borde roto por la luminancia.
+	// Layer on upward-facing faces, with an edge broken up by luminance.
 	float up = dot(normalize(world_normal), vec3(0.0, 1.0, 0.0));
 	float edge = layer_threshold + (lum - reference_luminance) * 0.5;
 	float layer = layer_amount * smoothstep(edge, edge + layer_softness, up);

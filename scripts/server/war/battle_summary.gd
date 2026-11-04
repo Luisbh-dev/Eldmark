@@ -1,57 +1,54 @@
 class_name BattleSummary
 extends RefCounted
-## Resumen de un registro de batalla ([BattleLog], GUE-17): lo que mira quien ajusta el fuerte sin
-## tocar código. Lo usa [code]tools/war/summarize_battle.gd[/code].
+## Summary of a battle log ([BattleLog], GUE-17): what whoever tunes the fort looks at without touching code. Used by
+## [code]tools/war/summarize_battle.gd[/code].
 ## [br][br]
-## Saca del JSON Lines:
-## [br]- [b]Capturas[/b]: por cada fuerte capturado, los segundos desde el principio del ciclo (el inicio
-## de la batalla o el último reinicio) hasta la captura, desde que cayó el capitán, y la duración de la
-## propia captura (desde «captura iniciada»).
-## [br]- [b]Puerta[/b]: los segundos entre el primer golpe a la puerta y su rotura.
-## [br]- [b]Muertes por ruta[/b]: dónde han caído los jugadores, clasificados por posición como
-## [code]walkway[/code] (pasarela del fuerte y lo alto de sus rampas: a [constant WALKWAY_MIN_HEIGHT] m o más sobre el
-## círculo y a menos de [constant WALKWAY_RADIUS] de él, o, si las rutas conocen la pasarela, en su eje; GUE-45),
-## [code]gate[/code] (la explanada
-## delante de la puerta y el patio: a menos de [constant GATE_RADIUS] del círculo; ahí acaban las dos rutas,
-## así que sin esta clase todas las muertes del asalto saldrían como «vado»), [code]bridge[/code] (puente) o
-## [code]ford[/code] (vado) por el camino; [code]other[/code] si no están cerca de ninguna ruta de
-## [ApproachRoutes].
-## [br]- Las muertes de PNJ, por sitio con las mismas clases (los Huecos y la guarnición patrullan la pasarela).
-## [br]- Los recuentos de avisos de guerra y de muertes por reino.
+## It extracts from the JSON Lines:
+## [br]- [b]Captures[/b]: for each captured fort, the seconds from the start of the cycle (the start of the battle or the
+## last reset) to the capture, since the captain fell, and the duration of the capture itself (since "capture started").
+## [br]- [b]Gate[/b]: the seconds between the first hit on the gate and its breaking.
+## [br]- [b]Deaths by route[/b]: where players have fallen, classified by position as [code]walkway[/code] (the fort's
+## walkway and the top of its ramps: at [constant WALKWAY_MIN_HEIGHT] m or more above the circle and less than
+## [constant WALKWAY_RADIUS] from it, or, if the routes know the walkway, on its axis; GUE-45), [code]gate[/code] (the
+## esplanade in front of the gate and the courtyard: less than [constant GATE_RADIUS] from the circle; that is where both
+## routes end up, so without this class all assault deaths would come out as "ford"), [code]bridge[/code] or
+## [code]ford[/code] by the path; [code]other[/code] if they are not near any route of [ApproachRoutes].
+## [br]- NPC deaths, by place with the same classes (the Hollow and the garrison patrol the walkway).
+## [br]- The counts of war notices and of deaths per realm.
 
-## Clave de las muertes en la pasarela del fuerte y en ningún sitio conocido.
+## Key for deaths on the fort's walkway and at no known place.
 const WALKWAY: StringName = &"walkway"
 const GATE: StringName = &"gate"
 const OTHER: StringName = &"other"
-## Hasta qué distancia (m) de una ruta cuenta una muerte como suya.
+## Up to what distance (m) from a route a death counts as its own.
 const ROUTE_MAX_DISTANCE: float = 30.0
-## Radio (m) alrededor del círculo en el que una muerte cuenta como de la puerta y el patio (la explanada, la
-## puerta y el recinto), en lugar de la de una ruta.
+## Radius (m) around the circle within which a death counts as belonging to the gate and the courtyard (the esplanade,
+## the gate and the enclosure), instead of a route's.
 const GATE_RADIUS: float = 25.0
-## Radio (m) alrededor del círculo en el que una muerte alta cuenta como de la pasarela y cuánto por
-## encima del suelo del círculo (m) tiene que estar.
+## Radius (m) around the circle within which a high death counts as belonging to the walkway and how far above the
+## circle's ground (m) it must be.
 const WALKWAY_RADIUS: float = 30.0
 const WALKWAY_MIN_HEIGHT: float = 2.0
-## Con rutas que conocen la pasarela ([method ApproachRoutes.has_walkway]): una muerte a menos de esto (m) de su eje en
-## horizontal y a no más de [constant WALKWAY_LEVEL_MARGIN] por debajo de su suelo es de la pasarela, también lejos del
-## círculo (sus esquinas del fondo).
+## With routes that know the walkway ([method ApproachRoutes.has_walkway]): a death less than this (m) from its axis
+## horizontally and no more than [constant WALKWAY_LEVEL_MARGIN] below its floor belongs to the walkway, also far from
+## the circle (its back corners).
 const WALKWAY_BAND: float = 1.5
 const WALKWAY_LEVEL_MARGIN: float = 1.0
-## Ticks por segundo de los datos.
+## Ticks per second of the data.
 const TICK_RATE: int = 60
 
 
-## Resume el registro [param text] (el contenido del archivo JSON Lines). [param routes] son las rutas de
-## la zona (null = las muertes se clasifican solo como pasarela u otras). Las líneas que no son JSON se
-## cuentan en [code]bad_lines[/code]. Claves del resultado:
+## Summarizes the log [param text] (the contents of the JSON Lines file). [param routes] are the zone's routes (null =
+## deaths are classified only as walkway or other). Lines that are not JSON are counted in [code]bad_lines[/code]. Result
+## keys:
 ## [codeblock]
 ## zone, ticks, duration_s, bad_lines
-## war_events    {clave del aviso: veces}
+## war_events    {notice key: times}
 ## captures      [{fortress, realm, ticks_from_cycle_start, seconds_from_cycle_start,
 ##                 seconds_from_captain_down, seconds_capturing}]
 ## gate_breaks   [{fortress, seconds}]
-## deaths        {players, npcs, by_route {ruta: jugadores muertos}, by_realm {reino: jugadores muertos},
-##                npcs_by_route {ruta: PNJ muertos}}
+## deaths        {players, npcs, by_route {route: dead players}, by_realm {realm: dead players},
+##                npcs_by_route {route: dead NPCs}}
 ## [/codeblock]
 static func summarize(text: String, routes: ApproachRoutes = null) -> Dictionary:
 	var result: Dictionary = {
@@ -60,12 +57,12 @@ static func summarize(text: String, routes: ApproachRoutes = null) -> Dictionary
 		"deaths": {"players": 0, "npcs": 0, "by_route": {}, "by_realm": {}, "npcs_by_route": {}},
 	}
 	var fortresses: Dictionary = {}
-	# Estado por fortaleza: tick de inicio del ciclo, de la caída del capitán, de «captura iniciada»
-	# y del primer golpe a la puerta.
+	# State per fortress: start tick of the cycle, of the captain's fall, of "capture started" and of the first hit on the
+	# gate.
 	var cycles: Dictionary = {}
 	var json := JSON.new()
 	for line: String in text.split("\n", false):
-		# JSON.parse() devuelve el error sin registrarlo (parse_string lo escribe en el registro).
+		# JSON.parse() returns the error without logging it (parse_string writes it to the log).
 		if json.parse(line) != OK or not (json.data is Dictionary):
 			result["bad_lines"] = int(result["bad_lines"]) + 1
 			continue
@@ -88,10 +85,9 @@ static func summarize(text: String, routes: ApproachRoutes = null) -> Dictionary
 	return result
 
 
-## Clasifica una muerte en la posición [param position] (x, y, z) como [code]walkway[/code],
-## [code]bridge[/code], [code]ford[/code] u [code]other[/code]. [param fortress] es la fortaleza del
-## registro (con [code]circle[/code] y [code]position[/code]) o un diccionario vacío; [param routes] las
-## rutas de la zona o null.
+## Classifies a death at position [param position] (x, y, z) as [code]walkway[/code], [code]bridge[/code],
+## [code]ford[/code] or [code]other[/code]. [param fortress] is the log's fortress (with [code]circle[/code] and
+## [code]position[/code]) or an empty dictionary; [param routes] the zone's routes or null.
 static func classify_route(position: Array, fortress: Dictionary, routes: ApproachRoutes) -> StringName:
 	if position.size() < 3:
 		return OTHER
@@ -120,7 +116,7 @@ static func classify_route(position: Array, fortress: Dictionary, routes: Approa
 	return best
 
 
-## El resumen [param summary] ([method summarize]) como texto en español, para la terminal.
+## The summary [param summary] ([method summarize]) as text in Spanish, for the terminal.
 static func format(summary: Dictionary) -> String:
 	var lines := PackedStringArray()
 	lines.append("Registro de batalla de «%s»: %d ticks (%.1f s)" % [summary["zone"],
@@ -162,7 +158,7 @@ static func format(summary: Dictionary) -> String:
 	return "\n".join(lines)
 
 
-# Estado del ciclo de una fortaleza (se crea al nombrarla).
+# State of a fortress's cycle (created when it is named).
 static func _cycle(cycles: Dictionary, fortress_id: String) -> Dictionary:
 	if not cycles.has(fortress_id):
 		cycles[fortress_id] = {"start": 0, "captain_down": -1, "capture_started": -1, "gate_start": -1}
@@ -227,7 +223,7 @@ static func _note_death(result: Dictionary, entry: Dictionary, fortresses: Dicti
 	by_route[String(route)] = int(by_route.get(String(route), 0)) + 1
 
 
-# Distancia (m) en el plano de [param point] a la poligonal [param polyline] (puntos x, z).
+# Distance (m) in the plane from [param point] to the polyline [param polyline] (x, z points).
 static func _distance_to_polyline(point: Vector2, polyline: PackedVector2Array) -> float:
 	if polyline.is_empty():
 		return INF

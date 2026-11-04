@@ -1,88 +1,86 @@
 class_name ChatRouter
 extends RefCounted
-## Enrutado del chat en el servidor de zona (SOC-04, docs/social.md, secciones 1, 2, 5 y 12).
+## Chat routing on the zone server (SOC-04, docs/social.md, sections 1, 2, 5 and 12).
 ## [br][br]
-## Recibe cada CHAT_SEND ya autenticado ([method handle_send]), aplica los ritmos por conexión, lo sanea
-## ([ChatText]) y lo reparte con un CHAT_MESSAGE solo a quien debe verlo. [b]Nunca envía a un cliente un texto
-## de otro reino[/b]: la lista de destinatarios se filtra por reino al construirla (el cliente no puede
-## pedir lo que el servidor no manda), y la prueba de aceptación mira los bytes recibidos, no lo que se
-## pinta.
+## It receives each already-authenticated CHAT_SEND ([method handle_send]), applies the per-connection rates, sanitizes
+## it ([ChatText]) and delivers it with a CHAT_MESSAGE only to whoever should see it. [b]It never sends a client a text
+## from another realm[/b]: the recipient list is filtered by realm when built (the client cannot ask for what the server
+## does not send), and the acceptance test looks at the received bytes, not at what is drawn.
 ## [br][br]
-## [b]Canales[/b] de la fase 4:
-## [br]- [b]Decir[/b]: los del mismo reino a [constant SAY_RANGE] m del emisor (él incluido).
-## [br]- [b]Zona[/b]: todos los del mismo reino presentes en el proceso (la zona y su copia son el proceso).
-## [br]- [b]Susurro[/b]: un personaje del mismo reino de este proceso, por su nombre (sin distinguir
-## mayúsculas ni tildes). Si no está, o es del otro reino, la respuesta es la misma, «no está conectado», y
-## no se revela que existe. Lo reciben el destinatario y el propio emisor (su copia).
-## [br]- [b]Grupo[/b]: los miembros de su grupo, vengan de donde vengan; los da [member party_members].
-## [br]- Banda, gremio, reino y GM tienen id pero aún no se reparten: «Ese canal aún no está disponible»
-## (en GM, «Comando desconocido», para no revelar que existe).
+## [b]Channels[/b] of phase 4:
+## [br]- [b]Say[/b]: those of the same realm within [constant SAY_RANGE] m of the sender (including the sender).
+## [br]- [b]Zone[/b]: everyone of the same realm present in the process (the zone and its copy are the process).
+## [br]- [b]Whisper[/b]: a character of the same realm in this process, by name (ignoring case and accents). If they are
+## not there, or belong to the other realm, the response is the same, "no está conectado" (not connected), and it is not
+## revealed that they exist. The recipient and the sender themselves (their copy) receive it.
+## [br]- [b]Party[/b]: the members of their party, wherever they come from; given by [member party_members].
+## [br]- Band, guild, realm and GM have an id but are not yet delivered: "Ese canal aún no está disponible" (that channel
+## is not available yet) (on GM, "Comando desconocido" (unknown command), so as not to reveal that it exists).
 ## [br][br]
-## [b]Responder (/r).[/b] Lo resuelve el cliente: recuerda con quién habló por última vez y manda un
-## susurro a ese nombre. El servidor no guarda «el último interlocutor» porque no hace falta (un susurro
-## a un nombre que ya no está conectado da la respuesta de siempre) y así el protocolo no necesita un
-## canal más.
+## [b]Reply (/r).[/b] Resolved by the client: it remembers whom it last talked to and sends a whisper to that name. The
+## server does not store "the last conversation partner" because it is not needed (a whisper to a name that is no longer
+## connected gets the usual response) and so the protocol does not need one more channel.
 ## [br][br]
-## [b]Ritmos[/b] (por conexión, [RateLimiter] en ticks, docs/social.md sección 5). Cada CHAT_SEND gasta
-## primero una ficha de su cubo, [b]antes de sanear[/b] o de contestar nada: el saneado no es gratis y un
-## texto que queda vacío, o un canal sin servicio, también cuestan. Decir, zona, grupo y los canales sin
-## servicio comparten 1 mensaje por segundo con ráfaga de 5; el susurro, 1 por segundo con ráfaga de 3 y
-## como mucho 5 destinatarios nuevos por minuto (quien ya habló contigo en los últimos
-## [constant KNOWN_RECIPIENT_TICKS] ticks no cuenta como nuevo, y tú tampoco para él). Un texto igual al
-## último aceptado en [constant REPEAT_WINDOW_TICKS] ticks se descarta si va al mismo sitio: los canales
-## públicos comparten la comprobación y en un susurro cuenta el destinatario («ok» a dos personas pasa).
-## Lo descartado avisa al jugador por el canal del sistema («Hablas demasiado rápido.» o «Ya has enviado
-## ese mensaje.», como mucho un aviso por segundo); los [constant ChatPeerState.FLOOD_FREE_DISCARDS]
-## primeros descartes de cada 10 s no suman nada y, a partir de ahí, cada uno suma un aviso del peer (50 en
-## 600 ticks expulsan): pulsar Intro de más no expulsa a nadie, la inundación sostenida sí.
+## [b]Rates[/b] (per connection, [RateLimiter] in ticks, docs/social.md section 5). Each CHAT_SEND first spends a token
+## from its bucket, [b]before sanitizing[/b] or answering anything: sanitizing is not free and a text that ends up empty,
+## or a channel with no service, also cost. Say, zone, party and the channels with no service share 1 message per second
+## with a burst of 5; whisper, 1 per second with a burst of 3 and at most 5 new recipients per minute (whoever has talked
+## to you in the last [constant KNOWN_RECIPIENT_TICKS] ticks does not count as new, and neither do you for them). A text
+## equal to the last one accepted within [constant REPEAT_WINDOW_TICKS] ticks is discarded if it goes to the same place:
+## public channels share the check and in a whisper the recipient counts ("ok" to two people goes through). What is
+## discarded warns the player through the system channel ("Hablas demasiado rápido." (you talk too fast) or "Ya has
+## enviado ese mensaje." (you already sent that message), at most one warning per second); the first
+## [constant ChatPeerState.FLOOD_FREE_DISCARDS] discards in each 10 s add nothing and, from there, each one adds a
+## strike to the peer (50 in 600 ticks kick): pressing Enter too many times kicks nobody, sustained flooding does.
 ## [br][br]
-## [b]Moderación[/b] (docs/plataforma.md §9.2 a §9.5, P7b). El canal GM lleva desde el protocolo 7 los comandos que
-## atiende el servidor ([code]/gm …[/code], [code]/ignorar[/code], [code]/designorar[/code],
-## [code]/reportar[/code]): con [member command_sink] puesto, el texto saneado va allí (tras gastar su ficha y sin la
-## comprobación de repetición). Quien está silenciado ([member ChatPeerState.muted_until_unix]) no habla por ningún
-## canal y recibe «Estás silenciado N min más.». Un receptor que ignora la cuenta del emisor no recibe su mensaje en
-## ningún canal (en un susurro el emisor recibe su copia igual: no sabe que lo ignoran). Con
-## [member keep_received], cada receptor apunta lo que recibe en su anillo (la prueba de un reporte) y, con
-## [member log_sink], cada mensaje repartido de un personaje va al lote de chat de la plataforma.
+## [b]Moderation[/b] (docs/plataforma.md §9.2 to §9.5, P7b). Since protocol 7 the GM channel carries the commands the
+## server handles ([code]/gm …[/code], [code]/ignorar[/code], [code]/designorar[/code], [code]/reportar[/code]): with
+## [member command_sink] set, the sanitized text goes there (after spending its token and without the repetition check).
+## Whoever is muted ([member ChatPeerState.muted_until_unix]) does not talk on any channel and receives "Estás
+## silenciado N min más." (you are muted for N more min). A receiver who ignores the sender's account does not receive
+## their message on any channel (in a whisper the sender receives their copy anyway: they do not know they are ignored).
+## With [member keep_received], each receiver records what it receives in its ring (the evidence for a report) and, with
+## [member log_sink], each delivered message from a character goes to the platform's chat batch.
 ## [br][br]
-## No toca la red ni el reloj: recibe de quien lo monta ([SocialService]) tres [Callable]s ([code]peers_source
-## () -> Array[ServerPeer][/code], [code]send_sink(peer_id: int, bytes: PackedByteArray)[/code] y
-## [code]strike_sink(peer: ServerPeer, reason: String)[/code]) y el tick en cada llamada; la hora Unix (silencios y
-## lote de chat), de [member clock_unix].
+## It touches neither the network nor the clock: it receives from whoever assembles it ([SocialService]) three
+## [Callable]s ([code]peers_source() -> Array[ServerPeer][/code], [code]send_sink(peer_id: int, bytes:
+## PackedByteArray)[/code] and [code]strike_sink(peer: ServerPeer, reason: String)[/code]) and the tick on each call; the
+## Unix time (mutes and chat batch), from [member clock_unix].
 
-## Resultado de [method handle_send] y [method route], para las pruebas y los informes.
+## Result of [method handle_send] and [method route], for tests and reports.
 enum Result {
-	## Repartido a quien correspondía.
+	## Delivered to whoever it was meant for.
 	DELIVERED,
-	## El mensaje no se decodificó, o el peer aún no está en el mundo, o es un canal que un cliente no usa:
-	## suma un aviso.
+	## The message did not decode, or the peer is not in the world yet, or it is a channel a client does not use: adds a
+	## strike.
 	MALFORMED,
-	## Descartado por ritmo.
+	## Discarded by rate.
 	RATE_LIMITED,
-	## Descartado por ser igual al anterior.
+	## Discarded for being equal to the previous one.
 	REPEATED,
-	## Texto vacío tras sanear: se descarta (ya ha gastado su ficha) sin avisar a nadie.
+	## Empty text after sanitizing: discarded (it already spent its token) without telling anyone.
 	EMPTY,
-	## Canal sin servicio en la fase 4.
+	## Channel with no service in phase 4.
 	UNAVAILABLE,
-	## Susurro a alguien que no está (o a un enemigo), a uno mismo, o grupo sin grupo: se contesta al emisor.
+	## Whisper to someone who is not there (or to an enemy), to oneself, or party chat without a party: the sender is
+	## answered.
 	NO_TARGET,
-	## Un comando del canal GM entregado a [member command_sink].
+	## A GM channel command delivered to [member command_sink].
 	COMMAND,
-	## El emisor está silenciado: no sale nada y se le dice cuánto le queda.
+	## The sender is muted: nothing goes out and they are told how much time they have left.
 	MUTED,
 }
 
-## Distancia (m) a la que llega «decir».
+## Distance (m) that "say" reaches.
 const SAY_RANGE: float = 30.0
-## Ticks en los que un texto idéntico al anterior (al mismo sitio) se descarta (10 s).
+## Ticks in which a text identical to the previous one (to the same place) is discarded (10 s).
 const REPEAT_WINDOW_TICKS: int = 600
-## Ticks mínimos entre dos avisos de mensaje descartado al mismo jugador (1 s). Las invitaciones de
-## grupo ([PartyManager]) usan el mismo intervalo para «Invitas demasiado rápido.».
+## Minimum ticks between two discarded-message warnings to the same player (1 s). Party invitations ([PartyManager]) use
+## the same interval for "Invitas demasiado rápido." (you invite too fast).
 const WARNING_INTERVAL_TICKS: int = 60
-## Ticks que un interlocutor de susurro deja de contar como «nuevo» (5 min).
+## Ticks for which a whisper conversation partner stops counting as "new" (5 min).
 const KNOWN_RECIPIENT_TICKS: int = 18000
-## Motivo con el que se suman los avisos por inundar el chat.
+## Reason with which strikes for flooding the chat are added.
 const STRIKE_REASON_FLOOD: String = "exceso de mensajes de chat"
 const STRIKE_REASON_MALFORMED: String = "mensaje de chat mal formado"
 const STRIKE_REASON_NOT_IN_WORLD: String = "chat antes de entrar en el mundo"
@@ -97,19 +95,20 @@ const TEXT_NO_PARTY: String = "No estás en un grupo."
 const TEXT_MUTED: String = "Estás silenciado %d min más."
 const TEXT_MUTED_NO_END: String = "Estás silenciado sin fecha de fin."
 
-## Quién da los miembros del grupo de un peer: [code](peer: ServerPeer) -> Array[ServerPeer][/code]. Sin
-## él (o vacío) nadie tiene grupo y el canal de grupo contesta «No estás en un grupo.».
+## Who provides a peer's party members: [code](peer: ServerPeer) -> Array[ServerPeer][/code]. Without it (or empty)
+## nobody has a party and the party channel answers "No estás en un grupo." (you are not in a party).
 var party_members: Callable = Callable()
-## Quién atiende los comandos del canal GM: [code](peer: ServerPeer, line: String, now_tick: int) -> void[/code]
-## ([ModerationService]). Sin él, el canal GM contesta «Comando desconocido. Escribe /ayuda.» como en la fase 4.
+## Who handles the GM channel commands: [code](peer: ServerPeer, line: String, now_tick: int) -> void[/code]
+## ([ModerationService]). Without it, the GM channel answers "Comando desconocido. Escribe /ayuda." (unknown command,
+## type /ayuda) as in phase 4.
 var command_sink: Callable = Callable()
-## Con plataforma: recibe la entrada del lote de chat de cada mensaje repartido de un personaje,
-## [code](entry: Dictionary) -> void[/code] con [code]{channel, sender_character_id, target_character_id, text,
-## sent_at_unix}[/code] (docs/plataforma.md §9.2; la [code]key[/code] la pone [ZonePlatform]).
+## With a platform: receives the chat batch entry of each delivered message from a character,
+## [code](entry: Dictionary) -> void[/code] with [code]{channel, sender_character_id, target_character_id, text,
+## sent_at_unix}[/code] (docs/plataforma.md §9.2; the [code]key[/code] is set by [ZonePlatform]).
 var log_sink: Callable = Callable()
-## La hora Unix, [code]() -> int[/code] (con plataforma, [method ZonePlatform.now_unix]).
+## Unix time, [code]() -> int[/code] (with a platform, [method ZonePlatform.now_unix]).
 var clock_unix: Callable = Callable()
-## Si cada receptor apunta lo que recibe en su anillo ([method ChatPeerState.remember_received]).
+## Whether each receiver records what it receives in its ring ([method ChatPeerState.remember_received]).
 var keep_received: bool = false
 
 var _peers_source: Callable
@@ -128,9 +127,8 @@ func _init(peers_source: Callable, send_sink: Callable, strike_sink: Callable) -
 	_strike_sink = strike_sink
 
 
-## Atiende un CHAT_SEND de [param peer] llegado en el tick [param now_tick]: lo decodifica y lo enruta.
-## Un mensaje mal formado, o de quien aún no está en el mundo, suma un aviso. Devuelve el
-## [enum Result].
+## Handles a CHAT_SEND from [param peer] arriving at tick [param now_tick]: decodes and routes it. A malformed message,
+## or one from someone not yet in the world, adds a strike. Returns the [enum Result].
 func handle_send(peer: ServerPeer, bytes: PackedByteArray, now_tick: int) -> int:
 	if peer.state != ServerPeer.State.IN_WORLD or peer.entity == null:
 		_strike_sink.call(peer, STRIKE_REASON_NOT_IN_WORLD)
@@ -142,10 +140,10 @@ func handle_send(peer: ServerPeer, bytes: PackedByteArray, now_tick: int) -> int
 	return route(peer, message, now_tick)
 
 
-## Enruta un mensaje ya decodificado de [param peer] (en el mundo). Ver la documentación de la clase.
+## Routes an already decoded message from [param peer] (in the world). See the class documentation.
 func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> int:
 	var state: ChatPeerState = peer.chat
-	# Ritmo antes que nada: ni el saneado ni las respuestas del sistema son gratis.
+	# Rate before anything else: neither sanitizing nor system replies are free.
 	var limiter: RateLimiter = state.limiter_whisper \
 			if message.channel == ChatChannel.Id.WHISPER else state.limiter_public
 	if not limiter.try_consume(now_tick):
@@ -153,7 +151,7 @@ func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> in
 		_note_discard(peer, now_tick, TEXT_TOO_FAST)
 		return _count(Result.RATE_LIMITED)
 	if message.channel == ChatChannel.Id.GM and command_sink.is_valid():
-		# Un comando para el servidor (docs/plataforma.md §9): ni repetición ni silencio, que no es chat.
+		# A command for the server (docs/plataforma.md §9): neither repetition nor mute, since it is not chat.
 		var line: String = ChatText.sanitize(message.text)
 		if line.is_empty():
 			state.discarded_empty += 1
@@ -166,7 +164,7 @@ func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> in
 				else TEXT_UNAVAILABLE
 		send_system(peer, text, now_tick)
 		return _count(Result.UNAVAILABLE)
-	# Silenciado (docs/plataforma.md §9.5): no habla por ningún canal.
+	# Muted (docs/plataforma.md §9.5): it does not talk on any channel.
 	var now_unix: int = _now_unix()
 	if state.mute_remaining_s(now_unix) > 0:
 		state.discarded_muted += 1
@@ -177,7 +175,7 @@ func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> in
 		state.discarded_empty += 1
 		return _count(Result.EMPTY)
 
-	# Repetición: el mismo texto al mismo sitio (los canales públicos comparten clave).
+	# Repetition: the same text to the same place (public channels share a key).
 	var repeat_key: String = _repeat_key(message)
 	if text_clean == state.last_text and repeat_key == state.last_text_key \
 			and now_tick - state.last_text_tick < REPEAT_WINDOW_TICKS:
@@ -203,7 +201,7 @@ func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> in
 	return _count(result)
 
 
-## Manda a [param peer] un mensaje del canal del sistema (lo que antes habría sido un NOTICE de chat).
+## Sends [param peer] a system channel message (what would previously have been a chat NOTICE).
 func send_system(peer: ServerPeer, text: String, now_tick: int) -> void:
 	var message := NetMessages.ChatMessage.new()
 	message.channel = ChatChannel.Id.SYSTEM
@@ -212,16 +210,16 @@ func send_system(peer: ServerPeer, text: String, now_tick: int) -> void:
 	_send_sink.call(peer.peer_id, message.encode())
 
 
-## El aviso del silencio de [param state] a la hora Unix [param now_unix]: los minutos que quedan, redondeados hacia
-## arriba, o «sin fecha de fin».
+## The mute notice of [param state] at Unix time [param now_unix]: the minutes left, rounded up, or "sin fecha de fin"
+## (no end date).
 static func muted_text(state: ChatPeerState, now_unix: int) -> String:
 	if state.muted_until_unix >= ChatPeerState.MUTE_NO_END_UNIX:
 		return TEXT_MUTED_NO_END
 	return TEXT_MUTED % ceili(float(state.mute_remaining_s(now_unix)) / 60.0)
 
 
-## Estadísticas para el informe: mensajes procesados, copias repartidas, copias que no salieron porque el receptor
-## ignora al emisor, entradas del lote de chat y cuántos acabaron en cada [enum Result].
+## Statistics for the report: messages processed, copies delivered, copies that did not go out because the receiver
+## ignores the sender, chat batch entries and how many ended in each [enum Result].
 func get_stats() -> Dictionary:
 	var by_result: Dictionary = {}
 	for result: int in _results:
@@ -230,9 +228,9 @@ func get_stats() -> Dictionary:
 			"logged": _logged, "results": by_result}
 
 
-# --- Destinatarios ----------------------------------------------------------------------------
+# --- Recipients ----------------------------------------------------------------------------
 
-# Los del mismo reino a SAY_RANGE m del emisor (él incluido).
+# Those of the same realm within SAY_RANGE m of the sender (including the sender).
 func _say_recipients(sender: ServerPeer) -> Array[ServerPeer]:
 	var origin: Vector3 = sender.entity.get_position()
 	var result: Array[ServerPeer] = []
@@ -242,7 +240,7 @@ func _say_recipients(sender: ServerPeer) -> Array[ServerPeer]:
 	return result
 
 
-# Todos los del mismo reino presentes en el proceso (él incluido).
+# Everyone of the same realm present in the process (including the sender).
 func _zone_recipients(sender: ServerPeer) -> Array[ServerPeer]:
 	var result: Array[ServerPeer] = []
 	for other: ServerPeer in _world_peers():
@@ -256,7 +254,7 @@ func _route_party(sender: ServerPeer, text: String, now_tick: int) -> int:
 	if party_members.is_valid():
 		var found: Variant = party_members.call(sender)
 		for member: ServerPeer in found:
-			# Un grupo es de un solo reino; la comprobación es la última defensa del filtro por reino.
+			# A party belongs to a single realm; the check is the last defense of the realm filter.
 			if member.realm == sender.realm and member.state == ServerPeer.State.IN_WORLD:
 				members.append(member)
 	if members.is_empty():
@@ -270,8 +268,8 @@ func _route_whisper(sender: ServerPeer, recipient_name: String, text: String, no
 	var state: ChatPeerState = sender.chat
 	var target: ServerPeer = SocialPeers.find_by_name(_world_peers(), recipient_name, sender.realm)
 	if target == null:
-		# Igual para quien no existe y para un enemigo: nada que delate cuál de los dos es. Se repite lo
-		# que escribió el jugador, no el nombre canónico del otro.
+		# Same for whoever does not exist and for an enemy: nothing reveals which of the two it is. What the player typed is
+		# repeated, not the other's canonical name.
 		state.whisper_misses += 1
 		var shown: String = ChatText.clean(recipient_name).substr(0, NetProtocol.MAX_NAME_CHARS)
 		send_system(sender, TEXT_NOT_CONNECTED % shown, now_tick)
@@ -279,30 +277,31 @@ func _route_whisper(sender: ServerPeer, recipient_name: String, text: String, no
 	if target == sender:
 		send_system(sender, TEXT_SELF_WHISPER, now_tick)
 		return Result.NO_TARGET
-	# Destinatarios nuevos: un interlocutor reciente no gasta del cubo.
+	# New recipients: a recent conversation partner does not spend from the bucket.
 	var key: String = SocialPeers.name_key_of(target)
 	if not state.knows_recipient(key, now_tick, KNOWN_RECIPIENT_TICKS):
 		if not state.limiter_new_recipients.try_consume(now_tick):
 			state.discarded_rate += 1
 			_note_discard(sender, now_tick, TEXT_TOO_FAST)
 			return Result.RATE_LIMITED
-	# Los dos lados se podan antes de apuntar: el diccionario de quien solo recibe susurros también se
-	# queda en los interlocutores de los últimos KNOWN_RECIPIENT_TICKS ticks.
+	# Both sides are pruned before recording: the dictionary of someone who only receives whispers also stays limited to
+	# the conversation partners of the last KNOWN_RECIPIENT_TICKS ticks.
 	state.forget_old_recipients(now_tick, KNOWN_RECIPIENT_TICKS)
 	state.remember_recipient(key, now_tick)
 	target.chat.forget_old_recipients(now_tick, KNOWN_RECIPIENT_TICKS)
 	target.chat.remember_recipient(SocialPeers.name_key_of(sender), now_tick)
-	# Si el destinatario ignora al emisor, solo sale la copia del emisor: no sabe que lo ignoran (§9.3).
+	# If the recipient ignores the sender, only the sender's copy goes out: they do not know they are ignored (§9.3).
 	var copies: Array[ServerPeer] = [target, sender]
 	_deliver(sender, copies, ChatChannel.Id.WHISPER, target, text, now_tick)
 	return Result.DELIVERED
 
 
-# --- Envío ------------------------------------------------------------------------------------
+# --- Sending ----------------------------------------------------------------------------------
 
-# CHAT_MESSAGE de [param sender] con [param text] ya saneado, a cada uno de [param recipients] que no ignore su
-# cuenta ([param target]: el destinatario de un susurro, null en los demás canales). Con [member keep_received], cada
-# receptor lo apunta en su anillo y, con [member log_sink], el mensaje va al lote de chat.
+# CHAT_MESSAGE from [param sender] with already sanitized [param text], to each of [param recipients] who does not
+# ignore their account ([param target]: the recipient of a whisper, null in other channels). With
+# [member keep_received], each receiver records it in its ring and, with [member log_sink], the message goes to the chat
+# batch.
 func _deliver(sender: ServerPeer, recipients: Array[ServerPeer], channel: int, target: ServerPeer,
 		text: String, now_tick: int) -> void:
 	var message := NetMessages.ChatMessage.new()
@@ -343,8 +342,8 @@ func _deliver(sender: ServerPeer, recipients: Array[ServerPeer], channel: int, t
 				"target_character_id": target_id, "text": text, "sent_at_unix": now_unix})
 
 
-# Un mensaje descartado: [param warning] al jugador (como mucho un aviso por segundo) y, pasados los
-# descartes gratis de la ventana, un aviso del peer.
+# A discarded message: [param warning] to the player (at most one warning per second) and, after the window's free
+# discards, a strike on the peer.
 func _note_discard(peer: ServerPeer, now_tick: int, warning: String) -> void:
 	var state: ChatPeerState = peer.chat
 	state.discards += 1
@@ -355,8 +354,8 @@ func _note_discard(peer: ServerPeer, now_tick: int, warning: String) -> void:
 		_strike_sink.call(peer, STRIKE_REASON_FLOOD)
 
 
-# Dónde va un mensaje, para la repetición: los canales públicos comparten clave; un susurro, la del
-# destinatario tal como se busca ([method SocialPeers.find_by_name]).
+# Where a message goes, for repetition: public channels share a key; a whisper, the recipient's as it is looked up
+# ([method SocialPeers.find_by_name]).
 static func _repeat_key(message: NetMessages.ChatSend) -> String:
 	if message.channel != ChatChannel.Id.WHISPER:
 		return ""

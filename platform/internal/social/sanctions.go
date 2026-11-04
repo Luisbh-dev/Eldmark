@@ -18,11 +18,11 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// maxSanctionMinutes acota la duración de una sanción con fin (10 años).
+// maxSanctionMinutes bounds the duration of a sanction with an end (10 years).
 const maxSanctionMinutes = 10 * 365 * 24 * 60
 
-// SanctionRequest es el cuerpo de POST /internal/v1/sanctions (§9.5). No lleva world_id: el nombre
-// se resuelve en el mundo de la instancia.
+// SanctionRequest is the body of POST /internal/v1/sanctions (§9.5). It has no world_id: the name
+// is resolved in the instance's world.
 type SanctionRequest struct {
 	ZoneInstanceID    string     `json:"zone_instance_id"`
 	AuthorCharacterID jsonx.ID   `json:"author_character_id"`
@@ -33,7 +33,7 @@ type SanctionRequest struct {
 	ReportIDs         []jsonx.ID `json:"report_ids"`
 }
 
-// SanctionView es la respuesta: el id y el fin (null: sin fin).
+// SanctionView is the response: the id and the end (null: no end).
 type SanctionView struct {
 	SanctionID jsonx.ID `json:"sanction_id"`
 	EndsAtUnix *int64   `json:"ends_at_unix"`
@@ -66,13 +66,13 @@ func (req *SanctionRequest) validate() map[string]string {
 	return fields
 }
 
-// Sanction crea una sanción pedida desde la zona (/gm …) si la plataforma la autoriza (§9.5), en la
-// transacción de la sanción ([sanctions.Create], la misma que la CLI): (1) el autor tiene
-// arrendamiento en la instancia, (2) su cuenta tiene el rol mínimo para ese tipo y esa duración
-// (§9.1) y (3) la cuenta objetivo (el nombre en el mundo de la instancia; 404 si no hay nadie)
-// tiene un rol menor. Si falla alguna, 403 forbidden y una fila sanction_denied en audit_log (el
-// objetivo por id, sin nombres). Si no, la sanción con sus reportes (de ese mundo; si no, 400),
-// must_rename en un renombrado y una fila sanction en audit_log.
+// Sanction creates a sanction requested from the zone (/gm …) if the platform authorizes it
+// (§9.5), in the sanction's transaction ([sanctions.Create], the same as the CLI's): (1) the
+// author holds a lease on the instance, (2) their account has the minimum role for that type and
+// duration (§9.1) and (3) the target account (the name in the instance's world; 404 if there is
+// nobody) has a lower role. If any fails, 403 forbidden and a sanction_denied row in audit_log
+// (the target by id, without names). Otherwise, the sanction with its reports (from that world;
+// if not, 400), must_rename on a rename and a sanction row in audit_log.
 func (s *Service) Sanction(ctx context.Context, inst *zones.Instance, req SanctionRequest) (*SanctionView, error) {
 	now := s.clock.Now()
 	author := int64(req.AuthorCharacterID)

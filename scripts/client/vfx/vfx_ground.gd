@@ -1,20 +1,21 @@
 class_name VfxGround
 extends RefCounted
-## Color del polvo según el suelo que se pisa (ART-09, solo cliente): el polvo de una esquiva o un
-## aterrizaje no es del reino sino del material del suelo.
+## Dust color according to the ground being stepped on (ART-09, client only): the dust of a dodge or a
+## landing belongs not to the realm but to the ground material.
 ## [br][br]
-## [method color_at] lee el material del terreno bajo un punto: con un [code]Terrain3D[/code] mira el
-## material pintado en ese punto (base, superposición y mezcla) y toma el color medio de su textura; sin
-## él (un suelo liso, el servidor) devuelve el color de [param fallback_kind]. No depende de Terrain3D en
-## compilación: usa solo las propiedades y métodos que expone, así que carga igual sin el addon.
+## [method color_at] reads the terrain material under a point: with a [code]Terrain3D[/code] it looks at
+## the material painted at that point (base, overlay and blend) and takes the mean color of its texture;
+## without it (a plain floor, the server) it returns the color of [param fallback_kind]. It does not
+## depend on Terrain3D at compile time: it uses only the properties and methods it exposes, so it loads
+## the same without the addon.
 
-# Color medio de la textura de cada id de material del terreno (se calcula una vez por terreno).
+# Mean color of the texture of each terrain material id (computed once per terrain).
 static var _cache: Dictionary[int, Color] = {}
 
 
-## Color del polvo bajo [param position] (mundo). [param terrain] es el nodo Terrain3D de la zona (o null).
-## [param assets] es el recurso de materiales del terreno ([code]Terrain3DAssets[/code]) si el nodo no lo
-## enseña (el nodo puede devolver una lista vacía hasta que se inicializa): sin él se pregunta al nodo.
+## Dust color under [param position] (world). [param terrain] is the zone's Terrain3D node (or null).
+## [param assets] is the terrain's materials resource ([code]Terrain3DAssets[/code]) if the node does not
+## expose it (the node may return an empty list until it is initialized): without it, the node is asked.
 static func color_at(terrain: Object, position: Vector3, fallback_kind: StringName = &"dirt",
 		assets: Object = null) -> Color:
 	var fallback: Color = VfxPalette.ground(fallback_kind)
@@ -34,8 +35,8 @@ static func color_at(terrain: Object, position: Vector3, fallback_kind: StringNa
 	return _to_dust(color_a.lerp(color_b, blend))
 
 
-# Una tierra, una piedra o una hierba pintadas no son el color del polvo que levantan: se aclaran y
-# desaturan hacia un polvo neutro.
+# A painted soil, stone or grass is not the color of the dust it kicks up: it is lightened and
+# desaturated toward a neutral dust.
 static func _to_dust(ground_color: Color) -> Color:
 	var neutral: Color = Color(0.74, 0.7, 0.64)
 	var dusty: Color = ground_color.lerp(neutral, 0.4)
@@ -63,8 +64,8 @@ static func _asset_color(assets: Object, id: int, fallback: Color) -> Color:
 	return average
 
 
-# El material del terreno con ese id: se busca en la lista de texturas del recurso de assets por su
-# propiedad id (el contador de texturas del recurso no es fiable hasta que el terreno se inicializa).
+# The terrain material with that id: it is looked up in the assets resource's texture list by its id
+# property (the resource's texture counter is not reliable until the terrain is initialized).
 static func _find_asset(assets: Object, id: int) -> Object:
 	var list: Array = assets.get(&"texture_list") as Array
 	for entry: Variant in list:

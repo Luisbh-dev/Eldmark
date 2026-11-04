@@ -1,52 +1,50 @@
 class_name RealmBalance
 extends RefCounted
-## Equilibrio de reinos de una zona (GUE-42; docs/fuerte.md, sección 7): reglas puras sobre recuentos por
-## reino, sin nodos ni red. Las usan [ServerAuth] (el REJECT 9 IMBALANCE), [ZoneServer] (el recuento del
-## WELCOME) y [ServerMain] (los jugadores falsos de relleno).
+## Realm balance of a zone (GUE-42; docs/fuerte.md, section 7): pure rules over per-realm counts, with no nodes or
+## network. Used by [ServerAuth] (the REJECT 9 IMBALANCE), [ZoneServer] (the WELCOME's count) and [ServerMain] (the
+## filler fake players).
 ## [br][br]
-## [b]Recuentos.[/b] Un [PackedInt32Array] de tres posiciones, en el orden del WELCOME: Vardheim, Solmarch y
-## Askarra (el índice es el código de reino menos uno). [b]Personas[/b] son los clientes aceptados (cargando la
-## zona o ya dentro): los jugadores falsos y los cuerpos que quedan tras una baja en combate no cuentan. Los
-## [b]relleno[/b] son los jugadores falsos de reino automático que el servidor ha puesto para igualar los
-## bandos ([method totals] suma personas y relleno).
+## [b]Counts.[/b] A three-position [PackedInt32Array], in the WELCOME's order: Vardheim, Solmarch and Askarra (the index
+## is the realm code minus one). [b]People[/b] are the accepted clients (loading the zone or already inside): fake
+## players and bodies left after a combat departure do not count. The [b]fillers[/b] are the auto-realm fake players
+## that the server has placed to even out the sides ([method totals] adds people and fillers).
 ## [br][br]
-## [b]Reinos que compiten.[/b] Los que la zona admite ([method NetZones.allowed_realms]); si la zona no
-## restringe ninguno, los tres.
+## [b]Competing realms.[/b] Those the zone admits ([method NetZones.allowed_realms]); if the zone restricts none, all
+## three.
 ## [br][br]
-## [b]Rechazo.[/b] Con [code]--max-realm-diff=N[/code] (N > 0), entrar en el reino [i]r[/i] se rechaza si
-## [code]personas[r] + 1 − min(personas[s])[/code] es mayor que N, con [i]s[/i] cada uno de los otros reinos
-## que compiten ([method exceeds]). Con N = 0, o si la zona solo admite un reino, nunca se rechaza.
+## [b]Rejection.[/b] With [code]--max-realm-diff=N[/code] (N > 0), joining realm [i]r[/i] is rejected if
+## [code]people[r] + 1 − min(people[s])[/code] is greater than N, with [i]s[/i] each of the other competing realms
+## ([method exceeds]). With N = 0, or if the zone admits only one realm, it is never rejected.
 ## [br][br]
-## [b]Relleno[/b] (solo con N > 0; ver [ServerMain]). El servidor crea los falsos de reino automático
-## repartidos por turnos, en el reino con menos total ([method realm_for_new_filler]); después:
-## [br]- Entra una persona en el reino [i]r[/i]: si el total de [i]r[/i] pasa a ser mayor que el menor de los
-## otros y [i]r[/i] tiene algún falso de relleno, se retira uno (el más antiguo) ([method should_retire_on_join]).
-## Se retira como mucho uno por persona.
-## [br]- Sale una persona de [i]r[/i]: si el total de [i]r[/i] queda por debajo del mayor de los otros y no se
-## ha agotado el cupo de [code]--fake-players[/code], entra un falso de relleno en [i]r[/i]
-## ([method should_add_on_leave]).
-## [br]- Llega el HELLO de una persona de [i]r[/i] con el servidor lleno solo por el relleno (GUE-43): el relleno no
-## ocupa plazas de personas, así que entra y un falso le aparta la suya, que deja cuando ella entra en el mundo (si se
-## va antes, no se ha movido nadie). Lo cede el reino con más total contando a quien entra; a igualdad, el de [i]r[/i]
-## y, si no, el de código más alto ([method realm_to_yield_seat]). Cuenta como el falso que retira esa persona: no se
-## retira otro por ella (sigue siendo uno por persona).
-## [br]Un falso nunca se retira por otra razón, y el relleno no cuenta para el rechazo: una persona no se
-## queda fuera porque el bando contrario esté lleno de falsos, ni porque el servidor lo esté.
+## [b]Filling[/b] (only with N > 0; see [ServerMain]). The server creates auto-realm fakes distributed in turns, in the
+## realm with the lowest total ([method realm_for_new_filler]); afterwards:
+## [br]- A person joins realm [i]r[/i]: if the total of [i]r[/i] becomes greater than the lowest of the others and
+## [i]r[/i] has any filler fake, one is withdrawn (the oldest) ([method should_retire_on_join]). At most one is
+## withdrawn per person.
+## [br]- A person leaves [i]r[/i]: if the total of [i]r[/i] falls below the highest of the others and the
+## [code]--fake-players[/code] quota has not run out, a filler fake joins [i]r[/i] ([method should_add_on_leave]).
+## [br]- The HELLO of a person of [i]r[/i] arrives with the server full only because of fillers (GUE-43): fillers do not
+## take people's seats, so the person enters and a fake gives up their seat, which they leave when the person enters the
+## world (if they leave before, nobody has moved). It is yielded by the realm with the highest total counting whoever is
+## entering; in a tie, that of [i]r[/i] and, failing that, the one with the highest code ([method realm_to_yield_seat]).
+## It counts as the fake that this person withdraws: no other is withdrawn for them (it is still one per person).
+## [br]A fake is never withdrawn for any other reason, and fillers do not count for the rejection: a person is not left
+## out because the opposing side is full of fakes, nor because the server is.
 ## [br][br]
-## Solo servidor.
+## Server only.
 
-## Número de posiciones de un recuento (Vardheim, Solmarch, Askarra).
+## Number of positions of a count (Vardheim, Solmarch, Askarra).
 const REALM_COUNT: int = 3
 
 
-## Un recuento a cero.
+## A zeroed count.
 static func empty_counts() -> PackedInt32Array:
 	var counts := PackedInt32Array()
 	counts.resize(REALM_COUNT)
 	return counts
 
 
-## Códigos de los reinos que compiten en una zona que admite [param allowed] (vacío = los tres).
+## Codes of the realms that compete in a zone that admits [param allowed] (empty = all three).
 static func competing_realms(allowed: PackedInt32Array) -> PackedInt32Array:
 	var realms := PackedInt32Array()
 	for code: int in range(1, REALM_COUNT + 1):
@@ -55,10 +53,10 @@ static func competing_realms(allowed: PackedInt32Array) -> PackedInt32Array:
 	return realms
 
 
-## true si dejar entrar a una persona en [param realm] dejaría más de [param max_diff] personas de ventaja
-## sobre el reino con menos de los otros que compiten. [param persons] cuenta las personas que ya hay (sin
-## la que entra). Falso con [param max_diff] ≤ 0, con un reino que no compite o sin otro reino con el que
-## comparar.
+## true if letting a person into [param realm] would leave more than [param max_diff] people of advantage over the realm
+## with the fewest of the other competing ones. [param persons] counts the people already there (without the one
+## entering). False with [param max_diff] ≤ 0, with a realm that does not compete or without another realm to compare
+## with.
 static func exceeds(persons: PackedInt32Array, allowed: PackedInt32Array, realm: int,
 		max_diff: int) -> bool:
 	if max_diff <= 0:
@@ -72,7 +70,7 @@ static func exceeds(persons: PackedInt32Array, allowed: PackedInt32Array, realm:
 	return _count_of(persons, realm) + 1 - lowest > max_diff
 
 
-## Total (personas más relleno) de cada reino.
+## Total (people plus fillers) of each realm.
 static func totals(persons: PackedInt32Array, fillers: PackedInt32Array) -> PackedInt32Array:
 	var result: PackedInt32Array = empty_counts()
 	for i: int in REALM_COUNT:
@@ -80,8 +78,8 @@ static func totals(persons: PackedInt32Array, fillers: PackedInt32Array) -> Pack
 	return result
 
 
-## El reino en el que tiene que entrar el siguiente falso de relleno: el de menos total de los que compiten
-## (a igualdad, el de código más bajo). 0 si no compite ninguno.
+## The realm the next filler fake must join: the one with the lowest total among those that compete (in a tie, the
+## lowest code). 0 if none competes.
 static func realm_for_new_filler(persons: PackedInt32Array, fillers: PackedInt32Array,
 		allowed: PackedInt32Array) -> int:
 	var all_totals: PackedInt32Array = totals(persons, fillers)
@@ -95,8 +93,8 @@ static func realm_for_new_filler(persons: PackedInt32Array, fillers: PackedInt32
 	return best
 
 
-## true si, tras entrar una persona en [param realm] ([param persons] ya la cuenta), hay que retirar un falso
-## de relleno de ese reino: su total supera al menor de los otros que compiten y le queda algún falso.
+## true if, after a person joins [param realm] ([param persons] already counts them), a filler fake of that realm must be
+## withdrawn: its total exceeds the lowest of the other competing ones and it still has a fake.
 static func should_retire_on_join(persons: PackedInt32Array, fillers: PackedInt32Array,
 		allowed: PackedInt32Array, realm: int) -> bool:
 	var competing: PackedInt32Array = competing_realms(allowed)
@@ -107,9 +105,9 @@ static func should_retire_on_join(persons: PackedInt32Array, fillers: PackedInt3
 	return lowest >= 0 and all_totals[realm - 1] > lowest
 
 
-## true si, tras salir una persona de [param realm] ([param persons] ya no la cuenta), hay que añadir un falso de
-## relleno en ese reino: su total queda por debajo del mayor de los otros que compiten y no se ha agotado el
-## cupo ([param fillers_alive] relleno vivo en total frente a [param budget]).
+## true if, after a person leaves [param realm] ([param persons] no longer counts them), a filler fake must be added to
+## that realm: its total falls below the highest of the other competing ones and the quota has not run out
+## ([param fillers_alive] filler alive in total versus [param budget]).
 static func should_add_on_leave(persons: PackedInt32Array, fillers: PackedInt32Array,
 		allowed: PackedInt32Array, realm: int, fillers_alive: int, budget: int) -> bool:
 	if fillers_alive >= budget:
@@ -125,11 +123,11 @@ static func should_add_on_leave(persons: PackedInt32Array, fillers: PackedInt32A
 	return highest >= 0 and all_totals[realm - 1] < highest
 
 
-## El reino del falso de relleno que cede su plaza a una persona de [param realm] que llega con el servidor
-## lleno (GUE-43): de los reinos con algún falso en [param fillers], el de más total (personas más relleno)
-## contando a la persona que entra; a igualdad, el suyo y, si no, el de código más alto (el último que se
-## habría rellenado). Es el que deja los bandos más igualados. [param persons] no cuenta a quien entra. 0 si no
-## hay relleno.
+## The realm of the filler fake that yields its seat to a person of [param realm] arriving with the server full
+## (GUE-43): among the realms with any fake in [param fillers], the one with the highest total (people plus fillers)
+## counting the person entering; in a tie, their own and, failing that, the one with the highest code (the last that
+## would have been filled). It is the one that leaves the sides most evenly matched. [param persons] does not count
+## whoever enters. 0 if there is no filler.
 static func realm_to_yield_seat(persons: PackedInt32Array, fillers: PackedInt32Array, realm: int) -> int:
 	var all_totals: PackedInt32Array = totals(persons, fillers)
 	if realm >= 1 and realm <= REALM_COUNT:
@@ -151,7 +149,7 @@ static func _count_of(counts: PackedInt32Array, realm: int) -> int:
 	return counts[index] if index >= 0 and index < counts.size() else 0
 
 
-# El menor recuento de los reinos que compiten distintos de [param realm]; -1 si no hay ninguno.
+# The lowest count among the competing realms other than [param realm]; -1 if there is none.
 static func _lowest_of_others(counts: PackedInt32Array, competing: PackedInt32Array,
 		realm: int) -> int:
 	var lowest: int = -1

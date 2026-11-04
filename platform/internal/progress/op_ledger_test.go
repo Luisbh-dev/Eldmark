@@ -11,16 +11,16 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// Op devuelve la operación con sus participantes, quién la revirtió, sus apuntes y eventos y las filas de los
-// uids de sus eventos (también las retiradas), solo a una instancia donde algún participante tiene su
-// arrendamiento; Ledger pagina los apuntes de un personaje, los más recientes primero, con limit de 1 a 100.
+// Op returns the operation with its participants, who reverted it, its entries and events and the
+// rows of the uids in its events (retired ones too), only to an instance where some participant
+// holds its lease; Ledger paginates a character's entries, most recent first, with limit from 1 to 100.
 func TestOpLedger(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
 	for i := 0; i < 3; i++ {
 		_, body := c.step(t, "valid_reversal", i)
 		if i >= 1 {
-			// El DESTROY se lleva la pila entera de resistencia: su uid queda retirado.
+			// The DESTROY takes the whole stack of endurance: its uid is left retired.
 			body = edit(t, body, func(m map[string]any) {
 				for _, o := range m["ops"].([]any) {
 					op := o.(map[string]any)
@@ -51,7 +51,7 @@ func TestOpLedger(t *testing.T) {
 		}
 		return decodeMap(t, raw)["op"].(map[string]any), nil
 	}
-	// Sin arrendamiento en la instancia, nada.
+	// With no lease on the instance, nothing.
 	if _, err := op(1032, inst); !errors.Is(err, persistence.ErrNotFound) {
 		t.Fatalf("sin arrendamiento: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestOpLedger(t *testing.T) {
 	for _, e := range all {
 		ops = append(ops, e.(map[string]any)["op_id"].(string))
 	}
-	// Los más recientes primero: la REVERSAL, la GM y los dos apuntes de la GAMEPLAY (méritos y oro).
+	// Most recent first: the REVERSAL, the GM and the two GAMEPLAY entries (merits and gold).
 	if !reflect.DeepEqual(ops, []string{"1033", "1032", "1031", "1031"}) {
 		t.Fatalf("libro: %v", ops)
 	}

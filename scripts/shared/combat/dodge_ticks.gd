@@ -1,23 +1,23 @@
 class_name DodgeTicks
 extends RefCounted
-## Una [DodgeDefinition] ya convertida a ticks por [CombatCatalog].
+## A [DodgeDefinition] already converted to ticks by [CombatCatalog].
 ## [br][br]
-## [member speeds] es la curva horneada: la velocidad (m/s) que se impone en cada tick de la
-## esquiva (índice = tick - action_tick), redondeada a f32 y normalizada para que la suma de
-## [code]speeds[i] / 60[/code] sea [member distance_m].
+## [member speeds] is the baked curve: the speed (m/s) imposed on each tick of the
+## dodge (index = tick - action_tick), rounded to f32 and normalized so that the sum of
+## [code]speeds[i] / 60[/code] is [member distance_m].
 
 var duration_ticks: int = 0
-## Ticks [desde, hasta) relativos al inicio de la esquiva en los que no se recibe daño.
+## Ticks [from, to) relative to the start of the dodge during which no damage is taken.
 var invulnerable_from_ticks: int = 0
 var invulnerable_to_ticks: int = 0
 var distance_m: float = 0.0
 var stamina_cost: int = 0
-## Tick (desde el inicio de la esquiva) a partir del cual se puede cancelar a ataque.
+## Tick (since the start of the dodge) from which it can be canceled into an attack.
 var cancel_to_attack_from_ticks: int = 0
 var speeds: PackedFloat32Array = PackedFloat32Array()
 
 
-## Velocidad impuesta (m/s) en el tick [param relative_tick] de la esquiva.
+## Forced speed (m/s) at tick [param relative_tick] of the dodge.
 func speed_at(relative_tick: int) -> float:
 	if relative_tick < 0 or speeds.is_empty():
 		return 0.0

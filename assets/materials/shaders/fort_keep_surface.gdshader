@@ -1,18 +1,18 @@
-// Superficie del torreón del fuerte (ART-57): la receta de realm_surface (recolorear la textura hacia
-// la paleta de cada reino conservando el detalle de luminancia, capa de nieve en las caras que miran
-// arriba) más lo que necesita una malla modelada con color de vértice:
+// Surface of the fort keep (ART-57): the realm_surface recipe (recolor the texture toward each
+// realm's palette while keeping the luminance detail, snow layer on upward-facing faces) plus what a
+// mesh modeled with vertex color needs:
 //
-// - COLOR.rgb: valor y tono de cada sillar, oclusión de las juntas y suciedad del pie, horneados por
-//   tools/blender/build_fort_keep.py. Se multiplica por vertex_color_gain porque el generador lo
-//   guarda dividido para no pasar de 1.
-// - COLOR.a: máscara de desgaste. En la piedra y el paño es dónde crecen el musgo, el polvo o la
-//   ceniza (weather_color) y, en las zonas con la máscara casi llena, dónde brillan las grietas de
-//   brasa (el alfa de la textura de piedra es la máscara de grietas). En la argamasa (ember_from_texture
-//   = false) es directamente la brasa de las juntas. En el tejado vale 1 y sirve para recortar los
-//   trozos que faltan (hole_amount, ruina de Eldrun).
-// - Mallas cerradas con las caras bien orientadas: cull_back (la mitad de rasterizado en las sombras).
+// - COLOR.rgb: value and tone of each ashlar block, joint occlusion and dirt at the base, baked by
+//   tools/blender/build_fort_keep.py. It is multiplied by vertex_color_gain because the generator
+//   stores it divided so as not to exceed 1.
+// - COLOR.a: wear mask. On stone and cloth it is where moss, dust or ash (weather_color) grow and,
+//   in the areas where the mask is nearly full, where the ember cracks glow (the alpha of the stone
+//   texture is the crack mask). On the mortar (ember_from_texture = false) it is directly the ember
+//   of the joints. On the roof it is 1 and is used to cut out the missing chunks (hole_amount, ruin
+//   of Eldrun).
+// - Closed meshes with correctly oriented faces: cull_back (half the rasterization in shadows).
 //
-// Nombres de parámetros iguales a los de realm_surface donde significan lo mismo.
+// Parameter names match those of realm_surface where they mean the same thing.
 shader_type spatial;
 render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 
@@ -25,14 +25,14 @@ uniform vec2 uv_scale = vec2(1.0, 1.0);
 
 group_uniforms color;
 uniform vec4 target_color : source_color = vec4(0.55, 0.55, 0.52, 1.0);
-// 0 = textura tal cual; 1 = color objetivo con el detalle de luminancia de la textura.
+// 0 = texture as is; 1 = target color with the texture's luminance detail.
 uniform float colorize : hint_range(0.0, 1.0) = 1.0;
 uniform float reference_luminance : hint_range(0.05, 1.0) = 0.45;
 uniform float detail_strength : hint_range(0.0, 2.0) = 1.0;
 uniform float detail_min : hint_range(0.0, 1.0) = 0.5;
 uniform float detail_max : hint_range(1.0, 3.0) = 1.4;
 uniform float albedo_gain : hint_range(0.0, 2.0) = 1.0;
-// Multiplicador final (la falda de tierra lo usa para tomar la paleta del reino).
+// Final multiplier (the earth skirt uses it to take the realm palette).
 uniform vec4 tint_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 
 group_uniforms vertice;
@@ -53,8 +53,8 @@ uniform float weather_amount : hint_range(0.0, 1.0) = 0.0;
 group_uniforms brasa;
 uniform vec4 ember_color : source_color = vec4(1.0, 0.54, 0.16, 1.0);
 uniform float ember_energy : hint_range(0.0, 16.0) = 0.0;
-// true: la brasa sale de las grietas de la textura (alfa) donde el desgaste del vértice es alto;
-// false: sale directamente del alfa del vértice (juntas de argamasa).
+// true: the ember comes from the cracks of the texture (alpha) where the vertex wear is high;
+// false: it comes directly from the vertex alpha (mortar joints).
 uniform bool ember_from_texture = true;
 
 group_uniforms ruina;
@@ -91,7 +91,7 @@ void fragment() {
 	vec4 tex = texture(albedo_texture, UV * uv_scale);
 	float lum = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
 
-	// Tejado en ruina: trozos que faltan, con un borde roto por la luminancia de la textura.
+	// Ruined roof: missing chunks, with a broken edge from the texture's luminance.
 	if (hole_amount > 0.0 && COLOR.a > 0.5) {
 		float n = value_noise(world_position.xz * 0.42 + world_position.y * 0.17) * 0.65
 				+ value_noise(world_position.xz * 1.3 + 7.0) * 0.35;
@@ -103,17 +103,17 @@ void fragment() {
 	float detail = mix(1.0, clamp(lum / reference_luminance, detail_min, detail_max), detail_strength);
 	vec3 color = mix(tex.rgb, target_color.rgb * detail, colorize);
 
-	// Nieve (o la capa que toque) en las caras que miran arriba.
+	// Snow (or whichever layer applies) on upward-facing faces.
 	float up = dot(normalize(world_normal), vec3(0.0, 1.0, 0.0));
 	float edge = layer_threshold + (lum - reference_luminance) * 0.12;
 	float layer = layer_amount * smoothstep(edge, edge + layer_softness, up);
 	color = mix(color, layer_color.rgb * mix(1.0, detail, 0.3), layer);
 
-	// Color de vértice: valor del sillar, oclusión de las juntas, suciedad.
+	// Vertex color: ashlar value, joint occlusion, dirt.
 	vec3 vc = mix(vec3(1.0), COLOR.rgb * vertex_color_gain, vertex_color_strength);
 	color *= vc;
 
-	// Desgaste: musgo, polvo o ceniza donde la máscara del vértice es alta (rota por la textura).
+	// Wear: moss, dust or ash where the vertex mask is high (broken up by the texture).
 	float wear = smoothstep(0.20, 0.62, COLOR.a * (0.9 + 0.12 * clamp(lum / max(reference_luminance, 0.05), 0.0, 2.0)));
 	color = mix(color, weather_color.rgb * mix(1.0, detail, 0.5) * vc, wear * weather_amount * (1.0 - layer));
 
@@ -126,7 +126,7 @@ void fragment() {
 		NORMAL_MAP_DEPTH = normal_strength * (1.0 - layer * 0.7);
 	}
 
-	// Brasas de Eldrun: en las grietas de la piedra de las zonas muy desgastadas y en las juntas.
+	// Eldrun embers: in the stone cracks of heavily worn areas and in the joints.
 	if (ember_energy > 0.0) {
 		float mask = ember_from_texture ? tex.a * smoothstep(0.70, 0.96, COLOR.a) : smoothstep(0.08, 0.7, COLOR.a);
 		float pulse = 0.82 + 0.18 * sin(TIME * 1.7 + world_position.x * 2.3 + world_position.z * 1.9);

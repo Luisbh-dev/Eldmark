@@ -1,11 +1,11 @@
 class_name MachineDriver
 extends RefCounted
-## La máquina de acciones sin física (para las pruebas de docs/habilidades.md, sección 7.3): un
-## [CombatState], un reloj y la entrada de cada tick, para guionizar botones tick a tick como el
-## [code]Driver[/code] de test_action_machine.gd, pero con el equipo que se quiera (dos armas y
-## cargas).
+## The action machine without physics (for the tests of docs/habilidades.md, section 7.3): a
+## [CombatState], a clock and each tick's input, to script buttons tick by tick like the
+## [code]Driver[/code] of test_action_machine.gd, but with whatever loadout is wanted (two weapons
+## and charges).
 
-## Primer tick (lejos de 0 para no rozar ventanas negativas).
+## First tick (far from 0 to avoid brushing negative windows).
 const START_TICK: int = 1000
 
 var c: CombatState
@@ -14,18 +14,18 @@ var grounded: bool = true
 var move: Vector2 = Vector2.ZERO
 var look_yaw: float = 0.0
 var look_pitch: float = 0.0
-## Salida del último [method step].
+## Output of the last [method step].
 var out: ActionMachine.Output
 
 
-## Con [param weapon_1] activa, [param weapon_2] en la otra ranura (0 = ninguna) y las cargas
-## [param charges] (empaquetadas como [member CombatState.consumable_charges]).
+## With [param weapon_1] active, [param weapon_2] in the other slot (0 = none) and the charges
+## [param charges] (packed as [member CombatState.consumable_charges]).
 func _init(weapon_1: int, weapon_2: int = 0, charges: int = 0) -> void:
 	c = CombatState.initial(CombatCatalog.rules(), weapon_1, weapon_2, charges)
 
 
-## Avanza un tick con [param buttons] (y la marca de entrada sustituida si se pide) y devuelve el
-## movimiento permitido. El tick avanzado queda en [member tick].
+## Advances one tick with [param buttons] (and the substituted-input marker if requested) and
+## returns the allowed movement. The advanced tick stays in [member tick].
 func step(buttons: int = 0, substituted: bool = false) -> ActionMachine.Output:
 	tick += 1
 	var input := PlayerInput.new()
@@ -38,26 +38,25 @@ func step(buttons: int = 0, substituted: bool = false) -> ActionMachine.Output:
 	return out
 
 
-## [param count] ticks seguidos con los mismos botones.
+## [param count] consecutive ticks with the same buttons.
 func hold(buttons: int, count: int, substituted: bool = false) -> void:
 	for _i: int in count:
 		step(buttons, substituted)
 
 
-## Avanza (con [param buttons]) hasta que el siguiente [method step] sea el del tick [param target].
+## Advances (with [param buttons]) until the next [method step] is that of tick [param target].
 func idle_until_before(target: int, buttons: int = 0) -> void:
 	while tick < target - 1:
 		step(buttons)
 
 
-## Fija la resistencia sin que la regeneración (que va antes de las entradas de cada tick) la
-## cambie.
+## Sets the stamina without the regeneration (which runs before each tick's inputs) changing it.
 func set_stamina(value: int) -> void:
 	c.stamina = value
 	c.stamina_regen_tick = tick + 100000
 
 
-## El estado tal y como viaja (para comparar byte a byte).
+## The state as it travels (to compare byte by byte).
 func bytes() -> PackedByteArray:
 	var encoded := PackedByteArray()
 	encoded.resize(CombatState.ENCODED_SIZE)

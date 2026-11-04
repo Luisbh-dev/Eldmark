@@ -1,43 +1,43 @@
 class_name SaveFixtures
 extends RefCounted
-## Los casos compartidos de las comprobaciones del guardado (docs/progresion.md §13.3): secuencias de secciones
-## [code]progress[/code] con su resultado esperado, válidas e inválidas (al menos una por comprobación, S1–S8), que
-## lee la prueba de Go del almacén ([code]TestApply*[/code], progresion.md P7) y que
-## [code]tests/test_progression_fixtures.gd[/code] regenera para que no diverjan. Las secciones válidas salen de
-## [PlayerProgress] (el kit, beber, reponer, ganar oro y méritos, XP, DESTROY, una GM, una reversión…); las
-## inválidas, de cambiar una sola cosa de una válida, de forma que solo falle la comprobación que se espera (las
-## comprobaciones van en orden: la primera que falla es la que se anota).
+## The shared cases for the save checks (docs/progresion.md §13.3): sequences of [code]progress[/code]
+## sections with their expected result, valid and invalid (at least one per check, S1–S8), which
+## the Go store test reads ([code]TestApply*[/code], progresion.md P7) and which
+## [code]tests/test_progression_fixtures.gd[/code] regenerates so that they do not diverge. The valid sections come from
+## [PlayerProgress] (the kit, drinking, refilling, earning gold and merits, XP, DESTROY, a GM action, a reversal...); the
+## invalid ones, from changing a single thing in a valid one, so that only the expected check fails (the
+## checks run in order: the first one that fails is the one recorded).
 ## [br][br]
-## [b]Cómo se usan[/b] (lo que hace la prueba de Go): cada caso empieza en una base nueva con las cuentas, los
-## personajes (creados con [code]Create[/code], con su raza, apariencia y plantilla) y los bloques de ids de
-## [code]id_blocks[/code] (de [code]instance_id[/code] y de otra instancia); el reloj es [code]now_unix[/code]. Cada
-## paso es un [code]Apply[/code] de su [code]progress[/code] para su [code]character_id[/code] con
-## [code]SaveKey{WorldID: world_id, InstanceID: instance_id, ZoneID: zone_id}[/code], en su propia transacción;
-## [code]expect[/code] es [code]"applied"[/code] (se confirma) o el [code]check[/code] del
-## [code]*persistence.InvalidSaveError[/code] o del error de la base de S8 (la transacción se deshace).
+## [b]How they are used[/b] (what the Go test does): each case starts in a fresh database with the accounts, the
+## characters (created with [code]Create[/code], with their race, appearance and template) and the id blocks from
+## [code]id_blocks[/code] (of [code]instance_id[/code] and of another instance); the clock is [code]now_unix[/code]. Each
+## step is an [code]Apply[/code] of its [code]progress[/code] for its [code]character_id[/code] with
+## [code]SaveKey{WorldID: world_id, InstanceID: instance_id, ZoneID: zone_id}[/code], in its own transaction;
+## [code]expect[/code] is [code]"applied"[/code] (it commits) or the [code]check[/code] of the
+## [code]*persistence.InvalidSaveError[/code] or of the database error of S8 (the transaction is rolled back).
 ## [br][br]
-## [method build] es el único generador: [code]tools/progression/write_fixtures.gd[/code] escribe el archivo y la
-## prueba compara. Sin reloj ni azar: dos llamadas dan lo mismo.
+## [method build] is the only generator: [code]tools/progression/write_fixtures.gd[/code] writes the file and the
+## test compares. No clock or randomness: two calls give the same result.
 
-## Ruta del archivo de los casos.
+## Path of the cases file.
 const OUTPUT_PATH: String = "res://tests/fixtures/progression/save_cases.json"
-## Versión del formato del archivo.
+## Version of the file format.
 const FORMAT: int = 1
-## La hora de la plataforma en todos los pasos.
+## The platform time in all the steps.
 const NOW_UNIX: int = 1793282400
 const WORLD_ID: int = 1
 const ZONE_ID: String = "vado_gris"
-## La instancia que guarda ([code]claimed_by[/code]) y otra de la misma zona con su propio bloque.
+## The instance that saves ([code]claimed_by[/code]) and another in the same zone with its own block.
 const INSTANCE_ID: String = "00000000-0000-4000-8000-0000000000f5"
 const OTHER_INSTANCE_ID: String = "00000000-0000-4000-8000-0000000000f6"
 const BLOCK_FIRST: int = 1025
 const OTHER_BLOCK_FIRST: int = 3073
-## Cuándo se dieron los dos bloques (S2 mira [code]detail.at_unix[/code] contra esto).
+## When the two blocks were granted (S2 checks [code]detail.at_unix[/code] against this).
 const BLOCK_GRANTED_AT_UNIX: int = NOW_UNIX - 600
-## Un id que no cae en ningún bloque.
+## An id that falls in no block.
 const OUTSIDE_ID: int = 5000
-## La cuenta y el personaje de cada uno: el jugador (42 y la víctima ficticia 88 no es de nadie), el GM (41), el
-## administrador (40) y otro jugador (43 y 49).
+## The account and character of each one: the player (42, and the fictitious victim 88 belongs to nobody), the GM (41), the
+## administrator (40) and another player (43 and 49).
 const PLAYER_ACCOUNT: int = 7
 const GM_ACCOUNT: int = 77
 const ADMIN_ACCOUNT: int = 78
@@ -45,13 +45,13 @@ const OTHER_PLAYER_ACCOUNT: int = 9
 const SEP: String = ", "
 
 
-## Un personaje de prueba: su progreso con un bloque de la instancia, su cuerpo falso y los guardados construidos.
+## A test character: its progress with a block from the instance, its fake body and the saves built.
 class Flow:
 	extends RefCounted
 	var player: PlayerProgress
 	var live: PlayerProgress.Live
 	var seq: int = 0
-	## El op_id de la GM de [method play] (0 si no hay).
+	## The op_id of the GM action of [method play] (0 if there is none).
 	var gm_op_id: int = 0
 
 	func _init(template: StringName = &"squire") -> void:
@@ -73,20 +73,20 @@ class Flow:
 	func _get_live() -> PlayerProgress.Live:
 		return live
 
-	## Construye y confirma el guardado siguiente: su sección progress.
+	## Builds and commits the next save: its progress section.
 	func save() -> Dictionary:
 		seq += 1
 		var body: Dictionary = player.build_section(seq)
 		player.acknowledge(seq)
 		return body
 
-	## La primera entrada: el kit (STARTER_KIT) con la vida llena.
+	## The first entry: the kit (STARTER_KIT) with full health.
 	func kit() -> Dictionary:
 		player.grant_starter_kit(player.record.starter_template_id)
 		return save()
 
-	## Un rato de juego: beber y reponer (CONSUME y CAMP_REFILL), oro de un Hueco y méritos de una baja (una
-	## GAMEPLAY con puntos de reino), XP, DESTROY de una poción (PLAYER) y +50 de oro de un GM (GM_GRANT).
+	## A bit of play: drinking and refilling (CONSUME and CAMP_REFILL), gold from a Hollow and merits from a kill (a
+	## GAMEPLAY with realm points), XP, DESTROY of a potion (PLAYER) and +50 gold from a GM (GM_GRANT).
 	func play() -> Dictionary:
 		live.played_seconds = 120
 		live.health = 820
@@ -106,7 +106,7 @@ class Flow:
 		return save()
 
 
-## Los casos: [code]{format, about, now_unix, world_id, zone_id, instance_id, id_blocks, accounts, characters,
+## The cases: [code]{format, about, now_unix, world_id, zone_id, instance_id, id_blocks, accounts, characters,
 ## cases}[/code].
 static func build() -> Dictionary:
 	return {
@@ -141,8 +141,8 @@ static func build() -> Dictionary:
 	}
 
 
-## El texto del archivo: claves ordenadas, compacto y con un caso por línea (para que un cambio se vea en el diff),
-## con un salto de línea al final.
+## The text of the file: sorted keys, compact and with one case per line (so that a change shows in the diff),
+## with a newline at the end.
 static func to_json() -> String:
 	var data: Dictionary = build()
 	var keys: Array = data.keys()
@@ -159,8 +159,8 @@ static func to_json() -> String:
 	return "{\n%s\n}\n" % ",\n".join(lines)
 
 
-## El [code]detail[/code] del rastro de un comando de GM (§10) hecho por la cuenta del personaje
-## [param actor_character_id] (0 = desde la consola, sin actor).
+## The [code]detail[/code] of the trail of a GM command (§10) issued by the account of character
+## [param actor_character_id] (0 = from the console, no actor).
 static func gm_detail(command: String, args: Array, actor_character_id: int) -> Dictionary:
 	var detail: Dictionary = {"command": command, "args": args.duplicate(), "at_unix": NOW_UNIX,
 			"source": "gm" if actor_character_id != 0 else "console"}
@@ -169,7 +169,7 @@ static func gm_detail(command: String, args: Array, actor_character_id: int) -> 
 	return detail
 
 
-# --- Casos -------------------------------------------------------------------------------------
+# --- Cases -------------------------------------------------------------------------------------
 
 static func _character(character_id: int, account_id: int) -> Dictionary:
 	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
@@ -187,7 +187,7 @@ static func _case(name: String, rule: String, steps: Array) -> Dictionary:
 	return {"name": name, "rule": rule, "steps": list}
 
 
-# Una copia de [param progress] cambiada por [param change] ([code](Dictionary) -> void[/code]).
+# A copy of [param progress] changed by [param change] ([code](Dictionary) -> void[/code]).
 static func _changed(progress: Dictionary, change: Callable) -> Dictionary:
 	var copy: Dictionary = progress.duplicate(true)
 	change.call(copy)
@@ -239,7 +239,7 @@ static func _cases() -> Array:
 static func _valid_cases(kit: Dictionary) -> Array:
 	var cases: Array = []
 	var ok: String = "applied"
-	# Mover, equipar y dividir no dejan eventos; juntar retira un uid sin evento.
+	# Moving, equipping and splitting leave no events; merging removes a uid without an event.
 	var moves := Flow.new()
 	var moves_kit: Dictionary = moves.kit()
 	var bag: int = InventoryState.ContainerId.BAG
@@ -260,7 +260,7 @@ static func _valid_cases(kit: Dictionary) -> Array:
 			+ "admite", [[42, _changed(kit, func(p: Dictionary) -> void: p["timers"] = [
 				{"key": "capture:vado_gris_fort", "ends_at_unix": NOW_UNIX + 7 * 86400},
 				{"key": "unstuck", "ends_at_unix": NOW_UNIX - 10}]), ok]]))
-	# Reversión de la GM (una sola REVERSAL, con su actor y su detail).
+	# GM reversal (a single REVERSAL, with its actor and its detail).
 	var reversal := Flow.new()
 	var reversal_kit: Dictionary = reversal.kit()
 	var reversal_play: Dictionary = reversal.play()
@@ -272,7 +272,7 @@ static func _valid_cases(kit: Dictionary) -> Array:
 	var reversal_save: Dictionary = reversal.save()
 	cases.append(_case("valid_reversal", "Una REVERSAL de la GM: apunte contrario con motivo REVERSAL, ref_kind 4 y la "
 			+ "original como ref_id", [[42, reversal_kit, ok], [42, reversal_play, ok], [42, reversal_save, ok]]))
-	# Una GM desde la consola: sin actor ni actor_character_id.
+	# A GM action from the console: no actor and no actor_character_id.
 	var console := Flow.new()
 	var console_kit: Dictionary = console.kit()
 	var console_gm: EconomyOp = console.player.begin_op(EconomyOp.Kind.GM, 0, "ajuste de la consola",
@@ -280,7 +280,7 @@ static func _valid_cases(kit: Dictionary) -> Array:
 	console.player.change_currency(console_gm, Currency.Code.GOLD, 5, EconomyReason.GM_GRANT, 0, 0)
 	cases.append(_case("valid_console_gm", "Una GM desde la consola: source console, sin actor_account_id ni "
 			+ "actor_character_id", [[42, console_kit, ok], [42, console.save(), ok]]))
-	# Bajar la XP con una GM (level_set) en el mismo guardado.
+	# Lowering XP with a GM action (level_set) in the same save.
 	var level := Flow.new()
 	var level_kit: Dictionary = level.kit()
 	var level_play: Dictionary = level.play()
@@ -292,7 +292,7 @@ static func _valid_cases(kit: Dictionary) -> Array:
 	level.player.record.level = 1
 	cases.append(_case("valid_xp_down_with_gm", "xp_total baja con una GM (level_set, sin apuntes ni eventos) en el "
 			+ "mismo guardado", [[42, level_kit, ok], [42, level_play, ok], [42, level.save(), ok]]))
-	# Un administrador sobre su propio personaje.
+	# An administrator on their own character.
 	var admin := Flow.new()
 	var admin_kit: Dictionary = admin.kit()
 	var admin_gm: EconomyOp = admin.player.begin_op(EconomyOp.Kind.GM, ADMIN_ACCOUNT, "prueba propia",
@@ -370,7 +370,7 @@ static func _s2_cases(kit: Dictionary, play: Dictionary, gm_op_id: int) -> Array
 				"count": 1, "durability": null, "rarity": 0, "bound": true, "seed": "0", "affixes": []}))
 	cases.append(_case("s2_second_starter_kit", "Un STARTER_KIT con starter_granted ya true en la base",
 			[[42, kit, ok], [42, second_kit, "S2"]]))
-	# Un GM sobre un personaje de su propia cuenta (solo admin).
+	# A GM on a character of their own account (admin only).
 	var own := Flow.new()
 	var own_kit: Dictionary = own.kit()
 	var own_gm: EconomyOp = own.player.begin_op(EconomyOp.Kind.GM, GM_ACCOUNT, "prueba propia",
@@ -378,7 +378,7 @@ static func _s2_cases(kit: Dictionary, play: Dictionary, gm_op_id: int) -> Array
 	own.player.change_currency(own_gm, Currency.Code.GOLD, 5, EconomyReason.GM_GRANT, 0, 0)
 	cases.append(_case("s2_gm_on_own_character", "Una GM de un gm sobre un personaje de su cuenta",
 			[[41, own_kit, ok], [41, own.save(), "S2"]]))
-	# Reversiones: dos de la misma (en dos guardados y en uno) y la de una REVERSAL.
+	# Reversals: two of the same one (in two saves and in one) and one of a REVERSAL.
 	var flow := Flow.new()
 	var flow_kit: Dictionary = flow.kit()
 	var flow_play: Dictionary = flow.play()
@@ -507,7 +507,7 @@ static func _s5_cases(kit: Dictionary, play: Dictionary) -> Array:
 	return cases
 
 
-# Una GM_GRANT de [param count] [param def_id] en una pila nueva [param uid] (ranura 5), dentro de la GM del cuerpo.
+# A GM_GRANT of [param count] [param def_id] in a new stack [param uid] (slot 5), inside the body's GM action.
 static func _grant(progress: Dictionary, def_id: String, count: int, uid: int) -> void:
 	_op(progress, EconomyOp.Kind.GM)["items"].append({"uid": str(uid), "def_id": def_id, "count_delta": count,
 			"reason": EconomyReason.GM_GRANT})

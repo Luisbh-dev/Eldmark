@@ -1,10 +1,10 @@
 extends TestCase
-## Pruebas de [ServerMetrics] (docs/red.md, secciones 8.1 y 13): percentiles por sección con un
-## reloj falso, contadores, resumen y monitores personalizados del editor.
+## Tests for [ServerMetrics] (docs/red.md, sections 8.1 and 13): per-section percentiles with a
+## fake clock, counters, summary and custom editor monitors.
 
 const TICK: StringName = ServerMetrics.SECTION_TICK
 
-# Reloj falso: un array de un elemento que las funciones lambda modifican.
+# Fake clock: a one-element array that the lambda functions modify.
 var _now: Array[int] = [0]
 
 
@@ -13,7 +13,7 @@ func before_each() -> void:
 
 
 func after_each() -> void:
-	# Los monitores son globales: no deben sobrevivir a la prueba que los registra.
+	# Monitors are global: they must not outlive the test that registers them.
 	for id: StringName in [&"eldmark/tick_p50_us", &"eldmark/tick_p99_us", &"eldmark/tick_max_us",
 			&"eldmark/players", &"eldmark/substituted_percent"]:
 		if Performance.has_custom_monitor(id):
@@ -26,7 +26,7 @@ func _make_metrics() -> ServerMetrics:
 	return metrics
 
 
-## Un tick de [param duration] µs.
+## A tick of [param duration] µs.
 func _tick(metrics: ServerMetrics, tick: int, duration: int) -> void:
 	metrics.begin_tick()
 	_now[0] += duration
@@ -37,24 +37,24 @@ func test_percentiles_of_the_tick() -> void:
 	var metrics: ServerMetrics = _make_metrics()
 	for k: int in range(1, 101):
 		_tick(metrics, k, k)
-	assert_eq(metrics.get_percentile_us(TICK, 0.5), 50, "p50 de 1..100 µs")
+	assert_eq(metrics.get_percentile_us(TICK, 0.5), 50, "p50 of 1..100 µs")
 	assert_eq(metrics.get_percentile_us(TICK, 0.95), 95, "p95")
 	assert_eq(metrics.get_percentile_us(TICK, 0.99), 99, "p99")
-	assert_eq((metrics.summary()["sections"] as Dictionary)["tick"]["p95"], 95, "el resumen lleva el p95")
+	assert_eq((metrics.summary()["sections"] as Dictionary)["tick"]["p95"], 95, "the summary carries the p95")
 	assert_eq(metrics.get_percentile_us(TICK, 1.0), 100, "p100")
 	assert_eq(metrics.get_percentile_us(TICK, 0.0), 1, "p0")
-	assert_eq(metrics.get_max_us(TICK), 100, "máximo")
+	assert_eq(metrics.get_max_us(TICK), 100, "maximum")
 
 
 func test_unknown_section_has_no_measures() -> void:
 	var metrics: ServerMetrics = _make_metrics()
-	assert_eq(metrics.get_percentile_us(&"nada", 0.5), 0, "p50 sin medidas")
-	assert_eq(metrics.get_max_us(&"nada"), 0, "máximo sin medidas")
+	assert_eq(metrics.get_percentile_us(&"nada", 0.5), 0, "p50 with no measurements")
+	assert_eq(metrics.get_max_us(&"nada"), 0, "maximum with no measurements")
 	var summary: Dictionary = metrics.summary()
-	assert_eq(summary["ticks"], 0, "ningún tick")
-	assert_eq(summary["players"], 0, "ningún jugador")
-	assert_near(summary["kb_out_per_s"], 0.0, 1e-9, "sin tiempo no hay tasa")
-	assert_near(summary["substituted_percent"], 0.0, 1e-9, "sin entradas, 0 %")
+	assert_eq(summary["ticks"], 0, "no ticks")
+	assert_eq(summary["players"], 0, "no players")
+	assert_near(summary["kb_out_per_s"], 0.0, 1e-9, "without time there is no rate")
+	assert_near(summary["substituted_percent"], 0.0, 1e-9, "without inputs, 0 %")
 
 
 func test_sections_are_measured_separately() -> void:
@@ -69,11 +69,11 @@ func test_sections_are_measured_separately() -> void:
 		metrics.end_section(&"sim")
 		_now[0] += 3
 		metrics.end_tick(k)
-	assert_eq(metrics.get_max_us(&"net"), 50, "máximo de net")
-	assert_eq(metrics.get_max_us(&"sim"), 500, "máximo de sim")
-	assert_eq(metrics.get_percentile_us(&"net", 0.5), 25, "p50 de net")
-	assert_eq(metrics.get_percentile_us(&"sim", 0.5), 250, "p50 de sim")
-	assert_eq(metrics.get_max_us(TICK), 11 * 50 + 3, "el tick entero suma sus secciones y el resto")
+	assert_eq(metrics.get_max_us(&"net"), 50, "net maximum")
+	assert_eq(metrics.get_max_us(&"sim"), 500, "sim maximum")
+	assert_eq(metrics.get_percentile_us(&"net", 0.5), 25, "net p50")
+	assert_eq(metrics.get_percentile_us(&"sim", 0.5), 250, "sim p50")
+	assert_eq(metrics.get_max_us(TICK), 11 * 50 + 3, "the whole tick adds up its sections and the rest")
 
 
 func test_a_section_opened_twice_in_a_tick_adds_up() -> void:
@@ -85,9 +85,9 @@ func test_a_section_opened_twice_in_a_tick_adds_up() -> void:
 		metrics.end_section(&"net")
 		_now[0] += 100
 	metrics.end_tick(1)
-	assert_eq(metrics.get_max_us(&"net"), 21, "3 × 7 µs en un solo tick")
+	assert_eq(metrics.get_max_us(&"net"), 21, "3 × 7 µs in a single tick")
 	var summary: Dictionary = metrics.summary()
-	assert_eq(summary["sections"]["net"]["samples"], 1, "una muestra por tick, no por apertura")
+	assert_eq(summary["sections"]["net"]["samples"], 1, "one sample per tick, not per opening")
 
 
 func test_end_section_without_begin_is_ignored() -> void:
@@ -95,7 +95,7 @@ func test_end_section_without_begin_is_ignored() -> void:
 	metrics.begin_tick()
 	metrics.end_section(&"fantasma")
 	metrics.end_tick(1)
-	assert_false(metrics.summary()["sections"].has("fantasma"), "no se crea la sección")
+	assert_false(metrics.summary()["sections"].has("fantasma"), "the section is not created")
 
 
 func test_unclosed_sections_do_not_leak_into_the_next_tick() -> void:
@@ -108,7 +108,7 @@ func test_unclosed_sections_do_not_leak_into_the_next_tick() -> void:
 	_now[0] += 5
 	metrics.end_section(&"net")
 	metrics.end_tick(2)
-	assert_eq(metrics.get_percentile_us(&"net", 1.0), 0, "una sección sin cerrar no se mide")
+	assert_eq(metrics.get_percentile_us(&"net", 1.0), 0, "an unclosed section is not measured")
 
 
 func test_window_forgets_old_samples_but_not_the_historic_maximum() -> void:
@@ -117,31 +117,31 @@ func test_window_forgets_old_samples_but_not_the_historic_maximum() -> void:
 		_tick(metrics, k + 1, 10000)
 	for k: int in ServerMetrics.WINDOW_TICKS:
 		_tick(metrics, ServerMetrics.WINDOW_TICKS + k + 1, 5)
-	assert_eq(metrics.get_percentile_us(TICK, 0.99), 5, "la ventana ya solo recuerda lo reciente")
-	assert_eq(metrics.get_max_us(TICK), 5, "y su máximo también")
+	assert_eq(metrics.get_percentile_us(TICK, 0.99), 5, "the window now only remembers recent data")
+	assert_eq(metrics.get_max_us(TICK), 5, "and so does its maximum")
 	var summary: Dictionary = metrics.summary()
-	assert_eq(summary["sections"]["tick"]["max_all"], 10000, "el máximo histórico se conserva")
-	assert_eq(summary["sections"]["tick"]["samples"], ServerMetrics.WINDOW_TICKS, "ventana llena")
-	assert_eq(summary["ticks"], 2 * ServerMetrics.WINDOW_TICKS, "todos los ticks medidos")
+	assert_eq(summary["sections"]["tick"]["max_all"], 10000, "the historical maximum is kept")
+	assert_eq(summary["sections"]["tick"]["samples"], ServerMetrics.WINDOW_TICKS, "full window")
+	assert_eq(summary["ticks"], 2 * ServerMetrics.WINDOW_TICKS, "all ticks measured")
 
 
 func test_counters() -> void:
 	var metrics: ServerMetrics = _make_metrics()
-	assert_eq(metrics.get_counter(&"nada"), 0, "contador inexistente")
+	assert_eq(metrics.get_counter(&"nada"), 0, "nonexistent counter")
 	metrics.add_counter(&"bytes_out", 100)
 	metrics.add_counter(&"bytes_out", 250)
 	metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, 3)
 	metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, -1)
-	assert_eq(metrics.get_counter(&"bytes_out"), 350, "se suman")
-	assert_eq(metrics.get_counter(ServerMetrics.COUNTER_PLAYERS), 2, "y admiten restas")
+	assert_eq(metrics.get_counter(&"bytes_out"), 350, "they add up")
+	assert_eq(metrics.get_counter(ServerMetrics.COUNTER_PLAYERS), 2, "and allow subtractions")
 	var summary: Dictionary = metrics.summary()
-	assert_eq(summary["counters"]["bytes_out"], 350, "el resumen trae los totales")
-	assert_eq(summary["players"], 2, "jugadores")
+	assert_eq(summary["counters"]["bytes_out"], 350, "the summary carries the totals")
+	assert_eq(summary["players"], 2, "players")
 
 
 func test_summary_rates_and_substitution_percentage() -> void:
 	var metrics: ServerMetrics = _make_metrics()
-	# 10 segundos de reloj falso: 600 ticks de 16 666 µs (el último acaba a 10 s).
+	# 10 seconds of fake clock: 600 ticks of 16,666 µs (the last one ends at 10 s).
 	for k: int in range(1, 601):
 		_tick(metrics, k, 16667 if k % 3 != 0 else 16666)
 	metrics.add_counter(ServerMetrics.COUNTER_BYTES_OUT, 10 * 1024 * 20)
@@ -150,18 +150,18 @@ func test_summary_rates_and_substitution_percentage() -> void:
 	metrics.add_counter(ServerMetrics.COUNTER_SUBSTITUTIONS, 5)
 	var summary: Dictionary = metrics.summary()
 	assert_eq(summary["ticks"], 600, "ticks")
-	assert_eq(summary["last_tick"], 600, "último tick")
-	assert_near(summary["seconds"], 10.0, 0.001, "segundos medidos")
-	assert_near(summary["kb_out_per_s"], 20.0, 0.01, "KB/s de salida")
-	assert_near(summary["kb_in_per_s"], 5.0, 0.01, "KB/s de entrada")
-	assert_near(summary["substituted_percent"], 2.5, 1e-6, "5 de 200 entradas")
+	assert_eq(summary["last_tick"], 600, "last tick")
+	assert_near(summary["seconds"], 10.0, 0.001, "seconds measured")
+	assert_near(summary["kb_out_per_s"], 20.0, 0.01, "KB/s out")
+	assert_near(summary["kb_in_per_s"], 5.0, 0.01, "KB/s in")
+	assert_near(summary["substituted_percent"], 2.5, 1e-6, "5 of 200 inputs")
 	assert_near(metrics.get_substituted_percent(), 2.5, 1e-6, "get_substituted_percent")
 	var tick_stats: Dictionary = summary["sections"]["tick"]
-	assert_eq(tick_stats["p50"], 16667, "p50 del tick")
-	assert_eq(tick_stats["p95"], 16667, "p95 del tick")
-	assert_eq(tick_stats["p99"], 16667, "p99 del tick")
-	assert_eq(tick_stats["max"], 16667, "máximo del tick")
-	assert_eq(tick_stats["samples"], 600, "muestras")
+	assert_eq(tick_stats["p50"], 16667, "tick p50")
+	assert_eq(tick_stats["p95"], 16667, "tick p95")
+	assert_eq(tick_stats["p99"], 16667, "tick p99")
+	assert_eq(tick_stats["max"], 16667, "tick maximum")
+	assert_eq(tick_stats["samples"], 600, "samples")
 
 
 func test_summary_can_be_written_as_json() -> void:
@@ -171,8 +171,8 @@ func test_summary_can_be_written_as_json() -> void:
 	metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, 4)
 	var text: String = JSON.stringify(metrics.summary())
 	var parsed: Variant = JSON.parse_string(text)
-	if assert_true(parsed is Dictionary, "el resumen es JSON válido"):
-		assert_eq((parsed as Dictionary)["players"], 4, "y conserva los datos")
+	if assert_true(parsed is Dictionary, "the summary is valid JSON"):
+		assert_eq((parsed as Dictionary)["players"], 4, "and keeps the data")
 
 
 func test_default_clock_is_the_real_one() -> void:
@@ -182,12 +182,12 @@ func test_default_clock_is_the_real_one() -> void:
 	metrics.end_section(&"net")
 	metrics.end_tick(1)
 	var summary: Dictionary = metrics.summary()
-	assert_eq(summary["ticks"], 1, "un tick medido")
-	assert_true(summary["sections"]["tick"]["max"] >= 0, "duración no negativa")
-	assert_true(summary["sections"].has("net"), "y su sección")
+	assert_eq(summary["ticks"], 1, "one tick measured")
+	assert_true(summary["sections"]["tick"]["max"] >= 0, "non-negative duration")
+	assert_true(summary["sections"].has("net"), "and its section")
 
 
-# --- Monitores personalizados -----------------------------------------------------------------
+# --- Custom monitors --------------------------------------------------------------------------
 
 func test_register_monitors_exposes_the_measures() -> void:
 	var metrics: ServerMetrics = _make_metrics()
@@ -197,50 +197,50 @@ func test_register_monitors_exposes_the_measures() -> void:
 	metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, 7)
 	metrics.add_counter(ServerMetrics.COUNTER_INPUTS, 100)
 	metrics.add_counter(ServerMetrics.COUNTER_SUBSTITUTIONS, 10)
-	assert_true(Performance.has_custom_monitor(&"eldmark/tick_p99_us"), "monitor registrado")
+	assert_true(Performance.has_custom_monitor(&"eldmark/tick_p99_us"), "monitor registered")
 	assert_near(float(Performance.get_custom_monitor(&"eldmark/tick_p50_us")), 50.0, 1e-6, "p50")
 	assert_near(float(Performance.get_custom_monitor(&"eldmark/tick_p99_us")), 99.0, 1e-6, "p99")
-	assert_near(float(Performance.get_custom_monitor(&"eldmark/tick_max_us")), 100.0, 1e-6, "máx")
-	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 7.0, 1e-6, "jugadores")
+	assert_near(float(Performance.get_custom_monitor(&"eldmark/tick_max_us")), 100.0, 1e-6, "max")
+	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 7.0, 1e-6, "players")
 	assert_near(float(Performance.get_custom_monitor(&"eldmark/substituted_percent")), 10.0, 1e-6,
-			"sustituidas")
+			"substituted")
 	metrics.unregister_monitors()
-	assert_false(Performance.has_custom_monitor(&"eldmark/tick_p99_us"), "y se pueden quitar")
+	assert_false(Performance.has_custom_monitor(&"eldmark/tick_p99_us"), "and they can be removed")
 
 
 func test_register_monitors_twice_does_not_raise_errors() -> void:
 	var first: ServerMetrics = _make_metrics()
 	first.register_monitors()
 	first.register_monitors()
-	assert_true(Performance.has_custom_monitor(&"eldmark/players"), "sigue registrado")
-	# Otra instancia con los mismos nombres (por ejemplo, un segundo servidor en el mismo proceso).
+	assert_true(Performance.has_custom_monitor(&"eldmark/players"), "still registered")
+	# Another instance with the same names (for example, a second server in the same process).
 	var second: ServerMetrics = _make_metrics()
 	second.add_counter(ServerMetrics.COUNTER_PLAYERS, 3)
 	second.register_monitors()
 	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 3.0, 1e-6,
-			"los monitores pasan a la última instancia")
-	# La primera ya no es la dueña: quitar los suyos no toca los de la segunda.
+			"the monitors move to the latest instance")
+	# The first is no longer the owner: removing its own does not touch the second's.
 	first.unregister_monitors()
-	assert_true(Performance.has_custom_monitor(&"eldmark/players"), "los de la segunda siguen")
+	assert_true(Performance.has_custom_monitor(&"eldmark/players"), "the second's remain")
 	second.unregister_monitors()
-	assert_false(Performance.has_custom_monitor(&"eldmark/players"), "hasta que ella los quita")
+	assert_false(Performance.has_custom_monitor(&"eldmark/players"), "until it removes them")
 
 
 func test_freeing_the_metrics_leaves_harmless_monitors() -> void:
 	var metrics: ServerMetrics = _make_metrics()
 	metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, 5)
 	metrics.register_monitors()
-	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 5.0, 1e-6, "vivo")
+	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 5.0, 1e-6, "alive")
 	metrics = null
-	assert_true(Performance.has_custom_monitor(&"eldmark/players"), "el monitor sigue registrado")
+	assert_true(Performance.has_custom_monitor(&"eldmark/players"), "the monitor is still registered")
 	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 0.0, 1e-6,
-			"pero ya no apunta a un objeto liberado: devuelve 0 sin errores")
-	# Otra instancia retoma los monitores sin registrarlos otra vez.
+			"but it no longer points to a freed object: it returns 0 without errors")
+	# Another instance takes over the monitors without registering them again.
 	var next_metrics: ServerMetrics = _make_metrics()
 	next_metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, 2)
 	next_metrics.register_monitors()
 	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 2.0, 1e-6,
-			"la nueva instancia los lee")
+			"the new instance reads them")
 	next_metrics.unregister_monitors()
 
 
@@ -252,7 +252,7 @@ func test_freeing_an_old_instance_keeps_the_new_ones_monitors() -> void:
 	new_metrics.register_monitors()
 	old_metrics = null
 	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 9.0, 1e-6,
-			"liberar la instancia vieja no afecta a los monitores de la nueva")
+			"freeing the old instance does not affect the new one's monitors")
 	new_metrics.unregister_monitors()
 
 
@@ -266,6 +266,6 @@ func test_summary_keeps_the_total_and_count_of_the_whole_run_not_only_the_window
 		metrics.end_section(&"combat_resolve")
 		metrics.end_tick(k)
 	var section: Dictionary = metrics.summary()["sections"]["combat_resolve"]
-	assert_eq(section["samples"], ServerMetrics.WINDOW_TICKS, "la ventana sigue acotada")
-	assert_eq(section["pushed"], ticks, "pero se cuentan todas las medidas")
-	assert_eq(section["total_us"], 5 * ticks, "y se suman todas (la media sale de ahí)")
+	assert_eq(section["samples"], ServerMetrics.WINDOW_TICKS, "the window remains bounded")
+	assert_eq(section["pushed"], ticks, "but all measurements are counted")
+	assert_eq(section["total_us"], 5 * ticks, "and all are summed (the mean comes from there)")

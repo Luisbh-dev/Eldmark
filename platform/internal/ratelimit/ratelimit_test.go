@@ -14,7 +14,7 @@ func TestLRUForgetsTheOldest(t *testing.T) {
 	if v, ok := l.Get("a"); !ok || v != 1 {
 		t.Fatal("a")
 	}
-	l.Put("c", 3) // olvida b, que es la menos reciente
+	l.Put("c", 3) // forgets b, which is the least recent
 	if _, ok := l.Get("b"); ok {
 		t.Fatal("b tenía que olvidarse")
 	}
@@ -27,7 +27,7 @@ func TestLRUForgetsTheOldest(t *testing.T) {
 	}
 }
 
-// 10 por minuto con ráfaga 10 (inicio de sesión por IP, plataforma.md §4.2): el 11.º espera.
+// 10 per minute with burst 10 (login by IP, plataforma.md §4.2): the 11th waits.
 func TestBucket(t *testing.T) {
 	l := New(10, time.Minute, 10, 100)
 	for i := 0; i < 10; i++ {
@@ -50,7 +50,7 @@ func TestBucket(t *testing.T) {
 	}
 }
 
-// 3 por hora (registro por IP): el cuarto, a los 20 min.
+// 3 per hour (registration by IP): the fourth, after 20 min.
 func TestSlowBucket(t *testing.T) {
 	l := New(3, time.Hour, 3, 100)
 	for i := 0; i < 3; i++ {
@@ -75,7 +75,7 @@ func TestAllowAllIsAllOrNothing(t *testing.T) {
 	if ok, _ := AllowAll(t0, Key{perAccount, "a"}, Key{perIP, "ip"}); ok {
 		t.Fatal("la cuenta ya no tiene")
 	}
-	// La IP no gastó ficha en el intento rechazado: le quedan 7.
+	// The IP did not spend a token on the rejected attempt: it has 7 left.
 	for i := 0; i < 7; i++ {
 		if ok, _ := AllowAll(t0, Key{perAccount, string(rune('b' + i))}, Key{perIP, "ip"}); !ok {
 			t.Fatalf("la IP tenía 7 fichas; falla en la %d", i+1)

@@ -1,43 +1,40 @@
 class_name UnstuckTracker
 extends RefCounted
-## El comando /atascado (docs/fuerte.md, sección 5; MUN-41): lo que el servidor recuerda de cada
-## jugador para decidir si puede usarlo. Una canalización de [constant CHANNEL_TICKS] (10 s) que se
-## interrumpe si el jugador entra en combate (el daño la interrumpe) o muere, solo se puede empezar
-## fuera de combate, y tras completarla hay [constant COOLDOWN_TICKS] (5 min) de reutilización. Una
-## canalización interrumpida no gasta la reutilización.
+## The /atascado (/stuck) command (docs/fuerte.md, section 5; MUN-41): what the server remembers of each player to decide
+## whether they can use it. A channel of [constant CHANNEL_TICKS] (10 s) that is interrupted if the player enters combat
+## (damage interrupts it) or dies, can only be started out of combat, and after completing it there is a
+## [constant COOLDOWN_TICKS] (5 min) cooldown. An interrupted channel does not spend the cooldown.
 ## [br][br]
-## Puro y sin red: [ZoneServer] llama a [method request] al recibir UNSTUCK_REQUEST, a [method update]
-## cada tick por cada canalización viva y hace él el teletransporte cuando [method update] dice que se
-## ha completado.
+## Pure and network-free: [ZoneServer] calls [method request] on receiving UNSTUCK_REQUEST, [method update] every tick for
+## each live channel and does the teleport itself when [method update] says it has completed.
 
-## Resultado de [method request].
+## Result of [method request].
 enum RequestResult { STARTED, IN_COMBAT, COOLDOWN, ALREADY_CHANNELING, DEAD }
-## Resultado de [method update].
+## Result of [method update].
 enum UpdateResult { CHANNELING, INTERRUPTED, COMPLETED }
 
-## Ticks de canalización (10 s).
+## Channel ticks (10 s).
 const CHANNEL_TICKS: int = 600
-## Ticks de reutilización tras completar (5 min).
+## Cooldown ticks after completing (5 min).
 const COOLDOWN_TICKS: int = 18000
 
-# Clave del nombre del jugador -> tick en que acaba la canalización.
+# Player name key -> tick at which the channel ends.
 var _channel_end: Dictionary[String, int] = {}
-# jugador (clave de su nombre) -> primer tick en que puede volver a usarlo.
+# player (name key) -> first tick at which they can use it again.
 var _ready_at: Dictionary[String, int] = {}
-## Ticks de canalización y de reutilización de esta instancia ([constant CHANNEL_TICKS] y
-## [constant COOLDOWN_TICKS] por defecto; las pruebas los acortan).
+## Channel and cooldown ticks of this instance ([constant CHANNEL_TICKS] and [constant COOLDOWN_TICKS] by default; tests
+## shorten them).
 var channel_ticks: int = CHANNEL_TICKS
 var cooldown_ticks: int = COOLDOWN_TICKS
-## Canalizaciones completadas desde que existe el rastreador.
+## Channels completed since the tracker has existed.
 var completed_count: int = 0
-## Canalizaciones interrumpidas.
+## Interrupted channels.
 var interrupted_count: int = 0
 
 
-## [param player] (la clave de su nombre, para que volver a entrar no salte la reutilización; con la plataforma,
-## [code]"character:<id>"[/code], docs/progresion.md §8) pide
-## /atascado en el tick [param tick], estando [param alive] y [param in_combat]. Si procede, empieza la
-## canalización ([constant RequestResult.STARTED]).
+## [param player] (their name key, so that re-entering does not skip the cooldown; with the platform,
+## [code]"character:<id>"[/code], docs/progresion.md §8) requests /atascado at tick [param tick], while [param alive] and
+## [param in_combat]. If it applies, the channel starts ([constant RequestResult.STARTED]).
 func request(player: String, tick: int, alive: bool, in_combat: bool) -> int:
 	if not alive:
 		return RequestResult.DEAD
@@ -51,9 +48,9 @@ func request(player: String, tick: int, alive: bool, in_combat: bool) -> int:
 	return RequestResult.STARTED
 
 
-## Avanza la canalización de [param player] en el tick [param tick]: se interrumpe si ya no está vivo
-## o ha entrado en combate, y se completa al llegar su tick final (entonces empieza la
-## reutilización). Devuelve [constant UpdateResult.CHANNELING] si no hay canalización.
+## Advances the channel of [param player] at tick [param tick]: it is interrupted if they are no longer alive or have
+## entered combat, and completes on reaching its final tick (then the cooldown starts). Returns
+## [constant UpdateResult.CHANNELING] if there is no channel.
 func update(player: String, tick: int, alive: bool, in_combat: bool) -> int:
 	if not _channel_end.has(player):
 		return UpdateResult.CHANNELING
@@ -70,42 +67,42 @@ func update(player: String, tick: int, alive: bool, in_combat: bool) -> int:
 	return UpdateResult.CHANNELING
 
 
-## true si [param player] está canalizando.
+## true if [param player] is channeling.
 func is_channeling(player: String) -> bool:
 	return _channel_end.has(player)
 
 
-## Claves de los jugadores que están canalizando, ordenadas.
+## Keys of the players that are channeling, sorted.
 func get_channeling() -> PackedStringArray:
 	var keys := PackedStringArray(_channel_end.keys())
 	keys.sort()
 	return keys
 
 
-## Ticks que faltan para que [param player] pueda volver a usarlo en [param tick] (0 si ya puede).
+## Ticks left until [param player] can use it again at [param tick] (0 if they already can).
 func cooldown_remaining(player: String, tick: int) -> int:
 	return maxi(_ready_at.get(player, 0) - tick, 0)
 
 
-## Ticks que le quedan a la canalización de [param player] en [param tick] (0 si no canaliza).
+## Ticks left in the channel of [param player] at [param tick] (0 if not channeling).
 func channel_remaining(player: String, tick: int) -> int:
 	return maxi(_channel_end.get(player, tick) - tick, 0)
 
 
-## Cancela la canalización de [param player] sin contarla como interrumpida (se va del mundo). La
-## reutilización se conserva: volver a entrar no la salta.
+## Cancels the channel of [param player] without counting it as interrupted (they leave the world). The cooldown is
+## kept: re-entering does not skip it.
 func cancel(player: String) -> void:
 	_channel_end.erase(player)
 
 
-## Primer tick en que [param player] puede volver a usarlo (0 si nunca lo ha usado o ya venció y se olvidó).
-## Con la plataforma lo guarda el progreso como el temporizador [code]unstuck[/code] (docs/progresion.md §8).
+## First tick at which [param player] can use it again (0 if they never used it or it already expired and was
+## forgotten). With the platform, progress stores it as the [code]unstuck[/code] timer (docs/progresion.md §8).
 func get_ready_at(player: String) -> int:
 	return _ready_at.get(player, 0)
 
 
-## Pone la reutilización de [param player] hasta el tick [param tick] (la restaura el alta desde el temporizador
-## guardado, docs/progresion.md §8); con 0 o menos, la quita.
+## Sets the cooldown of [param player] until tick [param tick] (restored by registration from the saved timer,
+## docs/progresion.md §8); with 0 or less, removes it.
 func set_ready_at(player: String, tick: int) -> void:
 	if tick <= 0:
 		_ready_at.erase(player)
@@ -113,7 +110,7 @@ func set_ready_at(player: String, tick: int) -> void:
 		_ready_at[player] = tick
 
 
-# Olvida las reutilizaciones vencidas, para que el diccionario no crezca con cada nombre que lo usó.
+# Forgets expired cooldowns, so that the dictionary does not grow with every name that used it.
 func _purge_expired(tick: int) -> void:
 	for key: String in _ready_at.keys():
 		if _ready_at[key] <= tick:

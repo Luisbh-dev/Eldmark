@@ -1,10 +1,10 @@
 extends TestCase
-## Pruebas de la cola de entradas del servidor ([InputQueue], docs/red.md secciones 4.1, 8.2 y
-## 12): ventana de aceptación, primera copia, tardías, ack, antelación, sustitución y, sobre todo,
-## que la sustituta no inventa flancos (con un [PlayerCharacter] real).
+## Tests for the server's input queue ([InputQueue], docs/red.md sections 4.1, 8.2 and
+## 12): acceptance window, first copy, late ones, ack, lead time, substitution and, above all,
+## that the substitute does not invent edges (with a real [PlayerCharacter]).
 ## [br][br]
-## Convención de [code]next_tick[/code] en [method InputQueue.push]: el tick que el servidor
-## simulará a continuación. Con la cola al día es [code]get_last_consumed() + 1[/code].
+## Convention of [code]next_tick[/code] in [method InputQueue.push]: the tick the server
+## will simulate next. With the queue up to date it is [code]get_last_consumed() + 1[/code].
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 const JUMP: int = PlayerInput.JUMP
@@ -12,9 +12,9 @@ const SPRINT: int = PlayerInput.SPRINT
 const DODGE: int = PlayerInput.DODGE
 const PRIMARY: int = PlayerInput.PRIMARY
 const SUBSTITUTED: int = PlayerInput.SUBSTITUTED
-## Ticks que se espera a que el personaje se asiente en el suelo antes de saltar.
+## Ticks to wait for the character to settle on the ground before jumping.
 const SETTLE_TICKS: int = 5
-## Tick en el que empieza a mantenerse el salto.
+## Tick at which the jump starts being held.
 const JUMP_HELD_FROM: int = 6
 
 var _viewport: SubViewport
@@ -34,7 +34,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-## Cola lista para un jugador que apareció tras el tick [param spawn_tick].
+## Queue ready for a player that appeared after tick [param spawn_tick].
 func _make_queue(spawn_tick: int = 0) -> InputQueue:
 	var queue := InputQueue.new()
 	queue.reset(spawn_tick, NetProtocol.neutral_input(spawn_tick, 0.0))
@@ -52,75 +52,75 @@ func _input(tick: int, move: Vector2 = Vector2.ZERO, buttons: int = 0, yaw: floa
 	return input.quantized()
 
 
-## Pone [param packet] en la bandeja de entrada del tick [param tick].
+## Puts [param packet] in the input tray of tick [param tick].
 static func _deliver(inbox: Dictionary, tick: int, packet: Array) -> void:
 	if not inbox.has(tick):
 		inbox[tick] = []
 	(inbox[tick] as Array).append(packet)
 
 
-# --- Ventana de aceptación --------------------------------------------------------------------
+# --- Acceptance window ------------------------------------------------------------------------
 
 func test_accepts_inputs_inside_the_window() -> void:
 	var queue: InputQueue = _make_queue()
-	# El servidor va a simular el tick 1: acepta del 1 al 1 + 30.
-	assert_eq(queue.push(_input(1), 10, 1), InputQueue.PushResult.ACCEPTED, "justo a tiempo")
-	assert_eq(queue.push(_input(2), 10, 1), InputQueue.PushResult.ACCEPTED, "por delante")
+	# The server is about to simulate tick 1: it accepts from 1 to 1 + 30.
+	assert_eq(queue.push(_input(1), 10, 1), InputQueue.PushResult.ACCEPTED, "just in time")
+	assert_eq(queue.push(_input(2), 10, 1), InputQueue.PushResult.ACCEPTED, "ahead")
 	assert_eq(queue.push(_input(31), 10, 1), InputQueue.PushResult.ACCEPTED,
-			"el límite: next_tick + 30")
-	assert_eq(queue.too_early_count, 0, "ninguna demasiado temprana")
+			"the limit: next_tick + 30")
+	assert_eq(queue.too_early_count, 0, "none too early")
 
 
 func test_rejects_inputs_too_far_ahead() -> void:
 	var queue: InputQueue = _make_queue()
-	assert_eq(queue.push(_input(32), 0, 1), InputQueue.PushResult.TOO_EARLY, "31 por delante")
-	assert_eq(queue.push(_input(1000), 0, 1), InputQueue.PushResult.TOO_EARLY, "muy por delante")
-	assert_eq(queue.too_early_count, 2, "se cuentan")
-	assert_eq(queue.get_ack_tick(), 0, "y no entran en la cola")
-	# Con el servidor más adelantado, el mismo tick ya cabe.
-	assert_eq(queue.push(_input(32), 0, 2), InputQueue.PushResult.ACCEPTED, "al avanzar next_tick")
-	assert_eq(queue.too_early_count, 2, "y no se vuelve a contar")
+	assert_eq(queue.push(_input(32), 0, 1), InputQueue.PushResult.TOO_EARLY, "31 ahead")
+	assert_eq(queue.push(_input(1000), 0, 1), InputQueue.PushResult.TOO_EARLY, "far ahead")
+	assert_eq(queue.too_early_count, 2, "they are counted")
+	assert_eq(queue.get_ack_tick(), 0, "and do not enter the queue")
+	# With the server further ahead, the same tick now fits.
+	assert_eq(queue.push(_input(32), 0, 2), InputQueue.PushResult.ACCEPTED, "when next_tick advances")
+	assert_eq(queue.too_early_count, 2, "and it is not counted again")
 
 
 func test_too_early_inputs_still_report_their_lead() -> void:
-	# Si el servidor pierde ticks, el cliente va muy por delante y todas sus entradas son demasiado
-	# tempranas: la antelación se anota igualmente (saturada), para que TickSync se entere y se
-	# retrase. Sin esto la ventana de márgenes se queda vacía para siempre.
+	# If the server loses ticks, the client is far ahead and all its inputs are too
+	# early: the lead time is still recorded (saturated), so that TickSync finds out and
+	# falls back. Without this the margin window stays empty forever.
 	var queue: InputQueue = _make_queue()
-	assert_eq(queue.push(_input(32), 0, 1), InputQueue.PushResult.TOO_EARLY, "31 por delante")
-	assert_eq(queue.pop_min_lead(), 31, "la antelación de una demasiado temprana cuenta")
-	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "y se reinicia al leerla")
-	assert_eq(queue.push(_input(1000), 0, 1), InputQueue.PushResult.TOO_EARLY, "muy por delante")
-	assert_eq(queue.pop_min_lead(), 127, "se satura a 127")
+	assert_eq(queue.push(_input(32), 0, 1), InputQueue.PushResult.TOO_EARLY, "31 ahead")
+	assert_eq(queue.pop_min_lead(), 31, "the lead time of one that is too early counts")
+	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "and is reset when read")
+	assert_eq(queue.push(_input(1000), 0, 1), InputQueue.PushResult.TOO_EARLY, "far ahead")
+	assert_eq(queue.pop_min_lead(), 127, "saturates at 127")
 	queue.push(_input(40), 0, 1)
 	queue.push(_input(2), 0, 1)
-	assert_eq(queue.pop_min_lead(), 1, "y se mezcla con las aceptadas: gana la mínima")
+	assert_eq(queue.pop_min_lead(), 1, "and is mixed with the accepted ones: the minimum wins")
 
 
 func test_window_never_wraps_the_ring_onto_unconsumed_inputs() -> void:
-	# Aunque quien llama pase un next_tick absurdo, un tick que comparte hueco con otro todavía
-	# sin consumir nunca se acepta.
+	# Even if the caller passes an absurd next_tick, a tick that shares a slot with another not yet
+	# consumed is never accepted.
 	var queue: InputQueue = _make_queue()
 	assert_eq(queue.push(_input(1), 0, 1), InputQueue.PushResult.ACCEPTED, "tick 1")
 	assert_eq(queue.push(_input(65), 0, 1000), InputQueue.PushResult.TOO_EARLY,
-			"el tick 65 comparte hueco con el 1")
+			"tick 65 shares a slot with 1")
 	assert_eq(queue.push(_input(64), 0, 1000), InputQueue.PushResult.ACCEPTED,
-			"el 64 aún cabe")
-	assert_eq(queue.take(1).tick, 1, "el tick 1 sigue intacto")
+			"64 still fits")
+	assert_eq(queue.take(1).tick, 1, "tick 1 stays intact")
 
 
 func test_first_copy_wins_even_if_the_second_differs() -> void:
 	var queue: InputQueue = _make_queue()
 	var first: PlayerInput = _input(3, Vector2(1, 0), JUMP)
 	var second: PlayerInput = _input(3, Vector2(0, 1), PRIMARY)
-	assert_eq(queue.push(first, 5, 1), InputQueue.PushResult.ACCEPTED, "primera copia")
-	assert_eq(queue.push(second, 99, 1), InputQueue.PushResult.DUPLICATE, "segunda copia")
+	assert_eq(queue.push(first, 5, 1), InputQueue.PushResult.ACCEPTED, "first copy")
+	assert_eq(queue.push(second, 99, 1), InputQueue.PushResult.DUPLICATE, "second copy")
 	queue.take(1)
 	queue.take(2)
 	var taken: PlayerInput = queue.take(3)
-	assert_vec_near(taken.move, first.move, 1e-6, "se aplica el movimiento de la primera")
-	assert_eq(taken.buttons, JUMP, "y sus botones")
-	assert_eq(queue.get_view_offset_q(3), 5, "y su view_offset_q")
+	assert_vec_near(taken.move, first.move, 1e-6, "the movement of the first is applied")
+	assert_eq(taken.buttons, JUMP, "and its buttons")
+	assert_eq(queue.get_view_offset_q(3), 5, "and its view_offset_q")
 
 
 func test_copies_of_consumed_inputs_are_duplicates() -> void:
@@ -128,24 +128,24 @@ func test_copies_of_consumed_inputs_are_duplicates() -> void:
 	queue.push(_input(1, Vector2(0, 1)), 0, 1)
 	queue.take(1)
 	assert_eq(queue.push(_input(1, Vector2(1, 0)), 0, 2), InputQueue.PushResult.DUPLICATE,
-			"copia redundante de un tick ya consumido")
-	assert_eq(queue.push(_input(0), 0, 2), InputQueue.PushResult.DUPLICATE, "tick del alta")
-	assert_eq(queue.late_count, 0, "no son tardías: sí se habían recibido")
+			"redundant copy of an already consumed tick")
+	assert_eq(queue.push(_input(0), 0, 2), InputQueue.PushResult.DUPLICATE, "spawn tick")
+	assert_eq(queue.late_count, 0, "they are not late: they had been received")
 
 
 func test_late_input_is_counted_once_and_not_applied() -> void:
 	var queue: InputQueue = _make_queue()
 	var substitute: PlayerInput = queue.take(1)
-	assert_eq(queue.substitutions_total, 1, "el tick 1 se sustituyó")
+	assert_eq(queue.substitutions_total, 1, "tick 1 was substituted")
 	assert_eq(queue.push(_input(1, Vector2(1, 0), JUMP), 8, 2), InputQueue.PushResult.LATE,
-			"llega cuando ya se ha consumido")
-	assert_eq(queue.late_count, 1, "se cuenta")
+			"arrives when it has already been consumed")
+	assert_eq(queue.late_count, 1, "it is counted")
 	assert_eq(queue.push(_input(1, Vector2(1, 0), JUMP), 8, 2), InputQueue.PushResult.DUPLICATE,
-			"la segunda copia de la tardía ya es un duplicado")
-	assert_eq(queue.late_count, 1, "y no se vuelve a contar")
-	assert_eq(substitute.buttons, SUBSTITUTED, "lo aplicado no cambia (sin botones y sustituida)")
-	assert_eq(queue.get_view_offset_q(1), -1, "una tardía no aporta view_offset_q")
-	assert_eq(queue.substitutions_total, 1, "la sustitución sigue contada")
+			"the second copy of the late one is already a duplicate")
+	assert_eq(queue.late_count, 1, "and it is not counted again")
+	assert_eq(substitute.buttons, SUBSTITUTED, "what was applied does not change (no buttons and substituted)")
+	assert_eq(queue.get_view_offset_q(1), -1, "a late one contributes no view_offset_q")
+	assert_eq(queue.substitutions_total, 1, "the substitution is still counted")
 
 
 func test_late_input_far_in_the_past_is_a_duplicate() -> void:
@@ -153,10 +153,10 @@ func test_late_input_far_in_the_past_is_a_duplicate() -> void:
 	for t: int in range(1, 101):
 		queue.take(t)
 	assert_eq(queue.push(_input(5), 0, 101), InputQueue.PushResult.DUPLICATE,
-			"el hueco de ese tick ya lo ocupa otro: no es una tardía")
-	assert_eq(queue.late_count, 0, "no se cuenta")
+			"that tick's slot is already occupied by another: it is not a late one")
+	assert_eq(queue.late_count, 0, "it is not counted")
 	assert_eq(queue.push(_input(99), 0, 101), InputQueue.PushResult.LATE,
-			"en cambio una reciente sí es tardía")
+			"in contrast, a recent one is a late one")
 
 
 func test_buttons_are_masked_to_valid_bits() -> void:
@@ -164,68 +164,68 @@ func test_buttons_are_masked_to_valid_bits() -> void:
 	var input: PlayerInput = _input(1)
 	input.buttons = 0xFFFF
 	queue.push(input, 0, 1)
-	assert_eq(queue.take(1).buttons, NetProtocol.VALID_BUTTONS, "solo los bits 0-12")
+	assert_eq(queue.take(1).buttons, NetProtocol.VALID_BUTTONS, "only bits 0-12")
 
 
 # --- Ack --------------------------------------------------------------------------------------
 
 func test_ack_without_inputs_is_the_last_consumed() -> void:
 	var queue: InputQueue = _make_queue(40)
-	assert_eq(queue.get_ack_tick(), 40, "recién creada: el tick del alta")
+	assert_eq(queue.get_ack_tick(), 40, "just created: the spawn tick")
 	assert_eq(queue.get_last_consumed(), 40, "get_last_consumed")
 	queue.take(41)
 	queue.take(42)
-	assert_eq(queue.get_ack_tick(), 42, "tras consumir con sustituciones")
-	assert_eq(queue.get_last_consumed(), 42, "get_last_consumed avanza")
+	assert_eq(queue.get_ack_tick(), 42, "after consuming with substitutions")
+	assert_eq(queue.get_last_consumed(), 42, "get_last_consumed advances")
 
 
 func test_ack_is_the_highest_contiguous_received_tick() -> void:
 	var queue: InputQueue = _make_queue()
 	for t: int in [1, 2, 3, 5]:
 		queue.push(_input(t), 0, 1)
-	assert_eq(queue.get_ack_tick(), 3, "se corta en el hueco del 4")
+	assert_eq(queue.get_ack_tick(), 3, "it cuts off at the gap at 4")
 	queue.push(_input(4), 0, 1)
-	assert_eq(queue.get_ack_tick(), 5, "al llegar el 4 se unen")
+	assert_eq(queue.get_ack_tick(), 5, "when 4 arrives they join up")
 
 
 func test_ack_with_a_gap_at_the_start_waits_for_it() -> void:
 	var queue: InputQueue = _make_queue()
 	queue.push(_input(2), 0, 1)
 	queue.push(_input(3), 0, 1)
-	assert_eq(queue.get_ack_tick(), 0, "falta el 1: nada contiguo")
+	assert_eq(queue.get_ack_tick(), 0, "1 is missing: nothing contiguous")
 	queue.push(_input(1), 0, 1)
-	assert_eq(queue.get_ack_tick(), 3, "llega el 1")
+	assert_eq(queue.get_ack_tick(), 3, "1 arrives")
 
 
 func test_ack_does_not_stay_stuck_after_a_substitution() -> void:
 	var queue: InputQueue = _make_queue()
 	queue.push(_input(2), 0, 1)
 	queue.push(_input(3), 0, 1)
-	assert_eq(queue.get_ack_tick(), 0, "antes de consumir el 1")
+	assert_eq(queue.get_ack_tick(), 0, "before consuming 1")
 	queue.take(1)
-	assert_eq(queue.get_ack_tick(), 3, "el 1 se sustituyó y el ack salta al 3")
+	assert_eq(queue.get_ack_tick(), 3, "1 was substituted and the ack jumps to 3")
 	queue.take(2)
 	queue.take(3)
-	assert_eq(queue.get_ack_tick(), 3, "tras consumir todo")
+	assert_eq(queue.get_ack_tick(), 3, "after consuming everything")
 	queue.take(4)
-	assert_eq(queue.get_ack_tick(), 4, "y sigue el último consumido")
+	assert_eq(queue.get_ack_tick(), 4, "and the last consumed one holds")
 
 
 func test_ack_contiguity_is_capped_by_the_window() -> void:
 	var queue: InputQueue = _make_queue()
 	for t: int in range(1, 32):
 		queue.push(_input(t), 0, 1)
-	assert_eq(queue.get_ack_tick(), 30, "como mucho 30 ticks por delante del último consumido")
+	assert_eq(queue.get_ack_tick(), 30, "at most 30 ticks ahead of the last consumed")
 
 
-# --- Antelación -------------------------------------------------------------------------------
+# --- Lead time --------------------------------------------------------------------------------
 
 func test_min_lead_without_data_is_no_margin() -> void:
 	var queue: InputQueue = _make_queue()
-	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "sin entradas")
+	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "without inputs")
 	queue.push(_input(1), 0, 1)
-	assert_eq(queue.pop_min_lead(), 0, "una entrada justo a tiempo: antelación 0")
-	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "y se reinicia al leerla")
+	assert_eq(queue.pop_min_lead(), 0, "an input just in time: lead time 0")
+	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "and it is reset when read")
 
 
 func test_min_lead_is_the_smallest_since_the_last_pop() -> void:
@@ -233,57 +233,57 @@ func test_min_lead_is_the_smallest_since_the_last_pop() -> void:
 	queue.push(_input(5), 0, 1)
 	queue.push(_input(3), 0, 1)
 	queue.push(_input(9), 0, 1)
-	assert_eq(queue.pop_min_lead(), 2, "la mínima de 4, 2 y 8")
+	assert_eq(queue.pop_min_lead(), 2, "the minimum of 4, 2 and 8")
 	queue.push(_input(12), 0, 2)
-	assert_eq(queue.pop_min_lead(), 10, "solo cuentan las posteriores a la lectura")
+	assert_eq(queue.pop_min_lead(), 10, "only those after the reading count")
 
 
 func test_min_lead_ignores_redundant_copies() -> void:
 	var queue: InputQueue = _make_queue()
 	queue.push(_input(10), 0, 1)
-	assert_eq(queue.pop_min_lead(), 9, "primera copia: antelación 9")
-	# La copia redundante llega cuando el servidor ya va por el tick 6: su antelación sería 4.
-	assert_eq(queue.push(_input(10), 0, 6), InputQueue.PushResult.DUPLICATE, "copia redundante")
+	assert_eq(queue.pop_min_lead(), 9, "first copy: lead time 9")
+	# The redundant copy arrives when the server is already at tick 6: its lead time would be 4.
+	assert_eq(queue.push(_input(10), 0, 6), InputQueue.PushResult.DUPLICATE, "redundant copy")
 	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN,
-			"no cuenta: sesgaría la medida a la baja")
-	# Ni dentro del mismo intervalo.
+			"does not count: it would bias the measurement downwards")
+	# Not within the same interval either.
 	queue.push(_input(20), 0, 11)
 	queue.push(_input(20), 0, 18)
-	assert_eq(queue.pop_min_lead(), 9, "solo la primera copia de cada tick")
+	assert_eq(queue.pop_min_lead(), 9, "only the first copy of each tick")
 
 
 func test_min_lead_counts_late_inputs_as_negative() -> void:
 	var queue: InputQueue = _make_queue()
 	queue.take(1)
 	queue.take(2)
-	assert_eq(queue.push(_input(1), 0, 3), InputQueue.PushResult.LATE, "tardía por dos ticks")
-	assert_eq(queue.pop_min_lead(), -2, "antelación negativa: lo que se retrasó")
+	assert_eq(queue.push(_input(1), 0, 3), InputQueue.PushResult.LATE, "late by two ticks")
+	assert_eq(queue.pop_min_lead(), -2, "negative lead time: how much it was delayed")
 	queue.push(_input(5), 0, 3)
-	assert_eq(queue.push(_input(2), 0, 4), InputQueue.PushResult.LATE, "otra tardía")
-	assert_eq(queue.pop_min_lead(), -2, "se queda con la mínima: la de 5 es 2 y la tardía -2")
+	assert_eq(queue.push(_input(2), 0, 4), InputQueue.PushResult.LATE, "another late one")
+	assert_eq(queue.pop_min_lead(), -2, "it keeps the minimum: that of 5 is 2 and the late one -2")
 
 
 func test_a_lost_input_does_not_lower_the_margin() -> void:
-	# Pérdida y retraso no se mezclan: lo que nunca llega no baja el margen.
+	# Loss and delay are not mixed: what never arrives does not lower the margin.
 	var queue: InputQueue = _make_queue()
 	queue.push(_input(4), 0, 1)
 	queue.take(1)
 	queue.take(2)
 	queue.take(3)
 	assert_eq(queue.pop_min_lead(), 3,
-			"tres sustituciones y el margen sigue siendo el de la medida")
+			"three substitutions and the margin is still the measured one")
 
 
 func test_min_lead_is_saturated_so_it_never_equals_no_margin() -> void:
 	var queue: InputQueue = _make_queue()
 	queue.take(1)
-	assert_eq(queue.push(_input(1), 0, 500), InputQueue.PushResult.LATE, "muy tardía")
+	assert_eq(queue.push(_input(1), 0, 500), InputQueue.PushResult.LATE, "very late")
 	var lead: int = queue.pop_min_lead()
-	assert_eq(lead, -127, "se satura a -127")
-	assert_true(lead != NetProtocol.NO_MARGIN, "-128 queda reservado para «sin datos»")
+	assert_eq(lead, -127, "saturates at -127")
+	assert_true(lead != NetProtocol.NO_MARGIN, "-128 is reserved for \"no data\"")
 
 
-# --- Sustitución ------------------------------------------------------------------------------
+# --- Substitution -----------------------------------------------------------------------------
 
 func test_take_returns_the_real_input_when_it_arrived() -> void:
 	var queue: InputQueue = _make_queue()
@@ -295,8 +295,8 @@ func test_take_returns_the_real_input_when_it_arrived() -> void:
 	assert_near(taken.look_yaw, pushed.look_yaw, 1e-6, "look_yaw")
 	assert_near(taken.look_pitch, pushed.look_pitch, 1e-6, "look_pitch")
 	assert_eq(taken.buttons, SPRINT, "buttons")
-	assert_eq(queue.substitutions_total, 0, "no hubo sustitución")
-	assert_eq(queue.get_last_consumed(), 1, "consumida")
+	assert_eq(queue.substitutions_total, 0, "there was no substitution")
+	assert_eq(queue.get_last_consumed(), 1, "consumed")
 
 
 func test_substitute_repeats_the_whole_last_input() -> void:
@@ -304,30 +304,30 @@ func test_substitute_repeats_the_whole_last_input() -> void:
 	queue.push(_input(1, Vector2(0.0, 1.0), JUMP | SPRINT | PRIMARY | DODGE, 2.0, 0.3), 0, 1)
 	queue.take(1)
 	var substitute: PlayerInput = queue.take(2)
-	assert_eq(substitute.tick, 2, "lleva el tick que se simula")
-	assert_vec_near(substitute.move, Vector2(0, 1), 1e-6, "repite el movimiento")
-	assert_near(substitute.look_yaw, _input(1, Vector2.ZERO, 0, 2.0).look_yaw, 1e-6, "y el yaw")
+	assert_eq(substitute.tick, 2, "carries the tick being simulated")
+	assert_vec_near(substitute.move, Vector2(0, 1), 1e-6, "repeats the movement")
+	assert_near(substitute.look_yaw, _input(1, Vector2.ZERO, 0, 2.0).look_yaw, 1e-6, "and the yaw")
 	assert_near(substitute.look_pitch, _input(1, Vector2.ZERO, 0, 0.0, 0.3).look_pitch, 1e-6,
-			"y el pitch")
+			"and the pitch")
 	assert_eq(substitute.buttons, JUMP | SPRINT | PRIMARY | DODGE | SUBSTITUTED,
-			"repite TODOS los botones (ni se quitan ni se inventan flancos) y lleva la marca de sustituida")
-	assert_eq(queue.substitutions_total, 1, "una sustitución")
+			"repeats ALL the buttons (edges are neither removed nor invented) and carries the substituted mark")
+	assert_eq(queue.substitutions_total, 1, "one substitution")
 
 
 func test_only_substitutes_carry_the_substituted_bit() -> void:
 	var queue: InputQueue = _make_queue()
-	# Un cliente que intente poner el bit 15 no lo consigue: push() lo descarta.
+	# A client that tries to set bit 15 does not succeed: push() discards it.
 	var forged: PlayerInput = _input(1, Vector2(0, 1), PRIMARY | SUBSTITUTED)
-	assert_eq(forged.buttons & SUBSTITUTED, SUBSTITUTED, "la entrada de prueba lleva el bit")
+	assert_eq(forged.buttons & SUBSTITUTED, SUBSTITUTED, "the test input carries the bit")
 	queue.push(forged, 0, 1)
 	var real: PlayerInput = queue.take(1)
-	assert_eq(real.buttons, PRIMARY, "una entrada real nunca lleva la marca (se aplica VALID_BUTTONS)")
+	assert_eq(real.buttons, PRIMARY, "a real input never carries the mark (VALID_BUTTONS is applied)")
 	var substitute: PlayerInput = queue.take(2)
-	assert_eq(substitute.buttons, PRIMARY | SUBSTITUTED, "la sustituta repite PRIMARY y lleva la marca")
-	assert_eq(queue.take(3).buttons, PRIMARY | SUBSTITUTED, "y la siguiente también")
+	assert_eq(substitute.buttons, PRIMARY | SUBSTITUTED, "the substitute repeats PRIMARY and carries the mark")
+	assert_eq(queue.take(3).buttons, PRIMARY | SUBSTITUTED, "and the next one too")
 	queue.push(_input(4, Vector2(0, 1), PRIMARY), 0, 4)
-	assert_eq(queue.take(4).buttons, PRIMARY, "la siguiente real vuelve a no llevarla")
-	assert_eq(SUBSTITUTED & NetProtocol.VALID_BUTTONS, 0, "fuera de los botones válidos")
+	assert_eq(queue.take(4).buttons, PRIMARY, "the next real one again does not carry it")
+	assert_eq(SUBSTITUTED & NetProtocol.VALID_BUTTONS, 0, "outside the valid buttons")
 
 
 func test_substitute_stops_moving_after_six_ticks_without_real_inputs() -> void:
@@ -337,15 +337,15 @@ func test_substitute_stops_moving_after_six_ticks_without_real_inputs() -> void:
 	for t: int in range(2, 8):
 		var repeated: PlayerInput = queue.take(t)
 		assert_vec_near(repeated.move, Vector2(0, 1), 1e-6,
-				"tick %d: aún repite el movimiento (%d ticks tras la última real)" % [t, t - 1])
+				"tick %d: it still repeats the movement (%d ticks after the last real one)" % [t, t - 1])
 	var stopped: PlayerInput = queue.take(8)
-	assert_vec_near(stopped.move, Vector2.ZERO, 1e-6, "al séptimo tick sin entradas, move = 0")
-	assert_eq(stopped.buttons, JUMP | SPRINT | SUBSTITUTED, "pero los botones se conservan")
-	assert_near(stopped.look_yaw, _input(1, Vector2.ZERO, 0, 2.0).look_yaw, 1e-6, "y el yaw")
+	assert_vec_near(stopped.move, Vector2.ZERO, 1e-6, "at the seventh tick without inputs, move = 0")
+	assert_eq(stopped.buttons, JUMP | SPRINT | SUBSTITUTED, "but the buttons are kept")
+	assert_near(stopped.look_yaw, _input(1, Vector2.ZERO, 0, 2.0).look_yaw, 1e-6, "and the yaw")
 	var still: PlayerInput = queue.take(9)
-	assert_vec_near(still.move, Vector2.ZERO, 1e-6, "y sigue quieto")
-	assert_eq(still.buttons, JUMP | SPRINT | SUBSTITUTED, "con los mismos botones")
-	assert_eq(queue.substitutions_total, 8, "ocho ticks sustituidos (2 al 9)")
+	assert_vec_near(still.move, Vector2.ZERO, 1e-6, "and it stays still")
+	assert_eq(still.buttons, JUMP | SPRINT | SUBSTITUTED, "with the same buttons")
+	assert_eq(queue.substitutions_total, 8, "eight substituted ticks (2 to 9)")
 
 
 func test_real_input_after_a_long_silence_moves_again_and_restarts_the_count() -> void:
@@ -353,10 +353,10 @@ func test_real_input_after_a_long_silence_moves_again_and_restarts_the_count() -
 	for t: int in range(1, 21):
 		queue.take(t)
 	queue.push(_input(21, Vector2(1, 0)), 0, 21)
-	assert_vec_near(queue.take(21).move, Vector2(1, 0), 1e-6, "la real vuelve a mover")
+	assert_vec_near(queue.take(21).move, Vector2(1, 0), 1e-6, "the real one moves again")
 	for t: int in range(22, 28):
-		assert_vec_near(queue.take(t).move, Vector2(1, 0), 1e-6, "tick %d: la repite" % t)
-	assert_vec_near(queue.take(28).move, Vector2.ZERO, 1e-6, "y a los 6 ticks vuelve a pararse")
+		assert_vec_near(queue.take(t).move, Vector2(1, 0), 1e-6, "tick %d: it repeats it" % t)
+	assert_vec_near(queue.take(28).move, Vector2.ZERO, 1e-6, "and after 6 ticks it stops again")
 
 
 func test_a_press_that_starts_during_a_loss_enters_as_an_edge_in_the_next_real_input() -> void:
@@ -364,26 +364,26 @@ func test_a_press_that_starts_during_a_loss_enters_as_an_edge_in_the_next_real_i
 	queue.push(_input(14, Vector2.ZERO, 0), 0, 14)
 	for t: int in range(1, 14):
 		queue.take(t)
-	assert_eq(queue.take(14).buttons, 0, "tick 14 real, sin botones")
+	assert_eq(queue.take(14).buttons, 0, "tick 14 real, no buttons")
 	for t: int in range(15, 18):
-		assert_eq(queue.take(t).buttons, SUBSTITUTED, "15-17 perdidas: se repite «sin botones»")
+		assert_eq(queue.take(t).buttons, SUBSTITUTED, "15-17 lost: \"no buttons\" is repeated")
 	queue.push(_input(18, Vector2.ZERO, JUMP), 0, 18)
 	assert_eq(queue.take(18).buttons, JUMP,
-			"la pulsación llega en la primera entrada real que la lleva")
+			"the press arrives in the first real input that carries it")
 
 
 func test_substitute_of_the_spawn_is_the_neutral_input() -> void:
 	var queue := InputQueue.new()
 	var neutral: PlayerInput = NetProtocol.neutral_input(100, 1.5)
 	queue.reset(100, neutral)
-	assert_eq(queue.get_last_consumed(), 100, "el alta cuenta como consumido")
+	assert_eq(queue.get_last_consumed(), 100, "the spawn counts as consumed")
 	var first: PlayerInput = queue.take(101)
 	assert_eq(first.tick, 101, "tick 101")
-	assert_vec_near(first.move, Vector2.ZERO, 1e-6, "sin movimiento")
-	assert_eq(first.buttons, SUBSTITUTED, "sin botones, y sustituida")
-	assert_near(first.look_yaw, neutral.look_yaw, 1e-6, "el yaw del alta")
-	assert_near(first.look_pitch, 0.0, 1e-6, "sin pitch")
-	assert_eq(queue.substitutions_total, 1, "cuenta como sustitución")
+	assert_vec_near(first.move, Vector2.ZERO, 1e-6, "no movement")
+	assert_eq(first.buttons, SUBSTITUTED, "no buttons, and substituted")
+	assert_near(first.look_yaw, neutral.look_yaw, 1e-6, "the spawn's yaw")
+	assert_near(first.look_pitch, 0.0, 1e-6, "no pitch")
+	assert_eq(queue.substitutions_total, 1, "counts as a substitution")
 
 
 func test_reset_clears_counters_and_slots() -> void:
@@ -397,83 +397,83 @@ func test_reset_clears_counters_and_slots() -> void:
 	assert_eq(queue.late_count, 0, "late_count")
 	assert_eq(queue.too_early_count, 0, "too_early_count")
 	assert_eq(queue.substitutions_total, 0, "substitutions_total")
-	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "sin antelación")
-	assert_eq(queue.get_ack_tick(), 200, "ack = tick del alta")
-	assert_eq(queue.get_view_offset_q(1), -1, "huecos vacíos")
-	assert_eq(queue.push(_input(201), 0, 201), InputQueue.PushResult.ACCEPTED, "vuelve a aceptar")
+	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "no lead time")
+	assert_eq(queue.get_ack_tick(), 200, "ack = spawn tick")
+	assert_eq(queue.get_view_offset_q(1), -1, "empty slots")
+	assert_eq(queue.push(_input(201), 0, 201), InputQueue.PushResult.ACCEPTED, "accepts again")
 
 
 func test_view_offset_q() -> void:
 	var queue: InputQueue = _make_queue()
 	queue.push(_input(1), 37, 1)
 	queue.push(_input(3), 1234, 1)
-	assert_eq(queue.get_view_offset_q(1), 37, "recibida y sin consumir")
-	assert_eq(queue.get_view_offset_q(2), -1, "no recibida")
+	assert_eq(queue.get_view_offset_q(1), 37, "received and unconsumed")
+	assert_eq(queue.get_view_offset_q(2), -1, "not received")
 	queue.take(1)
 	queue.take(2)
 	queue.take(3)
-	assert_eq(queue.get_view_offset_q(1), 37, "real y consumida")
-	assert_eq(queue.get_view_offset_q(2), -1, "sustituida")
-	assert_eq(queue.get_view_offset_q(3), 1234, "otra real")
-	assert_eq(queue.get_view_offset_q(500), -1, "un tick que no está en el anillo")
+	assert_eq(queue.get_view_offset_q(1), 37, "real and consumed")
+	assert_eq(queue.get_view_offset_q(2), -1, "substituted")
+	assert_eq(queue.get_view_offset_q(3), 1234, "another real one")
+	assert_eq(queue.get_view_offset_q(500), -1, "a tick that is not in the ring")
 	for t: int in range(4, 80):
 		queue.take(t)
-	assert_eq(queue.get_view_offset_q(1), -1, "ya sobrescrito")
+	assert_eq(queue.get_view_offset_q(1), -1, "already overwritten")
 
 
 func test_rewind_params_of_real_and_substituted_inputs() -> void:
 	var queue: InputQueue = _make_queue()
-	assert_eq(queue.get_rewind_params(1), Vector2i(0, 0), "sin entradas reales: nada que rebobinar")
-	# La entrada del tick 1 llega justa (antelación 0) y la del 3 con 2 de antelación.
+	assert_eq(queue.get_rewind_params(1), Vector2i(0, 0), "without real inputs: nothing to rewind")
+	# The input for tick 1 arrives just in time (lead time 0) and that of 3 with a lead time of 2.
 	queue.push(_input(1), 37, 1)
 	queue.push(_input(3), 1234, 1)
-	assert_eq(queue.get_rewind_params(1), Vector2i(37, 0), "recibida y sin consumir")
-	assert_eq(queue.get_rewind_params(3), Vector2i(1234, 2), "con su antelación")
+	assert_eq(queue.get_rewind_params(1), Vector2i(37, 0), "received and unconsumed")
+	assert_eq(queue.get_rewind_params(3), Vector2i(1234, 2), "with its lead time")
 	queue.take(1)
-	assert_eq(queue.get_rewind_params(1), Vector2i(37, 0), "real y consumida")
+	assert_eq(queue.get_rewind_params(1), Vector2i(37, 0), "real and consumed")
 	queue.take(2)
-	assert_eq(queue.get_rewind_params(2), Vector2i(37, 0), "la sustituida usa los de la última real")
+	assert_eq(queue.get_rewind_params(2), Vector2i(37, 0), "the substituted one uses those of the last real one")
 	queue.take(3)
 	assert_eq(queue.get_rewind_params(3), Vector2i(1234, 2))
 	queue.take(4)
 	queue.take(5)
-	assert_eq(queue.get_rewind_params(5), Vector2i(1234, 2), "y sigue usando los de la última real")
-	# Una entrada tardía no cambia nada: ese tick ya se sustituyó.
+	assert_eq(queue.get_rewind_params(5), Vector2i(1234, 2), "and it keeps using those of the last real one")
+	# A late input changes nothing: that tick was already substituted.
 	queue.push(_input(4), 5, 6)
 	assert_eq(queue.get_rewind_params(4), Vector2i(1234, 2))
 	queue.reset(10, NetProtocol.neutral_input(10, 0.0))
-	assert_eq(queue.get_rewind_params(11), Vector2i(0, 0), "reset borra los últimos reales")
+	assert_eq(queue.get_rewind_params(11), Vector2i(0, 0), "reset clears the last real ones")
 
 
 func test_rewind_params_lead_comes_from_the_first_copy() -> void:
 	var queue: InputQueue = _make_queue()
 	queue.push(_input(5), 100, 3)
 	queue.push(_input(5), 999, 5)
-	assert_eq(queue.get_rewind_params(5), Vector2i(100, 2), "gana la primera copia, con su antelación")
+	assert_eq(queue.get_rewind_params(5), Vector2i(100, 2), "the first copy wins, with its lead time")
 
 
 func test_typical_lead_is_the_median_of_the_recent_real_inputs() -> void:
-	# R1: un cliente que adelanta solo las entradas de un golpe no mueve la antelación habitual.
+	# R1: a client that advances only the inputs of a hit does not move the usual lead time.
 	var queue: InputQueue = _make_queue()
-	assert_eq(queue.get_typical_lead(10), 0, "sin entradas, la de la última real (0)")
+	assert_eq(queue.get_typical_lead(10), 0, "without inputs, that of the last real one (0)")
 	for t: int in range(1, 31):
 		queue.push(_input(t), 0, t - 2)
 		queue.take(t)
-	assert_eq(queue.get_typical_lead(30), 2, "antelación habitual: 2")
+	assert_eq(queue.get_typical_lead(30), 2, "usual lead time: 2")
 	for t: int in range(31, 37):
 		queue.push(_input(t), 0, t - 14)
 		queue.take(t)
-	assert_eq(queue.get_rewind_params(36).y, 14, "las entradas adelantadas llevan su antelación de 14")
-	assert_eq(queue.get_typical_lead(36), 2, "pero la habitual sigue en 2 (6 de 36 no mueven la mediana)")
+	assert_eq(queue.get_rewind_params(36).y, 14, "the advanced inputs carry their lead time of 14")
+	assert_eq(queue.get_typical_lead(36), 2, "but the usual one stays at 2 (6 out of 36 do not move the median)")
 	queue.take(37)
-	assert_eq(queue.get_typical_lead(37), 2, "una sustituida no tiene antelación y no cuenta")
-	# Un cliente adelantado en todas sus entradas sí mueve la habitual (lo acota el resolutor).
+	assert_eq(queue.get_typical_lead(37), 2, "a substituted one has no lead time and does not count")
+	# A client that is ahead on all its inputs does move the usual one (the resolver bounds it).
 	var early: InputQueue = _make_queue()
 	for t: int in range(1, 80):
 		early.push(_input(t), 0, t - 14)
 		early.take(t)
-	assert_eq(early.get_typical_lead(79), 14, "adelantado siempre: 14")
-	# Las entradas más viejas que la ventana no cuentan.
+	assert_eq(early.get_typical_lead(79), 14, "always ahead: 14")
+	# Inputs older than the window do not count.
 	var window: InputQueue = _make_queue()
 	for t: int in range(1, 40):
 		window.push(_input(t), 0, t)
@@ -481,38 +481,38 @@ func test_typical_lead_is_the_median_of_the_recent_real_inputs() -> void:
 	for t: int in range(40, 100):
 		window.push(_input(t), 0, t - 5)
 		window.take(t)
-	assert_eq(window.get_typical_lead(99), 5, "la antelación 0 de los primeros ticks queda fuera")
+	assert_eq(window.get_typical_lead(99), 5, "the lead time 0 of the first ticks falls outside")
 
 
-## H3a (docs/habilidades.md, 7.2): get_applied(tick) da la entrada que se simuló en ese tick, real o
-## sustituta (también si la real llegó después, tarde), y null si aún no se ha consumido o ya salió del anillo.
+## H3a (docs/habilidades.md, 7.2): get_applied(tick) gives the input that was simulated at that tick, real or
+## substitute (also if the real one arrived afterwards, late), and null if it has not been consumed yet or has left the ring.
 func test_get_applied_returns_the_input_that_was_simulated() -> void:
 	var queue: InputQueue = _make_queue(10)
-	assert_null(queue.get_applied(11), "sin consumir todavía")
+	assert_null(queue.get_applied(11), "not consumed yet")
 	queue.push(_input(11, Vector2(0.0, 1.0), PRIMARY, 0.5, 0.25), 32, 11)
-	assert_null(queue.get_applied(11), "recibida pero sin consumir")
+	assert_null(queue.get_applied(11), "received but not consumed")
 	queue.take(11)
 	var real: PlayerInput = queue.get_applied(11)
-	if assert_not_null(real, "la real"):
+	if assert_not_null(real, "the real one"):
 		assert_eq(real.buttons, PRIMARY)
-		assert_near(real.look_yaw, _input(11, Vector2.ZERO, 0, 0.5).look_yaw, 0.000001, "con su yaw")
-		assert_near(real.look_pitch, _input(11, Vector2.ZERO, 0, 0.0, 0.25).look_pitch, 0.000001, "y su pitch")
-	# El 12 no llega: se aplica la sustituta, y sigue siéndolo aunque la real llegue tarde.
+		assert_near(real.look_yaw, _input(11, Vector2.ZERO, 0, 0.5).look_yaw, 0.000001, "with its yaw")
+		assert_near(real.look_pitch, _input(11, Vector2.ZERO, 0, 0.0, 0.25).look_pitch, 0.000001, "and its pitch")
+	# 12 does not arrive: the substitute is applied, and stays so even if the real one arrives late.
 	queue.take(12)
 	var substituted: PlayerInput = queue.get_applied(12)
-	if assert_not_null(substituted, "la sustituta"):
+	if assert_not_null(substituted, "the substitute"):
 		assert_eq(substituted.tick, 12)
-		assert_true(substituted.has(SUBSTITUTED), "con su bit")
-		assert_eq(substituted.buttons & ~SUBSTITUTED, PRIMARY, "repite los botones")
+		assert_true(substituted.has(SUBSTITUTED), "with its bit")
+		assert_eq(substituted.buttons & ~SUBSTITUTED, PRIMARY, "repeats the buttons")
 	assert_eq(queue.push(_input(12, Vector2.ZERO, DODGE), 0, 13), InputQueue.PushResult.LATE)
 	var after_late: PlayerInput = queue.get_applied(12)
 	assert_true(after_late != null and after_late.has(SUBSTITUTED) and not after_late.has(DODGE),
-			"la tardía no cambia lo que se simuló")
-	# Fuera del anillo, null.
+			"the late one does not change what was simulated")
+	# Outside the ring, null.
 	for tick: int in range(13, 13 + InputQueue.CAPACITY + 1):
 		queue.take(tick)
-	assert_null(queue.get_applied(11), "ya no está en el anillo")
-	assert_not_null(queue.get_applied(13 + InputQueue.CAPACITY), "la última consumida sí")
+	assert_null(queue.get_applied(11), "it is no longer in the ring")
+	assert_not_null(queue.get_applied(13 + InputQueue.CAPACITY), "the last consumed one is")
 
 
 func test_take_always_returns_the_requested_tick() -> void:
@@ -520,14 +520,14 @@ func test_take_always_returns_the_requested_tick() -> void:
 	for t: int in range(1, 200):
 		var input: PlayerInput = queue.take(t)
 		if input == null or input.tick != t:
-			fail("take(%d) no devolvió una entrada de ese tick" % t)
+			fail("take(%d) did not return an input of that tick" % t)
 			return
-	assert_eq(queue.substitutions_total, 199, "todas sustituidas")
+	assert_eq(queue.substitutions_total, 199, "all substituted")
 
 
 func test_random_network_conditions_keep_the_invariants() -> void:
-	# Propiedad: con pérdida, retraso, desorden y duplicados, cada tick se aplica la primera copia
-	# que llegó a tiempo y, si no, una sustituta; ningún tick se aplica dos veces ni se salta.
+	# Property: with loss, delay, reordering and duplicates, on each tick the first copy
+	# that arrived in time is applied and, otherwise, a substitute; no tick is applied twice or skipped.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2024
 	var queue: InputQueue = _make_queue()
@@ -537,8 +537,8 @@ func test_random_network_conditions_keep_the_invariants() -> void:
 	var real_expected: int = 0
 	var previous_ack: int = 0
 	for server_tick: int in range(1, 1201):
-		# El cliente va 3 ticks por delante y envía las últimas 4 entradas, cada paquete con su
-		# retardo (0 a 5 ticks), con un 20 % de pérdida y a veces duplicado.
+		# The client is 3 ticks ahead and sends the last 4 inputs, each packet with its
+		# own delay (0 to 5 ticks), with 20% loss and sometimes duplicated.
 		var client_tick: int = server_tick + 3
 		sent[client_tick] = _input(client_tick, Vector2(rng.randf(), rng.randf()).limit_length(1.0),
 				rng.randi() & 0x1FF)
@@ -550,7 +550,7 @@ func test_random_network_conditions_keep_the_invariants() -> void:
 			_deliver(inbox, server_tick + rng.randi_range(0, 5), packet)
 			if rng.randf() < 0.1:
 				_deliver(inbox, server_tick + rng.randi_range(0, 7), packet)
-		# Llegan los paquetes de este tick, antes de simular.
+		# This tick's packets arrive, before simulating.
 		for packet: Array in inbox.get(server_tick, []):
 			for pushed: PlayerInput in packet:
 				var result: int = queue.push(pushed.duplicate_input(), pushed.tick, server_tick)
@@ -559,33 +559,33 @@ func test_random_network_conditions_keep_the_invariants() -> void:
 		inbox.erase(server_tick)
 		var ack: int = queue.get_ack_tick()
 		if ack < previous_ack:
-			fail("el ack retrocedió: %d -> %d en el tick %d" % [previous_ack, ack, server_tick])
+			fail("the ack went backwards: %d -> %d at tick %d" % [previous_ack, ack, server_tick])
 			return
 		previous_ack = ack
 		if ack < queue.get_last_consumed() or ack > queue.get_last_consumed() + 30:
-			fail("ack %d fuera de [consumido, consumido + 30] en el tick %d" % [ack, server_tick])
+			fail("ack %d outside [consumed, consumed + 30] at tick %d" % [ack, server_tick])
 			return
 		var taken: PlayerInput = queue.take(server_tick)
 		if taken == null or taken.tick != server_tick:
-			fail("take(%d) devolvió un tick equivocado" % server_tick)
+			fail("take(%d) returned the wrong tick" % server_tick)
 			return
 		if first_arrival.has(server_tick):
 			real_expected += 1
 			var expected: PlayerInput = first_arrival[server_tick]
 			if taken.buttons != expected.buttons or not taken.move.is_equal_approx(expected.move):
-				fail("el tick %d no aplicó la primera copia recibida" % server_tick)
+				fail("tick %d did not apply the first copy received" % server_tick)
 				return
 	assert_eq(queue.substitutions_total, 1200 - real_expected,
-			"las sustituciones son exactamente los ticks sin entrada a tiempo")
-	assert_true(real_expected > 800, "con un 20 %% de pérdida y redundancia llegan casi todas (%d)"
+			"the substitutions are exactly the ticks with no input in time")
+	assert_true(real_expected > 800, "with 20 %% loss and redundancy almost all arrive (%d)"
 			% real_expected)
-	assert_true(queue.late_count > 0, "con retardos de hasta 5 ticks hay tardías")
-	assert_eq(queue.get_last_consumed(), 1200, "se consumieron los 1200 ticks")
+	assert_true(queue.late_count > 0, "with delays of up to 5 ticks there are late ones")
+	assert_eq(queue.get_last_consumed(), 1200, "all 1200 ticks were consumed")
 
 
-# --- Sin flancos inventados, con un PlayerCharacter real --------------------------------------
+# --- No invented edges, with a real PlayerCharacter -------------------------------------------
 
-## Mundo mínimo en un SubViewport con su propio espacio de física: un suelo y un personaje.
+## Minimal world in a SubViewport with its own physics space: a floor and a character.
 func _build_physics_world() -> void:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
@@ -610,24 +610,24 @@ func _build_physics_world() -> void:
 	_current_tick = 0
 
 
-## Qué hace el servidor con un tick cuya entrada se perdió.
+## What the server does with a tick whose input was lost.
 enum Substitute {
-	## La cola real: repite la máscara completa de la última entrada aplicada.
+	## The real queue: repeats the full mask of the last applied input.
 	QUEUE,
-	## Control: una entrada «sin botones», que es lo que hacía el diseño descartado. Sirve para
-	## comprobar que la prueba sí detecta un flanco inventado.
+	## Control: a "no buttons" input, which is what the discarded design did. It serves to
+	## check that the test does detect an invented edge.
 	NAIVE_NEUTRAL,
 }
 
 
-## Entrada de la escena: neutral mientras el personaje se asienta y JUMP mantenido después.
+## Scene input: neutral while the character settles and JUMP held afterwards.
 func _scripted_input(tick: int) -> PlayerInput:
 	return _input(tick, Vector2.ZERO, JUMP if tick >= JUMP_HELD_FROM else 0)
 
 
-## Simula [param total_ticks] ticks de [method _scripted_input] con los ticks de [param lost]
-## perdidos, uno por paso de física. Devuelve los estados (tick -> [PlayerState.encode]) y deja en
-## [member _jumped_count] y [member _landed_ticks] lo que ocurrió.
+## Simulates [param total_ticks] ticks of [method _scripted_input] with the ticks in [param lost]
+## lost, one per physics step. Returns the states (tick -> [PlayerState.encode]) and leaves in
+## [member _jumped_count] and [member _landed_ticks] what happened.
 func _run_scene(total_ticks: int, lost: Array[int], substitute: Substitute) -> Dictionary:
 	await _build_physics_world_ready()
 	var queue: InputQueue = _make_queue()
@@ -657,7 +657,7 @@ func _run_scene(total_ticks: int, lost: Array[int], substitute: Substitute) -> D
 
 func _build_physics_world_ready() -> void:
 	_build_physics_world()
-	# Dos pasos de física para que el espacio registre los cuerpos recién añadidos.
+	# Two physics steps so that the space registers the newly added bodies.
 	await wait_physics_frames(2)
 
 
@@ -671,43 +671,43 @@ func _free_physics_world() -> void:
 
 
 func test_substitute_never_invents_edges_with_a_real_character() -> void:
-	# Referencia: ninguna pérdida. Salta una vez y aterriza en el tick L.
+	# Reference: no loss. It jumps once and lands at tick L.
 	var no_loss: Array[int] = []
 	var reference: Dictionary = await _run_scene(70, no_loss, Substitute.QUEUE)
-	if not assert_eq(_jumped_count, 1, "referencia: un solo salto (JUMP mantenido no repite)"):
+	if not assert_eq(_jumped_count, 1, "reference: a single jump (held JUMP does not repeat)"):
 		return
-	if not assert_eq(_landed_ticks.size(), 2, "referencia: aterriza al asentarse y tras el salto"):
+	if not assert_eq(_landed_ticks.size(), 2, "reference: lands on settling and after the jump"):
 		return
 	var landing: int = _landed_ticks[1]
 	assert_true(landing > JUMP_HELD_FROM + 30 and landing < 65,
-			"el salto dura ~44 ticks (aterriza en %d)" % landing)
+			"the jump lasts ~44 ticks (lands at %d)" % landing)
 	await _free_physics_world()
 
-	# Caso del diseño: JUMP mantenido, entradas 15-17 perdidas y la 18 con JUMP. No salta otra vez
-	# y toda la trayectoria coincide con la de la referencia.
+	# Design case: JUMP held, inputs 15-17 lost and 18 with JUMP. It does not jump again
+	# and the whole trajectory matches the reference's.
 	var lost_mid: Array[int] = [15, 16, 17]
 	var run_mid: Dictionary = await _run_scene(70, lost_mid, Substitute.QUEUE)
-	assert_eq(_jumped_count, 1, "con 15-17 perdidas: sigue habiendo un solo salto")
-	assert_eq(_character.jump_buffer_ticks, 0, "y no queda ninguna pulsación guardada")
+	assert_eq(_jumped_count, 1, "with 15-17 lost: there is still a single jump")
+	assert_eq(_character.jump_buffer_ticks, 0, "and no press is left stored")
 	for t: int in range(1, 71):
 		if run_mid[t] != reference[t]:
-			fail("el estado del tick %d difiere de la referencia tras perder 15-17" % t)
+			fail("the state of tick %d differs from the reference after losing 15-17" % t)
 			break
 	await _free_physics_world()
 
-	# Pérdida justo antes de aterrizar: un flanco inventado en la entrada 18 de este caso (la
-	# primera real tras la pérdida) quedaría dentro del búfer de salto y saltaría otra vez.
+	# Loss just before landing: an invented edge at input 18 of this case (the
+	# first real one after the loss) would fall within the jump buffer and jump again.
 	var lost_landing: Array[int] = [landing - 5, landing - 4, landing - 3]
 	var run_landing: Dictionary = await _run_scene(landing + 15, lost_landing, Substitute.QUEUE)
-	assert_eq(_jumped_count, 1, "perdidas %s: ningún salto inventado al aterrizar" % [lost_landing])
+	assert_eq(_jumped_count, 1, "lost %s: no invented jump on landing" % [lost_landing])
 	for t: int in range(1, landing + 16):
 		if run_landing[t] != reference[t]:
-			fail("el estado del tick %d difiere de la referencia (pérdida antes de aterrizar)" % t)
+			fail("the state of tick %d differs from the reference (loss before landing)" % t)
 			break
 	await _free_physics_world()
 
-	# Control: con la sustituta «sin botones» la misma pérdida sí inventa el flanco y salta dos
-	# veces, así que la prueba anterior habría detectado el defecto.
+	# Control: with the "no buttons" substitute the same loss does invent the edge and jumps twice,
+	# so the previous test would have detected the defect.
 	await _run_scene(landing + 15, lost_landing, Substitute.NAIVE_NEUTRAL)
-	assert_eq(_jumped_count, 2, "control: una sustituta sin botones inventa un segundo salto")
+	assert_eq(_jumped_count, 2, "control: a substitute with no buttons invents a second jump")
 	await _free_physics_world()

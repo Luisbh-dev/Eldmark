@@ -24,19 +24,19 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// Formatos del registro de progreso que admite esta plataforma (record_format, §7.1).
+// Progress record formats that this platform admits (record_format, §7.1).
 var supportedRecordFormats = []int64{1}
 
-// LostAfter es cuántos latidos se pueden perder antes de dar una instancia por perdida (§5.3).
+// LostAfter is how many heartbeats can be missed before an instance is considered lost (§5.3).
 const LostAfter = config.LostAfterHeartbeats
 
-// Topes del registro.
+// Registration caps.
 const (
 	maxPlayersLimit = 1000
 	maxBuildID      = 64
 	maxDTLSName     = 253
 	maxCertPEM      = 16 << 10
-	maxHeartbeat    = 4 * maxPlayersLimit // personajes en un latido
+	maxHeartbeat    = 4 * maxPlayersLimit // characters in a heartbeat
 )
 
 var (
@@ -44,18 +44,18 @@ var (
 	buildIDPattern = regexp.MustCompile(`^[\x21-\x7e]{1,64}$`)
 )
 
-// Options son las dependencias del servicio.
+// Options are the service's dependencies.
 type Options struct {
 	Config *config.Config
 	Pool   *pgxpool.Pool
 	Log    *slog.Logger
-	Clock  clock.Clock // por defecto, el del sistema
-	// MinProtocol es el protocolo mínimo de los clientes: una zona con un protocol_version menor no
-	// se registra (409 schema_mismatch), porque esos clientes no podrían entrar en ella.
+	Clock  clock.Clock // defaults to the system clock
+	// MinProtocol is the clients' minimum protocol: a zone with a lower protocol_version does not
+	// register (409 schema_mismatch), because those clients could not enter it.
 	MinProtocol int
 }
 
-// Service es el servicio de las instancias de zona.
+// Service is the zone instances service.
 type Service struct {
 	cfg         *config.Config
 	pool        *pgxpool.Pool
@@ -65,7 +65,7 @@ type Service struct {
 	minProtocol int
 }
 
-// New prepara el servicio.
+// New prepares the service.
 func New(o Options) (*Service, error) {
 	if o.Config == nil || o.Pool == nil {
 		return nil, errors.New("zones: faltan dependencias")
@@ -80,16 +80,16 @@ func New(o Options) (*Service, error) {
 		guard: NewGuard(NewRegistry(o.Config.ZoneTokens), o.Pool, o.Log)}, nil
 }
 
-// Guard devuelve las comprobaciones comunes de la API interna, para los demás paquetes.
+// Guard returns the internal API's common checks, for the other packages.
 func (s *Service) Guard() *Guard { return s.guard }
 
-// LostEvery es cada cuánto corre el trabajo de instancias perdidas: min(5 s, HEARTBEAT_S) (§2.5).
+// LostEvery is how often the lost-instances job runs: min(5 s, HEARTBEAT_S) (§2.5).
 func (s *Service) LostEvery() time.Duration { return s.cfg.LostEvery() }
 
-// lostCutoff es la hora antes de la cual el último latido deja a una instancia por perdida.
+// lostCutoff is the time before which the last heartbeat makes an instance count as lost.
 func (s *Service) lostCutoff(now time.Time) time.Time { return now.Add(-LostAfter * s.cfg.Heartbeat) }
 
-// RegisterRequest es el cuerpo de POST /internal/v1/zone-instances.
+// RegisterRequest is the body of POST /internal/v1/zone-instances.
 type RegisterRequest struct {
 	WorldID         jsonx.Int   `json:"world_id"`
 	ZoneID          string      `json:"zone_id"`
@@ -106,7 +106,7 @@ type RegisterRequest struct {
 	Replace         bool        `json:"replace"`
 }
 
-// RegisterResult es la respuesta del registro.
+// RegisterResult is the registration response.
 type RegisterResult struct {
 	ZoneInstanceID string `json:"zone_instance_id"`
 	Env            string `json:"env"`
@@ -129,7 +129,7 @@ func (s *Service) hostAllowed(host string) bool {
 	return false
 }
 
-// validCert dice si pem es un certificado X.509 en PEM.
+// validCert says whether pem is an X.509 certificate in PEM format.
 func validCert(data string) bool {
 	if len(data) > maxCertPEM {
 		return false
@@ -142,13 +142,14 @@ func validCert(data string) bool {
 	return err == nil
 }
 
-// Register registra una instancia nueva en starting (§5.3, §6, §8). Comprueba, en orden: el
-// alcance del token y el public_host (403 forbidden), los campos (400 validation; en staging y
-// production, el certificado DTLS es obligatorio), el record_format y el protocolo (409
-// schema_mismatch). Después, en una transacción, mira la instancia que ocupa ese mundo, zona y
-// canal: si latió hace menos de 3 × HEARTBEAT_S, 409 instance_alive salvo con replace, que la pasa a
-// replaced (sin liberar sus arrendamientos: los liberan sus guardados finales o el TTL) y deja una
-// fila en audit_log; si no, la pasa a lost y libera sus arrendamientos, como el trabajo de perdidas.
+// Register registers a new instance in starting (§5.3, §6, §8). It checks, in order: the token's
+// scope and the public_host (403 forbidden), the fields (400 validation; in staging and
+// production, the DTLS certificate is mandatory), the record_format and the protocol (409
+// schema_mismatch). Then, in a transaction, it looks at the instance occupying that world, zone
+// and channel: if it sent a heartbeat less than 3 × HEARTBEAT_S ago, 409 instance_alive unless
+// with replace, which moves it to replaced (without releasing its leases: its final saves or the
+// TTL release them) and leaves a row in audit_log; otherwise, it moves it to lost and releases
+// its leases, like the lost-instances job.
 func (s *Service) Register(ctx context.Context, scope Scope, req RegisterRequest) (*RegisterResult, error) {
 	if int64(req.WorldID) != int64(scope.WorldID) || req.ZoneID != scope.ZoneID || int64(req.Channel) != int64(scope.Channel) {
 		return nil, ErrForbidden()
@@ -196,7 +197,7 @@ func (s *Service) Register(ctx context.Context, scope Scope, req RegisterRequest
 		}
 		certPEM, dtlsName = req.DTLSCertPEM, req.DTLSName
 	} else if s.cfg.Env.Deployed() {
-		// Sin DTLS no hay pruebas públicas (§0, §10.2): en staging y production es obligatorio.
+		// Without DTLS there are no public tests (§0, §10.2): in staging and production it is mandatory.
 		fields["dtls_cert_pem"] = "required"
 	}
 	if len(fields) > 0 {
@@ -268,7 +269,7 @@ func (s *Service) Register(ctx context.Context, scope Scope, req RegisterRequest
 	})
 	if err != nil {
 		if db.Constraint(err) == "zone_instances_world_id_zone_id_channel_idx" || db.SQLState(err) == "23505" {
-			// Otra instancia del mismo alcance se registró a la vez: gana la primera.
+			// Another instance of the same scope registered at the same time: the first one wins.
 			return nil, Conflict("instance_alive", "Hay otra instancia viva de esa zona y canal")
 		}
 		return nil, err
@@ -288,8 +289,8 @@ func (s *Service) Register(ctx context.Context, scope Scope, req RegisterRequest
 		NowUnix: now.Unix()}, nil
 }
 
-// markLost pasa las instancias a lost y libera sus arrendamientos (zone_instance_id = null;
-// lease_id y claimed_by se quedan, §5.3).
+// markLost moves the instances to lost and releases their leases (zone_instance_id = null;
+// lease_id and claimed_by stay, §5.3).
 func markLost(ctx context.Context, tx pgx.Tx, ids [][16]byte, now time.Time) error {
 	if _, err := tx.Exec(ctx, `update zone_instances set status = 'lost', ended_at = $2 where zone_instance_id = any($1)`,
 		ids, now); err != nil {
@@ -300,8 +301,8 @@ func markLost(ctx context.Context, tx pgx.Tx, ids [][16]byte, now time.Time) err
 	return err
 }
 
-// Live pasa la instancia de starting a live (enter ya la ofrece). Repetida con live, nada; con
-// otro estado, su 409.
+// Live moves the instance from starting to live (enter already offers it). Repeated with live,
+// nothing; with another state, its 409.
 func (s *Service) Live(ctx context.Context, inst *Instance) error {
 	now := s.clock.Now()
 	var status string
@@ -326,9 +327,10 @@ func (s *Service) Live(ctx context.Context, inst *Instance) error {
 	return nil
 }
 
-// Stop es la baja de una instancia (DELETE): starting o live pasan a stopped y sus arrendamientos
-// quedan libres. Una sustituida que se va libera los que le queden (ya mandó sus finales) y sigue
-// replaced; una parada, nada; una perdida, 409 instance_lost (los suyos ya están libres).
+// Stop is an instance's deregistration (DELETE): starting or live move to stopped and their
+// leases are left free. A replaced one that leaves releases any it has left (it already sent its
+// final saves) and stays replaced; a stopped one, nothing; a lost one, 409 instance_lost (its
+// leases are already free).
 func (s *Service) Stop(ctx context.Context, inst *Instance) error {
 	now := s.clock.Now()
 	return db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -358,8 +360,8 @@ func (s *Service) Stop(ctx context.Context, inst *Instance) error {
 	})
 }
 
-// MarkLost es el trabajo de instancias perdidas (§2.5, §5.3): las starting o live que llevan 3 ×
-// HEARTBEAT_S sin latir pasan a lost y sus arrendamientos quedan libres.
+// MarkLost is the lost-instances job (§2.5, §5.3): the starting or live ones that have gone 3 ×
+// HEARTBEAT_S without a heartbeat move to lost and their leases are left free.
 func (s *Service) MarkLost(ctx context.Context) error {
 	now := s.clock.Now()
 	type gone struct {
@@ -397,8 +399,8 @@ func (s *Service) MarkLost(ctx context.Context) error {
 	return nil
 }
 
-// IDBlock da a la instancia un bloque de 1024 ids (§6, progresion.md §4.5): nextval de
-// uid_block_seq y una fila en id_blocks. Devuelve el primero.
+// IDBlock gives the instance a block of 1024 ids (§6, progresion.md §4.5): nextval of
+// uid_block_seq and a row in id_blocks. It returns the first one.
 func (s *Service) IDBlock(ctx context.Context, inst *Instance) (int64, error) {
 	var first int64
 	err := s.pool.QueryRow(ctx, `insert into id_blocks (first_id, zone_instance_id, granted_at)
@@ -406,21 +408,21 @@ func (s *Service) IDBlock(ctx context.Context, inst *Instance) (int64, error) {
 	return first, err
 }
 
-// HeartbeatRequest es el cuerpo del latido: los jugadores y el conjunto de arrendamientos que la
-// zona mantiene (§5.3).
+// HeartbeatRequest is the heartbeat body: the players and the set of leases that the zone
+// maintains (§5.3).
 type HeartbeatRequest struct {
 	Players    jsonx.Int            `json:"players"`
 	Characters []HeartbeatCharacter `json:"characters"`
 }
 
-// HeartbeatCharacter es un personaje del latido con su arrendamiento.
+// HeartbeatCharacter is a character in the heartbeat with its lease.
 type HeartbeatCharacter struct {
 	CharacterID jsonx.ID `json:"character_id"`
 	LeaseID     string   `json:"lease_id"`
 }
 
-// Revoked es un personaje que la zona tiene que sacar (§6): reason lease_lost, session_revoked,
-// suspended, banned o pending_deletion, con el texto para el jugador.
+// Revoked is a character that the zone must remove (§6): reason lease_lost, session_revoked,
+// suspended, banned or pending_deletion, with the player-facing text.
 type Revoked struct {
 	CharacterID jsonx.ID `json:"character_id"`
 	LeaseID     string   `json:"lease_id"`
@@ -428,19 +430,19 @@ type Revoked struct {
 	Text        string   `json:"text"`
 }
 
-// Mute es un silencio vigente de una cuenta con un personaje en la instancia.
+// Mute is an active mute of an account with a character in the instance.
 type Mute struct {
 	AccountID jsonx.ID `json:"account_id"`
 	UntilUnix int64    `json:"until_unix"`
 }
 
-// Maintenance es el mantenimiento anunciado (TEC-28).
+// Maintenance is the announced maintenance (TEC-28).
 type Maintenance struct {
 	AtUnix  int64  `json:"at_unix"`
 	Message string `json:"message"`
 }
 
-// HeartbeatResult es la respuesta del latido.
+// HeartbeatResult is the heartbeat response.
 type HeartbeatResult struct {
 	NowUnix     int64        `json:"now_unix"`
 	Revoked     []Revoked    `json:"revoked"`
@@ -448,7 +450,7 @@ type HeartbeatResult struct {
 	Maintenance *Maintenance `json:"maintenance"`
 }
 
-// Textos de revoked.
+// Texts for revoked.
 const (
 	textLeaseLost      = "Tu personaje ha entrado en otro servidor"
 	textReplaced       = "Has iniciado sesión desde otro lugar"
@@ -472,14 +474,14 @@ func sessionText(reason *string) string {
 	return textAccountChanged
 }
 
-// Heartbeat es el latido (§5.3, §6): apunta la hora y los jugadores, renueva los arrendamientos del
-// conjunto que casan con un arrendamiento vivo de esta instancia (character_id, lease_id y
-// expires_at > ahora: uno caducado ya lo dan por libre la reclamación, enter y el borrado, y
-// renovarlo dejaba dos personajes de la cuenta en el mundo o uno borrado dentro) y devuelve en
-// revoked los que no casan (lease_lost, con el lease_id del latido) y los renovados cuya cuenta
-// está suspendida, expulsada o con el borrado pedido, o cuya sesión está revocada (con el lease_id
-// del arrendamiento); en mutes, los silencios vigentes de sus cuentas. Una instancia que ya no está
-// en starting ni live recibe su 409.
+// Heartbeat is the heartbeat (§5.3, §6): it records the time and the players, renews the leases
+// in the set that match a live lease of this instance (character_id, lease_id and expires_at >
+// now: an expired one is already treated as free by the claim, enter and deletion, and renewing
+// it would leave two characters of the account in the world or a deleted one inside) and returns
+// in revoked those that do not match (lease_lost, with the heartbeat's lease_id) and the renewed
+// ones whose account is suspended, banned or has deletion requested, or whose session is revoked
+// (with the lease's lease_id); in mutes, the active mutes of their accounts. An instance that is
+// no longer in starting or live gets its 409.
 func (s *Service) Heartbeat(ctx context.Context, inst *Instance, req HeartbeatRequest) (*HeartbeatResult, error) {
 	if req.Players < 0 || req.Players > maxPlayersLimit {
 		return nil, Validation(map[string]string{"players": "invalid"})
@@ -557,8 +559,8 @@ func (s *Service) Heartbeat(ctx context.Context, inst *Instance, req HeartbeatRe
 	return res, nil
 }
 
-// accountState añade a la respuesta del latido las expulsiones por la cuenta o la sesión y los
-// silencios de los personajes renovados.
+// accountState adds to the heartbeat response the removals due to the account or session and the
+// mutes of the renewed characters.
 func (s *Service) accountState(ctx context.Context, tx pgx.Tx, ids []int64, now time.Time, res *HeartbeatResult) error {
 	rows, err := tx.Query(ctx, `select l.character_id, l.lease_id, c.account_id, a.status, a.purge_after,
 			s.revoked_at is not null, s.revoke_reason

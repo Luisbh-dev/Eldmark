@@ -1,81 +1,81 @@
 extends TestCase
-## Pruebas de [CombatCatalog] (docs/combate.md sección 2; docs/habilidades.md sección 2.2): carga de
-## data/combat/, IDs de cada espacio pedidos por nombre, ids repetidos, validación de rangos y de las
-## reglas de la sección 2.2, conversión a ticks, curvas horneadas (esquiva y avances), golpe
-## sintetizado de las habilidades, huella de la parte predicha y el camino rápido de simulate().
+## Tests for [CombatCatalog] (docs/combate.md section 2; docs/habilidades.md section 2.2): loading
+## data/combat/, IDs of each space requested by name, repeated ids, validation of ranges and of the
+## rules of section 2.2, conversion to ticks, baked curves (dodge and advances), synthesized hit
+## of the abilities, footprint of the predicted part and the fast path of simulate().
 
 const DATA_DIR: String = "res://data/combat"
 
 
 func after_each() -> void:
-	# Algunas pruebas construyen catálogos aparte; el global no se toca, pero por si acaso.
+	# Some tests build separate catalogs; the global one is not touched, but just in case.
 	CombatCatalog.reload()
 
 
-# --- Carga y IDs ------------------------------------------------------------------------------
+# --- Loading and IDs --------------------------------------------------------------------------
 
 func test_data_directory_loads_without_errors() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
-	assert_eq(tables.errors, PackedStringArray(), "los datos de data/combat/ son válidos")
+	assert_eq(tables.errors, PackedStringArray(), "the data in data/combat/ is valid")
 	assert_true(tables.is_valid(), "is_valid()")
-	assert_eq(_names_starting_with(tables.attack_ids, "sword_").size(), 4, "4 ataques de espada: fuerte y tres ligeros")
-	assert_eq(_names_starting_with(tables.weapon_ids, "sword_").size(), 1, "un arma de jugador: espada y escudo")
-	assert_eq(_names_starting_with(tables.attack_ids, "npc_").size(), 8, "8 ataques de PNJ (ligero y fuerte de 4 armas)")
-	assert_eq(_names_starting_with(tables.weapon_ids, "npc_").size(), 4, "4 armas de PNJ")
-	assert_eq(_names_starting_with(tables.attack_ids, "bow_").size(), 2, "2 ataques de arco: rápido y tensado")
-	assert_eq(_names_starting_with(tables.weapon_ids, "bow").size(), 1, "el arco")
-	assert_eq(tables.attacks.size(), 14, "14 ataques en total")
-	assert_eq(tables.weapons.size(), 6, "6 armas en total")
-	assert_eq(tables.abilities.size(), 8, "6 habilidades (3 de espada y escudo, 3 de arco) y 2 pociones")
-	assert_eq(tables.statuses.size(), 4, "4 efectos: bleed, potion_regen, rooted y slowed")
-	assert_eq(tables.projectiles.size(), 1, "un proyectil: la flecha")
-	assert_eq(tables.templates.size(), 2, "2 plantillas: escudero y tirador")
-	assert_not_null(tables.rules, "hay reglas")
+	assert_eq(_names_starting_with(tables.attack_ids, "sword_").size(), 4, "4 sword attacks: heavy and three light")
+	assert_eq(_names_starting_with(tables.weapon_ids, "sword_").size(), 1, "a player weapon: sword and shield")
+	assert_eq(_names_starting_with(tables.attack_ids, "npc_").size(), 8, "8 NPC attacks (light and heavy for 4 weapons)")
+	assert_eq(_names_starting_with(tables.weapon_ids, "npc_").size(), 4, "4 NPC weapons")
+	assert_eq(_names_starting_with(tables.attack_ids, "bow_").size(), 2, "2 bow attacks: fast and drawn")
+	assert_eq(_names_starting_with(tables.weapon_ids, "bow").size(), 1, "the bow")
+	assert_eq(tables.attacks.size(), 14, "14 attacks in total")
+	assert_eq(tables.weapons.size(), 6, "6 weapons in total")
+	assert_eq(tables.abilities.size(), 8, "6 abilities (3 for sword and shield, 3 for bow) and 2 potions")
+	assert_eq(tables.statuses.size(), 4, "4 effects: bleed, potion_regen, rooted and slowed")
+	assert_eq(tables.projectiles.size(), 1, "one projectile: the arrow")
+	assert_eq(tables.templates.size(), 2, "2 templates: squire and shooter")
+	assert_not_null(tables.rules, "there are rules")
 
 
 func test_global_catalog_matches_the_directory() -> void:
 	CombatCatalog.reload()
 	var tables: CombatTables = CombatCatalog.tables()
-	assert_true(tables.is_valid(), "el catálogo global carga bien")
+	assert_true(tables.is_valid(), "the global catalog loads fine")
 	assert_eq(CombatCatalog.prediction_hash(),
 			CombatCatalog.build_from_directory(DATA_DIR).prediction_hash,
-			"la huella global es la de leer la carpeta")
-	assert_same(CombatCatalog.tables(), tables, "las tablas se cargan una sola vez (perezosa)")
+			"the global footprint is that of reading the folder")
+	assert_same(CombatCatalog.tables(), tables, "the tables are loaded only once (lazy)")
 	assert_same(CombatCatalog.rules(), tables.rules, "rules()")
 
 
 func test_ids_are_alphabetical_from_one() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
-	# Los IDs salen del orden alfabético de los nombres: nada puede depender de un número fijo (los ataques y
-	# las armas de PNJ, que empiezan por npc_, van antes que los de la espada).
+	# The IDs come from the alphabetical order of the names: nothing can depend on a fixed number (the NPC
+	# attacks and weapons, which start with npc_, go before the sword ones).
 	var attack_names: Array[String] = _sorted_names(tables.attack_ids)
 	for i: int in attack_names.size():
 		assert_eq(tables.attack_ids[StringName(attack_names[i])], i + 1,
-				"%s es el ataque número %d" % [attack_names[i], i + 1])
+				"%s is attack number %d" % [attack_names[i], i + 1])
 	var weapon_names: Array[String] = _sorted_names(tables.weapon_ids)
 	for i: int in weapon_names.size():
 		assert_eq(tables.weapon_ids[StringName(weapon_names[i])], i + 1,
-				"%s es el arma número %d" % [weapon_names[i], i + 1])
+				"%s is weapon number %d" % [weapon_names[i], i + 1])
 	assert_true(tables.attack_ids[&"npc_captain_crush"] < tables.attack_ids[&"sword_heavy"],
-			"los ataques de PNJ van antes que los de la espada")
+			"the NPC attacks go before the sword ones")
 	assert_eq(tables.attack_ids[&"sword_light_2"], tables.attack_ids[&"sword_light_1"] + 1, "sword_light_2")
 	assert_eq(tables.attack_ids[&"sword_light_3"], tables.attack_ids[&"sword_light_2"] + 1, "sword_light_3")
-	assert_eq(tables.attack_ids[&"sword_heavy"], tables.attack_ids[&"sword_light_1"] - 1, "sword_heavy va antes")
-	assert_null(tables.attack(0), "el ID 0 es «ninguno» en los ataques")
-	assert_null(tables.weapon(0), "y en las armas")
-	assert_null(tables.attack(tables.attacks.size() + 1), "un ID que no existe")
-	assert_null(tables.weapon(tables.weapons.size() + 1), "un arma que no existe")
-	assert_null(tables.attack(-1), "un ID negativo")
+	assert_eq(tables.attack_ids[&"sword_heavy"], tables.attack_ids[&"sword_light_1"] - 1, "sword_heavy goes first")
+	assert_null(tables.attack(0), "ID 0 is \"none\" in the attacks")
+	assert_null(tables.weapon(0), "and in the weapons")
+	assert_null(tables.attack(tables.attacks.size() + 1), "an ID that does not exist")
+	assert_null(tables.weapon(tables.weapons.size() + 1), "a weapon that does not exist")
+	assert_null(tables.attack(-1), "a negative ID")
 	for i: int in tables.attacks.size():
-		assert_eq(tables.attacks[i].id, i + 1, "el ataque en el índice %d lleva el ID %d" % [i, i + 1])
+		assert_eq(tables.attacks[i].id, i + 1, "the attack at index %d carries ID %d" % [i, i + 1])
 		assert_eq(tables.attack(i + 1), tables.attacks[i], "attack(%d)" % (i + 1))
 	var light_one: int = tables.attack_ids[&"sword_light_1"]
-	assert_eq(tables.attack(light_one).name, &"sword_light_1", "el nombre se conserva")
-	assert_eq(CombatCatalog.attack_id(&"sword_light_2"), light_one + 1, "attack_id() por nombre")
-	assert_eq(CombatCatalog.weapon_id(&"sword_shield"), tables.weapon_ids[&"sword_shield"], "weapon_id() por nombre")
-	assert_eq(CombatCatalog.attack_id(&"no_existe"), 0, "un nombre que no existe da 0")
+	assert_eq(tables.attack(light_one).name, &"sword_light_1", "the name is preserved")
+	assert_eq(CombatCatalog.attack_id(&"sword_light_2"), light_one + 1, "attack_id() by name")
+	assert_eq(CombatCatalog.weapon_id(&"sword_shield"), tables.weapon_ids[&"sword_shield"], "weapon_id() by name")
+	assert_eq(CombatCatalog.attack_id(&"no_existe"), 0, "a name that does not exist gives 0")
 	assert_eq(CombatCatalog.default_weapon_id(), tables.weapon_ids[&"sword_shield"],
-			"el arma por defecto es la espada y escudo")
+			"the default weapon is sword and shield")
 
 
 func test_ids_do_not_depend_on_the_order_the_resources_come_in() -> void:
@@ -87,11 +87,11 @@ func test_ids_do_not_depend_on_the_order_the_resources_come_in() -> void:
 	var backward: Array[Resource] = [c, b, a, rules]
 	var first: CombatTables = CombatCatalog.build_from_resources(forward)
 	var second: CombatTables = CombatCatalog.build_from_resources(backward)
-	assert_eq(first.attack_ids, second.attack_ids, "mismos IDs")
-	assert_eq(first.attack_ids[&"a_attack"], 1, "a_attack primero")
-	assert_eq(first.attack_ids[&"b_attack"], 2, "b_attack segundo")
-	assert_eq(first.attack_ids[&"c_attack"], 3, "c_attack tercero")
-	assert_eq(first.prediction_hash, second.prediction_hash, "y la misma huella")
+	assert_eq(first.attack_ids, second.attack_ids, "same IDs")
+	assert_eq(first.attack_ids[&"a_attack"], 1, "a_attack first")
+	assert_eq(first.attack_ids[&"b_attack"], 2, "b_attack second")
+	assert_eq(first.attack_ids[&"c_attack"], 3, "c_attack third")
+	assert_eq(first.prediction_hash, second.prediction_hash, "and the same footprint")
 
 
 func test_duplicate_attack_id_is_an_error() -> void:
@@ -99,20 +99,20 @@ func test_duplicate_attack_id_is_an_error() -> void:
 	var second: AttackDefinition = _attack(&"golpe")
 	var resources: Array[Resource] = [CombatRules.new(), first, second]
 	var tables: CombatTables = CombatCatalog.build_from_resources(resources)
-	assert_false(tables.is_valid(), "un id repetido invalida el catálogo")
+	assert_false(tables.is_valid(), "a repeated id invalidates the catalog")
 	assert_true(_has_error(tables.errors, "id de ataque repetido: golpe"), _errors_text(tables.errors))
-	assert_eq(tables.attacks.size(), 1, "solo se queda uno")
+	assert_eq(tables.attacks.size(), 1, "only one stays")
 
 
 func test_the_same_attack_object_twice_is_not_a_duplicate() -> void:
-	# Un ataque que cuelga de un arma y además está suelto en la carpeta es el mismo objeto.
+	# An attack that hangs from a weapon and is also loose in the folder is the same object.
 	var weapon: WeaponDefinition = _weapon(&"arma")
 	var resources: Array[Resource] = [CombatRules.new(), weapon, weapon.heavy_attack,
 			weapon.light_combo[0], weapon]
 	var tables: CombatTables = CombatCatalog.build_from_resources(resources)
-	assert_eq(tables.errors, PackedStringArray(), "sin errores")
-	assert_eq(tables.attacks.size(), 4, "4 ataques, ninguno contado dos veces")
-	assert_eq(tables.weapons.size(), 1, "una sola arma")
+	assert_eq(tables.errors, PackedStringArray(), "no errors")
+	assert_eq(tables.attacks.size(), 4, "4 attacks, none counted twice")
+	assert_eq(tables.weapons.size(), 1, "a single weapon")
 
 
 func test_duplicate_weapon_id_is_an_error() -> void:
@@ -129,28 +129,28 @@ func test_empty_ids_are_errors() -> void:
 	var weapon_nameless: WeaponDefinition = _weapon(&"")
 	var weapons: Array[Resource] = [CombatRules.new(), weapon_nameless]
 	assert_true(_has_error(CombatCatalog.build_from_resources(weapons).errors, "un arma no tiene id"),
-			"un arma sin id")
+			"a weapon without an id")
 
 
 func test_missing_rules_is_an_error_but_defaults_exist() -> void:
 	var resources: Array[Resource] = [_attack(&"x")]
 	var tables: CombatTables = CombatCatalog.build_from_resources(resources)
 	assert_true(_has_error(tables.errors, "falta un recurso CombatRules"), _errors_text(tables.errors))
-	assert_not_null(tables.rules, "aun así hay unas reglas por defecto")
+	assert_not_null(tables.rules, "even so there are default rules")
 	var two: Array[Resource] = [CombatRules.new(), CombatRules.new()]
 	assert_true(_has_error(CombatCatalog.build_from_resources(two).errors, "hay 2 recursos CombatRules"),
-			"dos reglas")
+			"two rules")
 
 
 func test_unknown_resources_are_ignored() -> void:
 	var resources: Array[Resource] = [CombatRules.new(), HitShape.new(), DodgeDefinition.new(),
 			Curve.new()]
 	var tables: CombatTables = CombatCatalog.build_from_resources(resources)
-	assert_eq(tables.errors, PackedStringArray(), "los demás recursos no son un problema")
-	assert_eq(tables.attacks.size(), 0, "no hay ataques")
+	assert_eq(tables.errors, PackedStringArray(), "the other resources are not a problem")
+	assert_eq(tables.attacks.size(), 0, "there are no attacks")
 
 
-# --- Validación de rangos ---------------------------------------------------------------------
+# --- Range validation -------------------------------------------------------------------------
 
 func test_attack_validation_detects_bad_values() -> void:
 	var cases: Dictionary[String, String] = {
@@ -179,15 +179,15 @@ func test_heavy_attack_validation_checks_the_charge() -> void:
 	heavy.charge_max_s = 1.0
 	var resources: Array[Resource] = [CombatRules.new(), heavy]
 	assert_true(_has_error(CombatCatalog.build_from_resources(resources).errors, "la carga debe cumplir"),
-			"mínima mayor que la máxima")
+			"minimum greater than the maximum")
 	heavy.charge_min_s = 0.35
 	heavy.charge_max_s = 5.0
 	assert_true(_has_error(CombatCatalog.build_from_resources(resources).errors, "la carga debe cumplir"),
-			"la carga máxima no cabe en 255 ticks")
+			"the maximum charge does not fit in 255 ticks")
 	heavy.charge_max_s = 1.2
 	heavy.charge_damage_scale = 0.5
 	assert_true(_has_error(CombatCatalog.build_from_resources(resources).errors, "charge_damage_scale"),
-			"escala de daño menor que 1")
+			"damage scale less than 1")
 
 
 func test_weapon_validation_detects_bad_values() -> void:
@@ -275,24 +275,24 @@ func test_rules_validation_detects_bad_values() -> void:
 		assert_true(_has_error(tables.errors, expected), "«%s»: %s" % [expected, _errors_text(tables.errors)])
 
 
-# --- Conversión a ticks -----------------------------------------------------------------------
+# --- Conversion to ticks ----------------------------------------------------------------------
 
 func test_seconds_to_ticks_uses_fixed_rounding() -> void:
-	assert_eq(CombatCatalog.TICK_RATE, 60, "60 ticks por segundo")
+	assert_eq(CombatCatalog.TICK_RATE, 60, "60 ticks per second")
 	assert_eq(CombatCatalog.seconds_to_ticks(0.0), 0, "0")
 	assert_eq(CombatCatalog.seconds_to_ticks(0.1), 6, "0,1 s")
-	assert_eq(CombatCatalog.seconds_to_ticks(0.2), 12, "0,2 s (12.000000000000002 en coma flotante)")
-	assert_eq(CombatCatalog.seconds_to_ticks(0.18), 11, "0,18 s = 10,8 ticks redondea a 11")
-	assert_eq(CombatCatalog.seconds_to_ticks(0.38), 23, "0,38 s = 22,8 ticks redondea a 23")
-	assert_eq(CombatCatalog.seconds_to_ticks(0.12), 7, "0,12 s = 7,2 ticks redondea a 7")
+	assert_eq(CombatCatalog.seconds_to_ticks(0.2), 12, "0.2 s (12.000000000000002 in floating point)")
+	assert_eq(CombatCatalog.seconds_to_ticks(0.18), 11, "0.18 s = 10.8 ticks rounds to 11")
+	assert_eq(CombatCatalog.seconds_to_ticks(0.38), 23, "0.38 s = 22.8 ticks rounds to 23")
+	assert_eq(CombatCatalog.seconds_to_ticks(0.12), 7, "0.12 s = 7.2 ticks rounds to 7")
 	assert_eq(CombatCatalog.seconds_to_ticks(1.2), 72, "1,2 s")
 	assert_eq(CombatCatalog.seconds_to_ticks(0.35), 21, "0,35 s")
-	assert_eq(CombatCatalog.seconds_to_ticks(1.0 / 120.0), 1, "medio tick redondea hacia arriba")
+	assert_eq(CombatCatalog.seconds_to_ticks(1.0 / 120.0), 1, "half a tick rounds up")
 
 
 func test_attack_ticks_for_the_sword() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
-	# [anticipación, activo, recuperación, ventana de combo, cancelar a esquiva desde]
+	# [windup, active, recovery, combo window, cancel to dodge from]
 	var expected: Dictionary[StringName, Array] = {
 		&"sword_light_1": [12, 6, 18, 9, 24],
 		&"sword_light_2": [11, 6, 18, 9, 23],
@@ -302,78 +302,78 @@ func test_attack_ticks_for_the_sword() -> void:
 	for attack_name: StringName in expected:
 		var attack: AttackTicks = tables.attack(tables.attack_ids[attack_name])
 		var want: Array = expected[attack_name]
-		assert_eq(attack.windup_ticks, want[0], "%s: anticipación" % attack_name)
-		assert_eq(attack.active_ticks, want[1], "%s: golpe activo" % attack_name)
-		assert_eq(attack.recovery_ticks, want[2], "%s: recuperación" % attack_name)
-		assert_eq(attack.combo_window_ticks, want[3], "%s: ventana de combo" % attack_name)
-		assert_eq(attack.cancel_to_dodge_from_ticks, want[4], "%s: cancelar a esquiva" % attack_name)
-		assert_eq(attack.total_ticks, want[0] + want[1] + want[2], "%s: duración total" % attack_name)
+		assert_eq(attack.windup_ticks, want[0], "%s: windup" % attack_name)
+		assert_eq(attack.active_ticks, want[1], "%s: active hit" % attack_name)
+		assert_eq(attack.recovery_ticks, want[2], "%s: recovery" % attack_name)
+		assert_eq(attack.combo_window_ticks, want[3], "%s: combo window" % attack_name)
+		assert_eq(attack.cancel_to_dodge_from_ticks, want[4], "%s: cancel to dodge" % attack_name)
+		assert_eq(attack.total_ticks, want[0] + want[1] + want[2], "%s: total duration" % attack_name)
 		assert_eq(attack.active_from(), want[0], "%s: active_from()" % attack_name)
 		assert_eq(attack.active_to(), want[0] + want[1], "%s: active_to()" % attack_name)
 		assert_eq(attack.combo_window_from(), attack.total_ticks - want[3],
 				"%s: combo_window_from()" % attack_name)
 	var heavy: AttackTicks = tables.attack(tables.attack_ids[&"sword_heavy"])
-	assert_true(heavy.heavy, "el fuerte es heavy")
-	assert_eq(heavy.charge_min_ticks, 21, "carga mínima 0,35 s")
-	assert_eq(heavy.charge_max_ticks, 72, "carga máxima 1,2 s")
-	assert_eq(heavy.stamina_cost, 150, "el fuerte cuesta 150")
-	assert_near(heavy.charge_move_scale, 0.4, 1e-9, "movimiento cargando ×0,4")
-	assert_near(heavy.move_speed_scale, 0.2, 1e-9, "movimiento del golpe ×0,2")
-	assert_near(heavy.lunge_speed, 2.5, 1e-9, "avance 2,5 m/s")
-	assert_true(heavy.hyper_armor, "entereza")
-	assert_eq(heavy.stagger_ticks, 30, "tambaleo 0,5 s")
-	assert_near(heavy.knockback_speed, 4.0, 1e-9, "empuje 4 m/s")
-	assert_near(heavy.charge_damage_scale, 1.7, 1e-9, "×1,7 a carga máxima")
-	assert_eq(heavy.base_damage, 180, "daño 180")
+	assert_true(heavy.heavy, "the heavy one is heavy")
+	assert_eq(heavy.charge_min_ticks, 21, "minimum charge 0.35 s")
+	assert_eq(heavy.charge_max_ticks, 72, "maximum charge 1.2 s")
+	assert_eq(heavy.stamina_cost, 150, "the heavy one costs 150")
+	assert_near(heavy.charge_move_scale, 0.4, 1e-9, "movement while charging ×0.4")
+	assert_near(heavy.move_speed_scale, 0.2, 1e-9, "hit movement ×0.2")
+	assert_near(heavy.lunge_speed, 2.5, 1e-9, "advance 2.5 m/s")
+	assert_true(heavy.hyper_armor, "poise")
+	assert_eq(heavy.stagger_ticks, 30, "stagger 0.5 s")
+	assert_near(heavy.knockback_speed, 4.0, 1e-9, "knockback 4 m/s")
+	assert_near(heavy.charge_damage_scale, 1.7, 1e-9, "×1.7 at maximum charge")
+	assert_eq(heavy.base_damage, 180, "damage 180")
 	var light3: AttackTicks = tables.attack(tables.attack_ids[&"sword_light_3"])
-	assert_eq(light3.stagger_ticks, 18, "el tercer ligero tambalea 0,3 s")
-	assert_eq(light3.base_damage, 130, "daño 130")
+	assert_eq(light3.stagger_ticks, 18, "the third light attack staggers 0.3 s")
+	assert_eq(light3.base_damage, 130, "damage 130")
 	for attack_name: StringName in expected:
 		var attack: AttackTicks = tables.attack(tables.attack_ids[attack_name])
-		assert_not_null(attack.shape, "%s tiene forma de golpe" % attack_name)
-		assert_near(attack.shape.range_m, 2.6, 1e-9, "%s: alcance 2,6 m" % attack_name)
-		assert_near(attack.shape.angle_deg, 100.0, 1e-9, "%s: 100 grados" % attack_name)
-		assert_near(attack.turn_rate, 6.0, 1e-9, "%s: giro 6 rad/s" % attack_name)
+		assert_not_null(attack.shape, "%s has the shape of a hit" % attack_name)
+		assert_near(attack.shape.range_m, 2.6, 1e-9, "%s: range 2.6 m" % attack_name)
+		assert_near(attack.shape.angle_deg, 100.0, 1e-9, "%s: 100 degrees" % attack_name)
+		assert_near(attack.turn_rate, 6.0, 1e-9, "%s: turn 6 rad/s" % attack_name)
 
 
 func test_weapon_ticks_for_sword_and_shield() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
 	var weapon: WeaponTicks = tables.weapon(tables.weapon_ids[&"sword_shield"])
-	assert_eq(weapon.name, &"sword_shield", "nombre")
+	assert_eq(weapon.name, &"sword_shield", "name")
 	var light_one: int = tables.attack_ids[&"sword_light_1"]
 	assert_eq(weapon.light_ids, PackedInt32Array([light_one, light_one + 1, light_one + 2]),
-			"combo: ligeros 1, 2 y 3 en orden")
-	assert_eq(weapon.heavy_id, tables.attack_ids[&"sword_heavy"], "fuerte")
-	assert_eq(weapon.light_index(light_one + 1), 1, "light_index() del segundo ligero")
-	assert_eq(weapon.light_index(weapon.heavy_id), -1, "el fuerte no es un ligero")
-	assert_near(weapon.block_move_scale, 0.5, 1e-9, "movimiento al bloquear ×0,5")
-	assert_near(weapon.block_turn_rate, 8.0, 1e-9, "giro al bloquear 8 rad/s")
-	assert_near(weapon.block_angle_deg, 120.0, 1e-9, "cono de 120 grados")
-	assert_near(weapon.block_mitigation, 1.0, 1e-9, "para el 100 %")
+			"combo: light attacks 1, 2 and 3 in order")
+	assert_eq(weapon.heavy_id, tables.attack_ids[&"sword_heavy"], "heavy")
+	assert_eq(weapon.light_index(light_one + 1), 1, "light_index() of the second light attack")
+	assert_eq(weapon.light_index(weapon.heavy_id), -1, "the heavy one is not a light attack")
+	assert_near(weapon.block_move_scale, 0.5, 1e-9, "movement while blocking ×0.5")
+	assert_near(weapon.block_turn_rate, 8.0, 1e-9, "turn while blocking 8 rad/s")
+	assert_near(weapon.block_angle_deg, 120.0, 1e-9, "120-degree cone")
+	assert_near(weapon.block_mitigation, 1.0, 1e-9, "for 100 %")
 	var dodge: DodgeTicks = weapon.dodge
-	assert_eq(dodge.duration_ticks, 27, "esquiva de 0,45 s")
-	assert_eq(dodge.invulnerable_from_ticks, 3, "invulnerable desde 0,05 s")
-	assert_eq(dodge.invulnerable_to_ticks, 18, "hasta 0,30 s (exclusivo)")
-	assert_eq(dodge.cancel_to_attack_from_ticks, 18, "a ataque desde 0,30 s")
-	assert_eq(dodge.stamina_cost, 300, "300 de resistencia")
+	assert_eq(dodge.duration_ticks, 27, "dodge of 0.45 s")
+	assert_eq(dodge.invulnerable_from_ticks, 3, "invulnerable from 0.05 s")
+	assert_eq(dodge.invulnerable_to_ticks, 18, "until 0.30 s (exclusive)")
+	assert_eq(dodge.cancel_to_attack_from_ticks, 18, "to attack from 0.30 s")
+	assert_eq(dodge.stamina_cost, 300, "300 of stamina cost")
 	assert_near(dodge.distance_m, 4.5, 1e-9, "4,5 m")
 
 
 func test_dodge_curve_is_baked_to_the_distance() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
 	var dodge: DodgeTicks = tables.weapon(tables.weapon_ids[&"sword_shield"]).dodge
-	assert_eq(dodge.speeds.size(), dodge.duration_ticks, "una velocidad por tick")
+	assert_eq(dodge.speeds.size(), dodge.duration_ticks, "one speed per tick")
 	var distance: float = 0.0
 	for speed: float in dodge.speeds:
 		distance += speed / float(CombatCatalog.TICK_RATE)
-		assert_true(speed >= 0.0, "ninguna velocidad negativa")
-		assert_eq(speed, PlayerState.to_f32(speed), "cada velocidad es exacta en f32")
-	assert_near(distance, 4.5, 1e-5, "la suma de v / 60 es la distancia")
+		assert_true(speed >= 0.0, "no negative speed")
+		assert_eq(speed, PlayerState.to_f32(speed), "each speed is exact in f32")
+	assert_near(distance, 4.5, 1e-5, "the sum of v / 60 is the distance")
 	assert_true(dodge.speeds[0] > dodge.speeds[dodge.speeds.size() - 1] * 5.0,
-			"salida rápida: mucho más veloz al principio que al final")
+			"fast start: much quicker at the beginning than at the end")
 	assert_eq(dodge.speed_at(0), dodge.speeds[0], "speed_at(0)")
-	assert_eq(dodge.speed_at(1000), dodge.speeds[dodge.speeds.size() - 1], "más allá repite el último")
-	assert_eq(dodge.speed_at(-1), 0.0, "antes del inicio no hay velocidad")
+	assert_eq(dodge.speed_at(1000), dodge.speeds[dodge.speeds.size() - 1], "beyond that it repeats the last one")
+	assert_eq(dodge.speed_at(-1), 0.0, "before the start there is no speed")
 
 
 func test_a_flat_curve_gives_constant_speed() -> void:
@@ -389,19 +389,19 @@ func test_a_flat_curve_gives_constant_speed() -> void:
 	var dodge: DodgeTicks = tables.weapon(1).dodge
 	assert_eq(dodge.duration_ticks, 30, "0,5 s")
 	for speed: float in dodge.speeds:
-		assert_near(speed, 6.0, 1e-5, "3 m en 0,5 s son 6 m/s en todos los ticks")
+		assert_near(speed, 6.0, 1e-5, "3 m in 0.5 s is 6 m/s on every tick")
 
 
-# --- Huella -----------------------------------------------------------------------------------
+# --- Footprint --------------------------------------------------------------------------------
 
 func test_prediction_hash_is_stable() -> void:
 	var first: int = CombatCatalog.build_from_directory(DATA_DIR).prediction_hash
 	var second: int = CombatCatalog.build_from_directory(DATA_DIR).prediction_hash
-	assert_eq(first, second, "dos cargas dan la misma huella")
+	assert_eq(first, second, "two loads give the same footprint")
 	assert_true(first >= 0 and first <= 0xFFFFFFFF, "es un u32")
 	assert_true(first != 0, "no es 0")
 	CombatCatalog.reload()
-	assert_eq(CombatCatalog.prediction_hash(), first, "tras recargar, igual")
+	assert_eq(CombatCatalog.prediction_hash(), first, "after reloading, the same")
 
 
 func test_prediction_hash_changes_with_predicted_values() -> void:
@@ -416,7 +416,7 @@ func test_prediction_hash_changes_with_predicted_values() -> void:
 	]
 	for what: String in predicted:
 		var changed: int = _hash_of(what)
-		assert_true(changed != base_hash, "cambiar «%s» debe cambiar la huella" % what)
+		assert_true(changed != base_hash, "changing \"%s\" must change the footprint" % what)
 
 
 func test_prediction_hash_ignores_server_only_values() -> void:
@@ -428,30 +428,30 @@ func test_prediction_hash_ignores_server_only_values() -> void:
 	]
 	for what: String in server_only:
 		var changed: int = _hash_of(what)
-		assert_eq(changed, base_hash, "cambiar «%s» (solo servidor) no debe cambiar la huella" % what)
+		assert_eq(changed, base_hash, "changing \"%s\" (server only) must not change the footprint" % what)
 
 
 func test_prediction_hash_depends_on_the_id_assignment() -> void:
-	# Si un cliente numera los ataques de otra forma, el action_id del estado no coincidiría.
+	# If a client numbers the attacks differently, the state's action_id would not match.
 	var rules := CombatRules.new()
 	var first: Array[Resource] = [rules, _attack(&"a"), _attack(&"b")]
 	var second: Array[Resource] = [rules, _attack(&"a"), _attack(&"c")]
 	assert_true(CombatCatalog.build_from_resources(first).prediction_hash
 			!= CombatCatalog.build_from_resources(second).prediction_hash,
-			"otro nombre de ataque, otra huella")
+			"another attack name, another footprint")
 
 
 func test_sim_hash_includes_the_combat_hash() -> void:
-	# NetProtocol.compute_sim_hash lleva la huella del catálogo y la versión del protocolo (2 fue el
-	# combate de la fase 3; 3, su revisión; 4, el fuerte de la fase 4; 5, el chat y los grupos).
-	assert_true(NetProtocol.PROTOCOL_VERSION >= 4, "el protocolo del fuerte es la versión 4 o posterior")
+	# NetProtocol.compute_sim_hash carries the catalog footprint and the protocol version (2 was phase 3
+	# combat; 3, its revision; 4, phase 4's fort; 5, chat and parties).
+	assert_true(NetProtocol.PROTOCOL_VERSION >= 4, "the fort protocol is version 4 or later")
 	var scene: PackedScene = load("res://scenes/characters/player_character.tscn") as PackedScene
 	var character: PlayerCharacter = scene.instantiate() as PlayerCharacter
 	tree.root.add_child(character)
 	var with_data: int = NetProtocol.compute_sim_hash(character)
-	assert_eq(NetProtocol.compute_sim_hash(character), with_data, "estable")
+	assert_eq(NetProtocol.compute_sim_hash(character), with_data, "stable")
 	character.queue_free()
-	# Con otra huella del catálogo, el sim_hash cambia.
+	# With another catalog footprint, the sim_hash changes.
 	var tables: CombatTables = CombatCatalog.tables()
 	var saved_hash: int = tables.prediction_hash
 	tables.prediction_hash = saved_hash ^ 0x1234
@@ -461,10 +461,10 @@ func test_sim_hash_includes_the_combat_hash() -> void:
 	var changed: int = NetProtocol.compute_sim_hash(other)
 	tables.prediction_hash = saved_hash
 	other.queue_free()
-	assert_true(changed != with_data, "otra huella del catálogo, otro sim_hash")
+	assert_true(changed != with_data, "another catalog footprint, another sim_hash")
 
 
-# --- Fase 4: habilidades, efectos, proyectiles y plantillas (docs/habilidades.md, sección 2) ---
+# --- Phase 4: abilities, effects, projectiles and templates (docs/habilidades.md, section 2) ---
 
 func test_every_id_space_is_alphabetical_and_asked_by_name() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
@@ -476,10 +476,10 @@ func test_every_id_space_is_alphabetical_and_asked_by_name() -> void:
 		var ids: Dictionary = spaces[space]
 		var names: Array[String] = _sorted_names(ids)
 		for i: int in names.size():
-			assert_eq(ids[StringName(names[i])], i + 1, "%s %s es la número %d" % [space, names[i], i + 1])
+			assert_eq(ids[StringName(names[i])], i + 1, "%s %s is number %d" % [space, names[i], i + 1])
 	for i: int in tables.abilities.size():
-		assert_eq(tables.abilities[i].id, i + 1, "la habilidad del índice %d lleva el ID %d" % [i, i + 1])
-	# Por nombre, en el catálogo global (nadie escribe un ID a mano).
+		assert_eq(tables.abilities[i].id, i + 1, "the ability at index %d carries ID %d" % [i, i + 1])
+	# By name, in the global catalog (nobody writes an ID by hand).
 	CombatCatalog.reload()
 	var global: CombatTables = CombatCatalog.tables()
 	for ability_name: StringName in [&"shield_bash", &"shield_rush", &"shield_wall", &"bow_volley",
@@ -489,25 +489,25 @@ func test_every_id_space_is_alphabetical_and_asked_by_name() -> void:
 		assert_eq(CombatCatalog.ability(id).name, ability_name, "ability(ability_id(%s))" % ability_name)
 	for status_name: StringName in [&"slowed", &"potion_regen", &"bleed", &"rooted"]:
 		var id: int = CombatCatalog.status_id(status_name)
-		assert_true(id > 0 and id <= 255, "status_id(%s) cabe en u8" % status_name)
+		assert_true(id > 0 and id <= 255, "status_id(%s) fits in a u8" % status_name)
 		assert_eq(CombatCatalog.status(id).name, status_name, "status(status_id(%s))" % status_name)
-	assert_eq(CombatCatalog.projectile(CombatCatalog.projectile_id(&"arrow")).name, &"arrow", "la flecha")
-	assert_eq(CombatCatalog.template(CombatCatalog.template_id(&"squire")).id, &"squire", "el escudero")
-	assert_eq(CombatCatalog.template(CombatCatalog.template_id(&"marksman")).id, &"marksman", "el tirador")
-	assert_eq(CombatCatalog.template_count(), 2, "dos plantillas")
+	assert_eq(CombatCatalog.projectile(CombatCatalog.projectile_id(&"arrow")).name, &"arrow", "the arrow")
+	assert_eq(CombatCatalog.template(CombatCatalog.template_id(&"squire")).id, &"squire", "the squire")
+	assert_eq(CombatCatalog.template(CombatCatalog.template_id(&"marksman")).id, &"marksman", "the shooter")
+	assert_eq(CombatCatalog.template_count(), 2, "two templates")
 	assert_eq(CombatCatalog.default_template_id(), CombatCatalog.template_id(&"squire"),
-			"la plantilla por defecto es el escudero")
+			"the default template is the squire")
 	assert_eq(CombatCatalog.consumable_ids(), PackedInt32Array([
 		CombatCatalog.ability_id(&"potion_health"), CombatCatalog.ability_id(&"potion_stamina"),
-	]), "consumibles en orden de botón: vida (R) y resistencia (T)")
+	]), "consumables in button order: health (R) and stamina (T)")
 	for missing: int in [CombatCatalog.ability_id(&"no_existe"), CombatCatalog.status_id(&"no_existe"),
 			CombatCatalog.projectile_id(&"no_existe"), CombatCatalog.template_id(&"no_existe")]:
-		assert_eq(missing, 0, "un nombre que no existe da 0")
-	assert_null(global.ability(0), "0 es «ninguna» en las habilidades")
-	assert_null(global.status(0), "en los efectos")
-	assert_null(global.projectile(0), "en los proyectiles")
-	assert_null(global.template(0), "y en las plantillas")
-	assert_null(global.ability(global.abilities.size() + 1), "una habilidad que no existe")
+		assert_eq(missing, 0, "a name that does not exist gives 0")
+	assert_null(global.ability(0), "0 is \"none\" in the abilities")
+	assert_null(global.status(0), "in the effects")
+	assert_null(global.projectile(0), "in the projectiles")
+	assert_null(global.template(0), "and in the templates")
+	assert_null(global.ability(global.abilities.size() + 1), "an ability that does not exist")
 
 
 func test_sword_and_shield_abilities_in_ticks() -> void:
@@ -517,11 +517,11 @@ func test_sword_and_shield_abilities_in_ticks() -> void:
 	var bash_id: int = tables.ability_ids[&"shield_bash"]
 	var rush_id: int = tables.ability_ids[&"shield_rush"]
 	var wall_id: int = tables.ability_ids[&"shield_wall"]
-	assert_eq(weapon.ability_ids, PackedInt32Array([bash_id, rush_id, wall_id]), "ranuras 1, 2 y 3")
+	assert_eq(weapon.ability_ids, PackedInt32Array([bash_id, rush_id, wall_id]), "slots 1, 2 and 3")
 	assert_eq(weapon.ability_id(1), rush_id, "ability_id(1)")
-	assert_eq(weapon.ability_id(3), 0, "fuera de rango, 0")
-	assert_true(weapon.can_block, "la espada y escudo bloquea")
-	# [lanzamiento, activo, recuperación, reutilización, ranura] (docs/habilidades.md, 2.3).
+	assert_eq(weapon.ability_id(3), 0, "out of range, 0")
+	assert_true(weapon.can_block, "sword and shield blocks")
+	# [cast, active, recovery, cooldown, slot] (docs/habilidades.md, 2.3).
 	var expected: Dictionary[StringName, Array] = {
 		&"shield_bash": [18, 6, 24, 720, 0],
 		&"shield_rush": [9, 24, 21, 960, 1],
@@ -530,55 +530,55 @@ func test_sword_and_shield_abilities_in_ticks() -> void:
 	for ability_name: StringName in expected:
 		var ability: AbilityTicks = tables.ability(tables.ability_ids[ability_name])
 		var want: Array = expected[ability_name]
-		assert_eq(ability.cast_ticks, want[0], "%s: lanzamiento" % ability_name)
-		assert_eq(ability.active_ticks, want[1], "%s: activo" % ability_name)
-		assert_eq(ability.recovery_ticks, want[2], "%s: recuperación" % ability_name)
-		assert_eq(ability.cooldown_ticks, want[3], "%s: reutilización" % ability_name)
-		assert_eq(ability.slot, want[4], "%s: ranura" % ability_name)
-		assert_eq(ability.total_ticks, want[0] + want[1] + want[2], "%s: duración" % ability_name)
-		assert_eq(ability.weapon_id, sword_id, "%s: la lleva la espada y escudo" % ability_name)
-		assert_false(ability.is_consumable(), "%s: no es un consumible" % ability_name)
+		assert_eq(ability.cast_ticks, want[0], "%s: cast" % ability_name)
+		assert_eq(ability.active_ticks, want[1], "%s: active" % ability_name)
+		assert_eq(ability.recovery_ticks, want[2], "%s: recovery" % ability_name)
+		assert_eq(ability.cooldown_ticks, want[3], "%s: cooldown" % ability_name)
+		assert_eq(ability.slot, want[4], "%s: slot" % ability_name)
+		assert_eq(ability.total_ticks, want[0] + want[1] + want[2], "%s: duration" % ability_name)
+		assert_eq(ability.weapon_id, sword_id, "%s: sword and shield carries it" % ability_name)
+		assert_false(ability.is_consumable(), "%s: it is not a consumable" % ability_name)
 		assert_true(ability.cooldown_ticks >= ability.total_ticks + AbilityTicks.REARM_TICKS,
-				"%s: reutilización ≥ duración + el margen del byte de acción" % ability_name)
+				"%s: cooldown ≥ duration + the action byte margin" % ability_name)
 	var bash: AbilityTicks = tables.ability(bash_id)
-	assert_eq(bash.hit.stun_ticks, 48, "el golpe de escudo aturde 0,8 s")
-	assert_true(bash.hit.unblockable, "imbloqueable")
-	assert_eq(bash.hit.base_damage, 60, "60 de daño")
-	assert_eq(bash.hit.damage_type, DamageFormula.DamageType.BLUNT, "contundente")
-	assert_near(bash.hit.shape.range_m, 2.2, 1e-9, "sector de 2,2 m")
-	assert_near(bash.hit.shape.angle_deg, 90.0, 1e-9, "de 90 grados")
-	assert_near(bash.lunge_speed, 1.0, 1e-9, "avance 1 m/s")
-	assert_near(bash.move_speed_scale, 0.2, 1e-9, "movimiento ×0,2")
+	assert_eq(bash.hit.stun_ticks, 48, "the shield bash stuns 0.8 s")
+	assert_true(bash.hit.unblockable, "unblockable")
+	assert_eq(bash.hit.base_damage, 60, "60 damage")
+	assert_eq(bash.hit.damage_type, DamageFormula.DamageType.BLUNT, "blunt")
+	assert_near(bash.hit.shape.range_m, 2.2, 1e-9, "2.2 m sector")
+	assert_near(bash.hit.shape.angle_deg, 90.0, 1e-9, "of 90 degrees")
+	assert_near(bash.lunge_speed, 1.0, 1e-9, "advance 1 m/s")
+	assert_near(bash.move_speed_scale, 0.2, 1e-9, "movement ×0.2")
 	var rush: AbilityTicks = tables.ability(rush_id)
-	assert_eq(rush.dash_from_ticks, 9, "la embestida avanza desde el compromiso")
-	assert_eq(rush.dash_to_ticks, 33, "durante todo el activo")
-	assert_eq(rush.dash_speeds.size(), 24, "una velocidad por tick del avance")
+	assert_eq(rush.dash_from_ticks, 9, "the charge advances from the commit")
+	assert_eq(rush.dash_to_ticks, 33, "during the whole active phase")
+	assert_eq(rush.dash_speeds.size(), 24, "one advance speed per tick")
 	var distance: float = 0.0
 	for speed: float in rush.dash_speeds:
 		distance += speed / float(CombatCatalog.TICK_RATE)
-		assert_near(speed, 15.0, 1e-4, "curva plana: 6 m en 0,4 s son 15 m/s")
-		assert_eq(speed, PlayerState.to_f32(speed), "exacta en f32")
-	assert_near(distance, 6.0, 1e-4, "avance de 6 m")
-	assert_eq(rush.dash_direction, 0, "hacia look_yaw")
-	assert_true(rush.is_dashing(9) and rush.is_dashing(32), "avanza en [9, 33)")
-	assert_false(rush.is_dashing(8) or rush.is_dashing(33), "y fuera no")
+		assert_near(speed, 15.0, 1e-4, "flat curve: 6 m in 0.4 s is 15 m/s")
+		assert_eq(speed, PlayerState.to_f32(speed), "exact in f32")
+	assert_near(distance, 6.0, 1e-4, "advance of 6 m")
+	assert_eq(rush.dash_direction, 0, "towards look_yaw")
+	assert_true(rush.is_dashing(9) and rush.is_dashing(32), "advances in [9, 33)")
+	assert_false(rush.is_dashing(8) or rush.is_dashing(33), "and not outside")
 	assert_eq(rush.dash_speed_at(9), rush.dash_speeds[0], "dash_speed_at(9)")
-	assert_eq(rush.dash_speed_at(33), 0.0, "sin velocidad fuera de la ventana")
-	assert_true(rush.hit.hyper_armor, "entereza en el activo")
-	assert_eq(rush.hit.stagger_ticks, 24, "tambaleo 0,4 s")
-	assert_near(rush.hit.knockback_speed, 6.0, 1e-9, "empuje 6 m/s")
-	assert_near(rush.hit.shape.range_m, 1.8, 1e-9, "sector de 1,8 m")
-	assert_near(rush.hit.shape.angle_deg, 140.0, 1e-9, "de 140 grados")
+	assert_eq(rush.dash_speed_at(33), 0.0, "no speed outside the window")
+	assert_true(rush.hit.hyper_armor, "poise during the active phase")
+	assert_eq(rush.hit.stagger_ticks, 24, "stagger 0.4 s")
+	assert_near(rush.hit.knockback_speed, 6.0, 1e-9, "knockback 6 m/s")
+	assert_near(rush.hit.shape.range_m, 1.8, 1e-9, "1.8 m sector")
+	assert_near(rush.hit.shape.angle_deg, 140.0, 1e-9, "of 140 degrees")
 	var wall: AbilityTicks = tables.ability(wall_id)
-	assert_true(wall.channel and wall.channel_hold and wall.blocks, "el muro es una canalización que bloquea y se suelta")
-	assert_false(wall.channel_breaks_on_move, "moverse no lo acaba")
-	assert_eq(wall.cancel_to_dodge_from_ticks, 12, "a esquiva desde el fin del lanzamiento")
-	assert_eq(wall.cancel_to_attack_from_ticks, 372, "sin recuperación: -1 es el final")
-	assert_near(wall.move_speed_scale, 0.3, 1e-9, "movimiento ×0,3")
-	assert_near(wall.turn_rate, 4.0, 1e-9, "giro 4")
-	assert_vec_near(wall.wall_half_extents, Vector3(1.3, 1.0, 0.15), 1e-6, "caja de 2,6 × 2,0 × 0,3 m")
-	assert_near(wall.wall_forward_m, 0.7, 1e-9, "a 0,7 m delante")
-	assert_null(wall.hit.shape, "el muro no golpea")
+	assert_true(wall.channel and wall.channel_hold and wall.blocks, "the wall is a channeled ability that blocks and is released")
+	assert_false(wall.channel_breaks_on_move, "moving does not end it")
+	assert_eq(wall.cancel_to_dodge_from_ticks, 12, "to dodge from the end of the cast")
+	assert_eq(wall.cancel_to_attack_from_ticks, 372, "without recovery: -1 is the end")
+	assert_near(wall.move_speed_scale, 0.3, 1e-9, "movement ×0.3")
+	assert_near(wall.turn_rate, 4.0, 1e-9, "turn 4")
+	assert_vec_near(wall.wall_half_extents, Vector3(1.3, 1.0, 0.15), 1e-6, "box of 2.6 × 2.0 × 0.3 m")
+	assert_near(wall.wall_forward_m, 0.7, 1e-9, "0.7 m in front")
+	assert_null(wall.hit.shape, "the wall does not hit")
 
 
 func test_bow_and_arrow_in_ticks() -> void:
@@ -586,35 +586,35 @@ func test_bow_and_arrow_in_ticks() -> void:
 	var bow_id: int = tables.weapon_ids[&"bow"]
 	var bow: WeaponTicks = tables.weapon(bow_id)
 	var arrow_id: int = tables.projectile_ids[&"arrow"]
-	assert_eq(bow.light_ids, PackedInt32Array([tables.attack_ids[&"bow_quick"]]), "el ligero es el disparo rápido (combo de 1)")
-	assert_eq(bow.heavy_id, tables.attack_ids[&"bow_drawn"], "el fuerte es el tensado")
-	assert_false(bow.can_block, "el arco no bloquea")
-	assert_eq(bow.dodge.duration_ticks, 27, "la esquiva de la espada")
+	assert_eq(bow.light_ids, PackedInt32Array([tables.attack_ids[&"bow_quick"]]), "the light attack is the fast shot (combo of 1)")
+	assert_eq(bow.heavy_id, tables.attack_ids[&"bow_drawn"], "the heavy one is the drawn shot")
+	assert_false(bow.can_block, "the bow does not block")
+	assert_eq(bow.dodge.duration_ticks, 27, "the sword's dodge")
 	assert_eq(bow.ability_ids, PackedInt32Array([tables.ability_ids[&"bow_volley"],
 			tables.ability_ids[&"bow_slowing_shot"], tables.ability_ids[&"bow_evasive_shot"]]),
-			"abanico, lastrante y salto atrás")
+			"fan, hobbling and back jump")
 	var quick: AttackTicks = tables.attack(tables.attack_ids[&"bow_quick"])
-	assert_eq([quick.windup_ticks, quick.active_ticks, quick.recovery_ticks], [15, 1, 21], "rápido: 15 + 1 + 21")
+	assert_eq([quick.windup_ticks, quick.active_ticks, quick.recovery_ticks], [15, 1, 21], "fast: 15 + 1 + 21")
 	assert_eq(quick.total_ticks, 37, "37 ticks")
-	assert_eq(quick.cancel_to_dodge_from_ticks, 16, "a esquiva desde 0,27 s")
-	assert_eq(quick.projectile_id, arrow_id, "dispara una flecha")
+	assert_eq(quick.cancel_to_dodge_from_ticks, 16, "to dodge from 0.27 s")
+	assert_eq(quick.projectile_id, arrow_id, "fires an arrow")
 	assert_near(quick.projectile_speed_mps, 45.0, 1e-9, "a 45 m/s")
 	assert_eq(quick.base_damage, 60, "60")
-	assert_eq(quick.damage_type, DamageFormula.DamageType.PIERCE, "perforante")
-	assert_null(quick.shape, "sin forma: con proyectil puede ser nula")
-	assert_near(quick.move_speed_scale, 0.5, 1e-9, "movimiento ×0,5")
-	assert_near(quick.turn_rate, 8.0, 1e-9, "giro 8")
+	assert_eq(quick.damage_type, DamageFormula.DamageType.PIERCE, "piercing")
+	assert_null(quick.shape, "no shape: with a projectile it can be null")
+	assert_near(quick.move_speed_scale, 0.5, 1e-9, "movement ×0.5")
+	assert_near(quick.turn_rate, 8.0, 1e-9, "turn 8")
 	var drawn: AttackTicks = tables.attack(tables.attack_ids[&"bow_drawn"])
-	assert_true(drawn.heavy, "el tensado es un fuerte")
-	assert_eq([drawn.windup_ticks, drawn.active_ticks, drawn.recovery_ticks], [3, 1, 18], "tras soltar: 3 + 1 + 18")
-	assert_eq([drawn.charge_min_ticks, drawn.charge_max_ticks], [21, 60], "carga 0,35-1,0 s")
-	assert_near(drawn.projectile_speed_mps, 40.0, 1e-9, "40 m/s a carga mínima")
-	assert_near(drawn.charge_speed_scale, 1.75, 1e-9, "70 m/s a carga máxima")
+	assert_true(drawn.heavy, "the drawn shot is a heavy one")
+	assert_eq([drawn.windup_ticks, drawn.active_ticks, drawn.recovery_ticks], [3, 1, 18], "after release: 3 + 1 + 18")
+	assert_eq([drawn.charge_min_ticks, drawn.charge_max_ticks], [21, 60], "charge 0.35-1.0 s")
+	assert_near(drawn.projectile_speed_mps, 40.0, 1e-9, "40 m/s at minimum charge")
+	assert_near(drawn.charge_speed_scale, 1.75, 1e-9, "70 m/s at maximum charge")
 	assert_near(drawn.charge_damage_scale, 2.0, 1e-9, "90 → 180")
-	assert_eq(drawn.stamina_cost, 0, "sin resistencia")
-	assert_near(drawn.charge_move_scale, 0.5, 1e-9, "carga: movimiento ×0,5")
-	assert_near(drawn.charge_turn_rate, 8.0, 1e-9, "carga: giro 8")
-	# [lanzamiento, activo, recuperación, reutilización, velocidad, daño]
+	assert_eq(drawn.stamina_cost, 0, "no stamina cost")
+	assert_near(drawn.charge_move_scale, 0.5, 1e-9, "charge: movement ×0.5")
+	assert_near(drawn.charge_turn_rate, 8.0, 1e-9, "charge: turn 8")
+	# [cast, active, recovery, cooldown, speed, damage]
 	var expected: Dictionary[StringName, Array] = {
 		&"bow_volley": [18, 1, 24, 600, 45.0, 55],
 		&"bow_slowing_shot": [21, 1, 18, 720, 55.0, 60],
@@ -624,107 +624,107 @@ func test_bow_and_arrow_in_ticks() -> void:
 		var ability: AbilityTicks = tables.ability(tables.ability_ids[ability_name])
 		var want: Array = expected[ability_name]
 		assert_eq([ability.cast_ticks, ability.active_ticks, ability.recovery_ticks], want.slice(0, 3),
-				"%s: fases" % ability_name)
-		assert_eq(ability.cooldown_ticks, want[3], "%s: reutilización" % ability_name)
-		assert_near(ability.projectile_speed_mps, want[4], 1e-9, "%s: velocidad" % ability_name)
-		assert_eq(ability.hit.base_damage, want[5], "%s: daño" % ability_name)
-		assert_eq(ability.projectile_id, arrow_id, "%s: flecha" % ability_name)
-		assert_eq(ability.hit.projectile_id, arrow_id, "%s: el golpe sintetizado lleva la flecha" % ability_name)
-		assert_eq(ability.weapon_id, bow_id, "%s: del arco" % ability_name)
+				"%s: phases" % ability_name)
+		assert_eq(ability.cooldown_ticks, want[3], "%s: cooldown" % ability_name)
+		assert_near(ability.projectile_speed_mps, want[4], 1e-9, "%s: speed" % ability_name)
+		assert_eq(ability.hit.base_damage, want[5], "%s: damage" % ability_name)
+		assert_eq(ability.projectile_id, arrow_id, "%s: arrow" % ability_name)
+		assert_eq(ability.hit.projectile_id, arrow_id, "%s: the synthesized hit carries the arrow" % ability_name)
+		assert_eq(ability.weapon_id, bow_id, "%s: of the bow" % ability_name)
 	var volley: AbilityTicks = tables.ability(tables.ability_ids[&"bow_volley"])
-	assert_eq(volley.projectile_count, 3, "abanico de 3 flechas")
-	assert_near(volley.projectile_spread_deg, 7.0, 1e-9, "a ±7 grados")
+	assert_eq(volley.projectile_count, 3, "fan of 3 arrows")
+	assert_near(volley.projectile_spread_deg, 7.0, 1e-9, "at ±7 degrees")
 	var slowing: AbilityTicks = tables.ability(tables.ability_ids[&"bow_slowing_shot"])
-	assert_eq(slowing.hit.on_hit_status_id, tables.status_ids[&"slowed"], "la lastrante ralentiza")
+	assert_eq(slowing.hit.on_hit_status_id, tables.status_ids[&"slowed"], "the hobbling one slows")
 	var evasive: AbilityTicks = tables.ability(tables.ability_ids[&"bow_evasive_shot"])
 	assert_eq([evasive.dash_from_ticks, evasive.dash_to_ticks, evasive.dash_direction], [0, 18, 1],
-			"salto atrás en [0, 0,3 s)")
+			"back jump in [0, 0.3 s)")
 	var distance: float = 0.0
 	for speed: float in evasive.dash_speeds:
 		distance += speed / float(CombatCatalog.TICK_RATE)
 	assert_near(distance, 4.0, 1e-4, "de 4 m")
 	assert_true(evasive.dash_speeds[0] > evasive.dash_speeds[evasive.dash_speeds.size() - 1],
-			"más rápido al principio")
+			"faster at the beginning")
 	var arrow: ProjectileTicks = tables.projectile(arrow_id)
-	assert_near(arrow.gravity, 6.0, 1e-9, "gravedad 6 m/s²")
-	assert_near(arrow.radius_m, 0.05, 1e-9, "radio 5 cm")
-	assert_eq(arrow.lifetime_ticks, 120, "2 s de vida")
+	assert_near(arrow.gravity, 6.0, 1e-9, "gravity 6 m/s²")
+	assert_near(arrow.radius_m, 0.05, 1e-9, "radius 5 cm")
+	assert_eq(arrow.lifetime_ticks, 120, "2 s of life")
 
 
 func test_consumables_statuses_templates_and_rules_in_ticks() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
-	assert_eq(tables.consumable_cooldown_ticks, 1200, "reutilización compartida de 20 s")
-	assert_eq(tables.swap_ticks, 24, "cambio de arma 0,4 s")
-	assert_eq(tables.revive_ticks, 180, "levantar 3 s")
-	assert_eq(tables.execute_ticks, 60, "rematar 1 s")
-	assert_eq(tables.downed_ticks, 1200, "desangrarse 20 s")
+	assert_eq(tables.consumable_cooldown_ticks, 1200, "shared cooldown of 20 s")
+	assert_eq(tables.swap_ticks, 24, "weapon swap 0.4 s")
+	assert_eq(tables.revive_ticks, 180, "revive 3 s")
+	assert_eq(tables.execute_ticks, 60, "finish off 1 s")
+	assert_eq(tables.downed_ticks, 1200, "bleed out 20 s")
 	var health: AbilityTicks = tables.ability(tables.ability_ids[&"potion_health"])
 	var stamina: AbilityTicks = tables.ability(tables.ability_ids[&"potion_stamina"])
-	assert_eq([health.cast_ticks, health.active_ticks, health.recovery_ticks], [36, 1, 12], "beber vida: 36 + 1 + 12")
-	assert_eq([stamina.cast_ticks, stamina.active_ticks, stamina.recovery_ticks], [24, 1, 12], "beber resistencia: 24 + 1 + 12")
+	assert_eq([health.cast_ticks, health.active_ticks, health.recovery_ticks], [36, 1, 12], "drink health: 36 + 1 + 12")
+	assert_eq([stamina.cast_ticks, stamina.active_ticks, stamina.recovery_ticks], [24, 1, 12], "drink stamina: 24 + 1 + 12")
 	assert_eq([health.consumable_index, stamina.consumable_index], [0, 1], "R y T")
-	assert_eq([health.slot, health.weapon_id], [-1, 0], "sin ranura ni arma")
-	assert_true(health.is_consumable() and stamina.is_consumable(), "son consumibles")
-	assert_eq(health.cooldown_ticks, 0, "usan la reutilización compartida")
-	assert_true(health.interrupt_on_damage and stamina.interrupt_on_damage, "un golpe interrumpe")
-	assert_eq(health.self_status_id, tables.status_ids[&"potion_regen"], "la de vida cura en el tiempo")
-	assert_eq(stamina.stamina_restore, 400, "+400 de resistencia")
-	assert_near(health.move_speed_scale, 0.4, 1e-9, "movimiento ×0,4")
+	assert_eq([health.slot, health.weapon_id], [-1, 0], "no slot or weapon")
+	assert_true(health.is_consumable() and stamina.is_consumable(), "they are consumables")
+	assert_eq(health.cooldown_ticks, 0, "they use the shared cooldown")
+	assert_true(health.interrupt_on_damage and stamina.interrupt_on_damage, "a hit interrupts")
+	assert_eq(health.self_status_id, tables.status_ids[&"potion_regen"], "the health one heals over time")
+	assert_eq(stamina.stamina_restore, 400, "+400 stamina")
+	assert_near(health.move_speed_scale, 0.4, 1e-9, "movement ×0.4")
 	var slowed: StatusTicks = tables.status(tables.status_ids[&"slowed"])
-	assert_eq(slowed.kind, StatusEffectDefinition.Kind.SLOW, "slowed ralentiza")
+	assert_eq(slowed.kind, StatusEffectDefinition.Kind.SLOW, "slowed slows")
 	assert_near(slowed.move_speed_scale, 0.6, 1e-9, "×0,6")
 	assert_eq(slowed.duration_ticks, 180, "3 s")
-	assert_eq(slowed.stacking, StatusEffectDefinition.Stacking.STRONGEST, "el más fuerte gana")
-	assert_true(slowed.is_movement() and slowed.is_harmful(), "de movimiento y perjudicial")
+	assert_eq(slowed.stacking, StatusEffectDefinition.Stacking.STRONGEST, "the strongest wins")
+	assert_true(slowed.is_movement() and slowed.is_harmful(), "movement and harmful")
 	var regen: StatusTicks = tables.status(tables.status_ids[&"potion_regen"])
-	assert_eq([regen.pulse_ticks, regen.pulse_amount, regen.duration_ticks], [30, 50, 180], "50 cada 0,5 s durante 3 s")
-	assert_eq(regen.duration_ticks / regen.pulse_ticks, 6, "6 pulsos")
-	assert_false(regen.is_harmful(), "la curación no perjudica")
+	assert_eq([regen.pulse_ticks, regen.pulse_amount, regen.duration_ticks], [30, 50, 180], "50 every 0.5 s for 3 s")
+	assert_eq(regen.duration_ticks / regen.pulse_ticks, 6, "6 pulses")
+	assert_false(regen.is_harmful(), "the healing is not harmful")
 	var bleed: StatusTicks = tables.status(tables.status_ids[&"bleed"])
 	assert_eq([bleed.pulse_ticks, bleed.pulse_amount, bleed.duration_ticks, bleed.max_stacks], [60, 15, 360, 3],
-			"15 por acumulación cada 1 s durante 6 s, hasta 3")
-	assert_eq(bleed.stacking, StatusEffectDefinition.Stacking.STACK, "se acumula")
-	assert_true(bleed.has_pulses() and not bleed.is_movement(), "pulsos, sin movimiento")
+			"15 per stack every 1 s for 6 s, up to 3")
+	assert_eq(bleed.stacking, StatusEffectDefinition.Stacking.STACK, "it stacks")
+	assert_true(bleed.has_pulses() and not bleed.is_movement(), "pulses, no movement")
 	var rooted: StatusTicks = tables.status(tables.status_ids[&"rooted"])
-	assert_eq(rooted.kind, StatusEffectDefinition.Kind.ROOT, "rooted enraíza")
-	assert_eq(rooted.move_speed_scale, 0.0, "escala 0")
+	assert_eq(rooted.kind, StatusEffectDefinition.Kind.ROOT, "rooted roots")
+	assert_eq(rooted.move_speed_scale, 0.0, "scale 0")
 	assert_eq(rooted.duration_ticks, 90, "1,5 s")
 	var squire: int = tables.template_ids[&"squire"]
 	var marksman: int = tables.template_ids[&"marksman"]
 	assert_eq(tables.template_weapons(squire), PackedInt32Array([tables.weapon_ids[&"sword_shield"]]),
-			"escudero: espada y escudo")
+			"squire: sword and shield")
 	assert_eq(tables.template_weapons(marksman), PackedInt32Array([tables.weapon_ids[&"bow"],
-			tables.weapon_ids[&"sword_shield"]]), "tirador: arco y espada y escudo")
-	assert_eq(tables.template_charges_of(squire), CombatState.pack_charges(3, 2), "cargas [3, 2]")
-	assert_eq(tables.template_charges_of(marksman), CombatState.pack_charges(2, 3), "cargas [2, 3]")
-	assert_true(tables.template(squire).selectable and tables.template(marksman).selectable, "elegibles")
-	assert_eq(tables.default_template_id, squire, "por defecto, el escudero")
-	assert_eq(tables.template_weapons(0), PackedInt32Array(), "una plantilla que no existe no tiene armas")
-	assert_eq(tables.template_charges_of(99), 0, "ni cargas")
+			tables.weapon_ids[&"sword_shield"]]), "shooter: bow and sword and shield")
+	assert_eq(tables.template_charges_of(squire), CombatState.pack_charges(3, 2), "charges [3, 2]")
+	assert_eq(tables.template_charges_of(marksman), CombatState.pack_charges(2, 3), "charges [2, 3]")
+	assert_true(tables.template(squire).selectable and tables.template(marksman).selectable, "selectable")
+	assert_eq(tables.default_template_id, squire, "by default, the squire")
+	assert_eq(tables.template_weapons(0), PackedInt32Array(), "a template that does not exist has no weapons")
+	assert_eq(tables.template_charges_of(99), 0, "nor charges")
 
 
 func test_the_synthesized_hit_has_the_ability_windows_and_its_source() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
 	for ability: AbilityTicks in tables.abilities:
 		var hit: AttackTicks = ability.hit
-		if not assert_not_null(hit, "%s tiene golpe sintetizado" % ability.name):
+		if not assert_not_null(hit, "%s has a synthesized hit" % ability.name):
 			continue
-		assert_eq(hit.id, CombatSource.make(CombatSource.Kind.ABILITY, ability.id), "%s: su id es la fuente" % ability.name)
-		assert_eq(CombatSource.kind_of(hit.id), CombatSource.Kind.ABILITY, "%s: de habilidad" % ability.name)
-		assert_eq(CombatSource.id_of(hit.id), ability.id, "%s: con su id" % ability.name)
-		assert_eq(hit.name, ability.name, "%s: nombre" % ability.name)
-		assert_eq(hit.windup_ticks, ability.cast_ticks, "%s: anticipación = lanzamiento" % ability.name)
-		assert_eq(hit.active_ticks, ability.active_ticks, "%s: activo" % ability.name)
-		assert_eq(hit.recovery_ticks, ability.recovery_ticks, "%s: recuperación" % ability.name)
+		assert_eq(hit.id, CombatSource.make(CombatSource.Kind.ABILITY, ability.id), "%s: its id is the source" % ability.name)
+		assert_eq(CombatSource.kind_of(hit.id), CombatSource.Kind.ABILITY, "%s: of ability" % ability.name)
+		assert_eq(CombatSource.id_of(hit.id), ability.id, "%s: with its id" % ability.name)
+		assert_eq(hit.name, ability.name, "%s: name" % ability.name)
+		assert_eq(hit.windup_ticks, ability.cast_ticks, "%s: windup = cast" % ability.name)
+		assert_eq(hit.active_ticks, ability.active_ticks, "%s: active" % ability.name)
+		assert_eq(hit.recovery_ticks, ability.recovery_ticks, "%s: recovery" % ability.name)
 		assert_eq(hit.total_ticks, ability.total_ticks, "%s: total" % ability.name)
-		assert_eq(hit.active_from(), ability.active_from(), "%s: el golpe empieza en el compromiso" % ability.name)
-		assert_false(tables.attacks.has(hit), "%s: no está en la tabla de ataques" % ability.name)
+		assert_eq(hit.active_from(), ability.active_from(), "%s: the hit starts at the commit" % ability.name)
+		assert_false(tables.attacks.has(hit), "%s: it is not in the attack table" % ability.name)
 
 
 func test_ability_validation_follows_section_2_2() -> void:
 	var base: Array[Resource] = _ability_resources("")
 	assert_eq(CombatCatalog.build_from_resources(base).errors, PackedStringArray(),
-			"el catálogo de prueba es válido")
+			"the test catalog is valid")
 	var cases: Dictionary[String, String] = {
 		"está en más de un arma": "two_weapons",
 		"en los consumibles": "weapon_and_consumable",
@@ -754,13 +754,13 @@ func test_ability_validation_follows_section_2_2() -> void:
 		var resources: Array[Resource] = _ability_resources(cases[expected])
 		var tables: CombatTables = CombatCatalog.build_from_resources(resources)
 		assert_true(_has_error(tables.errors, expected), "«%s»: %s" % [expected, _errors_text(tables.errors)])
-	# Una plantilla que no es elegible sí puede llevar armas de PNJ (pruebas y PNJ).
+	# A template that is not selectable can carry NPC weapons (tests and NPCs).
 	var npc_ok: Array[Resource] = _ability_resources("npc_template_hidden")
 	assert_eq(CombatCatalog.build_from_resources(npc_ok).errors, PackedStringArray(),
-			"selectable = false admite armas npc_*")
-	# Con cast = 0 el compromiso es el primer tick y un combo de 1 golpe vale.
+			"selectable = false allows npc_* weapons")
+	# With cast = 0 the commit is the first tick and a 1-hit combo is valid.
 	var single: Array[Resource] = _ability_resources("single_light")
-	assert_eq(CombatCatalog.build_from_resources(single).errors, PackedStringArray(), "combo de 1 golpe")
+	assert_eq(CombatCatalog.build_from_resources(single).errors, PackedStringArray(), "1-hit combo")
 
 
 func test_status_and_template_ids_fit_in_a_byte() -> void:
@@ -772,7 +772,7 @@ func test_status_and_template_ids_fit_in_a_byte() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_resources(resources)
 	assert_true(_has_error(tables.errors, "hay 256 efectos y caben 255"), _errors_text(tables.errors))
 	resources.pop_back()
-	assert_eq(CombatCatalog.build_from_resources(resources).errors, PackedStringArray(), "255 sí caben")
+	assert_eq(CombatCatalog.build_from_resources(resources).errors, PackedStringArray(), "255 do fit")
 
 
 func test_prediction_hash_covers_every_predicted_ability_field() -> void:
@@ -791,7 +791,7 @@ func test_prediction_hash_covers_every_predicted_ability_field() -> void:
 	]
 	for what: String in predicted:
 		var changed: int = CombatCatalog.build_from_resources(_ability_resources(what)).prediction_hash
-		assert_true(changed != base_hash, "cambiar «%s» debe cambiar la huella" % what)
+		assert_true(changed != base_hash, "changing \"%s\" must change the footprint" % what)
 
 
 func test_prediction_hash_ignores_server_only_ability_fields() -> void:
@@ -806,19 +806,19 @@ func test_prediction_hash_ignores_server_only_ability_fields() -> void:
 	]
 	for what: String in server_only:
 		var changed: int = CombatCatalog.build_from_resources(_ability_resources(what)).prediction_hash
-		assert_eq(changed, base_hash, "cambiar «%s» (solo servidor) no debe cambiar la huella" % what)
+		assert_eq(changed, base_hash, "changing \"%s\" (server only) must not change the footprint" % what)
 
 
 func test_the_fast_path_of_simulate_does_not_look_up_the_catalog() -> void:
-	# El camino rápido de ActionMachine.step (sin acción, sin botones de combate, nada pendiente)
-	# no busca el arma ni recorre las ranuras de habilidades: lo cuentan los contadores de
-	# CombatTables (el coste, el microbanco de tools/combat_balance.gd).
+	# The fast path of ActionMachine.step (no action, no combat buttons, nothing pending)
+	# does not look up the weapon or walk the ability slots: the CombatTables counters
+	# count it (the cost, the micro-bench in tools/combat_balance.gd).
 	CombatCatalog.reload()
 	var tables: CombatTables = CombatCatalog.tables()
 	var scene: PackedScene = load("res://scenes/characters/player_character.tscn") as PackedScene
 	var character: PlayerCharacter = scene.instantiate() as PlayerCharacter
 	tree.root.add_child(character)
-	# Dentro de un tick de física, como la predicción cuando repite entradas.
+	# Inside one physics tick, like prediction when it replays inputs.
 	await wait_physics_frames(1)
 	var weapons_before: int = tables.weapon_lookups
 	var abilities_before: int = tables.ability_lookups
@@ -830,20 +830,20 @@ func test_the_fast_path_of_simulate_does_not_look_up_the_catalog() -> void:
 		input.look_yaw = tick * 0.01
 		input.buttons = PlayerInput.SPRINT | PlayerInput.AIM_LEFT if tick % 2 == 0 else 0
 		character.simulate(input.quantized(), dt)
-	assert_eq(tables.weapon_lookups, weapons_before, "60 ticks quietos o corriendo: ninguna búsqueda de arma")
-	assert_eq(tables.ability_lookups, abilities_before, "ni de habilidades")
-	# Control: un botón de combate sí sale del camino rápido y busca el arma.
+	assert_eq(tables.weapon_lookups, weapons_before, "60 ticks idle or running: no weapon lookup")
+	assert_eq(tables.ability_lookups, abilities_before, "nor of abilities")
+	# Control: a combat button does leave the fast path and looks up the weapon.
 	var attack := PlayerInput.new()
 	attack.tick = 61
 	attack.buttons = PlayerInput.PRIMARY
 	character.simulate(attack, dt)
-	assert_true(tables.weapon_lookups > weapons_before, "PRIMARY sí busca el arma (el contador funciona)")
+	assert_true(tables.weapon_lookups > weapons_before, "PRIMARY does look up the weapon (the counter works)")
 	character.queue_free()
 
 
-# --- Utilidades -------------------------------------------------------------------------------
+# --- Utilities --------------------------------------------------------------------------------
 
-## Nombres (ordenados) de [param ids] (nombre -> ID).
+## Names (sorted) of [param ids] (name -> ID).
 func _sorted_names(ids: Dictionary) -> Array[String]:
 	var names: Array[String] = []
 	for key: StringName in ids:
@@ -852,7 +852,7 @@ func _sorted_names(ids: Dictionary) -> Array[String]:
 	return names
 
 
-## Los nombres de [param ids] que empiezan por [param prefix].
+## The names in [param ids] that start with [param prefix].
 func _names_starting_with(ids: Dictionary, prefix: String) -> Array[String]:
 	var names: Array[String] = []
 	for name: String in _sorted_names(ids):
@@ -878,7 +878,7 @@ func _heavy(attack_id: StringName) -> AttackDefinition:
 	return attack
 
 
-## Un arma completa y válida con ataques propios (los ids llevan [param suffix]).
+## A complete, valid weapon with its own attacks (the ids carry [param suffix]).
 func _weapon(weapon_id: StringName, suffix: StringName = &"") -> WeaponDefinition:
 	var weapon := WeaponDefinition.new()
 	weapon.id = weapon_id
@@ -897,7 +897,7 @@ func _weapon(weapon_id: StringName, suffix: StringName = &"") -> WeaponDefinitio
 	return weapon
 
 
-## Huella de un arma de prueba tras aplicar el cambio [param what] (vacío = ninguno).
+## Footprint of a test weapon after applying the change [param what] (empty = none).
 func _hash_of(what: String) -> int:
 	var weapon: WeaponDefinition = _weapon(&"arma")
 	var rules := CombatRules.new()
@@ -905,7 +905,7 @@ func _hash_of(what: String) -> int:
 	var heavy: AttackDefinition = weapon.heavy_attack
 	var dodge: DodgeDefinition = weapon.dodge
 	match what:
-		# Predichos.
+		# Predicted.
 		"windup": light.windup_s += 0.1
 		"active": weapon.light_combo[1].active_s += 0.1
 		"recovery": weapon.light_combo[2].recovery_s += 0.1
@@ -936,7 +936,7 @@ func _hash_of(what: String) -> int:
 		"buffer": rules.input_buffer_ticks = 7
 		"parry_window": rules.parry_window_ticks = 5
 		"parry_cooldown": rules.parry_cooldown_ticks = 31
-		# Solo servidor.
+		# Server only.
 		"damage": light.base_damage += 50
 		"damage_type": light.damage_type = 2
 		"hyper_armor": heavy.hyper_armor = not heavy.hyper_armor
@@ -956,7 +956,7 @@ func _hash_of(what: String) -> int:
 	return CombatCatalog.build_from_resources(resources).prediction_hash
 
 
-## Estropea [param attack] según el caso de [method test_attack_validation_detects_bad_values].
+## Breaks [param attack] according to the case in [method test_attack_validation_detects_bad_values].
 func _break_attack(attack: AttackDefinition, what: String) -> void:
 	match what:
 		"negative":
@@ -1015,9 +1015,9 @@ func _potion(potion_id: StringName) -> AbilityDefinition:
 	return potion
 
 
-## Un catálogo de prueba completo de la fase 4 (reglas con dos pociones y una plantilla por defecto,
-## un arma con un golpe con avance, un disparo y un muro, una flecha y dos efectos) tras aplicar el
-## cambio [param what] (vacío = ninguno; los casos los usan las pruebas de validación y de huella).
+## A complete phase 4 test catalog (rules with two potions and a default template,
+## a weapon with an advancing hit, a shot and a wall, an arrow and two effects) after applying the
+## change [param what] (empty = none; the cases are used by the validation and footprint tests).
 func _ability_resources(what: String) -> Array[Resource]:
 	var rules := CombatRules.new()
 	var weapon: WeaponDefinition = _weapon(&"arma")
@@ -1075,14 +1075,14 @@ func _ability_resources(what: String) -> Array[Resource]:
 	rules.default_template = template
 	var resources: Array[Resource] = [rules, weapon, arrow, slow, regen]
 	match what:
-		# Validación (sección 2.2).
+		# Validation (section 2.2).
 		"two_weapons":
 			var other: WeaponDefinition = _weapon(&"otra", &"_b")
 			other.abilities.assign([strike])
 			resources.append(other)
 		"weapon_and_consumable": rules.consumables.assign([potion_a, strike])
 		"cooldown": strike.cooldown_s = 0.3
-		# Duración + 1 tick ya no basta: el byte de acción pide REARM_TICKS en NONE entre dos usos.
+		# Duration + 1 tick is no longer enough: the action byte requires REARM_TICKS in NONE between two uses.
 		"cooldown_rearm": strike.cooldown_s = 0.3 + float(AbilityTicks.REARM_TICKS - 1) / 60.0
 		"channel_recovery": wall.recovery_s = 0.1
 		"consumable_cooldown": potion_a.cooldown_s = 1.0
@@ -1109,7 +1109,7 @@ func _ability_resources(what: String) -> Array[Resource]:
 		"single_light":
 			weapon.light_combo.resize(1)
 			strike.cast_s = 0.0
-		# Huella: predichos.
+		# Footprint: predicted.
 		"ability_cast": strike.cast_s += 0.05
 		"ability_active": shot.active_s += 0.05
 		"ability_recovery": shot.recovery_s += 0.05
@@ -1157,7 +1157,7 @@ func _ability_resources(what: String) -> Array[Resource]:
 		"attack_projectile_speed": heavy.projectile_speed_mps += 5.0
 		"attack_charge_speed": heavy.charge_speed_scale = 1.6
 		"attack_projectile": weapon.light_combo[0].projectile = arrow
-		# Huella: solo servidor.
+		# Footprint: server only.
 		"ability_damage": strike.base_damage += 10
 		"ability_damage_type": strike.damage_type = 1
 		"ability_shape": strike.shape.range_m += 1.0

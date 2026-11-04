@@ -2,6 +2,6 @@
 
 package testdb
 
-// processAlive no sabe mirarlo fuera de Unix: nunca da por muerto a nadie, así que no se borra
-// ningún clúster ajeno.
+// processAlive does not know how to check this outside Unix: it never considers anyone dead, so
+// no foreign cluster is deleted.
 func processAlive(int) bool { return true }

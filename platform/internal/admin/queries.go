@@ -9,18 +9,18 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// AuditQuery son los filtros de audit (§9.1: admin --actor <correo> audit --since 2026-11-01
-// [--actor-name <nombre>] [--target <nombre>]).
+// AuditQuery is the filters of audit (§9.1: admin --actor <email> audit --since 2026-11-01
+// [--actor-name <name>] [--target <name>]).
 type AuditQuery struct {
-	Since, Until time.Time // Until cero: sin tope
-	World        int16     // el mundo en el que se resuelven los nombres
-	ActorName    string    // un personaje: las filas de su cuenta como actor
-	Target       string    // un personaje: las filas sobre él o sobre su cuenta
+	Since, Until time.Time // Until zero: no cap
+	World        int16     // the world in which names are resolved
+	ActorName    string    // a character: the rows of its account as actor
+	Target       string    // a character: the rows about it or about its account
 	Command      string
 	Limit        int
 }
 
-// AuditRow es una fila de audit_log, con los nombres de ahora de los personajes para leerla.
+// AuditRow is an audit_log row, with the characters' current names to read it.
 type AuditRow struct {
 	ID                int64
 	At                time.Time
@@ -38,10 +38,10 @@ type AuditRow struct {
 	EventKey          *string
 }
 
-// Audit es la consulta de la auditoría (lectura, moderator), de la más vieja a la más nueva desde
-// Since. La propia consulta deja su fila audit (el objetivo del filtro --target en
-// target_account_id y target_character_id; en args since, until, actor_account_id del filtro
-// --actor-name, command y limit; nunca los nombres escritos).
+// Audit is the audit query (read, moderator), from oldest to newest starting at Since. The query
+// itself leaves its audit row (the --target filter's target in target_account_id and
+// target_character_id; in args since, until, the --actor-name filter's actor_account_id, command
+// and limit; never the names typed).
 func (s *Service) Audit(ctx context.Context, actor *Actor, q AuditQuery) ([]AuditRow, error) {
 	if q.Since.IsZero() {
 		return nil, errors.New("audit necesita --since")
@@ -115,8 +115,8 @@ func worldIf(cond bool, w int16) int16 {
 	return 0
 }
 
-// ChatQuery son los filtros de chat (§9.2: admin --actor <correo> chat --character <nombre> --from
-// … --to …).
+// ChatQuery is the filters of chat (§9.2: admin --actor <email> chat --character <name> --from ...
+// --to ...).
 type ChatQuery struct {
 	World     int16
 	Character string
@@ -124,7 +124,7 @@ type ChatQuery struct {
 	Limit     int
 }
 
-// ChatLine es un mensaje del registro del chat.
+// ChatLine is a message of the chat log.
 type ChatLine struct {
 	ID                int64
 	SentAt            time.Time
@@ -138,11 +138,11 @@ type ChatLine struct {
 	Text              string
 }
 
-// Chat es la consulta del registro del chat (lectura, moderator, SOC-15): los mensajes que mandó el
-// personaje y los susurros que recibió, entre From (incluida) y To (excluida), con la zona y su
-// copia (zone_channel), del más viejo al más nuevo. Deja la fila chat con el personaje en
-// target_character_id y su cuenta en target_account_id, y args {from, to, limit, os_user}: el
-// nombre escrito no se guarda.
+// Chat is the chat log query (read, moderator, SOC-15): the messages the character sent and the
+// whispers it received, between From (inclusive) and To (exclusive), with the zone and its copy
+// (zone_channel), from oldest to newest. It leaves the chat row with the character in
+// target_character_id and its account in target_account_id, and args {from, to, limit, os_user}:
+// the name typed is not stored.
 func (s *Service) Chat(ctx context.Context, actor *Actor, q ChatQuery) (*Character, []ChatLine, error) {
 	if q.From.IsZero() || q.To.IsZero() || !q.To.After(q.From) {
 		return nil, nil, errors.New("chat necesita --from y --to, con --to después de --from")

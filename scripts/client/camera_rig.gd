@@ -1,128 +1,124 @@
 class_name CameraRig
 extends Node3D
-## Cámara de acción en tercera persona por encima del hombro (estilo New World).
+## Over-the-shoulder third-person action camera (New World style).
 ##
-## Solo cliente. Jerarquía de la escena:
+## Client only. Scene hierarchy:
 ## [codeblock]
-## CameraRig (top_level, sigue al objetivo)
+## CameraRig (top_level, follows the target)
 ##     Yaw (rotation.y = yaw)
-##         Pitch (rotation.x = pitch, positivo mira hacia arriba)
-##             Arm (SpringArm3D: forma, margen, máscara y exclusiones)
-##                 Camera (Camera3D, h_offset = hombro)
+##         Pitch (rotation.x = pitch, positive looks up)
+##             Arm (SpringArm3D: shape, margin, mask and exclusions)
+##                 Camera (Camera3D, h_offset = shoulder)
 ## [/codeblock]
-## - El pivote sigue cada frame la posición [b]interpolada[/b] del objetivo
-##   ([method Node3D.get_global_transform_interpolated]) con un suavizado
-##   exponencial, así la imagen va fluida a cualquier tasa de refresco aunque el
-##   personaje solo se mueva en los ticks de física.
-## - Al saltar, el pivote solo sube una parte del salto ([member air_follow_ratio])
-##   y nunca más de lo que deja un techo bajo, para que la cámara no se meta en la
-##   cabeza del personaje al saltar en un pasillo o bajo una puerta.
-## - El ratón capturado gira [code]Yaw[/code] y [code]Pitch[/code] sin
-##   suavizado: apuntar es inmediato.
-## - El brazo sale centrado en la cabeza y el desplazamiento al hombro se hace
-##   con [member Camera3D.h_offset]; así el barrido de colisión nunca empieza
-##   dentro de una pared.
-## - Colisión: cada frame se barre la esfera del brazo hacia atrás y después
-##   hacia el hombro. Si algo se interpone, la cámara se acerca al instante; al
-##   liberarse el hueco vuelve con suavidad. Nunca atraviesa paredes.
-## - Si una pared tapa el hombro elegido y el otro está libre, la cámara pasa
-##   temporalmente al otro hombro para que el personaje no tape el punto de mira.
-## [br][br]El [SpringArm3D] de Godot solo recalcula su longitud en los ticks de
-## física (60 Hz) y, con el rig moviéndose en [method _process], eso produce
-## saltos a tasas de refresco altas y permite atravesar paredes durante un
-## frame. Por eso se desactiva su procesado interno y el barrido equivalente se
-## hace aquí cada frame, usando la configuración del propio nodo [code]Arm[/code].
+## - The pivot follows the target's [b]interpolated[/b] position every frame
+##   ([method Node3D.get_global_transform_interpolated]) with exponential smoothing, so the image
+##   runs smoothly at any refresh rate even though the character only moves on physics ticks.
+## - When jumping, the pivot rises only part of the jump ([member air_follow_ratio]) and never
+##   more than a low ceiling allows, so the camera does not go inside the character's head when
+##   jumping in a corridor or under a doorway.
+## - The captured mouse turns [code]Yaw[/code] and [code]Pitch[/code] without smoothing: aiming is
+##   immediate.
+## - The arm starts centered on the head and the shoulder offset is done with
+##   [member Camera3D.h_offset]; this way the collision sweep never starts inside a wall.
+## - Collision: every frame the arm's sphere is swept backward and then toward the shoulder. If
+##   something gets in the way, the camera moves closer instantly; when the gap clears it returns
+##   smoothly. It never goes through walls.
+## - If a wall blocks the chosen shoulder and the other is free, the camera temporarily switches
+##   to the other shoulder so the character does not cover the crosshair.
+## [br][br]Godot's [SpringArm3D] only recalculates its length on physics ticks (60 Hz) and, with
+## the rig moving in [method _process], that produces jumps at high refresh rates and allows going
+## through walls for a frame. That is why its internal processing is disabled and the equivalent
+## sweep is done here every frame, using the configuration of the [code]Arm[/code] node itself.
 
-## Fracción del desplazamiento del hombro que debe estar libre para usar ese lado
-## (al cambiar de hombro automáticamente y al volver al elegido).
+## Fraction of the shoulder offset that must be free to use that side (when switching shoulders
+## automatically and when returning to the chosen one).
 const AUTO_SWAP_CLEAR_RATIO: float = 0.9
-## Metros de histéresis al volver a mostrar el nodo oculto por cercanía.
+## Meters of hysteresis when showing again the node hidden for being too close.
 const HIDE_HYSTERESIS: float = 0.15
-## Grupo en el que está toda cámara de acción: los ajustes ([ClientSettings]) lo usan para aplicarles
-## sensibilidad, invertir Y, campo de visión y hombro por defecto en vivo.
+## Group that every action camera belongs to: the settings ([ClientSettings]) use it to apply
+## sensitivity, invert Y, field of view and default shoulder live.
 const GROUP: StringName = &"camera_rig"
-## Radianes por píxel con la sensibilidad del ratón a 1 en los ajustes.
+## Radians per pixel with mouse sensitivity at 1 in the settings.
 const DEFAULT_MOUSE_SENSITIVITY: float = 0.0025
-## Frecuencia (rad/s) de las dos ondas que forman la sacudida de impacto.
+## Frequency (rad/s) of the two waves that make up the impact shake.
 const SHAKE_FREQUENCY_X: float = 61.0
 const SHAKE_FREQUENCY_Y: float = 47.0
-## Amplitud máxima (m) de una sacudida, por muy fuerte que sea el golpe.
+## Maximum amplitude (m) of a shake, however strong the hit.
 const MAX_SHAKE_AMPLITUDE: float = 0.25
-## Fracción del campo de visión configurado con la puntería del arco al máximo
-## ([method set_aim_zoom] a 1; docs/habilidades.md, sección 6.5).
+## Fraction of the configured field of view at full bow aim ([method set_aim_zoom] at 1;
+## docs/habilidades.md, section 6.5).
 const AIM_ZOOM_FOV_SCALE: float = 0.75
 
-## Radianes de giro por píxel de movimiento del ratón.
+## Radians of rotation per pixel of mouse movement.
 @export var mouse_sensitivity: float = DEFAULT_MOUSE_SENSITIVITY
-## Invierte el eje vertical del ratón.
+## Inverts the mouse's vertical axis.
 @export var invert_y: bool = false
 
 @export_group("Seguimiento")
-## Rapidez (1/s) con la que el pivote alcanza al objetivo. Más alto, más rígido.
+## Speed (1/s) at which the pivot catches up with the target. Higher, stiffer.
 @export var follow_sharpness: float = 25.0
-## Si el objetivo salta más lejos que esto (teletransporte, corrección del
-## servidor), la cámara se recoloca de golpe en lugar de deslizarse.
+## If the target jumps farther than this (teleport, server correction), the camera repositions at
+## once instead of sliding.
 @export var snap_distance: float = 6.0
-## Fracción de la subida de un salto que sigue el pivote (0 = no sube al saltar,
-## 1 = sigue todo el salto). Seguir solo una parte deja el horizonte más quieto al
-## apuntar en el aire. Al caer por debajo de la altura de partida se sigue entero.
+## Fraction of a jump's rise that the pivot follows (0 = does not rise when jumping, 1 = follows
+## the whole jump). Following only part keeps the horizon steadier when aiming in the air. When
+## falling below the starting height, it is followed fully.
 @export_range(0.0, 1.0, 0.05) var air_follow_ratio: float = 0.5
 
 @export_group("Ángulos")
-## Inclinación mínima en grados (negativo mira hacia abajo).
+## Minimum pitch in degrees (negative looks down).
 @export_range(-89.0, 0.0, 0.5) var min_pitch_degrees: float = -75.0
-## Inclinación máxima en grados (positivo mira hacia arriba).
+## Maximum pitch in degrees (positive looks up).
 @export_range(0.0, 89.0, 0.5) var max_pitch_degrees: float = 60.0
 
 @export_group("Zoom")
-## Metros que cambia la distancia con cada paso de la rueda.
+## Meters the distance changes with each wheel step.
 @export var zoom_step: float = 0.5
-## Distancia mínima del brazo.
+## Minimum arm distance.
 @export var min_distance: float = 1.5
-## Distancia máxima del brazo.
+## Maximum arm distance.
 @export var max_distance: float = 6.0
-## Rapidez (1/s) con la que la distancia alcanza el zoom pedido.
+## Speed (1/s) at which the distance reaches the requested zoom.
 @export var zoom_sharpness: float = 12.0
-## Rapidez (1/s) con la que el campo de visión sigue a la puntería del arco ([method set_aim_zoom]).
+## Speed (1/s) at which the field of view follows the bow aim ([method set_aim_zoom]).
 @export var aim_zoom_sharpness: float = 10.0
 
 @export_group("Sacudida")
-## Si es false, [method add_shake] no mueve la cámara (opción del jugador).
+## If false, [method add_shake] does not move the camera (player option).
 @export var shake_enabled: bool = true
 
 @export_group("Hombro y colisión")
-## Rapidez (1/s) del cambio de hombro.
+## Speed (1/s) of the shoulder switch.
 @export var shoulder_sharpness: float = 10.0
-## Rapidez (1/s) con la que la cámara recupera su sitio cuando un obstáculo deja
-## de taparla. Acercarse por colisión siempre es instantáneo.
+## Speed (1/s) at which the camera recovers its place when an obstacle stops blocking it.
+## Moving closer due to collision is always instant.
 @export var collision_recover_sharpness: float = 8.0
-## Si una pared le quita al hombro elegido más de esta fracción del desplazamiento
-## y el otro lado está libre, la cámara pasa temporalmente al otro hombro.
+## If a wall takes more than this fraction of the shoulder offset from the chosen shoulder and the
+## other side is free, the camera temporarily switches to the other shoulder.
 @export_range(0.0, 1.0, 0.05) var auto_swap_blocked_ratio: float = 0.5
-## Segundos que el hombro elegido debe estar libre antes de volver a él.
+## Seconds the chosen shoulder must be free before returning to it.
 @export var auto_swap_return_delay: float = 0.6
-## Distancia (m) entre la cámara y el objetivo por debajo de la cual se oculta el
-## nodo de [method set_hide_when_close], para no ver el interior del personaje.
+## Distance (m) between the camera and the target below which the node from [method set_hide_when_close] is hidden, so the character's interior is not seen.
 @export var hide_target_distance: float = 0.8
 
 var _target: Node3D = null
-## Cuerpo del objetivo (el excluido de la colisión), para saber si está en el aire.
+## Target body (the one excluded from collision), to know whether it is in the air.
 var _target_body: CharacterBody3D = null
-## Altura del objetivo la última vez que su cuerpo pisaba el suelo.
+## Height of the target the last time its body was on the ground.
 var _ground_height: float = 0.0
 var _snap_pending: bool = true
 var _yaw: float = 0.0
 var _pitch: float = 0.0
 
-## Cursor liberado de forma persistente (Esc, pérdida de foco, arranque sin foco).
+## Cursor released persistently (Esc, loss of focus, startup without focus).
 var _free_toggled: bool = false
-## Cursor liberado mientras se mantiene la tecla (Alt).
+## Cursor released while the key is held (Alt).
 var _free_held: bool = false
-## La vista la controla un guion (demo): no se captura ni se lee el ratón.
+## The view is controlled by a script (demo): the mouse is neither captured nor read.
 var _scripted_look: bool = false
-## Quién de la interfaz (la pantalla de muerte, una ventana, un diálogo) pide el cursor libre
-## mientras está abierto: id de instancia del solicitante -> true. Varios pueden pedirlo a la vez y
-## el ratón solo se recaptura cuando ya no queda ninguno.
+## Which interface element (the death screen, a window, a dialog) asks for the free cursor while it
+## is open: requester's instance id -> true. Several may ask at once and the mouse is only
+## recaptured when none remain.
 var _ui_cursor_holders: Dictionary = {}
 
 var _zoom_target: float = 3.5
@@ -130,30 +126,30 @@ var _zoom_distance: float = 3.5
 var _shoulder_offset: float = 0.6
 var _shoulder_side: float = 1.0
 var _shoulder_blend: float = 1.0
-## Hombro temporal (-1 o 1) cuando el elegido está tapado; 0 = se usa el elegido.
+## Temporary shoulder (-1 or 1) when the chosen one is blocked; 0 = the chosen one is used.
 var _shoulder_override: float = 0.0
-## Segundos seguidos que el hombro elegido lleva libre mientras se usa el otro.
+## Consecutive seconds the chosen shoulder has been free while the other one is in use.
 var _override_clear_time: float = 0.0
-## Posición del ojo de la cámara respecto al pivote en el último frame (global).
+## Position of the camera's eye relative to the pivot in the last frame (global).
 var _eye_offset: Vector3 = Vector3.ZERO
-## Nodo que se oculta cuando la cámara está demasiado cerca del objetivo.
+## Node that is hidden when the camera is too close to the target.
 var _hide_node: Node3D = null
-## Metros que la colisión le quita a la distancia y al hombro ahora mismo.
+## Meters that collision currently takes off the distance and the shoulder.
 var _distance_pull: float = 0.0
 var _offset_pull: float = 0.0
 
-## Sacudida de impacto: amplitud inicial (m), duración y tiempo que le queda (s), reloj de sus
-## ondas y desplazamiento (x = horizontal, y = vertical) que se suma a la cámara.
+## Impact shake: initial amplitude (m), duration and time left (s), clock of its waves and offset
+## (x = horizontal, y = vertical) that is added to the camera.
 var _shake_amplitude: float = 0.0
 var _shake_duration: float = 0.0
 var _shake_time_left: float = 0.0
 var _shake_clock: float = 0.0
 var _shake_offset: Vector2 = Vector2.ZERO
-## Desplazamiento vertical de la cámara de la escena (sin sacudida).
+## Vertical offset of the scene's camera (without shake).
 var _base_v_offset: float = 0.0
-## Campo de visión vertical configurado (escena o ajustes), sin la puntería del arco.
+## Configured vertical field of view (scene or settings), without the bow aim.
 var _configured_fov: float = 72.0
-## Puntería del arco pedida (0 a 1) y la que se aplica ahora (la sigue con suavidad).
+## Requested bow aim (0 to 1) and the one currently applied (which follows it smoothly).
 var _aim_zoom_target: float = 0.0
 var _aim_zoom: float = 0.0
 
@@ -170,8 +166,8 @@ var _fallback_shape: SphereShape3D = null
 func _ready() -> void:
 	InputBindings.ensure_defaults()
 	add_to_group(GROUP)
-	# Se mueve en _process con la posición ya interpolada: no debe volver a
-	# interpolarse. Los hijos (brazo y cámara) heredan el modo.
+	# It moves in _process with the already interpolated position: it must not be interpolated
+	# again. Its children (arm and camera) inherit the mode.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	top_level = true
 
@@ -191,13 +187,13 @@ func _ready() -> void:
 	_query.collide_with_bodies = true
 	_query.collide_with_areas = false
 
-	# Una ventana que se abre sin foco (una captura automática, otra instancia) no se queda con el
-	# ratón de quien está trabajando en otra ventana: empieza con el cursor suelto y un clic lo captura.
+	# A window that opens without focus (an automatic capture, another instance) does not take the
+	# mouse from whoever is working in another window: it starts with the cursor free and a click captures it.
 	if starts_with_free_cursor(get_window()):
 		_free_toggled = true
 	_apply_look()
 	_refresh_mouse_mode()
-	# Lo que el jugador tiene guardado en los ajustes (solo lo que ha cambiado él).
+	# What the player has saved in the settings (only what they have changed).
 	ClientSettings.current().apply_to_camera(self, true)
 
 
@@ -211,18 +207,18 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	# La tecla de liberar el cursor se atiende aquí (antes que la interfaz) para
-	# que soltarla siempre recapture el ratón.
+	# The key to release the cursor is handled here (before the interface) so that releasing it
+	# always recaptures the mouse.
 	if event.is_action(&"free_cursor"):
 		_set_free_held(event.is_pressed())
 		return
-	# El giro con el ratón también va aquí: mientras el ratón está capturado
-	# ningún control de la interfaz debe poder quedarse con el movimiento.
+	# Mouse turning also goes here: while the mouse is captured, no interface control must be able
+	# to keep the movement.
 	var motion: InputEventMouseMotion = event as InputEventMouseMotion
 	if motion == null or not _is_mouse_look_active():
 		return
-	# screen_relative: píxeles reales, sin el escalado del modo de estiramiento,
-	# para que la sensibilidad no cambie con el tamaño de la ventana.
+	# screen_relative: real pixels, without the stretch mode's scaling, so that sensitivity does not
+	# change with the window size.
 	var turn: Vector2 = motion.screen_relative * mouse_sensitivity
 	var pitch_sign: float = 1.0 if invert_y else -1.0
 	set_look(_yaw - turn.x, _pitch + turn.y * pitch_sign)
@@ -244,7 +240,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_zoom_target = clampf(_zoom_target + zoom_step, min_distance, max_distance)
 		get_viewport().set_input_as_handled()
 	elif _free_toggled and not _scripted_look:
-		# Con el cursor suelto, un clic que no ha usado la interfaz recaptura.
+		# With the cursor free, a click that the interface did not use recaptures.
 		var button: InputEventMouseButton = event as InputEventMouseButton
 		if button != null and button.pressed and button.button_index == MOUSE_BUTTON_LEFT:
 			_free_toggled = false
@@ -255,7 +251,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_APPLICATION_FOCUS_OUT:
-			# Al cambiar de ventana se suelta el ratón; un clic lo recaptura.
+			# When switching windows the mouse is released; a click recaptures it.
 			_free_toggled = true
 			_free_held = false
 			_refresh_mouse_mode()
@@ -265,10 +261,10 @@ func _notification(what: int) -> void:
 				_hide_node.visible = true
 
 
-## Sigue a [param target] (normalmente el marcador de la cabeza del personaje).
-## [param exclude] es el cuerpo del propio personaje, que la cámara ignora al
-## comprobar colisiones; si es un [CharacterBody3D], también se usa para saber
-## cuándo está en el aire. El primer frame se coloca sin suavizado.
+## Follows [param target] (normally the character's head marker). [param exclude] is the
+## character's own body, which the camera ignores when checking collisions; if it is a
+## [CharacterBody3D], it is also used to know when it is in the air. The first frame is placed
+## without smoothing.
 func set_target(target: Node3D, exclude: CollisionObject3D = null) -> void:
 	_target = target
 	_target_body = exclude as CharacterBody3D
@@ -283,88 +279,87 @@ func set_target(target: Node3D, exclude: CollisionObject3D = null) -> void:
 		_update_follow(0.0)
 
 
-## Yaw de la vista en radianes, en [-PI, PI]. Misma convención que
-## [member Node3D.rotation].y: 0 mira hacia -Z.
+## View yaw in radians, in [-PI, PI]. Same convention as [member Node3D.rotation].y: 0 looks
+## toward -Z.
 func get_yaw() -> float:
 	return wrapf(_yaw, -PI, PI)
 
 
-## Inclinación de la vista en radianes; positivo mira hacia arriba.
+## View pitch in radians; positive looks up.
 func get_pitch() -> float:
 	return _pitch
 
 
-## Campo de visión vertical configurado, en grados (el de los ajustes: sin el cierre de la puntería del
-## arco, que lo reduce en la cámara mientras se tensa).
+## Configured vertical field of view, in degrees (the settings' one: without the bow-aim
+## narrowing, which reduces it on the camera while the bow is drawn).
 func get_fov() -> float:
 	return _configured_fov
 
 
-## Fija el campo de visión vertical configurado, en grados (ajustes del jugador). La puntería del arco
-## lo cierra después sobre este valor.
+## Sets the configured vertical field of view, in degrees (player settings). The bow aim then
+## narrows it from this value.
 func set_fov(degrees: float) -> void:
 	_configured_fov = degrees
 	_apply_fov()
 
 
-## Puntería del arco (docs/habilidades.md, sección 6.5): con [param amount] de 0 (nada) a 1 (tensado), el
-## campo de visión de la cámara se cierra hasta [constant AIM_ZOOM_FOV_SCALE] del configurado, con
-## suavidad ([member aim_zoom_sharpness]). No toca el brazo ni el hombro: el rayo canónico de la puntería
-## no cambia.
+## Bow aim (docs/habilidades.md, section 6.5): with [param amount] from 0 (none) to 1 (fully
+## drawn), the camera's field of view narrows down to [constant AIM_ZOOM_FOV_SCALE] of the
+## configured one, smoothly ([member aim_zoom_sharpness]). It does not touch the arm or the
+## shoulder: the canonical aim ray does not change.
 func set_aim_zoom(amount: float) -> void:
 	_aim_zoom_target = clampf(amount, 0.0, 1.0)
 
 
-## Puntería del arco pedida (0 a 1, [method set_aim_zoom]).
+## Requested bow aim (0 to 1, [method set_aim_zoom]).
 func get_aim_zoom() -> float:
 	return _aim_zoom_target
 
 
-## Campo de visión vertical que tiene ahora la cámara (el configurado con el cierre de la puntería).
+## Vertical field of view the camera currently has (the configured one with the aim narrowing).
 func get_effective_fov() -> float:
 	return _camera.fov if _camera != null else _configured_fov
 
 
-## Hombro elegido: 1 derecho, -1 izquierdo (sin contar el cambio temporal por una pared).
+## Chosen shoulder: 1 right, -1 left (not counting the temporary switch because of a wall).
 func get_chosen_shoulder() -> int:
 	return -1 if _shoulder_side < 0.0 else 1
 
 
-## Hombro por el que se mira ahora: 1 derecho, -1 izquierdo, contando el cambio temporal por una pared.
-## Es el que pone el bit [constant PlayerInput.AIM_LEFT] de las entradas (docs/habilidades.md, sección
-## 6.5).
+## Shoulder currently looked over: 1 right, -1 left, counting the temporary switch because of a
+## wall. It is the one that sets the [constant PlayerInput.AIM_LEFT] bit of the inputs
+## (docs/habilidades.md, section 6.5).
 func get_effective_shoulder() -> int:
 	return -1 if _get_shoulder_side() < 0.0 else 1
 
 
-## Elige el hombro por el que se mira, 1 derecho o -1 izquierdo (el valor por defecto de los
-## ajustes; la tecla de cambio de hombro lo alterna después). El cambio es suave.
+## Chooses the shoulder to look over, 1 right or -1 left (the settings' default value; the
+## shoulder-switch key then toggles it). The change is smooth.
 func set_default_shoulder(side: int) -> void:
 	_shoulder_side = -1.0 if side < 0 else 1.0
 	_shoulder_override = 0.0
 
 
-## Fija la vista. El pitch se limita a [[member min_pitch_degrees],
-## [member max_pitch_degrees]].
+## Sets the view. Pitch is clamped to [[member min_pitch_degrees], [member max_pitch_degrees]].
 func set_look(yaw: float, pitch: float) -> void:
 	_yaw = wrapf(yaw, -PI, PI)
 	_pitch = clampf(pitch, deg_to_rad(min_pitch_degrees), deg_to_rad(max_pitch_degrees))
 	_apply_look()
 
 
-## true si el jugador ha liberado el cursor (Alt mantenido, Esc o pérdida de
-## foco): la cámara no gira y los clics son para la interfaz.
+## true if the player has released the cursor (Alt held, Esc or loss of focus): the camera does
+## not turn and clicks are for the interface.
 func is_cursor_free() -> bool:
 	if _scripted_look:
 		return false
 	return _free_toggled or _free_held or _has_ui_cursor_holders()
 
 
-## Un elemento de la interfaz ([param holder]: la pantalla de muerte, una ventana, un diálogo) libera
-## el cursor mientras esté abierto: la cámara no gira, los clics son para él y el punto de mira se
-## oculta. Al cerrarlo ([param enabled] a false) deja de pedirlo, y el ratón se recaptura solo si no
-## queda ningún otro solicitante ni lo ha soltado el jugador a mano. Cada solicitante cuenta una
-## sola vez, pida cuantas veces pida.
+## An interface element ([param holder]: the death screen, a window, a dialog) releases the cursor
+## while it is open: the camera does not turn, clicks are for it and the crosshair is hidden. When
+## it is closed ([param enabled] set to false) it stops asking for it, and the mouse is recaptured
+## only if no other requester remains and the player has not released it by hand. Each requester
+## counts only once, however many times it asks.
 func set_ui_cursor_release(enabled: bool, holder: Object) -> void:
 	var key: int = holder.get_instance_id()
 	if enabled:
@@ -374,9 +369,9 @@ func set_ui_cursor_release(enabled: bool, holder: Object) -> void:
 	_refresh_mouse_mode()
 
 
-## true si algún elemento de la interfaz (una ventana, un diálogo, la pantalla de muerte, el mapa o la línea
-## del chat) tiene el cursor libre en este momento ([method set_ui_cursor_release]). No cuenta el cursor
-## que suelta el jugador a mano (Alt o Esc), ni el que pide [param ignored_holder] si se da.
+## true if any interface element (a window, a dialog, the death screen, the map or the chat line)
+## currently has the cursor free ([method set_ui_cursor_release]). It does not count the cursor
+## released by the player by hand (Alt or Esc), nor the one requested by [param ignored_holder] if given.
 func is_ui_holding_cursor(ignored_holder: Object = null) -> bool:
 	if not _has_ui_cursor_holders():
 		return false
@@ -389,8 +384,8 @@ func is_ui_holding_cursor(ignored_holder: Object = null) -> bool:
 	return false
 
 
-# true si algún solicitante vivo sigue pidiendo el cursor libre. Descarta a los que se han liberado
-# sin avisar (su id de instancia ya no apunta a nada).
+# true if any live requester is still asking for the free cursor. It discards those that were
+# freed without notice (their instance id no longer points to anything).
 func _has_ui_cursor_holders() -> bool:
 	for key: int in _ui_cursor_holders.keys():
 		if not is_instance_id_valid(key):
@@ -402,9 +397,9 @@ func get_camera() -> Camera3D:
 	return get_node_or_null(^"Yaw/Pitch/Arm/Camera") as Camera3D
 
 
-## Rayo de puntería que pasa por el centro de la pantalla (el punto de mira).
-## Devuelve [code]{"origin": Vector3, "direction": Vector3}[/code] con la
-## dirección normalizada, en coordenadas globales.
+## Aim ray that passes through the center of the screen (the crosshair). Returns
+## [code]{"origin": Vector3, "direction": Vector3}[/code] with the direction normalized, in global
+## coordinates.
 func get_aim_ray() -> Dictionary:
 	var camera: Camera3D = get_camera()
 	if camera == null or not camera.is_inside_tree():
@@ -417,19 +412,18 @@ func get_aim_ray() -> Dictionary:
 	}
 
 
-## Oculta [param node] (normalmente el modelo del personaje) mientras la cámara
-## está a menos de [member hide_target_distance] del objetivo, por ejemplo con la
-## espalda contra una esquina. null deja de ocultar nada.
+## Hides [param node] (normally the character model) while the camera is within [member hide_target_distance] of the target, for example with the back against a corner. null stops
+## hiding anything.
 func set_hide_when_close(node: Node3D) -> void:
 	if is_instance_valid(_hide_node) and _hide_node != node:
 		_hide_node.visible = true
 	_hide_node = node
 
 
-## Sacude la cámara un instante, por ejemplo al recibir un golpe (ART-09, básico). Mueve la vista
-## [param amplitude] metros (como mucho [constant MAX_SHAKE_AMPLITUDE]) con una oscilación rápida que
-## decae a cero en [param duration] segundos. Una sacudida nueva no apaga la que está en curso: se
-## queda con la más fuerte de las dos. No hace nada con [member shake_enabled] a false.
+## Shakes the camera for a moment, for example on taking a hit (ART-09, basic). It moves the view
+## [param amplitude] meters (at most [constant MAX_SHAKE_AMPLITUDE]) with a fast oscillation that
+## decays to zero over [param duration] seconds. A new shake does not cancel the one in progress:
+## the stronger of the two is kept. It does nothing with [member shake_enabled] set to false.
 func add_shake(amplitude: float, duration: float) -> void:
 	if not shake_enabled or amplitude <= 0.0 or duration <= 0.0:
 		return
@@ -439,20 +433,19 @@ func add_shake(amplitude: float, duration: float) -> void:
 	_shake_time_left = duration
 
 
-## Desplazamiento (m) que la sacudida suma ahora a la cámara: x en horizontal, y en vertical.
+## Offset (m) that the shake currently adds to the camera: x horizontally, y vertically.
 func get_shake_offset() -> Vector2:
 	return _shake_offset
 
 
-## true mientras dura una sacudida.
+## true while a shake lasts.
 func is_shaking() -> bool:
 	return _shake_time_left > 0.0
 
 
-## Vista guionizada (demo y pruebas automáticas): la cámara no captura el ratón
-## ni lee su movimiento y la vista solo cambia con [method set_look].
-## [method is_cursor_free] devuelve false para que el punto de mira se siga
-## dibujando y la escena se vea igual que jugando.
+## Scripted view (demo and automated tests): the camera does not capture the mouse or read its
+## movement and the view only changes with [method set_look]. [method is_cursor_free] returns
+## false so the crosshair keeps being drawn and the scene looks the same as when playing.
 func set_scripted_look(enabled: bool) -> void:
 	_scripted_look = enabled
 	_refresh_mouse_mode()
@@ -475,15 +468,15 @@ func _update_follow(delta: float) -> void:
 	var goal: Vector3 = _target.get_global_transform_interpolated().origin
 	var snap: bool = _snap_pending \
 			or global_position.distance_squared_to(goal) > snap_distance * snap_distance
-	# En el aire el pivote solo sube una parte de lo que suba el objetivo sobre su
-	# altura en el suelo; si cae por debajo de ella (un borde), la sigue entera.
+	# In the air the pivot rises only part of what the target rises above its ground height; if it
+	# falls below it (a ledge), it follows it fully.
 	if snap or not _is_target_airborne() or goal.y < _ground_height:
 		_ground_height = goal.y
 	goal.y = _ground_height + (goal.y - _ground_height) * air_follow_ratio
 	if snap:
 		global_position = goal
 		_snap_pending = false
-		# Sin historia previa: la colisión debe resolverse ya, sin suavizar.
+		# No previous history: collision must be resolved right away, without smoothing.
 		_distance_pull = 0.0
 		_offset_pull = 0.0
 	else:
@@ -491,10 +484,10 @@ func _update_follow(delta: float) -> void:
 	_clamp_below_ceiling()
 
 
-## Mientras el pivote está por encima de la altura de suelo del objetivo (en un
-## salto), no lo deja subir más de lo que permite el techo, ni a él ni al ojo de
-## la cámara. Sin esto, bajo un techo bajo el barrido hacia atrás choca con el
-## techo y acorta el brazo de golpe hasta meter la cámara en la cabeza.
+## While the pivot is above the target's ground height (during a jump), it does not let it rise
+## more than the ceiling allows, neither it nor the camera's eye. Without this, under a low
+## ceiling the backward sweep hits the ceiling and shortens the arm at once until the camera ends
+## up in the head.
 func _clamp_below_ceiling() -> void:
 	var rise: float = global_position.y - _ground_height
 	if rise <= 0.0:
@@ -510,7 +503,7 @@ func _is_target_airborne() -> bool:
 	return is_instance_valid(_target_body) and not _target_body.is_on_floor()
 
 
-## La puntería del arco sigue a la pedida con suavidad y cierra el campo de visión.
+## The bow aim follows the requested one smoothly and narrows the field of view.
 func _update_aim_zoom(delta: float) -> void:
 	if is_equal_approx(_aim_zoom, _aim_zoom_target):
 		if _aim_zoom != _aim_zoom_target:
@@ -523,14 +516,14 @@ func _update_aim_zoom(delta: float) -> void:
 	_apply_fov()
 
 
-## Campo de visión de la cámara: el configurado, cerrado por la puntería del arco.
+## Camera field of view: the configured one, narrowed by the bow aim.
 func _apply_fov() -> void:
 	if _camera == null:
 		return
 	_camera.fov = _configured_fov * lerpf(1.0, AIM_ZOOM_FOV_SCALE, _aim_zoom)
 
 
-## Avanza la sacudida de impacto y calcula su desplazamiento de este fotograma.
+## Advances the impact shake and computes its offset for this frame.
 func _update_shake(delta: float) -> void:
 	if _shake_time_left <= 0.0:
 		_shake_offset = Vector2.ZERO
@@ -542,17 +535,16 @@ func _update_shake(delta: float) -> void:
 			cos(_shake_clock * SHAKE_FREQUENCY_Y)).limit_length(1.0) * amplitude
 
 
-# Amplitud de la sacudida ahora: decae linealmente hasta 0.
+# Amplitude of the shake now: it decays linearly to 0.
 func _current_shake_amplitude() -> float:
 	if _shake_time_left <= 0.0 or _shake_duration <= 0.0:
 		return 0.0
 	return _shake_amplitude * clampf(_shake_time_left / _shake_duration, 0.0, 1.0)
 
 
-## Coloca la cámara a lo largo del brazo y en el hombro sin meterla en la
-## geometría: primero barre hacia atrás desde el pivote y después, desde el
-## extremo del brazo, hacia el lado del hombro. Todo el camino
-## pivote -> brazo -> ojo queda libre, así el ojo nunca acaba dentro de un muro.
+## Places the camera along the arm and on the shoulder without putting it inside the geometry:
+## first it sweeps backward from the pivot and then, from the end of the arm, toward the shoulder
+## side. The whole path pivot -> arm -> eye stays clear, so the eye never ends up inside a wall.
 func _update_collision(delta: float) -> void:
 	var desired_distance: float = _zoom_distance
 	_arm.spring_length = desired_distance
@@ -588,15 +580,14 @@ func _update_collision(delta: float) -> void:
 	_update_hidden_node()
 
 
-## Hombro que se usa ahora: el temporal si hay uno, si no el elegido.
+## Shoulder in use now: the temporary one if there is one, otherwise the chosen one.
 func _get_shoulder_side() -> float:
 	return _shoulder_override if _shoulder_override != 0.0 else _shoulder_side
 
 
-## Cambio automático de hombro. Si una pared tapa el hombro elegido y el otro está
-## libre, se usa el otro; se vuelve al elegido cuando lleva
-## [member auto_swap_return_delay] segundos libre, o antes si el otro se tapa más.
-## Así el personaje no queda entre la cámara y el punto de mira junto a una pared.
+## Automatic shoulder switch. If a wall blocks the chosen shoulder and the other is free, the
+## other is used; it returns to the chosen one when it has been free for [member auto_swap_return_delay] seconds, or sooner if the other becomes more blocked. This way the
+## character does not end up between the camera and the crosshair next to a wall.
 func _update_shoulder_override(arm_end: Vector3, right: Vector3, delta: float) -> void:
 	var full: float = _shoulder_offset
 	if full <= 0.001:
@@ -619,8 +610,8 @@ func _update_shoulder_override(arm_end: Vector3, right: Vector3, delta: float) -
 		_shoulder_override = 0.0
 
 
-## Oculta el nodo de [method set_hide_when_close] con la cámara pegada al objetivo
-## (con un poco de histéresis para que no parpadee en el límite).
+## Hides the node from [method set_hide_when_close] with the camera pressed against the target
+## (with a little hysteresis so it does not flicker at the limit).
 func _update_hidden_node() -> void:
 	if not is_instance_valid(_hide_node) or not _has_target():
 		return
@@ -633,9 +624,7 @@ func _update_hidden_node() -> void:
 		_hide_node.visible = true
 
 
-## Distancia libre (en metros, hasta [param distance]) al barrer la esfera del
-## brazo desde [param from] en la dirección [param direction], dejando el
-## margen del brazo respecto a lo que golpee.
+## Free distance (in meters, up to [param distance]) when sweeping the arm's sphere from [param from] in direction [param direction], leaving the arm's margin from whatever it hits.
 func _sweep(from: Vector3, direction: Vector3, distance: float) -> float:
 	if distance <= 0.0 or not is_inside_tree():
 		return distance
@@ -664,7 +653,7 @@ func _get_sweep_shape() -> Shape3D:
 	return _fallback_shape
 
 
-## La colisión acerca la cámara al instante y la deja volver con suavidad.
+## Collision brings the camera closer instantly and lets it return smoothly.
 static func _resolve_pull(current: float, wanted: float, recover: float) -> float:
 	wanted = maxf(wanted, 0.0)
 	if wanted >= current:
@@ -672,20 +661,20 @@ static func _resolve_pull(current: float, wanted: float, recover: float) -> floa
 	return lerpf(current, wanted, recover)
 
 
-## Factor de suavizado exponencial independiente de la tasa de frames.
+## Exponential smoothing factor independent of the frame rate.
 static func _smoothing(sharpness: float, delta: float) -> float:
 	return 1.0 - exp(-sharpness * delta)
 
 
-## El SpringArm3D vuelve a activar su procesado interno cada vez que entra en
-## el árbol; la colisión de la cámara se resuelve en [method _update_collision].
+## The SpringArm3D re-enables its internal processing every time it enters the tree; the
+## camera's collision is resolved in [method _update_collision].
 func _disable_builtin_spring() -> void:
 	_arm.set_physics_process_internal(false)
 
 
-## true si el ratón no debe capturarse al arrancar: arranque con [code]--sin-raton[/code] o con
-## [code]ELDMARK_SIN_RATON=1[/code], o una ventana real que no tiene el foco. Sin ventana (pruebas
-## headless) se mantiene la captura de siempre.
+## true if the mouse must not be captured on startup: startup with [code]--sin-raton[/code] or
+## with [code]ELDMARK_SIN_RATON=1[/code], or a real window that does not have focus. With no
+## window (headless tests) the usual capture is kept.
 static func starts_with_free_cursor(window: Window) -> bool:
 	if OS.get_cmdline_user_args().has("--sin-raton") or OS.get_environment("ELDMARK_SIN_RATON") == "1":
 		return true
@@ -698,7 +687,7 @@ func _is_mouse_look_active() -> bool:
 
 
 func _poll_free_cursor() -> void:
-	# Respaldo por si se pierde el evento de soltar (por ejemplo, Alt+Tab).
+	# Fallback in case the release event is lost (for example, Alt+Tab).
 	var held: bool = Input.is_action_pressed(&"free_cursor")
 	if held != _free_held:
 		_set_free_held(held)

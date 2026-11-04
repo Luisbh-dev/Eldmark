@@ -1,26 +1,26 @@
 extends Node3D
-## Vista previa de la animación de combate (herramienta de desarrollo, solo cliente; ART-06/ART-08).
+## Combat animation preview (development tool, client only; ART-06/ART-08).
 ##
-## Un [PlayerCharacter] con el humanoide animado, la espada y el escudo provisionales y la capa de
-## combate recorre un guion con las mismas piezas que el juego: el combo de tres ligeros, un fuerte
-## cargado, un bloqueo y una esquiva ([CombatDemoScript], por la simulación de verdad), y después un
-## tambaleo, un aturdimiento y la muerte (impuestos con [ActionMachine], como haría el servidor).
-## Sirve para revisar los clips, los tramos de [code]data/animation/sword_shield_clips.tres[/code] y la
-## orientación de las armas sin lanzar el servidor.
+## A [PlayerCharacter] with the animated humanoid, the placeholder sword and shield and the combat layer
+## runs through a script with the same pieces as the game: the three-hit light combo, a charged heavy
+## attack, a block and a dodge ([CombatDemoScript], through the real simulation), and then a stagger, a
+## stun and death (imposed with [ActionMachine], as the server would do). It is useful for reviewing the
+## clips, the segments of [code]data/animation/sword_shield_clips.tres[/code] and the orientation of the
+## weapons without launching the server.
 ## [br][br]
-## Uso (ventana; [code]--fixed-fps[/code] hace la ejecución determinista, 2 ticks por fotograma a 30):
+## Usage (window; [code]--fixed-fps[/code] makes execution deterministic, 2 ticks per frame at 30):
 ## [codeblock]
 ## godot --path . res://scenes/tests/combat_preview.tscn --fixed-fps 30 -- \
 ##     [--shots=build/combat] [--every=3] [--range=0-200] \
 ##     [--view=three_quarter|side|front|back|close] [--no-quit]
 ## [/codeblock]
-## [br]- [code]--shots=<carpeta>[/code]: guarda un PNG cada [code]--every[/code] fotogramas y hojas de
-## contactos de 4x4 ([code]sheet_XX.png[/code]). Relativa a la raíz del proyecto o absoluta.
-## [br]- [code]--range=<desde>-<hasta>[/code]: solo captura esos fotogramas.
-## [br]- [code]--no-quit[/code]: no cierra al terminar el guion.
-## [br]En la rotulación se ve la acción, la fase y el clip y el instante que está enseñando la capa.
+## [br]- [code]--shots=<folder>[/code]: saves a PNG every [code]--every[/code] frames and 4x4 contact
+## sheets ([code]sheet_XX.png[/code]). Relative to the project root or absolute.
+## [br]- [code]--range=<from>-<to>[/code]: only captures those frames.
+## [br]- [code]--no-quit[/code]: does not close when the script ends.
+## [br]The label shows the action, the phase and the clip and the instant the layer is displaying.
 
-## Por vista: desplazamiento de la cámara respecto a los pies (xyz) y altura del punto al que mira (w).
+## Per view: camera offset relative to the feet (xyz) and height of the point it looks at (w).
 const VIEWS: Dictionary[String, Vector4] = {
 	"three_quarter": Vector4(2.6, 1.7, -3.2, 0.95),
 	"side": Vector4(4.0, 1.3, 0.0, 0.95),
@@ -32,7 +32,7 @@ const SHEET_COLUMNS: int = 4
 const SHEET_ROWS: int = 4
 const THUMB_SIZE: Vector2i = Vector2i(480, 270)
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
-## Ticks de espera al principio y entre el guion y los controles impuestos.
+## Ticks to wait at the start and between the script and the imposed controls.
 const START_IDLE_TICKS: int = 30
 const STAGGER_TICKS: int = 24
 const STUN_TICKS: int = 50
@@ -80,7 +80,7 @@ func _ready() -> void:
 			_quit_when_done = false
 	if not _shots_dir.is_empty():
 		DirAccess.make_dir_recursive_absolute(_shots_dir)
-	# Después de todos los nodos (también del AnimationTree y los modificadores de pose).
+	# After all the nodes (also the AnimationTree and the pose modifiers).
 	process_priority = 100
 	_camera = $Camera3D
 	_label = $Overlay/Label
@@ -106,7 +106,7 @@ func _physics_process(delta: float) -> void:
 	if script_tick >= 0 and script_tick < _script.get_length():
 		input.buttons = _script.buttons_at(script_tick)
 	_character.simulate(input.quantized(), delta)
-	# Lo que impondría el servidor, tras el guion.
+	# What the server would impose, after the script.
 	var after: int = script_tick - _script.get_length()
 	if after == 0:
 		ActionMachine.impose_stagger(_character.combat, _tick, _tick + STAGGER_TICKS, Vector2.ZERO)

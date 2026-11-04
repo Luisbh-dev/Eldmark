@@ -1,27 +1,29 @@
 class_name AppearanceApplier
 extends RefCounted
-## Aplica una [CharacterAppearance] a un [HumanoidVisual] (docs/progresion.md §7.4, ART-19): monta cuerpo,
-## cabeza, pelo, barba y marcas como escenas glTF de Universal Base Characters con
-## [method HumanoidVisual.set_part] (o las quita con [method HumanoidVisual.clear_part]) y tiñe piel, pelo y
-## ojos con [method HumanoidVisual.set_tint]. Cambiar una pieza no recrea el personaje.
+## Applies a [CharacterAppearance] to a [HumanoidVisual] (docs/progresion.md §7.4, ART-19): it
+## mounts body, head, hair, beard and marks as Universal Base Characters glTF scenes with
+## [method HumanoidVisual.set_part] (or removes them with [method HumanoidVisual.clear_part]) and
+## tints skin, hair and eyes with [method HumanoidVisual.set_tint]. Changing a part does not
+## recreate the character.
 ## [br][br]
-## [method apply] no valida: pone lo que dicen los índices (uno que no existe en el catálogo deja esa ranura
-## como estaba). La validez la decide [method resolve], que el cliente usa con la apariencia de cada
-## ENTITY_SPAWN de jugador: una que no son 8 B, que va a 0 o que no pasa [method CharacterAppearance.validate]
-## para su reino se sustituye por [method CharacterAppearance.default_for] del pueblo del reino (§7.3).
+## [method apply] does not validate: it sets what the indices say (one that does not exist in the
+## catalog leaves that slot as it was). Validity is decided by [method resolve], which the client
+## uses with the appearance from each player ENTITY_SPAWN: one that is not 8 B, that is all 0 or
+## that does not pass [method CharacterAppearance.validate] for its realm is replaced by
+## [method CharacterAppearance.default_for] of the realm's people (§7.3).
 ## [br][br]
-## Las escenas van como rutas en el catálogo ([member AppearancePart.scene_path]): el servidor nunca las carga.
-## Aquí se cargan con [method ResourceLoader.load] (que las guarda en caché). Solo cliente.
+## Scenes are paths in the catalog ([member AppearancePart.scene_path]): the server never loads
+## them. Here they are loaded with [method ResourceLoader.load] (which caches them). Client only.
 
-## Canales de tinte de [HumanoidVisual] de cada lista de colores del catálogo.
+## [HumanoidVisual] tint channels for each color list in the catalog.
 const SKIN_CHANNEL: StringName = &"skin"
 const HAIR_CHANNEL: StringName = &"hair"
 const EYES_CHANNEL: StringName = &"eyes"
 
 
-## Pone en [param visual] las piezas y los colores de [param appearance] según [param catalog] (null =
-## [method AppearanceCatalog.shared]). Sin pelo, barba o marcas (0) quita esa ranura. No hace nada con un
-## visual o una apariencia nulos.
+## Sets on [param visual] the parts and colors of [param appearance] according to [param catalog]
+## (null = [method AppearanceCatalog.shared]). Without hair, beard or marks (0) it removes that
+## slot. It does nothing with a null visual or appearance.
 static func apply(visual: HumanoidVisual, appearance: CharacterAppearance,
 		catalog: AppearanceCatalog = null) -> void:
 	if visual == null or appearance == null:
@@ -38,10 +40,10 @@ static func apply(visual: HumanoidVisual, appearance: CharacterAppearance,
 	_tint(visual, EYES_CHANNEL, catalog.eye_colors, appearance.eyes)
 
 
-## La apariencia que el cliente enseña para los 8 B [param bytes] de un jugador del reino [param realm] (código
-## de [enum NetProtocol.Realm]): la suya si vale para el pueblo de ese reino y, si no (otro tamaño, todo a 0
-## porque la zona no tiene progreso, o no pasa [method CharacterAppearance.validate]), la de por defecto de ese
-## pueblo. Null si el reino no tiene pueblo en el catálogo.
+## The appearance the client shows for the 8 B [param bytes] of a player of realm [param realm]
+## ([enum NetProtocol.Realm] code): their own if valid for that realm's people and, if not
+## (another size, all 0 because the zone has no progress, or it fails [method CharacterAppearance.validate]), the default one for that people. Null if the realm has no
+## people in the catalog.
 static func resolve(bytes: PackedByteArray, realm: int, catalog: AppearanceCatalog = null) -> CharacterAppearance:
 	if catalog == null:
 		catalog = AppearanceCatalog.shared()
@@ -54,20 +56,20 @@ static func resolve(bytes: PackedByteArray, realm: int, catalog: AppearanceCatal
 	return CharacterAppearance.default_for(catalog, catalog.race_index(race.id))
 
 
-## [method resolve] y [method apply] de una vez. Devuelve la apariencia aplicada (null si no había).
+## [method resolve] and [method apply] in one go. Returns the applied appearance (null if there was none).
 static func apply_bytes(visual: HumanoidVisual, bytes: PackedByteArray, realm: int,
 		catalog: AppearanceCatalog = null) -> CharacterAppearance:
 	if catalog == null:
 		catalog = AppearanceCatalog.shared()
 	var appearance: CharacterAppearance = resolve(bytes, realm, catalog)
 	apply(visual, appearance, catalog)
-	# La espada también es del reino: su modelo y el color de su estela.
+	# The sword also belongs to the realm: its model and the color of its trail.
 	if visual != null:
 		visual.set_realm(realm)
 	return appearance
 
 
-## La escena de la pieza [param index] de [param parts] (null si no existe, no tiene escena o no se carga).
+## The scene of piece [param index] of [param parts] (null if it does not exist, has no scene or fails to load).
 static func part_scene(parts: Array[AppearancePart], index: int) -> PackedScene:
 	if index < 0 or index >= parts.size() or parts[index] == null:
 		return null
@@ -77,19 +79,19 @@ static func part_scene(parts: Array[AppearancePart], index: int) -> PackedScene:
 	return ResourceLoader.load(path) as PackedScene
 
 
-# --- Interno ------------------------------------------------------------------------------------
+# --- Internal ------------------------------------------------------------------------------------
 
-# Una pieza que siempre está (cuerpo, cabeza): un índice que no existe deja la que hubiera.
+# A piece that is always present (body, head): an index that does not exist leaves whatever was there.
 static func _set_part(visual: HumanoidVisual, slot: StringName, parts: Array[AppearancePart], index: int) -> void:
 	var scene: PackedScene = part_scene(parts, index)
 	if scene != null:
 		visual.set_part(slot, scene)
 	elif index >= 0 and index < parts.size():
-		# La pieza existe pero no tiene malla propia (o aún no está en el repo): la ranura se queda vacía.
+		# The piece exists but has no mesh of its own (or is not in the repo yet): the slot is left empty.
 		visual.clear_part(slot)
 
 
-# Pelo, barba o marcas: 0 es «sin»; si no, índice + 1.
+# Hair, beard or marks: 0 means "none"; otherwise, index + 1.
 static func _set_optional_part(visual: HumanoidVisual, slot: StringName, parts: Array[AppearancePart],
 		value: int) -> void:
 	if value == CharacterAppearance.NONE:

@@ -1,75 +1,76 @@
 class_name ItemInstance
 extends RefCounted
-## Un objeto concreto que alguien posee (docs/progresion.md §2.1, PRG-02): una fila de
-## [code]item_instances[/code], con un [member uid] único en todo el mundo y para siempre. Lo que el objeto
-## es está en su [ItemDefinition] ([member def_id], en [ItemDatabase]).
+## A concrete item that someone owns (docs/progresion.md §2.1, PRG-02): a row of
+## [code]item_instances[/code], with a [member uid] unique across the whole world and forever.
+## What the item is lives in its [ItemDefinition] ([member def_id], in [ItemDatabase]).
 ## [br][br]
-## [b]Binario[/b] ([method encode], versión 1, §2.3), para la red (solo hacia el dueño) y las pruebas:
+## [b]Binary[/b] ([method encode], version 1, §2.3), for the network (only toward the owner) and
+## tests:
 ## [codeblock]
-## offset  tipo      campo
+## offset  type      field
 ## 0       u8        format       1
 ## 1       u64       uid          1 … 2^53 − 1
-## 9       u16       def          net id de ItemDatabase (≥ 1)
+## 9       u16       def          ItemDatabase net id (≥ 1)
 ## 11      u16       count        1 … max_stack
-## 13      u16       durability   0–1000; 0xFFFF = sin durabilidad
+## 13      u16       durability   0–1000; 0xFFFF = no durability
 ## 15      u8        rarity       0–4
-## 16      u8        flags        bit0 ligado; el resto a 0
+## 16      u8        flags        bit0 bound; the rest 0
 ## 17      u32       seed
 ## 21      u8        affix_count  0–6
 ## 22      n × u16   affixes
 ## [/codeblock]
-## 22 + 2·n B, en little endian como el resto del protocolo. [method decode] devuelve null ante cualquier
-## cosa que no cuadre y nunca registra errores del motor (red.md §5.7).
+## 22 + 2·n B, little endian like the rest of the protocol. [method decode] returns null for
+## anything that does not fit and never logs engine errors (red.md §5.7).
 ## [br][br]
-## [b]JSON[/b] ([method to_dictionary], una entrada de [code]items[/code] en §3.4): los ids
-## ([code]uid[/code], [code]seed[/code]) como cadena decimal y la durabilidad null si no tiene. Compartido:
-## sin reloj ni azar.
+## [b]JSON[/b] ([method to_dictionary], an [code]items[/code] entry in §3.4): ids
+## ([code]uid[/code], [code]seed[/code]) as a decimal string and durability null if it has none.
+## Shared: no clock, no randomness.
 
-## Versión del formato binario.
+## Binary format version.
 const FORMAT: int = 1
-## Afijos como mucho (PRG-20).
+## At most this many affixes (PRG-20).
 const MAX_AFFIXES: int = 6
-## [member durability] de un objeto sin durabilidad (NULL en la base de datos y en JSON).
+## [member durability] of an item without durability (NULL in the database and in JSON).
 const NO_DURABILITY: int = -1
-## Mayor [member uid]: un número JSON lo lleva exacto (§3.4).
+## Largest [member uid]: a JSON number carries it exactly (§3.4).
 const MAX_UID: int = (1 << 53) - 1
-## Durabilidad máxima (por mil).
+## Maximum durability (per thousand).
 const MAX_DURABILITY: int = 1000
-## Rareza máxima: 0 común, 1 poco común, 2 rara, 3 épica, 4 legendaria.
+## Maximum rarity: 0 common, 1 uncommon, 2 rare, 3 epic, 4 legendary.
 const MAX_RARITY: int = 4
-## Mayor [member seed] (u32).
+## Largest [member seed] (u32).
 const MAX_SEED: int = 0xFFFFFFFF
-## Mayor id de afijo (u16).
+## Largest affix id (u16).
 const MAX_AFFIX_ID: int = 0xFFFF
-## Tamaño sin afijos.
+## Size without affixes.
 const HEADER_SIZE: int = 22
-## Durabilidad en el cable de un objeto sin durabilidad.
+## Durability on the wire for an item without durability.
 const WIRE_NO_DURABILITY: int = 0xFFFF
-## Bit de ligado en [code]flags[/code].
+## Bound bit in [code]flags[/code].
 const FLAG_BOUND: int = 0x01
-## Claves de [method to_dictionary], en orden alfabético.
+## Keys of [method to_dictionary], in alphabetical order.
 const DICTIONARY_KEYS: Array[String] = ["affixes", "bound", "container", "count", "def_id", "durability",
 		"rarity", "seed", "slot", "uid"]
 
-## 1 … [constant MAX_UID]; lo da el [code]IdAllocator[/code] de la zona (§4.5).
+## 1 … [constant MAX_UID]; given by the zone's [code]IdAllocator[/code] (§4.5).
 var uid: int = 0
 var def_id: StringName = &""
 ## 1 … [member ItemDefinition.max_stack].
 var count: int = 1
-## 0–1000 si la definición tiene durabilidad; si no, [constant NO_DURABILITY].
+## 0–1000 if the definition has durability; otherwise [constant NO_DURABILITY].
 var durability: int = NO_DURABILITY
-## 0–4. Fase 5: siempre 0.
+## 0–4. Phase 5: always 0.
 var rarity: int = 0
-## Ligado al personaje.
+## Bound to the character.
 var bound: bool = false
-## u32 de los afijos (PRG-20); 0 = sin afijos.
+## u32 for the affixes (PRG-20); 0 = no affixes.
 var seed: int = 0
-## Hasta [constant MAX_AFFIXES] ids u16 de afijo (PRG-20). Fase 5: vacío.
+## Up to [constant MAX_AFFIXES] u16 affix ids (PRG-20). Phase 5: empty.
 var affixes: PackedInt32Array = PackedInt32Array()
 
 
-## Una instancia nueva de [param definition] con [param count] unidades: durabilidad llena si la lleva
-## y ligada si la regla es [code]ON_PICKUP[/code]; sin rareza, semilla ni afijos.
+## A new instance of [param definition] with [param count] units: full durability if it has any and
+## bound if the rule is [code]ON_PICKUP[/code]; no rarity, seed or affixes.
 static func create(new_uid: int, definition: ItemDefinition, new_count: int) -> ItemInstance:
 	var item := ItemInstance.new()
 	item.uid = new_uid
@@ -80,9 +81,9 @@ static func create(new_uid: int, definition: ItemDefinition, new_count: int) -> 
 	return item
 
 
-## true si la instancia cumple las reglas de §2.1 con las definiciones de [param db] (null =
-## [method ItemDatabase.shared]): lo mismo que exige [method decode], así que lo que vale se codifica y se
-## vuelve a leer igual.
+## true if the instance meets the §2.1 rules with the definitions of [param db] (null =
+## [method ItemDatabase.shared]): the same that [method decode] requires, so whatever is valid is
+## encoded and read back identically.
 func is_valid(db: ItemDatabase = null) -> bool:
 	if db == null:
 		db = ItemDatabase.shared()
@@ -104,14 +105,14 @@ func is_valid(db: ItemDatabase = null) -> bool:
 	return true
 
 
-## Tamaño codificado: 22 + 2 · afijos.
+## Encoded size: 22 + 2 · affixes.
 func encoded_size() -> int:
 	return HEADER_SIZE + 2 * affixes.size()
 
 
-## El binario de §2.3 con el net id de [param db] (null = [method ItemDatabase.shared]). Una instancia que
-## no pasa [method is_valid] da un array vacío (sin registrar nada): quien construye el mensaje lo trata
-## como un fallo suyo.
+## The §2.3 binary with the net id from [param db] (null = [method ItemDatabase.shared]). An
+## instance that fails [method is_valid] gives an empty array (logging nothing): whoever builds the
+## message treats it as its own failure.
 func encode(db: ItemDatabase = null) -> PackedByteArray:
 	if db == null:
 		db = ItemDatabase.shared()
@@ -133,17 +134,17 @@ func encode(db: ItemDatabase = null) -> PackedByteArray:
 	return bytes
 
 
-## Lee una instancia de [param bytes] desde [param offset] con las definiciones de [param db] (null =
-## [method ItemDatabase.shared]). null si falta algún byte, el formato no es 1, el uid es 0 o llega a
-## 2^53, el net id no existe, la cantidad es 0 o pasa de la pila, la durabilidad no cuadra con
-## [member ItemDefinition.has_durability], la rareza pasa de 4, hay bits de flags desconocidos o más de 6
-## afijos. Nunca registra errores del motor.
+## Reads an instance from [param bytes] starting at [param offset] with the definitions of
+## [param db] (null = [method ItemDatabase.shared]). null if any byte is missing, the format is not
+## 1, the uid is 0 or reaches 2^53, the net id does not exist, the count is 0 or exceeds the stack,
+## the durability does not match [member ItemDefinition.has_durability], the rarity exceeds 4,
+## there are unknown flag bits or more than 6 affixes. It never logs engine errors.
 static func decode(bytes: PackedByteArray, offset: int, db: ItemDatabase = null) -> ItemInstance:
 	if encoded_size_at(bytes, offset) < 0:
 		return null
 	if db == null:
 		db = ItemDatabase.shared()
-	# decode_u64 da un int64: lo que pasa de 2^63 sale negativo y también se rechaza.
+	# decode_u64 gives an int64: whatever exceeds 2^63 comes out negative and is also rejected.
 	var new_uid: int = bytes.decode_u64(offset + 1)
 	if new_uid < 1 or new_uid > MAX_UID:
 		return null
@@ -180,9 +181,10 @@ static func decode(bytes: PackedByteArray, offset: int, db: ItemDatabase = null)
 	return item
 
 
-## Tamaño de la instancia codificada que empieza en [param offset], o −1 si no cabe en [param bytes]: el
-## offset está fuera, faltan bytes de la cabecera o de los afijos, el formato no es 1 o hay más de
-## [constant MAX_AFFIXES] afijos. Sirve para recorrer una lista de instancias sin decodificarlas.
+## Size of the encoded instance starting at [param offset], or −1 if it does not fit in
+## [param bytes]: the offset is outside, header or affix bytes are missing, the format is not 1 or
+## there are more than [constant MAX_AFFIXES] affixes. Used to walk a list of instances without
+## decoding them.
 static func encoded_size_at(bytes: PackedByteArray, offset: int) -> int:
 	if offset < 0 or offset + HEADER_SIZE > bytes.size() or bytes[offset] != FORMAT:
 		return -1
@@ -195,8 +197,8 @@ static func encoded_size_at(bytes: PackedByteArray, offset: int) -> int:
 	return size
 
 
-## Una entrada de [code]items[/code] del registro (§3.4), en [param container] y [param slot]: ids como
-## cadena, durabilidad null si no tiene y afijos como lista de enteros.
+## An [code]items[/code] entry of the log (§3.4), in [param container] and [param slot]: ids as
+## strings, durability null if none and affixes as a list of integers.
 func to_dictionary(container: int, slot: int) -> Dictionary:
 	var affix_list: Array = []
 	for affix: int in affixes:
@@ -215,12 +217,13 @@ func to_dictionary(container: int, slot: int) -> Dictionary:
 	}
 
 
-## Lee una entrada de [method to_dictionary] con las definiciones de [param db] (null =
-## [method ItemDatabase.shared]); null si no cuadra: una clave que falta o que no conoce, un tipo que no
-## casa o un valor fuera de rango. Los ids ([code]uid[/code] de 1 a 2^53 − 1, [code]seed[/code] u32) son
-## cadenas decimales; un id como número no vale. Los enteros admiten la forma [code]820.0[/code].
-## [code]container[/code] y [code]slot[/code] deben ser enteros no negativos; su rango (que depende del
-## contenedor y de [code]bag_slots[/code]) lo mira quien lee el registro.
+## Reads an entry from [method to_dictionary] with the definitions of [param db] (null =
+## [method ItemDatabase.shared]); null if it does not fit: a missing or unknown key, a type that
+## does not match or a value out of range. Ids ([code]uid[/code] from 1 to 2^53 − 1,
+## [code]seed[/code] u32) are decimal strings; an id as a number is not valid. Integers accept the
+## form [code]820.0[/code]. [code]container[/code] and [code]slot[/code] must be non-negative
+## integers; their range (which depends on the container and on [code]bag_slots[/code]) is checked
+## by whoever reads the log.
 static func from_dictionary(data: Dictionary, db: ItemDatabase) -> ItemInstance:
 	if db == null:
 		db = ItemDatabase.shared()
@@ -271,7 +274,7 @@ static func from_dictionary(data: Dictionary, db: ItemDatabase) -> ItemInstance:
 	return item
 
 
-## Una copia independiente (también los afijos).
+## An independent copy (affixes too).
 func duplicate_instance() -> ItemInstance:
 	var copy := ItemInstance.new()
 	copy.uid = uid
@@ -285,7 +288,7 @@ func duplicate_instance() -> ItemInstance:
 	return copy
 
 
-## true si [param other] tiene los mismos valores en todos los campos.
+## true if [param other] has the same values in all fields.
 func equals(other: ItemInstance) -> bool:
 	return other != null and uid == other.uid and def_id == other.def_id and count == other.count \
 			and durability == other.durability and rarity == other.rarity and bound == other.bound \

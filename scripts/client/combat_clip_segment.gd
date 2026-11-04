@@ -1,20 +1,20 @@
 class_name CombatClipSegment
 extends Resource
-## Un tramo de un clip de animación: de [member from_s] a [member to_s] segundos del clip
-## [member animation]. La capa de combate ([CombatAnimationLayer]) lo reproduce estirado o encogido
-## para que ocupe exactamente la fase de la acción a la que se asigna (anticipación, golpe activo o
-## recuperación), así que la velocidad de reproducción sale de la duración de la fase en los datos
-## de combate, no del clip original.
+## A segment of an animation clip: from [member from_s] to [member to_s] seconds of the clip
+## [member animation]. The combat layer ([CombatAnimationLayer]) plays it stretched or shrunk
+## so that it fills exactly the phase of the action it is assigned to (anticipation, active hit or
+## recovery), so the playback speed comes from the phase duration in the combat data,
+## not from the original clip.
 
-## Clip como «biblioteca/nombre», por ejemplo [code]ual2/Sword_Regular_A[/code]. Las bibliotecas
-## las declara [member CombatClipSet.libraries].
+## Clip as "library/name", for example [code]ual2/Sword_Regular_A[/code]. The libraries
+## are declared by [member CombatClipSet.libraries].
 @export var animation: StringName = &""
-## Segundo del clip en el que empieza el tramo.
+## Second of the clip where the segment starts.
 @export var from_s: float = 0.0
-## Segundo del clip en el que acaba el tramo.
+## Second of the clip where the segment ends.
 @export var to_s: float = 0.0
 
 
-## Duración (s) del tramo en el clip original.
+## Duration (s) of the segment in the original clip.
 func length_s() -> float:
 	return to_s - from_s

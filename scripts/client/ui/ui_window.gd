@@ -1,37 +1,37 @@
 class_name UIWindow
 extends PanelContainer
-## Ventana de la interfaz (UI-09): un panel con barra de título, botón de cerrar y una columna de
-## contenido ([method get_content]) que se abre y se cierra ([method open], [method close],
-## [method toggle]). Es la base de los ajustes ([SettingsMenu]) y de las demás ventanas.
+## UI window (UI-09): a panel with a title bar, a close button and a content column
+## ([method get_content]) that opens and closes ([method open], [method close], [method toggle]). It is the
+## base of the settings ([SettingsMenu]) and of the other windows.
 ## [br][br]
-## [b]Cursor.[/b] Mientras está abierta el ratón tiene que estar libre: [method bind_camera] la
-## enlaza con la [CameraRig], que libera el cursor al abrirla y lo recaptura al cerrarla (como hace
-## la pantalla de muerte). Hasta que exista el gestor de ventanas (UI-03), cada ventana lo hace así.
+## [b]Cursor.[/b] While open, the mouse must be free: [method bind_camera] binds it to the [CameraRig],
+## which frees the cursor when it opens and recaptures it when it closes (as the death screen does). Until
+## the window manager exists (UI-03), each window does it this way.
 ## [br][br]
-## [b]Esc[/b] la cierra (se atiende en [method Node._input], antes de que lo vea la cámara, para que
-## Esc cierre la ventana en lugar de alternar el cursor), salvo con [member close_on_cancel] a false.
-## Abrirla da el foco al primer control enfocable del contenido, así se maneja con teclado o mando.
+## [b]Esc[/b] closes it (handled in [method Node._input], before the camera sees it, so that Esc closes the
+## window instead of toggling the cursor), unless [member close_on_cancel] is false. Opening it gives focus
+## to the first focusable control of the content, so it can be operated with keyboard or gamepad.
 ## [br][br]
-## Los nodos se crean en [method _init]: se puede llenar el contenido antes de añadirla al árbol.
-## Empieza cerrada (oculta). Con [member centered] se centra sola en su padre.
+## The nodes are created in [method _init]: the content can be filled in before adding it to the tree. It
+## starts closed (hidden). With [member centered] it centers itself in its parent.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Se abrió o se cerró.
+## It was opened or closed.
 signal opened
 signal closed
 
 const CLOSE_TEXT: String = "✕"
 
-## Título de la barra.
+## Title of the bar.
 var window_title: String = "":
 	set(value):
 		window_title = value
 		if _title_label != null:
 			_title_label.text = value
-## Si es true (por defecto), Esc la cierra.
+## If true (the default), Esc closes it.
 var close_on_cancel: bool = true
-## Si es true (por defecto), se centra en su padre al entrar en el árbol.
+## If true (the default), it centers itself in its parent when entering the tree.
 var centered: bool = true
 
 var _open: bool = false
@@ -75,7 +75,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	# Que el cursor no se quede suelto si la ventana desaparece abierta.
+	# So the cursor does not stay loose if the window disappears while open.
 	if _open and is_instance_valid(_camera_rig):
 		_camera_rig.set_ui_cursor_release(false, self)
 
@@ -86,17 +86,17 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## La columna donde se pone el contenido de la ventana.
+## The column where the window's content goes.
 func get_content() -> VBoxContainer:
 	return _content
 
 
-## El botón de cerrar de la barra.
+## The bar's close button.
 func get_close_button() -> Button:
 	return _close_button
 
 
-## Enlaza la ventana con la cámara: abrirla libera el cursor y cerrarla lo devuelve.
+## Binds the window to the camera: opening it frees the cursor and closing it returns it.
 func bind_camera(rig: CameraRig) -> void:
 	if _open and is_instance_valid(_camera_rig) and _camera_rig != rig:
 		_camera_rig.set_ui_cursor_release(false, self)
@@ -109,7 +109,7 @@ func is_open() -> bool:
 	return _open
 
 
-## Abre la ventana (si no lo estaba): la muestra, libera el cursor, suena y enfoca su contenido.
+## Opens the window (if it was not open): shows it, frees the cursor, plays a sound and focuses its content.
 func open() -> void:
 	if _open:
 		return
@@ -122,7 +122,7 @@ func open() -> void:
 	opened.emit()
 
 
-## Cierra la ventana (si estaba abierta).
+## Closes the window (if it was open).
 func close() -> void:
 	if not _open:
 		return

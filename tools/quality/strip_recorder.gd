@@ -1,40 +1,40 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50): grabadora de tiras de un personaje seguido (un remoto, o el local).
+## Quality capture bench (TEC-50): strip recorder for a followed character (a remote one, or the local one).
 ##
-## Guarda en un anillo, cada 50 ms, los últimos segundos del personaje seguido: un recorte de la cámara real del
-## juego (480 x 540, el mismo encuadre que las tiras del sandbox) y una vista lateral propia (un SubViewport que mira
-## al personaje desde un lado, perpendicular a la línea que lo une con el cliente, a 5 m), que ningún otro cuerpo
-## puede tapar. Con cada muestra se guarda lo que enseña la capa de animación del personaje: acción de combate, fase,
-## velocidad y el clip, su instante y su velocidad ([method CharacterAnimator.get_debug_state]).
+## Stores in a ring, every 50 ms, the last seconds of the followed character: a crop of the game's real
+## camera (480 x 540, the same framing as the sandbox strips) and its own side view (a SubViewport that looks
+## at the character from one side, perpendicular to the line joining it to the client, at 5 m), which no other body
+## can block. With each sample it stores what the character's animation layer shows: combat action, phase,
+## speed and the clip, its time and its speed ([method CharacterAnimator.get_debug_state]).
 ## [br][br]
-## Cuando un escenario ve el momento que busca (por ejemplo, el borde de subida de [code]BLOCK[/code] en el remoto) llama
-## a [method extract] con ese instante: la tira sale del anillo con unos fotogramas de antes, así que no se pierde el
-## principio de las acciones cortas (una esquiva dura 0,45 s). [method save_strip] la escribe con el mismo formato que
-## [code]anim_strips.gd[/code] ([code]<raw>/<id>/ciclo/{game,side}_NN.png[/code] y [code]meta.json[/code]), que
-## [code]compose_strips.py[/code] une en rejillas.
+## When a scenario sees the moment it is looking for (for example, the rising edge of [code]BLOCK[/code] on the remote) it calls
+## [method extract] with that instant: the strip comes out of the ring with a few frames from before, so the
+## start of short actions is not lost (a dodge lasts 0.45 s). [method save_strip] writes it in the same format as
+## [code]anim_strips.gd[/code] ([code]<raw>/<id>/ciclo/{game,side}_NN.png[/code] and [code]meta.json[/code]), which
+## [code]compose_strips.py[/code] joins into grids.
 ## [br][br]
-## Cada muestra anota también si algún otro cuerpo tapa o rodea al seguido ([code]occluded[/code], [code]neighbors[/code]):
-## una tira con fotogramas tapados no demuestra nada y el índice lo dice.
+## Each sample also notes whether any other body blocks or surrounds the followed one ([code]occluded[/code], [code]neighbors[/code]):
+## a strip with blocked frames proves nothing and the index says so.
 ## [br][br]
-## Uso desde el conductor: [code]d.recorder = Recorder.new(d)[/code], [method follow_remote] o [method follow_local] y
-## [code]await d.step()[/code] en lugar de [code]await d.frames(1)[/code].
+## Use from the driver: [code]d.recorder = Recorder.new(d)[/code], [method follow_remote] or [method follow_local] and
+## [code]await d.step()[/code] instead of [code]await d.frames(1)[/code].
 
 const GAME_SIZE: Vector2i = Vector2i(480, 540)
 const SIDE_SIZE: Vector2i = Vector2i(400, 520)
-## Milisegundos entre muestras (20 por segundo).
+## Milliseconds between samples (20 per second).
 const SAMPLE_MS: int = 50
-## Cuánto historial guarda el anillo.
+## How much history the ring keeps.
 const RING_MS: int = 4500
 const SIDE_DISTANCE: float = 5.0
-## Lo más cerca (m) que se acerca la cámara lateral a un personaje con un muro por medio, y holgura (m) con el muro.
+## The closest (m) the side camera gets to a character with a wall in between, and clearance (m) from the wall.
 const SIDE_MIN_DISTANCE: float = 2.2
 const SIDE_WALL_MARGIN: float = 0.4
 const SIDE_HEIGHT: float = 1.25
 const SIDE_LOOK_HEIGHT: float = 0.95
 const SIDE_FOV: float = 42.0
-## Otro cuerpo a menos de esta distancia (m) en el plano del suelo cuenta como vecino.
+## Another body within this distance (m) on the ground plane counts as a neighbour.
 const NEIGHBOR_RADIUS: float = 4.0
-## Semianchura (m) con la que un cuerpo más cercano a la cámara tapa al seguido.
+## Half-width (m) with which a body closer to the camera blocks the followed one.
 const OCCLUDER_HALF_WIDTH: float = 0.45
 
 var _d: Variant
@@ -66,14 +66,14 @@ func _init(driver: Variant) -> void:
 	_cam.current = true
 
 
-## Sigue a un personaje remoto (una [RemotePlayerView]). Vacía el anillo.
+## Follows a remote character (a [RemotePlayerView]). Empties the ring.
 func follow_remote(view: Object) -> void:
 	_view = view
 	_local = false
 	_ring.clear()
 
 
-## Sigue al personaje del cliente. Vacía el anillo.
+## Follows the client's character. Empties the ring.
 func follow_local() -> void:
 	_view = null
 	_local = true
@@ -92,29 +92,29 @@ func is_following() -> bool:
 	return _view != null and is_instance_valid(_view)
 
 
-## El remoto seguido (null si se sigue al local o a nadie).
+## The followed remote (null if following the local one or nobody).
 func get_view() -> Object:
 	return _view
 
 
-## Instante (ms) de la última muestra guardada, o -1.
+## Time (ms) of the last stored sample, or -1.
 func last_sample_ms() -> int:
 	return int(_ring[-1]["ms"]) if not _ring.is_empty() else -1
 
 
-## La última muestra (su [code]meta[/code]), o {}.
+## The last sample (its [code]meta[/code]), or {}.
 func last_meta() -> Dictionary:
 	return _ring[-1]["meta"] if not _ring.is_empty() else {}
 
 
-## La muestra anterior a la última (su [code]meta[/code]), o {}: sirve para detectar bordes de subida.
+## The sample before the last (its [code]meta[/code]), or {}: useful for detecting rising edges.
 func previous_meta() -> Dictionary:
 	return _ring[-2]["meta"] if _ring.size() >= 2 else {}
 
 
-# --- Por fotograma ----------------------------------------------------------------------------
+# --- Per frame --------------------------------------------------------------------------------
 
-## Antes de dibujar: si toca muestra, coloca la cámara lateral y pide que se dibuje.
+## Before drawing: if a sample is due, positions the side camera and requests a draw.
 func before_draw() -> void:
 	_due = false
 	if not is_following():
@@ -127,7 +127,7 @@ func before_draw() -> void:
 	var me: Vector3 = _d.pos()
 	var toward: Vector3 = Vector3(me.x - p.x, 0.0, me.z - p.z)
 	if _local:
-		# Al local se le mira de lado respecto a su línea hacia el enemigo más cercano (si no hay, al frente de la cámara).
+		# The local one is viewed from the side relative to its line towards the nearest enemy (if there is none, from the camera's front).
 		var enemy: Dictionary = _d.nearest_enemy(30.0)
 		if not enemy.is_empty():
 			var q: Vector3 = enemy["pos"]
@@ -142,7 +142,7 @@ func before_draw() -> void:
 	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
-## Tras dibujar: guarda la muestra si tocaba.
+## After drawing: stores the sample if it was due.
 func after_draw() -> void:
 	if not _due:
 		return
@@ -163,10 +163,10 @@ func after_draw() -> void:
 		_ring.pop_front()
 
 
-# --- Extracción -------------------------------------------------------------------------------
+# --- Extraction -------------------------------------------------------------------------------
 
-## [param count] muestras del anillo, la más cercana a cada instante
-## [code]trigger_ms - pre_ms + k * interval_ms[/code]. Devuelve [] si el anillo aún no llega a ese principio.
+## [param count] samples from the ring, the nearest to each instant
+## [code]trigger_ms - pre_ms + k * interval_ms[/code]. Returns [] if the ring does not yet reach that start.
 func extract(trigger_ms: int, pre_ms: int, interval_ms: int, count: int) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if _ring.is_empty():
@@ -184,9 +184,9 @@ func extract(trigger_ms: int, pre_ms: int, interval_ms: int, count: int) -> Arra
 	return out
 
 
-## Escribe la tira [param frames] (lo que devolvió [method extract]) en [param raw_dir]/[param id]/ciclo. Los
-## fotogramas llevan, además de la muestra, los golpes del cliente local ([code]hit_events[/code] del conductor) que
-## caen en su intervalo.
+## Writes the strip [param frames] (what [method extract] returned) into [param raw_dir]/[param id]/ciclo. The
+## frames carry, besides the sample, the local client's hits ([code]hit_events[/code] of the driver) that
+## fall in their interval.
 func save_strip(raw_dir: String, id: String, title: String, frames_in: Array[Dictionary], note_text: String = "",
 		extra: Dictionary = {}) -> void:
 	if frames_in.is_empty():
@@ -231,7 +231,7 @@ func save_strip(raw_dir: String, id: String, title: String, frames_in: Array[Dic
 	f.close()
 
 
-## Datos del seguido para el [code]meta.json[/code]: nombre, tipo, definición de PNJ y arma.
+## Data of the followed one for the [code]meta.json[/code]: name, type, NPC definition and weapon.
 func target_info() -> Dictionary:
 	var weapon_id: int = 0
 	var weapon_name: String = ""
@@ -251,7 +251,7 @@ func target_info() -> Dictionary:
 	return info
 
 
-# --- Internos ---------------------------------------------------------------------------------
+# --- Internals --------------------------------------------------------------------------------
 
 func _hit_label(ms: int) -> String:
 	var half: int = SAMPLE_MS / 2
@@ -267,8 +267,8 @@ func _hit_label(ms: int) -> String:
 	return found
 
 
-# Dónde poner la cámara lateral: a SIDE_DISTANCE m de [param origin] hacia [param side_dir] o, si hay una pared o un tronco
-# por medio (la empalizada del fuerte, una muralla), hacia el lado contrario o más cerca, para que no acabe dentro.
+# Where to put the side camera: SIDE_DISTANCE m from [param origin] towards [param side_dir] or, if there is a wall or a trunk
+# in between (the fort palisade, a wall), towards the opposite side or closer, so that it does not end up inside.
 func _free_camera_position(origin: Vector3, side_dir: Vector3) -> Vector3:
 	var space: PhysicsDirectSpaceState3D = _d.root.world_3d.direct_space_state
 	var best_dir: Vector3 = side_dir
@@ -309,7 +309,7 @@ func _project_center(p: Vector3) -> Vector2i:
 	return Vector2i(cx, cy)
 
 
-# Lo que enseña la capa de animación del seguido y su entorno en este instante.
+# What the followed one's animation layer shows and its surroundings at this instant.
 func _sample_meta() -> Dictionary:
 	var body: PlayerCharacter = _target_body()
 	var action: int = 0
@@ -346,7 +346,7 @@ func _sample_meta() -> Dictionary:
 	return m
 
 
-# Cuántos cuerpos hay a menos de NEIGHBOR_RADIUS del seguido y si alguno, más cerca de la cámara del juego, lo tapa.
+# How many bodies are within NEIGHBOR_RADIUS of the followed one and whether any, closer to the game camera, blocks it.
 func _add_surroundings(m: Dictionary, p: Vector3) -> void:
 	var others: Array[Vector3] = []
 	if not _local and _d.ch != null:

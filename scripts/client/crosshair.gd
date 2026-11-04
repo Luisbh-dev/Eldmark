@@ -1,36 +1,36 @@
 class_name Crosshair
 extends Control
-## Punto de mira: un punto pequeño y un anillo fino en el centro de la pantalla.
+## Crosshair: a small dot and a thin ring at the center of the screen.
 ##
-## Se dibuja en el centro exacto del viewport, que es por donde pasa el rayo de
-## apuntado de la cámara ([method CameraRig.get_aim_ray]). Ocupa toda la pantalla
-## pero ignora el ratón para no bloquear clics. El HUD lo oculta mientras el
-## cursor está libre.
+## It is drawn at the exact center of the viewport, which is where the camera's
+## aiming ray passes ([method CameraRig.get_aim_ray]). It fills the whole screen
+## but ignores the mouse so as not to block clicks. The HUD hides it while the
+## cursor is free.
 ## [br][br]
-## [b]Arco[/b] (docs/habilidades.md, sección 6.5): tensando, el anillo se cierra con la carga
-## ([method set_tension], de 0 a 1) hasta [member tense_ring_scale] de su radio.
+## [b]Bow[/b] (docs/habilidades.md, section 6.5): while drawing, the ring closes with the charge
+## ([method set_tension], from 0 to 1) down to [member tense_ring_scale] of its radius.
 
 const _RING_SEGMENTS: int = 48
 
-## Radio del punto central, en píxeles.
+## Radius of the central dot, in pixels.
 @export var dot_radius: float = 2.0
-## Radio del anillo, en píxeles.
+## Radius of the ring, in pixels.
 @export var ring_radius: float = 10.0
-## Grosor del trazo del anillo, en píxeles.
+## Stroke width of the ring, in pixels.
 @export var ring_width: float = 1.5
-## Grosor del contorno oscuro que rodea punto y anillo para que se lean sobre fondos claros.
+## Width of the dark outline around the dot and ring so they read on light backgrounds.
 @export var outline_width: float = 1.5
-## Color principal del punto de mira.
+## Main color of the crosshair.
 @export var color: Color = Color(1.0, 1.0, 1.0, 0.95)
-## Color del contorno.
+## Outline color.
 @export var outline_color: Color = Color(0.0, 0.0, 0.0, 0.55)
-## Fracción del radio del anillo con el arco tensado al máximo.
+## Fraction of the ring's radius with the bow drawn to the maximum.
 @export var tense_ring_scale: float = 0.35
 
 var _tension: float = 0.0
 
 
-## Cierra el anillo con la tensión del arco: 0 abierto (nada que tensar), 1 al máximo.
+## Closes the ring with the bow's tension: 0 open (nothing to draw), 1 at maximum.
 func set_tension(amount: float) -> void:
 	var clamped: float = clampf(amount, 0.0, 1.0)
 	if is_equal_approx(clamped, _tension):
@@ -43,7 +43,7 @@ func get_tension() -> float:
 	return _tension
 
 
-## Radio del anillo ahora (px), con la tensión del arco.
+## Radius of the ring now (px), with the bow's tension.
 func get_ring_radius() -> float:
 	return ring_radius * lerpf(1.0, tense_ring_scale, _tension)
 
@@ -60,7 +60,7 @@ func _notification(what: int) -> void:
 func _draw() -> void:
 	var center: Vector2 = size * 0.5
 	var radius: float = get_ring_radius()
-	# Primero los contornos oscuros y encima el trazo claro.
+	# Dark outlines first and the light stroke on top.
 	var outline_ring_width: float = ring_width + outline_width * 2.0
 	draw_arc(center, radius, 0.0, TAU, _RING_SEGMENTS, outline_color, outline_ring_width, true)
 	draw_circle(center, dot_radius + outline_width, outline_color, true, -1.0, true)

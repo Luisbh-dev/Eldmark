@@ -1,19 +1,19 @@
 extends TestCase
-## El inventario y el progreso de punta a punta, sin plataforma (docs/progresion.md §15 P8): un [ZoneServer] y tres
-## clientes de verdad ([NetClient] con ENet sobre 127.0.0.1, cada uno en su [SubViewport] con su propio mundo de
-## física, como [NetHarness]): Ana y Bruno de Vardheim y Carla de Solmarch, todos personajes efímeros con inventario
-## (§9.4). Lo que pide §15:
-## [br]- El nivel: Ana sube al 3 (DEBUG_COMMAND 43) antes de que entren los otros dos: el SPAWN de Ana trae el 3 a
-## Bruno y el 0 a Carla (§7.3); en el mundo sube al 4 y el LEVEL_UP llega a Bruno (su vista y su placa, «Nv 4») y no
-## a Carla.
-## [br]- Equipar el arco desde la bolsa con la ventana de inventario (doble clic, [method InventoryWindow.activate_item]):
-## la vista optimista, la confirmación, el LOADOUT que cambia las armas de Ana en lo que ven Bruno y Carla, la barra
-## de acciones de Ana (el cambio de arma con el arco) y ninguna corrección sin explicar en ningún cliente. Con Q, el
-## arco pasa a la mano: el arma que los otros dibujan y los ataques de la barra (UI-26).
-## [br]- Beber gasta una poción de la bolsa: el CONSUME en el confirmado del cliente y las cargas de la barra.
-## [br]- Un rechazo devuelve el objeto: Ana divide sus pociones hacia la primera ranura libre a la vez que se da otra
-## poción por DEBUG_COMMAND 40, que el servidor pone en esa ranura antes de aplicar la división; la división vuelve
-## con NO_ROOM («No cabe»), su aviso sale en el chat y la pila vuelve entera a su casilla.
+## Inventory and progress end to end, without a platform (docs/progresion.md §15 P8): a [ZoneServer] and three
+## real clients ([NetClient] with ENet over 127.0.0.1, each in its own [SubViewport] with its own physics
+## world, like [NetHarness]): Ana and Bruno from Vardheim and Carla from Solmarch, all ephemeral characters with
+## inventory (§9.4). What §15 asks for:
+## [br]- The level: Ana goes up to 3 (DEBUG_COMMAND 43) before the other two get in: Ana's SPAWN carries 3 to
+## Bruno and 0 to Carla (§7.3); in the world she goes up to 4 and the LEVEL_UP reaches Bruno (his view and his nameplate, "Nv 4") and
+## not Carla.
+## [br]- Equipping the bow from the bag with the inventory window (double click, [method InventoryWindow.activate_item]):
+## the optimistic view, the confirmation, the LOADOUT that changes Ana's weapons as seen by Bruno and Carla, Ana's
+## action bar (the weapon swap with the bow) and no unexplained correction on any client. With Q, the
+## bow goes to the hand: the weapon the others draw and the bar's attacks (UI-26).
+## [br]- Drinking spends a potion from the bag: the CONSUME in the client's confirmed state and the bar's charges.
+## [br]- A rejection returns the item: Ana splits her potions toward the first free slot at the same time that another
+## potion is given by DEBUG_COMMAND 40, which the server puts in that slot before applying the split; the split comes
+## back with NO_ROOM ("No cabe", it does not fit), its notice shows up in the chat and the stack returns whole to its cell.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -55,7 +55,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _wait_until(condition: Callable, max_frames: int = WAIT_FRAMES) -> bool:
 	for _i: int in max_frames:
@@ -65,7 +65,7 @@ func _wait_until(condition: Callable, max_frames: int = WAIT_FRAMES) -> bool:
 	return condition.call()
 
 
-## Un bot de [param realm] con la semilla [param bot_seed], quieto desde que entra.
+## A bot of [param realm] with seed [param bot_seed], standing still from the moment it enters.
 func _add_client(realm: int, bot_seed: int) -> NetClient:
 	var viewport: SubViewport = NetHarness.make_world_viewport(_root, "")
 	_viewports.append(viewport)
@@ -95,7 +95,7 @@ func _idle(tick: int, _position: Vector3, yaw: float) -> PlayerInput:
 	return input
 
 
-## Un HUD de verdad para [param client] (en su viewport), mirando hacia −Z, como en [OnlineMain].
+## A real HUD for [param client] (in its viewport), looking toward −Z, as in [OnlineMain].
 func _make_hud(client: NetClient, viewport: SubViewport) -> HUD:
 	var character: PlayerCharacter = client.get_character()
 	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
@@ -110,13 +110,13 @@ func _make_hud(client: NetClient, viewport: SubViewport) -> HUD:
 	return hud
 
 
-## El nivel con el que [param viewer] ve a [param net_id] (−1 sin vista).
+## The level with which [param viewer] sees [param net_id] (−1 without a view).
 func _seen_level(viewer: NetClient, net_id: int) -> int:
 	var view: RemotePlayerView = viewer.get_remote_world().get_view(net_id)
 	return view.get_level() if view != null else -1
 
 
-## La pareja de armas con la que [param viewer] ve a [param net_id] ((−1, −1) sin vista).
+## The weapon pair with which [param viewer] sees [param net_id] ((−1, −1) without a view).
 func _seen_weapons(viewer: NetClient, net_id: int) -> Vector2i:
 	var view: RemotePlayerView = viewer.get_remote_world().get_view(net_id)
 	return view.get_weapons() if view != null else Vector2i(-1, -1)
@@ -126,7 +126,7 @@ func _server_progress(net_id: int) -> PlayerProgress:
 	return _server.get_progress().get_player(net_id)
 
 
-## Dónde está [param def_id] en [param state] (la primera ranura, contenedor por contenedor); (−1, −1) si no está.
+## Where [param def_id] is in [param state] (the first slot, container by container); (−1, −1) if it is not there.
 func _find(state: InventoryState, def_id: StringName) -> Vector2i:
 	for container: int in [BAG, EQUIPMENT]:
 		for slot: int in state.slot_count(container):
@@ -146,7 +146,7 @@ func _count_at(state: InventoryState, at: Vector2i) -> int:
 	return item.count if item != null else 0
 
 
-## El confirmado del cliente y el inventario del servidor, ranura a ranura (uid, objeto y cantidad).
+## The client's confirmed state and the server's inventory, slot by slot (uid, item and quantity).
 func _same_inventory(client: InventoryState, server: InventoryState) -> bool:
 	if client == null or server == null:
 		return false
@@ -161,7 +161,7 @@ func _same_inventory(client: InventoryState, server: InventoryState) -> bool:
 	return true
 
 
-# --- La prueba ---------------------------------------------------------------------------------
+# --- The test ----------------------------------------------------------------------------------
 
 func test_inventory_levels_and_potions_over_the_network() -> void:
 	_port = NetHarness.free_udp_port()
@@ -172,7 +172,7 @@ func test_inventory_levels_and_potions_over_the_network() -> void:
 	config.max_players = 8
 	config.debug_commands = true
 	_server = NetHarness.start_server(_server_viewport, config)
-	if not assert_true(_server != null, "el servidor arranca"):
+	if not assert_true(_server != null, "the server starts"):
 		return
 	_server.get_progress().log_sink = func(_text: String) -> void: pass
 	await wait_physics_frames(3)
@@ -181,21 +181,21 @@ func test_inventory_levels_and_potions_over_the_network() -> void:
 	var sword: int = CombatCatalog.weapon_id(&"sword_shield")
 	var bow: int = CombatCatalog.weapon_id(&"bow")
 
-	# --- Ana entra sola y sube al nivel 3 antes de que entren los demás. ------------------------------------
+	# --- Ana gets in alone and goes up to level 3 before the others get in. --------------------------------
 	var ana: NetClient = _add_client(VARDHEIM, 1)
-	if not assert_true(await _enters(ana), "Ana entra con su inventario"):
+	if not assert_true(await _enters(ana), "Ana gets in with her inventory"):
 		return
 	var ana_id: int = ana.get_net_id()
 	ana.send_debug_command(NetProtocol.DEBUG_XP_ADD, NetMessages.DebugCommand.xp_add(curve.total_to(3)).payload)
 	var leveled: bool = await _wait_until(func() -> bool:
 		return ana.get_progress().get_level() == 3 and _server.get_registry().get_entity(ana_id).level == 3, 300)
-	if not assert_true(leveled, "Ana sube al nivel 3 (PROGRESS_UPDATE y NetEntity.level)"):
+	if not assert_true(leveled, "Ana goes up to level 3 (PROGRESS_UPDATE and NetEntity.level)"):
 		return
 
-	# --- Bruno (su reino) y Carla (el otro) reciben el SPAWN de Ana: 3 y 0. ---------------------------------
+	# --- Bruno (her realm) and Carla (the other) receive Ana's SPAWN: 3 and 0. -----------------------------
 	var bruno: NetClient = _add_client(VARDHEIM, 2)
 	var carla: NetClient = _add_client(SOLMARCH, 3)
-	if not assert_true(await _enters(bruno) and await _enters(carla), "entran Bruno y Carla"):
+	if not assert_true(await _enters(bruno) and await _enters(carla), "Bruno and Carla get in"):
 		return
 	var bruno_id: int = bruno.get_net_id()
 	var carla_id: int = carla.get_net_id()
@@ -205,71 +205,71 @@ func test_inventory_levels_and_potions_over_the_network() -> void:
 	var all_seen: bool = await _wait_until(func() -> bool:
 		return _seen_level(bruno, ana_id) >= 0 and _seen_level(carla, ana_id) >= 0 \
 				and _seen_level(ana, carla_id) >= 0 and _seen_level(ana, bruno_id) >= 0, 300)
-	if not assert_true(all_seen, "cada uno ve a los otros"):
+	if not assert_true(all_seen, "each one sees the others"):
 		return
-	assert_eq(_seen_level(bruno, ana_id), 3, "Bruno, de su reino, recibe el nivel real de Ana en el SPAWN")
-	assert_eq(_seen_level(carla, ana_id), 0, "Carla, del otro reino, recibe 0")
-	assert_eq(_seen_level(ana, bruno_id), 1, "Ana ve el nivel 1 de Bruno")
-	assert_eq(_seen_level(ana, carla_id), 0, "y el 0 de Carla")
+	assert_eq(_seen_level(bruno, ana_id), 3, "Bruno, from the same realm, receives Ana's real level in the SPAWN")
+	assert_eq(_seen_level(carla, ana_id), 0, "Carla, from the other realm, receives 0")
+	assert_eq(_seen_level(ana, bruno_id), 1, "Ana sees Bruno's level 1")
+	assert_eq(_seen_level(ana, carla_id), 0, "and Carla's 0")
 
-	# --- En el mundo, Ana sube al 4: el LEVEL_UP llega a Bruno y no a Carla. -----------------------------------
+	# --- In the world, Ana goes up to 4: the LEVEL_UP reaches Bruno and not Carla. -----------------------------------
 	var bruno_hud: HUD = _make_hud(bruno, _viewports[1])
 	var carla_hud: HUD = _make_hud(carla, _viewports[2])
 	ana.send_debug_command(NetProtocol.DEBUG_XP_ADD,
 			NetMessages.DebugCommand.xp_add(curve.total_to(4) - curve.total_to(3)).payload)
 	var up: bool = await _wait_until(func() -> bool:
 		return ana.get_progress().get_level() == 4 and _seen_level(bruno, ana_id) == 4, 300)
-	if not assert_true(up, "Ana sube al 4 y Bruno lo ve por el LEVEL_UP"):
+	if not assert_true(up, "Ana goes up to 4 and Bruno sees it through the LEVEL_UP"):
 		return
 	await wait_physics_frames(30)
-	assert_eq(_seen_level(carla, ana_id), 0, "Carla sigue viendo 0: no recibe el LEVEL_UP de otro reino")
+	assert_eq(_seen_level(carla, ana_id), 0, "Carla still sees 0: she does not receive the LEVEL_UP from another realm")
 	var plate_shown: bool = await _wait_until(func() -> bool:
 		bruno_hud.get_nameplates().refresh(0.016)
 		var plate: Nameplate = bruno_hud.get_nameplates().get_plate_for(ana_id)
 		return plate != null and plate.get_level_text() == "Nv 4", 120)
-	assert_true(plate_shown, "la placa de Ana en el HUD de Bruno dice «Nv 4»")
+	assert_true(plate_shown, "Ana's nameplate in Bruno's HUD says \"Nv 4\"")
 	carla_hud.get_nameplates().refresh(0.016)
 	var enemy_plate: Nameplate = carla_hud.get_nameplates().get_plate_for(ana_id)
-	assert_eq(enemy_plate.get_level_text() if enemy_plate != null else "", "", "y en el de Carla, sin nivel")
+	assert_eq(enemy_plate.get_level_text() if enemy_plate != null else "", "", "and in Carla's, without a level")
 
-	# --- Ana se equipa el arco de su bolsa con la ventana de inventario. ----------------------------------------
+	# --- Ana equips the bow from her bag with the inventory window. ----------------------------------------------
 	var ana_hud: HUD = _make_hud(ana, _viewports[0])
 	await wait_physics_frames(5)
 	var inventory: ClientInventory = ana.get_inventory()
 	var window: InventoryWindow = ana_hud.get_inventory_window()
 	var bar: ActionBar = ana_hud.get_action_bar()
 	var bow_at: Vector2i = _find(inventory.get_view(), &"bow_vado")
-	assert_eq(bow_at.x, BAG, "el arco del kit del escudero está en la bolsa")
-	assert_eq(_def_at(inventory.get_view(), Vector2i(EQUIPMENT, 0)), &"sword_shield_vado", "con la espada puesta")
-	assert_false(bar.get_slot(ActionBar.Slot.SWAP).enabled, "sin segunda arma, el cambio de arma está apagado")
+	assert_eq(bow_at.x, BAG, "the squire kit's bow is in the bag")
+	assert_eq(_def_at(inventory.get_view(), Vector2i(EQUIPMENT, 0)), &"sword_shield_vado", "with the sword equipped")
+	assert_false(bar.get_slot(ActionBar.Slot.SWAP).enabled, "without a second weapon, the weapon swap is off")
 	var bow_uid: int = inventory.get_view().get_item(bow_at.x, bow_at.y).uid
 	var before_stats: Array[Dictionary] = []
 	for client: NetClient in _clients:
 		before_stats.append(client.get_stats())
-	assert_eq(window.activate_item(bow_at), InventoryOps.Result.OK, "doble clic en el arco: se pide equiparlo")
+	assert_eq(window.activate_item(bow_at), InventoryOps.Result.OK, "double click on the bow: equipping it is requested")
 	var weapon_2 := Vector2i(EQUIPMENT, InventoryState.EquipmentSlot.WEAPON_2)
-	assert_eq(_def_at(inventory.get_view(), weapon_2), &"bow_vado", "la vista lo pone en WEAPON_2 al momento")
-	assert_eq(_def_at(inventory.get_confirmed(), weapon_2), &"", "aún sin confirmar")
-	assert_eq(inventory.get_pending_count(), 1, "con la petición en vuelo")
+	assert_eq(_def_at(inventory.get_view(), weapon_2), &"bow_vado", "the view puts it in WEAPON_2 immediately")
+	assert_eq(_def_at(inventory.get_confirmed(), weapon_2), &"", "still unconfirmed")
+	assert_eq(inventory.get_pending_count(), 1, "with the request in flight")
 	var equipped: bool = await _wait_until(func() -> bool:
 		return inventory.get_pending_count() == 0 and _def_at(inventory.get_confirmed(), weapon_2) == &"bow_vado" \
 				and _server.get_registry().get_entity(ana_id).get_character().combat.alt_weapon_id == bow \
 				and ana.get_character().combat.alt_weapon_id == bow, 300)
-	if not assert_true(equipped, "el servidor lo confirma y el LOADOUT pone el arco en la predicción de Ana"):
+	if not assert_true(equipped, "the server confirms it and the LOADOUT puts the bow in Ana's prediction"):
 		return
-	assert_eq(inventory.get_confirmed().get_item(weapon_2.x, weapon_2.y).uid, bow_uid, "el mismo uid")
-	assert_true(inventory.get_confirmed().get_item(weapon_2.x, weapon_2.y).bound, "ligado al equipar")
+	assert_eq(inventory.get_confirmed().get_item(weapon_2.x, weapon_2.y).uid, bow_uid, "the same uid")
+	assert_true(inventory.get_confirmed().get_item(weapon_2.x, weapon_2.y).bound, "bound on equipping")
 	var others_see: bool = await _wait_until(func() -> bool:
 		return _seen_weapons(bruno, ana_id) == Vector2i(sword, bow) and _seen_weapons(carla, ana_id) == Vector2i(sword, bow),
 			300)
-	assert_true(others_see, "Bruno y Carla ven a Ana con la espada y el arco (LOADOUT)")
+	assert_true(others_see, "Bruno and Carla see Ana with the sword and the bow (LOADOUT)")
 	var bar_shows: bool = await _wait_until(func() -> bool:
 		var swap: ActionBar.ActionSlot = bar.get_slot(ActionBar.Slot.SWAP)
 		return swap.enabled and swap.tooltip_text.contains(CombatText.weapon_title(bow)), 60)
-	assert_true(bar_shows, "la barra de Ana enseña el cambio al arco")
+	assert_true(bar_shows, "Ana's bar shows the swap to the bow")
 	assert_true(_same_inventory(inventory.get_confirmed(), _server_progress(ana_id).record.inventory),
-			"el confirmado de Ana es el inventario del servidor")
-	# Con Q, el arco equipado pasa a la mano: el modelo que ven los otros y los ataques de la barra.
+			"Ana's confirmed state is the server's inventory")
+	# With Q, the equipped bow goes to the hand: the model the others see and the bar's attacks.
 	var swap_at: int = ana.get_prediction().get_predicted_tick() + 10
 	_set_script(ana, func(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 		var input: PlayerInput = _idle(tick, position, yaw)
@@ -282,17 +282,17 @@ func test_inventory_levels_and_potions_over_the_network() -> void:
 		return _server.get_registry().get_entity(ana_id).get_character().combat.weapon_id == bow \
 				and ana.get_character().combat.weapon_id == bow and bar.get_shown_weapon() == bow \
 				and bruno_view.get_active_weapon_id() == bow and carla_view.get_active_weapon_id() == bow, 300)
-	assert_true(in_hand, "Ana cambia al arco: Bruno y Carla se lo ven en la mano y su barra enseña los del arco")
+	assert_true(in_hand, "Ana switches to the bow: Bruno and Carla see it in her hand and her bar shows the bow's attacks")
 	_set_script(ana, _idle)
 	await wait_physics_frames(30)
 
-	# --- Beber gasta una poción de la bolsa. -------------------------------------------------------------------
+	# --- Drinking spends a potion from the bag. -------------------------------------------------------------------
 	var potions_at: Vector2i = _find(inventory.get_confirmed(), &"potion_health")
 	var potions: int = inventory.get_confirmed().count_of(&"potion_health")
-	assert_eq([potions_at.x, potions], [BAG, 3], "tres pociones de vida en la bolsa")
+	assert_eq([potions_at.x, potions], [BAG, 3], "three health potions in the bag")
 	var charges_shown: bool = await _wait_until(func() -> bool:
 		return bar.get_slot(ActionBar.Slot.CONSUMABLE_1).count == 3, 60)
-	assert_true(charges_shown, "la barra enseña sus tres cargas")
+	assert_true(charges_shown, "the bar shows its three charges")
 	var consumed: Array[int] = []
 	ana.inventory_delta_received.connect(func(delta: ProgressMessages.InventoryDelta) -> void:
 		if delta.reason == EconomyReason.CONSUME:
@@ -306,13 +306,13 @@ func test_inventory_levels_and_potions_over_the_network() -> void:
 	var drank: bool = await _wait_until(func() -> bool:
 		return consumed.size() == 1 and inventory.get_confirmed().count_of(&"potion_health") == 2 \
 				and bar.get_slot(ActionBar.Slot.CONSUMABLE_1).count == 2, 600)
-	if not assert_true(drank, "el CONSUME llega: dos pociones en la bolsa y dos cargas en la barra"):
+	if not assert_true(drank, "the CONSUME arrives: two potions in the bag and two charges on the bar"):
 		return
-	assert_eq(_server_progress(ana_id).record.inventory.count_of(&"potion_health"), 2, "y en el servidor")
+	assert_eq(_server_progress(ana_id).record.inventory.count_of(&"potion_health"), 2, "and on the server")
 	_set_script(ana, _idle)
 	await wait_physics_frames(30)
 
-	# --- Un rechazo devuelve el objeto. --------------------------------------------------------------------------
+	# --- A rejection returns the item. --------------------------------------------------------------------------
 	potions_at = _find(inventory.get_confirmed(), &"potion_health")
 	var free_slot: int = inventory.get_view().first_free(BAG)
 	var rejections: Array[Array] = []
@@ -320,32 +320,32 @@ func test_inventory_levels_and_potions_over_the_network() -> void:
 	ana.send_debug_command(NetProtocol.DEBUG_ITEM_GIVE,
 			NetMessages.DebugCommand.item_give(db.net_id_of(&"potion_health"), 1).payload)
 	assert_eq(inventory.request(inventory.make_split(potions_at, Vector2i(BAG, free_slot), 1)), InventoryOps.Result.OK,
-			"la división vale con lo que ve Ana")
-	assert_eq(_count_at(inventory.get_view(), potions_at), 1, "en la vista, la pila baja a 1")
-	assert_eq(_count_at(inventory.get_view(), Vector2i(BAG, free_slot)), 1, "y sale una pila provisional")
+			"the split is valid by what Ana sees")
+	assert_eq(_count_at(inventory.get_view(), potions_at), 1, "in the view, the stack drops to 1")
+	assert_eq(_count_at(inventory.get_view(), Vector2i(BAG, free_slot)), 1, "and a provisional stack appears")
 	var answered: bool = await _wait_until(func() -> bool:
 		return inventory.get_pending_count() == 0 and not rejections.is_empty(), 300)
-	if not assert_true(answered, "llega la respuesta"):
+	if not assert_true(answered, "the reply arrives"):
 		return
 	assert_eq(rejections, [[InventoryOps.Result.NO_ROOM, InventoryOps.result_text(InventoryOps.Result.NO_ROOM)]],
-			"rechazada con NO_ROOM («No cabe»): el servidor puso antes la poción del GM en esa ranura")
-	assert_eq(_count_at(inventory.get_view(), potions_at), 2, "la pila vuelve entera a su casilla")
-	assert_eq(_count_at(inventory.get_view(), Vector2i(BAG, free_slot)), 1, "y en la ranura, la poción dada")
-	assert_false(ClientInventory.is_provisional(inventory.get_view().get_item(BAG, free_slot)), "con su uid real")
+			"rejected with NO_ROOM (\"No cabe\", it does not fit): the server put the GM's potion in that slot first")
+	assert_eq(_count_at(inventory.get_view(), potions_at), 2, "the stack returns whole to its cell")
+	assert_eq(_count_at(inventory.get_view(), Vector2i(BAG, free_slot)), 1, "and in the slot, the given potion")
+	assert_false(ClientInventory.is_provisional(inventory.get_view().get_item(BAG, free_slot)), "with its real uid")
 	assert_true(_same_inventory(inventory.get_view(), _server_progress(ana_id).record.inventory),
-			"la vista de Ana es el inventario del servidor")
+			"Ana's view is the server's inventory")
 	assert_true(ana_hud.get_chat().get_visible_text().contains(InventoryOps.result_text(InventoryOps.Result.NO_ROOM)),
-			"el aviso del rechazo sale en el chat")
+			"the rejection notice shows up in the chat")
 	var charged: bool = await _wait_until(func() -> bool:
 		return bar.get_slot(ActionBar.Slot.CONSUMABLE_1).count == 3, 120)
-	assert_true(charged, "la poción dada suma su carga en la barra")
+	assert_true(charged, "the given potion adds its charge to the bar")
 
-	# --- Ninguna corrección sin explicar. -------------------------------------------------------------------------
+	# --- No unexplained correction. -------------------------------------------------------------------------------
 	await wait_physics_frames(30)
 	for index: int in _clients.size():
 		var stats: Dictionary = _clients[index].get_stats()
-		assert_eq(stats["unexplained_diffs"], 0, "%s predice sin fallos sin explicar" % _clients[index].get_config().display_name)
-		assert_eq(stats["hard_resets"], 0, "ni reinicios duros")
-		assert_eq(stats["malformed_packets"], 0, "ni mensajes mal formados")
+		assert_eq(stats["unexplained_diffs"], 0, "%s predicts without unexplained failures" % _clients[index].get_config().display_name)
+		assert_eq(stats["hard_resets"], 0, "nor hard resets")
+		assert_eq(stats["malformed_packets"], 0, "nor malformed messages")
 		print("[progreso] %s: diffs %d -> %d, correcciones %d -> %d" % [_clients[index].get_config().display_name,
 				before_stats[index]["diffs"], stats["diffs"], before_stats[index]["corrections"], stats["corrections"]])

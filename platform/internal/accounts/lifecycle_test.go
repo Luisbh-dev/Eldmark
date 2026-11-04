@@ -16,8 +16,8 @@ import (
 	"eldmark/platform/legal"
 )
 
-// El registro con un correo con cuenta, uno sancionado y uno nuevo da el mismo cuerpo, y a cada
-// uno le llega su correo (§4.2).
+// Registration with an email that has an account, a sanctioned one and a new one gives the same
+// body, and each one receives its email (§4.2).
 func TestRegistrationDoesNotRevealAccounts(t *testing.T) {
 	h := newHarness(t)
 	h.register("existe@example.org")
@@ -50,7 +50,7 @@ func TestRegistrationDoesNotRevealAccounts(t *testing.T) {
 	if _, token := h.mailTo("nuevo@example.org", "verify_email"); token == "" {
 		t.Fatal("el nuevo recibe su enlace")
 	}
-	// La cuenta nueva: aceptaciones de las versiones vigentes y consentimientos.
+	// The new account: acceptances of the current versions and consents.
 	var acceptances, consents int
 	h.scalar(&acceptances, `select count(*) from legal_acceptances a join accounts using (account_id) where email = 'nuevo@example.org'`)
 	h.scalar(&consents, `select count(*) from consents c join accounts using (account_id) where email = 'nuevo@example.org'`)
@@ -59,7 +59,7 @@ func TestRegistrationDoesNotRevealAccounts(t *testing.T) {
 	}
 }
 
-// hmacOf es la huella de un correo con la clave de pruebas (sanctioned_email_hashes).
+// hmacOf is an email's fingerprint with the test key (sanctioned_email_hashes).
 func hmacOf(email string) []byte {
 	m := hmac.New(sha256.New, config.TestEmailHMACKey)
 	m.Write([]byte(email))
@@ -100,7 +100,7 @@ func TestRegistrationValidation(t *testing.T) {
 			t.Errorf("caso %d: %s", i, res.raw)
 		}
 	}
-	// Godot escribe los enteros como 1.0: valen.
+	// Godot writes integers as 1.0: they are valid.
 	body := registerBody("Aneira@Example.org", password)
 	body["accept"] = map[string]any{"terms": 1.0, "privacy": 1.0, "rules": 1.0}
 	raw, _ := json.Marshal(body)
@@ -109,7 +109,7 @@ func TestRegistrationValidation(t *testing.T) {
 		t.Fatal(res.raw)
 	}
 	h.accountID("aneira@example.org")
-	// Un correo con CR/LF tampoco vale para recuperar la contraseña.
+	// An email with CR/LF is not valid for password recovery either.
 	h.expect(h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "a@example.org\r\nBcc: b@example.org"}}),
 		400, "validation")
 	h.expect(h.do(call{method: "POST", path: "/v1/accounts", body: "{roto", ip: h.nextIP()}), 400, "bad_request")
@@ -117,7 +117,7 @@ func TestRegistrationValidation(t *testing.T) {
 		413, "too_large")
 }
 
-// 3 registros por IP y hora; 3 correos por destinatario y hora (también los de recuperación).
+// 3 registrations per IP and hour; 3 emails per recipient and hour (including the recovery ones).
 func TestRegistrationAndMailLimits(t *testing.T) {
 	h := newHarness(t)
 	ip := h.nextIP()
@@ -130,7 +130,7 @@ func TestRegistrationAndMailLimits(t *testing.T) {
 			h.expect(res, 429, "rate_limited")
 		}
 	}
-	// r1 ya gastó un correo (verify_email): le quedan dos.
+	// r1 has already spent one email (verify_email): two are left.
 	for i := 0; i < 2; i++ {
 		if res := h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "r1@example.org"},
 			ip: h.nextIP()}); res.status != 202 {
@@ -139,7 +139,7 @@ func TestRegistrationAndMailLimits(t *testing.T) {
 	}
 	h.expect(h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "r1@example.org"},
 		ip: h.nextIP()}), 429, "rate_limited")
-	// Igual con un correo sin cuenta: el límite no delata nada.
+	// Same with an email without an account: the limit reveals nothing.
 	for i := 0; i < 3; i++ {
 		if res := h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "nadie@example.org"},
 			ip: h.nextIP()}); res.status != 202 || res.raw != "{}\n" {
@@ -153,7 +153,7 @@ func TestRegistrationAndMailLimits(t *testing.T) {
 	}
 }
 
-// Enlaces caducados y usados: 400 validation con fields.token y nada cambia (§4.3).
+// Expired and used links: 400 validation with fields.token and nothing changes (§4.3).
 func TestLinksExpireAndAreSingleUse(t *testing.T) {
 	h := newHarness(t)
 	h.register("enlace@example.org")
@@ -186,13 +186,13 @@ func TestLinksExpireAndAreSingleUse(t *testing.T) {
 	if res.errField("token") != "invalid" {
 		t.Fatal(res.raw)
 	}
-	// Ya verificada, pedir otro no manda nada.
+	// Already verified, asking for another sends nothing.
 	n := h.mailCount("enlace@example.org", "verify_email")
 	h.do(call{method: "POST", path: "/v1/account/verify-email/resend", token: s.access})
 	if h.mailCount("enlace@example.org", "verify_email") != n {
 		t.Fatal("ya verificada")
 	}
-	// Recuperación: 1 h.
+	// Recovery: 1 h.
 	h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "enlace@example.org"}, ip: h.nextIP()})
 	_, reset := h.mailTo("enlace@example.org", "reset_password")
 	h.clock.Advance(61 * time.Minute)
@@ -201,12 +201,12 @@ func TestLinksExpireAndAreSingleUse(t *testing.T) {
 	if res.errField("token") != "expired" {
 		t.Fatal(res.raw)
 	}
-	h.login("enlace@example.org", password) // nada cambió
+	h.login("enlace@example.org", password) // nothing changed
 }
 
-// Pedir la recuperación hace el mismo trabajo exista o no la cuenta (§4.2): los dos caminos escriben
-// y confirman una fila password_reset en auth_events (con la cuenta o sin ella), así que el tiempo
-// de la respuesta no delata qué correos tienen cuenta.
+// Requesting recovery does the same work whether or not the account exists (§4.2): both paths write
+// and commit a password_reset row in auth_events (with the account or without it), so the response
+// time does not reveal which emails have an account.
 func TestPasswordResetWritesEitherWay(t *testing.T) {
 	h := newHarness(t)
 	id := h.register("tiene@example.org")
@@ -226,8 +226,8 @@ func TestPasswordResetWritesEitherWay(t *testing.T) {
 	if h.mailCount("nadie@example.org", "reset_password") != 0 || h.mailCount("tiene@example.org", "reset_password") != 1 {
 		t.Fatal("correos")
 	}
-	// La respuesta no espera a la base: con la tabla de cuentas bloqueada, vuelve igual (y lo demás
-	// llega al soltarla).
+	// The response does not wait for the database: with the accounts table locked, it returns all the
+	// same (and the rest arrives when it is released).
 	ctx := context.Background()
 	lock, err := h.pool.Begin(ctx)
 	if err != nil {
@@ -257,7 +257,7 @@ func TestPasswordResetWritesEitherWay(t *testing.T) {
 	}
 }
 
-// Recuperar la contraseña revoca todas las sesiones e invalida los enlaces.
+// Recovering the password revokes all sessions and invalidates the links.
 func TestPasswordReset(t *testing.T) {
 	h := newHarness(t)
 	h.register("olvido@example.org")
@@ -291,13 +291,13 @@ func TestPasswordReset(t *testing.T) {
 	h.login("olvido@example.org", "contraseña recuperada")
 }
 
-// Tras cambiar la contraseña o el correo, el enlace de recuperación anterior falla y el
-// revert_email sigue valiendo; revert_email devuelve el correo y obliga a recuperar (§4.3).
+// After changing the password or the email, the previous recovery link fails and the revert_email
+// still works; revert_email gives the email back and forces a recovery (§4.3).
 func TestEmailChangeAndRevert(t *testing.T) {
 	h := newHarness(t)
 	id := h.register("vieja@example.org")
 	h.register("ocupada@example.org")
-	// Cambio de contraseña: el enlace de recuperación anterior deja de valer y la sesión sigue.
+	// Password change: the previous recovery link stops being valid and the session continues.
 	h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "vieja@example.org"}, ip: h.nextIP()})
 	_, oldReset := h.mailTo("vieja@example.org", "reset_password")
 	s := h.login("vieja@example.org", password)
@@ -314,7 +314,7 @@ func TestEmailChangeAndRevert(t *testing.T) {
 		t.Fatal(res.raw)
 	}
 
-	// Cambio de correo hacia uno con cuenta: 202 y register_existing a ese, nada más.
+	// Email change to one with an account: 202 and register_existing to it, nothing more.
 	if res := h.do(call{method: "POST", path: "/v1/account/email", token: s.access,
 		body: map[string]any{"new_email": "ocupada@example.org", "password": newPassword}}); res.status != 202 {
 		t.Fatal(res.raw)
@@ -329,7 +329,7 @@ func TestEmailChangeAndRevert(t *testing.T) {
 		t.Fatal(res.raw)
 	}
 	_, change := h.mailTo("nueva@example.org", "change_email")
-	// Pide otra recuperación antes de confirmar: el cambio la invalida.
+	// It requests another recovery before confirming: the change invalidates it.
 	h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "vieja@example.org"}, ip: h.nextIP()})
 	_, pendingReset := h.mailTo("vieja@example.org", "reset_password")
 	if res := h.do(call{method: "POST", path: "/v1/account/email/confirm", body: map[string]any{"token": change}}); res.status != 204 {
@@ -352,7 +352,7 @@ func TestEmailChangeAndRevert(t *testing.T) {
 		t.Fatalf("aviso al viejo: %s", notice)
 	}
 
-	// Quien robó la cuenta la cambia otra vez: el revert_email del dueño sigue valiendo (7 días).
+	// Whoever stole the account changes it again: the owner's revert_email is still valid (7 days).
 	thief := h.login("nueva@example.org", newPassword)
 	h.do(call{method: "POST", path: "/v1/account/email", token: thief.access,
 		body: map[string]any{"new_email": "ladron@example.org", "password": newPassword}})
@@ -370,7 +370,7 @@ func TestEmailChangeAndRevert(t *testing.T) {
 	if email != "vieja@example.org" || !noPassword {
 		t.Fatal(email, noPassword)
 	}
-	// Sin contraseña: no entra nadie, tampoco el dueño, hasta recuperarla.
+	// Without a password: nobody gets in, not even the owner, until it is recovered.
 	h.expect(h.loginFrom("vieja@example.org", newPassword, h.nextIP()), 401, "invalid_credentials")
 	h.expect(h.loginFrom("ladron@example.org", newPassword, h.nextIP()), 401, "invalid_credentials")
 	var reasons string
@@ -384,7 +384,7 @@ func TestEmailChangeAndRevert(t *testing.T) {
 		t.Fatal(res.raw)
 	}
 	h.login("vieja@example.org", "la del dueño, nueva")
-	// El enlace de revertir es de un solo uso.
+	// The revert link is single-use.
 	if res := h.do(call{method: "POST", path: "/v1/account/email/revert", body: map[string]any{"token": revert}}); res.errField("token") != "used" {
 		t.Fatal(res.raw)
 	}
@@ -395,8 +395,8 @@ func TestEmailChangeAndRevert(t *testing.T) {
 	}
 }
 
-// changeEmail cambia el correo de la sesión s (con su contraseña) de from a to y devuelve el enlace
-// revert_email que llega a from.
+// changeEmail changes session s's email (with its password) from from to to and returns the
+// revert_email link that reaches from.
 func (h *harness) changeEmail(s session, from, to, pw string) string {
 	h.t.Helper()
 	if res := h.do(call{method: "POST", path: "/v1/account/email", token: s.access, ip: h.nextIP(),
@@ -419,12 +419,12 @@ func (h *harness) revert(token string) *response {
 	return h.do(call{method: "POST", path: "/v1/account/email/revert", body: map[string]any{"token": token}})
 }
 
-// Quien sabe la contraseña cambia el correo dos veces (A→B→C): al dueño le llega R1 en A y al ladrón
-// R2 en B. Gastar un revert_email anula los de la cuenta emitidos después, así que el del dueño (el
-// más antiguo) deja muerto el del ladrón, y el del ladrón, usado antes, no anula el del dueño (§4.3).
+// Whoever knows the password changes the email twice (A->B->C): the owner gets R1 at A and the
+// thief R2 at B. Spending a revert_email voids the account's ones issued afterwards, so the owner's
+// (the oldest) kills the thief's, and the thief's, used earlier, does not void the owner's (§4.3).
 func TestRevertEmailChain(t *testing.T) {
 	h := newHarness(t)
-	// El dueño revierte primero: R2 ya no vale y la cuenta sigue siendo suya.
+	// The owner reverts first: R2 is no longer valid and the account is theirs again.
 	id := h.register("dueno@example.org")
 	s := h.login("dueno@example.org", password)
 	r1 := h.changeEmail(s, "dueno@example.org", "ladron1@example.org", password)
@@ -450,8 +450,8 @@ func TestRevertEmailChain(t *testing.T) {
 	h.login("dueno@example.org", "la del dueño, nueva")
 	h.expect(h.loginFrom("ladron1@example.org", password, h.nextIP()), 401, "invalid_credentials")
 
-	// El ladrón revierte primero con R2: R1 sigue vivo, el dueño vuelve con él y el enlace de
-	// recuperación que le llegó al ladrón deja de valer.
+	// The thief reverts first with R2: R1 is still alive, the owner returns with it and the recovery
+	// link that reached the thief stops being valid.
 	id = h.register("duena@example.org")
 	s = h.login("duena@example.org", password)
 	r1 = h.changeEmail(s, "duena@example.org", "ladrona1@example.org", password)
@@ -477,13 +477,13 @@ func TestRevertEmailChain(t *testing.T) {
 	}
 }
 
-// Mientras vive un revert_email, su correo queda reservado para el dueño: ni un registro, ni el
-// cambio de correo de otra cuenta, ni un change_email a ese correo pedido antes lo toman (los dos
-// primeros reciben lo mismo que un correo con cuenta), y el dueño puede volver a él. Al caducar el
-// enlace, el correo queda libre (§4.3).
+// While a revert_email is alive, its email stays reserved for the owner: neither a registration,
+// nor another account's email change, nor a change_email to that email requested earlier takes it
+// (the first two receive the same as for an email with an account), and the owner can go back to it.
+// When the link expires, the email is free (§4.3).
 func TestOldEmailIsReservedWhileRevertLives(t *testing.T) {
 	h := newHarness(t)
-	// Otra cuenta pide pasarse a dueno@ cuando aún no lo tiene nadie.
+	// Another account asks to move to dueno@ when nobody has it yet.
 	h.register("otro@example.org")
 	other := h.login("otro@example.org", password)
 	if res := h.do(call{method: "POST", path: "/v1/account/email", token: other.access, ip: h.nextIP(),
@@ -508,7 +508,7 @@ func TestOldEmailIsReservedWhileRevertLives(t *testing.T) {
 	if res := h.do(call{method: "POST", path: "/v1/account/email/confirm", body: map[string]any{"token": early}}); res.errField("token") != "unavailable" {
 		t.Fatalf("el change_email de antes tomó el correo reservado: %s", res.raw)
 	}
-	h.clock.Advance(time.Hour) // el límite de correos de dueno@ (3 por hora)
+	h.clock.Advance(time.Hour) // the email limit of dueno@ (3 per hour)
 	other = h.login("otro@example.org", password)
 	if res := h.do(call{method: "POST", path: "/v1/account/email", token: other.access, ip: h.nextIP(),
 		body: map[string]any{"new_email": "dueno@example.org", "password": password}}); res.status != 202 {
@@ -525,7 +525,7 @@ func TestOldEmailIsReservedWhileRevertLives(t *testing.T) {
 	if email != "dueno@example.org" {
 		t.Fatal(email)
 	}
-	// Caducado el enlace, el correo que reservaba queda libre.
+	// Once the link has expired, the email it reserved is free.
 	h.changeEmail(other, "otro@example.org", "otro2@example.org", password)
 	h.clock.Advance(accountsRevertTTL + time.Second)
 	if res := h.do(call{method: "POST", path: "/v1/accounts", body: registerBody("otro@example.org", password),
@@ -535,10 +535,11 @@ func TestOldEmailIsReservedWhileRevertLives(t *testing.T) {
 	h.accountID("otro@example.org")
 }
 
-// accountsRevertTTL es accounts.RevertTTL (7 días).
+// accountsRevertTTL is accounts.RevertTTL (7 days).
 const accountsRevertTTL = 7 * 24 * time.Hour
 
-// Borrado y cancelación en plazo (§4.3); vencido, no se cancela y la purga lo borra.
+// Deletion and cancellation within the period (§4.3); once elapsed, it is not cancelled and the
+// purge deletes it.
 func TestDeletionAndCancellation(t *testing.T) {
 	h := newHarness(t)
 	id := h.register("borrar@example.org")
@@ -555,7 +556,7 @@ func TestDeletionAndCancellation(t *testing.T) {
 	if acc.body["pending"].(map[string]any)["deletion_at"] != float64(purgeAt) {
 		t.Fatal(acc.raw)
 	}
-	// Iniciar sesión sigue valiendo (para poder cancelarlo).
+	// Logging in is still valid (to be able to cancel it).
 	h.clock.Advance(13 * 24 * time.Hour)
 	s = h.login("borrar@example.org", password)
 	if res := h.do(call{method: "DELETE", path: "/v1/account/deletion", token: s.access}); res.status != 204 {
@@ -566,7 +567,7 @@ func TestDeletionAndCancellation(t *testing.T) {
 	if status != "active" {
 		t.Fatal(status)
 	}
-	// Otra vez, y esta vez vence.
+	// Again, and this time it elapses.
 	s = h.login("borrar@example.org", password)
 	h.do(call{method: "POST", path: "/v1/account/deletion", token: s.access, body: map[string]any{"password": password}})
 	h.clock.Advance(14*24*time.Hour + time.Second)
@@ -589,7 +590,7 @@ func TestDeletionAndCancellation(t *testing.T) {
 	h.expect(h.loginFrom("borrar@example.org", password, h.nextIP()), 401, "invalid_credentials")
 }
 
-// Exportar sin contraseña → 400; con ella, el JSON de §11.2; una vez al día.
+// Exporting without a password -> 400; with it, the JSON of §11.2; once a day.
 func TestExport(t *testing.T) {
 	h := newHarness(t)
 	id := h.register("exporta@example.org")
@@ -628,7 +629,7 @@ func TestExport(t *testing.T) {
 	}
 }
 
-// Una versión nueva de un texto: GET /v1/account lo dice y aceptarla lo quita; consentimientos.
+// A new version of a text: GET /v1/account says so and accepting it removes it; consents.
 func TestAcceptNewVersionsAndConsents(t *testing.T) {
 	h := newHarness(t)
 	h.register("acepta@example.org")
@@ -663,7 +664,7 @@ func TestAcceptNewVersionsAndConsents(t *testing.T) {
 	if acc := h.do(call{method: "GET", path: "/v1/account", token: s.access}); acc.body["pending"].(map[string]any)["terms_required"] != false {
 		t.Fatal(acc.raw)
 	}
-	// El registro exige ya la versión 2.
+	// Registration now requires version 2.
 	res = h.do(call{method: "POST", path: "/v1/accounts", body: registerBody("tarde@example.org", password), ip: h.nextIP()})
 	if res.errField("accept.privacy") != "outdated" {
 		t.Fatal(res.raw)

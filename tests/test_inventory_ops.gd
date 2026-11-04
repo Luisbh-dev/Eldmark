@@ -1,10 +1,10 @@
 extends TestCase
-## Inventario puro (docs/progresion.md §2.5, §4.1–§4.4, PRG-11): [InventoryState], [InventoryOps],
-## [ItemEvent] y [StarterKit]. Una tabla de casos con cada operación y cada código de §4.2 en su orden (el
-## primer fallo da el código, y un rechazo no cambia nada); juntar en parte, pila de destino llena →
-## intercambio, ligado al equipar, ranuras 2–6 → CANNOT_EQUIP, DESTROY de un consumible bebiendo → NOT_NOW,
-## solo DESTROY da eventos y, con la ranura 2 activa (tras un SWAP), desequipar WEAPON_2 → WEAPON_REQUIRED y
-## desequipar WEAPON_1, OK. Además, los cambios del servidor (§4.4) y el kit de §2.5.
+## Pure inventory (docs/progresion.md §2.5, §4.1–§4.4, PRG-11): [InventoryState], [InventoryOps],
+## [ItemEvent] and [StarterKit]. A table of cases with each operation and each code of §4.2 in their order (the
+## first failure gives the code, and a rejection changes nothing); partial merge, full destination stack →
+## swap, bound on equip, slots 2–6 → CANNOT_EQUIP, DESTROY of a consumable while drinking → NOT_NOW,
+## only DESTROY gives events and, with slot 2 active (after a SWAP), unequipping WEAPON_2 → WEAPON_REQUIRED and
+## unequipping WEAPON_1, OK. Also, the server's changes (§4.4) and the §2.5 kit.
 
 const Op = InventoryOps.Op
 const R = InventoryOps.Result
@@ -12,7 +12,7 @@ const BAG: int = InventoryState.ContainerId.BAG
 const EQUIP: int = InventoryState.ContainerId.EQUIPMENT
 const ARMOR_FIXTURES: String = "res://tests/fixtures/items/armor"
 
-## Ids de los objetos del estado de prueba ([method _standard]).
+## Ids of the objects in the test state ([method _standard]).
 const SWORD_UID: int = 1
 const BOW_UID: int = 2
 const HEALTH_A: int = 10
@@ -24,7 +24,7 @@ const ORE_LOOSE: int = 30
 const ORE_BOUND: int = 31
 
 var _db: ItemDatabase
-## Siguiente id de [method _context] (un diccionario: las lambdas lo comparten).
+## Next id of [method _context] (a dictionary: the lambdas share it).
 var _ids: Dictionary = {"next": 5000, "taken": 0}
 
 
@@ -37,39 +37,39 @@ func before_each() -> void:
 
 func test_state_slots_lookups_and_copies() -> void:
 	var state := InventoryState.new()
-	assert_eq(state.bag_slots, 30, "30 ranuras de bolsa por defecto")
+	assert_eq(state.bag_slots, 30, "30 bag slots by default")
 	assert_eq([state.slot_count(BAG), state.slot_count(EQUIP), state.slot_count(InventoryState.ContainerId.BANK),
-			state.slot_count(3)], [30, 7, 0, 0], "bolsa, equipo y nada más en la fase 5")
-	assert_false(state.has_slot(BAG, 30) or state.has_slot(BAG, -1) or state.has_slot(EQUIP, 7), "fuera de rango")
-	assert_eq(state.first_free(BAG), 0, "vacía")
-	assert_eq(state.find_uid(1), Vector2i(-1, -1), "sin el uid")
+			state.slot_count(3)], [30, 7, 0, 0], "bag, equipment and nothing else in phase 5")
+	assert_false(state.has_slot(BAG, 30) or state.has_slot(BAG, -1) or state.has_slot(EQUIP, 7), "out of range")
+	assert_eq(state.first_free(BAG), 0, "empty")
+	assert_eq(state.find_uid(1), Vector2i(-1, -1), "without the uid")
 	state = _standard()
-	assert_eq(state.first_free(BAG), 7, "la primera libre")
-	assert_eq(state.first_free(EQUIP), 2, "en el equipo, la 2 (reservada, pero existe)")
-	assert_eq(state.free_count(BAG), 3, "tres libres")
-	assert_eq(state.find_uid(BOW_UID), Vector2i(EQUIP, 1), "el arco en WEAPON_2")
-	assert_eq(state.find_uid(ORE_BOUND), Vector2i(BAG, 6), "el mineral ligado")
-	assert_eq(state.count_of(&"potion_health"), 37, "10 + 12 + 15 en la bolsa")
-	assert_eq(state.count_of(&"bow_vado"), 1, "cuenta también el equipo")
-	assert_eq(state.all_items().size(), 9, "nueve instancias")
-	assert_eq(state.all_items()[0].uid, HEALTH_A, "la bolsa primero")
-	assert_eq(state.all_items()[8].uid, BOW_UID, "y el equipo después")
-	assert_eq(state.occupied_slots()[7], Vector2i(EQUIP, 0), "las ranuras ocupadas, en el mismo orden")
+	assert_eq(state.first_free(BAG), 7, "the first free one")
+	assert_eq(state.first_free(EQUIP), 2, "in the equipment, 2 (reserved, but exists)")
+	assert_eq(state.free_count(BAG), 3, "three free")
+	assert_eq(state.find_uid(BOW_UID), Vector2i(EQUIP, 1), "the bow in WEAPON_2")
+	assert_eq(state.find_uid(ORE_BOUND), Vector2i(BAG, 6), "the bound ore")
+	assert_eq(state.count_of(&"potion_health"), 37, "10 + 12 + 15 in the bag")
+	assert_eq(state.count_of(&"bow_vado"), 1, "equipment counts too")
+	assert_eq(state.all_items().size(), 9, "nine instances")
+	assert_eq(state.all_items()[0].uid, HEALTH_A, "the bag first")
+	assert_eq(state.all_items()[8].uid, BOW_UID, "and the equipment afterwards")
+	assert_eq(state.occupied_slots()[7], Vector2i(EQUIP, 0), "the occupied slots, in the same order")
 	var copy: InventoryState = state.duplicate_state()
-	assert_true(copy.equals(state), "la copia es igual")
+	assert_true(copy.equals(state), "the copy is equal")
 	copy.get_item(BAG, 0).count = 1
-	assert_eq(state.get_item(BAG, 0).count, 10, "y no comparte instancias")
-	assert_false(copy.equals(state), "ya no es igual")
+	assert_eq(state.get_item(BAG, 0).count, 10, "and shares no instances")
+	assert_false(copy.equals(state), "no longer equal")
 	state.bag_slots = 500
-	assert_eq(state.bag_slots, InventoryState.BAG_SLOTS_MAX, "tope de 120")
+	assert_eq(state.bag_slots, InventoryState.BAG_SLOTS_MAX, "cap of 120")
 	state.bag_slots = 0
-	assert_eq(state.bag_slots, 1, "al menos una")
-	assert_eq([InventoryState.OPEN_EQUIPMENT_SLOTS, InventoryState.EQUIPMENT_SLOTS], [2, 7], "dos de siete abiertas")
+	assert_eq(state.bag_slots, 1, "at least one")
+	assert_eq([InventoryState.OPEN_EQUIPMENT_SLOTS, InventoryState.EQUIPMENT_SLOTS], [2, 7], "two of seven open")
 
 
-# --- La tabla de §4.2, en su orden ---------------------------------------------------------------
+# --- The §4.2 table, in its order ----------------------------------------------------------------
 
-## INVALID: la forma de la petición, antes que nada (también antes que STALE).
+## INVALID: the shape of the request, before anything else (also before STALE).
 func test_invalid_requests() -> void:
 	var cases: Array[Array] = [
 		["operación 0", _req(0, BAG, 0, BAG, 7, 0, HEALTH_A)],
@@ -94,7 +94,7 @@ func test_invalid_requests() -> void:
 		_expect_rejected(_standard(), entry[1], _context(), R.INVALID, entry[0])
 
 
-## STALE: el origen vacío o con otro uid; antes que la cantidad frente a la pila y que NOT_NOW.
+## STALE: the source empty or with another uid; before the quantity against the stack and before NOT_NOW.
 func test_stale_requests() -> void:
 	_expect_rejected(_standard(), _req(Op.MOVE, BAG, 8, BAG, 9, 0, HEALTH_A), _context(), R.STALE, "origen vacío")
 	_expect_rejected(_standard(), _req(Op.MOVE, BAG, 0, BAG, 9, 0, 99), _context(), R.STALE, "otro uid")
@@ -105,7 +105,7 @@ func test_stale_requests() -> void:
 	_expect_rejected(_standard(), _req(Op.MOVE, EQUIP, 3, BAG, 9, 0, 1), busy, R.STALE, "antes que NOT_NOW")
 
 
-## NOT_NOW: tocar el equipo sin poder, destruir un consumible bebiendo y SPLIT o DESTROY sin ids.
+## NOT_NOW: touching equipment when unable, destroying a consumable while drinking and SPLIT or DESTROY without ids.
 func test_not_now_requests() -> void:
 	var busy: InventoryOps.Context = _context()
 	busy.can_touch_equipment = false
@@ -134,7 +134,7 @@ func test_not_now_requests() -> void:
 	_expect_applied(_standard(), _req(Op.MOVE, BAG, 0, BAG, 9, 0, HEALTH_A), no_ids, "mover no necesita ids")
 
 
-## CANNOT_EQUIP: ranura que no le va, 2–6 cerradas en la fase 5 y el nivel; antes que WEAPON_REQUIRED.
+## CANNOT_EQUIP: a slot it does not fit, 2–6 closed in phase 5 and the level; before WEAPON_REQUIRED.
 func test_cannot_equip_requests() -> void:
 	var one_weapon: InventoryState = _standard()
 	one_weapon.set_item(EQUIP, 1, null)
@@ -153,7 +153,7 @@ func test_cannot_equip_requests() -> void:
 			"lo mismo con el arma activa: la poción entraría en su ranura")
 	_expect_rejected(_standard(), _req(Op.MOVE, EQUIP, 0, EQUIP, 3, 0, SWORD_UID), _context(), R.CANNOT_EQUIP,
 			"el arma activa a una ranura cerrada la deja vacía, pero CANNOT_EQUIP va antes que WEAPON_REQUIRED")
-	# Nivel: un arco que pide nivel 5.
+	# Level: a bow that requires level 5.
 	var leveled: ItemDatabase = _leveled_db()
 	var state := InventoryState.new(10)
 	state.set_item(EQUIP, 0, ItemInstance.create(SWORD_UID, leveled.get_definition(&"sword_shield_vado"), 1))
@@ -161,18 +161,18 @@ func test_cannot_equip_requests() -> void:
 	var low: InventoryOps.Context = _context(leveled)
 	var outcome: InventoryOps.Outcome = _expect_rejected(state, _req(Op.MOVE, BAG, 0, EQUIP, 1, 0, 77), low,
 			R.CANNOT_EQUIP, "nivel 1 para un arco de nivel 5")
-	assert_eq(outcome.required_level, 5, "dice el nivel que pide")
-	assert_eq(InventoryOps.result_text(outcome.result, outcome.required_level), "Necesitas nivel 5", "su texto")
+	assert_eq(outcome.required_level, 5, "it states the level it requires")
+	assert_eq(InventoryOps.result_text(outcome.result, outcome.required_level), "Necesitas nivel 5", "its text")
 	var high: InventoryOps.Context = _context(leveled)
 	high.level = 5
 	outcome = _expect_applied(state, _req(Op.MOVE, BAG, 0, EQUIP, 1, 0, 77), high, "con nivel 5, sí")
-	assert_true(state.get_item(EQUIP, 1).bound, "ON_EQUIP: se liga al equiparlo")
-	assert_true(outcome.weapons_changed, "y cambia las armas")
+	assert_true(state.get_item(EQUIP, 1).bound, "ON_EQUIP: it becomes bound when equipped")
+	assert_true(outcome.weapons_changed, "and swaps the weapons")
 	outcome = _expect_applied(state, _req(Op.MOVE, EQUIP, 1, BAG, 3, 0, 77), high, "desequipar")
-	assert_true(state.get_item(BAG, 3).bound, "y sigue ligado")
+	assert_true(state.get_item(BAG, 3).bound, "and stays bound")
 
 
-## WEAPON_REQUIRED: dejaría vacía la ranura de arma activa; con la 2 activa (tras un SWAP), la 2.
+## WEAPON_REQUIRED: it would leave the active weapon slot empty; with 2 active (after a SWAP), slot 2.
 func test_weapon_required_follows_the_active_slot() -> void:
 	_expect_rejected(_standard(), _req(Op.MOVE, EQUIP, 0, BAG, 9, 0, SWORD_UID), _context(), R.WEAPON_REQUIRED,
 			"desequipar el arma activa")
@@ -189,14 +189,14 @@ func test_weapon_required_follows_the_active_slot() -> void:
 	var state: InventoryState = _standard()
 	var outcome: InventoryOps.Outcome = _expect_applied(state, _req(Op.MOVE, EQUIP, 0, BAG, 9, 0, SWORD_UID),
 			swapped, "con la 2 activa, desequipar WEAPON_1 vale")
-	assert_null(state.get_item(EQUIP, 0), "WEAPON_1 vacía")
-	assert_eq(state.get_item(BAG, 9).uid, SWORD_UID, "la espada en la bolsa")
-	assert_true(outcome.weapons_changed, "cambian las armas")
+	assert_null(state.get_item(EQUIP, 0), "WEAPON_1 empty")
+	assert_eq(state.get_item(BAG, 9).uid, SWORD_UID, "the sword in the bag")
+	assert_true(outcome.weapons_changed, "the weapons swap")
 	_expect_applied(_standard(), _req(Op.MOVE, EQUIP, 0, EQUIP, 1, 0, SWORD_UID), _context(),
 			"intercambiar las dos armas deja la activa con arma")
 
 
-## NO_ROOM y LOCKED; el id se pide al final, así que un rechazo no gasta ninguno.
+## NO_ROOM and LOCKED; the id is requested last, so a rejection spends none.
 func test_no_room_and_locked() -> void:
 	var context: InventoryOps.Context = _context()
 	_expect_rejected(_standard(), _req(Op.SPLIT, BAG, 0, BAG, 1, 3, HEALTH_A), context, R.NO_ROOM,
@@ -208,101 +208,101 @@ func test_no_room_and_locked() -> void:
 	bow_in_bag.set_item(BAG, 9, ItemInstance.create(BOW_UID, _db.get_definition(&"bow_vado"), 1))
 	_expect_rejected(bow_in_bag, _req(Op.DESTROY, BAG, 9, 0xFF, 0xFF, 0, BOW_UID), context, R.LOCKED,
 			"destruir un objeto indestructible")
-	assert_eq(_ids["taken"], 0, "ningún rechazo ha gastado un id")
+	assert_eq(_ids["taken"], 0, "no rejection has spent an id")
 	var no_ids := InventoryOps.Context.new()
 	no_ids.db = _db
 	_expect_rejected(bow_in_bag, _req(Op.DESTROY, BAG, 9, 0xFF, 0xFF, 0, BOW_UID), no_ids, R.LOCKED,
 			"sin ids y bloqueado: LOCKED (el id se pide cuando todo lo demás vale)")
 
 
-# --- Lo que se aplica ----------------------------------------------------------------------------
+# --- What gets applied ---------------------------------------------------------------------------
 
 func test_move_to_an_empty_slot() -> void:
 	var state: InventoryState = _standard()
 	var original: ItemInstance = state.get_item(BAG, 0)
 	var outcome: InventoryOps.Outcome = _expect_applied(state, _req(Op.MOVE, BAG, 0, BAG, 9, 0, HEALTH_A), _context(),
 			"mover")
-	assert_null(state.get_item(BAG, 0), "el origen queda vacío")
-	assert_eq(state.get_item(BAG, 9).uid, HEALTH_A, "con el mismo uid")
-	assert_eq(state.get_item(BAG, 9).count, 10, "y la misma cantidad")
-	assert_eq(outcome.changed, [Vector2i(BAG, 0), Vector2i(BAG, 9)] as Array[Vector2i], "las dos ranuras")
-	assert_eq(original.count, 10, "la instancia de antes no cambia")
+	assert_null(state.get_item(BAG, 0), "the source ends up empty")
+	assert_eq(state.get_item(BAG, 9).uid, HEALTH_A, "with the same uid")
+	assert_eq(state.get_item(BAG, 9).count, 10, "and the same quantity")
+	assert_eq(outcome.changed, [Vector2i(BAG, 0), Vector2i(BAG, 9)] as Array[Vector2i], "the two slots")
+	assert_eq(original.count, 10, "the previous instance does not change")
 
 
 func test_partial_and_full_merge() -> void:
 	var state: InventoryState = _standard()
 	var target_before: ItemInstance = state.get_item(BAG, 1)
 	_expect_applied(state, _req(Op.MOVE, BAG, 0, BAG, 1, 0, HEALTH_A), _context(), "juntar 10 sobre 12")
-	assert_eq(state.get_item(BAG, 1).count, 15, "el destino se llena")
-	assert_eq(state.get_item(BAG, 1).uid, HEALTH_B, "y conserva su uid")
-	assert_eq(state.get_item(BAG, 0).count, 7, "lo que no cabe se queda")
-	assert_eq(state.get_item(BAG, 0).uid, HEALTH_A, "con su uid")
-	assert_eq(state.count_of(&"potion_health"), 37, "sin cambiar el total")
-	assert_eq(target_before.count, 12, "sin tocar la instancia de antes")
+	assert_eq(state.get_item(BAG, 1).count, 15, "the destination fills up")
+	assert_eq(state.get_item(BAG, 1).uid, HEALTH_B, "and keeps its uid")
+	assert_eq(state.get_item(BAG, 0).count, 7, "what does not fit stays")
+	assert_eq(state.get_item(BAG, 0).uid, HEALTH_A, "with its uid")
+	assert_eq(state.count_of(&"potion_health"), 37, "without changing the total")
+	assert_eq(target_before.count, 12, "without touching the previous instance")
 	var small: InventoryState = _standard()
 	small.set_item(BAG, 0, _item(HEALTH_A, &"potion_health", 2))
 	small.set_item(BAG, 1, _item(HEALTH_B, &"potion_health", 5))
 	_expect_applied(small, _req(Op.MOVE, BAG, 0, BAG, 1, 0, HEALTH_A), _context(), "juntar 2 sobre 5")
-	assert_null(small.get_item(BAG, 0), "el origen se vacía: su uid muere")
-	assert_eq(small.get_item(BAG, 1).count, 7, "7 en el destino")
-	assert_eq(small.find_uid(HEALTH_A), Vector2i(-1, -1), "el uid juntado ya no está")
+	assert_null(small.get_item(BAG, 0), "the source empties: its uid dies")
+	assert_eq(small.get_item(BAG, 1).count, 7, "7 in the destination")
+	assert_eq(small.find_uid(HEALTH_A), Vector2i(-1, -1), "the merged uid is no longer there")
 
 
 func test_swaps() -> void:
 	var state: InventoryState = _standard()
 	_expect_applied(state, _req(Op.MOVE, BAG, 0, BAG, 3, 0, HEALTH_A), _context(), "sobre una pila llena")
-	assert_eq([state.get_item(BAG, 0).uid, state.get_item(BAG, 3).uid], [HEALTH_FULL, HEALTH_A], "intercambia")
-	assert_eq([state.get_item(BAG, 0).count, state.get_item(BAG, 3).count], [15, 10], "con sus cantidades")
+	assert_eq([state.get_item(BAG, 0).uid, state.get_item(BAG, 3).uid], [HEALTH_FULL, HEALTH_A], "swaps")
+	assert_eq([state.get_item(BAG, 0).count, state.get_item(BAG, 3).count], [15, 10], "with their quantities")
 	state = _standard()
 	_expect_applied(state, _req(Op.MOVE, BAG, 5, BAG, 6, 0, ORE_LOOSE), _context(), "otro ligado")
-	assert_eq([state.get_item(BAG, 5).uid, state.get_item(BAG, 6).uid], [ORE_BOUND, ORE_LOOSE], "intercambia")
+	assert_eq([state.get_item(BAG, 5).uid, state.get_item(BAG, 6).uid], [ORE_BOUND, ORE_LOOSE], "swaps")
 	state = _standard()
 	_expect_applied(state, _req(Op.MOVE, BAG, 0, BAG, 2, 0, HEALTH_A), _context(), "otra definición")
-	assert_eq([state.get_item(BAG, 0).uid, state.get_item(BAG, 2).uid], [STAMINA, HEALTH_A], "intercambia")
+	assert_eq([state.get_item(BAG, 0).uid, state.get_item(BAG, 2).uid], [STAMINA, HEALTH_A], "swaps")
 	state = _standard()
 	state.set_item(BAG, 9, ItemInstance.create(BOW_UID, _db.get_definition(&"bow_vado"), 1))
 	state.set_item(EQUIP, 1, null)
 	var outcome: InventoryOps.Outcome = _expect_applied(state, _req(Op.MOVE, EQUIP, 0, BAG, 9, 0, SWORD_UID),
 			_context(), "desequipar la activa sobre otra arma: se cambian")
-	assert_eq([state.get_item(EQUIP, 0).uid, state.get_item(BAG, 9).uid], [BOW_UID, SWORD_UID], "el arco a la mano")
-	assert_true(outcome.weapons_changed, "cambian las armas")
+	assert_eq([state.get_item(EQUIP, 0).uid, state.get_item(BAG, 9).uid], [BOW_UID, SWORD_UID], "the bow in hand")
+	assert_true(outcome.weapons_changed, "the weapons swap")
 
 
 func test_split_takes_one_id() -> void:
 	var state: InventoryState = _standard()
 	var outcome: InventoryOps.Outcome = _expect_applied(state, _req(Op.SPLIT, BAG, 0, BAG, 9, 4, HEALTH_A),
 			_context(), "dividir 4")
-	assert_eq(outcome.new_id, 5001, "toma un id")
-	assert_eq(_ids["taken"], 1, "uno solo")
-	assert_eq(state.get_item(BAG, 0).count, 6, "quedan 6")
+	assert_eq(outcome.new_id, 5001, "takes an id")
+	assert_eq(_ids["taken"], 1, "just one")
+	assert_eq(state.get_item(BAG, 0).count, 6, "6 remain")
 	var split: ItemInstance = state.get_item(BAG, 9)
 	assert_eq([split.uid, split.def_id, split.count, split.bound], [5001, &"potion_health", 4, true],
-			"la pila nueva, con su uid y el mismo ligado")
-	assert_eq(state.count_of(&"potion_health"), 37, "el total no cambia")
-	assert_false(outcome.weapons_changed, "no toca las armas")
+			"the new stack, with its uid and the same binding")
+	assert_eq(state.count_of(&"potion_health"), 37, "the total does not change")
+	assert_false(outcome.weapons_changed, "does not touch the weapons")
 
 
 func test_destroy_gives_the_only_event() -> void:
 	var state: InventoryState = _standard()
 	var outcome: InventoryOps.Outcome = _expect_applied(state, _req(Op.DESTROY, BAG, 0, 0xFF, 0xFF, 4, HEALTH_A),
 			_context(), "destruir 4")
-	assert_eq(state.get_item(BAG, 0).count, 6, "quedan 6")
-	assert_eq(outcome.events.size(), 1, "un evento")
+	assert_eq(state.get_item(BAG, 0).count, 6, "6 remain")
+	assert_eq(outcome.events.size(), 1, "one event")
 	assert_true(outcome.events[0].equals(ItemEvent.create(HEALTH_A, &"potion_health", -4,
-			EconomyReason.PLAYER_DESTROY)), "del uid, −4, PLAYER_DESTROY: %s" % outcome.events[0])
-	assert_eq(outcome.new_id, 5001, "y el id de su operación PLAYER")
-	assert_eq(outcome.changed, [Vector2i(BAG, 0)] as Array[Vector2i], "solo el origen")
+			EconomyReason.PLAYER_DESTROY)), "of the uid, −4, PLAYER_DESTROY: %s" % outcome.events[0])
+	assert_eq(outcome.new_id, 5001, "and the id of its PLAYER operation")
+	assert_eq(outcome.changed, [Vector2i(BAG, 0)] as Array[Vector2i], "only the source")
 	outcome = _expect_applied(state, _req(Op.DESTROY, BAG, 5, 0xFF, 0xFF, 0, ORE_LOOSE), _context(),
 			"0 = toda la pila")
-	assert_null(state.get_item(BAG, 5), "el uid muere")
+	assert_null(state.get_item(BAG, 5), "the uid dies")
 	assert_eq(outcome.events[0].count_delta, -7, "−7")
-	# Ninguna otra operación da eventos.
+	# No other operation gives events.
 	for request: InventoryOps.Request in [_req(Op.MOVE, BAG, 0, BAG, 9, 0, HEALTH_A),
 			_req(Op.MOVE, BAG, 1, BAG, 9, 0, HEALTH_B), _req(Op.SPLIT, BAG, 3, BAG, 5, 5, HEALTH_FULL),
 			_req(Op.MOVE, EQUIP, 0, EQUIP, 1, 0, SWORD_UID)]:
 		var other: InventoryOps.Outcome = InventoryOps.apply(state, request, _context())
-		assert_eq(other.result, R.OK, "op %d aplicada" % request.op)
-		assert_true(other.events.is_empty(), "op %d sin eventos" % request.op)
+		assert_eq(other.result, R.OK, "op %d applied" % request.op)
+		assert_true(other.events.is_empty(), "op %d without events" % request.op)
 
 
 func test_binding_rules_when_equipping() -> void:
@@ -311,14 +311,14 @@ func test_binding_rules_when_equipping() -> void:
 	var sword := ItemInstance.create(SWORD_UID, leveled.get_definition(&"sword_shield_vado"), 1)
 	state.set_item(EQUIP, 0, sword)
 	var loose_bow := ItemInstance.create(78, leveled.get_definition(&"test_bow_level5"), 1)
-	assert_false(loose_bow.bound, "ON_EQUIP: suelto hasta equiparlo")
+	assert_false(loose_bow.bound, "ON_EQUIP: unbound until equipped")
 	state.set_item(BAG, 0, loose_bow)
 	var context: InventoryOps.Context = _context(leveled)
 	context.level = 40
 	_expect_applied(state, _req(Op.MOVE, BAG, 0, EQUIP, 1, 0, 78), context, "equipar")
-	assert_true(state.get_item(EQUIP, 1).bound, "ligado al equiparlo")
-	assert_false(loose_bow.bound, "en una copia: la instancia de antes no cambia")
-	assert_true(state.get_item(EQUIP, 0).bound, "ON_PICKUP ya venía ligado")
+	assert_true(state.get_item(EQUIP, 1).bound, "bound on equipping")
+	assert_false(loose_bow.bound, "on a copy: the previous instance does not change")
+	assert_true(state.get_item(EQUIP, 0).bound, "ON_PICKUP was already bound")
 
 
 func test_rejections_leave_everything_and_report_the_touched_slots() -> void:
@@ -326,13 +326,13 @@ func test_rejections_leave_everything_and_report_the_touched_slots() -> void:
 	var before: InventoryState = state.duplicate_state()
 	var outcome: InventoryOps.Outcome = InventoryOps.apply(state,
 			_req(Op.MOVE, BAG, 0, EQUIP, 0, 0, HEALTH_A), _context())
-	assert_eq(outcome.result, R.CANNOT_EQUIP, "rechazada")
-	assert_true(state.equals(before), "sin cambios")
+	assert_eq(outcome.result, R.CANNOT_EQUIP, "rejected")
+	assert_true(state.equals(before), "no changes")
 	assert_eq(outcome.changed, [Vector2i(BAG, 0), Vector2i(EQUIP, 0)] as Array[Vector2i],
-			"las ranuras que tocaba, para el delta con su contenido real")
-	assert_true(outcome.events.is_empty() and not outcome.weapons_changed and outcome.new_id == 0, "nada más")
+			"the slots it touched, for the delta with their real content")
+	assert_true(outcome.events.is_empty() and not outcome.weapons_changed and outcome.new_id == 0, "nothing else")
 	outcome = InventoryOps.apply(state, _req(Op.MOVE, BAG, 0, BAG, 40, 0, HEALTH_A), _context())
-	assert_eq(outcome.changed, [Vector2i(BAG, 0)] as Array[Vector2i], "solo las que existen")
+	assert_eq(outcome.changed, [Vector2i(BAG, 0)] as Array[Vector2i], "only those that exist")
 
 
 func test_result_texts() -> void:
@@ -343,45 +343,45 @@ func test_result_texts() -> void:
 		R.LOCKED: "Ese objeto no se puede destruir", R.RATE: "Más despacio",
 	}
 	for result: int in texts:
-		assert_eq(InventoryOps.result_text(result), texts[result], "texto de %d" % result)
-	assert_eq(InventoryOps.result_text(R.NOT_NOW, 0, true), "No puedes cambiar el equipo en combate", "en combate")
-	assert_eq(InventoryOps.result_text(R.CANNOT_EQUIP, 12), "Necesitas nivel 12", "por nivel")
+		assert_eq(InventoryOps.result_text(result), texts[result], "text of %d" % result)
+	assert_eq(InventoryOps.result_text(R.NOT_NOW, 0, true), "No puedes cambiar el equipo en combate", "in combat")
+	assert_eq(InventoryOps.result_text(R.CANNOT_EQUIP, 12), "Necesitas nivel 12", "by level")
 
 
-# --- Cambios del servidor (§4.4) -----------------------------------------------------------------
+# --- Server changes (§4.4) -----------------------------------------------------------------------
 
 func test_server_add_and_remove() -> void:
 	var state: InventoryState = _standard()
 	var outcome: InventoryOps.Outcome = InventoryOps.add_items(state, &"potion_health", 20, EconomyReason.GM_GRANT,
 			_context())
-	assert_eq(outcome.result, R.OK, "cabe")
+	assert_eq(outcome.result, R.OK, "fits")
 	assert_eq(state.count_of(&"potion_health"), 57, "+20")
-	assert_eq(state.get_item(BAG, 0).count, 15, "primero llena las pilas con hueco (10 → 15)")
+	assert_eq(state.get_item(BAG, 0).count, 15, "first fills the stacks with room (10 → 15)")
 	assert_eq(state.get_item(BAG, 1).count, 15, "(12 → 15)")
-	assert_eq(state.get_item(BAG, 7).count, 12, "y el resto, en una pila nueva")
-	assert_eq(state.get_item(BAG, 7).uid, 5001, "con un id nuevo")
+	assert_eq(state.get_item(BAG, 7).count, 12, "and the rest, in a new stack")
+	assert_eq(state.get_item(BAG, 7).uid, 5001, "with a new id")
 	var deltas: Array[int] = []
 	for event: ItemEvent in outcome.events:
 		deltas.append(event.count_delta)
-		assert_eq(event.reason, EconomyReason.GM_GRANT, "con su motivo")
-	assert_eq(deltas, [5, 3, 12] as Array[int], "un evento por instancia")
+		assert_eq(event.reason, EconomyReason.GM_GRANT, "with its reason")
+	assert_eq(deltas, [5, 3, 12] as Array[int], "one event per instance")
 	var before: InventoryState = state.duplicate_state()
 	outcome = InventoryOps.add_items(state, &"potion_health", 50, EconomyReason.GM_GRANT, _context())
-	assert_eq(outcome.result, R.NO_ROOM, "no cabe: nada")
-	assert_true(state.equals(before), "entera o nada")
+	assert_eq(outcome.result, R.NO_ROOM, "does not fit: nothing")
+	assert_true(state.equals(before), "all or nothing")
 	outcome = InventoryOps.remove_items(state, &"potion_health", 16, EconomyReason.GM_REMOVE, 5001)
-	assert_eq(outcome.result, R.OK, "quita")
-	assert_null(state.get_item(BAG, 7), "primero la preferida (12)")
-	assert_eq(state.get_item(BAG, 0).count, 11, "y después la de la ranura más baja")
+	assert_eq(outcome.result, R.OK, "removes")
+	assert_null(state.get_item(BAG, 7), "first the preferred one (12)")
+	assert_eq(state.get_item(BAG, 0).count, 11, "and then the one in the lowest slot")
 	assert_eq(state.count_of(&"potion_health"), 41, "−16")
 	outcome = InventoryOps.remove_items(state, &"potion_health", 1000, EconomyReason.GM_REMOVE)
-	assert_eq(outcome.result, R.STALE, "no hay tantas: nada")
-	assert_eq(state.count_of(&"potion_health"), 41, "sin cambios")
+	assert_eq(outcome.result, R.STALE, "there are not that many: nothing")
+	assert_eq(state.count_of(&"potion_health"), 41, "no changes")
 	outcome = InventoryOps.remove_items(state, &"potion_health", 1, EconomyReason.CONSUME)
-	assert_eq(state.get_item(BAG, 0).count, 10, "CONSUME: de la pila con la ranura más baja")
+	assert_eq(state.get_item(BAG, 0).count, 10, "CONSUME: from the stack with the lowest slot")
 	assert_eq(outcome.events[0].count_delta, -1, "−1")
 	assert_eq(InventoryOps.add_items(state, &"no_such_item", 1, EconomyReason.GM_GRANT, _context()).result, R.INVALID,
-			"una definición que no existe")
+			"a definition that does not exist")
 
 
 func test_camp_refill_tops_up_the_total() -> void:
@@ -389,44 +389,44 @@ func test_camp_refill_tops_up_the_total() -> void:
 	state.set_item(BAG, 0, _item(100, &"potion_health", 1))
 	state.set_item(BAG, 2, _item(101, &"potion_health", 1))
 	var outcome: InventoryOps.Outcome = InventoryOps.camp_refill(state, _context())
-	assert_eq(state.count_of(&"potion_health"), 3, "repone el total de vida a 3")
-	assert_eq(state.get_item(BAG, 0).count, 2, "en la pila de la ranura más baja")
-	assert_eq(state.get_item(BAG, 2).count, 1, "sin tocar la otra")
-	assert_eq(state.count_of(&"potion_stamina"), 2, "y la de resistencia a 2, en una pila nueva")
-	assert_eq(state.get_item(BAG, 1).uid, 5001, "con un id del servidor, en la primera libre")
-	assert_eq(outcome.events.size(), 2, "un evento por instancia")
+	assert_eq(state.count_of(&"potion_health"), 3, "replenishes the health total to 3")
+	assert_eq(state.get_item(BAG, 0).count, 2, "in the stack of the lowest slot")
+	assert_eq(state.get_item(BAG, 2).count, 1, "without touching the other")
+	assert_eq(state.count_of(&"potion_stamina"), 2, "and the stamina one to 2, in a new stack")
+	assert_eq(state.get_item(BAG, 1).uid, 5001, "with a server id, in the first free one")
+	assert_eq(outcome.events.size(), 2, "one event per instance")
 	for event: ItemEvent in outcome.events:
 		assert_eq(event.reason, EconomyReason.CAMP_REFILL, "CAMP_REFILL")
 	outcome = InventoryOps.camp_refill(state, _context())
-	assert_true(outcome.events.is_empty() and outcome.changed.is_empty(), "lleno: nada")
+	assert_true(outcome.events.is_empty() and outcome.changed.is_empty(), "full: nothing")
 	var full := InventoryState.new(1)
 	full.set_item(BAG, 0, _item(102, &"test_ore", 3))
 	outcome = InventoryOps.camp_refill(full, _context())
-	assert_true(outcome.bag_full, "sin sitio para una pila nueva: «Bolsa llena»")
-	assert_eq(full.count_of(&"potion_health"), 0, "y no repone")
+	assert_true(outcome.bag_full, "no room for a new stack: \"Bolsa llena\" (bag full)")
+	assert_eq(full.count_of(&"potion_health"), 0, "and does not replenish")
 	var no_ids := InventoryOps.Context.new()
 	no_ids.db = _db
 	var empty := InventoryState.new(4)
 	outcome = InventoryOps.camp_refill(empty, no_ids)
-	assert_true(outcome.events.is_empty() and not outcome.bag_full, "sin id, la pila nueva espera")
+	assert_true(outcome.events.is_empty() and not outcome.bag_full, "without an id, the new stack waits")
 
 
-# --- ItemEvent en JSON (§9.3) --------------------------------------------------------------------
+# --- ItemEvent in JSON (§9.3) --------------------------------------------------------------------
 
 func test_item_event_json() -> void:
 	var event := ItemEvent.create(1027, &"potion_health", -1, EconomyReason.CONSUME)
 	assert_eq(event.to_dictionary(), {"uid": "1027", "def_id": "potion_health", "count_delta": -1, "reason": 65},
-			"la forma de §9.3")
+			"the §9.3 shape")
 	var aggregated := ItemEvent.create(0, &"potion_health", -1, EconomyReason.CONSUME)
-	assert_eq(aggregated.to_dictionary()["uid"], null, "agregado: uid null")
+	assert_eq(aggregated.to_dictionary()["uid"], null, "aggregated: uid null")
 	for original: ItemEvent in [event, aggregated, ItemEvent.create(9007199254740991, &"bow_vado", 1, 1),
 			ItemEvent.create(5, &"sword_shield_vado", -1, EconomyReason.REVERSAL)]:
 		var text: String = JSON.stringify(original.to_dictionary())
 		var back: ItemEvent = ItemEvent.from_dictionary(JSON.parse_string(text))
-		assert_true(original.equals(back), "ida y vuelta por el texto: %s" % text)
+		assert_true(original.equals(back), "round trip through text: %s" % text)
 	var rewritten: Dictionary = event.to_dictionary()
 	rewritten["count_delta"] = -1.0
-	assert_not_null(ItemEvent.from_dictionary(rewritten), "un entero como -1.0 vale")
+	assert_not_null(ItemEvent.from_dictionary(rewritten), "an integer such as -1.0 is valid")
 	var broken: Array[Dictionary] = [
 		{"def_id": "potion_health", "count_delta": -1, "reason": 65},
 		{"uid": "1", "def_id": "potion_health", "count_delta": -1, "reason": 65, "extra": 1},
@@ -443,10 +443,10 @@ func test_item_event_json() -> void:
 		{"uid": "1", "def_id": "potion_health", "count_delta": 1, "reason": "7"},
 	]
 	for entry: Dictionary in broken:
-		assert_null(ItemEvent.from_dictionary(entry), "no vale: %s" % entry)
+		assert_null(ItemEvent.from_dictionary(entry), "not valid: %s" % entry)
 
 
-# --- Kit de inicio (§2.5) ------------------------------------------------------------------------
+# --- Starter kit (§2.5) --------------------------------------------------------------------------
 
 func test_starter_kit_of_each_template() -> void:
 	var db: ItemDatabase = ItemDatabase.shared()
@@ -455,67 +455,67 @@ func test_starter_kit_of_each_template() -> void:
 	assert_eq(_layout(state), [
 		[EQUIP, 0, &"sword_shield_vado", 1, 1025], [BAG, 0, &"bow_vado", 1, 1026],
 		[BAG, 1, &"potion_health", 3, 1027], [BAG, 2, &"potion_stamina", 2, 1028],
-	], "escudero: su espada puesta, el arco de la otra plantilla y las pociones (el ejemplo de §3.4)")
-	assert_eq(events.size(), 4, "un evento por instancia")
+	], "squire: its sword equipped, the other template's bow and the potions (the §3.4 example)")
+	assert_eq(events.size(), 4, "one event per instance")
 	for event: ItemEvent in events:
 		assert_eq(event.reason, EconomyReason.STARTER_KIT, "STARTER_KIT")
-		assert_true(event.uid > 0 and event.count_delta > 0, "con uid y cantidad: %s" % event)
+		assert_true(event.uid > 0 and event.count_delta > 0, "with uid and quantity: %s" % event)
 	for item: ItemInstance in state.all_items():
-		assert_true(item.bound, "%s, ligado (ON_PICKUP)" % item.def_id)
-		assert_true(item.is_valid(db), "%s vale" % item.def_id)
+		assert_true(item.bound, "%s, bound (ON_PICKUP)" % item.def_id)
+		assert_true(item.is_valid(db), "%s is valid" % item.def_id)
 	state = InventoryState.new()
 	StarterKit.grant(state, &"marksman", db, _counter_from(1))
 	assert_eq(_layout(state), [
 		[EQUIP, 0, &"bow_vado", 1, 1], [EQUIP, 1, &"sword_shield_vado", 1, 2],
 		[BAG, 0, &"potion_health", 3, 3], [BAG, 1, &"potion_stamina", 2, 4],
-	], "tirador: arco y espada puestos y las pociones (3 y 2 también para él)")
+	], "marksman: bow and sword equipped and the potions (3 and 2 for them too)")
 
 
 func test_starter_kit_fallbacks_and_failures() -> void:
 	var db: ItemDatabase = ItemDatabase.shared()
-	assert_eq(StarterKit.template_for(&"squire").id, &"squire", "la plantilla pedida")
+	assert_eq(StarterKit.template_for(&"squire").id, &"squire", "the requested template")
 	var state := InventoryState.new()
 	StarterKit.grant(state, &"no_such_template", db, _counter_from(1))
-	assert_eq(state.get_item(EQUIP, 0).def_id, &"bow_vado", "una desconocida usa la primera elegible por id (marksman)")
+	assert_eq(state.get_item(EQUIP, 0).def_id, &"bow_vado", "an unknown one uses the first eligible by id (marksman)")
 	var npc: EquipmentTemplate = null
 	for template: EquipmentTemplate in CombatCatalog.tables().templates:
 		if not template.selectable:
 			npc = template
 	if npc != null:
-		assert_eq(StarterKit.template_for(npc.id).id, &"marksman", "una que no se puede elegir, también")
-	# Sin ids a mitad: nada.
+		assert_eq(StarterKit.template_for(npc.id).id, &"marksman", "one that cannot be chosen, too")
+	# Without ids halfway: nothing.
 	state = InventoryState.new()
 	var limited: Dictionary = {"left": 2}
 	var two_ids: Callable = func() -> int:
 		limited["left"] -= 1
 		return 7000 + limited["left"] if limited["left"] >= 0 else 0
 	var events: Array[ItemEvent] = StarterKit.grant(state, &"squire", db, two_ids)
-	assert_true(events.is_empty(), "sin ids suficientes no da nada")
-	assert_true(state.all_items().is_empty(), "y el inventario sigue vacío")
+	assert_true(events.is_empty(), "without enough ids it gives nothing")
+	assert_true(state.all_items().is_empty(), "and the inventory stays empty")
 	allow_logged_errors()
 	state = InventoryState.new(2)
-	assert_true(StarterKit.grant(state, &"squire", db, _counter_from(1)).is_empty(), "no cabe en 2 ranuras")
-	assert_true(state.all_items().is_empty(), "nada")
+	assert_true(StarterKit.grant(state, &"squire", db, _counter_from(1)).is_empty(), "does not fit in 2 slots")
+	assert_true(state.all_items().is_empty(), "nothing")
 	state = _standard()
 	var before: InventoryState = state.duplicate_state()
-	assert_true(StarterKit.grant(state, &"squire", db, _counter_from(1)).is_empty(), "solo en un inventario vacío")
-	assert_true(state.equals(before), "sin cambios")
+	assert_true(StarterKit.grant(state, &"squire", db, _counter_from(1)).is_empty(), "only in an empty inventory")
+	assert_true(state.equals(before), "no changes")
 
 
-# --- Ayudas --------------------------------------------------------------------------------------
+# --- Helpers -------------------------------------------------------------------------------------
 
-## Comprueba que la petición se rechaza con [param expected] y que el estado no cambia.
+## Checks that the request is rejected with [param expected] and that the state does not change.
 func _expect_rejected(state: InventoryState, request: InventoryOps.Request, context: InventoryOps.Context,
 		expected: int, label: String) -> InventoryOps.Outcome:
 	var before: InventoryState = state.duplicate_state()
 	var outcome: InventoryOps.Outcome = InventoryOps.apply(state, request, context)
 	assert_eq(outcome.result, expected, label)
-	assert_true(state.equals(before), "%s: el estado no cambia" % label)
-	assert_true(outcome.events.is_empty() and not outcome.weapons_changed, "%s: sin eventos" % label)
+	assert_true(state.equals(before), "%s: the state does not change" % label)
+	assert_true(outcome.events.is_empty() and not outcome.weapons_changed, "%s: no events" % label)
 	return outcome
 
 
-## Comprueba que la petición se aplica y que solo MOVE/SPLIT/DESTROY cambian lo que dicen.
+## Checks that the request is applied and that only MOVE/SPLIT/DESTROY change what they say.
 func _expect_applied(state: InventoryState, request: InventoryOps.Request, context: InventoryOps.Context,
 		label: String) -> InventoryOps.Outcome:
 	var before: InventoryState = state.duplicate_state()
@@ -525,12 +525,12 @@ func _expect_applied(state: InventoryState, request: InventoryOps.Request, conte
 		if not outcome.changed.has(position):
 			var old: ItemInstance = before.get_item(position.x, position.y)
 			var now: ItemInstance = state.get_item(position.x, position.y)
-			assert_true(old != null and old.equals(now), "%s: %s no estaba en changed y cambió" % [label, position])
+			assert_true(old != null and old.equals(now), "%s: %s was not in changed and it changed" % [label, position])
 	return outcome
 
 
-## Bolsa de 10: dos pilas de vida (10 y 12), resistencia, vida llena, un yelmo y mineral suelto y ligado;
-## espada en WEAPON_1 y arco en WEAPON_2.
+## Bag of 10: two health stacks (10 and 12), stamina, full health, a helmet and loose and bound ore;
+## sword in WEAPON_1 and bow in WEAPON_2.
 func _standard() -> InventoryState:
 	var state := InventoryState.new(10)
 	state.set_item(BAG, 0, _item(HEALTH_A, &"potion_health", 10))
@@ -556,7 +556,7 @@ func _req(op: int, from_container: int, from_slot: int, to_container: int, to_sl
 	return InventoryOps.make_request(op, from_container, from_slot, to_container, to_slot, count, expected_uid)
 
 
-## Contexto normal (nivel 1, ranura 1 activa, fuera de combate) con ids desde 5001.
+## Normal context (level 1, slot 1 active, out of combat) with ids from 5001.
 func _context(db: ItemDatabase = null) -> InventoryOps.Context:
 	var context := InventoryOps.Context.new()
 	context.db = db if db != null else _db
@@ -575,7 +575,7 @@ func _counter_from(first: int) -> Callable:
 		return counter["next"] - 1
 
 
-## [contenedor, ranura, def_id, cantidad, uid] de cada ranura ocupada.
+## [container, slot, def_id, quantity, uid] of each occupied slot.
 func _layout(state: InventoryState) -> Array:
 	var result: Array = []
 	for position: Vector2i in state.occupied_slots():
@@ -585,7 +585,7 @@ func _layout(state: InventoryState) -> Array:
 	return result
 
 
-## Los objetos de data/items, las armaduras de los casos y un mineral apilable sin ligado.
+## The objects from data/items, the armours of the cases and a stackable ore with no binding.
 func _test_db() -> ItemDatabase:
 	var definitions: Array[ItemDefinition] = []
 	var shared: ItemDatabase = ItemDatabase.shared()
@@ -601,11 +601,11 @@ func _test_db() -> ItemDatabase:
 	ore.max_stack = 20
 	definitions.append(ore)
 	var db: ItemDatabase = ItemDatabase.build_from_definitions(definitions)
-	assert_eq(db.errors, PackedStringArray(), "la base de prueba no tiene errores")
+	assert_eq(db.errors, PackedStringArray(), "the test base has no errors")
 	return db
 
 
-## La espada y las pociones de data/items y un arco de nivel 5 que se liga al equiparlo.
+## The sword and potions from data/items and a level 5 bow that becomes bound when equipped.
 func _leveled_db() -> ItemDatabase:
 	var shared: ItemDatabase = ItemDatabase.shared()
 	var bow := ItemDefinition.new()
@@ -619,5 +619,5 @@ func _leveled_db() -> ItemDatabase:
 	var definitions: Array[ItemDefinition] = [shared.get_definition(&"sword_shield_vado"),
 			shared.get_definition(&"potion_health"), shared.get_definition(&"potion_stamina"), bow]
 	var db: ItemDatabase = ItemDatabase.build_from_definitions(definitions)
-	assert_eq(db.errors, PackedStringArray(), "la base con el arco de nivel 5 no tiene errores")
+	assert_eq(db.errors, PackedStringArray(), "the base with the level 5 bow has no errors")
 	return db

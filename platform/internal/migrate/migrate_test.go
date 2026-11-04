@@ -29,7 +29,7 @@ func runner(t *testing.T, pool *pgxpool.Pool, fsys fs.FS) *migrate.Runner {
 	return r
 }
 
-// upTo devuelve las migraciones embebidas hasta la versión dada (incluida).
+// upTo returns the embedded migrations up to the given version (inclusive).
 func upTo(t *testing.T, version int) fstest.MapFS {
 	t.Helper()
 	out := fstest.MapFS{}
@@ -100,7 +100,7 @@ func TestEmbeddedMigrations(t *testing.T) {
 			t.Errorf("%s no es irreversible", id)
 		}
 	}
-	// Los números 0007–0009 quedan sin usar (plataforma.md §2.4).
+	// Numbers 0007-0009 are left unused (plataforma.md §2.4).
 	for _, m := range ms {
 		if m.Version >= 7 && m.Version <= 9 {
 			t.Errorf("%s usa un número reservado", m.ID())
@@ -108,7 +108,7 @@ func TestEmbeddedMigrations(t *testing.T) {
 	}
 }
 
-// up → down hasta la última irreversible (o 0) → up, con el mismo pg_dump -s (plataforma.md §2.4).
+// up -> down to the last irreversible (or 0) -> up, with the same pg_dump -s (plataforma.md §2.4).
 func TestUpDownUpKeepsTheSchema(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	ctx := context.Background()
@@ -168,8 +168,8 @@ func TestUpDownUpKeepsTheSchema(t *testing.T) {
 	}
 }
 
-// Con una fila en cada tabla (las semillas testdata/seed_NNNN.sql, cada una del esquema de su
-// versión), aplicar la siguiente migración no cambia ningún count(*) (plataforma.md §2.4).
+// With a row in each table (the testdata/seed_NNNN.sql seeds, each from its version's schema),
+// applying the next migration does not change any count(*) (plataforma.md §2.4).
 func TestMigrationsKeepTheRows(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	ctx := context.Background()
@@ -234,7 +234,7 @@ func TestIrreversibleMigrationsDoNotGoDown(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "0002_datos es irreversible") {
 		t.Fatalf("0002 no se deshace: %v", err)
 	}
-	// Tampoco dentro de un down de varias: no se toca nada.
+	// Not within a multi-step down either: nothing is touched.
 	if _, err := r.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestIrreversibleMigrationsDoNotGoDown(t *testing.T) {
 	if got := appliedVersions(t, pool); fmt.Sprint(got) != "[1 2 3]" {
 		t.Fatalf("un down rechazado no deshace nada: %v", got)
 	}
-	// El .down.sql de una irreversible tiene que lanzar la excepción.
+	// An irreversible one's .down.sql has to raise the exception.
 	bad := fstest.MapFS{
 		"0001_x.up.sql":   {Data: []byte(migrate.IrreversibleMarker + "\nselect 1;")},
 		"0001_x.down.sql": {Data: []byte("select 1;")},
@@ -336,8 +336,7 @@ func TestAFailedMigrationLeavesNothing(t *testing.T) {
 	}
 }
 
-// Dos ejecutores a la vez: el bloqueo consultivo los pone en fila y cada migración se aplica una
-// sola vez.
+// Two runners at once: the advisory lock puts them in line and each migration is applied only once.
 func TestTwoRunnersAtOnce(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	ctx := context.Background()
@@ -384,7 +383,7 @@ func TestTwoRunnersAtOnce(t *testing.T) {
 	}
 }
 
-// El binario N funciona con el esquema N + 1: una migración posterior no impide arrancar.
+// Binary N works with schema N + 1: a later migration does not prevent starting.
 func TestLaterMigrationsAreAccepted(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	ctx := context.Background()

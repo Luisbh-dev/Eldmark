@@ -14,20 +14,20 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// API son las rutas de la API interna del personaje (§6): la reclamación, el guardado (uno o un
-// lote), la liberación y las consultas de operación y libro sobre [ProgressStore].
+// API is the routes of the character's internal API (§6): the claim, the save (one or a batch), the
+// release and the operation and ledger queries over [ProgressStore].
 type API struct {
 	store *Store
 	guard *zones.Guard
 	log   *slog.Logger
 }
 
-// NewAPI prepara las rutas con el almacén y las comprobaciones de zones.
+// NewAPI prepares the routes with the store and the checks from zones.
 func NewAPI(store *Store, guard *zones.Guard) *API {
 	return &API{store: store, guard: guard, log: store.log}
 }
 
-// Mount monta las rutas, todas con el token de zona.
+// Mount mounts the routes, all with the zone token.
 func (a *API) Mount(r zones.Router) {
 	zone := func(pattern string, h http.HandlerFunc) { r.HandleInternal(pattern, a.guard.Zone(h)) }
 	zone("POST /internal/v1/claims", a.claim)
@@ -40,7 +40,7 @@ func (a *API) Mount(r zones.Router) {
 
 func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) { zones.Fail(w, r, a.log, err) }
 
-// routeID lee el {id} de la ruta y lo deja en el registro de la petición; 0 si no vale.
+// routeID reads the route's {id} and leaves it in the request log; 0 if it is not valid.
 func routeID(r *http.Request) int64 {
 	id, err := jsonx.ParseID(r.PathValue("id"))
 	if err != nil || id < 1 {
@@ -50,14 +50,14 @@ func routeID(r *http.Request) int64 {
 	return int64(id)
 }
 
-// ClaimRequest es el cuerpo de la reclamación.
+// ClaimRequest is the claim's body.
 type ClaimRequest struct {
 	ZoneInstanceID string   `json:"zone_instance_id"`
 	TicketID       jsonx.ID `json:"ticket_id"`
 	CharacterID    jsonx.ID `json:"character_id"`
 }
 
-// ClaimView es la respuesta de la reclamación (§6): ids en cadena y el reino en su código (§4.1).
+// ClaimView is the claim's response (§6): string ids and the realm in its code (§4.1).
 type ClaimView struct {
 	LeaseID        string          `json:"lease_id"`
 	InstanceStatus string          `json:"instance_status"`
@@ -67,25 +67,25 @@ type ClaimView struct {
 	PvP            PvP             `json:"pvp"`
 }
 
-// ClaimAccount es la cuenta en la reclamación.
+// ClaimAccount is the account in the claim.
 type ClaimAccount struct {
 	AccountID         jsonx.ID   `json:"account_id"`
 	Role              string     `json:"role"`
 	MutedUntilUnix    int64      `json:"muted_until_unix"`
 	IgnoredAccountIDs []jsonx.ID `json:"ignored_account_ids"`
-	// Warnings son los avisos que la cuenta aún no ha visto (§9.5: al entrar, NOTICE con el motivo),
-	// con el texto compuesto por la plataforma; lista vacía si no hay.
+	// Warnings are the notices the account has not yet seen (§9.5: on entering, NOTICE with the
+	// reason), with the text composed by the platform; empty list if there are none.
 	Warnings []ClaimWarning `json:"warnings"`
 }
 
-// ClaimWarning es un aviso pendiente en la reclamación.
+// ClaimWarning is a pending notice in the claim.
 type ClaimWarning struct {
 	SanctionID jsonx.ID `json:"sanction_id"`
 	Text       string   `json:"text"`
 	AtUnix     int64    `json:"at_unix"`
 }
 
-// ClaimCharacter es el personaje en la reclamación.
+// ClaimCharacter is the character in the claim.
 type ClaimCharacter struct {
 	CharacterID jsonx.ID `json:"character_id"`
 	WorldID     int      `json:"world_id"`
@@ -140,8 +140,7 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// readBody lee el cuerpo entero (1 MB como mucho): el guardado necesita los bytes tal cual para su
-// huella.
+// readBody reads the whole body (1 MB at most): the save needs the bytes as is for its fingerprint.
 func readBody(w http.ResponseWriter, r *http.Request) ([]byte, *httpx.Error) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, httpx.InternalBodyLimit))
 	if err != nil {
@@ -154,7 +153,7 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, *httpx.Error) {
 	return body, nil
 }
 
-// writeSaveError escribe el error de un guardado con la regla de §7.3 ([SaveError]).
+// writeSaveError writes a save's error with the §7.3 rule ([SaveError]).
 func (a *API) writeSaveError(w http.ResponseWriter, r *http.Request, err error) {
 	resp := SaveError(err)
 	if resp == nil {
@@ -163,17 +162,17 @@ func (a *API) writeSaveError(w http.ResponseWriter, r *http.Request, err error) 
 	}
 	switch resp.Code {
 	case "invalid_save", "seq_conflict", "stale_seq":
-		// Errores nuestros (de la zona o de la plataforma): la zona expulsa y libera (§7.3).
+		// Our own errors (from the zone or the platform): the zone kicks out and releases (§7.3).
 		a.log.Warn("guardado rechazado", "req", logx.RequestID(r.Context()), "code", resp.Code,
 			"check", resp.Fields["check"], "detail", resp.Fields["detail"])
 	}
 	httpx.WriteError(w, resp)
 }
 
-// save es PUT /internal/v1/characters/{id}/state: el sobre se lee estricto antes de tocar la base
-// (400 invalid_save con check envelope); después, el alcance de su zone_instance_id (403) y el
-// guardado de [Store.Save], en cualquier estado de la instancia (§6.1: los guardados finales de una
-// instancia perdida o sustituida valen si el arrendamiento casa).
+// save is PUT /internal/v1/characters/{id}/state: the envelope is read strictly before touching the
+// database (400 invalid_save with check envelope); then, the scope of its zone_instance_id (403) and
+// [Store.Save]'s save, in any state of the instance (§6.1: the final saves of a lost or replaced
+// instance are valid if the lease matches).
 func (a *API) save(w http.ResponseWriter, r *http.Request) {
 	raw, e := readBody(w, r)
 	if e != nil {
@@ -205,14 +204,14 @@ func (a *API) save(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, res)
 }
 
-// SaveManyView es la respuesta de POST /internal/v1/saves: un resultado por guardado, en el orden
-// del lote.
+// SaveManyView is the response of POST /internal/v1/saves: one result per save, in the batch's
+// order.
 type SaveManyView struct {
 	InstanceStatus string           `json:"instance_status"`
 	Saves          []SaveResultView `json:"saves"`
 }
 
-// SaveResultView es el resultado de un guardado de un lote.
+// SaveResultView is the result of one save in a batch.
 type SaveResultView struct {
 	CharacterID jsonx.ID `json:"character_id"`
 	Applied     bool     `json:"applied"`
@@ -290,8 +289,8 @@ func (a *API) release(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// op es GET /internal/v1/ops/{op_id}?zone_instance_id=: ProgressStore.Op con la instancia, que
-// devuelve ErrNotFound si ningún participante tiene arrendamiento en ella (404).
+// op is GET /internal/v1/ops/{op_id}?zone_instance_id=: ProgressStore.Op with the instance, which
+// returns ErrNotFound if no participant has a lease on it (404).
 func (a *API) op(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	inst, err := a.guard.Instance(ctx, zones.ScopeFrom(ctx), r.URL.Query().Get("zone_instance_id"), zones.OpProgress)
@@ -316,8 +315,8 @@ func (a *API) op(w http.ResponseWriter, r *http.Request) {
 	writeRaw(w, body)
 }
 
-// ledger es GET /internal/v1/characters/{id}/ledger: solo si el personaje tiene arrendamiento en la
-// instancia (character_leases.zone_instance_id, §6); si no, 404.
+// ledger is GET /internal/v1/characters/{id}/ledger: only if the character has a lease on the
+// instance (character_leases.zone_instance_id, §6); otherwise, 404.
 func (a *API) ledger(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
@@ -371,7 +370,7 @@ func (a *API) ledger(w http.ResponseWriter, r *http.Request) {
 	writeRaw(w, body)
 }
 
-// writeRaw escribe el JSON del almacén tal cual (los cuerpos de progresion.md §13.2).
+// writeRaw writes the store's JSON as is (the bodies of progresion.md §13.2).
 func writeRaw(w http.ResponseWriter, body json.RawMessage) {
 	h := w.Header()
 	h.Set("Content-Type", "application/json; charset=utf-8")

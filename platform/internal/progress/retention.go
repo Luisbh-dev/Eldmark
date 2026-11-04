@@ -7,22 +7,23 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Retention es cuánto se conserva el libro de un personaje tras su purga (progresion.md §3.5, PRG-39;
-// revisión legal pendiente, §16).
+// Retention is how long a character's ledger is kept after its purge (progresion.md §3.5, PRG-39;
+// legal review pending, §16).
 const Retention = 365 * 24 * time.Hour
 
-// RetentionBatch es lo que borra como mucho cada llamada a PurgeRetention de cada tabla de solo añadir.
+// RetentionBatch is the most that each PurgeRetention call deletes from each append-only table.
 const RetentionBatch = 10_000
 
-// PurgeRetention implementa persistence.ProgressStore (progresion.md §3.5). En la transacción de quien llama y
-// con set local eldmark.retention_purge = 'on' (la única marca que deja borrar en las tablas de solo añadir;
-// se quita al acabar), borra de los personajes purgados hace más de un año, [RetentionBatch] como mucho de cada
-// tabla: sus apuntes, sus eventos de objeto y, después, sus participaciones que ya no tienen ninguno de los
-// dos; por último, las reversiones y las operaciones que se han quedado sin participantes (las de otros
-// personajes se quedan). deleted es cuánto ha borrado en total: el trabajo horario de plataforma.md §2.5 la
-// vuelve a llamar, una transacción cada vez, mientras sea mayor que 0. emptied son los personajes purgados
-// hace más de un año sin ninguna fila en op_participants (también los que nunca las tuvieron): la
-// plataforma borra esas filas de characters en la misma transacción.
+// PurgeRetention implements persistence.ProgressStore (progresion.md §3.5). In the caller's
+// transaction and with set local eldmark.retention_purge = 'on' (the only flag that allows
+// deleting from the append-only tables; it is removed at the end), it deletes, for characters
+// purged more than a year ago, at most [RetentionBatch] from each table: their entries, their
+// item events and, afterwards, their participations that no longer have either; finally, the
+// reversals and operations left without participants (those of other characters stay). deleted is
+// how much it deleted in total: the hourly job from plataforma.md §2.5 calls it again, one
+// transaction at a time, while it is greater than 0. emptied are the characters purged more than
+// a year ago with no row in op_participants (including those that never had any): the platform
+// deletes those rows from characters in the same transaction.
 func (s *Store) PurgeRetention(ctx context.Context, tx pgx.Tx) (int64, []int64, error) {
 	cutoff := s.now().Add(-Retention)
 	if _, err := tx.Exec(ctx, `select set_config('eldmark.retention_purge', 'on', true)`); err != nil {

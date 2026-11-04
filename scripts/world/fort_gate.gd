@@ -1,48 +1,48 @@
 @tool
 class_name FortGate
 extends StaticBody3D
-## Puerta de madera del fuerte del Vado Gris (grupo [code]fort_gate[/code]). Escena compartida:
-## la cargan igual el cliente y el servidor, y no depende de nada de [code]scripts/client/[/code].
+## Wooden gate of the Vado Gris fort (group [code]fort_gate[/code]). Shared scene: client and
+## server load it the same way, and it does not depend on anything in [code]scripts/client/[/code].
 ##
-## Dos hojas de tablones con bisagra en los postes del vano. Se guarda [b]cerrada[/b] y solo la
-## abre la rotura (vida 0): entonces las hojas cuelgan hacia fuera, hacia la explanada, para no
-## chocar con la pasarela que pasa por encima del vano por dentro.
+## Two plank leaves hinged on the opening's posts. It is stored [b]closed[/b] and only breakage
+## (health 0) opens it: then the leaves hang outward, toward the esplanade, so as not to collide
+## with the walkway that passes over the opening on the inside.
 ## [br][br]
-## [b]Dos cuerpos[/b] (docs/fuerte.md, sección 3.1). Sacar la puerta de la capa del mundo rompería
-## la línea de visión de los golpes, la cámara y el horneado de la navegación, así que:
-## [br]- el propio nodo es el cuerpo de [b]movimiento[/b]: su capa son las capas de reino 5 a 7 de
-## los reinos que [b]no[/b] son el dueño ([method layers_for]). Cada personaje añade a su máscara
-## la capa de su reino ([method PlayerCharacter.set_realm_collision]), así que la puerta cerrada
-## para a los enemigos del dueño y deja pasar a los suyos; si el fuerte es neutral las para a todas;
-## [br]- el hijo [code]Vista[/code] es el cuerpo de [b]vista[/b], en la capa 4 de estructuras
-## ([constant PlayerCharacter.STRUCTURE_LAYER]): no para a nadie, pero la cámara y la línea de
-## visión no atraviesan la puerta (aunque el dueño pueda cruzarla).
-## [br]Rota, los dos cuerpos se quedan sin capas.
+## [b]Two bodies[/b] (docs/fuerte.md, section 3.1). Taking the gate off the world layer would break
+## the line of sight of hits, the camera and the navigation bake, so:
+## [br]- the node itself is the [b]movement[/b] body: its layer is realm layers 5 to 7 of the
+## realms that are [b]not[/b] the owner ([method layers_for]). Each character adds its realm's
+## layer to its mask ([method PlayerCharacter.set_realm_collision]), so the closed gate stops the
+## owner's enemies and lets its own through; if the fort is neutral it stops all of them;
+## [br]- the child [code]Vista[/code] is the [b]view[/b] body, on structure layer 4
+## ([constant PlayerCharacter.STRUCTURE_LAYER]): it stops no one, but the camera and the line of
+## sight do not pass through the gate (even if the owner can cross it).
+## [br]When broken, both bodies are left with no layers.
 ## [br][br]
-## El servidor y el cliente deben poner el mismo estado en cada tick con [method set_state]
-## (dueño y rotura); la vida y los golpes son cosa del controlador de la fortaleza.
+## The server and the client must set the same state on each tick with [method set_state] (owner
+## and breakage); health and hits are the fort controller's job.
 ## [br][br]
-## Nodos que espera (los crea tools/props/build_vado_gris_props.gd): [code]Hoja1[/code] (norte,
-## bisagra en z = -[constant HALF_WIDTH]) y [code]Hoja2[/code] (sur), [code]ColisionCerrada[/code]
-## (forma del cuerpo de movimiento) y [code]Vista[/code] con su [code]ColisionVista[/code]. Origen:
-## centro del vano a ras de suelo; cerrada, ocupa el plano x = 0 y el interior del fuerte queda
-## hacia +X.
+## Nodes it expects (created by tools/props/build_vado_gris_props.gd): [code]Hoja1[/code] (north,
+## hinge at z = -[constant HALF_WIDTH]) and [code]Hoja2[/code] (south), [code]ColisionCerrada[/code]
+## (shape of the movement body) and [code]Vista[/code] with its [code]ColisionVista[/code]. Origin:
+## center of the opening at ground level; when closed, it occupies the plane x = 0 and the fort's
+## interior is toward +X.
 
-## Medio ancho del vano (m).
+## Half width of the opening (m).
 const HALF_WIDTH: float = 2.0
-## Alto de las hojas (m).
+## Height of the leaves (m).
 const LEAF_HEIGHT: float = 4.3
-## Giro de las hojas rotas (rad, unos 95°: algo más allá de la perpendicular).
+## Rotation of the broken leaves (rad, about 95°: somewhat beyond perpendicular).
 const OPEN_ANGLE: float = 1.658
-## Hijo con el cuerpo de vista (capa de estructuras).
+## Child with the view body (structure layer).
 const VIEW_BODY: NodePath = ^"Vista"
-## Hijo con la forma de la puerta cerrada (la caja que golpean los ataques y que ocupa el vano).
+## Child with the closed gate's shape (the box that attacks hit and that occupies the opening).
 const CLOSED_SHAPE: NodePath = ^"ColisionCerrada"
-## Caja de la puerta cerrada si la escena no tiene [code]ColisionCerrada[/code]: tamaño y centro
-## (en el espacio local de la puerta).
+## Closed gate box if the scene has no [code]ColisionCerrada[/code]: size and center (in the gate's
+## local space).
 const DEFAULT_BOX_SIZE: Vector3 = Vector3(0.5, 4.3, 4.0)
 const DEFAULT_BOX_CENTER: Vector3 = Vector3(0.0, 2.15, 0.0)
-## Códigos de los reinos jugables (los de [RealmCatalog]) que tienen capa de movimiento.
+## Codes of the playable realms (those of [RealmCatalog]) that have a movement layer.
 const _REALM_CODES: Array[int] = [1, 2, 3]
 
 var _owner_realm: int = 0
@@ -53,9 +53,9 @@ func _ready() -> void:
 	_apply()
 
 
-## Capas de colisión del cuerpo de movimiento de una puerta que pertenece a [param owner_realm]
-## (0 = fuerte neutral): las capas de reino de los demás reinos. Con [param broken] (vida 0), 0:
-## no para a nadie. Estática y compartida: el cliente y el servidor calculan lo mismo.
+## Collision layers of the movement body of a gate belonging to [param owner_realm] (0 = neutral
+## fort): the realm layers of the other realms. With [param broken] (health 0), 0: it stops no
+## one. Static and shared: client and server compute the same.
 static func layers_for(owner_realm: int, broken: bool) -> int:
 	if broken:
 		return 0
@@ -66,45 +66,46 @@ static func layers_for(owner_realm: int, broken: bool) -> int:
 	return layers
 
 
-## Capa del cuerpo de vista: la de estructuras mientras la puerta está entera, 0 rota.
+## Layer of the view body: the structure one while the gate is intact, 0 when broken.
 static func view_layer_for(broken: bool) -> int:
 	return 0 if broken else PlayerCharacter.STRUCTURE_LAYER
 
 
-## Pone el estado de la puerta: dueño del fuerte ([param owner_realm], 0 si es neutral) y si está
-## rota. Cambia las capas de los dos cuerpos y la pose de las hojas.
+## Sets the gate's state: fort owner ([param owner_realm], 0 if neutral) and whether it is broken.
+## It changes the layers of both bodies and the pose of the leaves.
 func set_state(owner_realm: int, broken: bool) -> void:
 	_owner_realm = owner_realm
 	_broken = broken
 	_apply()
 
 
-## Reino dueño de la puerta (0 = neutral).
+## Owner realm of the gate (0 = neutral).
 func get_owner_realm() -> int:
 	return _owner_realm
 
 
-## true si la puerta está rota (vida 0): sin colisión de ningún tipo y con las hojas colgando.
+## true if the gate is broken (health 0): no collision of any kind and with the leaves hanging.
 func is_broken() -> bool:
 	return _broken
 
 
-## Giro (rad) de la hoja [param index] (0 = norte, 1 = sur) en el estado actual.
+## Rotation (rad) of leaf [param index] (0 = north, 1 = south) in the current state.
 func get_leaf_angle(index: int) -> float:
 	if not _broken:
 		return 0.0
 	return -OPEN_ANGLE if index == 0 else OPEN_ANGLE
 
 
-## Cuerpo de vista (capa de estructuras), o null si la escena no lo tiene.
+## View body (structure layer), or null if the scene does not have it.
 func get_view_body() -> StaticBody3D:
 	return get_node_or_null(VIEW_BODY) as StaticBody3D
 
 
-## Transformación (en el mundo) del [b]centro[/b] de la caja de la puerta cerrada: es lo que golpean los
-## ataques ([method HitShapes.sector_hits_box]) y lo que ocupa el vano
-## ([method HitShapes.capsule_overlaps_box]). Sale de la forma [code]ColisionCerrada[/code] de la
-## escena o, si no la tiene, de [constant DEFAULT_BOX_CENTER]. Solo vale con la puerta en el árbol.
+## Transform (in the world) of the [b]center[/b] of the closed gate's box: it is what attacks hit
+## ([method HitShapes.sector_hits_box]) and what occupies the opening
+## ([method HitShapes.capsule_overlaps_box]). It comes from the scene's [code]ColisionCerrada[/code]
+## shape or, if it lacks one, from [constant DEFAULT_BOX_CENTER]. Only valid with the gate in the
+## tree.
 func get_hit_box() -> Transform3D:
 	var base: Transform3D = global_transform if is_inside_tree() else transform
 	var shape_node: CollisionShape3D = get_node_or_null(CLOSED_SHAPE) as CollisionShape3D
@@ -113,7 +114,7 @@ func get_hit_box() -> Transform3D:
 	return base * Transform3D(Basis(), DEFAULT_BOX_CENTER)
 
 
-## Medias dimensiones de la caja de [method get_hit_box].
+## Half extents of the box of [method get_hit_box].
 func get_hit_half_extents() -> Vector3:
 	var shape_node: CollisionShape3D = get_node_or_null(CLOSED_SHAPE) as CollisionShape3D
 	if shape_node != null:
@@ -123,8 +124,8 @@ func get_hit_half_extents() -> Vector3:
 	return DEFAULT_BOX_SIZE * 0.5
 
 
-## Cuerpos de física de la puerta (movimiento y vista): la línea de visión de los golpes a la
-## propia puerta los excluye.
+## The gate's physics bodies (movement and view): the line of sight of hits on the gate itself
+## excludes them.
 func get_body_rids() -> Array[RID]:
 	var rids: Array[RID] = [get_rid()]
 	var view: StaticBody3D = get_view_body()
@@ -143,6 +144,6 @@ func _apply() -> void:
 		var leaf_basis: Basis = Basis(Vector3.UP, get_leaf_angle(i))
 		var leaf: Node3D = get_node_or_null(NodePath("Hoja%d" % (i + 1))) as Node3D
 		if leaf != null:
-			# La malla de la hoja va de la bisagra hacia +Z: la sur es la misma girada 180°.
+			# The leaf mesh runs from the hinge toward +Z: the south one is the same rotated 180°.
 			var mesh_basis: Basis = Basis() if i == 0 else Basis(Vector3.UP, PI)
 			leaf.transform = Transform3D(leaf_basis * mesh_basis, hinge)

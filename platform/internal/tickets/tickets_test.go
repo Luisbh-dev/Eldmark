@@ -16,19 +16,19 @@ import (
 	"eldmark/platform/internal/tickets"
 )
 
-// update reescribe los vectores compartidos: go test ./internal/tickets -run TestSharedVectors -update
+// update rewrites the shared vectors: go test ./internal/tickets -run TestSharedVectors -update
 var update = flag.Bool("update", false, "reescribe tests/fixtures/tickets/handoff_ticket_vectors.json")
 
-// Los vectores que comparte con HandoffTicket en GDScript (plataforma.md P4).
+// The vectors shared with HandoffTicket in GDScript (plataforma.md P4).
 const vectorsPath = "../../../tests/fixtures/tickets/handoff_ticket_vectors.json"
 
-// El vector de plataforma.md §5.1 y el billete de la respuesta de enter de §4.5.
+// The vector from plataforma.md §5.1 and the ticket from the enter response in §4.5.
 const (
 	specHex    = "0101010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496b7061e2f54ab1a096f66024437123d9d1"
 	specBase64 = "AQEBAAgHBgUEAwIBKgAAAAAAAAATwO8ZAAEAAQDSSWsK0klrcGHi9UqxoJb2YCRDcSPZ0Q=="
 )
 
-// Clave 1: la del vector (00 01 … 1f), que solo vale en test. Clave 2: otra fija de prueba.
+// Key 1: the vector's (00 01 … 1f), valid only in tests. Key 2: another fixed test key.
 var (
 	key1 = func() []byte {
 		k := make([]byte, 32)
@@ -94,7 +94,7 @@ func TestParseErrors(t *testing.T) {
 			t.Errorf("%s: %v, se esperaba %v", c.name, err, c.want)
 		}
 	}
-	// Firmado con otra clave que la de su key_id.
+	// Signed with a different key than the one for its key_id.
 	other := specTicket().Sign(key2)
 	if _, err := tickets.Parse(other[:], keys); !errors.Is(err, tickets.ErrMAC) {
 		t.Errorf("otra clave: %v", err)
@@ -135,8 +135,8 @@ func TestNewID(t *testing.T) {
 	}
 }
 
-// Vectores compartidos con GDScript. Los ids van en cadena (plataforma.md §4.1): en GDScript se
-// leen con String.to_int(); el resto de números caben en un float.
+// Vectors shared with GDScript. Ids are strings (plataforma.md §4.1): in GDScript they are read
+// with String.to_int(); the other numbers fit in a float.
 type vectorFile struct {
 	Comment  string        `json:"comment"`
 	Keys     []vectorKey   `json:"keys"`
@@ -176,7 +176,7 @@ type validCase struct {
 type invalidCase struct {
 	Name  string `json:"name"`
 	Hex   string `json:"hex"`
-	Error string `json:"error"` // size, version, key o mac
+	Error string `json:"error"` // size, version, key or mac
 }
 
 func (c validCase) ticket(t *testing.T) tickets.Ticket {
@@ -200,7 +200,7 @@ func valid(name string, keyID uint8, tk tickets.Ticket, zoneID string) validCase
 		Hex: hex.EncodeToString(b[:]), Base64: base64.StdEncoding.EncodeToString(b[:])}
 }
 
-// buildVectors arma el archivo de vectores; el del repositorio tiene que ser exactamente este.
+// buildVectors builds the vectors file; the one in the repository must be exactly this one.
 func buildVectors() vectorFile {
 	spec := specTicket()
 	good := spec.Sign(key1)

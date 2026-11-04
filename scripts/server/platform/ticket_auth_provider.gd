@@ -1,40 +1,40 @@
 class_name TicketAuthProvider
 extends AuthProvider
-## La entrada con el billete de la plataforma (docs/plataforma.md §5.2): [method authenticate] es síncrono y sin
-## red; cualquier fallo es REJECT [constant NetProtocol.Result.TICKET] y nada llega a la plataforma.
+## Entry with the platform's ticket (docs/plataforma.md §5.2): [method authenticate] is synchronous and
+## network-free; any failure is REJECT [constant NetProtocol.Result.TICKET] and nothing reaches the platform.
 ## [br][br]
 ## [codeblock]
-## 0. zona cercada (sin latido aceptado)                -> UNAVAILABLE
-## 1. 52 B, versión 1, key_id conocido, firma correcta  -> TICKET si no (firma en tiempo constante)
-## 2. world_id, zone_key y channel de esta zona          -> TICKET si no («billete de otra zona»)
-## 3. issued_at ≤ ahora + 5 y ahora ≤ expires_at + 5     -> TICKET si no (ahora: el reloj de la plataforma)
-## 4. character_id igual al del HELLO                     -> TICKET si no
-## 5. ticket_id no visto en los últimos 30 s              -> TICKET si no («reutilizado»)
+## 0. fenced zone (no accepted heartbeat)                -> UNAVAILABLE
+## 1. 52 B, version 1, known key_id, correct signature   -> otherwise TICKET (constant-time signature)
+## 2. world_id, zone_key and channel of this zone        -> otherwise TICKET ("ticket from another zone")
+## 3. issued_at ≤ now + 5 and now ≤ expires_at + 5       -> otherwise TICKET (now: the platform's clock)
+## 4. character_id equal to the HELLO's                  -> otherwise TICKET
+## 5. ticket_id not seen in the last 30 s                -> otherwise TICKET ("reused")
 ## [/codeblock]
-## Si pasa, pide la reclamación ([method ZonePlatform.claim]) y devuelve [constant AuthProvider.PENDING]: la
-## reclamación garantiza de verdad el un solo uso y toma el arrendamiento. Su respuesta llega como evento
-## [code]claim[/code] ([method on_platform_event]) y se convierte en un [AuthOutcome]:
+## If it passes, it requests the claim ([method ZonePlatform.claim]) and returns [constant AuthProvider.PENDING]: the
+## claim truly guarantees single use and takes the lease. Its response arrives as a
+## [code]claim[/code] event ([method on_platform_event]) and becomes an [AuthOutcome]:
 ## [codeblock]
-## 200                                         OK con el ClaimedCharacter (la zona mira reino, cupo y carga)
+## 200                                         OK with the ClaimedCharacter (the zone checks realm, capacity and load)
 ## 409 ticket_invalid                          TICKET
 ## 409 character_busy                          BUSY
-## 403 account_blocked                         BANNED con el message del cuerpo
-## 409 instance_lost/replaced/stopped          UNAVAILABLE (y el cierre de §6.1, por instance_closed)
-## cualquier otra, sin conexión                UNAVAILABLE (un 4xx, con alerta en el registro)
+## 403 account_blocked                         BANNED with the body's message
+## 409 instance_lost/replaced/stopped          UNAVAILABLE (and the shutdown of §6.1, via instance_closed)
+## any other, offline                          UNAVAILABLE (a 4xx, with an alert in the log)
 ## [/codeblock]
-## Un 200 de un peer que ya no espera (se fue, o venció su plazo de 7 s) se libera en el acto.
+## A 200 for a peer that is no longer waiting (it left, or its 7 s deadline expired) is released immediately.
 
-## Margen del reloj al mirar la caducidad (s).
+## Clock margin when checking expiry (s).
 const CLOCK_SKEW_S: int = 5
-## Cuánto se recuerda un ticket_id ya visto (s).
+## How long an already-seen ticket_id is remembered (s).
 const REUSE_WINDOW_S: int = 30
-## REJECT TICKET de un HELLO sin billete (§5.5).
+## REJECT TICKET for a HELLO without a ticket (§5.5).
 const NO_TICKET_TEXT: String = "Entra desde el menú con tu cuenta"
 
-## Motivo del último rechazo síncrono (para el registro y las pruebas): «firma», «otra zona», «caducado»,
-## «personaje», «reutilizado», «cercada» o «sin billete».
+## Reason for the last synchronous rejection (for the log and tests): "firma" (signature), "otra zona" (another zone), "caducado" (expired),
+## "personaje" (character), "reutilizado" (reused), "cercada" (fenced) or "sin billete" (no ticket).
 var last_rejection: String = ""
-## Registro de la zona (un [Callable] con un texto); sin él, print.
+## The zone's log (a [Callable] with a text); without it, print.
 var log_sink: Callable = Callable()
 
 var _platform: ZonePlatform
@@ -42,14 +42,14 @@ var _world_id: int
 var _zone_key: int
 var _channel: int
 var _keys: Dictionary[int, PackedByteArray] = {}
-## ticket_id -> hora (Unix) en que se vio.
+## ticket_id -> time (Unix) at which it was seen.
 var _seen: Dictionary[int, int] = {}
-## peer_id -> character_id de los que esperan su reclamación.
+## peer_id -> character_id of those waiting for their claim.
 var _pending: Dictionary[int, int] = {}
 var _completed: Array[AuthOutcome] = []
 
 
-## [param keys]: las claves del billete ([code]{key_id: clave}[/code], de [method ZonePlatform.read_secrets]).
+## [param keys]: the ticket's keys ([code]{key_id: key}[/code], from [method ZonePlatform.read_secrets]).
 func _init(platform: ZonePlatform, world_id: int, zone_id: String, channel: int,
 		keys: Dictionary[int, PackedByteArray]) -> void:
 	_platform = platform
@@ -109,7 +109,7 @@ func on_platform_event(event: PlatformEvent) -> bool:
 				_completed.append(AuthOutcome.new(peer_id, NetProtocol.Result.UNAVAILABLE))
 			return true
 		if not waiting:
-			# El peer se fue (o venció su plazo) antes de la respuesta: el arrendamiento no se queda colgado.
+			# The peer left (or its deadline expired) before the response: the lease is not left dangling.
 			_platform.release(claimed.character_id, claimed.lease_id)
 			return true
 		_completed.append(AuthOutcome.new(peer_id, NetProtocol.Result.OK, "", claimed))
@@ -120,7 +120,7 @@ func on_platform_event(event: PlatformEvent) -> bool:
 	return true
 
 
-## El [AuthOutcome] de una reclamación que no fue un 200 (tabla de §5.2).
+## The [AuthOutcome] of a claim that was not a 200 (table in §5.2).
 func outcome_of_failure(peer_id: int, event: PlatformEvent) -> AuthOutcome:
 	if not event.transport_ok:
 		return AuthOutcome.new(peer_id, NetProtocol.Result.UNAVAILABLE)
@@ -149,7 +149,7 @@ func cancel(peer_id: int) -> void:
 	_pending.erase(peer_id)
 
 
-## Peers que esperan su reclamación (pruebas).
+## Peers waiting for their claim (tests).
 func pending_count() -> int:
 	return _pending.size()
 

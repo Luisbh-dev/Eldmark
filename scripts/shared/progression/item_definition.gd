@@ -1,60 +1,62 @@
 class_name ItemDefinition
 extends Resource
-## Lo que un objeto es (docs/progresion.md §2.1, PRG-02): datos de diseño en
-## [code]data/items/<categoría>/<id>.tres[/code], con un [member id] estable que la base de datos guarda.
-## Lo que alguien posee es un [ItemInstance]; [ItemDatabase] las indexa y comprueba su coherencia.
+## What an item is (docs/progresion.md §2.1, PRG-02): design data in
+## [code]data/items/<category>/<id>.tres[/code], with a stable [member id] that the database
+## stores. What someone owns is an [ItemInstance]; [ItemDatabase] indexes them and checks their
+## consistency.
 ## [br][br]
-## No tiene ninguna propiedad de tipo [Texture2D], [PackedScene] ni [Mesh]: el icono y las escenas van
-## como rutas de texto, que solo lee el cliente (el preset del servidor recorta [code]assets/[/code] y el
-## servidor nunca debe intentar cargarlas). Compartido: sin reloj ni azar.
+## It has no property of type [Texture2D], [PackedScene] or [Mesh]: the icon and scenes go as text
+## paths, which only the client reads (the server preset trims [code]assets/[/code] and the server
+## must never try to load them). Shared: no clock, no randomness.
 
-## Categorías (en la base de datos y en las reglas exportadas, este número).
+## Categories (in the database and in the exported rules, this number).
 enum Category { WEAPON = 1, ARMOR = 2, CONSUMABLE = 3, MATERIAL = 4, QUEST = 5, MISC = 6 }
-## Ranura de equipo. [code]WEAPON[/code] vale para las dos ranuras de arma.
+## Equipment slot. [code]WEAPON[/code] is valid for both weapon slots.
 enum EquipSlot { NONE = 0, WEAPON = 1, HEAD = 2, CHEST = 3, HANDS = 4, LEGS = 5, FEET = 6 }
-## Cuándo queda ligado al personaje.
+## When it becomes bound to the character.
 enum BindRule { NONE = 0, ON_EQUIP = 1, ON_PICKUP = 2 }
 
-## Formato del id: [code][a-z0-9_][/code], de 3 a 32 caracteres.
+## Format of the id: [code][a-z0-9_][/code], 3 to 32 characters.
 const ID_PATTERN: String = "^[a-z0-9_]{3,32}$"
-## Tope de una pila.
+## Cap of a stack.
 const MAX_STACK: int = 999
 
-## Identificador estable: nunca se reutiliza ni se renombra (la base de datos lo guarda).
+## Stable identifier: never reused or renamed (the database stores it).
 @export var id: StringName
-## Nombre en español (no vacío).
+## Name in Spanish (non-empty).
 @export var display_name: String = ""
-## Descripción en español.
+## Description in Spanish.
 @export_multiline var description: String = ""
 @export var category: Category = Category.MISC
 @export var equip_slot: EquipSlot = EquipSlot.NONE
-## WEAPON: el [code]id[/code] del arma en [CombatCatalog]; CONSUMABLE: el del consumible
-## ([code]potion_health[/code], [code]potion_stamina[/code]); ARMOR: la armadura de PRG-06 (sin contenido
-## en la fase 5); el resto, vacío.
+## WEAPON: the [code]id[/code] of the weapon in [CombatCatalog]; CONSUMABLE: that of the consumable
+## ([code]potion_health[/code], [code]potion_stamina[/code]); ARMOR: the PRG-06 armor (no content in
+## phase 5); the rest, empty.
 @export var ref_id: StringName
-## 1 = no apilable; tope [constant MAX_STACK]. Los equipables y los que llevan durabilidad, 1.
+## 1 = not stackable; cap [constant MAX_STACK]. Equippables and those with durability, 1.
 @export_range(1, 999) var max_stack: int = 1
-## Nivel para equiparlo o usarlo (1 al tope de [LevelCurve]).
+## Level to equip or use it (1 up to the cap of [LevelCurve]).
 @export_range(1, 40) var required_level: int = 1
-## Valor en oro (≥ 0): la base de los precios de la fase 6.
+## Value in gold (≥ 0): the basis of phase 6 prices.
 @export var base_value: int = 0
 @export var bind_rule: BindRule = BindRule.NONE
-## false: el jugador no puede destruirlo.
+## false: the player cannot destroy it.
 @export var destroyable: bool = true
-## La instancia lleva durabilidad (por mil, 0–1000).
+## The instance carries durability (per thousand, 0–1000).
 @export var has_durability: bool = false
-## Objeto de inicio (docs/progresion.md §2.5).
+## Starter item (docs/progresion.md §2.5).
 @export var starter: bool = false
-## Total al que el campamento repone esta definición (§4.4); 0 = no se repone. Cabe en una pila.
+## Total to which the camp replenishes this definition (§4.4); 0 = not replenished. Fits in one
+## stack.
 @export_range(0, 999) var camp_refill: int = 0
-## Icono ([code]res://assets/icons/items/…[/code]); solo cliente. Vacío: el casillero pinta el nombre
-## corto con el color de la categoría.
+## Icon ([code]res://assets/icons/items/…[/code]); client-only. Empty: the slot draws the short
+## name in the category's color.
 @export var icon_path: String = ""
-## Escena por cuerpo (PRG-05); solo cliente y solo armaduras. Vacío en la fase 5: las armas se ven por su
-## id de [CombatCatalog].
+## Scene per body (PRG-05); client-only and armor-only. Empty in phase 5: weapons are shown by
+## their [CombatCatalog] id.
 @export var visual_paths: PackedStringArray = PackedStringArray()
 
 
-## Se puede poner en el equipo.
+## Can be put in equipment.
 func is_equipable() -> bool:
 	return equip_slot != EquipSlot.NONE

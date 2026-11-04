@@ -1,19 +1,19 @@
 extends TestCase
-## Pruebas del [CombatResolver] (docs/combate.md, sección 4.3) con escenarios montados a mano en un
-## [SubViewport]: luchadores con su personaje, su cola de entradas y su [Combatant], un
-## [StateHistory] grabado a mano y el servidor sin red.
+## Tests for the [CombatResolver] (docs/combate.md, section 4.3) with hand-built scenarios in a
+## [SubViewport]: fighters with their character, their input queue and their [Combatant], a
+## hand-recorded [StateHistory] and the server without a network.
 ## [br][br]
-## Se cubren la forma y la línea de visión, la defensa con su precedencia (bloqueo frontal y por la
-## espalda, ventana de parada, invulnerabilidad de la esquiva con la ventana entera entre
-## [code]view_tick[/code] y [code]s[/code], la regla de «suelta el escudo y ataca»), un impacto por
-## acción, el intercambio simultáneo, el rebobinado (acierto con el objetivo donde estaba y rechazo
-## por encima del tope) y los candidatos (reinos, protección, zonas seguras, muertos).
+## They cover shape and line of sight, defense with its precedence (frontal and rear block,
+## hitstop window, dodge invulnerability with the whole window between
+## [code]view_tick[/code] and [code]s[/code], the \"drop the shield and attack\" rule), one hit per
+## action, the simultaneous exchange, rewind (a hit with the target where it was and rejection
+## above the cap) and the candidates (realms, protection, safe zones, the dead).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ASKARRA: int = NetProtocol.Realm.ASKARRA
 const ZONE_ID: StringName = &"test_world"
-## Tick en el que se resuelve (lejos de 0 para que haya historial).
+## Tick at which it resolves (far from 0 so there is history).
 const S: int = 200
 const PI_YAW: float = PI
 
@@ -32,7 +32,7 @@ func before_each() -> void:
 	_timing = CombatTiming.from_rules(CombatCatalog.rules())
 	_resolver = CombatResolver.new(_history, ZONE_ID)
 	_fighters.clear()
-	# Los cuerpos de colisión entran en el espacio de física en los primeros pasos.
+	# The collision bodies enter the physics space in the first steps.
 	await wait_physics_frames(3)
 
 
@@ -46,7 +46,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _fighter(net_id: int, realm: int, position: Vector3, yaw: float,
 		peer: ServerPeer = null) -> Combatant:
@@ -57,16 +57,16 @@ func _fighter(net_id: int, realm: int, position: Vector3, yaw: float,
 	return fighter
 
 
-## Atacante de Vardheim en el origen mirando a -Z, y víctima de Solmarch a [param distance] metros
-## delante de él, mirándolo de frente.
+## Attacker from Vardheim at the origin facing -Z, and a victim from Solmarch [param distance] meters
+## in front of it, facing it.
 func _duel(distance: float = 1.5) -> Array[Combatant]:
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0)
 	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -distance), PI_YAW)
 	return [attacker, victim]
 
 
-## Resuelve el tick [param s]. Con [param fresh] (por defecto) se olvida a quién había golpeado ya
-## cada atacante, para repetir un mismo ataque con distintas posiciones.
+## Resolves tick [param s]. With [param fresh] (default) it forgets whom each attacker had already
+## hit, to repeat the same attack with different positions.
 func _resolve(s: int = S, fresh: bool = true) -> Array[CombatResolver.Hit]:
 	for fighter: Combatant in _fighters:
 		if fresh:
@@ -76,15 +76,15 @@ func _resolve(s: int = S, fresh: bool = true) -> Array[CombatResolver.Hit]:
 	return _resolver.resolve(s, _fighters, space)
 
 
-## Graba el historial de todos los luchadores en los ticks [param from] a [param to] (incluidos)
-## con su estado de ahora.
+## Records the history of all fighters at ticks [param from] to [param to] (inclusive)
+## with their current state.
 func _record_all(from_tick: int, to_tick: int) -> void:
 	for tick: int in range(from_tick, to_tick + 1):
 		for fighter: Combatant in _fighters:
 			CombatFixture.record(_history, fighter, tick)
 
 
-## Un peer con RTT de 4 ticks y 6 de interpolación: tope de rebobinado de 4 + 0 + 6 + 2 = 12.
+## A peer with an RTT of 4 ticks and 6 of interpolation: rewind cap of 4 + 0 + 6 + 2 = 12.
 func _lagged_peer() -> ServerPeer:
 	var peer := ServerPeer.new(7)
 	peer.rtt_ticks = 4
@@ -92,16 +92,16 @@ func _lagged_peer() -> ServerPeer:
 	return peer
 
 
-## Hace que la entrada real del tick [param tick] (S por defecto) del atacante lleve ese
-## [param view_offset_q] y la consume, como haría el servidor.
+## Makes the real input of tick [param tick] (S by default) of the attacker carry that
+## [param view_offset_q] and consumes it, as the server would.
 func _set_view_offset(attacker: Combatant, view_offset_q: int, tick: int = S) -> void:
 	attacker.queue.reset(tick - 1, NetProtocol.neutral_input(tick - 1, 0.0))
 	attacker.queue.push(NetProtocol.neutral_input(tick, 0.0), view_offset_q, tick)
 	attacker.queue.take(tick)
 
 
-## Graba a la víctima (net_id 2) bloqueando de frente en los ticks S - 30 a [param last_block] y sin
-## bloquear en los siguientes hasta S - 1, y al atacante quieto.
+## Records the victim (net_id 2) blocking head-on at ticks S - 30 to [param last_block] and not
+## blocking at the following ones up to S - 1, and the attacker standing still.
 func _record_block_until(last_block: int) -> void:
 	for tick: int in range(S - 30, S):
 		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
@@ -111,9 +111,9 @@ func _record_block_until(last_block: int) -> void:
 		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI_YAW, flags)
 
 
-## Cola del atacante con entradas reales de los ticks [param from_tick] a S - 1 llegadas con
-## [param normal_lead] ticks de antelación y la del tick S con [param s_lead] y ese
-## [param view_offset_q]; todas consumidas, como haría el servidor.
+## Attacker queue with real inputs for ticks [param from_tick] to S - 1 arrived with
+## [param normal_lead] ticks of lead and the one for tick S with [param s_lead] and that
+## [param view_offset_q]; all consumed, as the server would.
 func _fill_queue(attacker: Combatant, from_tick: int, normal_lead: int, s_lead: int,
 		view_offset_q: int) -> void:
 	attacker.queue.reset(from_tick - 1, NetProtocol.neutral_input(from_tick - 1, 0.0))
@@ -124,7 +124,7 @@ func _fill_queue(attacker: Combatant, from_tick: int, normal_lead: int, s_lead: 
 	attacker.queue.take(S)
 
 
-## Un atacante de LAN (RTT de 2 ticks) que declara el retardo de interpolación máximo.
+## A LAN attacker (RTT of 2 ticks) that declares the maximum interpolation delay.
 func _lan_cheater() -> ServerPeer:
 	var peer := ServerPeer.new(9)
 	peer.rtt_ticks = 2
@@ -133,8 +133,8 @@ func _lan_cheater() -> ServerPeer:
 	return peer
 
 
-## Víctima que se aleja de frente a 5 m/s: a 2,23 m del atacante en S - 24 y a 4,23 m en S (el alcance,
-## con el radio de la cápsula, es 3,0 m).
+## A victim moving away head-on at 5 m/s: at 2.23 m from the attacker at S - 24 and at 4.23 m at S (the reach,
+## with the capsule radius, is 3.0 m).
 func _retreating_victim() -> Combatant:
 	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -4.23), PI_YAW)
 	for tick: int in range(S - 30, S):
@@ -151,41 +151,41 @@ func _outcomes(hits: Array[CombatResolver.Hit]) -> Array[int]:
 	return result
 
 
-# --- Forma y línea de visión ------------------------------------------------------------------
+# --- Shape and line of sight ------------------------------------------------------------------
 
 func test_hit_inside_the_sector() -> void:
 	var duel: Array[Combatant] = _duel(1.5)
 	CombatFixture.start_light_active(duel[0], S)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if not assert_eq(hits.size(), 1, "un golpe"):
+	if not assert_eq(hits.size(), 1, "a hit"):
 		return
 	assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
 	assert_true(hits[0].attacker == duel[0] and hits[0].victim == duel[1], "de 1 a 2")
-	assert_near(hits[0].view_tick, float(S), 1e-6, "sin rebobinado")
+	assert_near(hits[0].view_tick, float(S), 1e-6, "without rewind")
 	assert_near(hits[0].rewind, 0.0, 1e-6)
-	assert_false(hits[0].critical, "de frente no es crítico")
+	assert_false(hits[0].critical, "head-on it is not a crit")
 	assert_eq(hits[0].attack.id, CombatCatalog.attack_id(&"sword_light_1"))
 
 
 func test_misses_outside_the_sector() -> void:
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0)
 	CombatFixture.start_light_active(attacker, S)
-	# Fuera de alcance (2,6 + 0,4 de radio).
+	# Out of reach (2.6 + 0.4 of radius).
 	var far: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -3.2), 0.0)
-	assert_eq(_resolve().size(), 0, "a 3,2 m no llega")
+	assert_eq(_resolve().size(), 0, "at 3.2 m it does not reach")
 	far.get_character().global_position = Vector3(0.0, 0.0, -2.9)
-	assert_eq(_resolve().size(), 1, "a 2,9 m (alcance más radio) sí")
-	# Detrás del atacante.
+	assert_eq(_resolve().size(), 1, "at 2.9 m (reach plus radius) it does")
+	# Behind the attacker.
 	far.get_character().global_position = Vector3(0.0, 0.0, 1.5)
-	assert_eq(_resolve().size(), 0, "a su espalda no")
-	# A los lados: 100° de arco, así que 50° a cada lado más lo que ocupa la cápsula.
+	assert_eq(_resolve().size(), 0, "behind its back no")
+	# To the sides: 100° of arc, so 50° on each side plus what the capsule takes up.
 	far.get_character().global_position = Vector3(1.5, 0.0, -0.3)
-	assert_eq(_resolve().size(), 0, "casi de lado (79°) no")
+	assert_eq(_resolve().size(), 0, "almost sideways (79°) no")
 	far.get_character().global_position = Vector3(1.0, 0.0, -1.0)
-	assert_eq(_resolve().size(), 1, "a 45° sí")
-	# Por encima: las alturas del sector son 0,2 a 2,0 m sobre los pies del atacante.
+	assert_eq(_resolve().size(), 1, "at 45° yes")
+	# Above: the sector heights are 0.2 to 2.0 m above the attacker's feet.
 	far.get_character().global_position = Vector3(0.0, 2.5, -1.5)
-	assert_eq(_resolve().size(), 0, "dos metros y medio por encima no")
+	assert_eq(_resolve().size(), 0, "two and a half meters above no")
 
 
 func test_a_wall_in_between_blocks_the_hit() -> void:
@@ -202,25 +202,25 @@ func test_a_wall_in_between_blocks_the_hit() -> void:
 	wall.add_child(shape)
 	_world.add_child(wall)
 	await wait_physics_frames(2)
-	assert_eq(_resolve().size(), 0, "detrás de un muro no hay golpe")
+	assert_eq(_resolve().size(), 0, "behind a wall there is no hit")
 	_world.remove_child(wall)
 	wall.free()
 	await wait_physics_frames(2)
-	assert_eq(_resolve().size(), 1, "sin el muro, sí")
+	assert_eq(_resolve().size(), 1, "without the wall, yes")
 
 
 func test_back_attack_is_critical() -> void:
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0)
-	# La víctima mira en el mismo sentido que el atacante: le da la espalda.
+	# The victim faces the same direction as the attacker: it turns its back to it.
 	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), 0.0)
 	CombatFixture.start_light_active(attacker, S)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
-		assert_true(hits[0].critical, "por la espalda es crítico")
+		assert_true(hits[0].critical, "from behind it is a crit")
 
 
-# --- Defensa ----------------------------------------------------------------------------------
+# --- Defense ----------------------------------------------------------------------------------
 
 func test_frontal_block_yes_and_back_block_no() -> void:
 	var duel: Array[Combatant] = _duel(1.5)
@@ -228,49 +228,49 @@ func test_frontal_block_yes_and_back_block_no() -> void:
 	CombatFixture.start_block(duel[1], S - 30)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED, "el escudo de cara bloquea")
-	# De espaldas al atacante el cono de bloqueo no lo cubre.
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED, "the shield facing blocks")
+	# With its back to the attacker the block cone does not cover it.
 	duel[1].get_character().yaw = 0.0
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "por la espalda no bloquea")
-		assert_true(hits[0].critical, "y es crítico")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "from behind it does not block")
+		assert_true(hits[0].critical, "and it is a crit")
 
 
 func test_parry_inside_and_outside_the_window() -> void:
 	var duel: Array[Combatant] = _duel(1.5)
 	var window: int = CombatCatalog.rules().parry_window_ticks
 	CombatFixture.start_light_active(duel[0], S)
-	# La ventana de parada se abrió hace window - 1 ticks: el último tick de la ventana.
+	# The parry window opened window - 1 ticks ago: the last tick of the window.
 	CombatFixture.start_block(duel[1], S - window + 1, true)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.PARRIED, "dentro de la ventana, parada")
-	# Un tick más tarde la ventana se cerró: ya es un bloqueo normal.
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.PARRIED, "inside the window, parry")
+	# One tick later the window closed: it is now a normal block.
 	CombatFixture.start_block(duel[1], S - window, true)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED, "fuera de la ventana, bloqueo")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED, "outside the window, block")
 
 
 func test_invulnerable_dodge_has_no_effect_and_does_not_consume_the_swing() -> void:
 	var duel: Array[Combatant] = _duel(1.5)
 	CombatFixture.start_light_active(duel[0], S)
 	var dodge_ticks: DodgeTicks = CombatCatalog.weapon(duel[1].get_character().combat.weapon_id).dodge
-	# La esquiva empezó hace 10 ticks: el tick S está dentro de sus ticks invulnerables.
+	# The dodge started 10 ticks ago: tick S is within its invulnerable ticks.
 	var start: int = S - dodge_ticks.invulnerable_from_ticks - 2
 	CombatFixture.start_dodge(duel[1], start)
-	assert_true(ActionMachine.is_invulnerable(duel[1].get_character().combat, S), "invulnerable en S")
+	assert_true(ActionMachine.is_invulnerable(duel[1].get_character().combat, S), "invulnerable at S")
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.INVULNERABLE)
-	assert_false(duel[0].has_hit(2), "la invulnerabilidad no consume el golpe")
-	# Pasada la invulnerabilidad el mismo ataque sí acierta.
+	assert_false(duel[0].has_hit(2), "invulnerability does not consume the hit")
+	# Once the invulnerability has passed, the same attack does land.
 	CombatFixture.start_dodge(duel[1], S - dodge_ticks.invulnerable_to_ticks)
 	assert_false(ActionMachine.is_invulnerable(duel[1].get_character().combat, S))
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "acierta al acabar")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "it lands at the end")
 
 
 func test_invulnerability_is_found_even_when_the_whole_window_falls_between_view_tick_and_s() -> void:
@@ -279,8 +279,8 @@ func test_invulnerability_is_found_even_when_the_whole_window_falls_between_view
 	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
 	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
-	# Historial: la víctima esquivó entre S - 8 y S - 3 (invulnerable en parte de esos ticks) y
-	# ahora, en S, ya no es invulnerable ni lo era en view_tick (S - 10).
+	# History: the victim dodged between S - 8 and S - 3 (invulnerable for part of those ticks) and
+	# now, at S, is no longer invulnerable nor was it at view_tick (S - 10).
 	var dodge: DodgeTicks = CombatCatalog.weapon(victim.get_character().combat.weapon_id).dodge
 	for tick: int in range(S - 12, S):
 		var flags: int = EntityRecord.FLAG_GROUNDED
@@ -292,10 +292,10 @@ func test_invulnerability_is_found_even_when_the_whole_window_falls_between_view
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.INVULNERABLE,
-				"el golpe cae en la ventana invulnerable del rebobinado")
+				"the hit falls in the rewound invulnerable window")
 		assert_near(hits[0].view_tick, float(S - 10), 1e-4)
 		assert_near(hits[0].rewind, 10.0, 1e-4)
-	assert_false(attacker.has_hit(2), "sin consumir")
+	assert_false(attacker.has_hit(2), "without consuming")
 
 
 func test_releasing_the_shield_to_attack_removes_the_old_block() -> void:
@@ -304,8 +304,8 @@ func test_releasing_the_shield_to_attack_removes_the_old_block() -> void:
 	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
 	_set_view_offset(attacker, 8 * CombatResolver.VIEW_OFFSET_Q_SCALE)
-	# En view_tick (S - 8) y los ticks anteriores la víctima bloqueaba; después soltó el escudo y
-	# empezó un ataque en S - 3.
+	# At view_tick (S - 8) and the earlier ticks the victim was blocking; afterwards it dropped the shield and
+	# started an attack at S - 3.
 	for tick: int in range(S - 12, S):
 		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
 		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI_YAW,
@@ -317,19 +317,19 @@ func test_releasing_the_shield_to_attack_removes_the_old_block() -> void:
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT,
-				"quien suelta el escudo y ataca ya no está protegido")
-	# Si en cambio sigue bloqueando ahora, el bloqueo de view_tick y el de S cuentan.
+				"whoever drops the shield and attacks is no longer protected")
+	# If instead it keeps blocking now, the view_tick block and the S one count.
 	CombatFixture.start_block(victim, S - 20)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED)
-	# Y si bloqueaba en view_tick pero ahora está en reposo, el bloqueo de view_tick protege.
+	# And if it was blocking at view_tick but is now idle, the view_tick block protects.
 	state.action = CombatState.Action.NONE
 	state.action_id = 0
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED,
-				"el defensor de view_tick que ya no ataca conserva su bloqueo")
+				"the view_tick defender who no longer attacks keeps its block")
 
 
 func test_a_dodge_started_after_view_tick_also_drops_the_old_block() -> void:
@@ -342,8 +342,8 @@ func test_a_dodge_started_after_view_tick_also_drops_the_old_block() -> void:
 		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
 		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI_YAW,
 				EntityRecord.FLAG_GROUNDED | ActionMachine.DEFENSE_BLOCKING)
-	# Esquiva empezada en S - 2: en S aún no es invulnerable (los ticks invulnerables empiezan más
-	# tarde), pero ya no cuenta el bloqueo de hace 8 ticks.
+	# Dodge started at S - 2: at S it is not yet invulnerable (the invulnerable ticks start later),
+	# but the block from 8 ticks ago no longer counts.
 	CombatFixture.start_dodge(victim, S - 2)
 	var dodge: DodgeTicks = CombatCatalog.weapon(victim.get_character().combat.weapon_id).dodge
 	if dodge.invulnerable_from_ticks <= 2:
@@ -353,15 +353,15 @@ func test_a_dodge_started_after_view_tick_also_drops_the_old_block() -> void:
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
 
 
-## C2/R3: un control impuesto después de view_tick (aturdimiento, tambaleo) también baja el escudo: la
-## muestra rebobinada de bloqueo ya no protege (ni castiga) a quien está aturdido o tambaleándose.
+## C2/R3: a control imposed after view_tick (stun, stagger) also lowers the shield: the
+## rewound block sample no longer protects (nor punishes) someone who is stunned or staggering.
 func test_a_defender_stunned_after_view_tick_loses_the_old_block() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
 	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
 	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
-	# Bloqueaba hasta S - 8; en S - 7 le rompieron la guardia (aturdido hasta S + 53, sin resistencia).
+	# It was blocking until S - 8; at S - 7 its guard was broken (stunned until S + 53, no stamina).
 	_record_block_until(S - 8)
 	var state: CombatState = victim.get_character().combat
 	state.stamina = 0
@@ -369,7 +369,7 @@ func test_a_defender_stunned_after_view_tick_loses_the_old_block() -> void:
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT,
-				"aturdido en s: la muestra de hace 10 ticks no cuenta")
+				"stunned at s: the sample from 10 ticks ago does not count")
 
 
 func test_a_defender_staggered_after_view_tick_loses_the_old_block() -> void:
@@ -378,7 +378,7 @@ func test_a_defender_staggered_after_view_tick_loses_the_old_block() -> void:
 	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
 	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
-	# Bloqueaba hasta S - 9, empezó un ligero en S - 8 y un golpe lo dejó tambaleándose en S - 5.
+	# It was blocking until S - 9, started a light attack at S - 8 and a hit left it staggering at S - 5.
 	_record_block_until(S - 9)
 	var state: CombatState = victim.get_character().combat
 	state.action = CombatState.Action.LIGHT
@@ -388,11 +388,11 @@ func test_a_defender_staggered_after_view_tick_loses_the_old_block() -> void:
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT,
-				"tambaleándose en s: no está protegido por su bloqueo de hace 10 ticks")
+				"staggering at s: it is not protected by its block from 10 ticks ago")
 
 
 func test_a_defender_that_only_released_the_shield_keeps_the_old_block() -> void:
-	# Control de C2: soltar el escudo sin hacer nada más (NONE en s) conserva la muestra de view_tick.
+	# C2 control: dropping the shield without doing anything else (NONE at s) keeps the view_tick sample.
 	var peer: ServerPeer = _lagged_peer()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
 	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
@@ -404,36 +404,36 @@ func test_a_defender_that_only_released_the_shield_keeps_the_old_block() -> void
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED,
-				"soltó el escudo hace 7 ticks: lo que veía el atacante sigue valiendo")
-	# Y si sigue bloqueando de verdad, también (el aturdimiento se cura al acabar).
+				"it dropped the shield 7 ticks ago: what the attacker saw still holds")
+	# And if it truly keeps blocking, too (the stun wears off when it ends).
 	CombatFixture.start_block(victim, S - 30)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED)
 
 
-# --- Un impacto por acción ---------------------------------------------------------------------
+# --- One hit per action ------------------------------------------------------------------------
 
 func test_one_impact_per_action_and_target() -> void:
 	var duel: Array[Combatant] = _duel(1.5)
 	CombatFixture.start_light_active(duel[0], S)
-	assert_eq(_resolve(S, false).size(), 1, "el primer tick activo acierta")
+	assert_eq(_resolve(S, false).size(), 1, "the first active tick lands")
 	var attack: AttackTicks = CombatCatalog.attack(duel[0].get_character().combat.action_id)
-	# Los demás ticks activos del mismo ataque no vuelven a golpear.
+	# The other active ticks of the same attack do not hit again.
 	for offset: int in range(1, attack.active_ticks):
-		assert_eq(_resolve(S + offset, false).size(), 0, "tick activo +%d: ya golpeó" % offset)
-	# Un ataque nuevo (otro action_tick) sí.
+		assert_eq(_resolve(S + offset, false).size(), 0, "active tick +%d: it already hit" % offset)
+	# A new attack (another action_tick) does.
 	CombatFixture.start_light_active(duel[0], S + 20, 1)
-	assert_eq(_resolve(S + 20, false).size(), 1, "el siguiente ataque vuelve a golpear")
+	assert_eq(_resolve(S + 20, false).size(), 1, "the next attack hits again")
 
 
 func test_a_blocked_or_parried_swing_is_also_consumed() -> void:
 	var duel: Array[Combatant] = _duel(1.5)
 	CombatFixture.start_light_active(duel[0], S)
 	CombatFixture.start_block(duel[1], S - 30)
-	assert_eq(_resolve(S, false).size(), 1, "bloqueado")
+	assert_eq(_resolve(S, false).size(), 1, "blocked")
 	assert_eq(_resolve(S + 1, false).size(), 0,
-			"un golpe bloqueado no se repite en el siguiente tick")
+			"a blocked hit is not repeated on the next tick")
 
 
 func test_simultaneous_exchange_resolves_both_hits() -> void:
@@ -441,25 +441,25 @@ func test_simultaneous_exchange_resolves_both_hits() -> void:
 	CombatFixture.start_light_active(duel[0], S)
 	CombatFixture.start_light_active(duel[1], S)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if not assert_eq(hits.size(), 2, "los dos golpes del mismo tick"):
+	if not assert_eq(hits.size(), 2, "the two hits of the same tick"):
 		return
-	assert_true(hits[0].attacker == duel[0] and hits[0].victim == duel[1], "primero 1 -> 2")
-	assert_true(hits[1].attacker == duel[1] and hits[1].victim == duel[0], "luego 2 -> 1")
+	assert_true(hits[0].attacker == duel[0] and hits[0].victim == duel[1], "first 1 -> 2")
+	assert_true(hits[1].attacker == duel[1] and hits[1].victim == duel[0], "then 2 -> 1")
 	assert_eq(_outcomes(hits), [CombatResolver.Outcome.IMPACT, CombatResolver.Outcome.IMPACT])
 
 
-# --- Rebobinado -------------------------------------------------------------------------------
+# --- Rewind -----------------------------------------------------------------------------------
 
 func test_allowed_rewind_formula() -> void:
 	assert_eq(CombatResolver.allowed_rewind(4, 0, 48), 12, "4 + 0 + 6 + 2")
-	assert_eq(CombatResolver.allowed_rewind(0, 0, 0), 6, "la interpolación sube al mínimo de 4")
-	assert_eq(CombatResolver.allowed_rewind(2, 3, 200), 19, "2 + 3 + 12 (máximo) + 2")
-	assert_eq(CombatResolver.allowed_rewind(30, 10, 96), NetProtocol.MAX_REWIND_TICKS, "tope de 24")
-	assert_eq(CombatResolver.allowed_rewind(4, -3, 48), 12, "una antelación negativa cuenta 0")
-	# Revisión de la fase 4 (trampas): la interpolación se redondea hacia arriba (truncada perdía hasta 7/8 de tick
-	# de la vista de un honrado).
-	assert_eq(CombatResolver.allowed_rewind(4, 0, 41), 12, "4 + 0 + ceil(5,125) + 2")
-	assert_eq(CombatResolver.allowed_rewind(4, 0, 47), 12, "4 + 0 + ceil(5,875) + 2")
+	assert_eq(CombatResolver.allowed_rewind(0, 0, 0), 6, "interpolation rises to the minimum of 4")
+	assert_eq(CombatResolver.allowed_rewind(2, 3, 200), 19, "2 + 3 + 12 (maximum) + 2")
+	assert_eq(CombatResolver.allowed_rewind(30, 10, 96), NetProtocol.MAX_REWIND_TICKS, "cap of 24")
+	assert_eq(CombatResolver.allowed_rewind(4, -3, 48), 12, "a negative lead counts as 0")
+	# Phase 4 revision (cheats): interpolation is rounded up (truncated, it lost up to 7/8 of a tick
+	# of an honest player's view).
+	assert_eq(CombatResolver.allowed_rewind(4, 0, 41), 12, "4 + 0 + ceil(5.125) + 2")
+	assert_eq(CombatResolver.allowed_rewind(4, 0, 47), 12, "4 + 0 + ceil(5.875) + 2")
 
 
 func test_rewound_hit_lands_where_the_attacker_saw_the_target() -> void:
@@ -467,16 +467,16 @@ func test_rewound_hit_lands_where_the_attacker_saw_the_target() -> void:
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
 	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(4.2, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
-	# Historial: la víctima estaba delante hasta S - 6 y se movió hacia un lado a 0,7 m por tick.
+	# History: the victim was in front until S - 6 and moved sideways at 0.7 m per tick.
 	for tick: int in range(S - 12, S):
 		var x: float = maxf(0.0, float(tick - (S - 6))) * 0.7
 		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
 		_history.record(tick, 2, Vector3(x, 0.0, -1.5), PI_YAW, EntityRecord.FLAG_GROUNDED)
 	_set_view_offset(attacker, 0)
-	assert_eq(_resolve().size(), 0, "sin rebobinado, la víctima ya está fuera del arco")
+	assert_eq(_resolve().size(), 0, "without rewind, the victim is already outside the arc")
 	_set_view_offset(attacker, 6 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "con 6 ticks de rebobinado, acierta donde la veía"):
+	if assert_eq(hits.size(), 1, "with 6 ticks of rewind, it lands where it saw it"):
 		assert_near(hits[0].view_tick, float(S - 6), 1e-4)
 		assert_near(hits[0].rewind, 6.0, 1e-4)
 
@@ -484,18 +484,18 @@ func test_rewound_hit_lands_where_the_attacker_saw_the_target() -> void:
 func test_rewind_between_s_minus_one_and_s_interpolates() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
-	# La víctima se aleja de frente: estaba a 2,5 m en S - 1 y está a 3,3 m ahora (el alcance, con
-	# el radio de la cápsula, es 3,0 m). A un cuarto de tick atrás ya ha recorrido el 75 % (3,1 m:
-	# fuera); a tres cuartos de tick atrás, el 25 % (2,7 m: dentro).
+	# The victim moves away head-on: it was at 2.5 m at S - 1 and is at 3.3 m now (the reach, with
+	# the capsule radius, is 3.0 m). A quarter of a tick back it has covered 75 % (3.1 m:
+	# outside); three quarters of a tick back, 25 % (2.7 m: inside).
 	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -3.3), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
 	_history.record(S - 1, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
 	_history.record(S - 1, 2, Vector3(0.0, 0.0, -2.5), PI_YAW, EntityRecord.FLAG_GROUNDED)
 	_set_view_offset(attacker, 4)
-	assert_eq(_resolve().size(), 0, "a un cuarto de tick atrás (3,1 m) sigue fuera")
+	assert_eq(_resolve().size(), 0, "a quarter of a tick back (3.1 m) it is still outside")
 	_set_view_offset(attacker, 12)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "a tres cuartos de tick atrás (2,7 m) está dentro"):
+	if assert_eq(hits.size(), 1, "three quarters of a tick back (2.7 m) it is inside"):
 		assert_near(hits[0].view_tick, float(S) - 0.75, 1e-4)
 		assert_near(hits[0].rewind, 0.75, 1e-4)
 
@@ -511,40 +511,40 @@ func test_rewind_beyond_the_cap_is_rejected_and_counts_suspicion() -> void:
 	var allowed: int = CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q)
 	assert_eq(allowed, 12)
 	var slack: int = CombatResolver.REWIND_REJECT_SLACK_TICKS
-	# Hasta allowed + holgura se acepta (con tope): el view_tick queda en S - allowed.
+	# Up to allowed + slack it is accepted (capped): view_tick ends up at S - allowed.
 	_set_view_offset(attacker, (allowed + slack) * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "allowed + holgura no se rechaza"):
+	if assert_eq(hits.size(), 1, "allowed + slack is not rejected"):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
-		assert_near(hits[0].view_tick, float(S - allowed), 1e-4, "y se recorta al tope")
+		assert_near(hits[0].view_tick, float(S - allowed), 1e-4, "and is clamped to the cap")
 	assert_eq(peer.suspicion_score, 0)
-	# Por encima de allowed + holgura, el golpe ni se prueba.
+	# Above allowed + slack, the hit is not even tested.
 	_set_view_offset(attacker, (allowed + slack) * CombatResolver.VIEW_OFFSET_Q_SCALE + 1)
 	hits = _resolve()
-	if assert_eq(hits.size(), 1, "una entrada de rechazo"):
+	if assert_eq(hits.size(), 1, "a rejection entry"):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED)
-		assert_null(hits[0].victim, "sin objetivo")
-	assert_eq(peer.suspicion_score, 1, "suma a la sospecha")
+		assert_null(hits[0].victim, "no target")
+	assert_eq(peer.suspicion_score, 1, "adds to suspicion")
 	assert_eq(peer.rewind_rejects, 1)
 	assert_eq(_resolver.rewind_rejects, 1)
-	# El mismo ataque no suma otra vez en el siguiente tick activo (la sustituta hereda el pedido).
+	# The same attack does not add again on the next active tick (the replacement inherits the request).
 	attacker.queue.take(S + 1)
 	hits = _resolve(S + 1, false)
-	assert_eq(hits.size(), 0, "ya rechazado")
-	assert_eq(peer.suspicion_score, 1, "se cuenta una vez por ataque")
-	# Con 40 ticks (el bot tramposo del documento) también.
+	assert_eq(hits.size(), 0, "already rejected")
+	assert_eq(peer.suspicion_score, 1, "it is counted once per attack")
+	# With 40 ticks (the cheating bot from the document) as well.
 	CombatFixture.start_light_active(attacker, S + 30)
 	_set_view_offset(attacker, 40 * CombatResolver.VIEW_OFFSET_Q_SCALE, S + 30)
 	hits = _resolve(S + 30)
-	assert_eq(_outcomes(hits), [CombatResolver.Outcome.REWIND_REJECTED], "40 ticks de rebobinado")
+	assert_eq(_outcomes(hits), [CombatResolver.Outcome.REWIND_REJECTED], "40 ticks of rewind")
 	assert_eq(peer.suspicion_score, 2)
 
 
-## Revisión de la fase 4 (lente «trampas»): con un tirón del proceso o pocos FPS, el cliente encadena varios pasos de
-## física en un fotograma y el paso k declara la vista del último fotograma dibujado, k ticks más vieja (y sus
-## entradas llegan con menos antelación). Con el tope + 1 de antes, el golpe de un honrado que caía en el séptimo de
-## ocho pasos se rechazaba entero y sumaba sospecha (la causa del fallo intermitente del tramposo «rate» de
-## test_net_processes: s=647, vq=385 con un tope de 23). Ahora se recorta al tope, como uno que declara de más.
+## Phase 4 revision (\"cheats\" lens): with a process hitch or low FPS, the client chains several physics
+## steps in one frame and step k declares the view of the last drawn frame, k ticks older (and its
+## inputs arrive with less lead). With the earlier cap + 1, the hit of an honest player that fell on the seventh of
+## eight steps was rejected whole and added suspicion (the cause of the intermittent failure of the \"rate\" cheater in
+## test_net_processes: s=647, vq=385 with a cap of 23). Now it is clamped to the cap, like one that over-declares.
 func test_a_late_frame_of_an_honest_client_is_clamped_to_the_cap_not_rejected() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
@@ -552,24 +552,24 @@ func test_a_late_frame_of_an_honest_client_is_clamped_to_the_cap_not_rejected() 
 	CombatFixture.start_light_active(attacker, S)
 	_record_all(S - 30, S - 1)
 	var allowed: int = CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q)
-	# Lo de antes (allowed + 1) más 7 pasos de física de un fotograma de 8.
+	# The earlier one (allowed + 1) plus 7 physics steps of an 8-step frame.
 	_set_view_offset(attacker, (allowed + 1 + 7) * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "el golpe se prueba"):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "y acierta")
-		assert_near(hits[0].rewind, float(allowed), 1e-4, "recortado al tope")
-	assert_eq(peer.suspicion_score, 0, "sin sospecha")
+	if assert_eq(hits.size(), 1, "the hit is tested"):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "and lands")
+		assert_near(hits[0].rewind, float(allowed), 1e-4, "clamped to the cap")
+	assert_eq(peer.suspicion_score, 0, "no suspicion")
 	assert_eq(peer.rewind_rejects, 0)
 	assert_eq(_resolver.rewind_rejects, 0)
-	# El rebobinado que se usa no pasa del tope: quien declara de más no gana nada.
+	# The rewind that is used does not exceed the cap: whoever over-declares gains nothing.
 	var fixed: Vector2 = CombatResolver.compute_rewind(attacker, S)
-	assert_near(fixed.x, float(allowed), 1e-4, "compute_rewind (también el de las flechas) da el tope")
+	assert_near(fixed.x, float(allowed), 1e-4, "compute_rewind (also the arrows') gives the cap")
 
 
-## Con jitter, el mínimo del RTT de la ventana se queda por debajo del viaje de un tick cualquiera: un
-## jugador honrado cuya vista va más atrás de lo que cubre el mínimo no debe ser rechazado ni
-## sospechoso. El tope usa el mayor de los dos (el máximo ya viene acotado por una fuente que el cliente
-## no controla).
+## With jitter, the minimum RTT of the window ends up below the travel time of any given tick: an
+## honest player whose view goes further back than the minimum covers must not be rejected nor
+## suspicious. The cap uses the larger of the two (the maximum is already bounded by a source the client
+## does not control).
 func test_the_cap_covers_the_worst_round_trips_of_the_window_not_only_the_best() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	peer.rtt_peak_ticks = 10
@@ -579,60 +579,60 @@ func test_the_cap_covers_the_worst_round_trips_of_the_window_not_only_the_best()
 	for tick: int in range(S - 30, S):
 		for fighter: Combatant in _fighters:
 			CombatFixture.record(_history, fighter, tick)
-	# Con el mínimo (4) el tope sería 12 y 17 ticks se rechazarían; con el máximo (10) es 18.
+	# With the minimum (4) the cap would be 12 and 17 ticks would be rejected; with the maximum (10) it is 18.
 	assert_eq(CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q), 12)
 	_set_view_offset(attacker, 17 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "una vista de 17 ticks entra"):
+	if assert_eq(hits.size(), 1, "a view of 17 ticks goes through"):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
-		assert_near(hits[0].view_tick, float(S - 17), 1e-4, "sin recortar")
-	assert_eq(peer.suspicion_score, 0, "y no suma sospecha")
-	# El tope sigue siendo un tope: 20 ticks se recortan a 18 y 27 pasan de la holgura (18 + 8).
+		assert_near(hits[0].view_tick, float(S - 17), 1e-4, "without clamping")
+	assert_eq(peer.suspicion_score, 0, "and adds no suspicion")
+	# The cap is still a cap: 20 ticks are clamped to 18 and 27 exceed the slack (18 + 8).
 	_set_view_offset(attacker, 20 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1, "20 ticks"):
-		assert_near(hits[0].view_tick, float(S - 18), 1e-4, "20 ticks se recortan al tope de 18")
+		assert_near(hits[0].view_tick, float(S - 18), 1e-4, "20 ticks are clamped to the cap of 18")
 	_set_view_offset(attacker, 27 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	assert_eq(_outcomes(_resolve()), [CombatResolver.Outcome.REWIND_REJECTED], "27 ticks, no")
 	assert_eq(peer.suspicion_score, 1)
 
 
-## R1: el cliente no escoge el tope. Un tramposo con RTT de LAN manda solo las entradas de su golpe unos
-## 14 ticks antes que las demás y declara el retardo de interpolación máximo: antes el tope le subía a 24
-## (un honrado con el mismo ping tiene 12-16) y alcanzaba a quien se aleja. Ahora la antelación de esa
-## entrada no pasa de la habitual más 3, y el tope es 2 + 3 + 12 + 2 = 19.
+## R1: the client does not pick the cap. A cheater with a LAN RTT sends only the inputs of its hit about
+## 14 ticks before the others and declares the maximum interpolation delay: before, the cap rose to 24 for it
+## (an honest player with the same ping has 12-16) and it could reach someone moving away. Now the lead of that
+## input does not exceed the usual one plus 3, and the cap is 2 + 3 + 12 + 2 = 19.
 func test_an_isolated_early_input_does_not_raise_the_rewind_cap() -> void:
 	var peer: ServerPeer = _lan_cheater()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
 	_retreating_victim()
 	CombatFixture.start_light_active(attacker, S)
 	_fill_queue(attacker, S - 20, 0, 14, 24 * CombatResolver.VIEW_OFFSET_Q_SCALE)
-	assert_eq(attacker.queue.get_rewind_params(S).y, 14, "la entrada de S llegó con 14 de antelación")
-	assert_eq(attacker.queue.get_typical_lead(S), 0, "y la habitual es 0")
+	assert_eq(attacker.queue.get_rewind_params(S).y, 14, "the input of S arrived with 14 of lead")
+	assert_eq(attacker.queue.get_typical_lead(S), 0, "and the usual is 0")
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "un resultado"):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "24 ticks entran recortados")
+	if assert_eq(hits.size(), 1, "one result"):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "24 ticks go through clamped")
 		assert_near(hits[0].view_tick, float(S - 19), 1e-4,
-				"24 ticks de rebobinado con RTT de 2: el tope es 19, no 24")
-	assert_eq(peer.suspicion_score, 0, "dentro de la holgura del tope no suma sospecha")
-	# Por encima de la holgura (19 + 8), se rechaza y suma sospecha.
+				"24 ticks of rewind with an RTT of 2: the cap is 19, not 24")
+	assert_eq(peer.suspicion_score, 0, "within the cap's slack it adds no suspicion")
+	# Above the slack (19 + 8), it is rejected and adds suspicion.
 	_fill_queue(attacker, S - 20, 0, 14, 28 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED, "28 ticks, no")
-	assert_eq(peer.suspicion_score, 1, "y suma sospecha")
-	# Un honrado con 3 de antelación en todas sus entradas no pierde nada: el tope sigue siendo
-	# rtt + antelación + interpolación + 2 (2 + 3 + 12 + 2 = 19), y un tick más se recorta.
+	assert_eq(peer.suspicion_score, 1, "and adds suspicion")
+	# An honest player with a lead of 3 on all its inputs loses nothing: the cap is still
+	# rtt + lead + interpolation + 2 (2 + 3 + 12 + 2 = 19), and one more tick is clamped.
 	_fill_queue(attacker, S - 20, 3, 3, 20 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "(honrado) 20 = tope + 1 entra")
-		assert_near(hits[0].view_tick, float(S - 19), 1e-4, "(honrado) recortado al tope de 19")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "(honest) 20 = cap + 1 goes through")
+		assert_near(hits[0].view_tick, float(S - 19), 1e-4, "(honest) clamped to the cap of 19")
 
 
 func test_a_client_that_is_always_ahead_gets_at_most_the_lead_credit() -> void:
-	# Un cliente con todas sus entradas 14 ticks por delante no sube el tope más allá de la antelación
-	# máxima que abona el servidor (8): 2 + 8 + 6 + 2 = 18.
+	# A client with all its inputs 14 ticks ahead does not raise the cap beyond the maximum lead
+	# that the server credits (8): 2 + 8 + 6 + 2 = 18.
 	var peer := ServerPeer.new(9)
 	peer.rtt_ticks = 2
 	peer.rtt_peak_ticks = 2
@@ -643,25 +643,25 @@ func test_a_client_that_is_always_ahead_gets_at_most_the_lead_credit() -> void:
 	_fill_queue(attacker, S - 20, 14, 14, 24 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_near(hits[0].view_tick, float(S - 18), 1e-4, "24 ticks con un tope de 18 se recortan a 18")
+		assert_near(hits[0].view_tick, float(S - 18), 1e-4, "24 ticks with a cap of 18 are clamped to 18")
 	_fill_queue(attacker, S - 20, 14, 14, 27 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED, "27 ticks pasan de la holgura (18 + 8)")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED, "27 ticks exceed the slack (18 + 8)")
 	_fill_queue(attacker, S - 20, 14, 14, 18 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "18 ticks entran")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "18 ticks go through")
 		assert_near(hits[0].view_tick, float(S - 18), 1e-4)
 
 
-## R1: el rebobinado se fija en el primer tick activo del golpe y avanza con él. Antes cada tick activo
-## leía su propio view_offset_q y el tramposo barría la ventana (0, 24, 0...).
+## R1: the rewind is fixed at the first active tick of the hit and advances with it. Before, each active tick
+## read its own view_offset_q and the cheater swept the window (0, 24, 0...).
 func test_a_swing_keeps_the_rewind_of_its_first_active_tick() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
 	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
-	# El tercero solo está al alcance en S - 5 (un destello en su pista) y ahora está lejos.
+	# The third one is only in reach at S - 5 (a flash in its track) and is now far away.
 	_fighter(3, SOLMARCH, Vector3(0.0, 0.0, -5.0), PI_YAW)
 	for tick: int in range(S - 30, S):
 		var z: float = -2.0 if tick == S - 5 else -5.0
@@ -671,20 +671,20 @@ func test_a_swing_keeps_the_rewind_of_its_first_active_tick() -> void:
 	CombatFixture.start_light_active(attacker, S)
 	_set_view_offset(attacker, 6 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "en S solo acierta el segundo"):
+	if assert_eq(hits.size(), 1, "at S only the second one lands"):
 		assert_eq(hits[0].victim.get_id(), 2)
-		assert_near(hits[0].view_tick, float(S - 6), 1e-4, "con 6 ticks de rebobinado")
-	# En el tick activo siguiente el cliente pide 0 (o 24): el golpe sigue con sus 6 ticks, es decir,
-	# mirando S + 1 - 6 = S - 5, donde el tercero estaba al alcance.
+		assert_near(hits[0].view_tick, float(S - 6), 1e-4, "with 6 ticks of rewind")
+	# On the next active tick the client asks for 0 (or 24): the hit keeps its 6 ticks, that is,
+	# looking at S + 1 - 6 = S - 5, where the third one was in reach.
 	for claimed: int in [0, 24, 3]:
 		attacker.swing_hits.erase(3)
 		_set_view_offset(attacker, claimed * CombatResolver.VIEW_OFFSET_Q_SCALE, S + 1)
 		hits = _resolve(S + 1, false)
-		if assert_eq(hits.size(), 1, "(pide %d) en S + 1 acierta al tercero" % claimed):
+		if assert_eq(hits.size(), 1, "(asks %d) at S + 1 it hits the third one" % claimed):
 			assert_eq(hits[0].victim.get_id(), 3)
 			assert_near(hits[0].view_tick, float(S + 1 - 6), 1e-4,
-					"(pide %d) con el rebobinado fijado en S: 6 ticks" % claimed)
-	assert_eq(peer.suspicion_score, 0, "sin sospecha")
+					"(asks %d) with the rewind fixed at S: 6 ticks" % claimed)
+	assert_eq(peer.suspicion_score, 0, "no suspicion")
 
 
 func test_a_rejected_swing_stays_rejected_whatever_the_next_ticks_ask() -> void:
@@ -694,23 +694,23 @@ func test_a_rejected_swing_stays_rejected_whatever_the_next_ticks_ask() -> void:
 	CombatFixture.start_light_active(attacker, S)
 	_set_view_offset(attacker, 40 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	assert_eq(_outcomes(_resolve()), [CombatResolver.Outcome.REWIND_REJECTED])
-	# El tick siguiente pide un rebobinado razonable: el golpe sigue rechazado (un solo aviso).
+	# The next tick asks for a reasonable rewind: the hit stays rejected (a single notice).
 	_set_view_offset(attacker, 0, S + 1)
 	var hits: Array[CombatResolver.Hit] = _resolve(S + 1, false)
-	assert_eq(hits.size(), 0, "el golpe no se prueba aunque ahora pida 0")
+	assert_eq(hits.size(), 0, "the hit is not tested even though it now asks for 0")
 	assert_eq(peer.suspicion_score, 1)
 
 
-## R1: sin rebobinado (view_offset_q = 0) no se escapa de las paradas, bloqueos e invulnerabilidades
-## retroactivos: el servidor impone al menos el rebobinado coherente con el RTT medido por ENet
-## (rtt_floor_ticks + 4 - 2), para la defensa.
+## R1: without rewind (view_offset_q = 0) one does not escape retroactive parries, blocks and
+## invulnerabilities: the server imposes at least the rewind consistent with the RTT measured by ENet
+## (rtt_floor_ticks + 4 - 2), for defense.
 func test_offset_zero_does_not_escape_the_retroactive_parry() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	peer.rtt_floor_ticks = 4
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
 	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
-	# La víctima paró entre S - 8 y S - 3 (ventana de 6 ticks) y ya bajó el escudo en S.
+	# The victim parried between S - 8 and S - 3 (6-tick window) and already lowered the shield at S.
 	for tick: int in range(S - 12, S):
 		var flags: int = EntityRecord.FLAG_GROUNDED
 		if tick >= S - 8 and tick <= S - 3:
@@ -721,19 +721,19 @@ func test_offset_zero_does_not_escape_the_retroactive_parry() -> void:
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.PARRIED,
-				"con RTT de 4 ticks el atacante no puede ver el mundo sin retraso: S - 6 está parando")
-		assert_near(hits[0].view_tick, float(S), 1e-6, "la geometría sigue en lo que pidió")
-	# Un honrado que pide 6 ticks (su vista real) obtiene lo mismo.
+				"with an RTT of 4 ticks the attacker cannot see the world without delay: S - 6 is parrying")
+		assert_near(hits[0].view_tick, float(S), 1e-6, "the geometry stays at what it asked")
+	# An honest player who asks for 6 ticks (its real view) gets the same.
 	_set_view_offset(attacker, 6 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.PARRIED, "(6 ticks pedidos)")
-	# Sin RTT medido (floor 0) el mínimo son 2 ticks y la parada de hace 6 no cuenta.
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.PARRIED, "(6 ticks requested)")
+	# Without a measured RTT (floor 0) the minimum is 2 ticks and the parry from 6 ago does not count.
 	peer.rtt_floor_ticks = 0
 	_set_view_offset(attacker, 0)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "(sin RTT medido)")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "(no measured RTT)")
 
 
 func test_offset_zero_does_not_escape_the_retroactive_invulnerability() -> void:
@@ -742,7 +742,7 @@ func test_offset_zero_does_not_escape_the_retroactive_invulnerability() -> void:
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
 	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
-	# La víctima fue invulnerable en S - 5 y S - 4 (una esquiva) y en S ya no lo es.
+	# The victim was invulnerable at S - 5 and S - 4 (a dodge) and at S it no longer is.
 	for tick: int in range(S - 12, S):
 		var flags: int = EntityRecord.FLAG_GROUNDED
 		if tick == S - 5 or tick == S - 4:
@@ -753,8 +753,8 @@ func test_offset_zero_does_not_escape_the_retroactive_invulnerability() -> void:
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.INVULNERABLE,
-				"la invulnerabilidad de hace 5 ticks cuenta aunque pida 0")
-	assert_false(attacker.has_hit(2), "y no consume el golpe")
+				"the invulnerability from 5 ticks ago counts even if it asks for 0")
+	assert_false(attacker.has_hit(2), "and does not consume the hit")
 
 
 func test_substituted_input_uses_the_last_real_rewind() -> void:
@@ -765,12 +765,12 @@ func test_substituted_input_uses_the_last_real_rewind() -> void:
 	for tick: int in range(S - 30, S):
 		for fighter: Combatant in _fighters:
 			CombatFixture.record(_history, fighter, tick)
-	# La última entrada real (tick S - 1) pedía 5 ticks; la del tick S se sustituyó.
+	# The last real input (tick S - 1) asked for 5 ticks; the one for tick S was substituted.
 	_set_view_offset(attacker, 5 * CombatResolver.VIEW_OFFSET_Q_SCALE, S - 1)
 	attacker.queue.take(S)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_near(hits[0].view_tick, float(S - 5), 1e-4, "la sustituta hereda el rebobinado")
+		assert_near(hits[0].view_tick, float(S - 5), 1e-4, "the replacement inherits the rewind")
 
 
 func test_fakes_and_npcs_never_rewind() -> void:
@@ -787,58 +787,58 @@ func test_a_target_that_did_not_exist_at_view_tick_is_discarded() -> void:
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
 	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
-	# La víctima solo tiene historial desde S - 2, y el atacante pide mirar 6 ticks atrás.
+	# The victim only has history since S - 2, and the attacker asks to look 6 ticks back.
 	for tick: int in range(S - 2, S):
 		for fighter: Combatant in _fighters:
 			CombatFixture.record(_history, fighter, tick)
 	_set_view_offset(attacker, 6 * CombatResolver.VIEW_OFFSET_Q_SCALE)
-	assert_eq(_resolve().size(), 0, "sin muestra no hay golpe")
+	assert_eq(_resolve().size(), 0, "without a sample there is no hit")
 
 
-# --- Candidatos -------------------------------------------------------------------------------
+# --- Candidates -------------------------------------------------------------------------------
 
 func test_allies_are_never_hit_and_realms_need_an_rvr_zone() -> void:
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0)
 	var ally: Combatant = _fighter(2, VARDHEIM, Vector3(0.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
-	assert_eq(_resolve().size(), 0, "sin fuego amigo")
+	assert_eq(_resolve().size(), 0, "no friendly fire")
 	ally.entity.realm = ASKARRA
-	assert_eq(_resolve().size(), 1, "un reino enemigo en una zona RVR")
-	# En una zona segura los reinos no se dañan.
+	assert_eq(_resolve().size(), 1, "an enemy realm in an RVR zone")
+	# In a safe zone the realms do not damage each other.
 	var safe_zone := CombatResolver.new(_history, &"zona_segura_inventada")
 	for fighter: Combatant in _fighters:
 		fighter.freeze(S)
 	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
-	assert_eq(safe_zone.resolve(S, _fighters, space).size(), 0, "zona SAFE: no hay daño entre reinos")
-	# Un Hueco (bando neutral) es hostil a todos.
+	assert_eq(safe_zone.resolve(S, _fighters, space).size(), 0, "SAFE zone: no damage between realms")
+	# A Hollow (neutral faction) is hostile to everyone.
 	attacker.forget_swing()
 	ally.entity.realm = RealmCatalog.NEUTRAL_CODE
-	assert_eq(safe_zone.resolve(S, _fighters, space).size(), 1, "los Huecos son hostiles")
+	assert_eq(safe_zone.resolve(S, _fighters, space).size(), 1, "the Hollows are hostile")
 
 
 func test_dead_and_protected_targets_are_not_candidates() -> void:
 	var duel: Array[Combatant] = _duel(1.5)
 	CombatFixture.start_light_active(duel[0], S)
 	duel[1].protected_until = S + 10
-	assert_eq(_resolve().size(), 0, "protegido por la reaparición")
+	assert_eq(_resolve().size(), 0, "protected by respawn")
 	duel[1].protected_until = S
-	assert_eq(_resolve().size(), 1, "la protección acaba en su tick de fin")
+	assert_eq(_resolve().size(), 1, "the protection ends at its end tick")
 	duel[1].health = 0
-	assert_eq(_resolve().size(), 0, "un muerto no recibe golpes")
+	assert_eq(_resolve().size(), 0, "a dead player takes no hits")
 
 
 func test_an_invisible_gm_neither_hits_nor_is_hit() -> void:
-	# docs/plataforma.md §9.1 (P7b): el Combatant de un GM invisible no hace ni recibe daño.
+	# docs/plataforma.md §9.1 (P7b): the Combatant of an invisible GM neither deals nor takes damage.
 	var duel: Array[Combatant] = _duel(1.5)
 	CombatFixture.start_light_active(duel[0], S)
 	duel[1].entity.gm_invisible = true
 	assert_true(duel[1].is_gm_invisible())
-	assert_eq(_resolve().size(), 0, "el invisible no es candidato")
+	assert_eq(_resolve().size(), 0, "the invisible one is not a candidate")
 	duel[1].entity.gm_invisible = false
 	duel[0].entity.gm_invisible = true
-	assert_eq(_resolve().size(), 0, "ni golpea")
+	assert_eq(_resolve().size(), 0, "and does not hit")
 	duel[0].entity.gm_invisible = false
-	assert_eq(_resolve().size(), 1, "visibles, el golpe vuelve a entrar")
+	assert_eq(_resolve().size(), 1, "visible, the hit goes through again")
 
 
 func test_target_dead_at_view_tick_is_discarded() -> void:
@@ -852,7 +852,7 @@ func test_target_dead_at_view_tick_is_discarded() -> void:
 				EntityRecord.FLAG_GROUNDED | ActionMachine.DEFENSE_DEAD)
 	_set_view_offset(attacker, 4 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	assert_eq(victim.is_alive(), true)
-	assert_eq(_resolve().size(), 0, "estaba muerto en view_tick: ya no es un blanco")
+	assert_eq(_resolve().size(), 0, "it was dead at view_tick: it is no longer a target")
 
 
 func _safe_area_resolver() -> void:
@@ -866,7 +866,7 @@ func test_safe_area_protects_a_victim_of_its_realm() -> void:
 	var attacker: Combatant = _fighter(1, SOLMARCH, Vector3(10.0, 0.0, 0.0), 0.0)
 	_fighter(2, VARDHEIM, Vector3(10.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
-	assert_eq(_resolve().size(), 0, "la víctima de Vardheim dentro de su zona segura no recibe daño")
+	assert_eq(_resolve().size(), 0, "the Vardheim victim inside its safe zone takes no damage")
 
 
 func test_safe_area_does_not_let_its_realm_attack_from_inside() -> void:
@@ -874,37 +874,37 @@ func test_safe_area_does_not_let_its_realm_attack_from_inside() -> void:
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3(10.0, 0.0, 0.0), 0.0)
 	_fighter(2, SOLMARCH, Vector3(10.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
-	assert_eq(_resolve().size(), 0, "desde dentro de su zona segura no se puede atacar")
+	assert_eq(_resolve().size(), 0, "one cannot attack from inside one's safe zone")
 
 
 func test_an_intruder_inside_a_safe_area_can_be_hit_from_outside() -> void:
 	_safe_area_resolver()
-	# El atacante de Vardheim está a 25 m del centro (fuera) y el intruso de Solmarch a 23 m (dentro).
+	# The Vardheim attacker is 25 m from the center (outside) and the Solmarch intruder 23 m (inside).
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3(0.0, 0.0, 25.0), 0.0)
 	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, 23.0), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "el intruso dentro de la zona segura enemiga sí es dañable"):
+	if assert_eq(hits.size(), 1, "the intruder inside the enemy safe zone can be damaged"):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
 
 
 func test_safe_area_of_another_realm_does_not_protect() -> void:
 	_safe_area_resolver()
-	# Dentro de la zona segura de Vardheim, un Solmarch y un Askarra se pegan sin problema.
+	# Inside Vardheim's safe zone, a Solmarch and an Askarra hit each other with no problem.
 	var attacker: Combatant = _fighter(1, SOLMARCH, Vector3(10.0, 0.0, 0.0), 0.0)
 	_fighter(2, ASKARRA, Vector3(10.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
-	assert_eq(_resolve().size(), 1, "la zona segura solo protege a su reino")
+	assert_eq(_resolve().size(), 1, "the safe zone only protects its realm")
 
 
-# --- Golpe imbloqueable y Guardianes de la Puerta (fase 4) ------------------------------------
+# --- Unblockable hit and Gate Guardians (phase 4) ---------------------------------------------
 
-## Pone al atacante con el arma del Capitán, en el golpe activo de su ataque fuerte imbloqueable.
+## Puts the attacker with the Captain's weapon, in the active hit of its unblockable heavy attack.
 func _captain_crush(attacker: Combatant) -> void:
 	attacker.get_character().combat.weapon_id = CombatCatalog.weapon_id(&"npc_captain")
 	CombatFixture.start_heavy_active(attacker, S)
 	assert_true(CombatCatalog.attack(attacker.get_character().combat.action_id).unblockable,
-			"el fuerte del Capitán es imbloqueable")
+			"the Captain's heavy attack is unblockable")
 
 
 func test_an_unblockable_swing_goes_through_a_block() -> void:
@@ -913,7 +913,7 @@ func test_an_unblockable_swing_goes_through_a_block() -> void:
 	CombatFixture.start_block(duel[1], S - 30)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "el escudo no lo detiene")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "the shield does not stop it")
 
 
 func test_an_unblockable_swing_goes_through_a_parry_window_too() -> void:
@@ -922,7 +922,7 @@ func test_an_unblockable_swing_goes_through_a_parry_window_too() -> void:
 	CombatFixture.start_block(duel[1], S, true)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "la parada tampoco")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "nor does the parry")
 
 
 func test_an_unblockable_swing_is_still_dodged_by_an_invulnerable_dodge() -> void:
@@ -931,7 +931,7 @@ func test_an_unblockable_swing_is_still_dodged_by_an_invulnerable_dodge() -> voi
 	CombatFixture.start_dodge(duel[1], S - 10)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.INVULNERABLE, "esquivarlo sí funciona")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.INVULNERABLE, "dodging it does work")
 
 
 func test_a_normal_swing_of_the_same_weapon_is_still_blocked() -> void:
@@ -941,7 +941,7 @@ func test_a_normal_swing_of_the_same_weapon_is_still_blocked() -> void:
 	CombatFixture.start_block(duel[1], S - 30)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED, "el barrido del Capitán sí se bloquea")
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED, "the Captain's sweep can be blocked")
 
 
 func test_a_gate_guardian_attacks_from_inside_the_safe_area_of_its_realm() -> void:
@@ -949,10 +949,10 @@ func test_a_gate_guardian_attacks_from_inside_the_safe_area_of_its_realm() -> vo
 	var guardian: Combatant = _fighter(1, VARDHEIM, Vector3(10.0, 0.0, 0.0), 0.0)
 	_fighter(2, SOLMARCH, Vector3(10.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(guardian, S)
-	assert_eq(_resolve().size(), 0, "sin la bandera, desde dentro de su zona segura no ataca")
+	assert_eq(_resolve().size(), 0, "without the flag, it does not attack from inside its safe zone")
 	guardian.ignores_safe_area = true
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "con ignores_safe_area sí"):
+	if assert_eq(hits.size(), 1, "with ignores_safe_area it does"):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
 
 
@@ -962,4 +962,4 @@ func test_a_gate_guardian_still_cannot_hit_a_victim_inside_its_own_safe_area() -
 	guardian.ignores_safe_area = true
 	_fighter(2, VARDHEIM, Vector3(10.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(guardian, S)
-	assert_eq(_resolve().size(), 0, "quien está a salvo en su zona segura sigue sin recibir daño")
+	assert_eq(_resolve().size(), 0, "whoever is safe in their safe zone still takes no damage")

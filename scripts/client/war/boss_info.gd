@@ -1,22 +1,22 @@
 class_name BossInfo
 extends RefCounted
-## Qué PNJ son jefes, para la barra de jefe (UI-18, docs/fuerte.md secciones 2 y 4.2).
+## Which NPCs are bosses, for the boss bar (UI-18, docs/fuerte.md sections 2 and 4.2).
 ## [br][br]
-## El ENTITY_SPAWN de un PNJ lleva su [code]npc_def_id[/code]: el índice (1..n, por orden alfabético del
-## id) de su [code]NpcDefinition[/code] en [code]data/npcs/*.tres[/code] (el catálogo que llega con el
-## paquete de PNJ, F4). Aquí se mira esa carpeta sin depender de la clase del catálogo: se ordenan los
-## archivos por nombre (el id de cada definición es el archivo sin extensión), se carga el de la
-## posición [code]npc_def_id[/code] y se lee su propiedad [code]is_boss[/code]. Sin la carpeta (hasta
-## que lleguen los PNJ) no hay jefes.
+## An NPC's ENTITY_SPAWN carries its [code]npc_def_id[/code]: the index (1..n, in alphabetical order of the
+## id) of its [code]NpcDefinition[/code] in [code]data/npcs/*.tres[/code] (the catalog that arrives with the
+## NPC package, F4). Here that folder is inspected without depending on the catalog class: the files are
+## sorted by name (each definition's id is the file without extension), the one at position
+## [code]npc_def_id[/code] is loaded and its [code]is_boss[/code] property is read. Without the folder
+## (until the NPCs arrive) there are no bosses.
 ## [br][br]
-## Se puede sustituir la consulta con [member resolver] (pruebas, o quien tenga el catálogo a mano).
-## Solo cliente.
+## The lookup can be replaced with [member resolver] (tests, or whoever has the catalog at hand).
+## Client only.
 
-## Carpeta de las definiciones de PNJ.
+## Folder of the NPC definitions.
 const NPC_DATA_DIR: String = "res://data/npcs"
 
-## Si es válido, se usa en lugar de leer la carpeta: recibe el id de definición y devuelve un
-## diccionario [code]{"is_boss": bool, "name": String}[/code] (o vacío si no existe).
+## If valid, it is used instead of reading the folder: it receives the definition id and returns a
+## dictionary [code]{"is_boss": bool, "name": String}[/code] (or empty if it does not exist).
 static var resolver: Callable = Callable()
 
 static var _directory_for_cache: String = ""
@@ -24,13 +24,13 @@ static var _cache: Dictionary[int, Dictionary] = {}
 static var _ids: PackedStringArray = PackedStringArray()
 
 
-## true si la definición de PNJ [param npc_def_id] es un jefe.
+## true if NPC definition [param npc_def_id] is a boss.
 static func is_boss(npc_def_id: int) -> bool:
 	return bool(lookup(npc_def_id).get("is_boss", false))
 
 
-## Datos de la definición: [code]{"is_boss": bool, "name": String}[/code]; vacío si el id es 0 o no hay
-## definición con ese número.
+## Data of the definition: [code]{"is_boss": bool, "name": String}[/code]; empty if the id is 0 or there is
+## no definition with that number.
 static func lookup(npc_def_id: int) -> Dictionary:
 	if npc_def_id <= 0:
 		return {}
@@ -40,8 +40,8 @@ static func lookup(npc_def_id: int) -> Dictionary:
 	return _from_directory(NPC_DATA_DIR, npc_def_id)
 
 
-## Ids de las definiciones (archivos [code].tres[/code] sin extensión) de [param file_names] en el
-## orden del catálogo: alfabético. El primero es el número 1.
+## Ids of the definitions ([code].tres[/code] files without extension) of [param file_names] in catalog
+## order: alphabetical. The first is number 1.
 static func ids_in_order(file_names: PackedStringArray) -> PackedStringArray:
 	var ids := PackedStringArray()
 	for file_name: String in file_names:
@@ -52,7 +52,7 @@ static func ids_in_order(file_names: PackedStringArray) -> PackedStringArray:
 	return ids
 
 
-## Olvida lo leído de la carpeta (para que una prueba o una recarga vuelva a mirar).
+## Forgets what was read from the folder (so that a test or a reload looks again).
 static func clear_cache() -> void:
 	_cache.clear()
 	_ids = PackedStringArray()

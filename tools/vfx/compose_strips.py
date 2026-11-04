@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Une los fotogramas que graba la vista previa (scenes/tests/vfx_preview.tscn) en hojas de 4 x 3.
+"""Joins the frames recorded by the preview (scenes/tests/vfx_preview.tscn) into 4 x 3 sheets.
 
-La vista previa guarda, por efecto, `<carpeta>/<efecto>/frame_NN.png` (recortes alrededor del efecto) y un
-`meta.json` con el tiempo de cada fotograma. Este script los pega en `<carpeta>/strip_<efecto>.png`, de
-1920 x 1080, con el tiempo escrito en cada casilla. Uso, desde la raíz del proyecto:
+For each effect the preview saves `<carpeta>/<efecto>/frame_NN.png` (crops around the effect) and a
+`meta.json` with the time of each frame. This script pastes them into `<carpeta>/strip_<efecto>.png`, at
+1920 x 1080, with the time written in each cell. Usage, from the project root:
 
-    python tools/vfx/compose_strips.py [carpeta] [efecto ...]
+    python tools/vfx/compose_strips.py [folder] [effect ...]
 
-Por defecto recorre build/vfx/strips y compone todos los efectos que encuentra. Con --realms compone
-además `realms_<efecto>.png`: el mismo fotograma de cada reino (carpetas `<efecto>_r1` a `<efecto>_r4`)
-una al lado de otra. Con --summary compone `resumen.png`, un fotograma representativo de cada efecto.
+By default it walks build/vfx/strips and composes all the effects it finds. With --realms it also composes
+`realms_<efecto>.png`: the same frame of each realm (folders `<efecto>_r1` to `<efecto>_r4`)
+side by side. With --summary it composes `resumen.png`, one representative frame of each effect.
 """
 
 import json
@@ -22,14 +22,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DIR = os.path.join(HERE, "..", "..", "build", "vfx", "strips")
 COLUMNS = 4
 ROWS = 3
-# Casilla según el recorte guardado: 4:3 con la cámara de demostración, 16:9 con la del juego.
+# Cell according to the saved crop: 4:3 with the demo camera, 16:9 with the game's.
 CELL_DEMO = (480, 360)
 CELL_GAME = (640, 360)
 BACKGROUND = (18, 18, 22)
 
 
 def cell_for(frame_size):
-	"""Tamaño de casilla de una hoja según la proporción de sus fotogramas."""
+	"""Cell size of a sheet according to the aspect ratio of its frames."""
 	return CELL_GAME if abs(frame_size[0] / frame_size[1] - 16 / 9) < 0.05 else CELL_DEMO
 
 
@@ -56,7 +56,7 @@ def compose(folder, name):
 	first = Image.open(os.path.join(source, "frame_00.png"))
 	columns, rows, cell = COLUMNS, ROWS, cell_for(first.size)
 	if meta.get("strip") == "showcase":
-		# Pantallas completas (16:9): 2 x 2 de 960 x 540.
+		# Full screens (16:9): 2 x 2 of 960 x 540.
 		columns, rows, cell = 2, 2, (960, 540)
 	sheet = Image.new("RGB", (columns * cell[0], rows * cell[1]), BACKGROUND)
 	draw = ImageDraw.Draw(sheet)
@@ -78,7 +78,7 @@ def compose(folder, name):
 
 
 def compose_realms(folder, name, picks):
-	"""Una fila con el mismo fotograma de cada reino (carpetas name_r1 a name_r4)."""
+	"""A row with the same frame of each realm (folders name_r1 to name_r4)."""
 	font = load_font(22)
 	probe = os.path.join(folder, "%s_r1" % name, "frame_%02d.png" % picks[0])
 	cell = cell_for(Image.open(probe).size) if os.path.exists(probe) else CELL_DEMO
@@ -99,7 +99,7 @@ def compose_realms(folder, name, picks):
 	print(out)
 
 
-# Hoja de resumen: un fotograma representativo de cada efecto, [carpeta, fotograma, rótulo].
+# Summary sheet: one representative frame of each effect, [folder, frame, label].
 SUMMARY = (
 	("metal_side", 4, "Chispa de metal (de perfil)"),
 	("flesh", 4, "Impacto en carne"),
@@ -132,7 +132,7 @@ def compose_summary(folder):
 		if not os.path.exists(path):
 			continue
 		frame = Image.open(path).convert("RGB")
-		# Un fotograma de otra proporción se recorta al centro para llenar la casilla.
+		# A frame of a different aspect ratio is cropped to the centre to fill the cell.
 		target = cell[0] / cell[1]
 		if abs(frame.size[0] / frame.size[1] - target) > 0.05:
 			if frame.size[0] / frame.size[1] > target:

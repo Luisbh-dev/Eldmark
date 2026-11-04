@@ -11,34 +11,34 @@ import (
 	"eldmark/platform/legal"
 )
 
-// AccountView es la cuenta en JSON (GET /v1/account y la respuesta del inicio de sesión).
+// AccountView is the account in JSON (GET /v1/account and the login response).
 type AccountView struct {
 	AccountID     jsonx.ID          `json:"account_id"`
 	Email         string            `json:"email"`
 	EmailVerified bool              `json:"email_verified"`
 	Role          string            `json:"role"`
-	Realms        map[string]string `json:"realms"` // mundo → reino («1» → «vardheim»)
-	Slots         map[string]int    `json:"slots"`  // mundo → huecos de personaje
+	Realms        map[string]string `json:"realms"` // world -> realm ("1" -> "vardheim")
+	Slots         map[string]int    `json:"slots"`  // world -> character slots
 	Consents      ConsentsView      `json:"consents"`
 	Pending       PendingView       `json:"pending"`
 	Restriction   *RestrictionView  `json:"restriction"`
 }
 
-// ConsentsView son los consentimientos (§11.4).
+// ConsentsView is the consents (§11.4).
 type ConsentsView struct {
 	CrashReports bool `json:"crash_reports"`
 	Analytics    bool `json:"analytics"`
 }
 
-// PendingView es lo que la cuenta tiene pendiente: textos por aceptar (y cuáles) y el borrado
-// pedido (fecha Unix de la purga).
+// PendingView is what the account has pending: texts to accept (and which) and the requested
+// deletion (Unix date of the purge).
 type PendingView struct {
 	TermsRequired bool     `json:"terms_required"`
 	Documents     []string `json:"documents"`
 	DeletionAt    *int64   `json:"deletion_at"`
 }
 
-// accountView lee la cuenta para la API.
+// accountView reads the account for the API.
 func (s *Service) accountView(ctx context.Context, q querier, accountID int64, now time.Time) (*AccountView, error) {
 	v := &AccountView{AccountID: jsonx.ID(accountID), Realms: map[string]string{}, Slots: map[string]int{},
 		Pending: PendingView{Documents: []string{}}}
@@ -108,8 +108,8 @@ func (s *Service) accountView(ctx context.Context, q querier, accountID int64, n
 	return v, nil
 }
 
-// Slots devuelve los huecos de personaje de la cuenta en cada mundo: 6 más la cantidad de sus
-// derechos character_slots vigentes de ese mundo o de todos (§4.4, §11.3).
+// Slots returns the account's character slots in each world: 6 plus the quantity of its valid
+// character_slots entitlements for that world or for all of them (§4.4, §11.3).
 func (s *Service) Slots(ctx context.Context, q querier, accountID int64, now time.Time) (map[int16]int, error) {
 	rows, err := q.Query(ctx, `select w.world_id, coalesce(sum(e.quantity), 0)::int
 		from worlds w left join entitlements e on e.account_id = $1 and e.kind = 'character_slots'
@@ -132,8 +132,8 @@ func (s *Service) Slots(ctx context.Context, q querier, accountID int64, now tim
 	return out, rows.Err()
 }
 
-// MissingAcceptances devuelve los tipos de texto cuya versión vigente la cuenta no ha aceptado,
-// en el orden de legal.Kinds (§4.2: con uno, enter responde terms_required).
+// MissingAcceptances returns the text kinds whose current version the account has not accepted, in
+// the order of legal.Kinds (§4.2: with one, enter answers terms_required).
 func (s *Service) MissingAcceptances(ctx context.Context, q querier, accountID int64) ([]string, error) {
 	rows, err := q.Query(ctx, `select kind, max(version) from legal_acceptances where account_id = $1 group by kind`, accountID)
 	if err != nil {
@@ -161,12 +161,12 @@ func (s *Service) MissingAcceptances(ctx context.Context, q querier, accountID i
 	return missing, nil
 }
 
-// Account devuelve la cuenta de la sesión.
+// Account returns the session's account.
 func (s *Service) Account(ctx context.Context, sess *Session) (*AccountView, error) {
 	return s.accountView(ctx, s.pool, sess.AccountID, s.clock.Now())
 }
 
-// LegalVersions son las versiones de los tres textos en un cuerpo ({terms, privacy, rules}).
+// LegalVersions are the versions of the three texts in a body ({terms, privacy, rules}).
 type LegalVersions struct {
 	Terms   *jsonx.Int `json:"terms"`
 	Privacy *jsonx.Int `json:"privacy"`
@@ -177,8 +177,8 @@ func (l LegalVersions) byKind() map[string]*jsonx.Int {
 	return map[string]*jsonx.Int{"terms": l.Terms, "privacy": l.Privacy, "rules": l.Rules}
 }
 
-// checkVersions exige las versiones vigentes de los tres textos; prefix antecede la clave de
-// fields («accept.» en el registro).
+// checkVersions requires the current versions of the three texts; prefix precedes the fields key
+// ("accept." in registration).
 func (s *Service) checkVersions(l LegalVersions, prefix string, fields map[string]string) {
 	for kind, v := range l.byKind() {
 		switch {
@@ -190,7 +190,7 @@ func (s *Service) checkVersions(l LegalVersions, prefix string, fields map[strin
 	}
 }
 
-// Accept anota que la cuenta acepta las versiones vigentes de los textos.
+// Accept records that the account accepts the current versions of the texts.
 func (s *Service) Accept(ctx context.Context, sess *Session, l LegalVersions) error {
 	fields := map[string]string{}
 	s.checkVersions(l, "", fields)
@@ -207,7 +207,7 @@ func (s *Service) Accept(ctx context.Context, sess *Session, l LegalVersions) er
 	return nil
 }
 
-// Consents son los consentimientos de un cuerpo; los dos son obligatorios.
+// Consents are the consents of a body; both are required.
 type Consents struct {
 	CrashReports *bool `json:"crash_reports"`
 	Analytics    *bool `json:"analytics"`
@@ -233,7 +233,7 @@ func saveConsents(ctx context.Context, q execer, accountID int64, c Consents, no
 	return nil
 }
 
-// PutConsents cambia los consentimientos (Ajustes).
+// PutConsents changes the consents (Settings).
 func (s *Service) PutConsents(ctx context.Context, sess *Session, c Consents) error {
 	fields := map[string]string{}
 	c.check("", fields)
@@ -243,7 +243,7 @@ func (s *Service) PutConsents(ctx context.Context, sess *Session, c Consents) er
 	return saveConsents(ctx, s.pool, sess.AccountID, c, s.clock.Now())
 }
 
-// LegalIndex es GET /v1/legal: la versión vigente de cada texto y su SHA-256 en hexadecimal.
+// LegalIndex is GET /v1/legal: the current version of each text and its SHA-256 in hexadecimal.
 func (s *Service) LegalIndex() map[string]any {
 	out := map[string]any{}
 	for _, kind := range legal.Kinds {
@@ -253,12 +253,12 @@ func (s *Service) LegalIndex() map[string]any {
 	return out
 }
 
-// LegalText devuelve el texto vigente de un tipo, o nil.
+// LegalText returns the current text of a kind, or nil.
 func (s *Service) LegalText(kind string) *legal.Document { return s.legal.Current(kind) }
 
-// StatusView es GET /v1/status.
+// StatusView is GET /v1/status.
 type StatusView struct {
-	Status        string      `json:"status"` // ok o maintenance
+	Status        string      `json:"status"` // ok or maintenance
 	Message       string      `json:"message"`
 	MaintenanceAt *int64      `json:"maintenance_at"`
 	MinProtocol   int         `json:"min_protocol"`
@@ -266,24 +266,24 @@ type StatusView struct {
 	News          []NewsView  `json:"news"`
 }
 
-// WorldView es un mundo en /v1/status.
+// WorldView is a world in /v1/status.
 type WorldView struct {
 	WorldID int16  `json:"world_id"`
 	Name    string `json:"name"`
 	Status  string `json:"status"`
-	Load    string `json:"load"` // low, medium o high
+	Load    string `json:"load"` // low, medium or high
 }
 
-// NewsView es una noticia en /v1/status.
+// NewsView is a news item in /v1/status.
 type NewsView struct {
 	Title string `json:"title"`
 	Body  string `json:"body"`
 	Date  int64  `json:"date"`
 }
 
-// Status es el estado público: mundos con su carga (jugadores de las instancias vivas frente a su
-// cupo). En la fase 5 no hay noticias ni anuncio de mantenimiento programado todavía (la orden
-// admin maintenance es de TEC-28): status es maintenance si algún mundo lo está.
+// Status is the public status: worlds with their load (players of the live instances against their
+// cap). In phase 5 there are no news items or scheduled-maintenance announcement yet (the admin
+// command maintenance is from TEC-28): status is maintenance if any world is.
 func (s *Service) Status(ctx context.Context) (*StatusView, error) {
 	rows, err := s.pool.Query(ctx, `select w.world_id, w.name, w.status,
 		coalesce((select sum(z.players)::float8 / nullif(sum(z.max_players), 0) from zone_instances z

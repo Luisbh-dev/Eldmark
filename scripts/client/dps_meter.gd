@@ -1,31 +1,31 @@
 class_name DpsMeter
 extends RefCounted
-## Medidor de daño por segundo del jugador local (CMB-11, docs/combate.md sección 7). Suma el
-## [code]amount[/code] de los HIT propios en una ventana de [constant WINDOW_TICKS] ticks (30 s) y se
-## muestra en el panel de depuración (F3).
+## Damage-per-second meter for the local player (CMB-11, docs/combate.md section 7). Sums the
+## [code]amount[/code] of their own HITs over a window of [constant WINDOW_TICKS] ticks (30 s) and is
+## shown in the debug panel (F3).
 ## [br][br]
-## Todo se mide en ticks del servidor ([code]event.tick[/code]), no en tiempo real, así que la
-## medida es determinista y se prueba con ticks inventados. El DPS es el daño de la ventana entre
-## el tiempo que lleva dañando: los segundos desde que empezó la racha de golpes (la racha empieza
-## con el primer golpe tras una ventana vacía), como poco 1 s para que un solo golpe no dispare la
-## cifra y como mucho 30 s. Tras 30 s seguidos atacando, el DPS es exactamente el daño de la
-## ventana entre 30.
+## Everything is measured in server ticks ([code]event.tick[/code]), not real time, so the
+## measurement is deterministic and can be tested with made-up ticks. DPS is the window's damage divided by
+## the time spent dealing damage: the seconds since the streak of hits started (the streak starts
+## with the first hit after an empty window), at least 1 s so that a single hit does not spike the
+## figure and at most 30 s. After 30 s of continuous attacking, DPS is exactly the window's
+## damage divided by 30.
 
-## Ventana de la suma (30 s a 60 ticks por segundo).
+## Sum window (30 s at 60 ticks per second).
 const WINDOW_TICKS: int = 30 * 60
-## Tiempo mínimo (s) por el que se divide.
+## Minimum time (s) divided by.
 const MIN_SECONDS: float = 1.0
 
 var _ticks: PackedInt64Array = PackedInt64Array()
 var _amounts: PackedInt64Array = PackedInt64Array()
 var _total_damage: int = 0
 var _hit_count: int = 0
-# Tick del primer golpe de la racha actual (la que empezó con la ventana vacía).
+# Tick of the first hit of the current streak (the one that started with an empty window).
 var _streak_start: int = 0
 
 
-## Apunta un golpe de [param amount] de daño en el tick [param tick]. Los golpes sin daño (parados)
-## no cuentan. Se espera que lleguen en orden de tick; uno atrasado se coloca en su sitio.
+## Records a hit of [param amount] damage at tick [param tick]. Hits with no damage (parried)
+## do not count. They are expected to arrive in tick order; a late one is placed in its spot.
 func add_hit(tick: int, amount: int) -> void:
 	if amount <= 0:
 		return
@@ -41,7 +41,7 @@ func add_hit(tick: int, amount: int) -> void:
 	_hit_count += 1
 
 
-## Daño de los golpes de los últimos [constant WINDOW_TICKS] ticks hasta [param now_tick].
+## Damage of the hits in the last [constant WINDOW_TICKS] ticks up to [param now_tick].
 func get_damage(now_tick: int) -> int:
 	_prune(now_tick)
 	var total: int = 0
@@ -50,8 +50,8 @@ func get_damage(now_tick: int) -> int:
 	return total
 
 
-## Daño por segundo según la ventana que termina en [param now_tick] (ver la descripción de la
-## clase). 0 si no hay golpes en la ventana.
+## Damage per second according to the window ending at [param now_tick] (see the class
+## description). 0 if there are no hits in the window.
 func get_dps(now_tick: int) -> float:
 	_prune(now_tick)
 	if _ticks.is_empty():
@@ -64,13 +64,13 @@ func get_dps(now_tick: int) -> float:
 	return float(total) / clampf(elapsed, MIN_SECONDS, window_seconds)
 
 
-## Golpes en la ventana que termina en [param now_tick].
+## Hits in the window ending at [param now_tick].
 func get_hit_count(now_tick: int) -> int:
 	_prune(now_tick)
 	return _ticks.size()
 
 
-## Daño total y golpes desde que se creó o se reinició el medidor (no solo los de la ventana).
+## Total damage and hits since the meter was created or reset (not only those in the window).
 func get_total_damage() -> int:
 	return _total_damage
 
@@ -79,7 +79,7 @@ func get_total_hits() -> int:
 	return _hit_count
 
 
-## Borra todo.
+## Clears everything.
 func reset() -> void:
 	_ticks.clear()
 	_amounts.clear()
@@ -88,7 +88,7 @@ func reset() -> void:
 	_streak_start = 0
 
 
-# Quita los golpes que ya salieron de la ventana.
+# Removes the hits that have already left the window.
 func _prune(now_tick: int) -> void:
 	var drop: int = 0
 	while drop < _ticks.size() and _ticks[drop] <= now_tick - WINDOW_TICKS:

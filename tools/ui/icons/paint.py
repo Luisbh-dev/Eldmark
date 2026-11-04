@@ -1,21 +1,21 @@
-"""Pasada de pintura de los iconos (ART-12): de capas planas a un dibujo con material.
+"""Icon painting pass (ART-12): from flat layers to a drawing with material.
 
-El vector solo da formas y degradados. Esto es lo que separa un icono plano del «estilizado con
-texturas» de docs/arte.md. Se hace en Python (numpy y PIL) sobre las capas que rasteriza el motor:
+The vector only gives shapes and gradients. This is what separates a flat icon from the "stylised with
+textures" look of docs/arte.md. It is done in Python (numpy and PIL) over the layers the engine rasterises:
 
-  - Cada pieza se pinta de abajo arriba. Antes de pegarla proyecta una oclusión suave sobre lo que ya
-    hay debajo (abajo a la derecha, como la luz única): donde dos piezas se solapan se nota cuál va
-    encima.
-  - Luz de borde interior: el relieve sale del propio contorno de la pieza (su alfa desenfocada) y la
-    luz viene de arriba a la izquierda. Filo claro en ese lado, filo oscuro en el contrario.
-  - Grano por material: vetas en la madera, cepillado en el metal, trama en la tela, moteado en la
-    piedra, más una pincelada fina común a todo el juego de iconos.
-  - Se rasteriza a 256 px y se reduce a 128 (o, en los estados pequeños, a 4 veces el tamaño final).
+  - Each piece is painted from the bottom up. Before pasting it, it casts a soft occlusion onto what is already
+    underneath (bottom right, like the single light): where two pieces overlap it is clear which goes
+    on top.
+  - Inner edge light: the relief comes from the piece's own outline (its blurred alpha) and the
+    light comes from the top left. Light edge on that side, dark edge on the opposite one.
+  - Grain per material: streaks in wood, brushing in metal, weave in cloth, mottling in
+    stone, plus a fine brush stroke common to the whole icon set.
+  - It is rasterised at 256 px and reduced to 128 (or, for the small states, to 4 times the final size).
 
-Los fondos por categoría (`make_tile`) se generan aquí mismo, sin SVG: degradado oscuro y apagado,
-moteado, halo interior del color de la categoría y un bisel fino de hierro y bronce.
+The backgrounds per category (`make_tile`) are generated right here, without SVG: dark, muted gradient,
+mottling, inner halo in the category colour and a fine iron and bronze bevel.
 
-Todo es determinista (semilla por nombre de icono).
+Everything is deterministic (seed per icon name).
 """
 
 import math
@@ -28,7 +28,7 @@ from PIL import Image
 from svgkit import CATEGORIES, hex_rgb
 
 # --------------------------------------------------------------------------------------------
-# Utilidades de imagen
+# Image utilities
 # --------------------------------------------------------------------------------------------
 
 
@@ -64,7 +64,7 @@ def gblur(a, sigma):
 
 
 def shift(a, dx, dy):
-    """Desplaza `a` (dx, dy) px con interpolación bilineal; lo que sale se pierde."""
+    """Shifts `a` by (dx, dy) px with bilinear interpolation; whatever falls off is lost."""
     h, w = a.shape[:2]
     ix, iy = int(math.floor(dx)), int(math.floor(dy))
     fx, fy = dx - ix, dy - iy
@@ -89,7 +89,7 @@ def _resize_f(a, w, h):
 
 
 def value_noise(shape, rng, cells):
-    """Ruido de valor suave: una rejilla aleatoria de `cells` x `cells` ampliada con bicúbica (-0.5..0.5)."""
+    """Smooth value noise: a random grid of `cells` x `cells` enlarged with bicubic (-0.5..0.5)."""
     h, w = shape
     small = rng.random((cells + 2, cells + 2)).astype(np.float32)
     big = _resize_f(small, int(w * (cells + 2) / cells), int(h * (cells + 2) / cells))
@@ -104,11 +104,11 @@ def fbm(shape, rng, cells=(3, 6, 12, 24), decay=0.55):
         out += amp * value_noise(shape, rng, c)
         total += amp
         amp *= decay
-    return out / total * 2.0  # aprox. -1..1
+    return out / total * 2.0  # approx. -1..1
 
 
 def streak_noise(shape, rng, along, across, angle):
-    """Ruido alargado en la dirección `angle` (grados, 0 = horizontal): vetas o cepillado. Media 0, sigma 1."""
+    """Noise stretched along direction `angle` (degrees, 0 = horizontal): streaks or brushing. Mean 0, sigma 1."""
     h, w = shape
     big = int(max(h, w) * 1.5)
     n = rng.standard_normal((big, big)).astype(np.float32)
@@ -121,7 +121,7 @@ def streak_noise(shape, rng, along, across, angle):
 
 
 def weave(shape, period, angle=0.0):
-    """Trama de tela (-1..1): cuadrícula suave de `period` px."""
+    """Cloth weave (-1..1): soft grid of `period` px."""
     h, w = shape
     ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
     ca, sa = math.cos(math.radians(angle)), math.sin(math.radians(angle))
@@ -132,11 +132,11 @@ def weave(shape, period, angle=0.0):
 
 
 # --------------------------------------------------------------------------------------------
-# Texturas por material: multiplican el color (amplitud relativa)
+# Textures per material: they multiply the colour (relative amplitude)
 # --------------------------------------------------------------------------------------------
 
-# kind: streak (vetas), brushed (cepillado fino), weave (tela), blotch (moteado), soft (casi liso).
-# Los parámetros están en unidades de lienzo de 128 px; `grain` escala a la resolución de trabajo.
+# kind: streak (streaks), brushed (fine brushing), weave (cloth), blotch (mottling), soft (almost smooth).
+# The parameters are in units of the 128 px canvas; `grain` scales to the working resolution.
 TEXTURES = {
     "wood": ("streak", 0.17), "wood_dark": ("streak", 0.15), "wood_light": ("streak", 0.13),
     "leather": ("blotch", 0.13), "earth": ("blotch", 0.14),
@@ -154,7 +154,7 @@ FLAT_TEXTURE = ("soft", 0.05)
 
 
 def piece_axis_angle(alpha):
-    """Ángulo (grados) del eje largo de la pieza, para alinear vetas con ella."""
+    """Angle (degrees) of the piece's long axis, to align streaks with it."""
     ys, xs = np.nonzero(alpha > 0.5)
     if len(xs) < 20:
         return 0.0
@@ -166,7 +166,7 @@ def piece_axis_angle(alpha):
 
 
 def texture_field(material, alpha, rng, r):
-    """Campo de modulación (positivo y negativo, ya con amplitud) para una pieza."""
+    """Modulation field (positive and negative, already with amplitude) for a piece."""
     kind, amp = TEXTURES.get(material, FLAT_TEXTURE) if material else FLAT_TEXTURE
     shape = alpha.shape
     if kind == "streak":
@@ -189,12 +189,12 @@ def texture_field(material, alpha, rng, r):
 
 
 # --------------------------------------------------------------------------------------------
-# Relieve (luz de borde) y composición
+# Relief (edge light) and composition
 # --------------------------------------------------------------------------------------------
 
 
 def bevel(alpha, sigma):
-    """Sombreado de relieve a partir del alfa: +1 mirando a la luz (arriba a la izquierda), -1 al revés."""
+    """Relief shading from the alpha: +1 facing the light (top left), -1 the opposite."""
     h = gblur(alpha, sigma)
     gy, gx = np.gradient(h)
     s = (gx + gy) * 0.7071 * sigma * 2.6
@@ -206,7 +206,7 @@ def _luma(c):
 
 
 def paint_figure(entry, root, res, seed, small=False):
-    """Compone una figura a partir de sus capas rasterizadas. Devuelve una imagen RGBA (res x res)."""
+    """Composes a shape from its rasterised layers. Returns an RGBA image (res x res)."""
     r = res / 128.0
     rng = np.random.default_rng(seed)
     layers = entry["layers"]
@@ -227,7 +227,7 @@ def paint_figure(entry, root, res, seed, small=False):
     p_can = np.zeros(sil.shape[:2] + (3,), np.float32)
     p_can[:] = ink * a_can[..., None]
 
-    # parámetros: a tamaños pequeños no hay grano y el relieve es más fino y más fuerte
+    # parameters: at small sizes there is no grain and the relief is finer and stronger
     grain_gain = 0.0 if small else 1.0
     bev_broad = (1.6 if small else 2.3) * r
     bev_fine = (0.55 if small else 0.8) * r
@@ -248,15 +248,15 @@ def paint_figure(entry, root, res, seed, small=False):
         if ly.get("relief") is not None:
             thick = bool(ly["relief"])
         if thick:
-            # oclusión sobre lo que hay debajo
+            # occlusion onto what is underneath
             occ = gblur(shift(a, ao_off[0], ao_off[1]), ao_sigma)
             p_can *= (1.0 - ao_strength * np.clip(occ * 1.25, 0.0, 1.0))[..., None]
-            # grano
+            # grain
             if grain_gain:
                 f = texture_field(ly.get("material"), a, rng, r) * grain_gain
                 f += brush
                 c *= (1.0 + f)[..., None]
-            # luz de borde interior
+            # inner edge light
             s = 0.65 * bevel(a, bev_broad) + 0.55 * bevel(a, bev_fine)
             lit = np.clip(s, 0.0, 1.0)[..., None]
             dark = np.clip(-s, 0.0, 1.0)[..., None]
@@ -267,7 +267,7 @@ def paint_figure(entry, root, res, seed, small=False):
         p_can = c * aa + p_can * (1.0 - aa)
         a_can = aa[..., 0] + a_can * (1.0 - aa[..., 0])
 
-    # sombra proyectada por debajo de todo
+    # shadow cast beneath everything
     shadow = read(by_kind["shadow"])[..., 3]
     sh = gblur(shadow, (0.9 if small else 1.3) * r) * (0.40 if small else 0.34)
     a_out = a_can + sh * (1.0 - a_can)
@@ -278,22 +278,22 @@ def paint_figure(entry, root, res, seed, small=False):
 
 
 def reduce(img, side):
-    """Reduce una imagen RGBA a `side` px (Pillow premultiplica el alfa al reescalar)."""
+    """Reduces an RGBA image to `side` px (Pillow premultiplies alpha when rescaling)."""
     if img.size[0] == side:
         return img
     return img.resize((side, side), Image.LANCZOS)
 
 
 # --------------------------------------------------------------------------------------------
-# Fondos por categoría
+# Backgrounds per category
 # --------------------------------------------------------------------------------------------
 
-# Hierro y bronce cálido de la casilla (UIPalette.BORDER y BORDER_LIGHT): bisel del fondo.
+# Warm iron and bronze of the slot (UIPalette.BORDER and BORDER_LIGHT): bevel of the background.
 BEVEL_LIGHT = np.array([0.50, 0.47, 0.42], np.float32)
 
 
 def make_tile(category, side=128):
-    """Fondo de una categoría, a sangre y sin marco (la casilla pone el borde): RGBA opaco."""
+    """Background of a category, full-bleed and frameless (the slot adds the border): opaque RGBA."""
     cat = CATEGORIES[category]
     seed = zlib.crc32(("tile_" + category).encode("utf-8"))
     rng = np.random.default_rng(seed)
@@ -306,28 +306,28 @@ def make_tile(category, side=128):
     glow = np.array(hex_rgb(cat["glow"]), np.float32) / 255.0
     col = top[None, None, :] * (1 - t)[..., None] + bottom[None, None, :] * t[..., None]
 
-    # moteado de cuero o piedra y pincelada fina
+    # leather or stone mottling and fine brush stroke
     mott = fbm((h, w), rng, (3, 6, 12, 24, 48)) * 0.10
     brush = streak_noise((h, w), rng, 18.0 * r, 1.4 * r, -35.0) * 0.045
     grain = rng.standard_normal((h, w)).astype(np.float32) * 0.022
     col *= (1.0 + mott + brush + grain)[..., None]
 
-    # halo interior del color de la categoría, detrás de la figura
+    # inner halo in the category colour, behind the shape
     cx, cy = 0.49 * w, 0.44 * h
     d = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2) / (0.62 * w)
     halo = np.clip(1.0 - d, 0.0, 1.0) ** 1.7
     col += glow[None, None, :] * (0.20 * halo)[..., None]
 
-    # filo interior: halo suave pegado al borde y una línea fina del color de la categoría
+    # inner edge: soft halo hugging the border and a fine line in the category colour
     edge = np.minimum(np.minimum(xs + 0.5, w - xs - 0.5), np.minimum(ys + 0.5, h - ys - 0.5)) / r
     col += glow[None, None, :] * (0.14 * np.exp(-edge / 6.0))[..., None]
     line = np.exp(-((edge - 5.5) ** 2) / 0.8)
     col += glow[None, None, :] * (0.20 * line)[..., None]
 
-    # suelo: la mitad inferior se oscurece un poco
+    # floor: the lower half darkens a little
     col *= (1.0 - 0.22 * np.clip((t - 0.45) / 0.55, 0.0, 1.0))[..., None]
 
-    # bisel de hierro y bronce: luz arriba y a la izquierda, sombra abajo y a la derecha
+    # iron and bronze bevel: light at the top and left, shadow at the bottom and right
     lit = np.clip(1.0 - np.minimum(xs / r, ys / r) / 2.4, 0.0, 1.0)
     shade = np.clip(1.0 - np.minimum((w - 1 - xs) / r, (h - 1 - ys) / r) / 2.4, 0.0, 1.0)
     col = col + (BEVEL_LIGHT[None, None, :] - col) * (0.55 * lit)[..., None]

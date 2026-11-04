@@ -13,15 +13,15 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// Topes de una sanción de la CLI (los de la API interna, §9.5).
+// Caps of a CLI sanction (those of the internal API, §9.5).
 const (
 	maxReason      = 500
 	maxSanctionDur = 10 * 365 * 24 * time.Hour
 	maxReportIDs   = 20
 )
 
-// SanctionOrder es sanction add: el objetivo por nombre (o «#id») en el mundo, el tipo, la duración
-// (silencio y suspensión), el motivo y los reportes.
+// SanctionOrder is sanction add: the target by name (or "#id") in the world, the kind, the duration
+// (mute and suspension), the reason and the reports.
 type SanctionOrder struct {
 	World     int16
 	Target    string
@@ -31,11 +31,11 @@ type SanctionOrder struct {
 	ReportIDs []int64
 }
 
-// Sanction es sanction add (admin): las mismas comprobaciones que la zona con la cuenta del --actor
-// (§9.5, [sanctions.Create]): el rol mínimo de §9.1 para ese tipo y esa duración y un objetivo de
-// rol menor (sin el arrendamiento, que es de la zona). Si no la autoriza, [DeniedError] y queda la
-// fila sanction_denied; si sí, la sanción y la fila sanction, las dos con source = 'cli' y
-// args.os_user.
+// Sanction is sanction add (admin): the same checks as the zone with the --actor's account (§9.5,
+// [sanctions.Create]): the minimum role of §9.1 for that kind and duration and a target of lower
+// role (without the lease, which belongs to the zone). If it does not authorize it, [DeniedError]
+// and the sanction_denied row is left; if it does, the sanction and the sanction row, both with
+// source = 'cli' and args.os_user.
 func (s *Service) Sanction(ctx context.Context, actor *Actor, o SanctionOrder) (*sanctions.Created, *Character, error) {
 	o.Reason = strings.TrimSpace(o.Reason)
 	switch {
@@ -84,17 +84,17 @@ func (s *Service) Sanction(ctx context.Context, actor *Actor, o SanctionOrder) (
 	return created, target, nil
 }
 
-// Estados de una sanción en sanction list.
+// States of a sanction in sanction list.
 const (
 	StateActive   = "vigente"
 	StateExpired  = "caducada"
 	StateRevoked  = "revocada"
-	StateNoted    = "anotada"   // un aviso: sin efecto mecánico, cuenta para la reincidencia
-	StatePending  = "pendiente" // un renombrado que aún no se ha hecho
-	StateComplied = "cumplida"  // un renombrado ya hecho
+	StateNoted    = "anotada"   // a warning: no mechanical effect, counts toward repeat offenses
+	StatePending  = "pendiente" // a rename that has not been done yet
+	StateComplied = "cumplida"  // a rename already done
 )
 
-// SanctionInfo es una sanción de la cuenta.
+// SanctionInfo is a sanction of the account.
 type SanctionInfo struct {
 	ID          int64
 	Kind        string
@@ -110,9 +110,9 @@ type SanctionInfo struct {
 	State       string
 }
 
-// state es el estado de la sanción a la hora now: revocada; un aviso, anotado; un silencio o una
-// suspensión, vigente hasta ends_at y después caducada; una expulsión, vigente; un renombrado,
-// pendiente mientras el personaje tenga must_rename y después cumplido.
+// state is the sanction's state at time now: revoked; a warning, noted; a mute or a suspension,
+// current until ends_at and expired afterwards; a ban, current; a rename, pending while the
+// character has must_rename and fulfilled afterwards.
 func state(i *SanctionInfo, mustRename bool, now time.Time) string {
 	switch {
 	case i.RevokedAt != nil:
@@ -132,9 +132,9 @@ func state(i *SanctionInfo, mustRename bool, now time.Time) string {
 	return StateActive
 }
 
-// Sanctions es sanction list (lectura, moderator): las sanciones de la cuenta del personaje, de la
-// más nueva a la más vieja, con su estado. Deja la fila sanction list con el personaje y su cuenta
-// como objetivo.
+// Sanctions is sanction list (read, moderator): the sanctions of the character's account, from
+// newest to oldest, with their state. It leaves the sanction list row with the character and its
+// account as target.
 func (s *Service) Sanctions(ctx context.Context, actor *Actor, world int16, target string) (*Character, []SanctionInfo, error) {
 	var who *Character
 	var out []SanctionInfo
@@ -176,10 +176,9 @@ func (s *Service) Sanctions(ctx context.Context, actor *Actor, world int16, targ
 	return who, out, nil
 }
 
-// RevokeSanction es sanction revoke (admin): levanta una sanción (revoked_at, revoked_by). Un
-// renombrado revocado quita must_rename si el personaje no tiene otro sin revocar puesto después.
-// Deja la fila
-// sanction revoke con el objetivo de la sanción y args {sanction_id, kind, os_user}.
+// RevokeSanction is sanction revoke (admin): it lifts a sanction (revoked_at, revoked_by). A revoked
+// rename removes must_rename if the character has no other unrevoked one placed afterwards. It
+// leaves the sanction revoke row with the sanction's target and args {sanction_id, kind, os_user}.
 func (s *Service) RevokeSanction(ctx context.Context, actor *Actor, id int64) (*SanctionInfo, error) {
 	var info *SanctionInfo
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
@@ -206,8 +205,8 @@ func (s *Service) RevokeSanction(ctx context.Context, actor *Actor, id int64) (*
 			return err
 		}
 		if i.Kind == sanctions.KindRename && i.CharacterID != nil {
-			// Sin la fecha del último renombrado no se sabe qué renombrado anterior está cumplido:
-			// manda el más nuevo. Si hay otro sin revocar puesto después, sigue haciendo falta.
+			// Without the date of the last rename it is not known which earlier rename is fulfilled: the newest
+			// rules. If there is another unrevoked one placed afterwards, it is still needed.
 			if _, err := tx.Exec(ctx, `update characters set must_rename = false where character_id = $1
 				and not exists (select 1 from sanctions where character_id = $1 and kind = 'rename'
 					and revoked_at is null and sanction_id > $2)`, *i.CharacterID, id); err != nil {

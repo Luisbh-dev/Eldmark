@@ -1,54 +1,59 @@
 class_name FortressPersistence
 extends RefCounted
-## La guerra persistente en la zona (docs/plataforma.md §8, GUE-19): el registro de cada fortaleza en la plataforma
-## ([code]fortresses.record[/code], esquema 1) y el historial de sus eventos. Solo existe con
-## [code]--platform[/code]; vive en [code]scripts/server/war/[/code] porque lee el reloj de la plataforma
-## ([method ZonePlatform.now_unix]), y [code]scripts/shared[/code] no lo lee.
+## Persistent war in the zone (docs/plataforma.md §8, GUE-19): the record of each fortress on the
+## platform ([code]fortresses.record[/code], schema 1) and the history of its events. It only exists
+## with [code]--platform[/code]; it lives in [code]scripts/server/war/[/code] because it reads the
+## platform clock ([method ZonePlatform.now_unix]), and [code]scripts/shared[/code] does not read it.
 ## [codeblock]
 ## {"schema": 1, "owner": 1, "phase": "consolidating", "phase_ends_at_unix": 1800000120,
 ##  "captain_alive": false, "captain_respawn_at_unix": null, "gate_health": 2600,
 ##  "capture_realm": 0, "capture_progress": 0, "last_reset_at_unix": 1799999000}
 ## [/codeblock]
-## [b]Ticks y hora Unix[/b] ([method unix_of], [method tick_until], [method tick_since]): un tick [code]t[/code] se
-## escribe como [code]now_unix + ceili((t − tick) / 60.0)[/code]; al cargar, un plazo vuelve como
-## [code]tick + max(0, at − now_unix) · 60[/code] y el último reinicio, que es pasado, como
-## [code]tick − max(0, now_unix − at) · 60[/code] (reiniciar el proceso no reinicia el ciclo de 30 min). Lo que no
-## tiene plazo va como null: [code]phase_ends_at_unix[/code] es el fin de la consolidación o la vuelta del capitán
-## en VULNERABLE, y [code]captain_respawn_at_unix[/code], esa vuelta.
+## [b]Ticks and Unix time[/b] ([method unix_of], [method tick_until], [method tick_since]): a tick
+## [code]t[/code] is written as [code]now_unix + ceili((t − tick) / 60.0)[/code]; on load, a deadline
+## comes back as [code]tick + max(0, at − now_unix) · 60[/code] and the last reset, which is in the
+## past, as [code]tick − max(0, now_unix − at) · 60[/code] (restarting the process does not restart
+## the 30 min cycle). What has no deadline goes as null: [code]phase_ends_at_unix[/code] is the end
+## of the consolidation or the captain's return in VULNERABLE, and
+## [code]captain_respawn_at_unix[/code], that return.
 ## [br][br]
-## [b]Al arrancar[/b] ([method load_records], dentro de [method ZoneServer.start] y antes de abrir el puerto): lo que
-## trajo el GET de [method ZonePlatform.start] se aplica con [method FortressController.restore_state]. Sin registro
-## (primer arranque), el estado inicial sin aviso, y se escribe en cuanto la instancia está viva; con otro
-## [code]schema[/code] o uno que no vale, el estado inicial con un aviso. CONSOLIDATING conserva dueño y plazo;
-## VULNERABLE, el plazo del capitán; CAPTURING vuelve con su captor y su progreso, el círculo vacío y decayendo (la
-## máquina de docs/fuerte.md §1.5 solo tiene progreso en CAPTURING: si nadie vuelve, a 0 pasa a VULNERABLE). Los
-## guardias no se guardan: los repone el generador. Una puerta dañada se repara a los 5 min del arranque.
+## [b]On startup[/b] ([method load_records], inside [method ZoneServer.start] and before opening the
+## port): what the GET of [method ZonePlatform.start] brought is applied with
+## [method FortressController.restore_state]. With no record (first startup), the initial state with
+## no warning, and it is written as soon as the instance is live; with another [code]schema[/code]
+## or one that is invalid, the initial state with a warning. CONSOLIDATING keeps owner and deadline;
+## VULNERABLE, the captain's deadline; CAPTURING comes back with its capturer and progress, the
+## circle empty and decaying (the machine of docs/fuerte.md §1.5 only has progress in CAPTURING: if
+## nobody comes back, at 0 it goes to VULNERABLE). Guards are not saved: the spawner replaces them.
+## A damaged gate is repaired 5 min after startup.
 ## [br][br]
-## [b]Guardar[/b] ([method step], tras el paso de las fortalezas): en cada cambio de dueño, de fase o de ciclo (un
-## reinicio) y, si cambió algo más (la vida de la puerta, el progreso, el plazo del capitán), cada 60 s
-## ([constant SAVE_INTERVAL_TICKS]); el cierre ordenado escribe lo que quede ([method flush]). Solo escribe la
-## instancia [code]live[/code] ([method ZonePlatform.is_live]): un cambio anterior sale al quedar viva.
-## [method ZonePlatform.put_fortress] lleva una petición en vuelo por fortaleza con [code]expected_version[/code] y
-## reenvía tras [code]version_conflict[/code]; las respuestas llegan aquí como eventos [code]fortress[/code].
+## [b]Saving[/b] ([method step], after the fortress step): on every owner, phase or cycle change (a
+## reset) and, if something else changed (gate health, progress, captain deadline), every 60 s
+## ([constant SAVE_INTERVAL_TICKS]); the orderly shutdown writes whatever remains
+## ([method flush]). It only writes the [code]live[/code] instance ([method ZonePlatform.is_live]):
+## an earlier change goes out once it becomes live. [method ZonePlatform.put_fortress] keeps one
+## in-flight request per fortress with [code]expected_version[/code] and resends after
+## [code]version_conflict[/code]; the responses arrive here as [code]fortress[/code] events.
 ## [br][br]
-## [b]Historial[/b] ([method on_war_event]): los avisos 3 (captura iniciada), 6 (capturado) y 7 (reiniciado) van al
-## lote [code]war[/code] ([code]{key, fortress_id, event, realm, at_unix}[/code]); la [code]key[/code] la pone
-## [method ZonePlatform.enqueue_batch] y un lote reenviado no duplica nada.
+## [b]History[/b] ([method on_war_event]): notices 3 (capture started), 6 (captured) and 7 (reset) go
+## to the [code]war[/code] batch ([code]{key, fortress_id, event, realm, at_unix}[/code]); the
+## [code]key[/code] is set by [method ZonePlatform.enqueue_batch] and a resent batch duplicates
+## nothing.
 
-## Esquema del registro.
+## Schema of the record.
 const SCHEMA: int = 1
-## Cada cuánto (ticks) se escribe una fortaleza a la que solo le han cambiado cosas menores (60 s).
+## How often (in ticks) a fortress is written when only minor things have changed (60 s).
 const SAVE_INTERVAL_TICKS: int = 3600
-## Nombre de cada [enum FortressState.Phase] en el registro.
+## Name of each [enum FortressState.Phase] in the record.
 const PHASE_NAMES: PackedStringArray = ["garrisoned", "vulnerable", "capturing", "consolidating"]
-## Avisos de guerra que van al historial (fortress_events).
+## War notices that go to the history (fortress_events).
 const PERSISTED_WAR_EVENTS: Array[int] = [WarEvents.CAPTURE_STARTED, WarEvents.FORT_CAPTURED, WarEvents.FORT_RESET]
-## Clase del lote del historial ([method ZonePlatform.enqueue_batch]).
+## Class of the history batch ([method ZonePlatform.enqueue_batch]).
 const WAR_BATCH: StringName = &"war"
-## La mayor hora Unix que admite la plataforma (9999-12-31).
+## The largest Unix time the platform accepts (9999-12-31).
 const MAX_UNIX: int = 253402300799
 
-## Registro de la zona (un [Callable] con un texto); sin él, print. Los avisos van además con [method push_warning].
+## Zone log (a [Callable] with a text); without it, print. Warnings also go through [method push_warning].
 var log_sink: Callable = Callable()
 
 var _platform: ZonePlatform = null
@@ -61,23 +66,24 @@ var _stats: Dictionary[StringName, int] = {
 }
 
 
-## Lo que se escribió de una fortaleza: la parte que sale enseguida si cambia (dueño, fase y ciclo) y la que sale
-## cada 60 s, en ticks (la hora Unix se mueve con el reloj y no dice si cambió algo).
+## What was written of a fortress: the part that goes out immediately if it changes (owner, phase and
+## cycle) and the one that goes out every 60 s, in ticks (Unix time moves with the clock and does not
+## say whether anything changed).
 class _Tracked:
 	extends RefCounted
 	var major: Array = []
 	var minor: Array = []
 	var last_put_tick: int = 0
-	## Escribir en cuanto la instancia esté viva (primer arranque, sin registro).
+	## Write as soon as the instance is live (first startup, no record).
 	var pending: bool = false
 
 
-## Un registro leído: el estado, el fin de una consolidación cargada y, si no vale, el motivo.
+## A record read: the state, the end of a loaded consolidation and, if it is invalid, the reason.
 class Loaded:
 	extends RefCounted
 	var state: FortressState = null
 	var consolidation_ends_tick: int = FortressState.NO_TICK
-	## Vacío si el registro vale; si no, por qué (el estado es entonces el inicial).
+	## Empty if the record is valid; otherwise, why (the state is then the initial one).
 	var error: String = ""
 
 
@@ -86,27 +92,28 @@ func _init(platform: ZonePlatform, controller: FortressController) -> void:
 	_controller = controller
 
 
-# --- Conversión -------------------------------------------------------------------------------
+# --- Conversion ---------------------------------------------------------------------------------
 
-## La hora Unix del tick [param t] visto desde [param tick] con el reloj [param now_unix]:
-## [code]now_unix + ceili((t − tick) / 60.0)[/code] (un plazo nunca sale antes de su tick).
+## The Unix time of tick [param t] seen from [param tick] with clock [param now_unix]:
+## [code]now_unix + ceili((t − tick) / 60.0)[/code] (a deadline never goes out before its tick).
 static func unix_of(t: int, tick: int, now_unix: int) -> int:
 	return now_unix + ceili(float(t - tick) / float(CombatCatalog.TICK_RATE))
 
 
-## El tick de un plazo futuro [param at_unix]: [code]tick + max(0, at − now_unix) · 60[/code].
+## The tick of a future deadline [param at_unix]: [code]tick + max(0, at − now_unix) · 60[/code].
 static func tick_until(at_unix: int, tick: int, now_unix: int) -> int:
 	return tick + maxi(0, at_unix - now_unix) * CombatCatalog.TICK_RATE
 
 
-## El tick de un instante pasado [param at_unix]: [code]tick − max(0, now_unix − at) · 60[/code].
+## The tick of a past instant [param at_unix]: [code]tick − max(0, now_unix − at) · 60[/code].
 static func tick_since(at_unix: int, tick: int, now_unix: int) -> int:
 	return tick - maxi(0, now_unix - at_unix) * CombatCatalog.TICK_RATE
 
 
-## El registro (esquema 1) de [param state] en el tick [param tick] con el reloj [param now_unix].
-## [param consolidation_ends_tick] es el fin de la consolidación si lo lleva el controlador
-## ([method FortressController.get_consolidation_end_tick]); sin él, el inicio de la fase más su duración.
+## The record (schema 1) of [param state] at tick [param tick] with clock [param now_unix].
+## [param consolidation_ends_tick] is the end of the consolidation if the controller carries it
+## ([method FortressController.get_consolidation_end_tick]); without it, the phase start plus its
+## duration.
 static func to_record(state: FortressState, def: FortressDefinition, tick: int, now_unix: int,
 		consolidation_ends_tick: int = FortressState.NO_TICK) -> Dictionary:
 	var record: Dictionary = {
@@ -131,9 +138,10 @@ static func to_record(state: FortressState, def: FortressDefinition, tick: int, 
 	return record
 
 
-## El estado de [param record] (lo que trae el GET, ya leído como JSON) para [param def] en el tick [param tick] con
-## el reloj [param now_unix]. Si no vale (no es un objeto, otro [code]schema[/code], un campo que falta o no
-## cuadra), [member Loaded.error] dice por qué y el estado es el inicial.
+## The state of [param record] (what the GET brings, already read as JSON) for [param def] at tick
+## [param tick] with clock [param now_unix]. If it is invalid (not an object, another
+## [code]schema[/code], a field that is missing or does not match), [member Loaded.error] says why
+## and the state is the initial one.
 static func from_record(record: Variant, def: FortressDefinition, tick: int, now_unix: int) -> Loaded:
 	var loaded := Loaded.new()
 	loaded.state = FortressState.initial(def, tick)
@@ -179,7 +187,7 @@ static func from_record(record: Variant, def: FortressDefinition, tick: int, now
 	state.owner = owner
 	state.gate_health = mini(gate_health, state.gate_max)
 	if state.gate_health < state.gate_max:
-		# La hora del último golpe no se guarda: la reparación cuenta desde el arranque.
+		# The time of the last hit is not saved: the repair counts from startup.
 		state.gate_last_damage_tick = tick
 	var last_reset: Variant = data.get("last_reset_at_unix")
 	if last_reset != null:
@@ -194,7 +202,7 @@ static func from_record(record: Variant, def: FortressDefinition, tick: int, now
 			state.captain_respawn_tick = tick_until(int(back), tick, now_unix) if back != null \
 					else tick + def.captain_respawn_ticks()
 		FortressState.Phase.CAPTURING:
-			# Con su captor y su progreso; el círculo está vacío, así que decae (docs/fuerte.md §1.5).
+			# With its capturer and progress; the circle is empty, so it decays (docs/fuerte.md §1.5).
 			state.phase = FortressState.Phase.CAPTURING
 			state.captain_alive = false
 			state.capture_realm = capture_realm
@@ -207,21 +215,21 @@ static func from_record(record: Variant, def: FortressDefinition, tick: int, now
 			state.captain_alive = false
 			loaded.consolidation_ends_tick = tick_until(int(phase_ends), tick, now_unix) if phase_ends != null \
 					else tick + def.consolidation_ticks()
-			# El inicio no baja del tick de la carga (OBJECT_STATE no lleva ticks negativos); el fin lo lleva el
-			# controlador (FortressController.restore_state).
+			# The start does not go below the load tick (OBJECT_STATE carries no negative ticks); the end is
+			# carried by the controller (FortressController.restore_state).
 			state.phase_tick = maxi(tick, loaded.consolidation_ends_tick - def.consolidation_ticks())
 	return loaded
 
 
-# null o una hora Unix entera de 0 a MAX_UNIX.
+# null or an integer Unix time from 0 to MAX_UNIX.
 static func _is_optional_unix(value: Variant) -> bool:
 	return value == null or PlatformJson.is_int(value, 0, MAX_UNIX)
 
 
-# --- Arranque ---------------------------------------------------------------------------------
+# --- Startup ------------------------------------------------------------------------------------
 
-## Aplica [param records] (lo que trajo el GET del arranque, [method ZonePlatform.fortress_records]:
-## [code]{fortress_id, record, version}[/code]) en el tick [param tick], antes de abrir el puerto.
+## Applies [param records] (what the startup GET brought, [method ZonePlatform.fortress_records]:
+## [code]{fortress_id, record, version}[/code]) at tick [param tick], before opening the port.
 func load_records(records: Array[Dictionary], tick: int) -> void:
 	var by_id: Dictionary[StringName, Dictionary] = {}
 	for entry: Dictionary in records:
@@ -231,7 +239,7 @@ func load_records(records: Array[Dictionary], tick: int) -> void:
 		var tracked := _Tracked.new()
 		_tracked[fortress_id] = tracked
 		if not by_id.has(fortress_id):
-			# Primer arranque: el estado inicial, sin aviso; se escribe en cuanto la instancia esté viva.
+			# First startup: the initial state, with no warning; it is written as soon as the instance is live.
 			tracked.pending = true
 			_stats[&"initial"] += 1
 			_log("Fortaleza %s sin registro en la plataforma: estado inicial" % fortress_id)
@@ -254,7 +262,7 @@ func load_records(records: Array[Dictionary], tick: int) -> void:
 			_log("La plataforma tiene un registro de la fortaleza %s, que esta zona no tiene" % fortress_id)
 
 
-## Una línea con el estado de [param fortress_id] para el registro: dueño, fase y el plazo que corre.
+## A line with the state of [param fortress_id] for the log: owner, phase and the running deadline.
 static func describe(controller: FortressController, fortress_id: StringName, tick: int) -> String:
 	var state: FortressState = controller.get_fortress_state(fortress_id)
 	if state == null:
@@ -277,10 +285,11 @@ static func _seconds_until(t: int, tick: int) -> int:
 	return ceili(float(maxi(t - tick, 0)) / float(CombatCatalog.TICK_RATE))
 
 
-# --- Guardar ----------------------------------------------------------------------------------
+# --- Saving -------------------------------------------------------------------------------------
 
-## Tras el paso de las fortalezas del tick [param s]: escribe la que ha cambiado de dueño, de fase o de ciclo y,
-## cada 60 s, la que ha cambiado en algo más. Nada hasta que la instancia está viva ni tras [method close].
+## After the fortress step of tick [param s]: writes the one that changed owner, phase or cycle and,
+## every 60 s, the one that changed in anything else. Nothing until the instance is live nor after
+## [method close].
 func step(s: int) -> void:
 	if _closed or not _platform.is_live():
 		return
@@ -295,8 +304,8 @@ func step(s: int) -> void:
 			_put(fortress_id, s)
 
 
-## El cierre ordenado ([method ZoneServer.stop]): escribe ya cada fortaleza con algo sin escribir. Nada si la
-## instancia no está viva o ya se cerró.
+## The orderly shutdown ([method ZoneServer.stop]): immediately writes every fortress with anything
+## unwritten. Nothing if the instance is not live or has already been closed.
 func flush(s: int) -> void:
 	if _closed or not _platform.is_live():
 		return
@@ -309,8 +318,8 @@ func flush(s: int) -> void:
 			_put(fortress_id, s)
 
 
-## La plataforma ha cerrado la instancia (docs/plataforma.md §6.1): ya no escribe ni registros ni eventos (la que
-## manda ahora es otra).
+## The platform has closed the instance (docs/plataforma.md §6.1): it no longer writes records or
+## events (the one in charge now is another).
 func close() -> void:
 	_closed = true
 
@@ -333,23 +342,25 @@ func _remember(fortress_id: StringName, s: int) -> void:
 	tracked.last_put_tick = s
 
 
-# Lo que sale enseguida si cambia: dueño, fase y ciclo (el inicio de la fase y el último reinicio).
+# What goes out immediately if it changes: owner, phase and cycle (the phase start and the last reset).
 static func _major(state: FortressState) -> Array:
 	return [state.owner, state.phase, state.phase_tick, state.last_reset_tick]
 
 
-# Lo que sale cada 60 s si cambia: la puerta, el capitán, la captura y el fin de la consolidación.
+# What goes out every 60 s if it changes: the gate, the captain, the capture and the end of the
+# consolidation.
 func _minor(fortress_id: StringName, state: FortressState, s: int) -> Array:
 	return [state.gate_health, state.captain_alive, state.captain_respawn_tick, state.capture_realm,
 			state.progress_at(s) if state.phase == FortressState.Phase.CAPTURING else 0,
 			_controller.get_consolidation_end_tick(fortress_id)]
 
 
-# --- Respuestas y eventos ---------------------------------------------------------------------
+# --- Responses and events -----------------------------------------------------------------------
 
-## La respuesta de un PUT de fortaleza (evento [code]fortress[/code], docs/plataforma.md §14.3). La versión y el
-## reenvío tras [code]version_conflict[/code] los lleva [ZonePlatform]; aquí se cuentan y se registra lo que no
-## vale (un 403 es una fortaleza de otra zona). Devuelve true si era suyo.
+## The response to a fortress PUT ([code]fortress[/code] event, docs/plataforma.md §14.3). The version
+## and the resend after [code]version_conflict[/code] are handled by [ZonePlatform]; here they are
+## counted and what is invalid is logged (a 403 is a fortress of another zone). Returns true if it
+## was its own.
 func on_platform_event(event: PlatformEvent) -> bool:
 	if event.kind != PlatformEvent.KIND_FORTRESS:
 		return false
@@ -368,8 +379,8 @@ func on_platform_event(event: PlatformEvent) -> bool:
 	return true
 
 
-## Un aviso de guerra ([signal FortressController.war_event_emitted]): los de [constant PERSISTED_WAR_EVENTS] van
-## al lote [code]war[/code] con la hora de la plataforma.
+## A war notice ([signal FortressController.war_event_emitted]): those in [constant PERSISTED_WAR_EVENTS] go
+## to the [code]war[/code] batch with the platform time.
 func on_war_event(event: NetMessages.EntityEvent) -> void:
 	if _closed or not PERSISTED_WAR_EVENTS.has(event.war_event):
 		return
@@ -381,8 +392,8 @@ func on_war_event(event: NetMessages.EntityEvent) -> void:
 	_stats[&"war_events"] += 1
 
 
-## Contadores para el informe: registros cargados, iniciales y descartados; PUT enviados, aceptados, con conflicto
-## y rechazados; eventos al historial.
+## Counters for the report: records loaded, initial and discarded; PUTs sent, accepted, conflicted
+## and rejected; events to the history.
 func get_stats() -> Dictionary:
 	var stats: Dictionary = {}
 	for key: StringName in _stats:

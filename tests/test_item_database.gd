@@ -1,19 +1,19 @@
 extends TestCase
-## Pruebas de las definiciones de objetos ([ItemDefinition], [ItemDatabase]; docs/progresion.md §2.1, §2.2 y
-## §2.4, PRG-02): ids únicos y con formato, recursos en texto, la coherencia de §2.1 (la de ARMOR con
-## [code]tests/fixtures/items/[/code], porque [code]data/items/[/code] no tiene armaduras en la fase 5),
-## [code]ref_id[/code] que existen, un objeto por arma y consumible de las plantillas, net ids alfabéticos y
-## [method ItemDatabase.wire_hash] estable entre dos cargas.
+## Tests for the item definitions ([ItemDefinition], [ItemDatabase]; docs/progresion.md §2.1, §2.2 and
+## §2.4, PRG-02): unique, well-formed ids, resources in text, the §2.1 consistency (the ARMOR one with
+## [code]tests/fixtures/items/[/code], because [code]data/items/[/code] has no armours in phase 5),
+## [code]ref_id[/code]s that exist, one object per weapon and consumable of the templates, alphabetical net ids and
+## [method ItemDatabase.wire_hash] stable between two loads.
 
 const ARMOR_FIXTURES: String = "res://tests/fixtures/items/armor"
 const BROKEN_FIXTURES: String = "res://tests/fixtures/items/broken"
-## Lo que dice el error de cada objeto roto de [constant BROKEN_FIXTURES].
+## What the error says for each broken object in [constant BROKEN_FIXTURES].
 const BROKEN_EXPECTED: Dictionary[String, String] = {
 	"armor_in_weapon_slot.tres": "una armadura va en una ranura de HEAD a FEET",
 	"armor_without_slot.tres": "una armadura va en una ranura de HEAD a FEET",
 	"armor_stackable.tres": "no se apila",
 }
-## Los objetos de §2.4: categoría, ref_id, pila, camp_refill y destroyable.
+## The §2.4 objects: category, ref_id, stack, camp_refill and destroyable.
 const PHASE_5_ITEMS: Dictionary[StringName, Array] = {
 	&"bow_vado": [ItemDefinition.Category.WEAPON, &"bow", 1, 0, false],
 	&"potion_health": [ItemDefinition.Category.CONSUMABLE, &"potion_health", 15, 3, true],
@@ -24,15 +24,15 @@ const PHASE_5_ITEMS: Dictionary[StringName, Array] = {
 
 func test_data_has_no_errors() -> void:
 	var db: ItemDatabase = ItemDatabase.build_from_directory(ItemDatabase.DATA_DIR)
-	assert_eq(db.errors, PackedStringArray(), "data/items no tiene errores")
-	assert_eq(ItemDatabase.shared().errors, PackedStringArray(), "ni la base compartida")
-	assert_true(ItemDatabase.shared() == ItemDatabase.shared(), "shared() carga una sola vez")
+	assert_eq(db.errors, PackedStringArray(), "data/items has no errors")
+	assert_eq(ItemDatabase.shared().errors, PackedStringArray(), "nor does the shared database")
+	assert_true(ItemDatabase.shared() == ItemDatabase.shared(), "shared() loads only once")
 	assert_eq(db.all_ids(), [&"bow_vado", &"potion_health", &"potion_stamina", &"sword_shield_vado"],
-			"los cuatro objetos de §2.4, en orden alfabético")
+			"the four §2.4 objects, in alphabetical order")
 
 
-## Cada recurso de data/items/ y de tests/fixtures/items/ es una ItemDefinition en texto, con un id con
-## formato que no se repite y que es su nombre de archivo, en la carpeta de su categoría.
+## Every resource in data/items/ and tests/fixtures/items/ is an ItemDefinition in text, with a well-formed id
+## that is not repeated and is its file name, in its category's folder.
 func test_ids_unique_formatted_and_resources_in_text() -> void:
 	var id_regex := RegEx.new()
 	id_regex.compile(ItemDefinition.ID_PATTERN)
@@ -41,53 +41,53 @@ func test_ids_unique_formatted_and_resources_in_text() -> void:
 	for dir: String in [ItemDatabase.DATA_DIR, "res://tests/fixtures/items"]:
 		for path: String in _files(dir):
 			checked += 1
-			assert_true(path.ends_with(".tres"), "%s es un .tres (nada de binarios)" % path)
+			assert_true(path.ends_with(".tres"), "%s is a .tres (no binaries)" % path)
 			var text: String = FileAccess.get_file_as_string(path)
-			assert_true(text.begins_with("[gd_resource"), "%s está en formato texto" % path)
+			assert_true(text.begins_with("[gd_resource"), "%s is in text format" % path)
 			var definition: ItemDefinition = ResourceLoader.load(path) as ItemDefinition
-			if not assert_not_null(definition, "%s es una ItemDefinition" % path):
+			if not assert_not_null(definition, "%s is an ItemDefinition" % path):
 				continue
-			assert_true(id_regex.search(String(definition.id)) != null, "%s: el id '%s' tiene formato" % [
+			assert_true(id_regex.search(String(definition.id)) != null, "%s: the id '%s' is well-formed" % [
 				path, definition.id])
-			assert_false(seen.has(definition.id), "el id %s no se repite (%s, %s)" % [definition.id,
+			assert_false(seen.has(definition.id), "the id %s is not repeated (%s, %s)" % [definition.id,
 					seen.get(definition.id, ""), path])
 			seen[definition.id] = path
 			if dir == ItemDatabase.DATA_DIR:
-				assert_eq(path.get_file(), "%s.tres" % definition.id, "%s: el archivo se llama como el id" % path)
+				assert_eq(path.get_file(), "%s.tres" % definition.id, "%s: the file is named after the id" % path)
 				var category_name: String = String(ItemDefinition.Category.find_key(definition.category)).to_lower()
 				assert_eq(path.get_base_dir().get_file(), category_name,
-						"%s está en data/items/<categoría>/" % path)
-	assert_true(checked >= 4 + 3 + BROKEN_EXPECTED.size(), "se revisan los datos y los casos (%d)" % checked)
+						"%s is in data/items/<category>/" % path)
+	assert_true(checked >= 4 + 3 + BROKEN_EXPECTED.size(), "the data and the cases are reviewed (%d)" % checked)
 
 
-## §2.4: un objeto por arma y poción de la fase 4, de inicio, ligados al cogerlos, de nivel 1 y sin valor;
-## las armas sin durabilidad ni destrucción y las pociones en pilas de 15 que el campamento repone a 3 y 2.
+## §2.4: one object per phase 4 weapon and potion, starter, bound on pickup, level 1 and valueless;
+## weapons with no durability or destruction and potions in stacks of 15 that the camp replenishes to 3 and 2.
 func test_phase_5_content() -> void:
 	var db: ItemDatabase = ItemDatabase.shared()
 	for id: StringName in PHASE_5_ITEMS:
 		var definition: ItemDefinition = db.get_definition(id)
-		if not assert_not_null(definition, "existe %s" % id):
+		if not assert_not_null(definition, "%s exists" % id):
 			continue
 		var expected: Array = PHASE_5_ITEMS[id]
-		assert_eq(definition.category, expected[0], "%s: categoría" % id)
+		assert_eq(definition.category, expected[0], "%s: category" % id)
 		assert_eq(definition.ref_id, expected[1], "%s: ref_id" % id)
-		assert_eq(definition.max_stack, expected[2], "%s: pila" % id)
+		assert_eq(definition.max_stack, expected[2], "%s: stack" % id)
 		assert_eq(definition.camp_refill, expected[3], "%s: camp_refill" % id)
 		assert_eq(definition.destroyable, expected[4], "%s: destroyable" % id)
-		assert_true(definition.starter, "%s: de inicio" % id)
-		assert_eq(definition.bind_rule, ItemDefinition.BindRule.ON_PICKUP, "%s: ligado al cogerlo" % id)
-		assert_eq(definition.required_level, 1, "%s: nivel 1" % id)
-		assert_eq(definition.base_value, 0, "%s: sin valor" % id)
-		assert_false(definition.has_durability, "%s: sin durabilidad" % id)
-		assert_false(definition.display_name.is_empty(), "%s: con nombre" % id)
-		assert_eq(definition.icon_path, "", "%s: sin icono hasta ART-12 (§16)" % id)
-		assert_eq(definition.visual_paths, PackedStringArray(), "%s: sin escenas" % id)
+		assert_true(definition.starter, "%s: starter" % id)
+		assert_eq(definition.bind_rule, ItemDefinition.BindRule.ON_PICKUP, "%s: bound on pickup" % id)
+		assert_eq(definition.required_level, 1, "%s: level 1" % id)
+		assert_eq(definition.base_value, 0, "%s: valueless" % id)
+		assert_false(definition.has_durability, "%s: no durability" % id)
+		assert_false(definition.display_name.is_empty(), "%s: with a name" % id)
+		assert_eq(definition.icon_path, "", "%s: no icon until ART-12 (§16)" % id)
+		assert_eq(definition.visual_paths, PackedStringArray(), "%s: no scenes" % id)
 		var expected_slot: int = ItemDefinition.EquipSlot.WEAPON \
 				if definition.category == ItemDefinition.Category.WEAPON else ItemDefinition.EquipSlot.NONE
-		assert_eq(definition.equip_slot, expected_slot, "%s: ranura" % id)
+		assert_eq(definition.equip_slot, expected_slot, "%s: slot" % id)
 
 
-## Los ref_id existen: el de cada arma en CombatCatalog y el de cada consumible entre sus consumibles.
+## The ref_ids exist: each weapon's in CombatCatalog and each consumable's among its consumables.
 func test_ref_ids_exist() -> void:
 	var db: ItemDatabase = ItemDatabase.shared()
 	var consumable_names: Array[StringName] = []
@@ -97,47 +97,47 @@ func test_ref_ids_exist() -> void:
 		var definition: ItemDefinition = db.get_definition(id)
 		match definition.category:
 			ItemDefinition.Category.WEAPON:
-				assert_true(CombatCatalog.weapon_id(definition.ref_id) != 0, "%s: el arma %s existe" % [
+				assert_true(CombatCatalog.weapon_id(definition.ref_id) != 0, "%s: the weapon %s exists" % [
 					id, definition.ref_id])
 			ItemDefinition.Category.CONSUMABLE:
-				assert_true(consumable_names.has(definition.ref_id), "%s: %s es un consumible" % [
+				assert_true(consumable_names.has(definition.ref_id), "%s: %s is a consumable" % [
 					id, definition.ref_id])
 			_:
-				fail("%s: la fase 5 solo tiene armas y consumibles" % id)
+				fail("%s: phase 5 only has weapons and consumables" % id)
 
 
-## Un objeto por arma de cada plantilla y por consumible (§2.5: el kit de inicio sale de ellos), y uno solo:
-## for_ref y consumable_definition lo encuentran.
+## One object per weapon of each template and per consumable (§2.5: the starter kit is made from them), and only one:
+## for_ref and consumable_definition find it.
 func test_one_item_per_template_weapon_and_consumable() -> void:
 	var db: ItemDatabase = ItemDatabase.shared()
 	var tables: CombatTables = CombatCatalog.tables()
-	assert_true(tables.templates.size() >= 2, "hay plantillas (%d)" % tables.templates.size())
+	assert_true(tables.templates.size() >= 2, "there are templates (%d)" % tables.templates.size())
 	for template: EquipmentTemplate in tables.templates:
 		for weapon: WeaponDefinition in template.weapons:
 			var item: ItemDefinition = db.for_ref(ItemDefinition.Category.WEAPON, weapon.id)
-			if assert_not_null(item, "plantilla %s: hay un objeto para el arma %s" % [template.id, weapon.id]):
-				assert_eq(item.ref_id, weapon.id, "y es el suyo")
-				assert_eq(item.category, ItemDefinition.Category.WEAPON, "y es un arma")
+			if assert_not_null(item, "template %s: there is an object for the weapon %s" % [template.id, weapon.id]):
+				assert_eq(item.ref_id, weapon.id, "and it is its own")
+				assert_eq(item.category, ItemDefinition.Category.WEAPON, "and it is a weapon")
 	var consumable_ids: PackedInt32Array = CombatCatalog.consumable_ids()
-	assert_eq(consumable_ids.size(), 2, "dos consumibles (R y T)")
+	assert_eq(consumable_ids.size(), 2, "two consumables (R and T)")
 	for index: int in range(consumable_ids.size()):
 		var ability_name: StringName = CombatCatalog.ability(consumable_ids[index]).name
 		var item: ItemDefinition = db.consumable_definition(index)
-		if assert_not_null(item, "hay un objeto para el consumible %d" % index):
-			assert_eq(item.ref_id, ability_name, "el del consumible %d es %s" % [index, ability_name])
-			assert_true(db.for_ref(ItemDefinition.Category.CONSUMABLE, ability_name) == item, "for_ref da el mismo")
-	assert_eq(db.consumable_definition(0).id, &"potion_health", "R: la poción de vida")
-	assert_eq(db.consumable_definition(1).id, &"potion_stamina", "T: la de resistencia")
-	assert_null(db.consumable_definition(2), "no hay un tercer consumible")
-	assert_null(db.consumable_definition(-1), "ni uno negativo")
-	assert_null(db.for_ref(ItemDefinition.Category.CONSUMABLE, &"sword_shield"), "un arma no es un consumible")
-	assert_null(db.for_ref(ItemDefinition.Category.WEAPON, &"npc_hollow"), "las armas de PNJ no tienen objeto")
-	assert_null(db.for_ref(ItemDefinition.Category.WEAPON, &""), "ref vacío")
+		if assert_not_null(item, "there is an object for consumable %d" % index):
+			assert_eq(item.ref_id, ability_name, "the one for consumable %d is %s" % [index, ability_name])
+			assert_true(db.for_ref(ItemDefinition.Category.CONSUMABLE, ability_name) == item, "for_ref gives the same one")
+	assert_eq(db.consumable_definition(0).id, &"potion_health", "R: the health potion")
+	assert_eq(db.consumable_definition(1).id, &"potion_stamina", "T: the stamina one")
+	assert_null(db.consumable_definition(2), "there is no third consumable")
+	assert_null(db.consumable_definition(-1), "nor a negative one")
+	assert_null(db.for_ref(ItemDefinition.Category.CONSUMABLE, &"sword_shield"), "a weapon is not a consumable")
+	assert_null(db.for_ref(ItemDefinition.Category.WEAPON, &"npc_hollow"), "NPC weapons have no object")
+	assert_null(db.for_ref(ItemDefinition.Category.WEAPON, &""), "empty ref")
 	var by_ref: Dictionary[String, StringName] = {}
 	for id: StringName in db.all_ids():
 		var definition: ItemDefinition = db.get_definition(id)
 		var key: String = "%d/%s" % [definition.category, definition.ref_id]
-		assert_false(by_ref.has(key), "un solo objeto por ref_id en la fase 5 (%s y %s)" % [by_ref.get(key, ""), id])
+		assert_false(by_ref.has(key), "only one object per ref_id in phase 5 (%s and %s)" % [by_ref.get(key, ""), id])
 		by_ref[key] = id
 
 
@@ -146,72 +146,72 @@ func test_net_ids_are_alphabetical() -> void:
 	var ids: Array[StringName] = db.all_ids()
 	var sorted: Array[StringName] = ids.duplicate()
 	sorted.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a) < String(b))
-	assert_eq(ids, sorted, "all_ids en orden alfabético")
+	assert_eq(ids, sorted, "all_ids in alphabetical order")
 	for i: int in range(ids.size()):
-		assert_eq(db.net_id_of(ids[i]), i + 1, "%s tiene el net id %d" % [ids[i], i + 1])
-		assert_true(db.definition_by_net_id(i + 1) == db.get_definition(ids[i]), "y se encuentra por él")
-	assert_eq(db.net_id_of(&"no_existe"), 0, "un id desconocido da 0")
-	assert_null(db.get_definition(&"no_existe"), "y ninguna definición")
-	assert_null(db.definition_by_net_id(0), "el net id 0 es ninguno")
-	assert_null(db.definition_by_net_id(ids.size() + 1), "uno más allá del último no existe")
-	assert_null(db.definition_by_net_id(-1), "ni uno negativo")
-	# Con los objetos de prueba intercalados, los net ids se desplazan y siguen siendo alfabéticos.
+		assert_eq(db.net_id_of(ids[i]), i + 1, "%s has net id %d" % [ids[i], i + 1])
+		assert_true(db.definition_by_net_id(i + 1) == db.get_definition(ids[i]), "and is found by it")
+	assert_eq(db.net_id_of(&"no_existe"), 0, "an unknown id gives 0")
+	assert_null(db.get_definition(&"no_existe"), "and no definition")
+	assert_null(db.definition_by_net_id(0), "net id 0 is none")
+	assert_null(db.definition_by_net_id(ids.size() + 1), "one past the last does not exist")
+	assert_null(db.definition_by_net_id(-1), "nor a negative one")
+	# With the test objects interleaved, the net ids shift and are still alphabetical.
 	var mixed: ItemDatabase = _database_with_armor()
 	var mixed_ids: Array[StringName] = mixed.all_ids()
-	assert_eq(mixed_ids.size(), ids.size() + 3, "cuatro objetos y tres armaduras")
+	assert_eq(mixed_ids.size(), ids.size() + 3, "four objects and three armours")
 	for i: int in range(mixed_ids.size()):
-		assert_eq(mixed.net_id_of(mixed_ids[i]), i + 1, "net id de %s en la base mezclada" % mixed_ids[i])
+		assert_eq(mixed.net_id_of(mixed_ids[i]), i + 1, "net id of %s in the mixed base" % mixed_ids[i])
 		if i > 0:
-			assert_true(String(mixed_ids[i - 1]) < String(mixed_ids[i]), "orden alfabético")
+			assert_true(String(mixed_ids[i - 1]) < String(mixed_ids[i]), "alphabetical order")
 
 
-## La huella no cambia entre dos cargas, cambia con lo que da sentido a los net ids y no con lo demás.
+## The fingerprint does not change between two loads, it changes with what gives the net ids meaning and not with anything else.
 func test_wire_hash_is_stable() -> void:
 	var first: ItemDatabase = ItemDatabase.build_from_directory(ItemDatabase.DATA_DIR)
 	var second: ItemDatabase = ItemDatabase.build_from_directory(ItemDatabase.DATA_DIR)
-	assert_eq(first.wire_hash(), second.wire_hash(), "dos cargas, la misma huella")
-	assert_eq(first.wire_hash(), ItemDatabase.shared().wire_hash(), "la de la base compartida")
+	assert_eq(first.wire_hash(), second.wire_hash(), "two loads, the same fingerprint")
+	assert_eq(first.wire_hash(), ItemDatabase.shared().wire_hash(), "that of the shared base")
 	assert_true(first.wire_hash() >= 0 and first.wire_hash() <= 0xFFFFFFFF, "u32")
 	var base: Array[ItemDefinition] = _definitions_in(ItemDatabase.DATA_DIR)
 	var reordered: Array[ItemDefinition] = base.duplicate()
 	reordered.reverse()
 	assert_eq(ItemDatabase.build_from_definitions(reordered).wire_hash(), first.wire_hash(),
-			"el orden de llegada no cuenta")
+			"the order of arrival does not count")
 	for change: Dictionary in [{"max_stack": 14}, {"has_durability": true}, {"category": ItemDefinition.Category.MISC},
 			{"equip_slot": ItemDefinition.EquipSlot.HEAD}, {"id": &"potion_zzz"}]:
-		assert_true(_hash_with_change(base, change) != first.wire_hash(), "cambia con %s" % change)
+		assert_true(_hash_with_change(base, change) != first.wire_hash(), "changes with %s" % change)
 	for change: Dictionary in [{"display_name": "Otra"}, {"camp_refill": 5}, {"base_value": 7},
 			{"required_level": 3}, {"bind_rule": ItemDefinition.BindRule.NONE}]:
-		assert_eq(_hash_with_change(base, change), first.wire_hash(), "no cambia con %s" % change)
-	assert_true(_database_with_armor().wire_hash() != first.wire_hash(), "un objeto más la cambia")
+		assert_eq(_hash_with_change(base, change), first.wire_hash(), "does not change with %s" % change)
+	assert_true(_database_with_armor().wire_hash() != first.wire_hash(), "one more object changes it")
 
 
-## La regla de ARMOR con los objetos de prueba: los buenos no dan errores y cada roto da el suyo.
+## The ARMOR rule with the test objects: the good ones give no errors and each broken one gives its own.
 func test_armor_rule_with_fixtures() -> void:
 	var armor: ItemDatabase = ItemDatabase.build_from_directory(ARMOR_FIXTURES)
-	assert_eq(armor.errors, PackedStringArray(), "las armaduras de prueba valen")
-	assert_eq(armor.all_ids().size(), 3, "tres armaduras")
+	assert_eq(armor.errors, PackedStringArray(), "the test armours are valid")
+	assert_eq(armor.all_ids().size(), 3, "three armours")
 	var helm: ItemDefinition = armor.get_definition(&"test_iron_helm")
-	if assert_not_null(helm, "el yelmo"):
-		assert_eq(helm.category, ItemDefinition.Category.ARMOR, "es una armadura")
-		assert_true(helm.has_durability and helm.is_equipable(), "con durabilidad y equipable")
-	assert_eq(_database_with_armor().errors, PackedStringArray(), "y mezcladas con data/items tampoco")
+	if assert_not_null(helm, "the helmet"):
+		assert_eq(helm.category, ItemDefinition.Category.ARMOR, "is an armour")
+		assert_true(helm.has_durability and helm.is_equipable(), "with durability and equippable")
+	assert_eq(_database_with_armor().errors, PackedStringArray(), "and mixed with data/items neither")
 	var broken_files: PackedStringArray = _files(BROKEN_FIXTURES)
-	assert_eq(broken_files.size(), BROKEN_EXPECTED.size(), "un caso por archivo roto")
+	assert_eq(broken_files.size(), BROKEN_EXPECTED.size(), "one case per broken file")
 	for path: String in broken_files:
 		var expected: String = BROKEN_EXPECTED.get(path.get_file(), "")
 		var definition: ItemDefinition = ResourceLoader.load(path) as ItemDefinition
-		if not assert_not_null(definition, "%s se carga" % path) \
-				or not assert_false(expected.is_empty(), "%s tiene su error esperado" % path):
+		if not assert_not_null(definition, "%s loads" % path) \
+				or not assert_false(expected.is_empty(), "%s has its expected error" % path):
 			continue
 		var errors: PackedStringArray = ItemDatabase.build_from_definitions([definition]).errors
-		assert_eq(errors.size(), 1, "%s: un error (%s)" % [path.get_file(), errors])
+		assert_eq(errors.size(), 1, "%s: one error (%s)" % [path.get_file(), errors])
 		assert_true(errors.size() > 0 and errors[0].contains(expected), "%s: «%s»" % [path.get_file(), expected])
 	var all_broken: ItemDatabase = ItemDatabase.build_from_directory(BROKEN_FIXTURES)
-	assert_eq(all_broken.errors.size(), BROKEN_EXPECTED.size(), "la carpeta entera da uno por archivo")
+	assert_eq(all_broken.errors.size(), BROKEN_EXPECTED.size(), "the whole folder gives one per file")
 
 
-## Cada regla de §2.1, una a una, sobre una copia de un objeto bueno.
+## Each §2.1 rule, one by one, on a copy of a good object.
 func test_each_coherence_rule() -> void:
 	var potion: ItemDefinition = ItemDatabase.shared().get_definition(&"potion_health")
 	var sword: ItemDefinition = ItemDatabase.shared().get_definition(&"sword_shield_vado")
@@ -254,42 +254,42 @@ func test_each_coherence_rule() -> void:
 		var expected: String = cases[i][2]
 		var errors: PackedStringArray = ItemDatabase.build_from_definitions([copy]).errors
 		if expected.is_empty():
-			assert_eq(errors, PackedStringArray(), "caso %d: vale (%s)" % [i, cases[i][1]])
+			assert_eq(errors, PackedStringArray(), "case %d: valid (%s)" % [i, cases[i][1]])
 			continue
 		var found: bool = false
 		for message: String in errors:
 			found = found or message.contains(expected)
-		assert_true(found, "caso %d (%s): «%s» en %s" % [i, cases[i][1], expected, errors])
-	# Ids repetidos y dos objetos para la misma arma.
+		assert_true(found, "case %d (%s): \"%s\" in %s" % [i, cases[i][1], expected, errors])
+	# Repeated ids and two objects for the same weapon.
 	var twin: ItemDefinition = sword.duplicate() as ItemDefinition
 	twin.display_name = "Otra espada"
 	var db: ItemDatabase = ItemDatabase.build_from_definitions([sword, twin])
-	assert_eq(db.errors, PackedStringArray(["id de objeto repetido: sword_shield_vado"]), "id repetido")
-	assert_true(db.get_definition(&"sword_shield_vado") == sword, "se queda el primero que llega")
+	assert_eq(db.errors, PackedStringArray(["id de objeto repetido: sword_shield_vado"]), "repeated id")
+	assert_true(db.get_definition(&"sword_shield_vado") == sword, "the first to arrive stays")
 	var second_sword: ItemDefinition = sword.duplicate() as ItemDefinition
 	second_sword.id = &"sword_shield_other"
 	var doubled: ItemDatabase = ItemDatabase.build_from_definitions([sword, second_sword])
-	assert_eq(doubled.errors.size(), 1, "dos objetos para la misma arma: un error")
+	assert_eq(doubled.errors.size(), 1, "two objects for the same weapon: an error")
 	assert_true(doubled.errors.size() == 1 and doubled.errors[0].contains("dos objetos para 'sword_shield'"),
-			"«dos objetos para 'sword_shield'»")
+			"\"dos objetos para 'sword_shield'\" (two objects for it)")
 	assert_true(doubled.for_ref(ItemDefinition.Category.WEAPON, &"sword_shield") == second_sword,
-			"for_ref da el primero por orden alfabético")
+			"for_ref gives the first in alphabetical order")
 
 
-## Una carpeta con algo que no es una ItemDefinition, o que no existe.
+## A folder with something that is not an ItemDefinition, or that does not exist.
 func test_directory_errors() -> void:
 	var stray: ItemDatabase = ItemDatabase.build_from_directory("res://data/progression")
-	assert_eq(stray.errors.size(), 1, "la curva no es un objeto")
-	assert_true(stray.errors.size() == 1 and stray.errors[0].contains("no es una ItemDefinition"), "lo dice")
+	assert_eq(stray.errors.size(), 1, "the curve is not an object")
+	assert_true(stray.errors.size() == 1 and stray.errors[0].contains("no es una ItemDefinition"), "it says so")
 	var missing: ItemDatabase = ItemDatabase.build_from_directory("res://data/no_existe")
-	assert_eq(missing.all_ids().size(), 0, "una carpeta que no existe da una base vacía")
-	assert_eq(missing.errors, PackedStringArray(), "sin errores")
-	assert_eq(missing.wire_hash(), ItemDatabase.build_from_definitions([]).wire_hash(), "la huella de vacía")
+	assert_eq(missing.all_ids().size(), 0, "a folder that does not exist gives an empty base")
+	assert_eq(missing.errors, PackedStringArray(), "no errors")
+	assert_eq(missing.wire_hash(), ItemDatabase.build_from_definitions([]).wire_hash(), "the empty fingerprint")
 
 
-# --- Utilidades --------------------------------------------------------------------------------
+# --- Utilities ---------------------------------------------------------------------------------
 
-# Los .tres de [param dir] y sus subcarpetas, ordenados.
+# The .tres files in [param dir] and its subfolders, sorted.
 func _files(dir: String) -> PackedStringArray:
 	var result := PackedStringArray()
 	for file_name: String in DirAccess.get_files_at(dir):
@@ -314,7 +314,7 @@ func _database_with_armor() -> ItemDatabase:
 	return ItemDatabase.build_from_definitions(definitions)
 
 
-# Una copia de [param definition] con las propiedades de [param changes].
+# A copy of [param definition] with the properties from [param changes].
 func _changed(definition: ItemDefinition, changes: Dictionary) -> ItemDefinition:
 	var copy: ItemDefinition = definition.duplicate() as ItemDefinition
 	for property: String in changes:
@@ -322,7 +322,7 @@ func _changed(definition: ItemDefinition, changes: Dictionary) -> ItemDefinition
 	return copy
 
 
-# La huella de [param base] con [param changes] en una copia de su segundo objeto.
+# The fingerprint of [param base] with [param changes] on a copy of its second object.
 func _hash_with_change(base: Array[ItemDefinition], changes: Dictionary) -> int:
 	var copies: Array[ItemDefinition] = []
 	for definition: ItemDefinition in base:

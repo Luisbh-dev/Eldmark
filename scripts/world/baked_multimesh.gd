@@ -1,33 +1,33 @@
 @tool
 class_name BakedMultiMesh
 extends MultiMeshInstance3D
-## MultiMesh cuyas transformaciones se guardan en la escena como texto.
+## MultiMesh whose transforms are stored in the scene as text.
 ##
-## Un [MultiMesh] guarda sus instancias en el RenderingServer; en modo headless (generadores de
-## escenas, servidor dedicado) ese servidor es ficticio y el búfer se pierde al guardar. Este nodo
-## guarda la malla y las transformaciones en propiedades exportadas y monta el MultiMesh al entrar
-## en el árbol (también en el editor). El MultiMesh generado no se guarda en la escena.
+## A [MultiMesh] stores its instances in the RenderingServer; in headless mode (scene generators,
+## dedicated server) that server is a dummy and the buffer is lost on save. This node stores the
+## mesh and the transforms in exported properties and builds the MultiMesh when entering the tree
+## (in the editor too). The generated MultiMesh is not saved in the scene.
 ## [br][br]
-## Se usa para piezas repetidas que solo son visuales (troncos de la empalizada, hiladas de las
-## murallas): su colisión va aparte, en cuerpos estáticos simples.
+## It is used for repeated pieces that are only visual (palisade logs, wall courses): their
+## collision goes separately, in simple static bodies.
 
-## Valores por instancia en [member instance_transforms]: base (3 x 3, por columnas) y origen.
+## Values per instance in [member instance_transforms]: basis (3 x 3, column-major) and origin.
 const FLOATS_PER_INSTANCE: int = 12
 
-## Malla que se repite.
+## Mesh that is repeated.
 @export var source_mesh: Mesh:
 	set(value):
 		source_mesh = value
 		_rebuild()
-## Transformaciones locales, [constant FLOATS_PER_INSTANCE] números por instancia
-## (ver [method pack_transforms]).
+## Local transforms, [constant FLOATS_PER_INSTANCE] numbers per instance
+## (see [method pack_transforms]).
 @export var instance_transforms: PackedFloat32Array = PackedFloat32Array():
 	set(value):
 		instance_transforms = value
 		_rebuild()
 
 
-## Convierte una lista de transformaciones al formato de [member instance_transforms].
+## Converts a list of transforms to the format of [member instance_transforms].
 static func pack_transforms(transforms: Array[Transform3D]) -> PackedFloat32Array:
 	var data: PackedFloat32Array = PackedFloat32Array()
 	data.resize(transforms.size() * FLOATS_PER_INSTANCE)
@@ -44,7 +44,7 @@ static func pack_transforms(transforms: Array[Transform3D]) -> PackedFloat32Arra
 	return data
 
 
-## Número de instancias guardadas.
+## Number of stored instances.
 func get_instance_count() -> int:
 	return instance_transforms.size() / FLOATS_PER_INSTANCE
 

@@ -1,20 +1,20 @@
 class_name BotTarget
 extends RefCounted
-## Alguien a quien atiende un bot ([BotBrain]; docs/habilidades.md, sección 7.1, H5): dónde tiene los pies, a
-## qué velocidad se mueve y si está derribado.
+## Someone a bot attends to ([BotBrain]; docs/habilidades.md, section 7.1, H5): where their feet are, how
+## fast they move and whether they are knocked down.
 ## [br][br]
-## El buscador de enemigos de un bot ([method BotBrain.set_enemy_finder]) puede devolver uno de estos en vez de
-## una posición sola cuando quien lo llama sabe más: la velocidad sirve para el tiro adelantado del arco
-## ([method Ballistics.solve_lead]) y el derribo, para ir a rematar. Con una posición sola, el bot supone que
-## el enemigo está quieto y en pie.
+## A bot's enemy finder ([method BotBrain.set_enemy_finder]) may return one of these instead of
+## a bare position when the caller knows more: the velocity serves for the bow's lead shot
+## ([method Ballistics.solve_lead]) and the knockdown, for going to finish off. With a bare position, the bot assumes
+## the enemy is still and standing.
 
-## Pies (m).
+## Feet (m).
 var position: Vector3 = Vector3.ZERO
-## Velocidad (m/s).
+## Velocity (m/s).
 var velocity: Vector3 = Vector3.ZERO
-## true si está derribado (docs/habilidades.md, sección 4.5): no pelea; se remata o se levanta.
+## true if knocked down (docs/habilidades.md, section 4.5): does not fight; is finished off or revived.
 var downed: bool = false
-## net_id (0 si no se sabe).
+## net_id (0 if unknown).
 var net_id: int = 0
 
 

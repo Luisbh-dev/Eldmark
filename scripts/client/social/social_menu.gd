@@ -1,25 +1,25 @@
 class_name SocialMenu
 extends UIWindow
-## Menú social sobre un jugador (SOC-07, docs/social.md, sección 12.6): una ventana pequeña con el nombre del
-## jugador al que apunta la retícula y un botón por cada acción que aplica ([method SocialTarget.options_for]):
-## invitar al grupo y susurrar. Con un enemigo, un muerto o un jugador falso no hay nada que ofrecer y el menú no
-## se abre ([method open_for] devuelve false).
+## Social menu over a player (SOC-07, docs/social.md, section 12.6): a small window with the name of the
+## player the reticle points at and one button for each action that applies
+## ([method SocialTarget.options_for]): invite to the party and whisper. With an enemy, a dead player or
+## a fake player there is nothing to offer and the menu does not open ([method open_for] returns false).
 ## [br][br]
-## Se abre con la tecla [code]social_menu[/code] (la recoge el [HUD]). Como toda [UIWindow], libera el cursor
-## mientras está abierta, se maneja con teclado (el primer botón tiene el foco; Intro lo pulsa; flechas y Tab
-## cambian de botón) o con el ratón, y Esc la cierra.
+## It opens with the [code]social_menu[/code] key (picked up by the [HUD]). Like every [UIWindow], it
+## frees the cursor while open, can be operated with the keyboard (the first button has focus; Enter
+## presses it; arrows and Tab switch buttons) or with the mouse, and Esc closes it.
 ## [br][br]
-## [b]Invitar[/b] manda PARTY_INVITE ([method NetClient.send_party_invite]); [b]susurrar[/b] cierra el menú y abre la
-## línea del chat con [code]/s nombre [/code] ya escrito ([method ChatBox.open]), listo para escribir el texto. El
-## servidor decide siempre y contesta por el canal del sistema del chat.
+## [b]Invite[/b] sends PARTY_INVITE ([method NetClient.send_party_invite]); [b]whisper[/b] closes the menu
+## and opens the chat line with [code]/s name [/code] already typed ([method ChatBox.open]), ready for the
+## text to be written. The server always decides and replies through the chat's system channel.
 ## [br][br]
-## El segundo origen de las acciones sociales, un nombre pulsado en el chat con el cursor libre, queda para otra
-## fase (SOC-07 en el backlog).
+## The second origin of social actions, a name clicked in the chat with the cursor free, is left for
+## another phase (SOC-07 in the backlog).
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Se ha elegido una acción: [param option_id] es [constant SocialTarget.OPTION_INVITE] o
-## [constant SocialTarget.OPTION_WHISPER] y [param target_name] el jugador.
+## An action has been chosen: [param option_id] is [constant SocialTarget.OPTION_INVITE] or
+## [constant SocialTarget.OPTION_WHISPER] and [param target_name] is the player.
 signal option_chosen(option_id: StringName, target_name: String)
 
 const WINDOW_WIDTH: float = 260.0
@@ -37,18 +37,18 @@ func _init() -> void:
 	get_content().add_theme_constant_override(&"separation", 6)
 
 
-## Conecta el menú con el cliente de red [param client] (el reino del jugador, su grupo y las invitaciones),
-## la caja de chat [param chat] (para susurrar) y la cámara [param camera_rig] (que libera el cursor mientras el
-## menú está abierto).
+## Connects the menu with the network client [param client] (the player's realm, party and invitations),
+## the chat box [param chat] (for whispering) and the camera [param camera_rig] (which frees the cursor
+## while the menu is open).
 func setup(client: NetClient, chat: ChatBox, camera_rig: CameraRig) -> void:
 	_client = client
 	_chat = chat
 	bind_camera(camera_rig)
 
 
-## Abre el menú sobre [param view], el jugador al que se apunta. Devuelve false, sin abrir nada, si no admite
-## acciones sociales ([method SocialTarget.is_social_target]: un enemigo, un muerto o un jugador falso), no hay
-## ninguna acción que ofrecerle o no hay sesión.
+## Opens the menu over [param view], the player being pointed at. Returns false, opening nothing, if it
+## does not support social actions ([method SocialTarget.is_social_target]: an enemy, a dead player or a
+## fake player), there is no action to offer it or there is no session.
 func open_for(view: RemotePlayerView) -> bool:
 	if view == null or not is_instance_valid(_client) or _client.get_config() == null:
 		return false
@@ -66,17 +66,17 @@ func open_for(view: RemotePlayerView) -> bool:
 	return true
 
 
-## El jugador sobre el que está abierto el menú.
+## The player the menu is open over.
 func get_target_name() -> String:
 	return _target_name
 
 
-## Los botones de las acciones, en orden.
+## The action buttons, in order.
 func get_buttons() -> Array[Button]:
 	return _buttons.duplicate()
 
 
-## El botón de la acción [param option_id], o null si el menú no la ofrece.
+## The button of action [param option_id], or null if the menu does not offer it.
 func get_button(option_id: StringName) -> Button:
 	for button: Button in _buttons:
 		if StringName(button.get_meta(&"option", &"")) == option_id:
@@ -84,7 +84,7 @@ func get_button(option_id: StringName) -> Button:
 	return null
 
 
-## Elige la acción [param option_id] sobre el jugador del menú, como si se pulsara su botón.
+## Chooses action [param option_id] on the menu's player, as if its button were pressed.
 func choose(option_id: StringName) -> void:
 	var target: String = _target_name
 	match option_id:
@@ -93,7 +93,7 @@ func choose(option_id: StringName) -> void:
 			if is_instance_valid(_client):
 				_client.send_party_invite(target)
 		SocialTarget.OPTION_WHISPER:
-			# El menú tiene el cursor: se cierra antes de abrir la línea, que no se abre con otra ventana.
+			# The menu has the cursor: it closes before opening the chat line, which does not open with another window.
 			close()
 			if is_instance_valid(_chat):
 				_chat.open("/s %s " % target)

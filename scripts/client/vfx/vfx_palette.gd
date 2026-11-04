@@ -1,18 +1,18 @@
 class_name VfxPalette
 extends RefCounted
-## Colores de los efectos (ART-09, solo cliente). Los de la estela y el aura salen del reino y de la
-## dirección de arte (docs/arte.md): Vardheim, acero y azul hielo; Solmarch, blanco y oro; Askarra, carmesí
-## y bronce; Eldrun (los Huecos), desaturado con brasas. El número de reino es el de
-## [enum NetProtocol.Realm] (1 a 3); 4 es Eldrun y 0 un acero neutro. El polvo, en cambio, no es del reino
-## sino del suelo que se pisa ([method ground], [VfxGround]).
+## Effect colors (ART-09, client only). Those of the trail and the aura come from the realm and the art
+## direction (docs/arte.md): Vardheim, steel and ice blue; Solmarch, white and gold; Askarra, crimson and
+## bronze; Eldrun (the Hollow), desaturated with embers. The realm number is that of
+## [enum NetProtocol.Realm] (1 to 3); 4 is Eldrun and 0 a neutral steel. The dust, in contrast, belongs not
+## to the realm but to the ground being stepped on ([method ground], [VfxGround]).
 
-## Reino de los Huecos (no tiene valor en [enum NetProtocol.Realm]: no es un bando jugable).
+## Realm of the Hollow (it has no value in [enum NetProtocol.Realm]: it is not a playable side).
 const REALM_ELDRUN: int = 4
-## Reino neutro: acero.
+## Neutral realm: steel.
 const REALM_NEUTRAL: int = 0
 
 
-## Colores de la estela del arma: [núcleo caliente del filo, cuerpo de la cinta].
+## Weapon trail colors: [hot core of the edge, body of the ribbon].
 static func trail(realm: int) -> Array[Color]:
 	match realm:
 		NetProtocol.Realm.VARDHEIM:
@@ -26,7 +26,7 @@ static func trail(realm: int) -> Array[Color]:
 	return [Color(1.0, 1.0, 1.0), Color(0.42, 0.52, 0.7)]
 
 
-## Color del aura de carga del golpe fuerte.
+## Color of the heavy attack's charge aura.
 static func aura(realm: int) -> Color:
 	match realm:
 		NetProtocol.Realm.VARDHEIM:
@@ -40,12 +40,12 @@ static func aura(realm: int) -> Color:
 	return Color(0.8, 0.88, 1.0)
 
 
-## Materiales de suelo que distingue el polvo.
+## Ground materials that the dust distinguishes.
 const GROUND_KINDS: Array[StringName] = [&"dirt", &"stone", &"sand", &"grass", &"snow", &"ash", &"mud"]
 
 
-## Color del polvo que levanta un suelo de ese material ([constant GROUND_KINDS]); un material desconocido
-## da el de tierra seca.
+## Color of the dust a ground of that material kicks up ([constant GROUND_KINDS]); an unknown material
+## gives that of dry earth.
 static func ground(kind: StringName) -> Color:
 	match kind:
 		&"stone":

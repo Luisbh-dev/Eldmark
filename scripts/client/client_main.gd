@@ -1,41 +1,40 @@
 class_name ClientMain
 extends Node
-## Raíz del cliente: sandbox local, todavía sin red.
+## Client root: local sandbox, still with no network.
 ##
-## Monta la zona elegida ([member zone_id], ver [Zones]), el personaje del jugador en el punto
-## de aparición de su reino ([member realm]), su aspecto visual ([HumanoidVisual], solo en el
-## cliente), la cámara de acción, el controlador local y el HUD. Las opciones de arranque llegan
-## desde [ClientLauncher] (que interpreta lo que deja [code]boot.gd[/code]) mediante las variables
-## estáticas.
-## [br][br]En modo demo la entrada sale de una demo guionizada ([DemoInput] en el circuito de
-## pruebas, [RouteDemoInput] en las zonas) y, si hay carpeta de capturas, se guarda un PNG cada
-## [constant SHOT_INTERVAL_TICKS] ticks y, al terminar, uno desde cada cámara de revisión de la
-## zona (grupo [constant Zones.SCREENSHOT_GROUP]).
+## Mounts the chosen zone ([member zone_id], see [Zones]), the player's character at their realm's
+## spawn point ([member realm]), its visual look ([HumanoidVisual], client-only), the action camera,
+## the local controller and the HUD. The start-up options arrive from [ClientLauncher] (which parses
+## what [code]boot.gd[/code] leaves) through the static variables.
+## [br][br]In demo mode the input comes from a scripted demo ([DemoInput] on the test course,
+## [RouteDemoInput] in the zones) and, if there is a screenshots folder, a PNG is saved every
+## [constant SHOT_INTERVAL_TICKS] ticks and, at the end, one from each review camera of the zone
+## (group [constant Zones.SCREENSHOT_GROUP]).
 
 const PLAYER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
 const HUD_SCENE_PATH: String = "res://scenes/ui/hud.tscn"
 const WINDOW_TITLE: String = "Eldmark"
-## Cada cuántos ticks del controlador se guarda una captura en modo demo.
+## How many controller ticks between screenshots in demo mode.
 const SHOT_INTERVAL_TICKS: int = 90
-## Fotogramas que se espera, como mucho, a que terminen las capturas pendientes antes de salir.
-## Si la ventana no se dibuja (por ejemplo, minimizada) las capturas no llegan nunca.
+## Frames to wait, at most, for pending screenshots to finish before exiting.
+## If the window is not drawn (for example, minimized) the screenshots never arrive.
 const SHOT_WAIT_LIMIT_FRAMES: int = 120
-## Fotogramas que se espera tras colocar la cámara de revisión (sombras, LOD y el clipmap del
-## terreno) antes de capturar.
+## Frames to wait after placing the review camera (shadows, LOD and the terrain clipmap) before
+## capturing.
 const REVIEW_SETTLE_FRAMES: int = 24
-## Prefijo de las capturas de las cámaras de revisión de la zona.
+## Prefix of the screenshots from the zone's review cameras.
 const REVIEW_SHOT_PREFIX: String = "zona_"
 
-## Zona que se carga (identificador de [Zones]).
+## Zone to load (identifier from [Zones]).
 static var zone_id: StringName = Zones.DEFAULT_ZONE
-## Reino del jugador: decide el punto de aparición.
+## Player's realm: decides the spawn point.
 static var realm: StringName = Zones.DEFAULT_REALM
-## Usa la entrada guionizada de [DemoInput] en lugar de teclado y ratón.
+## Uses the scripted input of [DemoInput] instead of keyboard and mouse.
 static var demo_mode: bool = false
-## Carpeta absoluta donde guardar las capturas de la demo. Vacía: sin capturas.
+## Absolute folder where demo screenshots are saved. Empty: no screenshots.
 static var shots_dir: String = ""
-## Cierra el juego cuando termina la demo.
+## Closes the game when the demo ends.
 static var quit_after_demo: bool = false
 
 var _world: Node
@@ -49,15 +48,15 @@ var _shots_enabled: bool = false
 var _shot_index: int = 0
 var _pending_shots: int = 0
 var _demo_finished: bool = false
-## Veces que el personaje entró en cada acción de combate durante la demo
-## ([code]CombatState.Action[/code] -> veces; un ligero con otro ataque del combo cuenta como entrada nueva).
+## Times the character entered each combat action during the demo
+## ([code]CombatState.Action[/code] -> times; a light attack with another combo hit counts as a new entry).
 var _demo_actions: Dictionary = {}
-## Última pareja (acción, ataque) vista durante la demo.
+## Last (action, attack) pair seen during the demo.
 var _demo_last_action: Vector2i = Vector2i(CombatState.Action.NONE, 0)
 
 
-## Yaw (misma convención que [member Node3D.rotation].y) hacia el que mira una
-## base, es decir, la orientación horizontal de su eje -Z.
+## Yaw (same convention as [member Node3D.rotation].y) that a basis faces, that is, the
+## horizontal orientation of its -Z axis.
 static func _yaw_from_basis(basis: Basis) -> float:
 	var forward: Vector3 = -basis.z
 	return atan2(-forward.x, -forward.z)
@@ -67,7 +66,7 @@ func _ready() -> void:
 	get_window().title = WINDOW_TITLE
 	InputBindings.ensure_defaults()
 
-	# Zona.
+	# Zone.
 	var world_path: String = Zones.get_scene_path(zone_id)
 	if world_path.is_empty():
 		push_error("[Eldmark] Zona desconocida: %s" % zone_id)
@@ -78,7 +77,7 @@ func _ready() -> void:
 	add_child(_world)
 	print("[Eldmark] Zona: %s (%s), reino: %s" % [zone_id, world_path, realm])
 
-	# Punto de aparición: posición y orientación del primero del reino (o del primero de la zona).
+	# Spawn point: position and orientation of the realm's first one (or the zone's first one).
 	var spawn_position: Vector3 = Vector3.ZERO
 	var spawn_yaw: float = 0.0
 	var spawn: Node3D = Zones.find_spawn_point(_world, realm)
@@ -93,8 +92,8 @@ func _ready() -> void:
 		push_warning("[Eldmark] La zona %s no tiene nodos en el grupo '%s'; se aparece en el origen"
 				% [zone_id, Zones.SPAWN_GROUP])
 
-	# Personaje del jugador. El estado inicial se aplica con set_state() para que
-	# 'yaw' y 'grounded' (que usa simulate()) queden coherentes desde el primer tick.
+	# Player character. The initial state is applied with set_state() so that
+	# 'yaw' and 'grounded' (used by simulate()) are consistent from the first tick.
 	_character = _instantiate_scene(PLAYER_SCENE_PATH, PlayerCharacter) as PlayerCharacter
 	if _character == null:
 		return
@@ -105,13 +104,13 @@ func _ready() -> void:
 	_character.set_state(spawn_state)
 	_character.reset_physics_interpolation()
 
-	# Aspecto visual (solo cliente): el humanoide animado sustituye a la cápsula provisional de
-	# player_character.tscn, que se queda ligera para el servidor.
+	# Visual look (client only): the animated humanoid replaces the provisional capsule of
+	# player_character.tscn, which stays lightweight for the server.
 	_install_visual()
 
-	# Cámara de acción por encima del hombro, mirando hacia donde mira el spawn. En la
-	# demo la vista es guionizada desde antes de entrar en el árbol, para que la cámara
-	# nunca capture el ratón (capturarlo mueve el cursor real del sistema).
+	# Over-the-shoulder action camera, facing where the spawn faces. In the
+	# demo the view is scripted from before entering the tree, so that the camera
+	# never captures the mouse (capturing it moves the real system cursor).
 	_camera_rig = _instantiate_scene(CAMERA_RIG_SCENE_PATH, CameraRig) as CameraRig
 	if _camera_rig == null:
 		return
@@ -121,13 +120,13 @@ func _ready() -> void:
 	_camera_rig.set_hide_when_close(_character.get_node_or_null(^"Visual") as Node3D)
 	_camera_rig.set_look(spawn_yaw, 0.0)
 
-	# Controlador local: genera un PlayerInput por tick y simula el personaje.
+	# Local controller: generates one PlayerInput per tick and simulates the character.
 	_controller = LocalPlayerController.new()
 	_controller.name = "LocalPlayerController"
 	add_child(_controller)
 	_controller.setup(_character, _camera_rig)
 
-	# Interfaz.
+	# UI.
 	_hud = _instantiate_scene(HUD_SCENE_PATH, HUD) as HUD
 	if _hud == null:
 		return
@@ -139,36 +138,36 @@ func _ready() -> void:
 		_start_demo()
 
 
-## Escena de la zona cargada (null si no se pudo cargar).
+## Scene of the loaded zone (null if it could not be loaded).
 func get_world() -> Node:
 	return _world
 
 
-## Personaje del jugador local.
+## The local player's character.
 func get_character() -> PlayerCharacter:
 	return _character
 
 
-## Aspecto visual del personaje (null si no se pudo cargar y se ve la cápsula provisional).
+## Visual look of the character (null if it could not be loaded and the provisional capsule is shown).
 func get_visual() -> HumanoidVisual:
 	return _visual
 
 
-## Cámara de acción.
+## Action camera.
 func get_camera_rig() -> CameraRig:
 	return _camera_rig
 
 
-## Cuelga el [HumanoidVisual] bajo el nodo Visual del personaje y quita las mallas provisionales
-## (cápsula y visor). Si el visual no carga, la cápsula se queda para que se vea algo.
+## Hangs the [HumanoidVisual] under the character's Visual node and removes the provisional meshes
+## (capsule and visor). If the visual does not load, the capsule stays so that something is visible.
 func _install_visual() -> void:
 	_visual = HumanoidVisual.install_replacing_placeholder(_character)
 	if _visual == null:
 		push_warning("[Eldmark] Sin visual del humanoide: se usa la cápsula provisional")
 
 
-## Carga e instancia una escena. Si [param expected] no es null, la raíz debe ser de
-## ese tipo; si no lo es, se libera. Devuelve null (y registra el error) si falla.
+## Loads and instantiates a scene. If [param expected] is not null, the root must be of
+## that type; if it is not, it is freed. Returns null (and logs the error) on failure.
 func _instantiate_scene(path: String, expected: Script = null) -> Node:
 	var scene: PackedScene = load(path) as PackedScene
 	if scene == null:
@@ -208,7 +207,7 @@ func _start_demo() -> void:
 
 func _on_demo_input_generated(input: PlayerInput) -> void:
 	_note_demo_action()
-	# Tras la demo ya no se hacen capturas periódicas (las de revisión usan su propia cámara).
+	# After the demo no more periodic screenshots are taken (the review ones use their own camera).
 	if _shots_enabled and not _demo_finished and input.tick % SHOT_INTERVAL_TICKS == 0:
 		_save_screenshot(_shot_index)
 		_shot_index += 1
@@ -217,7 +216,7 @@ func _on_demo_input_generated(input: PlayerInput) -> void:
 		_finish_demo()
 
 
-## Anota la acción de combate en la que está el personaje (la del tick anterior) si es una entrada nueva.
+## Records the combat action the character is in (the previous tick's) if it is a new entry.
 func _note_demo_action() -> void:
 	var current := Vector2i(_character.combat.action, _character.combat.action_id)
 	if current == _demo_last_action:
@@ -227,8 +226,8 @@ func _note_demo_action() -> void:
 		_demo_actions[current.x] = int(_demo_actions.get(current.x, 0)) + 1
 
 
-## Resumen de las acciones de combate de la demo, en el orden en que entró en cada una:
-## «LIGHT x4, CHARGE x1, HEAVY x1, BLOCK x1, DODGE x1». Vacío si no hubo combate.
+## Summary of the demo's combat actions, in the order each was entered:
+## "LIGHT x4, CHARGE x1, HEAVY x1, BLOCK x1, DODGE x1". Empty if there was no combat.
 func _demo_actions_summary() -> String:
 	var parts := PackedStringArray()
 	for action: int in _demo_actions:
@@ -236,13 +235,13 @@ func _demo_actions_summary() -> String:
 	return ", ".join(parts)
 
 
-## Espera a que se dibuje el fotograma y guarda el contenido del viewport. Con la
-## ventana minimizada no se dibuja nada, así que la captura se omite.
+## Waits for the frame to be drawn and saves the viewport contents. With the
+## window minimized nothing is drawn, so the screenshot is skipped.
 func _save_screenshot(index: int) -> void:
 	await _save_viewport_png(shots_dir.path_join("shot_%03d.png" % index))
 
 
-## Espera al siguiente fotograma dibujado y guarda el viewport en [param path].
+## Waits for the next drawn frame and saves the viewport to [param path].
 func _save_viewport_png(path: String) -> void:
 	if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_MINIMIZED:
 		push_warning("[Eldmark] Ventana minimizada: se omite la captura %s" % path)
@@ -271,8 +270,8 @@ func _finish_demo() -> void:
 		await _capture_review_points()
 	if not quit_after_demo:
 		return
-	# Deja terminar las capturas pendientes antes de salir, pero sin esperar para
-	# siempre: process_frame llega aunque la ventana no se dibuje.
+	# Lets pending screenshots finish before exiting, but without waiting
+	# forever: process_frame fires even if the window is not drawn.
 	var waited_frames: int = 0
 	while _pending_shots > 0 and waited_frames < SHOT_WAIT_LIMIT_FRAMES:
 		await get_tree().process_frame
@@ -283,8 +282,8 @@ func _finish_demo() -> void:
 	get_tree().quit()
 
 
-## Guarda una captura desde cada cámara de revisión de la zona ([code]zona_<nombre>.png[/code]),
-## sin HUD, y devuelve la vista a la cámara de acción.
+## Saves a screenshot from each review camera of the zone ([code]zona_<name>.png[/code]),
+## without the HUD, and returns the view to the action camera.
 func _capture_review_points() -> void:
 	var markers: Array[Node3D] = Zones.get_screenshot_points(_world)
 	if markers.is_empty():

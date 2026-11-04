@@ -1,16 +1,16 @@
 extends SceneTree
-## Proceso auxiliar de las pruebas de [LocalServerLauncher] (no es una prueba: el ejecutor solo
-## descubre [code]test_*.gd[/code]). Se lanza con [method NetHarness.launch_script] y hace lo que le
-## piden sus argumentos de usuario (los que van tras [code]--[/code]); los que no conoce los ignora,
-## así que un proceso lanzado con [code]--server --dev-lock[/code] hace de servidor local falso
-## (su línea de comandos es la de uno de verdad).
-## [br]- [code]--probe-alive=<pid>[/code]: escribe en [code]--probe-out[/code]
-## [code]{"alive": bool}[/code], lo que contesta [method LocalServerLauncher.is_process_alive] para
-## ese pid desde este proceso (que no lo lanzó).
-## [br]- [code]--probe-spawn=<s>[/code]: lanza otro proceso igual que duerme [code]<s>[/code]
-## segundos y escribe en [code]--probe-out[/code] [code]{"grandchild": pid}[/code]; el registro del
-## nieto va a [code]--probe-dir[/code].
-## [br]- [code]--probe-sleep=<s>[/code]: espera [code]<s>[/code] segundos antes de salir.
+## Helper process for the [LocalServerLauncher] tests (not a test: the runner only discovers
+## [code]test_*.gd[/code]). Launched with [method NetHarness.launch_script], it does whatever its user
+## arguments ask (those after [code]--[/code]); it ignores the ones it does not know, so a process
+## launched with [code]--server --dev-lock[/code] acts as a fake local server (its command line is that
+## of a real one).
+## [br]- [code]--probe-alive=<pid>[/code]: writes to [code]--probe-out[/code]
+## [code]{"alive": bool}[/code], which is what [method LocalServerLauncher.is_process_alive] answers for
+## that pid from this process (which did not launch it).
+## [br]- [code]--probe-spawn=<s>[/code]: launches another identical process that sleeps [code]<s>[/code]
+## seconds and writes to [code]--probe-out[/code] [code]{"grandchild": pid}[/code]; the grandchild's
+## log goes to [code]--probe-dir[/code].
+## [br]- [code]--probe-sleep=<s>[/code]: waits [code]<s>[/code] seconds before exiting.
 
 const SCRIPT_PATH: String = "res://tests/process_probe.gd"
 
@@ -37,7 +37,7 @@ func _initialize() -> void:
 		quit(0)
 
 
-# Lanza otro proceso de este script que duerme [param seconds] s y devuelve su pid (-1 si falla).
+# Launches another process of this script that sleeps [param seconds] s and returns its pid (-1 on failure).
 func _spawn_sleeper(seconds: int, log_dir: String) -> int:
 	var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://")])
 	if not log_dir.is_empty():

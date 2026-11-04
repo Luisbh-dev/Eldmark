@@ -1,11 +1,11 @@
-// Package platformtest monta la plataforma entera en el proceso de una prueba (solo para pruebas):
-// la base efímera de testdb, el reloj falso, el progreso en memoria
-// (persistence.MemoryProgressStore; con [NewWithProgress], el almacén de verdad de progresion.md P7),
-// la API pública (cuentas y personajes), la interna (zonas, reclamación y guardado, guerra y lo
-// social), la orden admin y las retenciones, con ayudas para hacer de cliente y de zona.
+// Package platformtest assembles the entire platform inside a test's process (for tests only):
+// the ephemeral testdb database, the fake clock, in-memory progress
+// (persistence.MemoryProgressStore; with [NewWithProgress], the real store from progresion.md P7),
+// the public API (accounts and characters), the internal one (zones, claim and save, war and
+// social), the admin command and the retention jobs, with helpers to act as client and as zone.
 //
-// Lo usan las pruebas de zones, persistence, war y social: la API interna solo se entiende con
-// cuentas, personajes y billetes de verdad delante.
+// It is used by the zones, persistence, war and social tests: the internal API only makes sense
+// with real accounts, characters and tickets in front of it.
 package platformtest
 
 import (
@@ -50,7 +50,7 @@ import (
 	"eldmark/platform/legal"
 )
 
-// SyncBuffer es un registro que se puede leer mientras se escribe.
+// SyncBuffer is a log that can be read while it is being written.
 type SyncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -68,7 +68,8 @@ func (b *SyncBuffer) String() string {
 	return b.buf.String()
 }
 
-// TicketKey es la clave del billete del vector de plataforma.md §5.1 (solo vale en test).
+// TicketKey is the ticket key from the platform vector in plataforma.md §5.1 (only valid in
+// tests).
 var TicketKey = func() []byte {
 	k := make([]byte, 32)
 	for i := range k {
@@ -77,8 +78,8 @@ var TicketKey = func() []byte {
 	return k
 }()
 
-// Scopes son los despliegues de zona con token en las pruebas: el mundo 2 existe para comprobar que
-// la instancia pone el mundo.
+// Scopes are the zone deployments with a token in the tests: world 2 exists to check that the
+// instance sets the world.
 var Scopes = []zones.Scope{
 	{WorldID: 1, ZoneID: "vado_gris", Channel: 0},
 	{WorldID: 1, ZoneID: "vado_gris", Channel: 1},
@@ -86,11 +87,11 @@ var Scopes = []zones.Scope{
 	{WorldID: 2, ZoneID: "vado_gris", Channel: 0},
 }
 
-// Token es el token de zona de un alcance en las pruebas.
+// Token is the zone token of a scope in the tests.
 func Token(s zones.Scope) string { return fmt.Sprintf("tok-%d-%s-%d", s.WorldID, s.ZoneID, s.Channel) }
 
-// Config es la configuración de las pruebas: env test, latido de 5 s y TTL de 30 s (el reloj es
-// falso: se adelanta en lugar de esperar).
+// Config is the tests' configuration: env test, 5 s heartbeat and 30 s TTL (the clock is fake:
+// it is advanced instead of waiting).
 func Config() *config.Config {
 	u, _ := url.Parse("http://127.0.0.1:24680")
 	cfg := &config.Config{
@@ -115,17 +116,17 @@ func Config() *config.Config {
 	return cfg
 }
 
-// Protocol es el protocolo de las pruebas (el mínimo de los servicios).
+// Protocol is the tests' protocol (the minimum of the services).
 const Protocol = 7
 
-// Platform es la plataforma en el proceso de la prueba.
+// Platform is the platform inside the test's process.
 type Platform struct {
 	T        testing.TB
 	Pool     *pgxpool.Pool
 	Cfg      *config.Config
 	Clock    *clock.Fake
-	Progress *persistence.MemoryProgressStore // el falso; nil con [NewWithProgress]
-	// ProgressStore es el almacén que usa la plataforma: Progress o el de [NewWithProgress].
+	Progress *persistence.MemoryProgressStore // the fake one; nil with [NewWithProgress]
+	// ProgressStore is the store the platform uses: Progress or the one from [NewWithProgress].
 	ProgressStore persistence.ProgressStore
 	Accounts      *accounts.Service
 	Characters    *characters.Service
@@ -133,8 +134,8 @@ type Platform struct {
 	Store         *persistence.Store
 	War           *war.Service
 	Social        *social.Service
-	Admin         *admin.Service   // la orden admin (P7a), con os_user «prueba»
-	Privacy       *privacy.Service // las retenciones de §11.1 (P9a), con el reloj falso
+	Admin         *admin.Service   // the admin command (P7a), with os_user "prueba"
+	Privacy       *privacy.Service // the retention jobs from §11.1 (P9a), with the fake clock
 	Public        http.Handler
 	Internal      http.Handler
 	Logs          *SyncBuffer
@@ -150,23 +151,23 @@ type internalRouter struct{ *http.ServeMux }
 
 func (r internalRouter) HandleInternal(pattern string, h http.Handler) { r.Handle(pattern, h) }
 
-// New monta la plataforma sobre una base nueva. opts cambian la configuración antes de montar.
+// New assembles the platform on a fresh database. opts change the configuration before assembly.
 func New(t testing.TB, opts ...func(*config.Config)) *Platform {
 	t.Helper()
 	return Attach(t, testdb.New(t), opts...)
 }
 
-// NewWithProgress monta la plataforma sobre una base nueva con el almacén del progreso y la validación de
-// la creación dados (los de verdad, internal/progress) en lugar del falso y la provisional. newStore recibe
-// el reloj falso de la plataforma.
+// NewWithProgress assembles the platform on a fresh database with the given progress store and
+// creation validation (the real ones, internal/progress) instead of the fake and the provisional
+// ones. newStore receives the platform's fake clock.
 func NewWithProgress(t testing.TB, newStore func(now func() time.Time) persistence.ProgressStore,
 	validator persistence.CreateValidator, opts ...func(*config.Config)) *Platform {
 	t.Helper()
 	return attach(t, testdb.New(t), newStore, validator, opts...)
 }
 
-// Attach monta la plataforma sobre una base que ya tiene el esquema (una restaurada con
-// pg_restore, por ejemplo), con un reloj y un progreso en memoria nuevos.
+// Attach assembles the platform on a database that already has the schema (one restored with
+// pg_restore, for example), with a new in-memory clock and progress.
 func Attach(t testing.TB, pool *pgxpool.Pool, opts ...func(*config.Config)) *Platform {
 	t.Helper()
 	return attach(t, pool, nil, nil, opts...)
@@ -243,7 +244,7 @@ func attach(t testing.TB, pool *pgxpool.Pool, newStore func(now func() time.Time
 	return p
 }
 
-// Response es una respuesta HTTP con su cuerpo JSON ya leído.
+// Response is an HTTP response with its JSON body already read.
 type Response struct {
 	Status int
 	Header http.Header
@@ -251,7 +252,7 @@ type Response struct {
 	Body   map[string]any
 }
 
-// Code es el error.code de la respuesta, o "".
+// Code is the response's error.code, or "".
 func (r *Response) Code() string {
 	if e, ok := r.Body["error"].(map[string]any); ok {
 		code, _ := e["code"].(string)
@@ -260,7 +261,7 @@ func (r *Response) Code() string {
 	return ""
 }
 
-// ErrValue es un campo del objeto error.
+// ErrValue is a field of the error object.
 func (r *Response) ErrValue(name string) any {
 	if e, ok := r.Body["error"].(map[string]any); ok {
 		return e[name]
@@ -268,7 +269,7 @@ func (r *Response) ErrValue(name string) any {
 	return nil
 }
 
-// Field es error.fields[name].
+// Field is error.fields[name].
 func (r *Response) Field(name string) string {
 	if f, ok := r.ErrValue("fields").(map[string]any); ok {
 		v, _ := f[name].(string)
@@ -277,7 +278,7 @@ func (r *Response) Field(name string) string {
 	return ""
 }
 
-// String es un campo de texto del cuerpo.
+// String is a text field of the body.
 func (r *Response) String(name string) string {
 	v, _ := r.Body[name].(string)
 	return v
@@ -318,7 +319,7 @@ func do(t testing.TB, h http.Handler, method, path string, body any, header map[
 	return res
 }
 
-// Expect falla si la respuesta no tiene ese estado y ese código de error ("" sin error).
+// Expect fails if the response does not have that status and that error code ("" for no error).
 func Expect(t testing.TB, res *Response, status int, code string) {
 	t.Helper()
 	if res.Status != status || res.Code() != code {
@@ -326,12 +327,13 @@ func Expect(t testing.TB, res *Response, status int, code string) {
 	}
 }
 
-// Cliente (API pública).
+// Client (public API).
 
-// Password es la contraseña de las cuentas de prueba.
+// Password is the password of the test accounts.
 const Password = "una contraseña larga"
 
-// Player es una cuenta con una sesión de juego: el token de acceso y el de refresco de la última.
+// Player is an account with a game session: the access token and the refresh token of the
+// latest one.
 type Player struct {
 	ID      int64
 	Email   string
@@ -344,7 +346,7 @@ func (p *Platform) nextIP() string {
 	return netip.AddrFrom4([4]byte{198, 51, byte(100 + n/250), byte(1 + n%250)}).String()
 }
 
-// PublicDo hace una petición a la API pública con el protocolo y, si se da, el token.
+// PublicDo makes a request to the public API with the protocol and, if given, the token.
 func (p *Platform) PublicDo(method, path, token string, body any) *Response {
 	p.T.Helper()
 	h := map[string]string{httpx.ProtocolHeader: strconv.Itoa(Protocol), "X-Real-IP": p.nextIP()}
@@ -354,7 +356,7 @@ func (p *Platform) PublicDo(method, path, token string, body any) *Response {
 	return do(p.T, p.Public, method, path, body, h)
 }
 
-// NewPlayer registra una cuenta e inicia sesión.
+// NewPlayer registers an account and logs in.
 func (p *Platform) NewPlayer(email string) *Player {
 	p.T.Helper()
 	res := p.PublicDo("POST", "/v1/accounts", "", map[string]any{"email": email, "password": Password,
@@ -369,7 +371,7 @@ func (p *Platform) NewPlayer(email string) *Player {
 	return pl
 }
 
-// Login abre una sesión nueva (y revoca las anteriores de la cuenta, replaced).
+// Login opens a new session (and revokes the account's previous ones, replaced).
 func (p *Platform) Login(pl *Player) {
 	p.T.Helper()
 	res := p.PublicDo("POST", "/v1/sessions", "", map[string]any{"email": pl.Email, "password": Password})
@@ -379,7 +381,7 @@ func (p *Platform) Login(pl *Player) {
 	pl.Token, pl.Refresh = res.String("access_token"), res.String("refresh_token")
 }
 
-// RefreshSession refresca la sesión del jugador (rota los dos tokens en la misma fila, §4.2).
+// RefreshSession refreshes the player's session (rotates both tokens in the same row, §4.2).
 func (p *Platform) RefreshSession(pl *Player) *Response {
 	p.T.Helper()
 	res := p.PublicDo("POST", "/v1/sessions/refresh", "", map[string]any{"refresh_token": pl.Refresh})
@@ -389,15 +391,15 @@ func (p *Platform) RefreshSession(pl *Player) *Response {
 	return res
 }
 
-// Appearance son 8 B de apariencia en base64 (la validación provisional no los mira).
+// Appearance is 8 B of appearance in base64 (the provisional validation does not look at them).
 var Appearance = base64.StdEncoding.EncodeToString([]byte{1, 0, 2, 1, 0, 3, 2, 0x21})
 
-// ValidAppearances son 8 B que valen con las reglas de verdad en cada reino abierto (los de
-// tests/fixtures/progression/appearance_cases.json): los que usa [Platform.NewCharacter] con
+// ValidAppearances are 8 B that are valid under the real rules in each open realm (the ones in
+// tests/fixtures/progression/appearance_cases.json): the ones [Platform.NewCharacter] uses with
 // [NewWithProgress].
 var ValidAppearances = map[string]string{"vardheim": "AQAAAQEDAgE=", "solmarch": "AgAAAAAHAAA="}
 
-// NewCharacter crea un personaje en el mundo 1 y devuelve su id.
+// NewCharacter creates a character in world 1 and returns its id.
 func (p *Platform) NewCharacter(pl *Player, name, realm string) int64 {
 	p.T.Helper()
 	appearance := Appearance
@@ -417,8 +419,8 @@ func (p *Platform) NewCharacter(pl *Player, name, realm string) int64 {
 	return id
 }
 
-// NewCharacterIn crea a mano un personaje en otro mundo (la API pública de la fase 5 crea en el 1),
-// con su progreso en el almacén de la plataforma.
+// NewCharacterIn creates a character by hand in another world (the phase 5 public API creates
+// in world 1), with its progress in the platform's store.
 func (p *Platform) NewCharacterIn(pl *Player, worldID int16, name string, realm int16) int64 {
 	p.T.Helper()
 	var id int64
@@ -442,13 +444,13 @@ func (p *Platform) NewCharacterIn(pl *Player, worldID int16, name string, realm 
 	return id
 }
 
-// Enter pide entrar al mundo con el personaje.
+// Enter requests entry to the world with the character.
 func (p *Platform) Enter(pl *Player, characterID int64) *Response {
 	p.T.Helper()
 	return p.PublicDo("POST", "/v1/characters/"+strconv.FormatInt(characterID, 10)+"/enter", pl.Token, nil)
 }
 
-// MustEnter entra y devuelve el ticket_id del billete y la instancia elegida.
+// MustEnter enters and returns the ticket's ticket_id and the chosen instance.
 func (p *Platform) MustEnter(pl *Player, characterID int64) (int64, string) {
 	p.T.Helper()
 	res := p.Enter(pl, characterID)
@@ -468,9 +470,9 @@ func (p *Platform) MustEnter(pl *Player, characterID int64) (int64, string) {
 	return int64(t.TicketID), instance
 }
 
-// Base de datos.
+// Database.
 
-// Exec ejecuta una sentencia o falla.
+// Exec runs a statement or fails.
 func (p *Platform) Exec(sql string, args ...any) {
 	p.T.Helper()
 	if _, err := p.Pool.Exec(context.Background(), sql, args...); err != nil {
@@ -478,7 +480,7 @@ func (p *Platform) Exec(sql string, args ...any) {
 	}
 }
 
-// Scalar lee una fila de una columna en dst o falla.
+// Scalar reads a one-column row into dst or fails.
 func (p *Platform) Scalar(dst any, sql string, args ...any) {
 	p.T.Helper()
 	if err := p.Pool.QueryRow(context.Background(), sql, args...).Scan(dst); err != nil {
@@ -486,7 +488,7 @@ func (p *Platform) Scalar(dst any, sql string, args ...any) {
 	}
 }
 
-// Count es un count(*) (o cualquier entero).
+// Count is a count(*) (or any integer).
 func (p *Platform) Count(sql string, args ...any) int {
 	p.T.Helper()
 	var n int

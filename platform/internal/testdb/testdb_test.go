@@ -58,9 +58,9 @@ func TestDumpSchemaIsStable(t *testing.T) {
 	}
 }
 
-// Si el proceso de pruebas muere sin volver de m.Run (aquí, un pánico; igual con el plazo de go test
-// o un Ctrl-C), el vigilante para el servidor y borra la carpeta del clúster: no hace falta otra
-// ejecución con el mismo TMPDIR para limpiarlo (§2.6).
+// If the test process dies without returning from m.Run (here, a panic; likewise with the go test
+// deadline or a Ctrl-C), the watchdog stops the server and deletes the cluster's folder: no other
+// run with the same TMPDIR is needed to clean it up (§2.6).
 func TestClusterDiesWithTheProcess(t *testing.T) {
 	if os.Getenv("ELDMARK_TESTDB_CHILD") == "1" {
 		testdb.New(t)
@@ -72,8 +72,8 @@ func TestClusterDiesWithTheProcess(t *testing.T) {
 	if os.Getenv("ELDMARK_TEST_DATABASE_URL") != "" {
 		t.Skip("con un servidor compartido no hay clúster")
 	}
-	testdb.New(t) // sin PostgreSQL, se salta (o falla con ELDMARK_REQUIRE_PG=1) como las demás
-	// Una carpeta temporal propia para el hijo (el usuario postgres tiene que poder entrar).
+	testdb.New(t) // without PostgreSQL, it is skipped (or fails with ELDMARK_REQUIRE_PG=1) like the others
+	// A temporary folder of its own for the child (the postgres user must be able to enter it).
 	tmp, err := os.MkdirTemp("", "eldwd-")
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestClusterDiesWithTheProcess(t *testing.T) {
 			return
 		}
 		if time.Now().After(deadline) {
-			// Sin vigilante que valga, se mata a mano el servidor huérfano del hijo.
+			// With no valid watchdog, the child's orphaned server is killed by hand.
 			for _, dir := range left {
 				pid, _ := os.ReadFile(filepath.Join(dir, "data", "postmaster.pid"))
 				if n, err := strconv.Atoi(strings.SplitN(string(pid), "\n", 2)[0]); err == nil {

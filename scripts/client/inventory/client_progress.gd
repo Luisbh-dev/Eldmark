@@ -1,13 +1,13 @@
 class_name ClientProgress
 extends RefCounted
-## Monedas, nivel y XP del jugador local en el cliente (docs/progresion.md §5, §6 y §12): lo último que dijeron
-## WALLET_UPDATE y PROGRESS_UPDATE, para la ventana de inventario (oro y méritos) y la de personaje (nivel,
-## barra de XP, puntos de reino y de atributo). No predice nada: solo guarda lo que manda el servidor.
+## Coins, level and XP of the local player on the client (docs/progresion.md §5, §6 and §12): the latest that
+## WALLET_UPDATE and PROGRESS_UPDATE said, for the inventory window (gold and merits) and the character window (level,
+## XP bar, realm and attribute points). It predicts nothing: it only stores what the server sends.
 ## [br][br]
-## Hasta el primer PROGRESS_UPDATE el nivel es el del SPAWN propio ([method set_spawn_level]) o 1. El nivel es
-## también el de [member InventoryOps.Context.level] de las peticiones del inventario. Solo cliente.
+## Until the first PROGRESS_UPDATE the level is that of the own SPAWN ([method set_spawn_level]) or 1. The level is
+## also the [member InventoryOps.Context.level] of inventory requests. Client only.
 
-## Cambió algo (un saldo, el nivel o la XP).
+## Something changed (a balance, the level or the XP).
 signal changed
 
 var _balances: Dictionary[int, int] = {}
@@ -22,27 +22,27 @@ var _has_progress: bool = false
 var _has_wallet: bool = false
 
 
-## Saldo de la moneda [param code] ([enum Currency.Code]); 0 si aún no llegó.
+## Balance of currency [param code] ([enum Currency.Code]); 0 if it has not arrived yet.
 func get_balance(code: int) -> int:
 	return _balances.get(code, 0)
 
 
-## Nivel del personaje (1 a [constant ProgressMessages.MAX_LEVEL]).
+## Character level (1 to [constant ProgressMessages.MAX_LEVEL]).
 func get_level() -> int:
 	return _level
 
 
-## XP desde el principio del nivel.
+## XP since the start of the level.
 func get_xp_in_level() -> int:
 	return _xp_in_level
 
 
-## XP que pide el siguiente nivel (0 en el tope).
+## XP required by the next level (0 at the cap).
 func get_xp_to_next() -> int:
 	return _xp_to_next
 
 
-## Fracción de la barra de XP (0 a 1; llena en el tope).
+## Fraction of the XP bar (0 to 1; full at the cap).
 func get_xp_fraction() -> float:
 	if _xp_to_next <= 0:
 		return 1.0
@@ -53,27 +53,27 @@ func get_realm_points() -> int:
 	return _realm_points
 
 
-## Puntos de atributo sin gastar.
+## Unspent attribute points.
 func get_attribute_points() -> int:
 	return _attribute_points
 
 
-## Lo ganado en el último PROGRESS_UPDATE y su fuente ([enum ProgressMessages.XpSource]).
+## What was gained in the last PROGRESS_UPDATE and its source ([enum ProgressMessages.XpSource]).
 func get_last_gain() -> Vector2i:
 	return Vector2i(_last_gained, _last_source)
 
 
-## true desde el primer PROGRESS_UPDATE.
+## true since the first PROGRESS_UPDATE.
 func has_progress() -> bool:
 	return _has_progress
 
 
-## true desde el primer WALLET_UPDATE.
+## true since the first WALLET_UPDATE.
 func has_wallet() -> bool:
 	return _has_wallet
 
 
-## El nivel del SPAWN propio (0 = sin progreso): vale hasta el primer PROGRESS_UPDATE.
+## The level from the own SPAWN (0 = no progress): valid until the first PROGRESS_UPDATE.
 func set_spawn_level(level: int) -> void:
 	if _has_progress or level < 1 or level > ProgressMessages.MAX_LEVEL or level == _level:
 		return
@@ -81,7 +81,7 @@ func set_spawn_level(level: int) -> void:
 	changed.emit()
 
 
-## Un WALLET_UPDATE: el saldo de su moneda.
+## A WALLET_UPDATE: the balance of its currency.
 func on_wallet(update: ProgressMessages.WalletUpdate) -> void:
 	if update == null:
 		return
@@ -90,7 +90,7 @@ func on_wallet(update: ProgressMessages.WalletUpdate) -> void:
 	changed.emit()
 
 
-## Un PROGRESS_UPDATE: nivel, XP del nivel, puntos de reino y de atributo.
+## A PROGRESS_UPDATE: level, XP within the level, realm and attribute points.
 func on_progress(update: ProgressMessages.ProgressUpdate) -> void:
 	if update == null:
 		return
@@ -105,7 +105,7 @@ func on_progress(update: ProgressMessages.ProgressUpdate) -> void:
 	changed.emit()
 
 
-## Un LEVEL_UP propio: sube el nivel ya (el PROGRESS_UPDATE que lo acompaña trae el resto).
+## An own LEVEL_UP: the level goes up right away (the accompanying PROGRESS_UPDATE brings the rest).
 func on_level_up(level: int) -> void:
 	if level <= _level or level > ProgressMessages.MAX_LEVEL:
 		return
@@ -113,7 +113,7 @@ func on_level_up(level: int) -> void:
 	changed.emit()
 
 
-## Olvida todo (fin de la sesión).
+## Forgets everything (end of the session).
 func clear() -> void:
 	_balances.clear()
 	_level = 1

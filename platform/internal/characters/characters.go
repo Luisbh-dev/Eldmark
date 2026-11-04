@@ -1,14 +1,14 @@
-// Package characters es la API de personajes de la plataforma (plataforma.md §4.4 y §4.5, TEC-24,
-// SOC-13, PRG-41): la lista de una cuenta en un mundo, la comprobación de nombres, crear (reino de
-// la cuenta, huecos con derechos, nombre único y validación de raza, apariencia y plantilla), borrar
-// con plazo para restaurar y el nombre reservado, restaurar, el renombrado forzado y entrar al mundo,
-// que elige la zona y emite el billete de 52 B (internal/tickets).
+// Package characters is the platform's characters API (plataforma.md §4.4 and §4.5, TEC-24, SOC-13,
+// PRG-41): an account's list in a world, the name check, create (the account's realm, slots with
+// entitlements, unique name and validation of race, appearance and template), delete with a
+// restore window and the reserved name, restore, the forced rename and entering the world, which
+// picks the zone and issues the 52 B ticket (internal/tickets).
 //
-// También purga los personajes ([Purger]): los borrados cuyo plazo venció (trabajo horario) y los
-// de una cuenta que se purga (accounts.CharacterPurger), dejando la lápida de §11.2.
+// It also purges characters ([Purger]): deleted ones whose window expired (hourly job) and those of
+// an account being purged (accounts.CharacterPurger), leaving the §11.2 tombstone.
 //
-// La plataforma no lee columnas del progreso: raza, apariencia, nivel, última zona y tiempo jugado
-// salen de persistence.ProgressStore.Summaries (§7.5).
+// The platform does not read progression columns: race, appearance, level, last zone and play time
+// come from persistence.ProgressStore.Summaries (§7.5).
 package characters
 
 import (
@@ -34,40 +34,40 @@ import (
 	"eldmark/platform/internal/ratelimit"
 )
 
-// Plazos y topes de plataforma.md §0, §4.2 y §4.4.
+// Deadlines and caps from plataforma.md §0, §4.2 and §4.4.
 const (
-	RestoreWindow      = 7 * 24 * time.Hour  // un personaje borrado se puede restaurar 7 días
-	NameReservation    = 30 * 24 * time.Hour // su nombre queda reservado restore_until + 30 días
-	RenameReservation  = 30 * 24 * time.Hour // el nombre viejo de un renombrado
-	RealmUnlockDelay   = 30 * 24 * time.Hour // el reino se libera 30 días después de borrar el último
-	TrialAge           = 24 * time.Hour      // personaje de prueba: menos de 24 h de vida…
-	TrialPlayedSeconds = 3600                // …y menos de 1 h jugada
-	DailyLimit         = 5                   // creaciones y borrados por cuenta y día
+	RestoreWindow      = 7 * 24 * time.Hour  // a deleted character can be restored for 7 days
+	NameReservation    = 30 * 24 * time.Hour // its name stays reserved restore_until + 30 days
+	RenameReservation  = 30 * 24 * time.Hour // the old name of a rename
+	RealmUnlockDelay   = 30 * 24 * time.Hour // the realm is freed 30 days after deleting the last one
+	TrialAge           = 24 * time.Hour      // test character: less than 24 h of life...
+	TrialPlayedSeconds = 3600                // ...and less than 1 h played
+	DailyLimit         = 5                   // creations and deletions per account per day
 	dailyWindow        = 24 * time.Hour
-	busyRetrySeconds   = 3 // character_busy: el cliente reintenta cada 3 s
+	busyRetrySeconds   = 3 // character_busy: the client retries every 3 s
 )
 
-// Options son las dependencias del servicio.
+// Options are the service's dependencies.
 type Options struct {
 	Config   *config.Config
 	Pool     *pgxpool.Pool
 	Log      *slog.Logger
-	Clock    clock.Clock // por defecto, el del sistema
+	Clock    clock.Clock // by default, the system's
 	Accounts *accounts.Service
 	Progress persistence.ProgressStore
-	// Validator valida raza, apariencia y plantilla al crear (serve: *progress.Rules, de
-	// progresion.md P7); nil: persistence.ProvisionalValidator, la de las pruebas.
+	// Validator validates race, appearance and template on creation (serve: *progress.Rules, from
+	// progresion.md P7); nil: persistence.ProvisionalValidator, the tests' one.
 	Validator persistence.CreateValidator
-	// Names son las reglas de los nombres; nil: las de progression_rules.json.
+	// Names are the name rules; nil: those from progression_rules.json.
 	Names *names.Rules
-	// Purger es la purga de personajes; nil: una nueva. serve la crea antes para dársela también a
-	// accounts (accounts.Options.Characters).
+	// Purger is the character purge; nil: a new one. serve creates it earlier to give it to accounts
+	// too (accounts.Options.Characters).
 	Purger *Purger
-	// MinProtocol es el protocolo mínimo del cliente para la regla del 426.
+	// MinProtocol is the client's minimum protocol for the 426 rule.
 	MinProtocol int
 }
 
-// Service es el servicio de personajes.
+// Service is the characters service.
 type Service struct {
 	cfg         *config.Config
 	pool        *pgxpool.Pool
@@ -84,11 +84,11 @@ type Service struct {
 }
 
 type limits struct {
-	nameCheck *ratelimit.Limiter // 30/min por sesión
-	enter     *ratelimit.Limiter // 10/min por cuenta
+	nameCheck *ratelimit.Limiter // 30/min per session
+	enter     *ratelimit.Limiter // 10/min per account
 }
 
-// New prepara el servicio.
+// New prepares the service.
 func New(o Options) (*Service, error) {
 	if o.Config == nil || o.Pool == nil || o.Accounts == nil || o.Progress == nil {
 		return nil, errors.New("characters: faltan dependencias")
@@ -122,7 +122,7 @@ func New(o Options) (*Service, error) {
 		}}, nil
 }
 
-// Errores de la API pública (§4.1).
+// Public API errors (§4.1).
 
 func errValidation(fields map[string]string) *httpx.Error {
 	return &httpx.Error{Status: http.StatusBadRequest, Code: "validation", Message: "Datos no válidos", Fields: fields}
@@ -137,7 +137,7 @@ func errNameTaken() *httpx.Error {
 	return &httpx.Error{Status: http.StatusConflict, Code: "name_taken", Message: "Ese nombre ya está en uso"}
 }
 
-// realmTitles son los nombres de los reinos en los textos.
+// realmTitles are the realm names in the texts.
 var realmTitles = map[config.Realm]string{config.RealmVardheim: "Vardheim", config.RealmSolmarch: "Solmarch",
 	config.RealmAskarra: "Askarra"}
 
@@ -203,7 +203,7 @@ func errRateLimited(wait time.Duration) *httpx.Error {
 		Message: "Demasiados intentos; espera " + strconv.Itoa(s) + " s", RetryAfter: s}
 }
 
-// Ayudas.
+// Helpers.
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
@@ -215,11 +215,12 @@ func unix(t *time.Time) *int64 {
 	return &v
 }
 
-// leaseAlive es la condición de un arrendamiento vivo de character_leases l (§5.3) a la hora $now.
+// leaseAlive is the condition of a live lease in character_leases l (§5.3) at time $now.
 const leaseAlive = `l.zone_instance_id is not null and l.expires_at > `
 
-// dailyLimit mira cuántas filas kind tiene la cuenta en auth_events en las últimas 24 h; con
-// [DailyLimit] o más, devuelve el 429 con lo que falta para que salga la más vieja de la ventana.
+// dailyLimit checks how many kind rows the account has in auth_events in the last 24 h; with
+// [DailyLimit] or more, it returns the 429 with how long remains for the oldest in the window to
+// drop out.
 func dailyLimit(ctx context.Context, tx pgx.Tx, accountID int64, kind string, now time.Time) error {
 	rows, err := tx.Query(ctx, `select at from auth_events where account_id = $1 and kind = $2 and at > $3
 		order by at desc limit $4`, accountID, kind, now.Add(-dailyWindow), DailyLimit)
@@ -236,15 +237,15 @@ func dailyLimit(ctx context.Context, tx pgx.Tx, accountID int64, kind string, no
 	return errRateLimited(times[len(times)-1].Add(dailyWindow).Sub(now))
 }
 
-// lockAccount bloquea la fila de la cuenta (el orden de la reclamación, §5.3, y de la purga,
-// §11.2) y devuelve su estado y su purge_after.
+// lockAccount locks the account's row (the order of the claim, §5.3, and of the purge, §11.2) and
+// returns its status and its purge_after.
 func lockAccount(ctx context.Context, tx pgx.Tx, accountID int64) (status string, purgeAfter *time.Time, err error) {
 	err = tx.QueryRow(ctx, `select status, purge_after from accounts where account_id = $1 for no key update`,
 		accountID).Scan(&status, &purgeAfter)
 	return status, purgeAfter, err
 }
 
-// summaries lee los resúmenes del progreso; un fallo del almacén es un error de la petición.
+// summaries reads the progression summaries; a store failure is a request error.
 func (s *Service) summaries(ctx context.Context, q persistence.Querier, ids []int64) (map[int64]persistence.Summary, error) {
 	if len(ids) == 0 {
 		return map[int64]persistence.Summary{}, nil
@@ -256,7 +257,7 @@ func (s *Service) summaries(ctx context.Context, q persistence.Querier, ids []in
 	return sums, nil
 }
 
-// checkWorld devuelve 404 si el mundo no existe, y su estado si existe.
+// checkWorld returns 404 if the world does not exist, and its status if it does.
 func (s *Service) checkWorld(ctx context.Context, q persistence.Querier, worldID int16) (string, error) {
 	var status string
 	err := q.QueryRow(ctx, `select status from worlds where world_id = $1`, worldID).Scan(&status)
@@ -266,7 +267,7 @@ func (s *Service) checkWorld(ctx context.Context, q persistence.Querier, worldID
 	return status, err
 }
 
-// openRealm dice si se pueden crear personajes en el reino (ELDMARK_OPEN_REALMS).
+// openRealm says whether characters can be created in the realm (ELDMARK_OPEN_REALMS).
 func (s *Service) openRealm(r config.Realm) bool {
 	for _, open := range s.cfg.OpenRealms {
 		if open == r {

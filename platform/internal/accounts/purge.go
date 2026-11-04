@@ -11,29 +11,29 @@ import (
 	"eldmark/platform/internal/db"
 )
 
-// Plazos de la huella de los correos sancionados (§11.2).
+// Retention periods of the sanctioned emails' fingerprint (§11.2).
 const (
-	sanctionMemory   = 90 * 24 * time.Hour  // reincidencia: 90 días
-	sanctionedMaxAge = 365 * 24 * time.Hour // 1 año como mucho desde la purga
+	sanctionMemory   = 90 * 24 * time.Hour  // repeat offense: 90 days
+	sanctionedMaxAge = 365 * 24 * time.Hour // 1 year at most from the purge
 )
 
-// ErrHasCharacters es la causa de una purga que no se hace porque la cuenta tiene personajes sin
-// purgar y no hay [CharacterPurger].
+// ErrHasCharacters is the cause of a purge that is not done because the account has unpurged
+// characters and there is no [CharacterPurger].
 var ErrHasCharacters = errors.New("accounts: la cuenta tiene personajes sin purgar")
 
-// ErrCharactersBusy es la causa (errors.Is) de una purga que no se hace porque algún personaje de
-// la cuenta tiene un arrendamiento vivo (§11.2, paso 3): el [CharacterPurger] la devuelve y la
-// purga horaria lo vuelve a intentar en la vuelta siguiente.
+// ErrCharactersBusy is the cause (errors.Is) of a purge that is not done because some character of
+// the account has a live lease (§11.2, step 3): the [CharacterPurger] returns it and the hourly
+// purge tries again in the next round.
 var ErrCharactersBusy = errors.New("accounts: un personaje de la cuenta está en el mundo")
 
-// Motivos de una purga: qué condición se vuelve a mirar con la fila bloqueada.
+// Reasons for a purge: which condition is checked again with the row locked.
 type purgeReason int
 
 const (
-	purgeUnverified purgeReason = iota // sin verificar a los 7 días (staging y production)
-	purgeDeletion                      // borrado pedido, con purge_after vencido
-	purgeRequested                     // admin purge-now: cualquier cuenta sin purgar (§11.2)
-	purgeReapplied                     // admin reapply-purges: cualquier cuenta sin purgar, con el purged_at de purges.txt
+	purgeUnverified purgeReason = iota // unverified after 7 days (staging and production)
+	purgeDeletion                      // deletion requested, with purge_after elapsed
+	purgeRequested                     // admin purge-now: any unpurged account (§11.2)
+	purgeReapplied                     // admin reapply-purges: any unpurged account, with purged_at from purges.txt
 )
 
 func (r purgeReason) String() string {
@@ -48,10 +48,10 @@ func (r purgeReason) String() string {
 	return "borrado pedido"
 }
 
-// PurgeDue es el trabajo horario de las cuentas (§4.3, §11.1): purga las que pidieron el borrado
-// y cumplieron los 14 días y, en staging y production, las que no verificaron el correo en 7 días.
-// Una cuenta que no se puede purgar ahora (con personajes y sin CharacterPurger) se registra y se
-// vuelve a intentar en la vuelta siguiente; el resto sigue.
+// PurgeDue is the hourly accounts job (§4.3, §11.1): it purges those that requested deletion and
+// reached the 14 days and, in staging and production, those that did not verify the email within 7
+// days. An account that cannot be purged now (with characters and without a CharacterPurger) is
+// logged and tried again in the next round; the rest continue.
 func (s *Service) PurgeDue(ctx context.Context) error {
 	now := s.clock.Now()
 	type due struct {
@@ -107,11 +107,12 @@ func (s *Service) PurgeDue(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// purgeAccount purga la cuenta (§11.2) si, con su fila bloqueada, sigue cumpliendo la condición
-// del motivo; devuelve si la purgó. Queda la lápida de accounts (sin correo ni hash, status
-// purged) y la fila de purge_log; se borran sus ignorados en los dos sentidos, sesiones, enlaces,
-// consentimientos, aceptaciones, derechos, reinos, accesos, chat enviado (lo copiado a un reporte
-// sigue en report_evidence) y correos de prueba, y sus sanciones se quedan sin motivo.
+// purgeAccount purges the account (§11.2) if, with its row locked, it still meets the reason's
+// condition; it returns whether it purged it. What remains is the accounts tombstone (without email
+// or hash, status purged) and the purge_log row; its ignored players in both directions, sessions,
+// links, consents, acceptances, entitlements, realms, logins, sent chat (what was copied into a
+// report stays in report_evidence) and test emails are deleted, and its sanctions are left without
+// a reason.
 func (s *Service) purgeAccount(ctx context.Context, accountID int64, reason purgeReason, now time.Time) (bool, error) {
 	done := false
 	err := db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -121,8 +122,7 @@ func (s *Service) purgeAccount(ctx context.Context, accountID int64, reason purg
 		var verified bool
 		var created time.Time
 		var purgeAfter *time.Time
-		// Primero la fila de la cuenta: el orden de la reclamación (§5.3) y del borrado de
-		// personajes (§4.4).
+		// The account's row first: the claim order (§5.3) and the character deletion order (§4.4).
 		err := tx.QueryRow(ctx, `select email, status, email_verified_at is not null, created_at, purge_after
 			from accounts where account_id = $1 for no key update`, accountID).
 			Scan(&email, &status, &verified, &created, &purgeAfter)
@@ -197,10 +197,10 @@ func (s *Service) purgeAccount(ctx context.Context, accountID int64, reason purg
 	return done, err
 }
 
-// rememberSanctionedEmail guarda la huella HMAC del correo si la cuenta tiene una sanción vigente o
-// de los últimos 90 días (§11.2), para que el registro lo rechace: cada sanción sin revocar cuenta
-// hasta 90 días después de su fin (una expulsión permanente, el tope; un aviso o un renombrado,
-// sin duración, desde que se puso), con 1 año como mucho desde la purga.
+// rememberSanctionedEmail stores the email's HMAC fingerprint if the account has a current sanction
+// or one from the last 90 days (§11.2), so that registration rejects it: each unrevoked sanction
+// counts up to 90 days after its end (a permanent ban, the cap; a warning or a rename, with no
+// duration, from when it was applied), with 1 year at most from the purge.
 func (s *Service) rememberSanctionedEmail(ctx context.Context, tx pgx.Tx, accountID int64, email string, now time.Time) error {
 	rows, err := tx.Query(ctx, `select ends_at, created_at, kind = 'ban' and ends_at is null from sanctions
 		where account_id = $1 and revoked_at is null`, accountID)

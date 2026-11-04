@@ -8,17 +8,18 @@ import (
 	"time"
 )
 
-// Plazos de las pruebas (holgados: la meta de §15 es < 30 s por prueba con todo).
+// Test timeouts (generous: the §15 goal is < 30 s per test with everything).
 const (
-	liveTimeout = 60 * time.Second // una zona, de arrancar a live (con los reintentos de instance_alive)
-	botTimeout  = 90 * time.Second // un bot, de arrancar a salir
-	saveTimeout = 20 * time.Second // un guardado que se espera
-	zoneStop    = 30 * time.Second // el cierre ordenado de una zona
+	liveTimeout = 60 * time.Second // a zone, from start to live (with the instance_alive retries)
+	botTimeout  = 90 * time.Second // a bot, from start to exit
+	saveTimeout = 20 * time.Second // a save that is awaited
+	zoneStop    = 30 * time.Second // a zone's orderly shutdown
 )
 
-// TestEnterAndSave (plataforma.md §15, P10): una zona test_world con --platform y un bot con cuenta que crea su
-// personaje, entra con el billete, juega y sale. Su guardado llega a la base (save_version > 0 y
-// character_progress.saved_at puesto) y el arrendamiento queda libre; la zona se cierra en orden y se da de baja.
+// TestEnterAndSave (plataforma.md §15, P10): a test_world zone with --platform and a bot with an
+// account that creates its character, joins with the ticket, plays and leaves. Its save reaches the
+// database (save_version > 0 and character_progress.saved_at set) and the lease is freed; the zone
+// shuts down in order and deregisters.
 func TestEnterAndSave(t *testing.T) {
 	h := New(t)
 	acc := h.NewAccount("viajera@eldmark.test")
@@ -39,7 +40,8 @@ func TestEnterAndSave(t *testing.T) {
 	}
 	h.Logf("el bot ha jugado y salido con el personaje %d", id)
 
-	// El guardado final y la liberación salen al irse el cuerpo: pueden llegar justo después de que el bot cierre.
+	// The final save and the release come out when the body leaves: they can arrive just after the bot
+	// closes.
 	h.WaitFor(saveTimeout, "el guardado final y la liberación", func() bool {
 		requireRunning(t, zone.Process)
 		return h.Exists(`select 1 from character_leases where character_id = $1 and zone_instance_id is null
@@ -76,14 +78,15 @@ func TestEnterAndSave(t *testing.T) {
 	h.Logf("TestEnterAndSave: %.1f s", h.Elapsed().Seconds())
 }
 
-// TestZoneCrash (plataforma.md §15, P10; TEC-25): con --save-interval=5, un bot juega en la zona; tras su primer
-// guardado se espera más de un intervalo y se mata la zona con kill -9. Lo perdido está acotado por el punto de
-// control: el último saved_at queda a menos de 5 s + 1 s de margen del kill (y es posterior al primero, así que
-// salió de un punto de control y no del guardado de la llegada), y lo guardado cuadra (CheckBooks). Otra instancia
-// de la zona arranca enseguida: su registro da 409 instance_alive y reintenta cada 2 s hasta que la vieja lleva 3 s
-// sin latir, y entonces la plataforma la pasa a lost y libera sus arrendamientos (§5.3). Un segundo bot con la misma
-// cuenta entra con el mismo personaje en la instancia nueva, sin repetir el kit ni duplicar nada. El primer bot no
-// reconecta.
+// TestZoneCrash (plataforma.md §15, P10; TEC-25): with --save-interval=5, a bot plays in the zone;
+// after its first save, we wait more than an interval and kill the zone with kill -9. What is lost
+// is bounded by the checkpoint: the last saved_at ends up less than 5 s + 1 s of margin from the
+// kill (and is later than the first one, so it came from a checkpoint and not from the arrival
+// save), and what is saved adds up (CheckBooks). Another instance of the zone starts right away: its
+// registration gets 409 instance_alive and retries every 2 s until the old one has gone 3 s without
+// heartbeating, and then the platform marks it lost and frees its leases (§5.3). A second bot with
+// the same account joins with the same character in the new instance, without repeating the kit or
+// duplicating anything. The first bot does not reconnect.
 func TestZoneCrash(t *testing.T) {
 	const saveInterval = 5 * time.Second
 	const margin = time.Second
@@ -107,11 +110,12 @@ func TestZoneCrash(t *testing.T) {
 	})
 	h.Logf("primer guardado del personaje %d: %s", id, firstSave.Format(time.RFC3339Nano))
 
-	// Más de un intervalo tras el primer guardado: sin puntos de control, el kill quedaría a más de 5 s + 1 s.
+	// More than an interval after the first save: without checkpoints, the kill would land more than 5 s
+	// + 1 s away.
 	time.Sleep(saveInterval + 2*margin)
 	requireRunning(t, first.Process, old.Process)
 	killedAt := old.Kill()
-	first.Kill() // no hace falta que reconecte: así no gasta CPU mientras arranca la otra
+	first.Kill() // it does not need to reconnect: that way it does not burn CPU while the other one starts
 	h.Logf("kill -9 a %s", old.Name)
 
 	replacement := h.StartZone("--save-interval=5")
@@ -125,7 +129,8 @@ func TestZoneCrash(t *testing.T) {
 		t.Fatalf("la instancia muerta queda en %q (se esperaba lost)", oldStatus)
 	}
 
-	// Lo último que llegó de la vieja: ya no puede llegar nada más (está lost y sus arrendamientos, libres).
+	// The last thing that arrived from the old one: nothing more can arrive (it is lost and its leases
+	// are free).
 	var savedAt time.Time
 	var saveVersion int64
 	h.Scalar(&savedAt, `select saved_at from character_progress where character_id = $1`, id)
@@ -139,7 +144,7 @@ func TestZoneCrash(t *testing.T) {
 	if lost >= saveInterval+margin {
 		t.Fatalf("kill − saved_at = %v; con --save-interval=5 tiene que ser < %v", lost, saveInterval+margin)
 	}
-	h.CheckBooks(id) // lo que quedó de la vieja: nada a medias
+	h.CheckBooks(id) // what was left by the old one: nothing half-done
 
 	second := h.StartBot(acc, "--character=Superviviente", "--quit-after-ticks=240")
 	h.WaitFor(botTimeout, "el personaje en la instancia nueva", func() bool {
@@ -158,9 +163,10 @@ func TestZoneCrash(t *testing.T) {
 	if code := replacement.Stop(zoneStop); code != 0 {
 		t.Fatalf("la zona nueva sale con el código %d tras el cierre ordenado", code)
 	}
-	h.CheckBooks(id) // y tras volver a entrar: el kit no se repite y nada se duplica
-	// Quién pasa la vieja a lost depende de cuándo llega el registro de la nueva: el trabajo de perdidas (cada
-	// min(5 s, HEARTBEAT_S) = 1 s) o el propio registro (§5.3). Las dos cosas valen; se anota cuál fue.
+	h.CheckBooks(id) // and after joining again: the kit is not repeated and nothing is duplicated
+	// Who marks the old one as lost depends on when the new one's registration arrives: the lost-instances
+	// job (every min(5 s, HEARTBEAT_S) = 1 s) or the registration itself (§5.3). Either is valid; which
+	// one it was is noted.
 	h.Logf("registro de la nueva con 409 instance_alive: %v; la vieja pasó a lost por el trabajo de perdidas: %v, "+
 		"por el registro: %v", replacement.LogContains("Hay otra instancia viva"),
 		h.PlatformLogContains("instancia perdida: sin latido"),
@@ -168,7 +174,7 @@ func TestZoneCrash(t *testing.T) {
 	h.Logf("TestZoneCrash: %.1f s", h.Elapsed().Seconds())
 }
 
-// countConsumed son los billetes consumidos del personaje.
+// countConsumed is the character's consumed tickets.
 func countConsumed(h *Harness, characterID int64) int {
 	h.T.Helper()
 	var n int

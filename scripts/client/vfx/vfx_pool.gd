@@ -1,20 +1,20 @@
 class_name VfxPool
 extends Node3D
-## Grupo de reutilización de un [VfxEffect] (ART-09, solo cliente): crea [member size] copias de
-## [member scene] una sola vez y las va relanzando. [method spawn] no instancia nada: toma una copia
-## libre y la pone en el punto de contacto; si todas suenan, reinicia la más antigua en vez de crecer.
+## Reuse pool of a [VfxEffect] (ART-09, client only): creates [member size] copies of [member scene] once
+## and relaunches them. [method spawn] instantiates nothing: it takes a free copy and places it at the
+## contact point; if all are playing, it restarts the oldest instead of growing.
 ## [br][br]
-## Un grupo por escena (chispa de metal, polvo...) y a tamaño suficiente para los golpes que caben en
-## un instante de combate: 6 a 8 para los impactos, 2 a 3 para las paradas.
+## One pool per scene (metal spark, dust...) and sized enough for the hits that fit in one instant of
+## combat: 6 to 8 for impacts, 2 to 3 for parries.
 
-## Escena del efecto: la raíz tiene que ser un [VfxEffect].
+## Effect scene: the root must be a [VfxEffect].
 @export var scene: PackedScene
-## Copias que se crean.
+## Copies that are created.
 @export_range(1, 64) var size: int = 6
 
 var _items: Array[VfxEffect] = []
 var _cursor: int = 0
-# Tinte pedido con [method set_tint]; sin él, cada copia conserva el de su escena (la carne es roja).
+# Tint requested with [method set_tint]; without it, each copy keeps its scene's (flesh is red).
 var _tint: Color = Color.WHITE
 var _has_tint: bool = false
 
@@ -24,7 +24,7 @@ func _ready() -> void:
 		_fill()
 
 
-## Crea las copias ahora (si el grupo se arma por código antes de entrar en el árbol).
+## Creates the copies now (if the pool is assembled in code before entering the tree).
 func setup(effect_scene: PackedScene, copies: int) -> void:
 	scene = effect_scene
 	size = maxi(copies, 1)
@@ -32,9 +32,9 @@ func setup(effect_scene: PackedScene, copies: int) -> void:
 		_fill()
 
 
-## Lanza una copia libre en [param position] con su eje +Z en [param normal] y, si se da, el +X a lo largo de
-## [param direction] (hacia dónde iba el golpe; ver [method VfxEffect.play_at]) y la devuelve. Devuelve null
-## si el grupo no tiene escena.
+## Launches a free copy at [param position] with its +Z axis along [param normal] and, if given, +X along
+## [param direction] (where the blow was heading; see [method VfxEffect.play_at]) and returns it. Returns
+## null if the pool has no scene.
 func spawn(position: Vector3, normal: Vector3 = Vector3.UP, direction: Vector3 = Vector3.ZERO) -> VfxEffect:
 	var effect: VfxEffect = acquire()
 	if effect == null:
@@ -43,8 +43,8 @@ func spawn(position: Vector3, normal: Vector3 = Vector3.UP, direction: Vector3 =
 	return effect
 
 
-## Toma una copia libre SIN lanzarla (la más antigua si todas suenan), para efectos con su propia forma de
-## lanzarse, como [method DustKick.play_dodge].
+## Takes a free copy WITHOUT launching it (the oldest if all are playing), for effects with their own way of
+## being launched, like [method DustKick.play_dodge].
 func acquire() -> VfxEffect:
 	if _items.is_empty():
 		if scene == null:
@@ -57,14 +57,14 @@ func acquire() -> VfxEffect:
 		if not _items[index].is_playing():
 			_cursor = index + 1
 			return _items[index]
-	# Todas suenan: se reinicia la que lleva más tiempo (la siguiente del anillo).
+	# All are playing: the one that has been running longest is restarted (the next in the ring).
 	var oldest: VfxEffect = _items[_cursor % _items.size()]
 	_cursor += 1
 	oldest.reset()
 	return oldest
 
 
-## Tiñe todas las copias, también las que se creen después (los siguientes disparos salen de ese color).
+## Tints all the copies, also those created later (the following shots come out in that color).
 func set_tint(value: Color) -> void:
 	_tint = value
 	_has_tint = true
@@ -72,7 +72,7 @@ func set_tint(value: Color) -> void:
 		item.tint = value
 
 
-## Cuántas copias están sonando ahora.
+## How many copies are playing right now.
 func get_active_count() -> int:
 	var active: int = 0
 	for item: VfxEffect in _items:
@@ -81,7 +81,7 @@ func get_active_count() -> int:
 	return active
 
 
-## Apaga todas las copias de golpe.
+## Turns off all the copies at once.
 func release_all() -> void:
 	for item: VfxEffect in _items:
 		item.reset()

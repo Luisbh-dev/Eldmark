@@ -1,43 +1,43 @@
 class_name NetSim
 extends RefCounted
-## Simulador de red para depurar: retardo, jitter, pérdida y duplicados, todo medido en ticks.
+## Network simulator for debugging: delay, jitter, loss and duplicates, all measured in ticks.
 ##
-## Lo aplica [NetTransport] a la salida y a la entrada (ver docs/red.md, sección 13), así que
-## ponerlo en un solo lado simula el RTT completo; en los dos lados, lo duplica.
+## [NetTransport] applies it on output and input (see docs/red.md, section 13), so
+## setting it on one side simulates the full RTT; on both sides, it doubles it.
 ## [br][br]
-## Reglas:
-## [br]- Retardo por sentido: [code]rtt/2 ± jitter[/code] (uniforme), en ticks redondeados, con la
-## resolución de un tick de 60 Hz (16,7 ms).
-## [br]- Pérdida y duplicados: solo en los canales no fiables ([method
-## NetProtocol.is_unreliable_channel]). Los fiables y la autenticación solo se retrasan y
-## mantienen el orden FIFO por (peer, canal): tirar paquetes a nivel de aplicación rompería la
-## fiabilidad de ENet. Los no fiables pueden llegar desordenados por el jitter, como en una red
-## real.
-## [br]- Reproducible: tiene su propio [RandomNumberGenerator] con semilla. Misma configuración,
-## misma semilla y mismas llamadas dan la misma secuencia.
+## Rules:
+## [br]- Delay per direction: [code]rtt/2 ± jitter[/code] (uniform), in rounded ticks, with the
+## resolution of a 60 Hz tick (16.7 ms).
+## [br]- Loss and duplicates: only on unreliable channels ([method
+## NetProtocol.is_unreliable_channel]). Reliable ones and authentication are only delayed and
+## keep FIFO order per (peer, channel): dropping packets at the application level would break
+## ENet's reliability. Unreliable ones can arrive out of order because of jitter, as on a real
+## network.
+## [br]- Reproducible: it has its own seeded [RandomNumberGenerator]. The same configuration,
+## the same seed and the same calls give the same sequence.
 ## [br][br]
-## No lee el reloj: el tiempo es el tick que pasa quien llama.
+## It does not read the clock: time is the tick passed by the caller.
 
-## Duración de un tick de física en milisegundos (60 Hz).
+## Duration of a physics tick in milliseconds (60 Hz).
 const TICK_MS: float = 1000.0 / 60.0
-## Valor de [member NetSim.Packet.channel] de los mensajes de autenticación (canal de sistema).
+## Value of [member NetSim.Packet.channel] for authentication messages (system channel).
 const AUTH_CHANNEL: int = 0
 
-# Bits de la clave de (peer, canal) del orden FIFO.
+# Bits of the (peer, channel) key for FIFO ordering.
 const _CHANNEL_KEY_BITS: int = 3
 const _CHANNEL_KEY_MASK: int = (1 << _CHANNEL_KEY_BITS) - 1
 
 
-## Un paquete en tránsito por el simulador.
+## A packet in transit through the simulator.
 class Packet:
 	var peer_id: int = 0
 	var channel: int = 0
 	var bytes: PackedByteArray = PackedByteArray()
-	## true si es un mensaje de autenticación: solo se retrasa, nunca se pierde ni se duplica.
+	## true if it is an authentication message: it is only delayed, never lost or duplicated.
 	var is_auth: bool = false
-	## Tick en el que debe entregarse. Lo rellena [method NetSim.enqueue].
+	## Tick at which it must be delivered. Filled in by [method NetSim.enqueue].
 	var due_tick: int = 0
-	## Orden de llegada al simulador (desempata los paquetes con el mismo [member due_tick]).
+	## Order of arrival at the simulator (breaks ties between packets with the same [member due_tick]).
 	var sequence: int = 0
 
 	func _init(p_peer_id: int = 0, p_channel: int = 0,
@@ -56,15 +56,15 @@ var _seed: int = 1
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _pending: Array[NetSim.Packet] = []
 var _next_sequence: int = 0
-# Última entrega planificada de cada (peer, canal) con orden FIFO.
+# Last scheduled delivery of each (peer, channel) with FIFO order.
 var _last_due: Dictionary = {}
 
 
-## Crea un simulador desde el texto de [code]--net-sim[/code]:
-## [code]"rtt=120,jitter=20,loss=5,dup=0,seed=1"[/code] (ms, ms, %, %). Las claves que faltan valen
-## 0 (la semilla, 1) y las desconocidas se ignoran. [param seed_offset] se suma a la semilla (el
-## transporte usa 0 para la salida y 1 para la entrada, para que no coincidan). Devuelve null
-## si [param spec] está vacío.
+## Creates a simulator from the text of [code]--net-sim[/code]:
+## [code]"rtt=120,jitter=20,loss=5,dup=0,seed=1"[/code] (ms, ms, %, %). Missing keys default to
+## 0 (the seed, to 1) and unknown ones are ignored. [param seed_offset] is added to the seed (the
+## transport uses 0 for output and 1 for input, so they do not coincide). Returns null
+## if [param spec] is empty.
 static func from_arg(spec: String, seed_offset: int = 0) -> NetSim:
 	var text: String = spec.strip_edges()
 	if text.is_empty():
@@ -98,8 +98,8 @@ static func from_arg(spec: String, seed_offset: int = 0) -> NetSim:
 	return sim
 
 
-## Fija los parámetros y reinicia el generador aleatorio con [param seed]. Los valores negativos
-## pasan a 0 y los porcentajes se limitan a 100. No toca los paquetes que ya están en cola.
+## Sets the parameters and resets the random generator with [param seed]. Negative values
+## become 0 and percentages are clamped to 100. It does not touch packets already in the queue.
 func configure(rtt_ms: int, jitter_ms: int, loss_percent: float, duplicate_percent: float,
 		seed: int) -> void:
 	_rtt_ms = maxi(rtt_ms, 0)
@@ -110,15 +110,15 @@ func configure(rtt_ms: int, jitter_ms: int, loss_percent: float, duplicate_perce
 	_rng.seed = seed
 
 
-## true si el simulador hace algo (algún parámetro es mayor que 0).
+## true if the simulator does anything (some parameter is greater than 0).
 func is_enabled() -> bool:
 	return _rtt_ms > 0 or _jitter_ms > 0 or _loss_percent > 0.0 or _duplicate_percent > 0.0
 
 
-## Mete [param packet] en la cola en el tick [param now_tick]. Fija su [member
-## NetSim.Packet.due_tick]. Si es de un canal no fiable puede perderse (no entra en la cola) o
-## duplicarse (entra una copia más, con su propio retardo). Los fiables y la autenticación
-## mantienen el orden FIFO por (peer, canal): nunca se entregan antes que uno anterior.
+## Puts [param packet] in the queue at tick [param now_tick]. Sets its [member
+## NetSim.Packet.due_tick]. If it is on an unreliable channel it can be lost (it does not enter the queue) or
+## duplicated (one more copy enters, with its own delay). Reliable ones and authentication
+## keep FIFO order per (peer, channel): they are never delivered before an earlier one.
 func enqueue(packet: NetSim.Packet, now_tick: int) -> void:
 	var unreliable: bool = not packet.is_auth and NetProtocol.is_unreliable_channel(packet.channel)
 	if unreliable:
@@ -132,8 +132,8 @@ func enqueue(packet: NetSim.Packet, now_tick: int) -> void:
 		_schedule(packet, now_tick, true)
 
 
-## Saca de la cola los paquetes que vencen en [param now_tick] o antes, por orden de entrega
-## (y, a igualdad, de llegada).
+## Takes from the queue the packets that come due at [param now_tick] or earlier, in delivery order
+## (and, on ties, in arrival order).
 func pop_due(now_tick: int) -> Array[NetSim.Packet]:
 	var due: Array[NetSim.Packet] = []
 	for packet: NetSim.Packet in _pending:
@@ -152,9 +152,9 @@ func pop_due(now_tick: int) -> Array[NetSim.Packet]:
 	return due
 
 
-## Saca de la cola todo lo que retiene para [param peer_id], venza o no, por orden de entrega, y
-## olvida su orden FIFO. Lo usa el transporte antes de cerrar la conexión de un peer para que lo
-## ya enviado salga antes del corte, o para descartarlo si el peer ya no existe.
+## Takes from the queue everything it holds for [param peer_id], due or not, in delivery order, and
+## forgets its FIFO order. Used by the transport before closing a peer's connection so that what
+## was already sent goes out before the cut, or to discard it if the peer no longer exists.
 func drain_peer(peer_id: int) -> Array[NetSim.Packet]:
 	var drained: Array[NetSim.Packet] = []
 	var remaining: Array[NetSim.Packet] = []
@@ -170,7 +170,7 @@ func drain_peer(peer_id: int) -> Array[NetSim.Packet]:
 	return drained
 
 
-## true si la cola retiene algún paquete de [param peer_id].
+## true if the queue holds any packet of [param peer_id].
 func has_pending(peer_id: int) -> bool:
 	for packet: NetSim.Packet in _pending:
 		if packet.peer_id == peer_id:
@@ -178,40 +178,40 @@ func has_pending(peer_id: int) -> bool:
 	return false
 
 
-## Número de paquetes en la cola.
+## Number of packets in the queue.
 func get_pending_count() -> int:
 	return _pending.size()
 
 
-## Retardo máximo (ticks) que añade a un paquete en un sentido: [code]rtt/2 + jitter[/code]
-## redondeado como lo hace el sorteo. Con el simulador en un solo extremo, el viaje de ida y vuelta
-## tarda como mucho el doble.
+## Maximum delay (ticks) it adds to a packet in one direction: [code]rtt/2 + jitter[/code]
+## rounded as the draw does. With the simulator at a single end, the round trip
+## takes at most double.
 func get_max_delay_ticks() -> int:
 	return maxi(roundi((float(_rtt_ms) * 0.5 + float(_jitter_ms)) / TICK_MS), 0)
 
 
-## Descripción de la configuración, para el registro y el overlay de depuración.
+## Description of the configuration, for the log and the debug overlay.
 func describe() -> String:
 	return "rtt=%d ms, jitter=%d ms, pérdida=%s%%, duplicados=%s%%, semilla=%d" % [
 		_rtt_ms, _jitter_ms, _percent_text(_loss_percent), _percent_text(_duplicate_percent), _seed,
 	]
 
 
-# Un porcentaje sin decimales inútiles: «5», «1.5».
+# A percentage without useless decimals: "5", "1.5".
 static func _percent_text(percent: float) -> String:
 	if is_equal_approx(percent, roundf(percent)):
 		return str(roundi(percent))
 	return ("%.2f" % percent).rstrip("0").rstrip(".")
 
 
-# Sortea un suceso con probabilidad [param percent] (0-100). Con 0 no consume el generador.
+# Rolls an event with probability [param percent] (0-100). With 0 it does not consume the generator.
 func _roll(percent: float) -> bool:
 	if percent <= 0.0:
 		return false
 	return _rng.randf() * 100.0 < percent
 
 
-# Retardo de un sentido en ticks: rtt/2 ± jitter (uniforme), redondeado y nunca negativo.
+# Delay of one direction in ticks: rtt/2 ± jitter (uniform), rounded and never negative.
 func _roll_delay_ticks() -> int:
 	var delay_ms: float = _rtt_ms * 0.5
 	if _jitter_ms > 0:

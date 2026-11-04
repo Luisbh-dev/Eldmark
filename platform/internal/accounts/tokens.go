@@ -8,14 +8,14 @@ import (
 	netmail "net/mail"
 )
 
-// TokenLen es la longitud de un token: 32 B de crypto/rand en base64url sin relleno (§4.2).
+// TokenLen is the length of a token: 32 B from crypto/rand in unpadded base64url (§4.2).
 const TokenLen = 43
 
-// newToken devuelve un token nuevo y su SHA-256, que es lo que se guarda.
+// newToken returns a new token and its SHA-256, which is what gets stored.
 func newToken() (string, []byte) {
 	var b [32]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand no falla en los sistemas admitidos; sin aleatoriedad no se sigue.
+		// crypto/rand does not fail on the supported systems; without randomness we do not continue.
 		panic("accounts: crypto/rand: " + err.Error())
 	}
 	tok := base64.RawURLEncoding.EncodeToString(b[:])
@@ -27,8 +27,8 @@ func hashToken(tok string) []byte {
 	return sum[:]
 }
 
-// ValidToken dice si una cadena tiene la forma de un token: 43 caracteres base64url. Las páginas
-// de los enlaces lo miran antes de pintar nada.
+// ValidToken says whether a string has the shape of a token: 43 base64url characters. The link
+// pages check it before rendering anything.
 func ValidToken(tok string) bool {
 	if len(tok) != TokenLen {
 		return false
@@ -39,12 +39,12 @@ func ValidToken(tok string) bool {
 			return false
 		}
 	}
-	// La última letra solo lleva 4 bits de datos: las demás formas no salen de newToken.
+	// The last letter carries only 4 bits of data: the other forms do not come out of newToken.
 	_, err := base64.RawURLEncoding.Strict().DecodeString(tok)
 	return err == nil
 }
 
-// parseAddress devuelve la dirección que entiende net/mail, sin nombre visible.
+// parseAddress returns the address that net/mail understands, without a display name.
 func parseAddress(s string) (string, error) {
 	a, err := netmail.ParseAddress(s)
 	if err != nil {

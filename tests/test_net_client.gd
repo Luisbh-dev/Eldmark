@@ -1,19 +1,19 @@
 extends TestCase
-## Pruebas de [NetClient] contra un servidor falso que habla el protocolo a mano (docs/red.md,
-## secciones 3, 5.4, 6.2 y 9.4): el contenido del HELLO, que no se envíe ninguna entrada antes del
-## SPAWN propio, la redundancia y la recortada por el ack del INPUT_BATCH, la cabecera del lote, que
-## los snapshots desordenados no reconcilien, cómo se clasifican las diferencias de la predicción
-## (explicadas, sin explicar, teletransportes, reinicios duros), los NOTICE, la salida ordenada y los
-## fallos de conexión. El servidor falso no simula: manda lo que cada prueba le pide.
+## Tests for [NetClient] against a fake server that speaks the protocol by hand (docs/red.md,
+## sections 3, 5.4, 6.2 and 9.4): the contents of the HELLO, that no input is sent before its own
+## SPAWN, the redundancy and the trimming by the INPUT_BATCH ack, the batch header, that
+## out-of-order snapshots do not reconcile, how the prediction differences are classified
+## (explained, unexplained, teleports, hard resets), the NOTICEs, the orderly exit and
+## connection failures. The fake server does not simulate: it sends what each test asks of it.
 ## [br][br]
-## Las pruebas con un servidor real (el de [ZoneServer]) están en [code]test_net_loopback.gd[/code].
+## The tests with a real server (that of [ZoneServer]) are in [code]test_net_loopback.gd[/code].
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const WAIT_FRAMES: int = 600
 
 
-## Servidor que contesta al handshake, da de alta al cliente cuando lo pide la prueba y guarda todo
-## lo que recibe. Sus snapshots no llevan estado propio salvo los que manda la prueba a mano.
+## Server that answers the handshake, registers the client when the test asks and keeps everything
+## it receives. Its snapshots carry no state of their own except those the test sends by hand.
 class FakeServer extends Node:
 	var transport: NetTransport
 	var tick: int = 0
@@ -21,16 +21,16 @@ class FakeServer extends Node:
 	var zone_id: String = "test_world"
 	var tick_rate: int = 60
 	var welcome_version: int = NetProtocol.PROTOCOL_VERSION
-	## Recuento por reino que va en el WELCOME y motivo con el que se rechaza el HELLO (0 = se acepta).
+	## Per-realm count carried in the WELCOME and reason with which the HELLO is rejected (0 = accepted).
 	var realm_counts: PackedInt32Array = PackedInt32Array([0, 0, 0])
 	var reject_result: int = 0
 	var spawn_state: PlayerState
 	var spawn_net_id: int = 5
-	## Ticks entre el CLIENT_READY y el SPAWN propio (muy grande = nunca).
+	## Ticks between the CLIENT_READY and its own SPAWN (very large = never).
 	var spawn_delay_ticks: int = 2
 	var auto_snapshots: bool = true
 	var snapshot_interval_ticks: int = 2
-	## true: el ack de los snapshots es el último tick de entrada recibido; false: [member fixed_ack].
+	## true: the snapshots' ack is the last input tick received; false: [member fixed_ack].
 	var follow_ack: bool = false
 	var fixed_ack: int = 0
 	var substitutions: int = 0
@@ -43,7 +43,7 @@ class FakeServer extends Node:
 	var batches: Array[Dictionary] = []
 	var debug_commands: Array[NetMessages.DebugCommand] = []
 	var chat_sends: Array[NetMessages.ChatSend] = []
-	## LOADOUT_SELECT recibidos: {template, ready_count} (CLIENT_READY recibidos hasta entonces).
+	## LOADOUT_SELECTs received: {template, ready_count} (CLIENT_READYs received up to then).
 	var loadout_selects: Array[Dictionary] = []
 	var leave_received: bool = false
 	var snapshots_sent: int = 0
@@ -184,9 +184,9 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
-## Servidor falso y un bot conectado a él. [param configure] recibe el servidor antes de arrancar.
+## Fake server and a bot connected to it. [param configure] receives the server before it starts.
 func _start(configure: Callable = Callable()) -> void:
 	_port = NetHarness.free_udp_port()
 	_fake = FakeServer.new()
@@ -210,8 +210,8 @@ func _in_world() -> bool:
 	return _client.get_state() == NetClient.State.IN_WORLD
 
 
-## Cuenta cuántos lotes de entradas ha enviado el cliente y devuelve los nuevos en [param frames]
-## fotogramas.
+## Counts how many input batches the client has sent and returns the new ones within [param frames]
+## frames.
 func _collect_batches(frames: int) -> Array[Dictionary]:
 	var before: int = _fake.batches.size()
 	await wait_physics_frames(frames)
@@ -228,28 +228,28 @@ func _counts_of(entries: Array[Dictionary]) -> Array[int]:
 	return counts
 
 
-# --- Handshake y arranque ---------------------------------------------------------------------
+# --- Handshake and startup --------------------------------------------------------------------
 
 func test_hello_carries_the_clients_identity() -> void:
 	await _start()
-	assert_true(await _wait_until(func() -> bool: return _fake.hello != null), "llega el HELLO")
+	assert_true(await _wait_until(func() -> bool: return _fake.hello != null), "the HELLO arrives")
 	var hello: NetMessages.Hello = _fake.hello
 	assert_eq(hello.protocol_version, NetProtocol.PROTOCOL_VERSION)
 	assert_eq(hello.realm, VARDHEIM)
 	assert_eq(hello.display_name, NameRules.bot_name(9))
-	assert_true(hello.is_bot(), "un bot lo declara en los flags")
+	assert_true(hello.is_bot(), "a bot declares it in the flags")
 	assert_eq(hello.character_id, 0)
 	assert_true(hello.ticket.is_empty())
 	var scene: PackedScene = load(NetClient.PLAYER_SCENE_PATH) as PackedScene
 	var probe: PlayerCharacter = scene.instantiate() as PlayerCharacter
 	_root.add_child(probe)
 	assert_eq(hello.sim_hash, NetProtocol.compute_sim_hash(probe),
-			"la huella es la de la simulación del personaje")
+			"the fingerprint is that of the character simulation")
 	probe.free()
 
 
-## Con billete (docs/plataforma.md §5.4 y §15 P8): el HELLO lleva el personaje y los 52 B de enter, con el reino y el
-## nombre del personaje.
+## With a ticket (docs/plataforma.md §5.4 and §15 P8): the HELLO carries the character and the 52 B of enter, with the realm and the
+## character's name.
 func test_hello_carries_the_ticket_and_the_character_of_enter() -> void:
 	_port = NetHarness.free_udp_port()
 	_fake = FakeServer.new()
@@ -271,15 +271,15 @@ func test_hello_carries_the_ticket_and_the_character_of_enter() -> void:
 	config.ticket = PackedByteArray(range(52))
 	config.from_front = true
 	assert_eq(_client.start(config, transport, controller), OK)
-	assert_true(await _wait_until(func() -> bool: return _fake.hello != null), "llega el HELLO")
+	assert_true(await _wait_until(func() -> bool: return _fake.hello != null), "the HELLO arrives")
 	var hello: NetMessages.Hello = _fake.hello
-	assert_eq(hello.character_id, 9007199254740993, "el personaje de enter (más de 2^53)")
-	assert_eq(hello.ticket, PackedByteArray(range(52)), "el billete tal cual")
-	assert_eq(hello.realm, NetProtocol.Realm.SOLMARCH, "el reino del personaje")
-	assert_eq(hello.display_name, "Anéira", "y su nombre")
-	assert_false(hello.is_bot(), "un jugador no es un bot")
+	assert_eq(hello.character_id, 9007199254740993, "the character from enter (over 2^53)")
+	assert_eq(hello.ticket, PackedByteArray(range(52)), "the ticket as is")
+	assert_eq(hello.realm, NetProtocol.Realm.SOLMARCH, "the character's realm")
+	assert_eq(hello.display_name, "Anéira", "and its name")
+	assert_false(hello.is_bot(), "a player is not a bot")
 	assert_true(await _wait_until(func() -> bool: return _client.get_state() == NetClient.State.WELCOMED),
-			"y entra como siempre")
+			"and enters as usual")
 
 
 func test_a_dtls_certificate_that_cannot_be_read_does_not_connect() -> void:
@@ -296,18 +296,18 @@ func test_a_dtls_certificate_that_cannot_be_read_does_not_connect() -> void:
 	config.realm = VARDHEIM
 	config.dtls_cert_path = "res://no/existe.pem"
 	config.dtls_name = "zona"
-	assert_null(NetClient.dtls_options(config), "sin certificado no hay opciones de DTLS")
+	assert_null(NetClient.dtls_options(config), "without a certificate there are no DTLS options")
 	assert_eq(_client.start(config, transport, controller), ERR_INVALID_DATA,
-			"no se conecta en claro cuando se pidió DTLS")
+			"it does not connect in the clear when DTLS was requested")
 	assert_eq(_client.get_state(), NetClient.State.IDLE)
-	assert_null(NetClient.dtls_options(ClientConfig.new()), "sin DTLS pedido, nada")
+	assert_null(NetClient.dtls_options(ClientConfig.new()), "without DTLS requested, nothing")
 
 
 func test_the_welcome_carries_the_realm_counts_for_the_realm_select() -> void:
 	await _start(func(fake: FakeServer) -> void: fake.realm_counts = PackedInt32Array([12, 3, 40]))
 	assert_true(await _wait_until(_in_world))
 	var welcome: NetMessages.Welcome = _client.get_welcome()
-	assert_eq(welcome.realm_counts, PackedInt32Array([12, 3, 40]), "el recuento por reino del WELCOME")
+	assert_eq(welcome.realm_counts, PackedInt32Array([12, 3, 40]), "the WELCOME's per-realm count")
 	assert_eq(welcome.get_realm_count(NetProtocol.Realm.SOLMARCH), 3)
 
 
@@ -316,18 +316,18 @@ func test_an_imbalance_rejection_reaches_the_client_with_its_spanish_text() -> v
 	var rejections: Array[Dictionary] = []
 	_client.rejected.connect(func(result: int, text: String) -> void:
 		rejections.append({"result": result, "text": text}))
-	assert_true(await _wait_until(func() -> bool: return not rejections.is_empty()), "llega el REJECT")
+	assert_true(await _wait_until(func() -> bool: return not rejections.is_empty()), "the REJECT arrives")
 	assert_eq(rejections[0]["result"], NetProtocol.Result.IMBALANCE, "REJECT 9")
 	assert_eq(rejections[0]["text"], NetProtocol.result_text(NetProtocol.Result.IMBALANCE))
-	assert_true(String(rejections[0]["text"]).contains("demasiados jugadores"), "dice por qué (%s)" % rejections[0]["text"])
-	assert_true(String(rejections[0]["text"]).contains("elige otro"), "y qué hacer")
-	assert_eq(_client.get_state(), NetClient.State.CLOSED, "y la sesión se cierra")
+	assert_true(String(rejections[0]["text"]).contains("demasiados jugadores"), "it says why (%s)" % rejections[0]["text"])
+	assert_true(String(rejections[0]["text"]).contains("elige otro"), "and what to do")
+	assert_eq(_client.get_state(), NetClient.State.CLOSED, "and the session closes")
 
 
 func test_ready_is_sent_once_after_the_zone_is_ready() -> void:
 	await _start()
 	assert_true(await _wait_until(_in_world))
-	assert_eq(_fake.ready_count, 1, "un solo CLIENT_READY")
+	assert_eq(_fake.ready_count, 1, "a single CLIENT_READY")
 	assert_true(_client.get_controller().auto_step == false)
 	assert_eq(_client.get_net_id(), _fake.spawn_net_id)
 	assert_eq(_client.get_spawn_tick(), _fake.spawn_tick)
@@ -337,16 +337,16 @@ func test_no_input_is_sent_before_the_own_spawn() -> void:
 	await _start(func(fake: FakeServer) -> void: fake.spawn_delay_ticks = 45)
 	assert_true(await _wait_until(func() -> bool: return _fake.ready_tick >= 0))
 	await wait_physics_frames(40)
-	assert_eq(_client.get_state(), NetClient.State.READY_SENT, "aún sin personaje")
-	assert_true(_fake.batches.is_empty(), "ni una entrada antes del SPAWN propio")
+	assert_eq(_client.get_state(), NetClient.State.READY_SENT, "still without a character")
+	assert_true(_fake.batches.is_empty(), "not a single input before its own SPAWN")
 	assert_true(await _wait_until(_in_world))
 	await wait_physics_frames(8)
-	assert_false(_fake.batches.is_empty(), "y con el SPAWN empiezan a salir")
+	assert_false(_fake.batches.is_empty(), "and with the SPAWN they start to go out")
 	for entry: Dictionary in _fake.batches:
-		assert_true(entry["after_spawn"], "todas después del alta")
+		assert_true(entry["after_spawn"], "all after the spawn")
 	var first: NetMessages.InputBatch = _fake.batches[0]["batch"]
 	assert_eq(first.newest_tick, _client.get_prediction().get_first_real_tick(),
-			"la primera entrada real es P0")
+			"the first real input is P0")
 
 
 func test_send_debug_command_needs_a_character() -> void:
@@ -355,7 +355,7 @@ func test_send_debug_command_needs_a_character() -> void:
 	var payload: PackedByteArray = NetMessages.DebugCommand.teleport(Vector3(1.0, 2.0, 3.0)).payload
 	_client.send_debug_command(NetProtocol.DEBUG_TELEPORT, payload)
 	await wait_physics_frames(10)
-	assert_true(_fake.debug_commands.is_empty(), "sin personaje no se envía")
+	assert_true(_fake.debug_commands.is_empty(), "without a character nothing is sent")
 	assert_true(await _wait_until(_in_world))
 	_client.send_debug_command(NetProtocol.DEBUG_TELEPORT, payload)
 	assert_true(await _wait_until(func() -> bool: return not _fake.debug_commands.is_empty()))
@@ -369,23 +369,23 @@ func test_batches_repeat_the_last_four_inputs_by_default() -> void:
 	assert_true(await _wait_until(_in_world))
 	await wait_physics_frames(20)
 	var batches: Array[Dictionary] = await _collect_batches(40)
-	assert_true(batches.size() >= 38, "uno por tick de física (%d)" % batches.size())
+	assert_true(batches.size() >= 38, "one per physics tick (%d)" % batches.size())
 	var first_real: int = _client.get_prediction().get_first_real_tick()
 	var previous_newest: int = 0
 	for entry: Dictionary in batches:
 		var batch: NetMessages.InputBatch = entry["batch"]
-		assert_eq(batch.inputs.size(), NetProtocol.INPUT_REDUNDANCY, "R = 4 sin ack ni pérdidas")
-		assert_true(batch.inputs[0].tick >= first_real, "nunca antes de P0")
+		assert_eq(batch.inputs.size(), NetProtocol.INPUT_REDUNDANCY, "R = 4 with no ack or losses")
+		assert_true(batch.inputs[0].tick >= first_real, "never before P0")
 		assert_eq(batch.view_offsets_q.size(), 4)
 		for i: int in batch.inputs.size():
 			assert_eq(batch.inputs[i].tick, batch.newest_tick - batch.inputs.size() + 1 + i)
 		var step: int = batch.newest_tick - previous_newest
 		assert_true(previous_newest == 0 or (step >= 0 and step <= 2),
-				"newest sube 0, 1 o 2 por tick (%d)" % step)
+				"newest rises 0, 1 or 2 per tick (%d)" % step)
 		previous_newest = batch.newest_tick
 	var sent: int = _client.get_stats()["batches_sent"]
 	assert_true(sent - _fake.batches.size() >= 0 and sent - _fake.batches.size() <= 2,
-			"lo enviado es lo recibido, salvo lo que va en camino (%d, %d)"
+			"what was sent is what was received, except what is in transit (%d, %d)"
 			% [sent, _fake.batches.size()])
 
 
@@ -395,7 +395,7 @@ func test_acknowledged_inputs_are_not_sent_again() -> void:
 	await wait_physics_frames(30)
 	var counts: Array[int] = _counts_of(await _collect_batches(60))
 	assert_false(counts.is_empty())
-	assert_true(counts.max() <= 3, "con el ack al día solo se reenvía lo pendiente: %s" % [counts])
+	assert_true(counts.max() <= 3, "with the ack up to date only the pending is resent: %s" % [counts])
 	assert_true(counts.min() >= 1)
 
 
@@ -406,13 +406,13 @@ func test_a_rise_of_substitutions_widens_the_redundancy_for_two_seconds() -> voi
 	assert_eq(_counts_of(await _collect_batches(10)).max(), 4)
 	_fake.substitutions = 3
 	var counts: Array[int] = _counts_of(await _collect_batches(30))
-	assert_eq(counts.max(), 8, "R = 8 tras una subida de las sustituciones: %s" % [counts])
+	assert_eq(counts.max(), 8, "R = 8 after a rise in substitutions: %s" % [counts])
 	assert_eq(counts[counts.size() - 1], 8)
 	assert_eq(_client.get_stats()["substitution_rises"], 1)
 	assert_eq(_client.get_stats()["substitutions_total"], 3)
 	await wait_physics_frames(110)
 	counts = _counts_of(await _collect_batches(10))
-	assert_eq(counts.max(), 4, "y a los 120 ticks vuelve a R = 4")
+	assert_eq(counts.max(), 4, "and after 120 ticks it goes back to R = 4")
 
 
 func test_batch_header_has_ack_delay_and_view_offsets() -> void:
@@ -422,33 +422,33 @@ func test_batch_header_has_ack_delay_and_view_offsets() -> void:
 	var entries: Array[Dictionary] = _fake.batches_after_spawn()
 	var early: NetMessages.InputBatch = entries[0]["batch"]
 	assert_true(early.ack_snapshot_tick <= _fake.tick)
-	assert_eq(early.view_offsets_q[0], 0, "sin reloj de dibujo, desfase 0")
+	assert_eq(early.view_offsets_q[0], 0, "without a draw clock, skew 0")
 	var late: NetMessages.InputBatch = entries[entries.size() - 1]["batch"]
 	assert_true(late.ack_snapshot_tick > 0 and late.ack_snapshot_tick <= _fake.tick,
-			"ack = el snapshot más nuevo recibido (%d)" % late.ack_snapshot_tick)
+			"ack = the newest snapshot received (%d)" % late.ack_snapshot_tick)
 	assert_true(late.interp_delay_q >= 32 and late.interp_delay_q <= 96,
-			"retardo de interpolación × 8 entre 4 y 12 ticks (%d)" % late.interp_delay_q)
+			"interpolation delay × 8 between 4 and 12 ticks (%d)" % late.interp_delay_q)
 	for q: int in late.view_offsets_q:
 		assert_true(q > 0 and q < 65535, "(tick - render_tick) × 16 (%d)" % q)
 	var previous: int = 0
 	for entry: Dictionary in entries:
 		var ack: int = (entry["batch"] as NetMessages.InputBatch).ack_snapshot_tick
-		assert_true(ack >= previous, "el ack no retrocede")
+		assert_true(ack >= previous, "the ack does not go backwards")
 		previous = ack
 
 
-## El personaje local lleva en su máscara la capa de movimiento de su reino (la que paran las
-## puertas cerradas de los fuertes ajenos), puesta después de su _ready().
+## The local character carries in its mask its realm's movement layer (the one stopped by the
+## closed gates of foreign forts), set after its _ready().
 func test_the_local_character_collides_with_the_layer_of_its_realm() -> void:
 	await _start()
 	assert_true(await _wait_until(_in_world))
 	var character: PlayerCharacter = _client.get_character()
 	assert_eq(character.collision_mask, PlayerCharacter.WORLD_COLLISION_LAYER
 			| PlayerCharacter.PLAYER_BLOCKER_LAYER | PlayerCharacter.realm_layer(VARDHEIM),
-			"mundo, bloqueos invisibles y la capa 5 de Vardheim")
+			"world, invisible blockers and Vardheim's layer 5")
 
 
-# --- Snapshots y reconciliación ---------------------------------------------------------------
+# --- Snapshots and reconciliation -------------------------------------------------------------
 
 func test_out_of_order_snapshots_only_feed_the_interpolators() -> void:
 	await _start(func(fake: FakeServer) -> void: fake.auto_snapshots = false)
@@ -462,13 +462,13 @@ func test_out_of_order_snapshots_only_feed_the_interpolators() -> void:
 	_fake.send_snapshot(older, prediction.get_predicted_state(older).duplicate_state())
 	await wait_physics_frames(4)
 	var stats: Dictionary = _client.get_stats()
-	assert_eq(stats["snapshots"], before["snapshots"] + 2, "los dos llegan")
+	assert_eq(stats["snapshots"], before["snapshots"] + 2, "both arrive")
 	assert_eq(stats["snapshots_with_state"], before["snapshots_with_state"] + 1,
-			"solo el más nuevo se reconcilia")
-	assert_eq(stats["late_snapshots"], before["late_snapshots"] + 1, "y el otro se cuenta")
+			"only the newest is reconciled")
+	assert_eq(stats["late_snapshots"], before["late_snapshots"] + 1, "and the other is counted")
 	assert_eq(stats["matches"], before["matches"] + 1)
 	assert_eq(stats["server_tick"], newer)
-	# Uno más antiguo que el ya reconciliado, llegado después, tampoco.
+	# One older than the one already reconciled, arriving later, is not either.
 	_fake.send_snapshot(newer - 1, prediction.get_predicted_state(newer - 1).duplicate_state())
 	await wait_physics_frames(4)
 	assert_eq(_client.get_stats()["snapshots_with_state"], before["snapshots_with_state"] + 1)
@@ -484,22 +484,22 @@ func test_differences_are_classified_as_explained_unexplained_teleport_or_hard_r
 	var character: PlayerCharacter = _client.get_character()
 	var visual: Node3D = character.get_node(^"Visual") as Node3D
 
-	# 1. Una diferencia sin ninguna subida de sustituciones: fallo de la predicción.
+	# 1. A difference with no rise in substitutions: prediction failure.
 	var wrong: PlayerState = prediction.get_predicted_state(spawn + 2).duplicate_state()
 	wrong.position.x += 0.5
 	_fake.send_snapshot(spawn + 2, wrong)
 	await wait_physics_frames(3)
 	var stats: Dictionary = _client.get_stats()
 	assert_eq(stats["diffs"], 1)
-	assert_eq(stats["unexplained_diffs"], 1, "sin subida de sustituciones no hay explicación")
+	assert_eq(stats["unexplained_diffs"], 1, "without a rise in substitutions there is no explanation")
 	assert_eq(stats["explained_diffs"], 0)
-	assert_eq(stats["corrections"], 1, "la corrección es de más de 1 mm")
+	assert_eq(stats["corrections"], 1, "the correction is over 1 mm")
 	assert_near(stats["max_correction"], 0.5, 0.05)
 	assert_eq(stats["consecutive_matches"], 0)
 	assert_eq(stats["unexplained_ticks"].size(), 1)
-	assert_true(visual.position.length() > 0.05, "y el error se reparte como desfase visual")
+	assert_true(visual.position.length() > 0.05, "and the error is spread out as a visual skew")
 
-	# 2. Una diferencia con una subida de sustituciones: explicada.
+	# 2. A difference with a rise in substitutions: explained.
 	var substituted: PlayerState = prediction.get_predicted_state(spawn + 4).duplicate_state()
 	substituted.position.z -= 0.3
 	_fake.substitutions = 1
@@ -507,10 +507,10 @@ func test_differences_are_classified_as_explained_unexplained_teleport_or_hard_r
 	await wait_physics_frames(3)
 	stats = _client.get_stats()
 	assert_eq(stats["diffs"], 2)
-	assert_eq(stats["explained_diffs"], 1, "coincide con una subida de sustituciones")
+	assert_eq(stats["explained_diffs"], 1, "matches a rise in substitutions")
 	assert_eq(stats["unexplained_diffs"], 1)
 
-	# 3. Un estado idéntico al predicho: coincidencia exacta.
+	# 3. A state identical to the predicted one: exact match.
 	_fake.send_snapshot(spawn + 6, prediction.get_predicted_state(spawn + 6).duplicate_state())
 	await wait_physics_frames(3)
 	stats = _client.get_stats()
@@ -518,7 +518,7 @@ func test_differences_are_classified_as_explained_unexplained_teleport_or_hard_r
 	assert_eq(stats["consecutive_matches"], 1)
 	assert_eq(stats["diffs"], 2)
 
-	# 4. Un teletransporte (cambia el contador): explicado, sin suavizado.
+	# 4. A teleport (the counter changes): explained, without smoothing.
 	var teleported: PlayerState = prediction.get_predicted_state(spawn + 8).duplicate_state()
 	teleported.position = Vector3(20.0, 0.0, 10.0)
 	_fake.send_snapshot(spawn + 8, teleported, 1)
@@ -527,11 +527,11 @@ func test_differences_are_classified_as_explained_unexplained_teleport_or_hard_r
 	assert_eq(stats["teleport_diffs"], 1)
 	assert_eq(stats["explained_diffs"], 2)
 	assert_eq(stats["unexplained_diffs"], 1)
-	assert_eq(visual.position, Vector3.ZERO, "un teletransporte no se suaviza")
+	assert_eq(visual.position, Vector3.ZERO, "a teleport is not smoothed")
 	assert_vec_near(character.get_state().position, Vector3(20.0, 0.0, 10.0), 2.0,
-			"el cuerpo salta al sitio del servidor")
+			"the body jumps to the server's position")
 
-	# 5. Un estado por delante de lo predicho: reinicio duro.
+	# 5. A state ahead of the predicted one: hard reset.
 	var ahead: int = prediction.get_predicted_tick() + 10
 	var reset_state: PlayerState = teleported.duplicate_state()
 	reset_state.position = Vector3(5.0, 0.0, 5.0)
@@ -540,22 +540,22 @@ func test_differences_are_classified_as_explained_unexplained_teleport_or_hard_r
 	stats = _client.get_stats()
 	assert_eq(stats["hard_resets"], 1)
 	assert_eq(stats["hard_reset_ticks"].size(), 1)
-	assert_true(prediction.get_predicted_tick() >= ahead, "la predicción retoma desde ahí")
+	assert_true(prediction.get_predicted_tick() >= ahead, "the prediction resumes from there")
 
 
 func test_resync_counter_follows_tick_sync_hard_jumps() -> void:
-	# Un servidor que dice que las entradas llegan 20 ticks tarde obliga a TickSync a saltar hacia
-	# delante de golpe: se cuenta como resincronización.
+	# A server that says inputs arrive 20 ticks late forces TickSync to jump forward
+	# at once: it is counted as a resynchronisation.
 	await _start(func(fake: FakeServer) -> void: fake.margin = -20)
 	assert_true(await _wait_until(_in_world))
 	assert_true(await _wait_until(func() -> bool: return _client.get_stats()["resyncs"] > 0),
-			"hay una resincronización dura hacia delante")
+			"there is a hard forward resynchronisation")
 	var stats: Dictionary = _client.get_stats()
 	assert_true(stats["tick_sync_adjustments"] >= 1)
 	assert_eq(stats["resync_ticks"].size(), stats["resyncs"])
 
 
-# --- NOTICE, salida y fallos ------------------------------------------------------------------
+# --- NOTICE, exit and failures ----------------------------------------------------------------
 
 func test_notice_text_becomes_the_disconnect_text() -> void:
 	await _start()
@@ -595,14 +595,14 @@ func test_leave_sends_client_leave_and_stops_sending_inputs() -> void:
 	_client.leave()
 	assert_eq(_client.get_state(), NetClient.State.LEAVING)
 	assert_true(await _wait_until(func() -> bool: return not texts.is_empty()))
-	assert_true(_fake.leave_received, "el servidor recibe CLIENT_LEAVE")
+	assert_true(_fake.leave_received, "the server receives CLIENT_LEAVE")
 	assert_eq(texts[0], NetClient.TEXT_LEFT)
 	assert_eq(_client.get_state(), NetClient.State.CLOSED)
 	var sent: int = _fake.batches.size()
 	await wait_physics_frames(20)
-	assert_eq(_fake.batches.size(), sent, "tras salir no se envía nada más")
+	assert_eq(_fake.batches.size(), sent, "after leaving nothing more is sent")
 	_client.leave()
-	assert_eq(texts.size(), 1, "y salir dos veces no avisa dos veces")
+	assert_eq(texts.size(), 1, "and leaving twice does not notify twice")
 
 
 func test_tick_rate_mismatch_aborts_the_connection() -> void:
@@ -613,7 +613,7 @@ func test_tick_rate_mismatch_aborts_the_connection() -> void:
 	_client.disconnected.connect(func(text: String) -> void: texts.append(text))
 	assert_true(await _wait_until(func() -> bool: return not texts.is_empty()))
 	assert_eq(texts[0], NetClient.TEXT_BAD_TICK_RATE % [30, Engine.physics_ticks_per_second])
-	assert_true(welcomed.is_empty(), "no llega a autenticarse")
+	assert_true(welcomed.is_empty(), "it does not get to authenticate")
 	assert_eq(_fake.ready_count, 0)
 	assert_eq(_client.get_state(), NetClient.State.CLOSED)
 
@@ -634,7 +634,7 @@ func test_connection_failure_is_reported_once() -> void:
 	var texts: Array[String] = []
 	_client.disconnected.connect(func(text: String) -> void: texts.append(text))
 	assert_true(await _wait_until(func() -> bool: return not texts.is_empty(), 900),
-			"sin servidor, el cliente se rinde")
+			"without a server, the client gives up")
 	assert_eq(texts[0], NetClient.TEXT_CONNECT_FAILED % ["127.0.0.1", _port])
 	assert_eq(_client.get_state(), NetClient.State.CLOSED)
 	await wait_physics_frames(30)
@@ -650,7 +650,7 @@ func test_garbage_from_the_server_is_counted_not_fatal() -> void:
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, PackedByteArray([0x21]))
 	await wait_physics_frames(10)
 	assert_eq(_client.get_stats()["malformed_packets"], 4)
-	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "el cliente sigue en el mundo")
+	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "the client is still in the world")
 
 
 func test_chat_messages_reach_the_signal_and_chat_sends_reach_the_server() -> void:
@@ -670,27 +670,27 @@ func test_chat_messages_reach_the_signal_and_chat_sends_reach_the_server() -> vo
 	system.channel = ChatChannel.Id.SYSTEM
 	system.text = "Aviso del sistema"
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, system.encode())
-	# Un CHAT_MESSAGE mal formado cuenta como paquete mal formado y no llega a la señal.
+	# A malformed CHAT_MESSAGE counts as a malformed packet and does not reach the signal.
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, PackedByteArray([0x41, 0, 0, 0]))
-	assert_true(await _wait_until(func() -> bool: return received.size() >= 2), "llegan los dos")
+	assert_true(await _wait_until(func() -> bool: return received.size() >= 2), "both arrive")
 	await wait_physics_frames(10)
-	assert_eq(received.size(), 2, "solo los válidos")
-	assert_eq(received[0].sender, "Ana", "emisor")
-	assert_eq(received[0].text, "Hola desde el servidor", "texto")
-	assert_eq(received[1].channel, ChatChannel.Id.SYSTEM, "el del sistema también")
+	assert_eq(received.size(), 2, "only the valid ones")
+	assert_eq(received[0].sender, "Ana", "sender")
+	assert_eq(received[0].text, "Hola desde el servidor", "text")
+	assert_eq(received[1].channel, ChatChannel.Id.SYSTEM, "the system's too")
 	var stats: Dictionary = _client.get_stats()
-	assert_eq(stats["chat_received"], 2, "dos recibidos")
-	assert_eq(stats["malformed_packets"], 1, "uno mal formado")
-	# Envío: el CHAT_SEND llega al servidor falso saneado y por el canal fiable.
-	assert_true(_client.send_chat(ChatChannel.Id.WHISPER, " Bruno ", "[b]Hola[/b]  Bruno"), "se envía")
-	assert_false(_client.send_chat(ChatChannel.Id.SAY, "", "  "), "un texto vacío no sale")
+	assert_eq(stats["chat_received"], 2, "two received")
+	assert_eq(stats["malformed_packets"], 1, "one malformed")
+	# Sending: the CHAT_SEND reaches the fake server sanitised and over the reliable channel.
+	assert_true(_client.send_chat(ChatChannel.Id.WHISPER, " Bruno ", "[b]Hola[/b]  Bruno"), "it is sent")
+	assert_false(_client.send_chat(ChatChannel.Id.SAY, "", "  "), "an empty text does not go out")
 	assert_true(await _wait_until(func() -> bool: return not _fake.chat_sends.is_empty()),
-			"el servidor falso recibe el CHAT_SEND")
-	assert_eq(_fake.chat_sends.size(), 1, "solo uno")
-	assert_eq(_fake.chat_sends[0].channel, ChatChannel.Id.WHISPER, "canal de susurro")
-	assert_eq(_fake.chat_sends[0].recipient, "Bruno", "destinatario sin espacios")
-	assert_eq(_fake.chat_sends[0].text, "Hola Bruno", "texto saneado en el cliente")
-	assert_eq(_client.get_stats()["chat_sent"], 1, "solo se envió uno")
+			"the fake server receives the CHAT_SEND")
+	assert_eq(_fake.chat_sends.size(), 1, "only one")
+	assert_eq(_fake.chat_sends[0].channel, ChatChannel.Id.WHISPER, "whisper channel")
+	assert_eq(_fake.chat_sends[0].recipient, "Bruno", "recipient without spaces")
+	assert_eq(_fake.chat_sends[0].text, "Hola Bruno", "text sanitised on the client")
+	assert_eq(_client.get_stats()["chat_sent"], 1, "only one was sent")
 
 
 func test_protocol_3_messages_are_accepted_and_not_counted_as_malformed() -> void:
@@ -700,7 +700,7 @@ func test_protocol_3_messages_are_accepted_and_not_counted_as_malformed() -> voi
 	var state := FortressState.initial(def, 0)
 	var send: Callable = func(bytes: PackedByteArray) -> void:
 		_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, bytes)
-	# El SPAWN de la fortaleza, dos OBJECT_STATE, el marcador y los dos avisos nuevos.
+	# The fortress SPAWN, two OBJECT_STATEs, the scoreboard and the two new alerts.
 	send.call(NetMessages.EntitySpawn.for_fortress(900, _fake.tick, "vado_gris_fort", state).encode())
 	send.call(NetMessages.ObjectState.from_fortress(900, _fake.tick, state).encode())
 	var changes := NetMessages.ObjectState.new()
@@ -715,7 +715,7 @@ func test_protocol_3_messages_are_accepted_and_not_counted_as_malformed() -> voi
 	send.call(NetMessages.EntityEvent.war(900, _fake.tick, WarEvents.CAPTURE_STARTED, 1).encode())
 	send.call(NetMessages.EntityEvent.telegraph(901, _fake.tick, 3, NetMessages.EntityEvent.SHAPE_SECTOR,
 			Vector3(4.0, 0.0, 4.0), 0.5, 400, 40).encode())
-	# Un PNJ con su id de definición se dibuja como cualquier remoto.
+	# An NPC with its definition id is drawn like any remote.
 	var npc := NetMessages.EntitySpawn.new()
 	npc.net_id = 902
 	npc.kind = NetProtocol.EntityKind.NPC
@@ -726,24 +726,24 @@ func test_protocol_3_messages_are_accepted_and_not_counted_as_malformed() -> voi
 	npc.npc_def_id = 2
 	send.call(npc.encode())
 	assert_true(await _wait_until(func() -> bool:
-		return _client.get_remote_world().get_view(902) != null), "el SPAWN del PNJ crea su vista")
+		return _client.get_remote_world().get_view(902) != null), "the NPC's SPAWN creates its view")
 	await wait_physics_frames(10)
 	var stats: Dictionary = _client.get_stats()
-	assert_eq(stats["malformed_packets"], 0, "ninguno de los mensajes nuevos cuenta como malformado")
-	assert_eq(stats["structure_spawns"], 1, "el SPAWN de la estructura")
-	assert_eq(stats["object_states"], 2, "los OBJECT_STATE")
-	assert_eq(stats["scoreboards"], 1, "el marcador")
-	assert_eq(stats["war_events"], 1, "el aviso de guerra")
-	assert_eq(stats["telegraphs"], 1, "el aviso de ataque")
-	assert_eq(stats["combat_events"], 0, "los avisos nuevos no son eventos de combate")
-	assert_eq(stats["combat_events_pending"], 0, "ni esperan en la cola del combate")
-	assert_eq(stats["remote_views"], 1, "solo el PNJ tiene vista: la estructura aún no se dibuja (F5)")
-	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "el cliente sigue en el mundo")
-	# Lo mal formado de los tipos nuevos sí cuenta.
+	assert_eq(stats["malformed_packets"], 0, "none of the new messages counts as malformed")
+	assert_eq(stats["structure_spawns"], 1, "the structure's SPAWN")
+	assert_eq(stats["object_states"], 2, "the OBJECT_STATEs")
+	assert_eq(stats["scoreboards"], 1, "the scoreboard")
+	assert_eq(stats["war_events"], 1, "the war alert")
+	assert_eq(stats["telegraphs"], 1, "the attack alert")
+	assert_eq(stats["combat_events"], 0, "the new alerts are not combat events")
+	assert_eq(stats["combat_events_pending"], 0, "nor do they wait in the combat queue")
+	assert_eq(stats["remote_views"], 1, "only the NPC has a view: the structure is not drawn yet (F5)")
+	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "the client is still in the world")
+	# Malformed instances of the new types do count.
 	send.call(PackedByteArray([NetProtocol.MSG_OBJECT_STATE, 1, 0, 0, 0, 0, 0, 0]))
 	send.call(PackedByteArray([NetProtocol.MSG_SCOREBOARD, 0, 0, 0]))
 	await wait_physics_frames(10)
-	assert_eq(_client.get_stats()["malformed_packets"], 2, "un OBJECT_STATE sin campos y un marcador sin páginas")
+	assert_eq(_client.get_stats()["malformed_packets"], 2, "an OBJECT_STATE without fields and a scoreboard without pages")
 
 
 func test_the_fortress_flows_to_the_view_and_the_prediction_asks_for_the_gate() -> void:
@@ -751,16 +751,16 @@ func test_the_fortress_flows_to_the_view_and_the_prediction_asks_for_the_gate() 
 	assert_true(await _wait_until(_in_world))
 	var def: FortressDefinition = load("res://data/fortresses/vado_gris.tres") as FortressDefinition
 	var view: FortressView = _client.get_fortress_view()
-	assert_false(view.has_fortress(900), "antes del SPAWN no hay fortaleza")
+	assert_false(view.has_fortress(900), "before the SPAWN there is no fortress")
 	var hook_calls: int = int(_client.get_stats()["fortress_hook_calls"])
-	assert_true(hook_calls > 0, "la predicción ya pregunta por la puerta en cada tick simulado (%d)" % hook_calls)
+	assert_true(hook_calls > 0, "the prediction already asks about the gate on every simulated tick (%d)" % hook_calls)
 	var spawn_tick: int = _fake.tick
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE,
 			NetMessages.EntitySpawn.for_fortress(900, spawn_tick, "vado_gris_fort",
 			FortressState.initial(def, spawn_tick)).encode())
-	assert_true(await _wait_until(func() -> bool: return view.has_fortress(900)), "el SPAWN crea la fortaleza")
+	assert_true(await _wait_until(func() -> bool: return view.has_fortress(900)), "the SPAWN creates the fortress")
 	assert_eq(view.get_definition_id(900), "vado_gris_fort")
-	# Un cambio de dueño con un tick algo por delante: se anota ya, pero se muestra al alcanzarlo.
+	# An owner change with a tick somewhat ahead: it is recorded at once, but shown when reached.
 	var change_tick: int = _fake.tick + 40
 	var change := NetMessages.ObjectState.new()
 	change.net_id = 900
@@ -769,15 +769,15 @@ func test_the_fortress_flows_to_the_view_and_the_prediction_asks_for_the_gate() 
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, change.encode())
 	assert_true(await _wait_until(func() -> bool:
 		return view.get_latest_state(900) != null and view.get_latest_state(900).owner == 2),
-			"el cambio se anota al llegar")
+			"the change is recorded on arrival")
 	var clock: InterpolationClock = _client.get_interpolation_clock()
-	assert_true(clock.get_render_tick() < float(change_tick), "pero el tick de dibujo aún no lo ha alcanzado")
+	assert_true(clock.get_render_tick() < float(change_tick), "but the draw tick has not reached it yet")
 	assert_true(view.get_displayed_state(900) == null or view.get_displayed_state(900).owner == 0,
-			"y la interfaz sigue mostrando el estado de antes")
+			"and the interface keeps showing the previous state")
 	assert_true(await _wait_until(func() -> bool:
 		return view.get_displayed_state(900) != null and view.get_displayed_state(900).owner == 2),
-			"cuando el tick de dibujo lo alcanza, se muestra")
-	assert_true(clock.get_render_tick() >= float(change_tick), "y no antes (render_tick %.1f)" % clock.get_render_tick())
+			"when the draw tick reaches it, it is shown")
+	assert_true(clock.get_render_tick() >= float(change_tick), "and not before (render_tick %.1f)" % clock.get_render_tick())
 	assert_eq(_client.get_stats()["malformed_packets"], 0)
 
 
@@ -795,19 +795,19 @@ func test_war_events_wait_for_the_draw_tick_and_telegraphs_arrive_at_once() -> v
 			NetMessages.EntityEvent.telegraph(901, war_tick, 3, NetMessages.EntityEvent.SHAPE_CIRCLE,
 			Vector3(1.0, 0.0, 2.0), 0.0, 250, 30).encode())
 	assert_true(await _wait_until(func() -> bool: return telegraphs.size() == 1),
-			"el TELEGRAPH se entrega al llegar")
+			"the TELEGRAPH is delivered on arrival")
 	assert_eq(telegraphs[0].impact_in_ticks, 30)
-	assert_true(wars.is_empty(), "el aviso de guerra espera a su tick de dibujo")
+	assert_true(wars.is_empty(), "the war alert waits for its draw tick")
 	assert_eq(_client.get_stats()["war_events_pending"], 1)
 	var clock: InterpolationClock = _client.get_interpolation_clock()
-	assert_true(await _wait_until(func() -> bool: return wars.size() == 1), "y luego se entrega")
-	assert_true(clock.get_render_tick() >= float(war_tick), "no antes de su tick")
+	assert_true(await _wait_until(func() -> bool: return wars.size() == 1), "and is then delivered")
+	assert_true(clock.get_render_tick() >= float(war_tick), "not before its tick")
 	assert_eq(wars[0].war_event, WarEvents.FORT_CAPTURED)
 	assert_eq(wars[0].war_realm, 2)
 	await wait_physics_frames(20)
-	assert_eq(wars.size(), 1, "una sola vez")
+	assert_eq(wars.size(), 1, "only once")
 	assert_eq(_client.get_stats()["war_events_pending"], 0)
-	assert_eq(_client.get_stats()["combat_events"], 0, "no son eventos de combate")
+	assert_eq(_client.get_stats()["combat_events"], 0, "they are not combat events")
 
 
 func test_scoreboard_pages_are_joined_and_names_come_from_the_spawns() -> void:
@@ -826,19 +826,19 @@ func test_scoreboard_pages_are_joined_and_names_come_from_the_spawns() -> void:
 	for i: int in 70:
 		all_rows.append(NetMessages.ScoreRow.make(100 + i, i, 1, 2, 3, 4, 5))
 	var pages: Array[NetMessages.Scoreboard] = NetMessages.Scoreboard.split(all_rows)
-	assert_eq(pages.size(), 2, "70 jugadores caben en dos páginas")
+	assert_eq(pages.size(), 2, "70 players fit in two pages")
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, pages[0].encode())
 	await wait_physics_frames(10)
-	assert_true(boards.is_empty(), "con una página sola el marcador no está completo")
+	assert_true(boards.is_empty(), "with a single page the scoreboard is not complete")
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, pages[1].encode())
-	assert_true(await _wait_until(func() -> bool: return boards.size() == 1), "con la segunda se publica")
+	assert_true(await _wait_until(func() -> bool: return boards.size() == 1), "with the second it is published")
 	assert_eq(boards[0], 70)
 	assert_eq(_client.get_scoreboard().get_row(150).kills, 50)
 	assert_true(await _wait_until(func() -> bool: return _client.get_directory().knows(77)))
 	assert_eq(_client.get_directory().name_of(77), "Brenna")
 	assert_eq(_client.get_directory().realm_of(77), NetProtocol.Realm.SOLMARCH)
-	assert_eq(_client.get_directory().name_of(5), _client.get_config().display_name, "el propio nombre de la configuración")
-	assert_eq(_client.get_directory().name_of(4242), "Jugador 4242", "quien no se ha visto")
+	assert_eq(_client.get_directory().name_of(5), _client.get_config().display_name, "the setting's own name")
+	assert_eq(_client.get_directory().name_of(4242), "Jugador 4242", "whoever has not been seen")
 
 
 func test_remote_entities_flow_to_the_remote_world() -> void:
@@ -853,19 +853,19 @@ func test_remote_entities_flow_to_the_remote_world() -> void:
 	other.display_name = "Otro"
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, other.encode())
 	assert_true(await _wait_until(func() -> bool:
-		return _client.get_remote_world().get_view(77) != null), "el SPAWN ajeno crea su vista")
+		return _client.get_remote_world().get_view(77) != null), "the other player's SPAWN creates their view")
 	var despawn := NetMessages.EntityDespawn.new()
 	despawn.net_id = 77
 	despawn.despawn_tick = _fake.tick + 4
 	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, despawn.encode())
 	assert_true(await _wait_until(func() -> bool:
-		return _client.get_remote_world().get_view(77) == null), "y el DESPAWN la quita")
+		return _client.get_remote_world().get_view(77) == null), "and the DESPAWN removes it")
 	assert_eq(_client.get_character().get_parent(), _client.get_meta(&"entities"),
-			"el personaje local cuelga del nodo que se pasó a notify_zone_ready")
+			"the local character hangs from the node passed to notify_zone_ready")
 	assert_eq(_client.get_remote_world().get_parent(), _client.get_meta(&"entities"))
 
 
-# --- Protocolo 6 ------------------------------------------------------------------------------
+# --- Protocol 6 -------------------------------------------------------------------------------
 
 func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat() -> void:
 	await _start()
@@ -882,7 +882,7 @@ func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat
 		events.append([event.event, is_own]))
 	var send: Callable = func(bytes: PackedByteArray) -> void:
 		_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, bytes)
-	# Una flecha propia (owner = el net_id local) y una ajena: ninguna es un personaje.
+	# One own arrow (owner = the local net_id) and one foreign: neither is a character.
 	var arrow: int = CombatCatalog.projectile_id(&"arrow")
 	send.call(NetMessages.EntitySpawn.for_projectile(600, _fake.tick, VARDHEIM, own_id, arrow,
 			CombatCatalog.attack_id(&"bow_quick"), 0, false, Vector3(1.0, 1.4, 0.0),
@@ -890,14 +890,14 @@ func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat
 	send.call(NetMessages.EntitySpawn.for_projectile(601, _fake.tick, NetProtocol.Realm.SOLMARCH, 77,
 			arrow, CombatCatalog.attack_id(&"bow_quick"), 0, true, Vector3(5.0, 1.4, 0.0),
 			Vector3(0.0, 0.0, -45.0)).encode())
-	assert_true(await _wait_until(func() -> bool: return spawned.size() == 2), "los dos SPAWN de proyectil")
-	assert_eq(spawned[0].owner_id, own_id, "la propia lleva el net_id local como dueño")
-	assert_false(spawned[0].is_yours, "aunque nunca es «tuya» en la cabecera")
-	assert_true(spawned[1].is_harmless(), "la ajena llega inofensiva")
-	assert_eq(_client.get_character(), character, "el personaje local no cambia")
-	assert_eq(_client.get_remote_world().get_view_count(), 0, "ni crean vistas de remotos")
+	assert_true(await _wait_until(func() -> bool: return spawned.size() == 2), "the two projectile SPAWNs")
+	assert_eq(spawned[0].owner_id, own_id, "the own one carries the local net_id as owner")
+	assert_false(spawned[0].is_yours, "although it is never \"yours\" in the header")
+	assert_true(spawned[1].is_harmless(), "the foreign one arrives harmless")
+	assert_eq(_client.get_character(), character, "the local character does not change")
+	assert_eq(_client.get_remote_world().get_view_count(), 0, "nor do they create remote views")
 	assert_eq(_client.get_stats()["projectile_spawns"], 2)
-	# Sus DESPAWN salen por su propia señal con el tick y el motivo.
+	# Their DESPAWNs come out through their own signal with the tick and the reason.
 	var impact := NetMessages.EntityDespawn.new()
 	impact.net_id = 600
 	impact.despawn_tick = _fake.tick + 20
@@ -908,10 +908,10 @@ func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat
 	expired.despawn_tick = _fake.tick + 120
 	expired.reason = NetProtocol.DespawnReason.EXPIRED
 	send.call(expired.encode())
-	assert_true(await _wait_until(func() -> bool: return despawned.size() == 2), "los dos DESPAWN")
-	assert_eq(despawned[0], Vector3i(600, impact.despawn_tick, NetProtocol.DespawnReason.IMPACT), "impacto")
-	assert_eq(despawned[1], Vector3i(601, expired.despawn_tick, NetProtocol.DespawnReason.EXPIRED), "caducada")
-	# Eventos nuevos: el STATUS y el LOADOUT propios llegan ya; el DOWNED de otro espera a su tick de dibujo.
+	assert_true(await _wait_until(func() -> bool: return despawned.size() == 2), "the two DESPAWNs")
+	assert_eq(despawned[0], Vector3i(600, impact.despawn_tick, NetProtocol.DespawnReason.IMPACT), "impact")
+	assert_eq(despawned[1], Vector3i(601, expired.despawn_tick, NetProtocol.DespawnReason.EXPIRED), "expired")
+	# New events: the own STATUS and LOADOUT arrive at once; another player's DOWNED waits for its draw tick.
 	var slowed: int = CombatCatalog.status_id(&"slowed")
 	send.call(NetMessages.EntityEvent.status(own_id, _fake.tick, 77, NetMessages.EntityEvent.StatusOp.APPLIED,
 			slowed, 1, _fake.tick + 180).encode())
@@ -920,17 +920,17 @@ func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat
 	var downed_tick: int = _fake.tick + 40
 	send.call(NetMessages.EntityEvent.downed(88, downed_tick, 77, CombatSource.make(CombatSource.Kind.ABILITY,
 			CombatCatalog.ability_id(&"shield_bash"))).encode())
-	assert_true(await _wait_until(func() -> bool: return events.size() >= 2), "los propios llegan")
-	assert_eq(events[0], [NetMessages.EntityEvent.Kind.STATUS, true], "STATUS propio, al llegar")
-	assert_eq(events[1], [NetMessages.EntityEvent.Kind.LOADOUT, true], "LOADOUT propio, al llegar")
-	assert_eq(events.size(), 2, "el DOWNED ajeno aún espera")
+	assert_true(await _wait_until(func() -> bool: return events.size() >= 2), "the own ones arrive")
+	assert_eq(events[0], [NetMessages.EntityEvent.Kind.STATUS, true], "own STATUS, on arrival")
+	assert_eq(events[1], [NetMessages.EntityEvent.Kind.LOADOUT, true], "own LOADOUT, on arrival")
+	assert_eq(events.size(), 2, "the other player's DOWNED still waits")
 	var clock: InterpolationClock = _client.get_interpolation_clock()
-	assert_true(await _wait_until(func() -> bool: return events.size() == 3), "y luego se entrega")
-	assert_eq(events[2], [NetMessages.EntityEvent.Kind.DOWNED, false], "DOWNED ajeno")
-	assert_true(clock.get_render_tick() >= float(downed_tick), "no antes de su tick")
-	assert_eq(_client.get_stats()["malformed_packets"], 0, "nada del protocolo 6 cuenta como malformado")
-	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "el cliente sigue en el mundo")
-	# Un id que fue de una flecha puede volver como entidad (comparten espacio de ids) y va al mundo remoto.
+	assert_true(await _wait_until(func() -> bool: return events.size() == 3), "and is then delivered")
+	assert_eq(events[2], [NetMessages.EntityEvent.Kind.DOWNED, false], "other player's DOWNED")
+	assert_true(clock.get_render_tick() >= float(downed_tick), "not before its tick")
+	assert_eq(_client.get_stats()["malformed_packets"], 0, "nothing from protocol 6 counts as malformed")
+	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "the client is still in the world")
+	# An id that belonged to an arrow can come back as an entity (they share the id space) and goes to the remote world.
 	var other := NetMessages.EntitySpawn.new()
 	other.net_id = 600
 	other.spawn_tick = _fake.tick
@@ -939,19 +939,19 @@ func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat
 	other.display_name = "Otro"
 	send.call(other.encode())
 	assert_true(await _wait_until(func() -> bool:
-		return _client.get_remote_world().get_view(600) != null), "el id reutilizado crea su vista")
+		return _client.get_remote_world().get_view(600) != null), "the reused id creates its view")
 
 
-## Revisión de la fase 4 (lente «habilidades»): el [StatusTracker] de un remoto sigue el orden de ticks del
-## servidor aunque mezcle eventos ajenos (que esperan a su tick de dibujo) y propios (cuya señal sale al
-## llegar). Antes, el STATUS 2 ajeno de la caducidad de la ralentización de un aliado (tick t) se entregaba
-## después del STATUS 1 propio con que el jugador local la volvía a poner en t + 2 y borraba de la placa el
-## efecto nuevo; y en una renovación STACK, la ajena vieja pisaba la propia nueva (1 acumulación en vez de 2).
+## Phase 4 review ("abilities" lens): a remote's [StatusTracker] follows the server's tick order even when
+## mixing foreign events (which wait for their draw tick) and own ones (whose signal goes out on
+## arrival). Before, an ally's foreign STATUS 2 for the slow's expiry (tick t) was delivered
+## after the own STATUS 1 with which the local player put it back at t + 2 and erased the new
+## effect from the nameplate; and on a STACK renewal, the old foreign one overwrote the new own one (1 stack instead of 2).
 func test_a_remote_status_tracker_follows_the_server_order_of_own_and_foreign_events() -> void:
 	await _start()
 	assert_true(await _wait_until(_in_world))
 	var clock: InterpolationClock = _client.get_interpolation_clock()
-	assert_true(await _wait_until(func() -> bool: return clock.get_render_tick() > 0.0), "el reloj de dibujo anda")
+	assert_true(await _wait_until(func() -> bool: return clock.get_render_tick() > 0.0), "the draw clock runs")
 	var own_id: int = _client.get_net_id()
 	var remote: int = 88
 	var events: Array[Array] = []
@@ -963,48 +963,48 @@ func test_a_remote_status_tracker_follows_the_server_order_of_own_and_foreign_ev
 	var bleed: int = CombatCatalog.status_id(&"bleed")
 	var applied: int = NetMessages.EntityEvent.StatusOp.APPLIED
 	var t: int = _fake.tick + 40
-	# La ralentización del aliado 77 caduca en t y el local la vuelve a poner en t + 2.
+	# Ally 77's slow expires at t and the local player puts it back at t + 2.
 	send.call(NetMessages.EntityEvent.status(remote, t, 77, NetMessages.EntityEvent.StatusOp.REMOVED, slowed,
 			0, t))
 	send.call(NetMessages.EntityEvent.status(remote, t + 2, own_id, applied, slowed, 1, t + 182))
-	# El aliado sangra al remoto en t y el local lo renueva en t + 2 (dos acumulaciones).
+	# The ally bleeds the remote at t and the local player renews it at t + 2 (two stacks).
 	send.call(NetMessages.EntityEvent.status(remote, t, 77, applied, bleed, 1, t + 360))
 	send.call(NetMessages.EntityEvent.status(remote, t + 2, own_id, applied, bleed, 2, t + 362))
-	assert_true(await _wait_until(func() -> bool: return events.size() >= 2), "los propios llegan")
-	assert_eq(events, [[slowed, own_id, true], [bleed, own_id, true]], "la señal de los propios sale al llegar")
-	assert_true(clock.get_render_tick() < float(t), "antes del tick de dibujo de t")
-	assert_null(_client.get_status_tracker(remote), "el tracker del remoto los recibe en su tick de dibujo")
+	assert_true(await _wait_until(func() -> bool: return events.size() >= 2), "the own ones arrive")
+	assert_eq(events, [[slowed, own_id, true], [bleed, own_id, true]], "the own ones' signal goes out on arrival")
+	assert_true(clock.get_render_tick() < float(t), "before draw tick t")
+	assert_null(_client.get_status_tracker(remote), "the remote's tracker receives them at its draw tick")
 	assert_true(await _wait_until(func() -> bool: return clock.get_render_tick() >= float(t + 2), 300),
-			"el tick de dibujo pasa de t + 2")
+			"the draw tick goes past t + 2")
 	await wait_physics_frames(2)
-	assert_eq(events.size(), 4, "y luego salen los dos ajenos")
+	assert_eq(events.size(), 4, "and then the two foreign ones go out")
 	var tracker: StatusTracker = _client.get_status_tracker(remote)
-	if assert_not_null(tracker, "el remoto tiene tracker"):
+	if assert_not_null(tracker, "the remote has a tracker"):
 		var slow: StatusTracker.Entry = tracker.get_entry(slowed)
-		if assert_not_null(slow, "la ralentización que puso el local sigue en la placa"):
+		if assert_not_null(slow, "the slow the local player applied stays on the nameplate"):
 			assert_eq([slow.until_tick, slow.source_entity], [t + 182, own_id])
 		var bleeding: StatusTracker.Entry = tracker.get_entry(bleed)
-		if assert_not_null(bleeding, "el sangrado también"):
+		if assert_not_null(bleeding, "the bleed too"):
 			assert_eq([bleeding.stacks, bleeding.until_tick, bleeding.source_entity], [2, t + 362, own_id],
-					"con la renovación propia, la más nueva")
-	assert_eq(_client.get_stats()["combat_events_pending"], 0, "nada se queda en la cola")
+					"with the own renewal, the newest")
+	assert_eq(_client.get_stats()["combat_events_pending"], 0, "nothing is left in the queue")
 
 
 func test_the_chosen_template_goes_in_a_loadout_select_right_after_the_welcome() -> void:
 	await _start()
-	# La plantilla elegida antes de conectar (elección de reino o --loadout).
+	# The template chosen before connecting (realm choice or --loadout).
 	_client.get_config().loadout = "marksman"
 	assert_true(await _wait_until(_in_world))
 	await wait_physics_frames(4)
 	var marksman: int = CombatCatalog.template_id(&"marksman")
-	assert_eq(_fake.loadout_selects.size(), 1, "un LOADOUT_SELECT")
-	assert_eq(int(_fake.loadout_selects[0]["template"]), marksman, "con el id del tirador")
-	assert_eq(int(_fake.loadout_selects[0]["ready_count"]), 0, "antes del CLIENT_READY (vale ya en la carga)")
-	# Desde la pantalla de muerte: otra, que también se recuerda para la próxima conexión.
+	assert_eq(_fake.loadout_selects.size(), 1, "a LOADOUT_SELECT")
+	assert_eq(int(_fake.loadout_selects[0]["template"]), marksman, "with the marksman's id")
+	assert_eq(int(_fake.loadout_selects[0]["ready_count"]), 0, "before the CLIENT_READY (valid already on load)")
+	# From the death screen: another, which is also remembered for the next connection.
 	var squire: int = CombatCatalog.template_id(&"squire")
 	assert_true(_client.send_loadout_select(squire))
 	assert_eq(_client.get_config().loadout, "squire")
-	assert_false(_client.send_loadout_select(250), "un id que no es una plantilla no sale")
+	assert_false(_client.send_loadout_select(250), "an id that is not a template does not go out")
 	assert_true(await _wait_until(func() -> bool: return _fake.loadout_selects.size() == 2))
 	assert_eq(int(_fake.loadout_selects[1]["template"]), squire)
 	assert_eq(_client.get_stats()["loadout_selects"], 2)
@@ -1017,7 +1017,7 @@ func test_protocol_6_own_events_explain_corrections() -> void:
 	var slowed: int = CombatCatalog.status_id(&"slowed")
 	var bleed: int = CombatCatalog.status_id(&"bleed")
 	var cases: Array[Array] = [
-		# evento, ¿explica?, texto
+		# event, does it explain?, text
 		[NetMessages.EntityEvent.status(5, 100, 9, 1, slowed, 1, 280), true, "una ralentización sobre uno mismo"],
 		[NetMessages.EntityEvent.status(5, 200, 9, 1, bleed, 1, 560), false, "un sangrado no toca la simulación"],
 		[NetMessages.EntityEvent.status(7, 300, 5, 1, slowed, 1, 480), false, "ralentizar a otro no"],

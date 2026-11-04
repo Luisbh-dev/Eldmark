@@ -1,21 +1,21 @@
 class_name Ballistics
 extends RefCounted
-## Balística de los proyectiles (docs/habilidades.md, sección 4.4). Servidor y cliente llaman a la
-## misma [method position], con [code]n[/code] entero (el servidor, en cada tick) o fraccionario (el
-## dibujo), a partir del origen y la velocidad tal y como viajan en el ENTITY_SPAWN
-## ([method quantize]): así las dos trayectorias son la misma. [method solve_lead] da el tiro
-## adelantado de los bots y los PNJ.
+## Projectile ballistics (docs/habilidades.md, section 4.4). Server and client call the
+## same [method position], with [code]n[/code] integer (the server, on each tick) or fractional (the
+## drawing), from the origin and velocity exactly as they travel in the ENTITY_SPAWN
+## ([method quantize]): so both trajectories are the same. [method solve_lead] gives the
+## lead shot for bots and NPCs.
 
-## Ticks por segundo de la simulación.
+## Simulation ticks per second.
 const TICK_RATE: float = 60.0
-## Pasos de punto fijo de [method solve_lead].
+## Fixed-point steps of [method solve_lead].
 const _LEAD_ITERATIONS: int = 16
 
 
-## Posición de un proyectil lanzado desde [param p0] con velocidad [param v0] (m/s) y gravedad
-## [param gravity] (m/s², hacia abajo) tras [param ticks] ticks:
-## [code]p0 + v0 · n/60 + (0, −½ · g · (n/60)², 0)[/code]. Cada eje se calcula en coma flotante de
-## 64 bits y se redondea una sola vez al construir el [Vector3].
+## Position of a projectile launched from [param p0] with velocity [param v0] (m/s) and gravity
+## [param gravity] (m/s², downward) after [param ticks] ticks:
+## [code]p0 + v0 · n/60 + (0, −½ · g · (n/60)², 0)[/code]. Each axis is computed in 64-bit floating
+## point and rounded only once when building the [Vector3].
 static func position(p0: Vector3, v0: Vector3, gravity: float, ticks: float) -> Vector3:
 	var t: float = ticks / TICK_RATE
 	var x: float = p0.x + v0.x * t
@@ -24,9 +24,9 @@ static func position(p0: Vector3, v0: Vector3, gravity: float, ticks: float) -> 
 	return Vector3(x, y, z)
 
 
-## [param p0] y [param v0] redondeados como viajan en el ENTITY_SPAWN de un proyectil: la posición a
-## 1 cm (20 bits por eje, como el registro de entidad) y la velocidad a 1 cm/s (s16 por eje). El
-## servidor vuela con esto, no con lo que calculó. Devuelve [code][p0, v0][/code].
+## [param p0] and [param v0] rounded as they travel in a projectile's ENTITY_SPAWN: position to
+## 1 cm (20 bits per axis, like the entity record) and velocity to 1 cm/s (s16 per axis). The
+## server flies with this, not with what it computed. Returns [code][p0, v0][/code].
 static func quantize(p0: Vector3, v0: Vector3) -> Array:
 	var position_q: Vector3 = NetMath.unpack_position(NetMath.pack_position(p0))
 	var velocity_q := Vector3(
@@ -37,14 +37,14 @@ static func quantize(p0: Vector3, v0: Vector3) -> Array:
 	return [position_q, velocity_q]
 
 
-## Dirección (unitaria) con la que hay que lanzar desde [param origin], a [param speed] m/s y con
-## [param gravity] m/s² hacia abajo, un proyectil que alcance a un blanco que está en
-## [param target] y se mueve a [param target_velocity] m/s: el tiro adelantado de los bots y los PNJ.
-## Busca el tiempo de vuelo [code]T[/code] con
-## [code]|target − origin + target_velocity · T + (0, ½ · g · T², 0)| = speed · T[/code] por
-## iteración de punto fijo (un número fijo de pasos: determinista), empezando por la distancia entre
-## la velocidad; converge mientras el blanco sea bastante más lento que el proyectil. Sin velocidad,
-## o con el blanco en el origen, devuelve la dirección recta (o [constant Vector3.FORWARD]).
+## Direction (unit) in which a projectile must be launched from [param origin], at [param speed] m/s and with
+## [param gravity] m/s² downward, to reach a target that is at
+## [param target] and moves at [param target_velocity] m/s: the lead shot for bots and NPCs.
+## It looks for the flight time [code]T[/code] with
+## [code]|target − origin + target_velocity · T + (0, ½ · g · T², 0)| = speed · T[/code] by
+## fixed-point iteration (a fixed number of steps: deterministic), starting from the distance divided by
+## the speed; it converges as long as the target is considerably slower than the projectile. With no velocity,
+## or with the target at the origin, it returns the straight direction (or [constant Vector3.FORWARD]).
 static func solve_lead(origin: Vector3, target: Vector3, target_velocity: Vector3, speed: float,
 		gravity: float) -> Vector3:
 	var offset: Vector3 = target - origin

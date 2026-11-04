@@ -1,37 +1,37 @@
 extends SceneTree
-## Fija los ajustes de importación de las texturas de modelos (todo lo que hay bajo
-## [code]res://assets/models[/code]): VRAM comprimida (BPTC/S3TC) con mipmaps, como pide
-## docs/arte.md (4.2), y compresión de mapa de normales en los [code]*_normal.png[/code].
+## Sets the import settings of model textures (everything under
+## [code]res://assets/models[/code]): VRAM compression (BPTC/S3TC) with mipmaps, as docs/arte.md (4.2)
+## requires, and normal-map compression on the [code]*_normal.png[/code] files.
 ##
-## Hace falta porque la detección 3D de Godot ([code]detect_3d[/code]) solo actúa dentro del
-## editor: en una importación headless las texturas de los glTF se quedarían sin comprimir y sin
-## mipmaps (más VRAM, brillos y parpadeo en la piedra lejana). Con [code]detect_3d/compress_to=0[/code]
-## el editor ya no las reescribe al abrirse.
+## It is needed because Godot's 3D detection ([code]detect_3d[/code]) only acts inside the
+## editor: in a headless import the glTF textures would be left uncompressed and without
+## mipmaps (more VRAM, shimmering and flicker on distant stone). With [code]detect_3d/compress_to=0[/code]
+## the editor no longer rewrites them when it opens.
 ## [br][br]
-## Uso (con el editor cerrado; después hay que volver a importar):
+## Usage (with the editor closed; you then have to re-import):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/assets/apply_texture_import_presets.gd
 ## godot --headless --path . --import
 ## [/codeblock]
-## También lo llama tools/assets/copy_vado_gris_assets.gd al terminar. Conserva el resto del
-## .import (uid, rutas), así que las referencias por uid siguen valiendo. Es idempotente.
+## tools/assets/copy_vado_gris_assets.gd also calls it when it finishes. It preserves the rest of the
+## .import (uid, paths), so uid references stay valid. It is idempotent.
 
-## Carpetas que se recorren (recursivamente).
+## Folders that are traversed (recursively).
 const ROOTS: PackedStringArray = ["res://assets/models"]
-## Texturas con recorte por alfa (hojas, hierba, flores): con todos los mipmaps el alfa medio
-## baja del umbral de recorte y el follaje lejano se deshace; se limitan los niveles para que a
-## distancia siga teniendo cuerpo.
+## Textures with alpha cutout (leaves, grass, flowers): with all the mipmaps the mean alpha
+## falls below the cutout threshold and distant foliage dissolves; the levels are limited so that at
+## a distance it still has body.
 const FOLIAGE_TEXTURES: PackedStringArray = [
 	"grass.png", "leaf_pine_c.png", "leaves_normal_tree_c.png", "flowers.png",
 	"leaves.png", "leaves_twisted_tree_c.png",
 ]
-## Niveles de mipmap de las texturas de follaje (1024 px -> hasta 128 px).
+## Mipmap levels of the foliage textures (1024 px -> down to 128 px).
 const FOLIAGE_MIP_LIMIT: int = 4
 
-## Valores de [code]compress/normal_map[/code] del importador de texturas.
+## Values of [code]compress/normal_map[/code] of the texture importer.
 const NORMAL_MAP_ENABLE: int = 1
 const NORMAL_MAP_DISABLE: int = 2
-## [code]compress/mode[/code] = VRAM comprimida.
+## [code]compress/mode[/code] = VRAM compressed.
 const COMPRESS_VRAM: int = 2
 
 
@@ -48,7 +48,7 @@ func _initialize() -> void:
 	quit(0)
 
 
-## Ajustes de importación que debe tener la textura [param png_path].
+## Import settings that the texture [param png_path] must have.
 static func preset_for(png_path: String) -> Dictionary:
 	var file_name: String = png_path.get_file().to_lower()
 	var params: Dictionary = {
@@ -66,8 +66,8 @@ static func preset_for(png_path: String) -> Dictionary:
 	return params
 
 
-## Escribe (o corrige) el .import de [param png_path] con [method preset_for]. Devuelve true si
-## ha cambiado algo.
+## Writes (or fixes) the .import of [param png_path] with [method preset_for]. Returns true if
+## anything changed.
 static func apply_preset(png_path: String) -> bool:
 	var import_path: String = png_path + ".import"
 	var config := ConfigFile.new()
@@ -90,7 +90,7 @@ static func apply_preset(png_path: String) -> bool:
 	return changed
 
 
-## PNG bajo [param dir], recursivamente y ordenados.
+## PNGs under [param dir], recursively and sorted.
 static func list_textures(dir: String) -> PackedStringArray:
 	var result: PackedStringArray = PackedStringArray()
 	if not DirAccess.dir_exists_absolute(dir):

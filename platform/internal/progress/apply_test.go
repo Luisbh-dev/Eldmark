@@ -13,8 +13,9 @@ import (
 	"eldmark/platform/internal/db"
 )
 
-// Cada caso de save_cases.json, en una base nueva, da en cada paso lo que dice su expect: los mismos casos que
-// genera la zona con PlayerProgress (progresion.md §13.3), así las dos implementaciones no divergen.
+// Each case in save_cases.json, on a fresh database, yields at each step what its expect says: the
+// same cases the zone generates with PlayerProgress (progresion.md §13.3), so the two
+// implementations do not diverge.
 func TestApplyFixtures(t *testing.T) {
 	c := loadCases(t)
 	checks := map[string]int{}
@@ -40,10 +41,10 @@ func TestApplyFixtures(t *testing.T) {
 	}
 }
 
-// S8 escribe el guardado: save_version sube de uno en uno, saved_at es la hora del almacén, los saldos llevan
-// su last_seq y los apuntes su seq, los objetos su created_op, las operaciones la zona de la instancia, y
-// cada GM o REVERSAL deja su fila de audit_log con op:<op_id> (at = detail.at_unix), sin duplicar la que ya
-// mandó el lote de la zona.
+// S8 writes the save: save_version goes up one at a time, saved_at is the store's time, balances
+// carry their last_seq and entries their seq, objects their created_op, operations the instance's
+// zone, and each GM or REVERSAL leaves its audit_log row with op:<op_id> (at = detail.at_unix),
+// without duplicating the one the zone's batch already sent.
 func TestApplyWritesTheSave(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -101,7 +102,7 @@ func TestApplyWritesTheSave(t *testing.T) {
 		row.acc != 7 || !row.at.Equal(time.Unix(c.NowUnix, 0)) {
 		t.Fatalf("auditoría de la GM: %+v", row)
 	}
-	// La entrada del lote de la zona llega antes con la misma clave: el guardado no la duplica ni la pisa.
+	// The zone batch's entry arrives earlier with the same key: the save neither duplicates nor overwrites it.
 	w.exec(`insert into audit_log (world_id, zone_id, source, actor_account_id, actor_character_id, command,
 			target_account_id, target_character_id, args, at, event_key)
 		values (1, 'vado_gris', 'zone', 77, 41, 'op_revert', 7, 42, '{"args": ["1032", "del lote"]}', now(), 'op:1033')`)
@@ -115,7 +116,7 @@ func TestApplyWritesTheSave(t *testing.T) {
 	if n := w.count(`select count(*) from op_reversals where op_id = 1032 and reversal_op_id = 1033`); n != 1 {
 		t.Fatalf("op_reversals: %d", n)
 	}
-	// La consola: source console y sin actor.
+	// The console: source console and no actor.
 	w.clock.advance(time.Minute)
 	idle := edit(t, reversal, func(m map[string]any) { m["ops"] = []any{} })
 	if got, _ := w.apply(42, withOps(t, idle, 3, gmOp(1100, w.clock.now().Unix(), 1, 3))); got != "applied" {
@@ -130,8 +131,8 @@ func TestApplyWritesTheSave(t *testing.T) {
 	}
 }
 
-// S7 acepta un temporizador vencido en un reintento tardío (el reloj de la plataforma ya ha pasado su fin) y lo
-// guarda; uno a más de 7 días de la hora del almacén, no.
+// S7 accepts an expired timer in a late retry (the platform's clock has already passed its end)
+// and stores it; one more than 7 days from the store's time, no.
 func TestApplyLateRetryKeepsExpiredTimers(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -154,15 +155,15 @@ func TestApplyLateRetryKeepsExpiredTimers(t *testing.T) {
 	if got, _ := w.apply(42, far); got != "S7" {
 		t.Fatalf("a más de 7 días: %s", got)
 	}
-	// Sin temporizadores en el cuerpo, el conjunto se vacía.
+	// With no timers in the body, the set is emptied.
 	if got, _ := w.apply(42, edit(t, far, func(m map[string]any) { m["timers"] = []any{} })); got != "applied" ||
 		w.count(`select count(*) from character_timers`) != 0 {
 		t.Fatalf("sin temporizadores: %s", got)
 	}
 }
 
-// S2 mira el rol del actor en detail.at_unix: una GM creada antes de que set-role bajara al GM a player se
-// guarda; una creada después, no; y una fila set-role que no es de la CLI no cuenta.
+// S2 looks at the actor's role at detail.at_unix: a GM created before set-role demoted the GM to
+// player is stored; one created after is not; and a set-role row that is not from the CLI does not count.
 func TestApplyActorRoleAtTheTime(t *testing.T) {
 	c := loadCases(t)
 	_, kit := c.step(t, "valid_kit_and_play", 0)
@@ -185,7 +186,7 @@ func TestApplyActorRoleAtTheTime(t *testing.T) {
 	if got, _ := w.apply(42, late); got != "S2" {
 		t.Fatalf("GM de después del set-role: %s", got)
 	}
-	// Una fila set-role con source zone no da el rol de antes.
+	// A set-role row with source zone does not give the earlier role.
 	w2 := newWorld(t, c)
 	w2.apply(42, kit)
 	w2.exec(`update accounts set role = 'player' where account_id = 77`)
@@ -196,8 +197,7 @@ func TestApplyActorRoleAtTheTime(t *testing.T) {
 	}
 }
 
-// Un intercambio de ranuras y una rotación de tres caben en una transacción (la restricción de ranuras es
-// diferida).
+// A slot swap and a three-way rotation fit in one transaction (the slot constraint is deferred).
 func TestApplySwapsSlots(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -227,8 +227,9 @@ func TestApplySwapsSlots(t *testing.T) {
 	}
 }
 
-// Dos guardados a la vez de dos personajes con el mismo uid nuevo: uno pasa y el otro choca con la clave
-// primaria (S8) y no deja nada. Lo mismo con el mismo op_id: la operación se queda con un participante.
+// Two simultaneous saves of two characters with the same new uid: one goes through and the other
+// collides with the primary key (S8) and leaves nothing behind. The same with the same op_id: the
+// operation keeps one participant.
 func TestDuplicateUid(t *testing.T) {
 	c := loadCases(t)
 	_, kit := c.step(t, "valid_kit_and_play", 0)
@@ -290,7 +291,7 @@ func shift(uid string, by int64) string {
 	return id(v + by)
 }
 
-// waitForLock espera a que alguna sesión de la base esté esperando un bloqueo.
+// waitForLock waits until some database session is waiting on a lock.
 func waitForLock(t testing.TB, pool *pgxpool.Pool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -308,9 +309,9 @@ func waitForLock(t testing.TB, pool *pgxpool.Pool) {
 	t.Fatal("ninguna transacción espera un bloqueo")
 }
 
-// Dos transacciones a la vez gastan 60 de un saldo de 100 (progresion.md §5.4): con la guarda del UPDATE, la
-// segunda no toca ninguna fila; con Apply, la segunda espera al progreso bloqueado y falla S3. El saldo queda
-// en 40 y es la suma del libro.
+// Two simultaneous transactions spend 60 from a balance of 100 (progresion.md §5.4): with the
+// UPDATE guard, the second touches no row; with Apply, the second waits on the locked progress
+// and fails S3. The balance ends at 40 and is the sum of the ledger.
 func TestWalletConcurrency(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -353,7 +354,7 @@ func TestWalletConcurrency(t *testing.T) {
 		t.Fatalf("saldo: %d", balance)
 	}
 
-	// Con Apply.
+	// With Apply.
 	_, kit := c.step(t, "valid_kit_and_play", 0)
 	w.apply(42, kit)
 	idle := edit(t, kit, func(m map[string]any) { m["ops"] = []any{} })
@@ -388,7 +389,7 @@ func TestWalletConcurrency(t *testing.T) {
 	if balance != 40 || sum != 40 {
 		t.Fatalf("saldo %d, suma del libro %d", balance, sum)
 	}
-	// Reconstrucción: cada balance_after es el anterior más su delta.
+	// Reconstruction: each balance_after is the previous one plus its delta.
 	rowsOf, err := w.pool.Query(ctx, `select delta, balance_after from ledger_entries where character_id = 42
 		and currency = 1 order by seq`)
 	if err != nil {
@@ -408,9 +409,9 @@ func TestWalletConcurrency(t *testing.T) {
 	rowsOf.Close()
 }
 
-// El esquema admite una operación con dos participantes (la del comercio de la fase 6) en una transacción y
-// rechaza el mismo participante dos veces o un apunte sin participación; por Apply, la misma operación en el
-// guardado de otro personaje falla S2 (la excepción de SaveMany es de la fase 6).
+// The schema allows an operation with two participants (the phase 6 trade one) in one
+// transaction and rejects the same participant twice or an entry without a participation; through
+// Apply, the same operation in another character's save fails S2 (the SaveMany exception is phase 6).
 func TestTwoCharacterOp(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -455,8 +456,8 @@ func TestTwoCharacterOp(t *testing.T) {
 	}
 }
 
-// Revertir méritos de juego (motivo 3–5) baja los puntos de reino lo mismo (I9, S6); revertir méritos de una
-// GM no los mueve.
+// Reverting gameplay merits (reason 3–5) lowers realm points the same amount (I9, S6); reverting
+// a GM's merits does not move them.
 func TestApplyReversalOfMeritsLowersRealmPoints(t *testing.T) {
 	c := loadCases(t)
 	w := newWorld(t, c)
@@ -492,7 +493,7 @@ func TestApplyReversalOfMeritsLowersRealmPoints(t *testing.T) {
 			}
 		})
 	}
-	// La GAMEPLAY 1031 dio 2 de oro y 30 méritos de una baja (30 puntos de reino).
+	// GAMEPLAY 1031 gave 2 gold and 30 merits from a kill (30 realm points).
 	op := revert(1100, 1031, entry(1, -2, 50, 1031), entry(2, -30, 0, 1031))
 	if got, _ := w.apply(42, body(30, 0, op)); got != "S6" {
 		t.Fatalf("puntos de reino sin bajar: %s", got)
@@ -500,7 +501,7 @@ func TestApplyReversalOfMeritsLowersRealmPoints(t *testing.T) {
 	if got, _ := w.apply(42, body(0, 0, op)); got != "applied" {
 		t.Fatalf("puntos de reino bajados: %s", got)
 	}
-	// Una GM de +10 méritos, revertida: los puntos de reino no se mueven.
+	// A GM operation of +10 merits, reverted: realm points do not move.
 	w2 := newWorld(t, c)
 	w2.apply(42, kit)
 	w2.apply(42, play)
@@ -524,9 +525,9 @@ func TestApplyReversalOfMeritsLowersRealmPoints(t *testing.T) {
 	}
 }
 
-// S2 mira la forma de cada operación: detail solo en GM y REVERSAL (y con sus claves, un command de zona y
-// args en lista), actor_account_id solo en ellas, ref_op_id solo en la REVERSAL, la note hasta 200 caracteres
-// y un op_id una vez por cuerpo.
+// S2 checks the shape of each operation: detail only on GM and REVERSAL (and with its keys, a
+// zone command and args as a list), actor_account_id only on them, ref_op_id only on REVERSAL,
+// the note up to 200 characters and an op_id once per body.
 func TestApplyOpShape(t *testing.T) {
 	c := loadCases(t)
 	_, kit := c.step(t, "valid_kit_and_play", 0)

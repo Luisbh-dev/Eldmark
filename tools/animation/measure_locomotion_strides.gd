@@ -1,24 +1,23 @@
 extends SceneTree
-## Mide la velocidad sobre el suelo de los clips de locomoción del humanoide tal como se ven en
-## el modelo instalado (Ranger con la cabeza Superhero, 1,84 m), para ajustar
-## [member CharacterAnimator.clip_ground_speeds].
+## Measures the ground speed of the humanoid's locomotion clips as seen in the installed model
+## (Ranger with the Superhero head, 1.84 m), to tune [member CharacterAnimator.clip_ground_speeds].
 ##
-## Reproduce cada clip solo (el resto del BlendSpace a cero), en el sitio y a un ciclo por
-## segundo, y mide la velocidad hacia atrás de las puntas de los pies (huesos LeftToes y
-## RightToes) en el espacio del modelo mientras están apoyadas (a menos de 2 cm de su punto más
-## bajo), en coordenadas del mundo con el modelo quieto en el origen. Esa velocidad es la zancada por ciclo; dividida entre la duración natural del clip da
-## la velocidad sobre el suelo a velocidad de reproducción 1.
+## It plays each clip alone (the rest of the BlendSpace at zero), in place and at one cycle per
+## second, and measures the backward speed of the tips of the feet (the LeftToes and RightToes
+## bones) in model space while they are planted (within 2 cm of their lowest point), in world
+## coordinates with the model standing still at the origin. That speed is the stride per cycle; divided by the clip's natural
+## duration it gives the ground speed at playback speed 1.
 ## [br][br]
-## Uso (sin ventana; --fixed-fps hace la medida determinista):
+## Usage (no window; --fixed-fps makes the measurement deterministic):
 ## [codeblock]
 ## godot --headless --path . --fixed-fps 60 -s res://tools/animation/measure_locomotion_strides.gd
 ## [/codeblock]
 
 const VISUAL_SCENE: String = "res://scenes/characters/visuals/humanoid_visual.tscn"
-## Fotogramas que se dejan pasar antes de medir y fotogramas medidos (a 60 por segundo).
+## Frames that are skipped before measuring and frames measured (at 60 per second).
 const WARMUP_FRAMES: int = 90
 const RECORD_FRAMES: int = 240
-## Altura sobre el punto más bajo por debajo de la cual el pie cuenta como apoyado (m).
+## Height above the lowest point below which the foot counts as planted (m).
 const PLANTED_TOLERANCE: float = 0.02
 
 var _visual: Node3D
@@ -35,7 +34,7 @@ func _run() -> void:
 	_visual = (load(VISUAL_SCENE) as PackedScene).instantiate() as Node3D
 	root.add_child(_visual)
 	await process_frame
-	# Sin personaje el animador no toca el árbol: se conduce a mano.
+	# With no character the animator does not touch the tree: it is driven by hand.
 	var animator: Node = _visual.call(&"get_animator")
 	animator.set_process(false)
 	_tree = _visual.get_node(^"AnimationTree") as AnimationTree
@@ -58,7 +57,7 @@ func _run() -> void:
 	quit(0)
 
 
-## Zancada (m por ciclo) del clip que está en [param blend_position] del BlendSpace.
+## Stride (m per cycle) of the clip at [param blend_position] in the BlendSpace.
 func _measure_stride(blend_position: float) -> float:
 	_tree.set(&"parameters/move/blend_amount", 1.0)
 	_tree.set(&"parameters/air/blend_amount", 0.0)
@@ -83,11 +82,11 @@ func _measure_stride(blend_position: float) -> float:
 			var a: Vector3 = samples[k][j - 1]
 			var b: Vector3 = samples[k][j]
 			if a.y <= lowest + PLANTED_TOLERANCE and b.y <= lowest + PLANTED_TOLERANCE:
-				# El modelo mira hacia -Z (como el PlayerCharacter): el pie apoyado va hacia +Z.
+				# The model faces -Z (like the PlayerCharacter): the planted foot moves toward +Z.
 				speeds.append((b.z - a.z) / dt)
 	speeds.sort()
 	if speeds.is_empty():
 		push_error("No se detectó ningún apoyo en el punto %.3f" % blend_position)
 		return 0.0
-	# Un ciclo por segundo: la velocidad del pie apoyado es la zancada por ciclo.
+	# One cycle per second: the planted foot's speed is the stride per cycle.
 	return speeds[speeds.size() / 2]

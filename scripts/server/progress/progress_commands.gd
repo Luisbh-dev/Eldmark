@@ -1,57 +1,57 @@
 class_name ProgressCommands
 extends RefCounted
-## Los comandos de GM de la progresión y la economía (docs/progresion.md §10, P5d; PRG-16). Los registra
-## [method ProgressService.setup] en el [CommandRegistry]: por la consola, por [code]/gm …[/code] con el rol de la
-## reclamación (todos piden [code]gm[/code]) y, los cuatro con id de red (40 [code]item_give[/code], 41
-## [code]currency_add[/code], 42 [code]level_set[/code] y 43 [code]xp_add[/code]), por DEBUG_COMMAND sobre el propio
-## jugador, que con la plataforma pide [code]admin[/code]. En la fase 5 el personaje tiene que estar conectado en
-## esta zona.
+## The GM commands for progression and economy (docs/progresion.md §10, P5d; PRG-16). They are registered by
+## [method ProgressService.setup] in the [CommandRegistry]: through the console, through [code]/gm …[/code] with the
+## role of the claim (all require [code]gm[/code]) and, the four with a network id (40 [code]item_give[/code], 41
+## [code]currency_add[/code], 42 [code]level_set[/code] and 43 [code]xp_add[/code]), through DEBUG_COMMAND on the
+## player's own character, which with the platform requires [code]admin[/code]. In phase 5 the character must be
+## connected in this zone.
 ## [br][br]
-## [b]Lo que cambia algo[/b] ([code]item_give[/code], [code]item_take[/code], [code]currency_add[/code],
-## [code]level_set[/code], [code]xp_add[/code], [code]op_revert[/code] y el 16 [code]refill[/code] con plataforma, que
-## llama la zona) crea [b]una sola operación[/b]: una GM o, en [code]op_revert[/code], la REVERSAL, entera o nada
-## ([method PlayerProgress.abort_op]), con el rastro de §10 (el actor, la [code]note[/code] obligatoria, «debug» por
-## DEBUG_COMMAND, y el [code]detail[/code] con [code]command[/code], [code]args[/code] con el objetivo por su
-## [code]character_id[/code], [code]source[/code], [code]actor_character_id[/code] y [code]at_unix[/code], más nivel y
-## XP de antes y después si los toca), guardado crítico [code]gm[/code], y su entrada del lote de auditoría con la
-## clave [code]op:<op_id>[/code], los mismos campos y la misma hora que la fila que escribe el guardado (S8). Antes:
-## la regla de los propios personajes (sobre uno de la cuenta de quien lo manda, solo [code]admin[/code], sin
-## excepción por entorno) y la zona cercada («El servicio de cuentas no responde; inténtalo más tarde», sin crear
-## nada).
+## [b]Anything that changes something[/b] ([code]item_give[/code], [code]item_take[/code], [code]currency_add[/code],
+## [code]level_set[/code], [code]xp_add[/code], [code]op_revert[/code] and the 16 [code]refill[/code] with a platform,
+## which the zone calls) creates [b]a single operation[/b]: a GM one or, in [code]op_revert[/code], the REVERSAL, all or
+## nothing ([method PlayerProgress.abort_op]), with the §10 trail (the actor, the mandatory [code]note[/code], "debug"
+## for DEBUG_COMMAND, and the [code]detail[/code] with [code]command[/code], [code]args[/code] with the target by its
+## [code]character_id[/code], [code]source[/code], [code]actor_character_id[/code] and [code]at_unix[/code], plus level
+## and XP from before and after if it touches them), critical save [code]gm[/code], and its entry in the audit batch
+## with the key [code]op:<op_id>[/code], the same fields and the same time as the row the save writes (S8). Beforehand:
+## the rule of one's own characters (on a character of the sender's account, [code]admin[/code] only, with no
+## exception per environment) and the fenced zone ("El servicio de cuentas no responde; inténtalo más tarde" (the
+## accounts service is not responding; try again later), without creating anything).
 ## [br][br]
-## [b]Las consultas[/b] ([code]inv_show[/code], [code]ledger_show[/code] y [code]op_show[/code]) se auditan como
-## cualquier comando; con plataforma, [code]ledger_show[/code] y [code]op_show[/code] piden las rutas de §13.2 y
-## contestan cuando llega la respuesta ([method on_platform_event]), por el chat a quien lo pidió o al registro desde
-## la consola. Sin plataforma (§9.4), todo sale del diario de la sesión (las últimas 256 operaciones).
+## [b]Queries[/b] ([code]inv_show[/code], [code]ledger_show[/code] and [code]op_show[/code]) are audited like any
+## command; with a platform, [code]ledger_show[/code] and [code]op_show[/code] request the §13.2 routes and
+## answer when the response arrives ([method on_platform_event]), through chat to whoever asked or to the log from the
+## console. Without a platform (§9.4), everything comes from the session journal (the last 256 operations).
 ## [br][br]
-## [b]Reversión[/b] ([code]op_revert[/code]): de una operación ya guardada (con plataforma, la de la ruta; sin ella,
-## la del diario) de un personaje conectado aquí, que no sea una REVERSAL, una MIGRATION ni una ya revertida o que se
-## está revirtiendo. Apuntes contrarios (motivo REVERSAL, [code]ref_kind[/code] 4), los puntos de reino de los
-## méritos de motivo 3–5, lo que se dio se quita (del [code]uid[/code] del evento, de la bolsa y de una ranura de
-## equipo que no sea la activa), lo que se quitó se crea con otros [code]uid[/code] (copiando la fila retirada) y la
-## XP de su [code]detail.xp_delta[/code] se resta. Si falta algo (ya se lo gastó, la bolsa está llena), no se revierte
-## nada y se dice qué falta.
+## [b]Reversal[/b] ([code]op_revert[/code]): of an already saved operation (with a platform, the one from the route;
+## without one, the one from the journal) of a character connected here, that is not a REVERSAL, a MIGRATION, nor one
+## already reverted or currently being reverted. Opposite ledger entries (reason REVERSAL, [code]ref_kind[/code] 4), the
+## realm points of merits with reason 3–5, what was given is removed (by the event's [code]uid[/code], from the bag and
+## from an equipment slot that is not the active one), what was removed is created with other [code]uid[/code]s (copying
+## the withdrawn row) and the XP from its [code]detail.xp_delta[/code] is subtracted. If anything is missing (they
+## already spent it, the bag is full), nothing is reverted and what is missing is reported.
 
-## Crítico de guardado de todo comando de GM que cambia algo (§9.2).
+## Save criticality of every GM command that changes something (§9.2).
 const CRITICAL_GM: StringName = &"gm"
-## La [code]note[/code] de lo que llega por DEBUG_COMMAND.
+## The [code]note[/code] of what arrives through DEBUG_COMMAND.
 const NOTE_DEBUG: String = "debug"
-## [code]detail.source[/code] (§10) según por dónde llega el comando.
+## [code]detail.source[/code] (§10) depending on how the command arrives.
 const SOURCE_GM: String = "gm"
 const SOURCE_CONSOLE: String = "console"
 const SOURCE_DEBUG: String = "debug"
-## Las claves de [code]detail[/code] que S8 pone en su propia columna de [code]audit_log[/code]; el resto va en
-## [code]args[/code] de la fila (y de la entrada del lote).
+## The [code]detail[/code] keys that S8 puts in their own column of [code]audit_log[/code]; the rest goes in the row's
+## [code]args[/code] (and in the batch entry's).
 const DETAIL_COLUMNS: Array[String] = ["command", "source", "actor_character_id", "at_unix"]
-## [code]ledger_show[/code]: apuntes por defecto y como mucho ([code]limit[/code] de la ruta, §13.2).
+## [code]ledger_show[/code]: default and maximum number of entries ([code]limit[/code] of the route, §13.2).
 const DEFAULT_LEDGER_ENTRIES: int = 20
 const MAX_LEDGER_ENTRIES: int = 100
-## Cantidad de [code]item_give[/code] (la del id 40) y XP de [code]xp_add[/code] (la del 43).
+## Quantity of [code]item_give[/code] (that of id 40) and XP of [code]xp_add[/code] (that of 43).
 const MAX_GIVE_COUNT: int = NetMessages.DebugCommand.MAX_ITEM_GIVE_COUNT
 const MAX_XP_ADD: int = NetMessages.DebugCommand.MAX_XP_ADD
-## Objetos por línea en [code]inv_show[/code] (cada línea del chat cabe en un mensaje).
+## Items per line in [code]inv_show[/code] (each chat line fits in one message).
 const ITEMS_PER_LINE: int = 4
-## Monedas de [code]currency_add[/code], sin tildes ni mayúsculas, y la palabra con la que van en [code]args[/code].
+## Currencies of [code]currency_add[/code], without accents or capitals, and the word they carry in [code]args[/code].
 const CURRENCY_WORDS: Dictionary[String, int] = {
 	"oro": Currency.Code.GOLD, "gold": Currency.Code.GOLD, "meritos": Currency.Code.MERITS,
 	"merits": Currency.Code.MERITS,
@@ -85,14 +85,14 @@ const TEXT_LEVEL_CAP: String = "%s ya está en el nivel máximo."
 const TEXT_REQUESTED: String = "Pedido al servicio de cuentas: %s."
 
 
-## Quién manda un comando y por dónde: el actor del rastro de §10.
+## Who sends a command and through where: the trail actor of §10.
 class Actor:
 	extends RefCounted
 	## [enum CommandRegistry.Origin].
 	var origin: int = CommandRegistry.Origin.CONSOLE
-	## Quien lo manda (null desde la consola). Se guarda el objeto: una respuesta que llega tarde sabe a quién era.
+	## Who sends it (null from the console). The object is stored: a reply that arrives late knows who it was for.
 	var peer: ServerPeer = null
-	## La cuenta, el personaje y el rol de su reclamación (0 y vacío desde la consola o sin plataforma).
+	## The account, the character and the role of its claim (0 and empty from the console or without a platform).
 	var account_id: int = 0
 	var character_id: int = 0
 	var role: StringName = &""
@@ -100,7 +100,8 @@ class Actor:
 	var source: String = SOURCE_CONSOLE
 
 
-## Una operación para [code]op_show[/code] y [code]op_revert[/code]: la de la ruta de §13.2 o la del diario.
+## An operation for [code]op_show[/code] and [code]op_revert[/code]: the one from the §13.2 route or the one from the
+## journal.
 class OpView:
 	extends RefCounted
 	var op_id: int = 0
@@ -112,16 +113,16 @@ class OpView:
 	var created_at_unix: int = 0
 	var participants: PackedInt64Array = PackedInt64Array()
 	var reversed_by: int = 0
-	## false: sale de un diario (aún sin guardar, o efímero).
+	## false: comes from a journal (not yet saved, or ephemeral).
 	var saved: bool = true
 	## [code]{character_id, currency, delta, balance_after, reason, ref_kind, ref_id}[/code].
 	var ledger: Array[Dictionary] = []
-	## [code]{character_id, uid, def_id, count_delta, reason}[/code] (uid 0 = agregado).
+	## [code]{character_id, uid, def_id, count_delta, reason}[/code] (uid 0 = aggregate).
 	var items: Array[Dictionary] = []
-	## Las filas de [code]item_instances[/code] de los uids de sus eventos (también las retiradas), por uid.
+	## The [code]item_instances[/code] rows of the uids of its events (also withdrawn ones), by uid.
 	var instances: Dictionary[int, ItemInstance] = {}
 
-	## La de [param op], del diario del personaje [param character_id].
+	## The one for [param op], from the journal of character [param character_id].
 	static func from_journal(op: EconomyOp, character_id: int) -> OpView:
 		var view := OpView.new()
 		view.op_id = op.op_id
@@ -141,7 +142,7 @@ class OpView:
 					"count_delta": event.count_delta, "reason": event.reason})
 		return view
 
-	## La del cuerpo de [code]GET /internal/v1/ops/{op_id}[/code] (§13.2, ids en cadena); null si no cuadra.
+	## The one from the body of [code]GET /internal/v1/ops/{op_id}[/code] (§13.2, ids as strings); null if it does not fit.
 	static func from_route(body: Dictionary) -> OpView:
 		var data: Variant = body.get("op")
 		if not data is Dictionary:
@@ -207,7 +208,7 @@ class OpView:
 				view.instances[item.uid] = item
 		return view
 
-	# Una fila de instances (§13.2) como ItemInstance; null si no cuadra.
+	# An instances row (§13.2) as an ItemInstance; null if it does not fit.
 	static func _instance_of(row: Dictionary) -> ItemInstance:
 		var durability: Variant = row.get("durability")
 		if not ProgressJson.is_id(row.get("uid")) or not row.get("def_id") is String \
@@ -232,7 +233,7 @@ class OpView:
 		return data[key] if data.get(key) is Array else []
 
 
-# Lo que dice un comando que cambia algo: si se ha hecho y el texto para quien lo manda.
+# What a command that changes something says: whether it was done and the text for whoever sent it.
 class _Reply:
 	extends RefCounted
 	var ok: bool = false
@@ -244,7 +245,7 @@ var _zone: ZoneServer = null
 var _platform: ZonePlatform = null
 var _commands: CommandRegistry = null
 var _db: ItemDatabase = null
-## op_id → true mientras su op_revert espera la respuesta de la plataforma.
+## op_id → true while its op_revert waits for the platform's response.
 var _pending_reverts: Dictionary[int, bool] = {}
 var _stats: Dictionary[StringName, int] = {
 	&"ops": 0, &"reversals": 0, &"refused": 0, &"forbidden_own": 0, &"fenced": 0, &"queries": 0,
@@ -253,15 +254,15 @@ var _stats: Dictionary[StringName, int] = {
 
 
 func _init(service: ProgressService, zone: ZoneServer, platform: ZonePlatform) -> void:
-	# Sin referencia fuerte al servicio, que es quien guarda esta instancia.
+	# No strong reference to the service, which is what holds this instance.
 	_service = weakref(service)
 	_zone = zone
 	_platform = platform
 	_db = ItemDatabase.shared()
 
 
-## Registra los comandos de §10 en [param commands]: los diez de consola y [code]/gm[/code] con rol
-## [code]gm[/code] y, los cuatro con id de red, [code]admin[/code] por DEBUG_COMMAND (§10).
+## Registers the §10 commands in [param commands]: the ten console ones and [code]/gm[/code] with role
+## [code]gm[/code] and, the four with a network id, [code]admin[/code] through DEBUG_COMMAND (§10).
 func register_commands(commands: CommandRegistry) -> void:
 	_commands = commands
 	var gm: StringName = CommandRegistry.ROLE_GM
@@ -282,7 +283,7 @@ func register_commands(commands: CommandRegistry) -> void:
 	commands.register(&"op_revert", "op_revert <op_id> <motivo…>", _console_op_revert, Callable(), gm)
 
 
-## Contadores para el informe.
+## Counters for the report.
 func get_stats() -> Dictionary:
 	var stats: Dictionary = {}
 	for key: StringName in _stats:
@@ -290,8 +291,8 @@ func get_stats() -> Dictionary:
 	return stats
 
 
-## Las respuestas de las rutas de §13.2 ([code]progress_op[/code] y [code]progress_ledger[/code]): la de un
-## [code]op_show[/code], un [code]op_revert[/code] o un [code]ledger_show[/code] que se pidió antes.
+## The responses of the §13.2 routes ([code]progress_op[/code] and [code]progress_ledger[/code]): that of an
+## [code]op_show[/code], an [code]op_revert[/code] or a [code]ledger_show[/code] requested earlier.
 func on_platform_event(event: PlatformEvent) -> void:
 	_stats[&"route_answers"] += 1
 	var context: Dictionary = event.context if event.context is Dictionary else {}
@@ -306,10 +307,11 @@ func on_platform_event(event: PlatformEvent) -> void:
 					int(context.get("limit", DEFAULT_LEDGER_ENTRIES)))
 
 
-# --- El 16 refill con plataforma (§4.4) -------------------------------------------------------------
+# --- The 16 refill with a platform (§4.4) -----------------------------------------------------------
 
-## El 16 por DEBUG_COMMAND con plataforma y quien tiene inventario (la zona lo llama): una operación GM con un
-## GM_GRANT por lo que falta de cada definición con [code]camp_refill[/code], [code]note[/code] «debug», y LOADOUT.
+## The 16 through DEBUG_COMMAND with a platform and for whoever has an inventory (the zone calls it): a GM operation
+## with a GM_GRANT for what is missing of each definition with [code]camp_refill[/code], [code]note[/code] "debug", and
+## LOADOUT.
 func net_refill(ctx: CommandRegistry.Context) -> int:
 	var net_id: int = _net_target(ctx)
 	if net_id == 0:
@@ -317,8 +319,8 @@ func net_refill(ctx: CommandRegistry.Context) -> int:
 	return _network_result(ctx, net_id, _refill(ctx, _actor_of(ctx), net_id, NOTE_DEBUG))
 
 
-## [code]refill <jugador> <motivo…>[/code] por la consola o [code]/gm[/code] con plataforma para quien tiene
-## inventario (la zona lo llama con su [code]net_id[/code], ya resuelto): la misma operación GM que el 16.
+## [code]refill <jugador> <motivo…>[/code] through the console or [code]/gm[/code] with a platform for whoever has an
+## inventory (the zone calls it with its [code]net_id[/code], already resolved): the same GM operation as the 16.
 func console_refill(ctx: CommandRegistry.Context, net_id: int) -> String:
 	var note: String = " ".join(ctx.args.slice(1)).strip_edges()
 	if note.is_empty():
@@ -399,7 +401,7 @@ func _net_item_give(ctx: CommandRegistry.Context) -> int:
 	return _network_result(ctx, net_id, _item_give(ctx, _actor_of(ctx), net_id, definition, count, NOTE_DEBUG))
 
 
-# Crea count de definition en pilas nuevas en las primeras ranuras libres de la bolsa (GM_GRANT); bolsa llena: nada.
+# Creates count of definition in new stacks in the first free slots of the bag (GM_GRANT); bag full: nothing.
 func _item_give(ctx: CommandRegistry.Context, actor: Actor, net_id: int, definition: ItemDefinition, count: int,
 		note: String) -> _Reply:
 	var svc: ProgressService = _svc()
@@ -445,7 +447,7 @@ func _console_item_take(ctx: CommandRegistry.Context) -> String:
 	return _item_take(ctx, _actor_of(ctx), net_id, uid, count, note).text
 
 
-# Destruye count (0: la pila entera) del uid (GM_REMOVE). La única arma equipada no se quita (I10).
+# Destroys count (0: the whole stack) of the uid (GM_REMOVE). The only equipped weapon is not removed (I10).
 func _item_take(ctx: CommandRegistry.Context, actor: Actor, net_id: int, uid: int, count: int,
 		note: String) -> _Reply:
 	var svc: ProgressService = _svc()
@@ -515,7 +517,7 @@ func _net_currency_add(ctx: CommandRegistry.Context) -> int:
 	return _network_result(ctx, net_id, _currency_add(ctx, _actor_of(ctx), net_id, currency, amount, NOTE_DEBUG))
 
 
-# Un apunte GM_GRANT o GM_REMOVE; un saldo que quedaría negativo o pasaría del tope no se toca (§5.4).
+# A GM_GRANT or GM_REMOVE entry; a balance that would go negative or exceed the cap is not touched (§5.4).
 func _currency_add(ctx: CommandRegistry.Context, actor: Actor, net_id: int, currency: int, amount: int,
 		note: String) -> _Reply:
 	var svc: ProgressService = _svc()
@@ -541,7 +543,7 @@ func _currency_add(ctx: CommandRegistry.Context, actor: Actor, net_id: int, curr
 			player.record.wallets[currency], op.op_id])
 
 
-# --- level_set (42) y xp_add (43) ----------------------------------------------------------------------
+# --- level_set (42) and xp_add (43) ----------------------------------------------------------------------
 
 func _console_level_set(ctx: CommandRegistry.Context) -> String:
 	var usage: String = _commands.get_usage(&"level_set")
@@ -567,7 +569,8 @@ func _net_level_set(ctx: CommandRegistry.Context) -> int:
 	return _network_result(ctx, net_id, _level_set(ctx, _actor_of(ctx), net_id, level, NOTE_DEBUG))
 
 
-# El nivel y xp_total = curve.total_to(nivel), en una GM sin apuntes ni eventos con antes y después en detail.
+# The level and xp_total = curve.total_to(level), in a GM operation with no entries or events, with before and after in
+# detail.
 func _level_set(ctx: CommandRegistry.Context, actor: Actor, net_id: int, level: int, note: String) -> _Reply:
 	var svc: ProgressService = _svc()
 	var player: PlayerProgress = svc.get_player(net_id)
@@ -620,7 +623,7 @@ func _net_xp_add(ctx: CommandRegistry.Context) -> int:
 	return _network_result(ctx, net_id, _xp_add(ctx, _actor_of(ctx), net_id, amount, NOTE_DEBUG))
 
 
-# XP como una fuente más (fuente GM: sube de nivel con su LEVEL_UP), en una GM sin apuntes ni eventos.
+# XP as one more source (GM source: levels up with its LEVEL_UP), in a GM operation with no entries or events.
 func _xp_add(ctx: CommandRegistry.Context, actor: Actor, net_id: int, amount: int, note: String) -> _Reply:
 	var svc: ProgressService = _svc()
 	var player: PlayerProgress = svc.get_player(net_id)
@@ -646,7 +649,7 @@ func _xp_add(ctx: CommandRegistry.Context, actor: Actor, net_id: int, amount: in
 			player.record.level, player.record.xp_total, op.op_id])
 
 
-# --- mastery_set e inv_show --------------------------------------------------------------------------
+# --- mastery_set and inv_show --------------------------------------------------------------------------
 
 func _console_mastery_set(_ctx: CommandRegistry.Context) -> String:
 	return TEXT_MASTERY
@@ -737,7 +740,7 @@ func _on_ledger_show(event: PlatformEvent, actor: Actor, net_id: int, character_
 	_reply(actor, _ledger_lines(net_id, player, limit, saved))
 
 
-# Los últimos limit apuntes: primero los del diario sin confirmar (los más recientes) y después los guardados.
+# The latest limit entries: first those from the unconfirmed journal (the most recent) and then the saved ones.
 func _ledger_lines(net_id: int, player: PlayerProgress, limit: int, saved: Array) -> PackedStringArray:
 	var lines := PackedStringArray()
 	var journal: Array[EconomyOp] = player.journal()
@@ -843,7 +846,7 @@ func _console_op_revert(ctx: CommandRegistry.Context) -> String:
 		return _usage(ctx, _commands.get_usage(&"op_revert"))
 	ctx.audit_args = {"args": [str(op_id)]}
 	var actor: Actor = _actor_of(ctx)
-	# Una REVERSAL suya en un diario: sin plataforma, ya revertida; con ella, aún sin confirmar.
+	# A REVERSAL of its own in a journal: without a platform, already reverted; with one, not yet confirmed.
 	for net_id: int in _svc().player_net_ids():
 		for op: EconomyOp in _svc().get_player(net_id).journal():
 			if op.kind == EconomyOp.Kind.REVERSAL and op.ref_op_id == op_id:
@@ -862,7 +865,7 @@ func _console_op_revert(ctx: CommandRegistry.Context) -> String:
 	if _platform.is_fenced():
 		_stats[&"fenced"] += 1
 		return _refused_text(TEXT_PLATFORM_DOWN)
-	# La REVERSAL se crea con la respuesta; su entrada de auditoría, con su op:<op_id>, también.
+	# The REVERSAL is created with the response; its audit entry, with its op:<op_id>, too.
 	ctx.audit_deferred = true
 	_pending_reverts[op_id] = true
 	_stats[&"route_requests"] += 1
@@ -898,7 +901,7 @@ func _revert_answer(event: PlatformEvent, ctx: CommandRegistry.Context, actor: A
 			break
 	if net_id == 0:
 		return _fail(TEXT_NOT_HERE % op_id)
-	# Otra reversión que llegó antes y aún no está guardada.
+	# Another reversal that arrived earlier and is not yet saved.
 	for op: EconomyOp in _svc().get_player(net_id).journal():
 		if op.kind == EconomyOp.Kind.REVERSAL and op.ref_op_id == op_id:
 			return _fail(TEXT_REVERTING)
@@ -906,7 +909,7 @@ func _revert_answer(event: PlatformEvent, ctx: CommandRegistry.Context, actor: A
 	return _revert(ctx, actor, net_id, view, note)
 
 
-# La REVERSAL de view sobre net_id (§10), entera o nada.
+# The REVERSAL of view on net_id (§10), all or nothing.
 func _revert(ctx: CommandRegistry.Context, actor: Actor, net_id: int, view: OpView, note: String) -> _Reply:
 	var svc: ProgressService = _svc()
 	var player: PlayerProgress = svc.get_player(net_id)
@@ -931,7 +934,7 @@ func _revert(ctx: CommandRegistry.Context, actor: Actor, net_id: int, view: OpVi
 	var xp_delta: int = int(raw_delta) if raw_delta is int or raw_delta is float else 0
 	if ledger.is_empty() and items.is_empty() and xp_delta == 0:
 		return _fail(TEXT_NOTHING_TO_REVERT % view.op_id)
-	# Lo que falta, antes de tocar nada: un saldo que quedaría negativo o lo que ya no tiene.
+	# What is missing, before touching anything: a balance that would go negative or what they no longer have.
 	var state: InventoryState = player.record.inventory
 	var protected: Array[Vector2i] = [Vector2i(InventoryState.ContainerId.EQUIPMENT, svc.active_weapon_slot(net_id))]
 	var totals: Dictionary[int, int] = {}
@@ -969,7 +972,7 @@ func _revert(ctx: CommandRegistry.Context, actor: Actor, net_id: int, view: OpVi
 		if entry["currency"] == Currency.Code.MERITS:
 			realm_delta += delta
 			gives_realm = gives_realm or EconomyReason.gives_realm_points(entry["reason"])
-	# I9: los méritos de motivo 3–5 subieron los puntos de reino; su reversión los baja lo mismo (S6).
+	# I9: merits with reason 3–5 raised realm points; reverting them lowers them by the same amount (S6).
 	if gives_realm:
 		player.record.realm_points = maxi(player.record.realm_points + realm_delta, 0)
 	var changed: Array[Vector2i] = []
@@ -1014,7 +1017,8 @@ func _revert(ctx: CommandRegistry.Context, actor: Actor, net_id: int, view: OpVi
 	return _done("Operación %d de %s revertida (operación %d)." % [view.op_id, name, op.op_id])
 
 
-# Lo que se recrea de un evento que quitó (§10): los campos de la fila retirada de su uid si la hay; si no, ligado.
+# What is recreated from an event that removed (§10): the fields of the withdrawn row of its uid if there is one;
+# otherwise, bound.
 func _template_for(view: OpView, event: Dictionary) -> ItemInstance:
 	var uid: int = event["uid"]
 	var row: ItemInstance = view.instances.get(uid) if uid != 0 else null
@@ -1028,7 +1032,7 @@ func _template_for(view: OpView, event: Dictionary) -> ItemInstance:
 	return template
 
 
-# --- Lo común ------------------------------------------------------------------------------------
+# --- Common code ---------------------------------------------------------------------------------
 
 func _svc() -> ProgressService:
 	return _service.get_ref() as ProgressService
@@ -1054,8 +1058,8 @@ static func _who(player: PlayerProgress) -> String:
 	return "personaje %d" % player.character_id if player.persistent else "efímero"
 
 
-# El objetivo de un comando de consola o de /gm (un jugador con progreso conectado aquí), apuntado en ctx.target para
-# la auditoría; 0 si no hay.
+# The target of a console or /gm command (a player with progress connected here), noted in ctx.target for the audit;
+# 0 if there is none.
 func _target(ctx: CommandRegistry.Context, text: String) -> int:
 	var net_id: int = _svc().find_connected(text)
 	if net_id != 0:
@@ -1063,7 +1067,7 @@ func _target(ctx: CommandRegistry.Context, text: String) -> int:
 	return net_id
 
 
-# El de un DEBUG_COMMAND: quien lo manda, si tiene progreso.
+# That of a DEBUG_COMMAND: whoever sends it, if they have progress.
 func _net_target(ctx: CommandRegistry.Context) -> int:
 	if ctx.peer == null or ctx.peer.entity == null:
 		return 0
@@ -1093,7 +1097,7 @@ func _actor_of(ctx: CommandRegistry.Context) -> Actor:
 	return actor
 
 
-# La regla de los propios personajes y la zona cercada (§10): el texto si no se puede, o vacío.
+# The rule of one's own characters and the fenced zone (§10): the text if it cannot be done, or empty.
 func _refusal(actor: Actor, player: PlayerProgress) -> String:
 	if actor.account_id != 0 and player.persistent and player.account_id == actor.account_id \
 			and actor.role != CommandRegistry.ROLE_ADMIN:
@@ -1105,7 +1109,7 @@ func _refusal(actor: Actor, player: PlayerProgress) -> String:
 	return ""
 
 
-# El detail del rastro de §10.
+# The trail detail of §10.
 func _detail(actor: Actor, command: String, args: Array) -> Dictionary:
 	return {
 		"command": command, "args": args.duplicate(), "source": actor.source,
@@ -1119,7 +1123,7 @@ func _begin(player: PlayerProgress, actor: Actor, kind: int, note: String, comma
 	return player.begin_op(kind, actor.account_id, note.left(EconomyOp.MAX_NOTE_LENGTH), _detail(actor, command, args))
 
 
-# Nivel y XP de antes y después en el detail de una operación que los toca (§10).
+# Level and XP from before and after in the detail of an operation that touches them (§10).
 static func _xp_detail(op: EconomyOp, old_level: int, old_xp: int, player: PlayerProgress) -> void:
 	op.detail["level_before"] = old_level
 	op.detail["level_after"] = player.record.level
@@ -1128,8 +1132,8 @@ static func _xp_detail(op: EconomyOp, old_level: int, old_xp: int, player: Playe
 	op.detail["xp_delta"] = player.record.xp_total - old_xp
 
 
-# La operación ya está hecha: guardado crítico y la auditoría con su op:<op_id>, los args de su fila (los de detail
-# que no van en su columna) y su hora.
+# The operation is already done: critical save and the audit with its op:<op_id>, the args of its row (those of detail
+# that do not go in its column) and its time.
 func _commit(ctx: CommandRegistry.Context, net_id: int, op: EconomyOp) -> void:
 	_svc().mark_gm_critical(net_id)
 	_stats[&"ops"] += 1
@@ -1149,7 +1153,7 @@ func _actor_text(ctx: CommandRegistry.Context) -> String:
 	return ctx.source if not ctx.source.is_empty() else "consola"
 
 
-# El resultado de red de un comando que cambia algo: OK, o REFUSED con el motivo en la auditoría y en un NOTICE.
+# The network result of a command that changes something: OK, or REFUSED with the reason in the audit and in a NOTICE.
 func _network_result(ctx: CommandRegistry.Context, net_id: int, reply: _Reply) -> int:
 	if reply.ok:
 		return CommandRegistry.Result.OK
@@ -1158,8 +1162,8 @@ func _network_result(ctx: CommandRegistry.Context, net_id: int, reply: _Reply) -
 	return CommandRegistry.Result.REFUSED
 
 
-# La entrada de auditoría que arma la respuesta de un op_revert con plataforma: la del comando, con su objetivo y,
-# si creó la REVERSAL, su op:<op_id> (lo pone _commit).
+# The audit entry assembled by the response of an op_revert with a platform: the command's, with its target and, if
+# it created the REVERSAL, its op:<op_id> (set by _commit).
 func _deferred_context(actor: Actor, op_id: int) -> CommandRegistry.Context:
 	var ctx := CommandRegistry.Context.new()
 	ctx.origin = actor.origin if actor != null else CommandRegistry.Origin.CONSOLE
@@ -1171,7 +1175,7 @@ func _deferred_context(actor: Actor, op_id: int) -> CommandRegistry.Context:
 	return ctx
 
 
-# Busca op_id en los diarios de esta zona: [net_id, PlayerProgress, EconomyOp], o vacío.
+# Looks for op_id in the journals of this zone: [net_id, PlayerProgress, EconomyOp], or empty.
 func _find_in_journals(op_id: int) -> Array:
 	for net_id: int in _svc().player_net_ids():
 		var player: PlayerProgress = _svc().get_player(net_id)
@@ -1227,8 +1231,8 @@ func _pending_text(ctx: CommandRegistry.Context, what: String) -> String:
 	return TEXT_REQUESTED % what
 
 
-# Las líneas de una respuesta: por la consola, juntas; por /gm, una por mensaje del canal del sistema (la última se
-# devuelve y la manda ModerationService).
+# The lines of a response: through the console, together; through /gm, one per system channel message (the last one is
+# returned and sent by ModerationService).
 func _respond(ctx: CommandRegistry.Context, lines: PackedStringArray) -> String:
 	if lines.is_empty():
 		return ""
@@ -1239,7 +1243,8 @@ func _respond(ctx: CommandRegistry.Context, lines: PackedStringArray) -> String:
 	return lines[lines.size() - 1]
 
 
-# Una respuesta que llega tarde (de una ruta): al chat de quien lo pidió si sigue en el mundo, o al registro.
+# A response that arrives late (from a route): to the chat of whoever requested it if they are still in the world, or
+# to the log.
 func _reply(actor: Actor, lines: PackedStringArray) -> void:
 	var peer: ServerPeer = actor.peer if actor != null else null
 	if peer != null and actor.origin == CommandRegistry.Origin.CHAT:

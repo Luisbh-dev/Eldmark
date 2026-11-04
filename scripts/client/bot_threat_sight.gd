@@ -1,40 +1,42 @@
 class_name BotThreatSight
 extends RefCounted
-## Los golpes avisados que conoce un bot del cliente (el [code]threat_finder[/code] de
-## [constant BotBrain.Pattern.SIEGE], F6b): guarda cada TELEGRAPH que le llega (ENTITY_EVENT 6, docs/fuerte.md
-## sección 5) como un [BotBrain.Threat] y lo da por activo hasta que pasa su impacto y la ventana activa del golpe.
-## Lo usan [SwarmBot] ([code]--bots[/code]) y [ClientBotBrains] ([code]--bot[/code]).
+## The telegraphed attacks that a client bot knows about (the [code]threat_finder[/code] of
+## [constant BotBrain.Pattern.SIEGE], F6b): it stores each TELEGRAPH that reaches it (ENTITY_EVENT
+## 6, docs/fuerte.md section 5) as a [BotBrain.Threat] and treats it as active until its impact
+## and the attack's active window have passed. It is used by [SwarmBot] ([code]--bots[/code]) and
+## [ClientBotBrains] ([code]--bot[/code]).
 ## [br][br]
-## El aviso solo trae el origen, el giro y el alcance de la zona, y lo que falta hasta el impacto; el tick con el
-## que se pregunta es el de la entrada que se está decidiendo (el que el servidor simulará con ella), así que un
-## bot que va por delante del servidor da el golpe por pasado a la vez que ocurre. Un PNJ que avisa otro golpe
-## sustituye al anterior.
+## The telegraph carries only the origin, the facing and the zone's reach, and the time left until
+## impact; the tick it is queried with is that of the input being decided (the one the server will
+## simulate it with), so a bot that is ahead of the server counts the attack as past at the same
+## moment it happens. An NPC that telegraphs another attack replaces the previous one.
 ## [br][br]
-## Solo guarda los golpes de quien puede dañar al bot (el contrato de [method BotBrain.set_threat_finder]), igual que los
-## falsos del servidor ([code]ZoneServer._find_threats[/code], que se queda con los PNJ de un reino hostil): el servidor
-## avisa los fuertes de todos los PNJ, también los de la guarnición del propio bot, y de esos no hay que salir. Quien lo
-## crea da la regla ([code]is_hostile[/code]): [SwarmBot], los PNJ de guerra enemigos que conoce por sus altas;
-## [ClientBotBrains], [method is_hostile_view] con su [RemoteWorld]. Sin regla los guarda todos.
+## It stores only the attacks of whoever can damage the bot (the contract of [method BotBrain.set_threat_finder]), just like the server's fake players
+## ([code]ZoneServer._find_threats[/code], which keeps the NPCs of a hostile realm): the server
+## telegraphs the attacks of all NPCs, including those of the bot's own garrison, and those need
+## not be dodged. Whoever creates it provides the rule ([code]is_hostile[/code]): [SwarmBot], the
+## enemy war NPCs it knows from their spawns; [ClientBotBrains], [method is_hostile_view] with its
+## [RemoteWorld]. Without a rule it stores all of them.
 
-## Ticks que el golpe sigue activo después del impacto (la ventana activa del golpe del Capitán dura 12).
+## Ticks the attack stays active after impact (the active window of the Captain's attack lasts 12).
 const ACTIVE_TICKS: int = 12
 
-# net_id del PNJ -> golpe, y tick hasta el que dura.
+# net_id of the NPC -> attack, and tick until which it lasts.
 var _threats: Dictionary[int, BotBrain.Threat] = {}
 var _until: Dictionary[int, int] = {}
-# (net_id: int) -> bool: true si quien avisa puede dañar al bot. Sin ella, cuentan todos.
+# (net_id: int) -> bool: true if whoever telegraphs can damage the bot. Without it, all count.
 var _is_hostile: Callable = Callable()
 
 
-## [param is_hostile] ([code](net_id: int) -> bool[/code]) dice si el PNJ que avisa puede dañar al bot; los avisos de
-## los demás se ignoran. Sin ella (las pruebas de la clase) se guardan todos.
+## [param is_hostile] ([code](net_id: int) -> bool[/code]) says whether the NPC that telegraphs
+## can damage the bot; the others' telegraphs are ignored. Without it (the class's tests) all are stored.
 func _init(is_hostile: Callable = Callable()) -> void:
 	_is_hostile = is_hostile
 
 
-## true si el remoto [param net_id] que dibuja [param world] puede dañar a un bot del reino [param realm] en la zona
-## [param zone_id] ([method FactionRules.can_damage]). Uno del que no ha llegado el alta no cuenta: el servidor solo avisa a
-## quien ya lo tiene, así que no se sabe de quién es.
+## true if the remote [param net_id] drawn by [param world] can damage a bot of realm [param realm] in zone [param zone_id] ([method FactionRules.can_damage]). One whose spawn has not
+## arrived does not count: the server only telegraphs to whoever already has it, so it is not
+## known whose it is.
 static func is_hostile_view(world: RemoteWorld, realm: int, zone_id: StringName, net_id: int) -> bool:
 	if world == null:
 		return false
@@ -42,7 +44,7 @@ static func is_hostile_view(world: RemoteWorld, realm: int, zone_id: StringName,
 	return view != null and FactionRules.can_damage(view.get_realm(), realm, zone_id)
 
 
-## Anota [param event] si es un TELEGRAPH de quien puede dañar al bot (los demás eventos no hacen nada).
+## Records [param event] if it is a TELEGRAPH from whoever can damage the bot (other events do nothing).
 func note(event: NetMessages.EntityEvent) -> void:
 	if event == null or event.event != NetMessages.EntityEvent.Kind.TELEGRAPH:
 		return
@@ -52,7 +54,7 @@ func note(event: NetMessages.EntityEvent) -> void:
 	_until[event.net_id] = event.tick + event.impact_in_ticks + ACTIVE_TICKS
 
 
-## Los golpes que siguen activos en el tick [param tick]; olvida los que ya han pasado.
+## The attacks still active at tick [param tick]; it forgets those that have already passed.
 func find(tick: int) -> Array[BotBrain.Threat]:
 	var active: Array[BotBrain.Threat] = []
 	for net_id: int in _until.keys():
@@ -64,12 +66,12 @@ func find(tick: int) -> Array[BotBrain.Threat]:
 	return active
 
 
-## Olvida un PNJ (su DESPAWN).
+## Forgets an NPC (its DESPAWN).
 func forget(net_id: int) -> void:
 	_until.erase(net_id)
 	_threats.erase(net_id)
 
 
-## Cuántos golpes recuerda (activos o no comprobados todavía).
+## How many attacks it remembers (active or not yet checked).
 func size() -> int:
 	return _until.size()

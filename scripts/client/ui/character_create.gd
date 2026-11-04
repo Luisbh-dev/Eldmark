@@ -1,34 +1,37 @@
 class_name CharacterCreate
 extends FrontScreen
-## Creación de personaje (UI-24, docs/plataforma.md §4.4 y §13.2), en cuatro pasos con la figura 3D a la derecha
-## ([CharacterFigure], cámara orbital con el ratón):
-## [br]1. [b]Reino[/b]: tarjetas con su capital, su pueblo y el color de bando; fijado al de la cuenta si ya tiene
-## ([method setup]); Askarra sale como «Próximamente» (§0).
-## [br]2. [b]Cuerpo y apariencia[/b]: cuerpo, cabeza, pelo, barba, marcas, piel, color de pelo y ojos, cada uno con
-## «◀ ▶» entre lo que permite el pueblo del reino y encaja con el cuerpo, y «Aleatorio»
-## ([method CharacterAppearance.random]). Con lo que hay hoy de ART-19 (un cuerpo, una cabeza, un peinado y una
-## barba; ART-20 traerá más): lo que no tiene opciones sale sin flechas.
-## [br]3. [b]Plantilla de inicio[/b]: las plantillas que se pueden elegir (PRG-07, la sección
-## [code]starter_templates[/code]), con sus armas y sus pociones; es el kit de la primera entrada (progresion.md
-## §2.5).
-## [br]4. [b]Nombre[/b]: validado con [NameRules] al escribir y con [code]name-check[/code] tras
-## [constant NAME_CHECK_DELAY_S] s quieto ([signal name_check_requested] y [method set_name_check]).
+## Character creation (UI-24, docs/plataforma.md §4.4 and §13.2), in four steps with the 3D figure on the
+## right ([CharacterFigure], orbital camera with the mouse):
+## [br]1. [b]Realm[/b]: cards with its capital, its people and the faction color; fixed to the account's
+## if it already has one ([method setup]); Askarra appears as "Próximamente" (Coming soon) (§0).
+## [br]2. [b]Body and appearance[/b]: body, head, hair, beard, marks, skin, hair color and eyes, each with
+## "◀ ▶" among what the realm's people allow and what fits the body, and "Aleatorio" (Random)
+## ([method CharacterAppearance.random]). With what exists today from ART-19 (one body, one head, one
+## hairstyle and one beard; ART-20 will bring more): whatever has no options appears without arrows.
+## [br]3. [b]Starter template[/b]: the templates that can be chosen (PRG-07, the
+## [code]starter_templates[/code] section), with their weapons and potions; it is the kit for the first
+## entry (progresion.md §2.5).
+## [br]4. [b]Name[/b]: validated with [NameRules] while typing and with [code]name-check[/code] after
+## [constant NAME_CHECK_DELAY_S] s without typing ([signal name_check_requested] and
+## [method set_name_check]).
 ## [br][br]
-## «Crear» emite [signal create_requested] con el cuerpo de [code]POST /v1/worlds/{w}/characters[/code] (la apariencia
-## en bytes: [AccountFlow] la pasa a base64). Esc vuelve un paso (en el primero, a la selección). Solo cliente.
+## "Crear" (Create) emits [signal create_requested] with the body of
+## [code]POST /v1/worlds/{w}/characters[/code] (the appearance in bytes: [AccountFlow] passes it to
+## base64). Esc goes back one step (on the first, to the selection). Client only.
 
-## Pulsó «Crear» con todo válido. [param body]: [code]{name, realm, race_id, appearance, starter_template_id}[/code].
+## Pressed "Crear" (Create) with everything valid. [param body]:
+## [code]{name, realm, race_id, appearance, starter_template_id}[/code].
 signal create_requested(body: Dictionary)
-## Pide comprobar en la plataforma si [param display_name] está libre (tras 500 ms sin escribir).
+## Asks the platform to check whether [param display_name] is free (after 500 ms without typing).
 signal name_check_requested(display_name: String)
-## Volvió a la selección (Esc en el primer paso o «Volver»).
+## Returned to the selection (Esc on the first step or "Volver" (Back)).
 signal canceled
 
 enum Step { REALM, APPEARANCE, TEMPLATE, NAME }
 
 const STEP_TITLES: Array[String] = ["1. Reino", "2. Apariencia", "3. Plantilla", "4. Nombre"]
 const NAME_CHECK_DELAY_S: float = 0.5
-## Reinos que aún no se pueden elegir (§0: el Vado Gris no admite Askarra).
+## Realms that cannot be chosen yet (§0: Vado Gris does not admit Askarra).
 const COMING_SOON: Array[StringName] = [RealmCatalog.ASKARRA]
 const CAPITALS: Dictionary = {RealmCatalog.VARDHEIM: "Isenholm", RealmCatalog.SOLMARCH: "Valcorin",
 		RealmCatalog.ASKARRA: "Kassar"}
@@ -43,7 +46,7 @@ const TEXT_PICK_REALM: String = "Elige un reino"
 const TEXT_NAME_TAKEN: String = "Ese nombre ya está en uso"
 const TEXT_NAME_FREE: String = "Nombre libre"
 const TEXT_NAME_CHECKING: String = "Comprobando el nombre…"
-## Campos de la apariencia, en el orden de las filas, con su texto.
+## Appearance fields, in row order, with their text.
 const FIELDS: Array[StringName] = [&"body", &"head", &"hair", &"beard", &"marks", &"skin", &"hair_color", &"eyes"]
 const FIELD_TITLES: Dictionary = {&"body": "Cuerpo", &"head": "Cabeza", &"hair": "Pelo", &"beard": "Barba",
 		&"marks": "Marcas", &"skin": "Piel", &"hair_color": "Color de pelo", &"eyes": "Ojos"}
@@ -138,8 +141,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Empieza una creación: [param account_realm] es el reino de la cuenta en el mundo (id de [RealmCatalog]; vacío si
-## aún no tiene: se puede elegir entre los abiertos). Vuelve al primer paso con todo por defecto.
+## Starts a creation: [param account_realm] is the account's realm in the world ([RealmCatalog] id; empty
+## if it does not have one yet: one of the open ones can be chosen). Returns to the first step with
+## everything at its default.
 func setup(account_realm: StringName) -> void:
 	_account_realm = account_realm if RealmCatalog.is_realm(account_realm) else &""
 	_realm = &""
@@ -162,14 +166,14 @@ func setup(account_realm: StringName) -> void:
 	_show_step(Step.REALM)
 
 
-## true si [param realm_id] se puede elegir: abierto y, si la cuenta ya tiene reino, el suyo.
+## true if [param realm_id] can be chosen: open and, if the account already has a realm, that one.
 func is_realm_selectable(realm_id: StringName) -> bool:
 	if not RealmCatalog.is_realm(realm_id) or COMING_SOON.has(realm_id):
 		return false
 	return _account_realm.is_empty() or realm_id == _account_realm
 
 
-## Elige el reino [param realm_id] (si se puede): la apariencia pasa a la de por defecto de su pueblo.
+## Chooses realm [param realm_id] (if possible): the appearance switches to the default of its people.
 func select_realm(realm_id: StringName) -> bool:
 	if not is_realm_selectable(realm_id):
 		return false
@@ -187,12 +191,12 @@ func get_realm() -> StringName:
 	return _realm
 
 
-## El paso en el que está.
+## The step it is on.
 func get_step() -> Step:
 	return _step
 
 
-## Pasa al paso siguiente si el actual está completo. Devuelve true si avanzó.
+## Moves to the next step if the current one is complete. Returns true if it advanced.
 func next() -> bool:
 	if _busy or _step == Step.NAME or not _step_complete(_step):
 		return false
@@ -200,7 +204,7 @@ func next() -> bool:
 	return true
 
 
-## Vuelve un paso; en el primero emite [signal canceled].
+## Goes back one step; on the first, emits [signal canceled].
 func back() -> void:
 	if _busy:
 		return
@@ -210,8 +214,8 @@ func back() -> void:
 	_show_step((_step - 1) as Step)
 
 
-## Las opciones de [param field] (uno de [constant FIELDS]) para el pueblo elegido y su cuerpo: los valores que
-## puede tomar en los 8 B (con 0 = «sin» en pelo, barba y marcas cuando se admite).
+## The options of [param field] (one of [constant FIELDS]) for the chosen people and their body: the
+## values it can take in the 8 B (with 0 = "none" for hair, beard and marks when allowed).
 func options_for(field: StringName) -> PackedInt32Array:
 	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
 	var index: int = _race_index()
@@ -240,7 +244,7 @@ func options_for(field: StringName) -> PackedInt32Array:
 	return PackedInt32Array()
 
 
-## Pasa [param field] a la opción siguiente ([param step] 1) o anterior (−1), dando la vuelta.
+## Moves [param field] to the next option ([param step] 1) or the previous (−1), wrapping around.
 func cycle(field: StringName, step: int) -> void:
 	if _appearance == null:
 		return
@@ -255,7 +259,7 @@ func cycle(field: StringName, step: int) -> void:
 	_refresh_appearance()
 
 
-## Una apariencia al azar del pueblo elegido ([method CharacterAppearance.random]).
+## A random appearance of the chosen people ([method CharacterAppearance.random]).
 func randomize_appearance() -> void:
 	var random: CharacterAppearance = CharacterAppearance.random(AppearanceCatalog.shared(), _race_index(), _rng)
 	if random != null:
@@ -263,18 +267,18 @@ func randomize_appearance() -> void:
 		_refresh_appearance()
 
 
-## La apariencia elegida (null antes de elegir reino).
+## The chosen appearance (null before choosing a realm).
 func get_appearance() -> CharacterAppearance:
 	return _appearance
 
 
-## El texto que enseña la fila de [param field] («Castaño»…).
+## The text shown by the row of [param field] ("Castaño" (chestnut)...).
 func get_field_text(field: StringName) -> String:
 	var label: Label = _field_labels.get(field)
 	return label.text if label != null else ""
 
 
-## Elige la plantilla de inicio [param template_id] (si se ofrece).
+## Chooses the starter template [param template_id] (if offered).
 func select_template(template_id: StringName) -> bool:
 	if not _template_buttons.has(template_id):
 		return false
@@ -289,7 +293,7 @@ func get_template() -> StringName:
 	return _template
 
 
-## Ids de las plantillas que se ofrecen, en orden.
+## Ids of the templates on offer, in order.
 func get_template_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for id: StringName in _template_buttons:
@@ -297,13 +301,14 @@ func get_template_ids() -> Array[StringName]:
 	return ids
 
 
-## Escribe [param display_name] en el nombre (como si se tecleara).
+## Writes [param display_name] into the name field (as if typed).
 func set_name_text(display_name: String) -> void:
 	_name_edit.text = display_name
 	_on_name_changed(display_name)
 
 
-## La respuesta de [code]name-check[/code] para [param display_name]: [param available] y, si no, el texto del motivo.
+## The [code]name-check[/code] response for [param display_name]: [param available] and, if not, the
+## reason text.
 func set_name_check(display_name: String, available: bool, reason_text: String = "") -> void:
 	if display_name != _name_edit.text.strip_edges():
 		return
@@ -318,18 +323,18 @@ func set_name_check(display_name: String, available: bool, reason_text: String =
 	_refresh_state()
 
 
-## El motivo bajo el nombre (de [NameRules] o de [code]name-check[/code]).
+## The reason under the name (from [NameRules] or from [code]name-check[/code]).
 func get_name_reason_text() -> String:
 	return _name_reason.text
 
 
-## Emite ya la comprobación del nombre (lo que hace el temporizador de 500 ms).
+## Emits the name check right away (what the 500 ms timer does).
 func flush_name_check() -> void:
 	_name_timer.stop()
 	_on_name_timer()
 
 
-## El cuerpo de [code]POST /v1/worlds/{w}/characters[/code] con lo elegido.
+## The body of [code]POST /v1/worlds/{w}/characters[/code] with what was chosen.
 func build_body() -> Dictionary:
 	return {
 		"name": _name_edit.text.strip_edges(),
@@ -340,7 +345,7 @@ func build_body() -> Dictionary:
 	}
 
 
-## Emite [signal create_requested] si todo vale. Devuelve true si lo emitió.
+## Emits [signal create_requested] if everything is valid. Returns true if it emitted it.
 func try_create() -> bool:
 	if _busy or _step != Step.NAME or not _all_complete():
 		return false
@@ -348,7 +353,7 @@ func try_create() -> bool:
 	return true
 
 
-## Vuelve al paso del nombre con [param text] como motivo (un [code]name_taken[/code] de la plataforma).
+## Returns to the name step with [param text] as the reason (a platform [code]name_taken[/code]).
 func show_name_error(text: String) -> void:
 	_show_step(Step.NAME)
 	_checked_name = _name_edit.text.strip_edges()
@@ -382,7 +387,7 @@ func get_figure() -> CharacterFigure:
 	return _figure
 
 
-# --- Construcción ---------------------------------------------------------------------------------
+# --- Construction ---------------------------------------------------------------------------------
 
 func _build_realm_page() -> Control:
 	var page := VBoxContainer.new()
@@ -492,7 +497,7 @@ func _build_name_page() -> Control:
 	return page
 
 
-# --- Estado ---------------------------------------------------------------------------------------
+# --- State ----------------------------------------------------------------------------------------
 
 func _show_step(step: Step) -> void:
 	_step = step
@@ -557,7 +562,7 @@ func _refresh_appearance() -> void:
 		_figure.show_appearance_object(_appearance, RealmCatalog.code_of(_realm))
 
 
-# Al cambiar de cuerpo, lo que ya no encaja pasa a la primera opción que sí.
+# When the body changes, whatever no longer fits switches to the first option that does.
 func _fit_to_body() -> void:
 	for field: StringName in FIELDS:
 		if field == &"body":

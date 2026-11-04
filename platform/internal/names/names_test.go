@@ -10,8 +10,8 @@ import (
 	"eldmark/platform/internal/names"
 )
 
-// Los casos que comparte con test_name_rules.gd (plataforma.md §4.4). Las pruebas de Go corren en
-// el directorio del paquete.
+// The cases it shares with test_name_rules.gd (plataforma.md §4.4). The Go tests run in the
+// package's directory.
 const sharedCases = "../../../tests/fixtures/names/name_rules_cases.json"
 
 type nameCase struct {
@@ -106,8 +106,8 @@ func TestReasons(t *testing.T) {
 	}
 }
 
-// Cada reservado de la lista, tal como está escrito, se reconoce; y las reglas salen de los datos,
-// no del código: con otras reglas, otros resultados.
+// Each reserved name in the list, as written, is recognized; and the rules come from the data, not
+// from the code: with other rules, other results.
 func TestRulesComeFromTheData(t *testing.T) {
 	sec := gamedata.MustLoad().Names
 	for _, n := range sec.Reserved {
@@ -144,7 +144,7 @@ func TestRulesComeFromTheData(t *testing.T) {
 	}
 }
 
-// Un texto que no es UTF-8 válido (la consulta de name-check llega tal cual) no es un nombre.
+// Text that is not valid UTF-8 (the name-check query arrives as is) is not a name.
 func TestInvalidUTF8(t *testing.T) {
 	if got := names.Validate("Ana\xff"); got != names.InvalidCharacter {
 		t.Errorf("Validate con un byte suelto = %s", got)

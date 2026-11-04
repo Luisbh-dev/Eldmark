@@ -1,8 +1,8 @@
 extends TestCase
-## La puerta del fuerte como blanco de los golpes (docs/fuerte.md, sección 3.3; GUE-10): el
-## [CombatResolver] la prueba como una caja sin rebobinado ni defensa, el [CombatDirector] aplica el daño
-## con el multiplicador de su tipo y emite un HIT con el net_id de la fortaleza, y el [FortressController]
-## le quita la vida y avisa. Luchadores montados a mano, sin servidor ni red.
+## The fort's gate as a target for hits (docs/fuerte.md, section 3.3; GUE-10): the
+## [CombatResolver] tests it as a box with no rewind or defence, the [CombatDirector] applies the damage
+## with the multiplier of its type and emits a HIT with the fortress's net_id, and the [FortressController]
+## removes its health and raises the alert. Fighters assembled by hand, with no server or network.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -10,7 +10,7 @@ const ASKARRA: int = NetProtocol.Realm.ASKARRA
 const HUECOS: int = RealmCatalog.NEUTRAL_CODE
 const ZONE_ID: StringName = &"test_world"
 const S: int = 400
-## Hacia +X, hacia la cara oeste de la puerta, a 2,25 m de ella.
+## Towards +X, towards the west face of the gate, 2.25 m from it.
 const YAW_EAST: float = -PI * 0.5
 const ATTACK_SPOT: Vector3 = Vector3(77.5, 0.0, 0.0)
 
@@ -61,7 +61,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _body(net_id: int, realm: int, position: Vector3, yaw: float) -> Combatant:
 	var entity: NetEntity = CombatFixture.make_entity(_world, net_id, realm, position, yaw)
@@ -73,7 +73,7 @@ func _tick(s: int = S) -> void:
 	_director.process_tick(s, _world.get_world_3d().direct_space_state)
 
 
-## Lo que quita a la puerta un golpe cortante de [param base] de daño (el multiplicador de las reglas).
+## What a slashing hit of [param base] damage removes from the gate (the rules' multiplier).
 func _slash(base: int) -> int:
 	return roundi(float(base) * CombatCatalog.rules().structure_multiplier(DamageFormula.DamageType.SLASH))
 
@@ -86,7 +86,7 @@ func _gate_id() -> int:
 	return _controller.get_net_id(FortressFixture.FORTRESS_ID)
 
 
-## Los HIT a la puerta (no los que se dan entre sí los luchadores).
+## The HITs on the gate (not those the fighters deal each other).
 func _hits() -> Array[NetMessages.EntityEvent]:
 	var found: Array[NetMessages.EntityEvent] = []
 	for event: NetMessages.EntityEvent in _events:
@@ -106,37 +106,37 @@ func _set_owner(realm: int) -> void:
 	_war.clear()
 
 
-# --- Daño --------------------------------------------------------------------------------------
+# --- Damage ------------------------------------------------------------------------------------
 
 func test_a_light_hit_takes_off_the_slashing_share_of_its_damage() -> void:
 	var attacker: Combatant = _attacker()
 	_tick()
-	# 90 de daño cortante x 0,35 = 31,5 (31,499... en coma flotante, que redondea a 31).
+	# 90 slashing damage x 0.35 = 31.5 (31.499... in floating point, which rounds to 31).
 	assert_eq(_slash(90), 31)
-	assert_eq(_state().gate_health, 900 - _slash(90), "el ligero quita 31 a la puerta")
+	assert_eq(_state().gate_health, 900 - _slash(90), "the light attack removes 31 from the gate")
 	var hits: Array[NetMessages.EntityEvent] = _hits()
-	if not assert_eq(hits.size(), 1, "un HIT"):
+	if not assert_eq(hits.size(), 1, "a HIT"):
 		return
-	assert_eq(hits[0].net_id, _gate_id(), "atado a la fortaleza")
+	assert_eq(hits[0].net_id, _gate_id(), "tied to the fortress")
 	assert_eq(hits[0].attacker, 11)
 	assert_eq(hits[0].amount, _slash(90))
 	assert_eq(hits[0].damage_type, DamageFormula.DamageType.SLASH)
-	assert_eq(hits[0].hit_flags, 0, "sin crítico ni bloqueo")
+	assert_eq(hits[0].hit_flags, 0, "without a crit or a block")
 	assert_eq(hits[0].tick, S)
-	assert_eq(_involved[0], PackedInt32Array([11]), "solo el atacante lo recibe por ser el implicado")
-	assert_true(attacker.is_in_combat(S), "golpear la puerta pone al atacante en combate")
+	assert_eq(_involved[0], PackedInt32Array([11]), "only the attacker receives it, being the one involved")
+	assert_true(attacker.is_in_combat(S), "hitting the gate puts the attacker in combat")
 	assert_eq(attacker.health, 1000)
 	assert_eq(_director.stats[&"gate_hits"], 1)
 	assert_eq(_director.stats[&"gate_damage"], _slash(90))
-	assert_eq(_war.size(), 1, "y el fuerte avisa de que lo atacan")
+	assert_eq(_war.size(), 1, "and the fort alerts that it is under attack")
 	assert_eq(_war[0].war_event, WarEvents.UNDER_ATTACK)
 	assert_eq(_war[0].war_realm, VARDHEIM)
-	assert_true(_state().under_attack_until_tick > S, "cuenta como atacado")
+	assert_true(_state().under_attack_until_tick > S, "counts as attacked")
 	assert_eq(_state().gate_last_damage_tick, S)
 
 
 func test_there_are_no_criticals_against_the_gate_whichever_side_the_attacker_stands() -> void:
-	# Un atacante al otro lado, de espaldas respecto a donde «mira» la puerta (que no mira a ningún sitio).
+	# An attacker on the other side, with their back to where the gate "faces" (it faces nowhere).
 	var attacker: Combatant = _body(11, VARDHEIM, Vector3(82.0, 0.0, 0.0), PI * 0.5)
 	CombatFixture.start_light_active(attacker, S)
 	_tick()
@@ -152,7 +152,7 @@ func test_a_charged_heavy_attack_scales_before_the_multiplier() -> void:
 	CombatFixture.start_heavy_active(attacker, S, heavy.charge_max_ticks)
 	_tick()
 	assert_eq(_state().gate_health, 900 - roundi(roundi(180.0 * 1.7) * 0.35),
-			"carga máxima: 180 x 1,7 = 306, x 0,35 = 107")
+			"max charge: 180 x 1.7 = 306, x 0.35 = 107")
 
 
 func test_each_damage_type_has_its_multiplier_and_none_goes_below_one() -> void:
@@ -161,7 +161,7 @@ func test_each_damage_type_has_its_multiplier_and_none_goes_below_one() -> void:
 	assert_eq(rules.structure_multiplier(DamageFormula.DamageType.PIERCE), 0.2)
 	assert_eq(rules.structure_multiplier(DamageFormula.DamageType.BLUNT), 1.0)
 	assert_eq(rules.structure_multiplier(DamageFormula.DamageType.ELEMENTAL), 0.6)
-	assert_eq(rules.structure_multiplier(99), 1.0, "un tipo desconocido no cambia el daño")
+	assert_eq(rules.structure_multiplier(99), 1.0, "an unknown type does not change the damage")
 	var expected: Dictionary = {DamageFormula.DamageType.SLASH: 35, DamageFormula.DamageType.PIERCE: 20,
 			DamageFormula.DamageType.BLUNT: 100, DamageFormula.DamageType.ELEMENTAL: 60}
 	var attacker: Combatant = _body(11, VARDHEIM, ATTACK_SPOT, YAW_EAST)
@@ -174,9 +174,9 @@ func test_each_damage_type_has_its_multiplier_and_none_goes_below_one() -> void:
 		attack.damage_type = damage_type
 		attack.shape = CombatCatalog.attack(_light_id()).shape
 		_apply_structure_hit(attacker, attack)
-		assert_eq(last_health - _state().gate_health, expected[damage_type], "tipo %d" % damage_type)
+		assert_eq(last_health - _state().gate_health, expected[damage_type], "type %d" % damage_type)
 		last_health = _state().gate_health
-	# Un golpe de 1 de daño perforante (0,2) sigue quitando 1.
+	# A hit of 1 piercing damage (0.2) still removes 1.
 	var weak := AttackTicks.new()
 	weak.id = 950
 	weak.name = &"debil"
@@ -184,14 +184,14 @@ func test_each_damage_type_has_its_multiplier_and_none_goes_below_one() -> void:
 	weak.damage_type = DamageFormula.DamageType.PIERCE
 	weak.shape = CombatCatalog.attack(_light_id()).shape
 	_apply_structure_hit(attacker, weak)
-	assert_eq(last_health - _state().gate_health, 1, "mínimo 1 si queda algo")
+	assert_eq(last_health - _state().gate_health, 1, "minimum 1 if anything is left")
 
 
 func _light_id() -> int:
 	return CombatCatalog.weapon(CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON)).light_ids[0]
 
 
-# Aplica a mano un golpe de [param attack] a la puerta (como lo haría el resolutor).
+# Manually applies a hit of [param attack] to the gate (as the resolver would).
 func _apply_structure_hit(attacker: Combatant, attack: AttackTicks) -> void:
 	var hit := CombatResolver.Hit.new()
 	hit.attacker = attacker
@@ -208,12 +208,12 @@ func test_the_last_hit_is_capped_by_the_remaining_health_and_flagged_lethal() ->
 	_tick()
 	assert_eq(_state().gate_health, 0)
 	var hits: Array[NetMessages.EntityEvent] = _hits()
-	assert_eq(hits[0].amount, 20, "no hace más daño que la vida que queda")
-	assert_true(hits[0].has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL), "y lo rompe")
-	assert_eq(_war.size(), 2, "atacada y rota")
+	assert_eq(hits[0].amount, 20, "it does no more damage than the health left")
+	assert_true(hits[0].has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL), "and breaks it")
+	assert_eq(_war.size(), 2, "attacked and broken")
 	assert_eq(_war[1].war_event, WarEvents.GATE_BROKEN)
-	assert_eq(_war[1].war_realm, VARDHEIM, "con el reino de quien la rompió")
-	# Una puerta rota ya no se golpea: ni se emite otro HIT.
+	assert_eq(_war[1].war_realm, VARDHEIM, "with the realm of whoever broke it")
+	# A broken gate is no longer hit: nor is another HIT emitted.
 	attacker.forget_swing()
 	CombatFixture.start_light_active(attacker, S + 20)
 	_director.process_tick(S + 20, _world.get_world_3d().direct_space_state)
@@ -231,12 +231,12 @@ func test_two_simultaneous_hits_cannot_break_the_gate_twice() -> void:
 	var total: int = 0
 	for event: NetMessages.EntityEvent in _hits():
 		total += event.amount
-	assert_eq(total, 40, "entre los dos, la vida que había")
+	assert_eq(total, 40, "between the two, the health there was")
 	var broken: int = 0
 	for event: NetMessages.EntityEvent in _war:
 		if event.war_event == WarEvents.GATE_BROKEN:
 			broken += 1
-	assert_eq(broken, 1, "un solo aviso de rotura")
+	assert_eq(broken, 1, "a single break alert")
 
 
 func test_one_swing_hits_the_gate_once_however_many_ticks_it_stays_active() -> void:
@@ -244,11 +244,11 @@ func test_one_swing_hits_the_gate_once_however_many_ticks_it_stays_active() -> v
 	_tick(S)
 	_tick(S + 1)
 	_tick(S + 2)
-	assert_eq(_hits().size(), 1, "un impacto por acción")
+	assert_eq(_hits().size(), 1, "one impact per action")
 	assert_eq(_state().gate_health, 900 - _slash(90))
 
 
-# --- Quién puede golpearla ---------------------------------------------------------------------
+# --- Who can hit it ----------------------------------------------------------------------------
 
 func test_a_neutral_fortress_gate_is_hit_by_the_three_realms_but_not_by_the_hollows() -> void:
 	var spot: float = -1.5
@@ -261,8 +261,8 @@ func test_a_neutral_fortress_gate_is_hit_by_the_three_realms_but_not_by_the_holl
 	for event: NetMessages.EntityEvent in _hits():
 		by_attacker[event.attacker] = true
 	assert_true(by_attacker.has(20 + VARDHEIM) and by_attacker.has(20 + SOLMARCH) and by_attacker.has(20 + ASKARRA),
-			"Vardheim, Solmarch y Askarra la dañan")
-	assert_false(by_attacker.has(20 + HUECOS), "los Huecos, que la guardan, no")
+			"Vardheim, Solmarch and Askarra damage it")
+	assert_false(by_attacker.has(20 + HUECOS), "the Hollow, which guards it, do not")
 	assert_eq(_state().gate_health, 900 - 3 * _slash(90))
 
 
@@ -271,25 +271,25 @@ func test_only_the_enemies_of_the_owner_hit_the_gate() -> void:
 	var own: Combatant = _body(11, VARDHEIM, ATTACK_SPOT + Vector3(0.0, 0.0, -0.5), YAW_EAST)
 	CombatFixture.start_light_active(own, S)
 	_tick()
-	assert_eq(_state().gate_health, 900, "el dueño no daña su propia puerta")
+	assert_eq(_state().gate_health, 900, "the owner does not damage its own gate")
 	assert_true(_hits().is_empty())
 	var enemy: Combatant = _body(12, SOLMARCH, ATTACK_SPOT + Vector3(0.0, 0.0, 1.5), YAW_EAST)
 	CombatFixture.start_light_active(enemy, S + 100)
 	_director.process_tick(S + 100, _world.get_world_3d().direct_space_state)
-	assert_eq(_state().gate_health, 900 - _slash(90), "el enemigo sí")
+	assert_eq(_state().gate_health, 900 - _slash(90), "the enemy does")
 	assert_eq(_hits()[0].attacker, 12)
-	# Y con Solmarch de dueño, a quien deja de dañar es a Solmarch.
+	# And with Solmarch as owner, the one it stops damaging is Solmarch.
 	_set_owner(SOLMARCH)
 	enemy.forget_swing()
 	CombatFixture.start_light_active(enemy, S + 200)
 	own.forget_swing()
 	CombatFixture.start_light_active(own, S + 200)
 	_director.process_tick(S + 200, _world.get_world_3d().direct_space_state)
-	# Cambiar de dueño repara la puerta (900), y de los dos solo la daña Vardheim.
-	assert_eq(_state().gate_health, 900 - _slash(90), "ahora la daña Vardheim, no Solmarch")
+	# Changing owner repairs the gate (900), and of the two only Vardheim damages it.
+	assert_eq(_state().gate_health, 900 - _slash(90), "now Vardheim damages it, not Solmarch")
 
 
-# --- Geometría y línea de visión ---------------------------------------------------------------
+# --- Geometry and line of sight ----------------------------------------------------------------
 
 func test_a_swing_out_of_reach_or_facing_away_does_not_touch_the_gate() -> void:
 	var far: Combatant = _body(11, VARDHEIM, Vector3(75.0, 0.0, -3.0), YAW_EAST)
@@ -297,7 +297,7 @@ func test_a_swing_out_of_reach_or_facing_away_does_not_touch_the_gate() -> void:
 	var away: Combatant = _body(12, SOLMARCH, ATTACK_SPOT + Vector3(0.0, 0.0, 1.0), -YAW_EAST)
 	CombatFixture.start_light_active(away, S)
 	_tick()
-	assert_eq(_state().gate_health, 900, "a 4,75 m de la cara no llega y de espaldas tampoco")
+	assert_eq(_state().gate_health, 900, "at 4.75 m from the face it does not reach, and from behind neither")
 	assert_true(_hits().is_empty())
 
 
@@ -314,23 +314,23 @@ func test_a_wall_between_the_attacker_and_the_gate_blocks_the_hit() -> void:
 	await wait_physics_frames(2)
 	var attacker: Combatant = _attacker()
 	_tick()
-	assert_eq(_state().gate_health, 900, "el muro corta la línea de visión")
+	assert_eq(_state().gate_health, 900, "the wall blocks the line of sight")
 	wall.queue_free()
 	await wait_physics_frames(2)
 	attacker.forget_swing()
 	CombatFixture.start_light_active(attacker, S + 100)
 	_director.process_tick(S + 100, _world.get_world_3d().direct_space_state)
-	assert_eq(_state().gate_health, 900 - _slash(90), "sin el muro, golpea; la propia puerta no cuenta para la línea de visión")
+	assert_eq(_state().gate_health, 900 - _slash(90), "without the wall, it hits; the gate itself does not count for line of sight")
 
 
 func test_attackers_from_the_other_side_of_the_gate_also_reach_it() -> void:
 	var attacker: Combatant = _body(11, VARDHEIM, Vector3(82.5, 0.0, 0.0), PI * 0.5)
 	CombatFixture.start_light_active(attacker, S)
 	_tick()
-	assert_eq(_state().gate_health, 900 - _slash(90), "desde dentro del fuerte, por la cara este")
+	assert_eq(_state().gate_health, 900 - _slash(90), "from inside the fort, through the east face")
 
 
-# --- Sin rebobinado ----------------------------------------------------------------------------
+# --- Without rewind ----------------------------------------------------------------------------
 
 func test_the_gate_is_hit_where_it_is_now_whatever_the_requested_rewind() -> void:
 	var peer := ServerPeer.new(7)
@@ -339,11 +339,11 @@ func test_the_gate_is_hit_where_it_is_now_whatever_the_requested_rewind() -> voi
 	var entity: NetEntity = CombatFixture.make_entity(_world, 11, VARDHEIM, ATTACK_SPOT, YAW_EAST)
 	_history.add_entity(11)
 	var attacker: Combatant = _director.add(entity, CombatFixture.make_queue(YAW_EAST), peer)
-	# El cliente pide 40 ticks de rebobinado: contra un jugador se rechazaría; la puerta no se mueve.
+	# The client asks for 40 ticks of rewind: against a player it would be rejected; the gate does not move.
 	attacker.queue.reset(S - 1, NetProtocol.neutral_input(S - 1, YAW_EAST))
 	attacker.queue.push(NetProtocol.neutral_input(S, YAW_EAST), 40 * 16, S)
 	attacker.queue.take(S)
 	CombatFixture.start_light_active(attacker, S)
 	_tick()
-	assert_eq(_state().gate_health, 900 - _slash(90), "el golpe a la puerta no depende del rebobinado")
-	assert_eq(peer.rewind_rejects, 1, "pero el golpe sospechoso se sigue anotando para los jugadores")
+	assert_eq(_state().gate_health, 900 - _slash(90), "the hit on the gate does not depend on rewind")
+	assert_eq(peer.rewind_rejects, 1, "but the suspicious hit is still recorded for the players")

@@ -1,16 +1,16 @@
 class_name PartyHud
 extends VBoxContainer
-## Interfaz de grupo del HUD (SOC-08, docs/social.md, sección 12.5): a la izquierda de la pantalla, el aviso de
-## invitación ([PartyInvitePrompt]) y debajo los marcos de los miembros ([PartyFrames]). La monta el [HUD] en red
-## y la alimenta el [PartyState] del [NetClient].
+## Party UI of the HUD (SOC-08, docs/social.md, section 12.5): on the left of the screen, the
+## invitation prompt ([PartyInvitePrompt]) and below it the member frames ([PartyFrames]). It is mounted by the [HUD] online
+## and fed by the [NetClient]'s [PartyState].
 ## [br][br]
-## También traduce los comandos de grupo de la caja de chat ([code]/invitar[/code], [code]/salir[/code],
-## [code]/expulsar[/code], [code]/lider[/code]) en peticiones al servidor ([method handle_command]); el servidor
-## decide y contesta por el canal del sistema.
+## It also translates the chat box's party commands ([code]/invitar[/code], [code]/salir[/code],
+## [code]/expulsar[/code], [code]/lider[/code]; invite, leave, kick, leader) into requests to the server ([method handle_command]); the server
+## decides and answers through the system channel.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Medidas de la columna (px de la ventana base).
+## Column measurements (px of the base window).
 const MARGIN_LEFT: float = 16.0
 const MARGIN_TOP: float = 110.0
 const WIDTH: float = PartyFrame.SIZE.x
@@ -39,9 +39,9 @@ func _init() -> void:
 	add_child(_frames)
 
 
-## Conecta la interfaz con el cliente de red [param client] (su [PartyState], su posición y las peticiones). Con
-## [param camera_rig], las teclas del aviso de invitación no responden mientras otra pieza de la interfaz que no sea
-## [param allowed_holder] tiene el cursor ([method PartyInvitePrompt.bind]).
+## Connects the UI to the network client [param client] (its [PartyState], its position and the requests). With
+## [param camera_rig], the invitation prompt's keys do not respond while another piece of the UI other than
+## [param allowed_holder] holds the cursor ([method PartyInvitePrompt.bind]).
 func bind(client: NetClient, camera_rig: CameraRig = null, allowed_holder: Object = null) -> void:
 	_client = client
 	var party: PartyState = client.get_party() if is_instance_valid(client) else null
@@ -57,8 +57,8 @@ func get_frames() -> PartyFrames:
 	return _frames
 
 
-## Atiende un comando de grupo de la caja de chat ([constant ChatCommandParser.Kind.INVITE], [code]LEAVE[/code],
-## [code]KICK[/code] o [code]LEADER[/code]). Devuelve false si no es uno de ellos o no se pudo enviar.
+## Handles a party command from the chat box ([constant ChatCommandParser.Kind.INVITE], [code]LEAVE[/code],
+## [code]KICK[/code] or [code]LEADER[/code]). Returns false if it is not one of them or could not be sent.
 func handle_command(command: ChatCommandParser.Command) -> bool:
 	if not is_instance_valid(_client):
 		return false

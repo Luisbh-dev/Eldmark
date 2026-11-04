@@ -35,7 +35,7 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(testdb.Main(m)) }
 
-// syncBuffer es un registro que se puede leer mientras se escribe.
+// syncBuffer is a log that can be read while it is being written.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -53,12 +53,12 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-// router monta las rutas en un ServeMux (en serve es *app.App).
+// router mounts the routes on a ServeMux (in serve it is *app.App).
 type router struct{ *http.ServeMux }
 
 func (r router) HandlePublic(pattern string, h http.Handler) { r.Handle(pattern, h) }
 
-// La clave de billete del vector de plataforma.md §5.1 (solo vale en test).
+// The ticket key from the plataforma.md §5.1 vector (only valid in test).
 var ticketKey = func() []byte {
 	k := make([]byte, 32)
 	for i := range k {
@@ -171,7 +171,7 @@ func (r *response) errField(name string) string {
 	return ""
 }
 
-// character devuelve el objeto character de la respuesta (crear, restaurar, renombrar).
+// character returns the response's character object (create, restore, rename).
 func (r *response) character() map[string]any {
 	c, _ := r.body["character"].(map[string]any)
 	return c
@@ -179,7 +179,7 @@ func (r *response) character() map[string]any {
 
 type call struct {
 	method, path string
-	body         any // se manda como JSON; una cadena, tal cual
+	body         any // sent as JSON; a string, as is
 	token        string
 	ip           string
 }
@@ -228,14 +228,14 @@ func (h *harness) expect(res *response, status int, code string) {
 
 const password = "una contraseña larga"
 
-// player es una cuenta con una sesión de juego.
+// player is an account with a gameplay session.
 type player struct {
 	id    int64
 	email string
 	token string
 }
 
-// newPlayer registra una cuenta (desde una IP nueva) e inicia sesión.
+// newPlayer registers an account (from a new IP) and logs in.
 func (h *harness) newPlayer(email string) *player {
 	h.t.Helper()
 	res := h.do(call{method: "POST", path: "/v1/accounts", ip: h.nextIP(), body: map[string]any{"email": email,
@@ -250,7 +250,7 @@ func (h *harness) newPlayer(email string) *player {
 	return p
 }
 
-// login abre una sesión nueva para el jugador (y revoca la anterior).
+// login opens a new session for the player (and revokes the previous one).
 func (h *harness) login(p *player) {
 	h.t.Helper()
 	res := h.do(call{method: "POST", path: "/v1/sessions", ip: h.nextIP(),
@@ -261,7 +261,7 @@ func (h *harness) login(p *player) {
 	p.token, _ = res.body["access_token"].(string)
 }
 
-// advance adelanta el reloj y abre sesiones nuevas para los jugadores (el acceso dura 15 min).
+// advance moves the clock forward and opens new sessions for the players (access lasts 15 min).
 func (h *harness) advance(d time.Duration, players ...*player) {
 	h.t.Helper()
 	h.clock.Advance(d)
@@ -270,7 +270,7 @@ func (h *harness) advance(d time.Duration, players ...*player) {
 	}
 }
 
-// setClock pone el reloj y abre sesiones nuevas para los jugadores.
+// setClock sets the clock and opens new sessions for the players.
 func (h *harness) setClock(at time.Time, players ...*player) {
 	h.t.Helper()
 	h.clock.Set(at)
@@ -279,7 +279,7 @@ func (h *harness) setClock(at time.Time, players ...*player) {
 	}
 }
 
-// appearance son 8 B de apariencia cualesquiera, en base64 (la validación provisional no los mira).
+// appearance is any 8 B of appearance, in base64 (the provisional validation does not look at them).
 var appearance = base64.StdEncoding.EncodeToString([]byte{1, 0, 2, 1, 0, 3, 2, 0x21})
 
 func createBody(name, realm string) map[string]any {
@@ -292,7 +292,7 @@ func (h *harness) create(p *player, name, realm string) *response {
 	return h.do(call{method: "POST", path: "/v1/worlds/1/characters", token: p.token, body: createBody(name, realm)})
 }
 
-// mustCreate crea un personaje y devuelve su id.
+// mustCreate creates a character and returns its id.
 func (h *harness) mustCreate(p *player, name, realm string) int64 {
 	h.t.Helper()
 	res := h.create(p, name, realm)
@@ -346,7 +346,7 @@ func (h *harness) nameCheck(p *player, name string) *response {
 	return h.do(call{method: "GET", path: "/v1/worlds/1/name-check?name=" + url.QueryEscape(name), token: p.token})
 }
 
-// zone registra una instancia de zona (como haría la API interna, P3) y devuelve su id.
+// zone registers a zone instance (as the internal API, P3, would) and returns its id.
 func (h *harness) zone(zoneID string, channel int, realms []int16, players, maxPlayers int, status string) string {
 	h.t.Helper()
 	var id string
@@ -357,7 +357,7 @@ func (h *harness) zone(zoneID string, channel int, realms []int16, players, maxP
 	return id
 }
 
-// lease da al personaje un arrendamiento en la instancia que vence en expires.
+// lease gives the character a lease on the instance that expires at expires.
 func (h *harness) lease(characterID int64, instance string, expires time.Time) {
 	h.t.Helper()
 	h.exec(`insert into character_leases (character_id, world_id, lease_id, zone_instance_id, claimed_by, expires_at)

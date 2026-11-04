@@ -1,8 +1,7 @@
-// Package config lee la configuración de la plataforma de las variables de entorno
-// (plataforma.md §2.3). Cada secreto admite también <NOMBRE>_FILE con la ruta de un archivo
-// (secretos de Docker). Un valor que falta o no se entiende impide arrancar: [Load] devuelve un
-// error en español con todos los problemas, uno por línea, sin repetir nunca el valor de un
-// secreto.
+// Package config reads the platform's configuration from environment variables (plataforma.md
+// §2.3). Each secret also accepts <NAME>_FILE with the path of a file (Docker secrets). A value that
+// is missing or not understood prevents startup: [Load] returns an error in Spanish with all the
+// problems, one per line, never repeating a secret's value.
 package config
 
 import (
@@ -27,13 +26,13 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Lookup lee una variable de entorno; os.LookupEnv vale.
+// Lookup reads an environment variable; os.LookupEnv works.
 type Lookup func(key string) (string, bool)
 
-// Env es el entorno: dev, test, staging o production.
+// Env is the environment: dev, test, staging or production.
 type Env string
 
-// Entornos.
+// Environments.
 const (
 	EnvDev        Env = "dev"
 	EnvTest       Env = "test"
@@ -41,13 +40,13 @@ const (
 	EnvProduction Env = "production"
 )
 
-// Deployed dice si es staging o production, donde rigen las reglas estrictas.
+// Deployed says whether it is staging or production, where the strict rules apply.
 func (e Env) Deployed() bool { return e == EnvStaging || e == EnvProduction }
 
-// Realm es el código de un reino, el de NetProtocol.Realm (1 Vardheim, 2 Solmarch, 3 Askarra).
+// Realm is a realm's code, that of NetProtocol.Realm (1 Vardheim, 2 Solmarch, 3 Askarra).
 type Realm int16
 
-// Reinos.
+// Realms.
 const (
 	RealmVardheim Realm = 1
 	RealmSolmarch Realm = 2
@@ -56,7 +55,7 @@ const (
 
 var realmNames = map[Realm]string{RealmVardheim: "vardheim", RealmSolmarch: "solmarch", RealmAskarra: "askarra"}
 
-// String devuelve el id de texto del reino («vardheim»), el de la API pública.
+// String returns the realm's text id ("vardheim"), the public API's.
 func (r Realm) String() string {
 	if name, ok := realmNames[r]; ok {
 		return name
@@ -64,7 +63,7 @@ func (r Realm) String() string {
 	return "realm(" + strconv.Itoa(int(r)) + ")"
 }
 
-// ParseRealm lee el id de texto de un reino.
+// ParseRealm reads a realm's text id.
 func ParseRealm(name string) (Realm, bool) {
 	for code, n := range realmNames {
 		if n == name {
@@ -74,8 +73,8 @@ func ParseRealm(name string) (Realm, bool) {
 	return 0, false
 }
 
-// ZoneToken es una entrada de ELDMARK_ZONE_TOKENS: el alcance de un despliegue de zona y el
-// SHA-256 de su token (la plataforma nunca guarda el token, plataforma.md §6).
+// ZoneToken is an entry of ELDMARK_ZONE_TOKENS: the scope of a zone deployment and the SHA-256 of
+// its token (the platform never stores the token, plataforma.md §6).
 type ZoneToken struct {
 	WorldID int16
 	ZoneID  string
@@ -83,49 +82,49 @@ type ZoneToken struct {
 	Hash    [sha256.Size]byte
 }
 
-// Argon2 son los parámetros de argon2id (ELDMARK_ARGON2).
+// Argon2 are the argon2id parameters (ELDMARK_ARGON2).
 type Argon2 struct {
 	MemoryKiB uint32
 	Time      uint32
 	Threads   uint8
 }
 
-// Mail es el modo de envío del correo.
+// Mail is the email sending mode.
 type Mail string
 
-// Modos de correo.
+// Mail modes.
 const (
-	MailLog  Mail = "log"  // a la tabla outbound_mail y al registro (dev y test)
-	MailSMTP Mail = "smtp" // por SMTP
+	MailLog  Mail = "log"  // to the outbound_mail table and the log (dev and test)
+	MailSMTP Mail = "smtp" // over SMTP
 )
 
-// Database es lo que necesita la orden migrate.
+// Database is what the migrate command needs.
 type Database struct {
 	Env         Env
-	DatabaseURL string // secreto
+	DatabaseURL string // secret
 }
 
-// Config es la configuración completa de serve.
+// Config is serve's full configuration.
 type Config struct {
 	Env         Env
-	DatabaseURL string // secreto
+	DatabaseURL string // secret
 
 	PublicAddr   string
 	InternalAddr string
 	PublicURL    *url.URL
 
-	ZoneTokens     []ZoneToken // secreto (solo hashes)
+	ZoneTokens     []ZoneToken // secret (hashes only)
 	ZoneHosts      []string
 	TrustedProxies []netip.Prefix
 
-	TicketKeys    map[uint8][]byte // secreto
+	TicketKeys    map[uint8][]byte // secret
 	TicketSignKey uint8
-	EmailHMACKey  []byte // secreto
+	EmailHMACKey  []byte // secret
 
 	Argon2 Argon2
-	// MinProtocol es el protocolo mínimo del cliente (por debajo, 426). 0 en dev y test sin la
-	// variable: entonces vale el protocol_version de progression_rules.json (internal/gamedata),
-	// que serve resuelve con [Config.ResolveMinProtocol].
+	// MinProtocol is the client's minimum protocol (below it, 426). 0 in dev and test without the
+	// variable: then the protocol_version of progression_rules.json (internal/gamedata) applies, which
+	// serve resolves with [Config.ResolveMinProtocol].
 	MinProtocol int
 
 	OpenRealms           []Realm
@@ -133,9 +132,9 @@ type Config struct {
 	RequireVerifiedEmail bool
 
 	Mail    Mail
-	SMTPURL *url.URL // secreto
-	// MailFrom es el remitente de los correos (ELDMARK_MAIL_FROM; por defecto
-	// no-reply@<máquina de ELDMARK_PUBLIC_URL>).
+	SMTPURL *url.URL // secret
+	// MailFrom is the sender of the emails (ELDMARK_MAIL_FROM; by default
+	// no-reply@<host of ELDMARK_PUBLIC_URL>).
 	MailFrom string
 
 	TLSCertFile string
@@ -143,28 +142,28 @@ type Config struct {
 
 	Heartbeat time.Duration
 	LeaseTTL  time.Duration
-	// LegalDir es la carpeta de los textos legales (ELDMARK_LEGAL_DIR); vacía, los que van dentro
-	// del binario (platform/legal).
+	// LegalDir is the folder of the legal texts (ELDMARK_LEGAL_DIR); empty, the ones inside the binary
+	// (platform/legal).
 	LegalDir string
 }
 
-// LostAfterHeartbeats es cuántos latidos se pueden perder antes de dar una instancia por perdida
+// LostAfterHeartbeats is how many heartbeats can be missed before an instance is considered lost
 // (plataforma.md §5.3).
 const LostAfterHeartbeats = 3
 
-// LostEvery es cada cuánto corre el trabajo de instancias perdidas: min(5 s, HEARTBEAT_S) (§2.5).
+// LostEvery is how often the lost-instances job runs: min(5 s, HEARTBEAT_S) (§2.5).
 func (c *Config) LostEvery() time.Duration { return min(5*time.Second, c.Heartbeat) }
 
-// LostDetected es lo que puede tardar en darse por perdida una instancia desde su último latido:
-// 3 × HEARTBEAT_S más una vuelta del trabajo. El TTL de los arrendamientos tiene que pasar de ahí
-// (lo exige Load): si no, uno caduca con la instancia aún viva y un latido tardío lo encontraba
-// caducado mientras la reclamación, enter y el borrado ya lo daban por libre.
+// LostDetected is how long an instance can take to be considered lost since its last heartbeat: 3 x
+// HEARTBEAT_S plus one round of the job. The leases' TTL has to exceed that (Load requires it):
+// otherwise, one expires with the instance still alive and a late heartbeat would find it expired
+// while the claim, enter and deletion already considered it free.
 func (c *Config) LostDetected() time.Duration {
 	return LostAfterHeartbeats*c.Heartbeat + c.LostEvery()
 }
 
-// ResolveMinProtocol devuelve el protocolo mínimo: el de ELDMARK_MIN_PROTOCOL o, si no se dio
-// (solo en dev y test), el protocol_version de las reglas exportadas.
+// ResolveMinProtocol returns the minimum protocol: that of ELDMARK_MIN_PROTOCOL or, if none was
+// given (only in dev and test), the protocol_version of the exported rules.
 func (c *Config) ResolveMinProtocol(rulesProtocol int) int {
 	if c.MinProtocol > 0 {
 		return c.MinProtocol
@@ -172,7 +171,7 @@ func (c *Config) ResolveMinProtocol(rulesProtocol int) int {
 	return rulesProtocol
 }
 
-// LogValue resume la configuración para el registro, sin secretos.
+// LogValue summarizes the configuration for the log, without secrets.
 func (c *Config) LogValue() slog.Value {
 	publicURL := ""
 	if c.PublicURL != nil {
@@ -199,7 +198,7 @@ func (c *Config) LogValue() slog.Value {
 	)
 }
 
-// Clave de billete del vector de prueba de plataforma.md §5.1 (00 01 … 1f): solo vale en test.
+// Ticket key from the test vector of plataforma.md §5.1 (00 01 ... 1f): only valid in test.
 var vectorTicketKey = func() []byte {
 	k := make([]byte, 32)
 	for i := range k {
@@ -208,8 +207,8 @@ var vectorTicketKey = func() []byte {
 	return k
 }()
 
-// TestEmailHMACKey es la clave fija de pruebas de ELDMARK_EMAIL_HMAC_KEY en dev y test; fuera de
-// ellos no se admite.
+// TestEmailHMACKey is the fixed test key for ELDMARK_EMAIL_HMAC_KEY in dev and test; outside them it
+// is not accepted.
 var TestEmailHMACKey = func() []byte {
 	sum := sha256.Sum256([]byte("eldmark: clave HMAC de correos solo para pruebas"))
 	return sum[:]
@@ -220,7 +219,7 @@ var (
 	hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
 )
 
-// loader acumula los problemas para decirlos todos a la vez.
+// loader accumulates the problems to report them all at once.
 type loader struct {
 	lookup Lookup
 	errs   []string
@@ -237,7 +236,7 @@ func (l *loader) err() error {
 	return errors.New("configuración no válida:\n- " + strings.Join(l.errs, "\n- "))
 }
 
-// get devuelve el valor de una variable normal; vacío o solo espacios cuenta como ausente.
+// get returns the value of an ordinary variable; empty or whitespace-only counts as absent.
 func (l *loader) get(name string) (string, bool) {
 	v, ok := l.lookup(name)
 	v = strings.TrimSpace(v)
@@ -247,7 +246,7 @@ func (l *loader) get(name string) (string, bool) {
 	return v, true
 }
 
-// secret devuelve un secreto de <name> o del archivo de <name>_FILE (no las dos).
+// secret returns a secret from <name> or from the file in <name>_FILE (not both).
 func (l *loader) secret(name string) (string, bool) {
 	direct, hasDirect := l.get(name)
 	path, hasFile := l.get(name + "_FILE")
@@ -299,8 +298,8 @@ func (l *loader) databaseURL() string {
 		l.failMissingSecret(name, "la URL de PostgreSQL")
 		return ""
 	}
-	// pgconn también lee las variables PG*; aquí solo se mira que la cadena se entienda. El
-	// mensaje no repite la cadena, que lleva la contraseña.
+	// pgconn also reads the PG* variables; here we only check that the string is understood. The
+	// message does not repeat the string, which carries the password.
 	if _, err := pgconn.ParseConfig(v); err != nil {
 		l.fail(name, "no se entiende como cadena de conexión de PostgreSQL")
 		return ""
@@ -308,7 +307,7 @@ func (l *loader) databaseURL() string {
 	return v
 }
 
-// LoadDatabase lee lo que necesita migrate: ELDMARK_ENV y ELDMARK_DATABASE_URL.
+// LoadDatabase reads what migrate needs: ELDMARK_ENV and ELDMARK_DATABASE_URL.
 func LoadDatabase(lookup Lookup) (*Database, error) {
 	l := &loader{lookup: lookup}
 	d := &Database{Env: l.env()}
@@ -319,7 +318,7 @@ func LoadDatabase(lookup Lookup) (*Database, error) {
 	return d, nil
 }
 
-// Load lee la configuración completa de serve.
+// Load reads serve's full configuration.
 func Load(lookup Lookup) (*Config, error) {
 	l := &loader{lookup: lookup}
 	c := &Config{Env: l.env()}
@@ -450,7 +449,7 @@ func (l *loader) zoneTokens() []ZoneToken {
 	return tokens
 }
 
-// failMissingSecret anota que falta un secreto, salvo que secret ya haya dicho por qué.
+// failMissingSecret records that a secret is missing, unless secret has already said why.
 func (l *loader) failMissingSecret(name, what string) {
 	for _, e := range l.errs {
 		if strings.HasPrefix(e, name+": ") || strings.HasPrefix(e, name+"_FILE: ") {
@@ -769,7 +768,7 @@ func (l *loader) seconds(name string, def int) time.Duration {
 	return time.Duration(n) * time.Second
 }
 
-// splitList separa una lista por comas, sin espacios ni entradas vacías.
+// splitList splits a list by commas, without spaces or empty entries.
 func splitList(v string) []string {
 	var out []string
 	for _, part := range strings.Split(v, ",") {

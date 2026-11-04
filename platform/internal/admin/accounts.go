@@ -12,25 +12,25 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// bootstrapLock pone en serie dos bootstrap a la vez (pg_advisory_xact_lock).
+// bootstrapLock serializes two simultaneous bootstraps (pg_advisory_xact_lock).
 const bootstrapLock = 4815162343
 
-// RoleChange es el resultado de set-role.
+// RoleChange is the result of set-role.
 type RoleChange struct {
 	AccountID int64
 	From, To  string
-	Changed   bool  // false: ya tenía ese rol (no se toca nada ni se audita)
-	Revoked   int64 // sesiones revocadas (role_changed)
+	Changed   bool  // false: it already had that role (nothing is touched or audited)
+	Revoked   int64 // sessions revoked (role_changed)
 }
 
-// SetRole cambia el rol de la cuenta del correo (§9.1). En una transacción que bloquea las filas
-// del --actor y del objetivo en orden de id (como las sanciones: el rol que miran no cambia a
-// mitad), vuelve a mirar que el --actor sea admin, cambia el rol, revoca todas las sesiones del
-// objetivo (role_changed: el latido expulsa a su personaje en HEARTBEAT_S como mucho, y vuelve a
-// entrar con el rol nuevo) y deja la fila fija de §9.1, la que lee S2 ([sanctions.RoleAt]):
-// source = 'cli', command = 'set-role', actor_account_id del --actor, target_account_id, args
-// {from, to, os_user} y at = ahora. Sobre la propia cuenta, [ErrSelf]: así no se queda nadie sin
-// admin por error.
+// SetRole changes the role of the email's account (§9.1). In a transaction that locks the rows of
+// the --actor and the target in id order (like the sanctions: the role they look at does not change
+// midway), it checks again that the --actor is admin, changes the role, revokes all the target's
+// sessions (role_changed: the heartbeat kicks out its character within HEARTBEAT_S at most, and it
+// logs back in with the new role) and leaves the fixed row of §9.1, the one S2 reads
+// ([sanctions.RoleAt]): source = 'cli', command = 'set-role', the --actor's actor_account_id,
+// target_account_id, args {from, to, os_user} and at = now. On the account itself, [ErrSelf]: that
+// way nobody is left without an admin by mistake.
 func (s *Service) SetRole(ctx context.Context, actor *Actor, email, role string) (*RoleChange, error) {
 	if sanctions.Rank(role) < 0 {
 		return nil, accounts.ErrRoleInvalid
@@ -99,9 +99,9 @@ func (s *Service) SetRole(ctx context.Context, actor *Actor, email, role string)
 	return res, nil
 }
 
-// CreateAccount crea una cuenta de prueba o del equipo (§12: dev.sh crea así las suyas), ya
-// verificada y con los textos vigentes aceptados, con el rol dado; deja la fila create-account
-// (args {role, os_user}).
+// CreateAccount creates a test or team account (§12: dev.sh creates its own this way), already
+// verified and with the current texts accepted, with the given role; it leaves the create-account
+// row (args {role, os_user}).
 func (s *Service) CreateAccount(ctx context.Context, actor *Actor, email, password, role string) (int64, error) {
 	if err := s.publishLegal(ctx); err != nil {
 		return 0, err
@@ -122,10 +122,10 @@ func (s *Service) CreateAccount(ctx context.Context, actor *Actor, email, passwo
 	return id, err
 }
 
-// Bootstrap crea la primera cuenta admin, la que hará de --actor de las demás: solo si no hay
-// ninguna cuenta admin sin purgar (si no, [ErrHasAdmin]) y siempre una cuenta nueva (un correo con
-// cuenta da accounts.ErrEmailTaken: a una cuenta existente se le da el rol con set-role). No lleva
-// --actor; su fila (command bootstrap) va sin actor_account_id.
+// Bootstrap creates the first admin account, the one that will act as --actor for the others: only
+// if there is no unpurged admin account (otherwise, [ErrHasAdmin]) and always a new account (an
+// email with an account gives accounts.ErrEmailTaken: an existing account is given the role with
+// set-role). It takes no --actor; its row (command bootstrap) goes without actor_account_id.
 func (s *Service) Bootstrap(ctx context.Context, email, password string) (int64, error) {
 	if err := s.publishLegal(ctx); err != nil {
 		return 0, err
@@ -154,24 +154,25 @@ func (s *Service) Bootstrap(ctx context.Context, email, password string) (int64,
 	return id, err
 }
 
-// publishLegal publica los textos vigentes que falten en legal_documents (como serve al arrancar).
+// publishLegal publishes any current texts missing from legal_documents (like serve at startup).
 func (s *Service) publishLegal(ctx context.Context) error {
 	_, err := s.legal.Sync(ctx, s.pool, s.strictLegal)
 	return err
 }
 
-// PurgeResult es el resultado de purge-now.
+// PurgeResult is the result of purge-now.
 type PurgeResult struct {
 	AccountID int64
-	Revoked   int64 // sesiones revocadas (deletion)
-	Purged    bool  // false: ya estaba purgada
+	Revoked   int64 // sessions revoked (deletion)
+	Purged    bool  // false: it was already purged
 }
 
-// PurgeNow purga la cuenta del correo sin esperar los 14 días (§11.2, petición expresa): revoca sus
-// sesiones (deletion: el latido expulsa a su personaje con guardado final) y deja la fila
-// purge-now (args {os_user}, sin el correo); espera hasta wait (§11.2: [DefaultPurgeWait]) a que
-// se liberen sus arrendamientos y, si alguno sigue vivo, devuelve [ErrBusy] y no purga nada. Si
-// no, la purga de accounts (lápida de la cuenta y de sus personajes, purge_log).
+// PurgeNow purges the email's account without waiting the 14 days (§11.2, express request): it
+// revokes its sessions (deletion: the heartbeat kicks out its character with a final save) and
+// leaves the purge-now row (args {os_user}, without the email); it waits up to wait (§11.2:
+// [DefaultPurgeWait]) for its leases to be released and, if any is still alive, returns [ErrBusy]
+// and purges nothing. Otherwise, the accounts purge (tombstone of the account and its characters,
+// purge_log).
 func (s *Service) PurgeNow(ctx context.Context, actor *Actor, email string, wait time.Duration) (*PurgeResult, error) {
 	target, _, _, err := s.accounts.LookupAccount(ctx, email)
 	if err != nil {
@@ -212,8 +213,8 @@ func (s *Service) PurgeNow(ctx context.Context, actor *Actor, email string, wait
 	return res, nil
 }
 
-// waitLeases espera hasta wait (tiempo real) a que la cuenta no tenga ningún personaje con un
-// arrendamiento vivo (a la hora del reloj del servicio); si no, [ErrBusy].
+// waitLeases waits up to wait (real time) for the account to have no character with a live lease
+// (at the service clock's time); otherwise, [ErrBusy].
 func (s *Service) waitLeases(ctx context.Context, accountID int64, wait time.Duration) error {
 	deadline := time.Now().Add(wait)
 	for {

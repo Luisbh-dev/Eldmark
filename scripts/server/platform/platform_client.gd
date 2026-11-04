@@ -1,33 +1,33 @@
 class_name PlatformClient
 extends Node
-## El cliente HTTP de la zona contra la API interna de la plataforma (docs/plataforma.md §6), dentro de
-## [ZonePlatform]: [HTTPRequest] sin hilos, plazo de [member timeout_s] por intento, colas por prioridad y los
-## reintentos de cada clase de petición. Nunca espera de forma síncrona: avanza con el bucle principal.
+## The zone's HTTP client against the platform's internal API (docs/plataforma.md §6), inside
+## [ZonePlatform]: threadless [HTTPRequest], a [member timeout_s] deadline per attempt, priority queues and the
+## retries for each class of request. It never waits synchronously: it advances with the main loop.
 ## [br][br]
 ## [codeblock]
-## prioridad   peticiones                                      reintento
-## 0 control   registro, live, GET de fortalezas, primer       registro, live, GET y primer bloque: 1, 2, 4…
-##             bloque, latido, baja                            s hasta 60 s (STARTUP); latido y baja: no
-## 1 entrada   reclamación, liberación                         reclamación: no; liberación: como un guardado
-## 2 jugador   guardados, bloques, operación y libro,           guardados y bloques: el mismo cuerpo a 1, 2, 4,
-##             reportes, ignorados, sanciones                  8 y 15 s, luego cada 15 s (STEADY); el resto, no
-## 3 fortaleza PUT de fortaleza                                cada 2 s (FORTRESS)
-## 4 lotes     chat, auditoría, guerra                         2, 4, 8 y 16 s, luego cada 30 s (BATCH)
+## priority    requests                                        retry
+## 0 control   register, live, fortress GETs, first             register, live, GET and first block: 1, 2, 4…
+##             block, heartbeat, removal                       s up to 60 s (STARTUP); heartbeat and removal: no
+## 1 entry     claim, release                                  claim: no; release: like a save
+## 2 player    saves, blocks, operation and ledger,             saves and blocks: the same body at 1, 2, 4,
+##             reports, ignores, sanctions                     8 and 15 s, then every 15 s (STEADY); the rest, no
+## 3 fortress  fortress PUT                                    every 2 s (FORTRESS)
+## 4 batches   chat, audit, war                                2, 4, 8 and 16 s, then every 30 s (BATCH)
 ## [/codeblock]
-## [b]Plazas:[/b] una propia para la prioridad 0 y [constant SHARED_SLOTS] compartidas. Las prioridades 2 a 4
-## ocupan [constant MAX_LOW_PRIORITY_IN_FLIGHT] como mucho a la vez, así que siempre quedan dos para la 1: un
-## latido no espera detrás de los guardados lentos y una reclamación sale aunque haya cuatro en vuelo. Al quedar
-## libre una plaza sale la petición de prioridad más alta; dentro de cada prioridad, por orden de llegada (una
-## que espera su reintento no frena a las de detrás).
+## [b]Slots:[/b] one of its own for priority 0 and [constant SHARED_SLOTS] shared ones. Priorities 2 to 4
+## take [constant MAX_LOW_PRIORITY_IN_FLIGHT] at most at once, so there are always two left for 1: a
+## heartbeat does not wait behind slow saves and a claim goes out even if four are in flight. When a slot
+## frees up, the request of highest priority goes out; within each priority, in arrival order (one
+## waiting for its retry does not hold back those behind it).
 ## [br][br]
-## [b]Reintentos:[/b] un intento sin respuesta (sin conexión o plazo vencido), un 5xx o un 401 se repiten con
-## los mismos bytes según su clase; cualquier otra respuesta es definitiva y va a [member Request.on_done]. Un
-## plazo vencido no es una respuesta: un guardado sigue siendo el mismo cuerpo hasta tener una definitiva (§7.3).
+## [b]Retries:[/b] an attempt with no response (offline or deadline expired), a 5xx or a 401 are repeated with
+## the same bytes according to their class; any other response is final and goes to [member Request.on_done]. An
+## expired deadline is not a response: a save remains the same body until it has a final one (§7.3).
 ## [br][br]
-## El transporte de un intento es [method _perform]: el de esta clase usa [HTTPRequest] y el del falso de las
-## pruebas ([code]tests/fake_zone_platform.gd[/code]) contesta sin red, con todo lo demás igual.
+## An attempt's transport is [method _perform]: this class's uses [HTTPRequest] and the tests' fake
+## ([code]tests/fake_zone_platform.gd[/code]) answers without a network, with everything else the same.
 
-## Clases de reintento.
+## Retry classes.
 enum Retry { NONE, STARTUP, STEADY, BATCH, FORTRESS }
 
 const PRIORITY_CONTROL: int = 0
@@ -36,57 +36,57 @@ const PRIORITY_PLAYER: int = 2
 const PRIORITY_FORTRESS: int = 3
 const PRIORITY_BATCH: int = 4
 const PRIORITY_COUNT: int = 5
-## Plazas compartidas (más la propia de la prioridad 0).
+## Shared slots (plus the one of its own for priority 0).
 const SHARED_SLOTS: int = 6
-## Peticiones de prioridad 2 a 4 en vuelo a la vez, como mucho.
+## Priority 2 to 4 requests in flight at once, at most.
 const MAX_LOW_PRIORITY_IN_FLIGHT: int = 4
-## Esperas (s) antes de cada reintento de las clases STEADY y BATCH; la última se repite.
+## Waits (s) before each retry of the STEADY and BATCH classes; the last one repeats.
 const STEADY_DELAYS_S: Array[float] = [1.0, 2.0, 4.0, 8.0, 15.0]
 const BATCH_DELAYS_S: Array[float] = [2.0, 4.0, 8.0, 16.0, 30.0]
-## Primera espera de STARTUP (se dobla en cada intento) y espera de FORTRESS.
+## First STARTUP wait (doubles on each attempt) and the FORTRESS wait.
 const STARTUP_FIRST_DELAY_S: float = 1.0
 const FORTRESS_DELAY_S: float = 2.0
-## Tope de un cuerpo de respuesta (la API interna no pasa de 1 MB, §6).
+## Cap on a response body (the internal API does not exceed 1 MB, §6).
 const MAX_RESPONSE_BYTES: int = 2 * 1024 * 1024
 
 
-## Una petición: los bytes que se mandan no cambian entre intentos.
+## A request: the bytes that are sent do not change between attempts.
 class Request:
 	extends RefCounted
 	var method: HTTPClient.Method = HTTPClient.METHOD_GET
-	## Ruta con su consulta, sin la base ([code]/internal/v1/claims[/code]).
+	## Path with its query, without the base ([code]/internal/v1/claims[/code]).
 	var path: String = ""
 	var body: PackedByteArray = PackedByteArray()
 	var priority: int = PRIORITY_PLAYER
-	## Clase de la petición (el kind del [PlatformEvent] si sale como evento).
+	## Class of the request (the [PlatformEvent]'s kind if it comes out as an event).
 	var kind: StringName = &""
 	var context: Variant = null
 	var retry: int = Retry.NONE
-	## Se llama con (esta petición, [PlatformEvent]) cuando hay una respuesta definitiva o no quedan intentos.
+	## Called with (this request, [PlatformEvent]) when there is a final response or no attempts remain.
 	var on_done: Callable = Callable()
-	## Intentos hechos.
+	## Attempts made.
 	var attempts: int = 0
-	## No sale antes de este instante (ms de [method Time.get_ticks_msec]).
+	## Does not go out before this instant (ms from [method Time.get_ticks_msec]).
 	var not_before_msec: int = 0
-	## STARTUP: no se reintenta después de este instante (ms); -1 = sin límite.
+	## STARTUP: not retried after this instant (ms); -1 = no limit.
 	var deadline_msec: int = -1
-	## Orden de llegada.
+	## Arrival order.
 	var seq: int = 0
-	## Plaza en la que vuela (-1 = en cola).
+	## Slot in which it is in flight (-1 = queued).
 	var slot: int = -1
 
 
-## Base de las rutas ([code]http://127.0.0.1:24681[/code], sin barra al final).
+## Base of the paths ([code]http://127.0.0.1:24681[/code], without a trailing slash).
 var base_url: String = ""
-## Token de la zona ([code]Authorization: Bearer[/code]).
+## The zone's token ([code]Authorization: Bearer[/code]).
 var token: String = ""
-## Plazo de cada intento (s).
+## Deadline of each attempt (s).
 var timeout_s: float = 3.0
-## Escala de las esperas entre reintentos (1 = las de la tabla; las pruebas la bajan).
+## Scale of the waits between retries (1 = those in the table; tests lower it).
 var retry_scale: float = 1.0
 
 var _queues: Array[Array] = []
-## Plaza 0: la propia del control; 1..SHARED_SLOTS: compartidas.
+## Slot 0: control's own; 1..SHARED_SLOTS: shared.
 var _slots: Array[Request] = []
 var _http: Array[HTTPRequest] = []
 var _seq: int = 0
@@ -104,7 +104,7 @@ func _process(_delta: float) -> void:
 	pump()
 
 
-## Encola [param request] y la manda en cuanto haya plaza (puede salir ya, dentro de esta llamada).
+## Queues [param request] and sends it as soon as there is a slot (it may go out right away, within this call).
 func submit(request: Request) -> void:
 	_seq += 1
 	request.seq = _seq
@@ -113,7 +113,7 @@ func submit(request: Request) -> void:
 	pump()
 
 
-## Peticiones en cola o en vuelo; sin contar las de la clase [param excluded_kind] si se da.
+## Requests queued or in flight; not counting those of class [param excluded_kind] if given.
 func pending_count(excluded_kind: StringName = &"") -> int:
 	var count: int = 0
 	for queue: Array in _queues:
@@ -126,7 +126,7 @@ func pending_count(excluded_kind: StringName = &"") -> int:
 	return count
 
 
-## Peticiones en vuelo ahora mismo.
+## Requests in flight right now.
 func in_flight_count() -> int:
 	var count: int = 0
 	for request: Request in _slots:
@@ -135,12 +135,12 @@ func in_flight_count() -> int:
 	return count
 
 
-## Intentos mandados desde que existe (métricas y pruebas).
+## Attempts sent since it came into existence (metrics and tests).
 func get_sent_attempts() -> int:
 	return _sent_attempts
 
 
-## Todo lo que espera su reintento sale ya (el cierre ordenado, [method ZonePlatform.begin_flush]).
+## Everything waiting for its retry goes out now (orderly shutdown, [method ZonePlatform.begin_flush]).
 func hurry() -> void:
 	for queue: Array in _queues:
 		for request: Request in queue:
@@ -148,7 +148,7 @@ func hurry() -> void:
 	pump()
 
 
-## Saca de las colas lo que se puede mandar ya y lo pone en las plazas libres.
+## Takes from the queues what can be sent now and puts it in the free slots.
 func pump() -> void:
 	var now: int = Time.get_ticks_msec()
 	for slot: int in _slots.size():
@@ -160,8 +160,8 @@ func pump() -> void:
 		_start(slot, request)
 
 
-# La siguiente petición para la plaza [param slot]: la propia (0) solo lleva control; las compartidas, la de
-# prioridad más alta que esté lista, con el tope de las prioridades 2 a 4.
+# The next request for slot [param slot]: the own one (0) only carries control; the shared ones, the
+# highest-priority one that is ready, with the cap for priorities 2 to 4.
 func _take_next(slot: int, now: int) -> Request:
 	var low_in_flight: int = 0
 	for flying: Request in _slots:
@@ -188,8 +188,8 @@ func _start(slot: int, request: Request) -> void:
 	_perform(request)
 
 
-## El transporte de un intento: tiene que acabar llamando a [method _complete] con [param request] (nunca
-## dentro de esta misma llamada). Este usa un [HTTPRequest] por plaza.
+## An attempt's transport: it must end up calling [method _complete] with [param request] (never
+## within this same call). This one uses one [HTTPRequest] per slot.
 func _perform(request: Request) -> void:
 	var http: HTTPRequest = _http[request.slot]
 	if http == null:
@@ -207,7 +207,7 @@ func _perform(request: Request) -> void:
 		headers.append("Content-Type: application/json")
 	var error: Error = http.request_raw(base_url + request.path, headers, request.method, request.body)
 	if error != OK:
-		# No ha salido (URL mala, sin árbol…): cuenta como un intento sin respuesta.
+		# It did not go out (bad URL, no tree...): counts as an attempt with no response.
 		_complete.call_deferred(request, false, 0, PackedByteArray())
 
 
@@ -219,8 +219,8 @@ func _on_http_completed(result: int, response_code: int, _headers: PackedStringA
 	_complete(request, result == HTTPRequest.RESULT_SUCCESS, response_code, body)
 
 
-## Fin de un intento: la respuesta definitiva va a [member Request.on_done]; si no, se vuelve a encolar con su
-## espera (los mismos bytes).
+## End of an attempt: the final response goes to [member Request.on_done]; otherwise, it is queued again with its
+## wait (the same bytes).
 func _complete(request: Request, transport_ok: bool, status: int, raw: PackedByteArray) -> void:
 	if request.slot < 0 or request.slot >= _slots.size() or _slots[request.slot] != request:
 		return
@@ -238,7 +238,7 @@ func _complete(request: Request, transport_ok: bool, status: int, raw: PackedByt
 	pump()
 
 
-# Espera (s) antes de reintentar, o -1 si la respuesta es definitiva o no quedan intentos.
+# Wait (s) before retrying, or -1 if the response is final or no attempts remain.
 func _retry_delay_s(request: Request, event: PlatformEvent, now: int) -> float:
 	if not is_retryable(event):
 		return -1.0
@@ -258,12 +258,12 @@ func _retry_delay_s(request: Request, event: PlatformEvent, now: int) -> float:
 	return -1.0
 
 
-## true si [param event] no es una respuesta definitiva: sin respuesta, un 5xx o un 401 (§7.3).
+## true if [param event] is not a final response: no response, a 5xx or a 401 (§7.3).
 static func is_retryable(event: PlatformEvent) -> bool:
 	return not event.transport_ok or event.status >= 500 or event.status == 401
 
 
-# Vuelve a la cola de su prioridad en su orden de llegada (es más vieja que las que llegaron después).
+# Returns to the queue of its priority in its arrival order (it is older than those that arrived later).
 func _requeue(request: Request) -> void:
 	var queue: Array = _queues[clampi(request.priority, 0, PRIORITY_COUNT - 1)]
 	var index: int = queue.size()

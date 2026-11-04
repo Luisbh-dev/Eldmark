@@ -8,8 +8,8 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// Borrar, restaurar y el nombre reservado: un personaje con más de 24 h de vida reserva su nombre
-// 7 días y 30 más.
+// Delete, restore and the reserved name: a character with more than 24 h of life reserves its name
+// 7 days and 30 more.
 func TestDeleteRestoreAndReservedName(t *testing.T) {
 	h := newHarness(t)
 	a := h.newPlayer("a@example.org")
@@ -24,7 +24,7 @@ func TestDeleteRestoreAndReservedName(t *testing.T) {
 	}
 	h.expect(h.do(call{method: "DELETE", path: path("/v1/characters/{id}", id), token: a.token, body: map[string]any{}}),
 		http.StatusBadRequest, "validation")
-	// La confirmación vale con la misma clave de NameRules.
+	// The confirmation is valid with the same NameRules key.
 	res = h.remove(a, id, "BRÉNNA")
 	h.expect(res, http.StatusOK, "")
 	restoreUntil := h.clock.Now().Add(7 * day)
@@ -41,13 +41,13 @@ func TestDeleteRestoreAndReservedName(t *testing.T) {
 	if c["deleted_at"] != float64(h.clock.Now().Unix()) || c["restore_until"] != float64(restoreUntil.Unix()) {
 		t.Errorf("la lista enseña el borrado con su fecha límite: %v", c)
 	}
-	h.expect(h.remove(a, id, "Brenna"), http.StatusNotFound, "not_found") // ya borrado
+	h.expect(h.remove(a, id, "Brenna"), http.StatusNotFound, "not_found") // already deleted
 	h.expect(h.enter(a, id), http.StatusNotFound, "not_found")
 	if h.count(`select count(*) from auth_events where account_id = $1 and kind = 'character_delete'`, a.id) != 1 {
 		t.Error("falta el apunte character_delete")
 	}
 
-	// Mientras tanto nadie puede usar el nombre.
+	// Meanwhile nobody can use the name.
 	h.expect(h.create(b, "Brenna", "solmarch"), http.StatusConflict, "name_taken")
 	if res := h.nameCheck(b, "brenna"); res.body["code"] != "name_invalid" {
 		t.Errorf("name-check en minúscula: %s", res.raw)
@@ -56,7 +56,7 @@ func TestDeleteRestoreAndReservedName(t *testing.T) {
 		t.Errorf("name-check: %s", res.raw)
 	}
 
-	// Restaurar en plazo: vuelve con su nombre.
+	// Restoring within the window: it comes back with its name.
 	h.advance(6*day, a, b)
 	res = h.restore(a, id)
 	h.expect(res, http.StatusOK, "")
@@ -67,9 +67,10 @@ func TestDeleteRestoreAndReservedName(t *testing.T) {
 		and reserved_until is null and character_id = $1`, id) != 1 {
 		t.Error("el nombre vuelve a estar activo")
 	}
-	h.expect(h.restore(a, id), http.StatusOK, "") // restaurar uno vivo lo devuelve tal cual
+	h.expect(h.restore(a, id), http.StatusOK, "") // restoring a living one returns it as is
 
-	// Borrar otra vez y dejar pasar el plazo: ya no se restaura, y el nombre sigue reservado 30 días.
+	// Delete again and let the window pass: it can no longer be restored, and the name stays reserved
+	// 30 days.
 	h.expect(h.remove(a, id, "Brenna"), http.StatusOK, "")
 	h.advance(7*day+time.Second, a, b)
 	h.expect(h.restore(a, id), http.StatusNotFound, "not_found")
@@ -79,8 +80,8 @@ func TestDeleteRestoreAndReservedName(t *testing.T) {
 	h.expect(h.restore(a, id), http.StatusNotFound, "not_found")
 }
 
-// Crear y borrar enseguida (menos de 24 h de vida y menos de 1 h jugada) libera el nombre en
-// restore_until, sin los 30 días más (PL-SEG12).
+// Creating and deleting right away (less than 24 h of life and less than 1 h played) frees the name
+// at restore_until, without the 30 extra days (PL-SEG12).
 func TestTrialCharacterFreesTheNameAtRestoreUntil(t *testing.T) {
 	h := newHarness(t)
 	a := h.newPlayer("a@example.org")
@@ -92,10 +93,10 @@ func TestTrialCharacterFreesTheNameAtRestoreUntil(t *testing.T) {
 	h.advance(time.Second, a, b)
 	res := h.create(b, "Probeta", "solmarch")
 	h.expect(res, http.StatusCreated, "")
-	// El viejo ya no se puede restaurar (y su nombre es de otro).
+	// The old one can no longer be restored (and its name belongs to another).
 	h.expect(h.restore(a, id), http.StatusNotFound, "not_found")
 
-	// Con 1 h jugada no es de prueba aunque tenga menos de 24 h: 30 días más.
+	// With 1 h played it is not a test character even if it has less than 24 h: 30 extra days.
 	other := h.mustCreate(a, "Jugado", "vardheim")
 	h.progress.SetSummary(other, persistence.Summary{RaceID: "race_vardheim", Level: 2, PlayedSeconds: 3600})
 	h.expect(h.remove(a, other, "Jugado"), http.StatusOK, "")
@@ -106,7 +107,8 @@ func TestTrialCharacterFreesTheNameAtRestoreUntil(t *testing.T) {
 	}
 }
 
-// Con el personaje en el mundo (arrendamiento vivo) no se borra; y 5 borrados al día como mucho.
+// With the character in the world (live lease) it cannot be deleted; and 5 deletions per day at
+// most.
 func TestDeleteBusyAndDailyLimit(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -124,7 +126,7 @@ func TestDeleteBusyAndDailyLimit(t *testing.T) {
 	if res.errValue("retry_after_s") != 3.0 {
 		t.Errorf("retry_after_s: %s", res.raw)
 	}
-	// Un arrendamiento caducado o liberado no cuenta.
+	// An expired or released lease does not count.
 	h.advance(21*time.Second, p)
 	for i, name := range []string{"Uno", "Dos", "Tres", "Cuatro", "Cinco"} {
 		h.expect(h.remove(p, ids[i], name), http.StatusOK, "")
@@ -154,8 +156,8 @@ func TestOtherAccountsCharacters(t *testing.T) {
 	}
 }
 
-// El renombrado forzado: enter da rename_required, el nombre nuevo pasa las reglas y el viejo
-// queda reservado 30 días.
+// The forced rename: enter gives rename_required, the new name passes the rules and the old one
+// stays reserved 30 days.
 func TestForcedRename(t *testing.T) {
 	h := newHarness(t)
 	a := h.newPlayer("a@example.org")
@@ -176,7 +178,7 @@ func TestForcedRename(t *testing.T) {
 	}
 	res := rename("nuevo")
 	h.expect(res, http.StatusUnprocessableEntity, "name_invalid")
-	h.expect(rename("GROSERIO"), http.StatusConflict, "name_taken") // el mismo nombre con otras mayúsculas
+	h.expect(rename("GROSERIO"), http.StatusConflict, "name_taken") // the same name with other capitalization
 	h.expect(rename("Ocupado"), http.StatusConflict, "name_taken")
 	h.expect(h.do(call{method: "POST", path: path("/v1/characters/{id}/rename", id), token: a.token, body: map[string]any{}}),
 		http.StatusBadRequest, "validation")
@@ -187,13 +189,13 @@ func TestForcedRename(t *testing.T) {
 	}
 	h.expect(rename("Otro"), http.StatusConflict, "rename_not_required")
 	h.expect(h.enter(a, id), http.StatusOK, "")
-	// El viejo, reservado 30 días.
+	// The old one, reserved 30 days.
 	h.expect(h.create(b, "Groserio", "solmarch"), http.StatusConflict, "name_taken")
 	h.advance(30*day+time.Second, b)
 	h.expect(h.create(b, "Groserio", "solmarch"), http.StatusCreated, "")
 }
 
-// Renombrar con el personaje en el mundo: character_busy.
+// Renaming with the character in the world: character_busy.
 func TestRenameWhileInTheWorld(t *testing.T) {
 	h := newHarness(t)
 	a := h.newPlayer("a@example.org")

@@ -1,37 +1,37 @@
 class_name WarEvents
 extends RefCounted
-## Avisos de guerra de una fortaleza (docs/fuerte.md, sección 5): los ids que viajan en el
-## ENTITY_EVENT [code]WAR[/code] (datos [code]u8 war_event, u8 realm[/code]) y sus textos en español.
+## War notices of a fort (docs/fuerte.md, section 5): the ids that travel in the ENTITY_EVENT
+## [code]WAR[/code] (data [code]u8 war_event, u8 realm[/code]) and their texts in Spanish.
 ## [br][br]
-## [FortressState] devuelve estos ids al avanzar; el servidor los manda a toda la zona con el reino
-## que corresponde a cada uno ([method FortressState.event_realm]) y el cliente los muestra con
-## [method text] en el tick de dibujo. Los topes (un aviso de ataque por minuto, una disputa cada
-## 10 s) los aplica [FortressState].
+## [FortressState] returns these ids when advancing; the server sends them to the whole zone with
+## the realm that corresponds to each one ([method FortressState.event_realm]) and the client shows
+## them with [method text] at the draw tick. The caps (one attack notice per minute, one contest
+## every 10 s) are applied by [FortressState].
 ## [br][br]
-## Compartido: no depende del cliente ni del servidor.
+## Shared: depends on neither the client nor the server.
 
-## Fuerte atacado (reino = el atacante): un golpe a la puerta o a un defensor.
+## Fort under attack (realm = the attacker): a hit on the gate or on a defender.
 const UNDER_ATTACK: int = 1
-## Capitán caído (reino = quien lo mató).
+## Captain down (realm = whoever killed it).
 const CAPTAIN_DOWN: int = 2
-## Captura iniciada (reino = el captor).
+## Capture started (realm = the capturer).
 const CAPTURE_STARTED: int = 3
-## Captura disputada (reino = el captor).
+## Capture contested (realm = the capturer).
 const CAPTURE_CONTESTED: int = 4
-## Puerta rota (reino = quien la rompió).
+## Gate broken (realm = whoever broke it).
 const GATE_BROKEN: int = 5
-## Fuerte capturado (reino = el nuevo dueño).
+## Fort captured (realm = the new owner).
 const FORT_CAPTURED: int = 6
-## Fuerte reiniciado a neutral (reino 0).
+## Fort reset to neutral (realm 0).
 const FORT_RESET: int = 7
 
 const FIRST: int = UNDER_ATTACK
 const LAST: int = FORT_RESET
 
-## Nombre del fuerte que se usa en los textos si no se indica otro.
+## Name of the fort used in texts if no other is given.
 const DEFAULT_FORTRESS_NAME: String = "Fuerte"
 
-## Id -> nombre interno (para registros y pruebas).
+## Id -> internal name (for logs and tests).
 const _KEYS: Dictionary = {
 	UNDER_ATTACK: &"under_attack",
 	CAPTAIN_DOWN: &"captain_down",
@@ -42,7 +42,7 @@ const _KEYS: Dictionary = {
 	FORT_RESET: &"fort_reset",
 }
 
-## Id -> plantilla en español, con [code]{reino}[/code] y [code]{fuerte}[/code].
+## Id -> template in Spanish, with [code]{reino}[/code] and [code]{fuerte}[/code].
 const _TEXTS: Dictionary = {
 	UNDER_ATTACK: "¡{reino} ataca el {fuerte}!",
 	CAPTAIN_DOWN: "¡El capitán del {fuerte} ha caído ante {reino}!",
@@ -54,7 +54,7 @@ const _TEXTS: Dictionary = {
 }
 
 
-## Todos los ids de aviso, en orden.
+## All notice ids, in order.
 static func all_ids() -> PackedInt32Array:
 	var ids := PackedInt32Array()
 	for id: int in range(FIRST, LAST + 1):
@@ -62,19 +62,20 @@ static func all_ids() -> PackedInt32Array:
 	return ids
 
 
-## true si [param event_id] es un aviso conocido (1 a 7).
+## true if [param event_id] is a known notice (1 to 7).
 static func is_valid(event_id: int) -> bool:
 	return _KEYS.has(event_id)
 
 
-## Nombre interno del aviso (por ejemplo [code]fort_captured[/code]); vacío si no existe.
+## Internal name of the notice (for example [code]fort_captured[/code]); empty if it does not
+## exist.
 static func key_of(event_id: int) -> StringName:
 	return _KEYS.get(event_id, &"")
 
 
-## Texto en español del aviso [param event_id] para el reino [param realm] (código de red; 0 = los
-## Huecos) y la fortaleza [param fortress_name] ([member FortressDefinition.display_name]). Vacío
-## si el id no existe.
+## Spanish text of notice [param event_id] for realm [param realm] (network code; 0 = the Hollow)
+## and fort [param fortress_name] ([member FortressDefinition.display_name]). Empty if the id does
+## not exist.
 static func text(event_id: int, realm: int, fortress_name: String = DEFAULT_FORTRESS_NAME) -> String:
 	if not _TEXTS.has(event_id):
 		return ""
@@ -82,7 +83,8 @@ static func text(event_id: int, realm: int, fortress_name: String = DEFAULT_FORT
 	return template.format({"reino": realm_label(realm), "fuerte": fortress_name})
 
 
-## Nombre del reino para los textos: «Vardheim», «Solmarch»..., o «los Huecos» para el bando neutral.
+## Realm name for texts: "Vardheim", "Solmarch"..., or "los Huecos" (the Hollow) for the neutral
+## side.
 static func realm_label(realm: int) -> String:
 	if realm == RealmCatalog.NEUTRAL_CODE:
 		return "los Huecos"

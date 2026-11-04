@@ -1,52 +1,53 @@
 class_name ChatText
 extends RefCounted
-## Texto de un mensaje de chat: límites y saneado (docs/social.md, secciones 5 y 12.2).
+## Text of a chat message: limits and sanitizing (docs/social.md, sections 5 and 12.2).
 ## [br][br]
-## El servidor sanea todo texto antes de repartirlo ([method sanitize]) y el cliente aplica la misma
-## función antes de enviar, de modo que lo que el jugador ve en su línea es lo que el servidor
-## aceptará. El saneado quita, por este orden:
-## [br]- lo que no se ve o sirve para falsear el texto: los controles (C0, DEL, C1), todo el formato
-## invisible (categoría Cf de Unicode: anchura cero, marcas de dirección como U+200E o U+061C, el guion
-## blando, las etiquetas U+E0000...), los separadores de línea y de párrafo, el uso privado, los no
-## caracteres y los puntos de código sin asignar, los ignorables por defecto de Unicode (rellenos hangul,
-## el unidor de grafemas, los selectores de variación salvo U+FE0F, que pide el emoji en color) y los
-## caracteres de sustitución U+FFFC y U+FFFD; el tabulador, los saltos de línea, los espacios de Unicode
-## y el blanco braille (U+2800) pasan a ser un espacio;
-## [br]- la secuencia BBCode: todo lo que va entre corchetes, corchetes incluidos (un par anidado como
-## [code][[b]b][/code] tampoco sobrevive), y cualquier corchete suelto;
-## [br]- las marcas combinantes (categoría M) que no van tras una letra (al principio o tras un espacio)
-## y las que pasan de [constant MAX_MARKS_PER_BASE] seguidas: una letra con cientos de marcas encima
-## («zalgo») ocupa toda la caja de chat, y con unas 250 la maquetación de texto de Godot 4.7.2 se queda
-## colgada en el cliente que la recibe;
-## [br]- los espacios repetidos y los de los extremos;
-## [br]- lo que pasa de [constant MAX_CODE_POINTS_PER_GRAPHEME] puntos de código en un mismo grafema (lo
-## que se ve como un solo carácter): acota lo que se pega a la letra anterior sin ser una marca, como el
-## «ำ» tailandés (U+0E33) o el lao (U+0EB3), que con 128 seguidos también cuelgan la maquetación.
+## The server sanitizes all text before distributing it ([method sanitize]) and the client applies
+## the same function before sending, so that what the player sees on their line is what the server
+## will accept. Sanitizing removes, in this order:
+## [br]- whatever is invisible or serves to falsify the text: controls (C0, DEL, C1), all invisible
+## formatting (Unicode category Cf: zero width, direction marks such as U+200E or U+061C, the soft
+## hyphen, the U+E0000... tags), line and paragraph separators, private use, noncharacters and
+## unassigned code points, Unicode default ignorables (Hangul fillers, the grapheme joiner,
+## variation selectors except U+FE0F, which requests the color emoji) and the replacement
+## characters U+FFFC and U+FFFD; the tab, line breaks, Unicode spaces and the Braille blank
+## (U+2800) become a space;
+## [br]- the BBCode sequence: everything between square brackets, brackets included (a nested pair
+## such as [code][[b]b][/code] does not survive either), and any stray bracket;
+## [br]- combining marks (category M) that do not follow a letter (at the start or after a space)
+## and those beyond [constant MAX_MARKS_PER_BASE] in a row: a letter with hundreds of marks on top
+## ("zalgo") fills the whole chat box, and with about 250 Godot 4.7.2's text layout hangs on the
+## client that receives it;
+## [br]- repeated spaces and those at the ends;
+## [br]- whatever exceeds [constant MAX_CODE_POINTS_PER_GRAPHEME] code points in a single grapheme
+## (what is seen as one character): it bounds what attaches to the previous letter without being a
+## mark, such as the Thai "ำ" (U+0E33) or the Lao one (U+0EB3), which at 128 in a row also hang the
+## layout.
 ## [br][br]
-## Las categorías salen de las tablas de Unicode del motor (las [RegEx] de PCRE2 con [code]\p{…}[/code]),
-## que son las mismas en el cliente y en el servidor porque los dos son el mismo binario. Cuesta lineal en
-## la longitud del texto (sin repetir pasadas por cada nivel de corchetes) y casi todo corre en C++; un
-## texto ASCII imprimible sin corchetes ni espacios de más sale enseguida tal cual.
+## The categories come from the engine's Unicode tables (PCRE2 [RegEx] with [code]\p{…}[/code]),
+## which are the same on client and server because both are the same binary. Cost is linear in the
+## text length (no repeated passes per bracket nesting level) and almost everything runs in C++; a
+## printable ASCII text with no brackets or extra spaces comes out immediately as is.
 ## [br][br]
-## Un texto vacío tras el saneado, o de más de [constant MAX_CHARS] caracteres, no vale
-## ([method check]). Compartido: no depende del cliente ni del servidor.
+## A text that is empty after sanitizing, or longer than [constant MAX_CHARS] characters, is not
+## valid ([method check]). Shared: depends on neither the client nor the server.
 
-## Caracteres como mucho de un mensaje.
+## Maximum characters in a message.
 const MAX_CHARS: int = 255
-## Bytes en UTF-8 como mucho de un mensaje (255 letras de 3 bytes caben justas).
+## Maximum UTF-8 bytes in a message (255 3-byte letters fit exactly).
 const MAX_BYTES: int = 768
-## Marcas combinantes seguidas que se conservan sobre una misma letra (el hebreo con puntos y acentos o
-## una sílaba tibetana usan hasta cuatro); el resto se quita.
+## Consecutive combining marks kept on the same letter (pointed and accented Hebrew or a Tibetan
+## syllable use up to four); the rest are removed.
 const MAX_MARKS_PER_BASE: int = 4
-## Puntos de código que se conservan en un grafema: la letra y sus [constant MAX_MARKS_PER_BASE] marcas.
-## Vale también para lo que se combina sin ser de la categoría M (vocales tailandesas y laosianas, vocales
-## y finales del hangul antiguo, tonos de piel).
+## Code points kept in a grapheme: the letter and its [constant MAX_MARKS_PER_BASE] marks. It also
+## applies to what combines without being category M (Thai and Lao vowels, vowels and finals of
+## old Hangul, skin tones).
 const MAX_CODE_POINTS_PER_GRAPHEME: int = 1 + MAX_MARKS_PER_BASE
 
-## Motivo por el que un texto no vale. [constant OK] es un texto utilizable.
+## Reason a text is not valid. [constant OK] is a usable text.
 enum Problem { OK = 0, EMPTY = 1, TOO_LONG = 2 }
 
-# Espacios (normales y de Unicode), saltos de línea y el blanco braille, que se juntan en uno solo.
+# Spaces (normal and Unicode), line breaks and the Braille blank, which collapse into a single one.
 const _SPACES: Array[int] = [
 	0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20, 0xA0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004,
 	0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A, 0x202F, 0x205F, 0x2800, 0x3000,
@@ -54,24 +55,25 @@ const _SPACES: Array[int] = [
 const _OPEN_BRACKET: int = 0x5B
 const _CLOSE_BRACKET: int = 0x5D
 
-# Lo que ya está limpio no casa: ASCII imprimible sin corchetes, sin espacios en los extremos ni dobles.
+# What is already clean does not match: printable ASCII without brackets, with no spaces at the
+# ends or doubled.
 const _NEEDS_WORK_PATTERN: String = "[^\\x20-\\x5A\\x5C\\x5E-\\x7E]|^\\x20|\\x20$|\\x20\\x20"
-# Los espacios que no son el normal (ver _SPACES).
+# Spaces that are not the normal one (see _SPACES).
 const _OTHER_SPACES_PATTERN: String = \
 		"[\\x09-\\x0D\\x{A0}\\x{1680}\\x{2000}-\\x{200A}\\x{202F}\\x{205F}\\x{2800}\\x{3000}]"
-# Lo que se quita. Va después de cambiar los espacios, porque el tabulador y los saltos son Cc.
+# What is removed. It goes after replacing spaces, because the tab and line breaks are Cc.
 const _STRIPPED_PATTERN: String = \
 		"(?!\\x{FE0F})[\\p{Cc}\\p{Cf}\\p{Co}\\p{Cs}\\p{Cn}\\p{Zl}\\p{Zp}\\p{DI}\\x{FFFC}\\x{FFFD}]"
-# Marcas sin letra delante.
+# Marks with no letter before them.
 const _BASELESS_MARKS_PATTERN: String = "(^|\\x20)\\p{M}+"
-# Marcas seguidas de más (el número lo pone MAX_MARKS_PER_BASE).
+# Excess consecutive marks (the number is set by MAX_MARKS_PER_BASE).
 const _EXTRA_MARKS_PATTERN: String = "(\\p{M}{%d})\\p{M}+"
 const _REPEATED_SPACES_PATTERN: String = "\\x20{2,}"
-# Nada que se combine con lo anterior está por debajo de U+0300, así que un grafema de más de
-# MAX_CODE_POINTS_PER_GRAPHEME puntos tiene al menos ese número seguidos por encima de U+02FF: solo
-# entonces se recorre el texto grafema a grafema (el español con tildes nunca llega).
+# Nothing that combines with what precedes it is below U+0300, so a grapheme of more than
+# MAX_CODE_POINTS_PER_GRAPHEME code points has at least that many in a row above U+02FF: only
+# then is the text walked grapheme by grapheme (Spanish with accents never gets there).
 const _LONG_RUN_PATTERN: String = "[^\\x{0}-\\x{2FF}]{%d,}"
-# Un grafema extendido de Unicode (UAX #29).
+# A Unicode extended grapheme cluster (UAX #29).
 const _GRAPHEME_PATTERN: String = "\\X"
 
 static var _needs_work: RegEx = null
@@ -84,9 +86,9 @@ static var _long_run: RegEx = null
 static var _grapheme: RegEx = null
 
 
-## Texto saneado de [param text]: sin caracteres de control ni invisibles, sin BBCode, con las marcas
-## combinantes acotadas y con los espacios arreglados. Cadena vacía si no queda nada o si pasa de
-## [constant MAX_CHARS] caracteres ([method check] dice cuál de las dos).
+## Sanitized text of [param text]: without control or invisible characters, without BBCode, with
+## bounded combining marks and with spaces fixed. Empty string if nothing is left or if it exceeds
+## [constant MAX_CHARS] characters ([method check] says which of the two).
 static func sanitize(text: String) -> String:
 	var cleaned: String = clean(text)
 	if cleaned.length() > MAX_CHARS:
@@ -94,8 +96,8 @@ static func sanitize(text: String) -> String:
 	return cleaned
 
 
-## [constant Problem.OK] si [param text] vale una vez saneado, [constant Problem.EMPTY] si queda vacío y
-## [constant Problem.TOO_LONG] si el saneado pasa de [constant MAX_CHARS] caracteres.
+## [constant Problem.OK] if [param text] is valid once sanitized, [constant Problem.EMPTY] if it is
+## left empty and [constant Problem.TOO_LONG] if sanitizing exceeds [constant MAX_CHARS] characters.
 static func check(text: String) -> int:
 	var cleaned: String = clean(text)
 	if cleaned.is_empty():
@@ -105,7 +107,7 @@ static func check(text: String) -> int:
 	return Problem.OK
 
 
-## Mensaje en español, para el jugador, de un [enum Problem] (vacío si es [constant Problem.OK]).
+## Message in Spanish, for the player, for a [enum Problem] (empty if it is [constant Problem.OK]).
 static func problem_text(problem: int) -> String:
 	match problem:
 		Problem.EMPTY:
@@ -115,8 +117,8 @@ static func problem_text(problem: int) -> String:
 	return ""
 
 
-## Como [method sanitize], pero sin comprobar la longitud máxima. Es idempotente: sanear dos veces da lo
-## mismo que una.
+## Like [method sanitize], but without checking the maximum length. It is idempotent: sanitizing
+## twice gives the same as once.
 static func clean(text: String) -> String:
 	_ensure_patterns()
 	if _needs_work.search(text) == null:
@@ -129,15 +131,15 @@ static func clean(text: String) -> String:
 	return _cap_graphemes(_repeated_spaces.sub(result, " ", true).strip_edges())
 
 
-## true si el carácter con código [param code] se trata como un espacio (normal, Unicode, un salto de
-## línea o el blanco braille).
+## true if the character with code [param code] is treated as a space (normal, Unicode, a line
+## break or the Braille blank).
 static func is_space(code: int) -> bool:
 	return _SPACES.has(code)
 
 
-## true si el carácter con código [param code] se quita siempre al sanear: control, invisible, sin asignar
-## o de uso privado (no cuentan los espacios ni los saltos, que pasan a ser un espacio, ni las marcas
-## combinantes, que se quitan según dónde vayan).
+## true if the character with code [param code] is always removed when sanitizing: control,
+## invisible, unassigned or private use (spaces and line breaks, which become a space, and
+## combining marks, which are removed depending on where they are, do not count).
 static func is_stripped_control(code: int) -> bool:
 	if code <= 0 or code > 0x10FFFF or (code >= 0xD800 and code <= 0xDFFF):
 		return true
@@ -160,10 +162,10 @@ static func _ensure_patterns() -> void:
 	_grapheme = RegEx.create_from_string(_GRAPHEME_PATTERN)
 
 
-# Quita lo que va entre corchetes y los corchetes sueltos, en una sola pasada: cada «]» cierra el último
-# «[» abierto y se lleva todo lo que hay entre los dos (también los pares de dentro); un «]» sin abrir se
-# quita solo, y de un «[» sin cerrar se quita el corchete y se queda lo que le sigue. Es lo mismo que
-# quitar el par más interior una y otra vez hasta que no quede ninguno, pero lineal.
+# Removes what is between brackets and stray brackets, in a single pass: each "]" closes the last
+# open "[" and takes everything between the two (inner pairs too); an unopened "]" is removed on
+# its own, and for an unclosed "[" the bracket is removed and what follows it stays. It is the
+# same as removing the innermost pair over and over until none is left, but linear.
 static func _strip_markup(text: String) -> String:
 	if not (text.contains("[") or text.contains("]")):
 		return text
@@ -171,7 +173,7 @@ static func _strip_markup(text: String) -> String:
 	var kept := PackedInt32Array()
 	kept.resize(codes.size())
 	var size: int = 0
-	# Posiciones (en kept) de los «[» aún abiertos, de menor a mayor.
+	# Positions (in kept) of the still-open "[", from lowest to highest.
 	var open := PackedInt32Array()
 	for code: int in codes:
 		if code == _CLOSE_BRACKET:
@@ -185,12 +187,12 @@ static func _strip_markup(text: String) -> String:
 		size += 1
 	if size == 0:
 		return ""
-	# Los únicos «[» que quedan son los que no se cerraron (los cerrados se fueron con su contenido).
+	# The only "[" left are those that were not closed (the closed ones left with their content).
 	return kept.slice(0, size).to_byte_array().get_string_from_utf32().replace("[", "")
 
 
-# Deja cada grafema en sus primeros MAX_CODE_POINTS_PER_GRAPHEME puntos de código. Va al final: los pasos
-# anteriores no alargan ningún grafema, así que sanear dos veces sigue dando lo mismo.
+# Leaves each grapheme with its first MAX_CODE_POINTS_PER_GRAPHEME code points. It goes last: the
+# previous steps do not lengthen any grapheme, so sanitizing twice still gives the same result.
 static func _cap_graphemes(text: String) -> String:
 	if _long_run.search(text) == null:
 		return text

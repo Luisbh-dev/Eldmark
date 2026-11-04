@@ -1,11 +1,11 @@
-// Package privacy son las retenciones de plataforma.md §11.1 (TEC-43): el trabajo horario
-// privacy_retention, que borra de cada tabla lo que ha pasado su plazo y vacía el libro de los
-// personajes purgados hace más de un año (ProgressStore.PurgeRetention, progresion.md §3.5), con el
-// borrado de las lápidas que se quedan vacías.
+// Package privacy implements the retention rules of plataforma.md §11.1 (TEC-43): the hourly
+// privacy_retention job, which deletes from each table whatever has passed its deadline and
+// empties the ledger of characters purged more than a year ago (ProgressStore.PurgeRetention,
+// progresion.md §3.5), along with deleting the tombstones that end up empty.
 //
-// Lo demás de §11 está en otros paquetes: la retención del chat (social.ChatRetentionJob, P7a), la
-// exportación (accounts.Service.Export, con ProgressStore.Export), la purga de cuentas (accounts, P1) y
-// de personajes (characters.Purger, P2), y reapply-purges (admin, P9b).
+// The rest of §11 lives in other packages: chat retention (social.ChatRetentionJob, P7a),
+// export (accounts.Service.Export, with ProgressStore.Export), account purging (accounts, P1)
+// and character purging (characters.Purger, P2), and reapply-purges (admin, P9b).
 package privacy
 
 import (
@@ -26,62 +26,63 @@ import (
 
 const day = 24 * time.Hour
 
-// Plazos de la tabla de plataforma.md §11.1. Las sanciones de una cuenta viva y el libro de un personaje
-// vivo no caducan; el libro de uno purgado dura progress.Retention (un año) desde su purga.
+// Deadlines from the table in plataforma.md §11.1. The sanctions of a live account and the
+// ledger of a live character do not expire; the ledger of a purged one lasts progress.Retention
+// (one year) from its purge.
 const (
 	AuthEventsRetention     = 30 * day  // auth_events
-	SessionAccessRetention  = 30 * day  // la IP y el agente de sessions, desde que se abrió
-	ExpiredSessionRetention = 7 * day   // sessions, desde refresh_expires_at
-	ExpiredTokenRetention   = 7 * day   // account_tokens, desde expires_at
-	TicketRetention         = day       // enter_tickets, desde expires_at
-	InstanceRetention       = 30 * day  // zone_instances terminadas, desde ended_at
+	SessionAccessRetention  = 30 * day  // the IP and agent of sessions, from when it was opened
+	ExpiredSessionRetention = 7 * day   // sessions, from refresh_expires_at
+	ExpiredTokenRetention   = 7 * day   // account_tokens, from expires_at
+	TicketRetention         = day       // enter_tickets, from expires_at
+	InstanceRetention       = 30 * day  // finished zone_instances, from ended_at
 	MailRetention           = 7 * day   // outbound_mail
-	ReportRetention         = 365 * day // reportes cerrados y su prueba, desde el cierre; uno abierto se cierra a este plazo
+	ReportRetention         = 365 * day // closed reports and their evidence, from closing; an open one is closed at this deadline
 	AuditRetention          = 365 * day // audit_log
-	PurgedSanctionRetention = 365 * day // las sanciones de una cuenta purgada, desde su purga
+	PurgedSanctionRetention = 365 * day // the sanctions of a purged account, from its purge
 )
 
-// Batch es lo que borra como mucho cada sentencia de las tablas que pueden crecer (§11.1: lotes de 10 000).
+// Batch is the most that each statement deletes from the tables that can grow (§11.1: batches of 10 000).
 const Batch = 10_000
 
-// ExpiredReportResolution es la resolución de un reporte que se cierra solo al año (§11.1).
+// ExpiredReportResolution is the resolution of a report that closes itself after a year (§11.1).
 const ExpiredReportResolution = "caducado"
 
-// Pasos de una vuelta, por el nombre con el que salen en [Result] y en el registro.
+// Steps of a pass, by the name under which they appear in [Result] and in the log.
 const (
-	StepReportsClosed    = "reports_closed"    // reportes abiertos de hace un año que pasan a dismissed
-	StepReports          = "reports"           // reportes cerrados hace más de un año (con su prueba)
-	StepAudit            = "audit_log"         // auditoría de hace más de un año
-	StepSanctions        = "sanctions"         // sanciones de cuentas purgadas hace más de un año
-	StepSanctionedEmails = "sanctioned_emails" // huellas de correos sancionados vencidas
-	StepAuthEvents       = "auth_events"       // accesos de hace más de 30 días
-	StepSessionAccess    = "session_access"    // sesiones de hace más de 30 días que pierden IP y agente
-	StepSessions         = "sessions"          // sesiones caducadas hace más de 7 días
-	StepTokens           = "account_tokens"    // enlaces caducados hace más de 7 días
-	StepTickets          = "enter_tickets"     // billetes caducados hace más de un día
-	StepInstances        = "zone_instances"    // instancias terminadas hace más de 30 días (con sus bloques de ids)
-	StepMail             = "outbound_mail"     // correos de prueba de hace más de 7 días
-	StepNames            = "character_names"   // nombres reservados cuya reserva venció
-	StepLedger           = "ledger"            // filas del libro de los purgados hace más de un año
-	StepLedgerTombstones = "ledger_tombstones" // lápidas de personajes que se quedan sin libro
+	StepReportsClosed    = "reports_closed"    // open reports from a year ago that move to dismissed
+	StepReports          = "reports"           // reports closed more than a year ago (with their evidence)
+	StepAudit            = "audit_log"         // audit entries from more than a year ago
+	StepSanctions        = "sanctions"         // sanctions of accounts purged more than a year ago
+	StepSanctionedEmails = "sanctioned_emails" // expired fingerprints of sanctioned emails
+	StepAuthEvents       = "auth_events"       // logins from more than 30 days ago
+	StepSessionAccess    = "session_access"    // sessions from more than 30 days ago that lose IP and agent
+	StepSessions         = "sessions"          // sessions expired more than 7 days ago
+	StepTokens           = "account_tokens"    // links expired more than 7 days ago
+	StepTickets          = "enter_tickets"     // tickets expired more than a day ago
+	StepInstances        = "zone_instances"    // instances finished more than 30 days ago (with their id blocks)
+	StepMail             = "outbound_mail"     // test emails from more than 7 days ago
+	StepNames            = "character_names"   // reserved names whose reservation expired
+	StepLedger           = "ledger"            // ledger rows of characters purged more than a year ago
+	StepLedgerTombstones = "ledger_tombstones" // tombstones of characters left without a ledger
 )
 
-// Steps son los pasos de una vuelta, en su orden.
+// Steps are the steps of a pass, in order.
 var Steps = []string{StepReportsClosed, StepReports, StepAudit, StepSanctions, StepSanctionedEmails, StepAuthEvents,
 	StepSessionAccess, StepSessions, StepTokens, StepTickets, StepInstances, StepMail, StepNames, StepLedger,
 	StepLedgerTombstones}
 
-// Options son las dependencias del servicio.
+// Options are the service's dependencies.
 type Options struct {
 	Pool *pgxpool.Pool
-	// Progress es el almacén del progreso (progress.Store en serve): su PurgeRetention vacía el libro
-	// con su propio reloj.
+	// Progress is the progress store (progress.Store in serve): its PurgeRetention empties the
+	// ledger with its own clock.
 	Progress persistence.ProgressStore
-	Clock    clock.Clock // por defecto, el del sistema
+	Clock    clock.Clock // defaults to the system clock
 	Log      *slog.Logger
 }
 
-// Service hace las retenciones.
+// Service performs the retention jobs.
 type Service struct {
 	pool     *pgxpool.Pool
 	progress persistence.ProgressStore
@@ -89,7 +90,7 @@ type Service struct {
 	log      *slog.Logger
 }
 
-// New prepara el servicio.
+// New prepares the service.
 func New(o Options) (*Service, error) {
 	if o.Pool == nil || o.Progress == nil {
 		return nil, errors.New("privacy: faltan dependencias")
@@ -103,10 +104,10 @@ func New(o Options) (*Service, error) {
 	return &Service{pool: o.Pool, progress: o.Progress, clock: o.Clock, log: o.Log}, nil
 }
 
-// Result es lo que ha borrado (o cambiado) una vuelta en cada paso.
+// Result is what a pass has deleted (or changed) in each step.
 type Result map[string]int64
 
-// Total es la suma de todos los pasos.
+// Total is the sum of all steps.
 func (r Result) Total() int64 {
 	var n int64
 	for _, v := range r {
@@ -115,16 +116,16 @@ func (r Result) Total() int64 {
 	return n
 }
 
-// step es un paso de la vuelta: borra (o cambia) con la hora dada y devuelve cuántas filas.
+// step is a step of the pass: it deletes (or changes) with the given time and returns how many rows.
 type step struct {
 	name string
 	run  func(ctx context.Context, now time.Time) (int64, error)
 }
 
-// Run hace una vuelta de las retenciones con la hora del reloj: cada paso en sus propias sentencias (los
-// de las tablas grandes, en lotes de [Batch]) y la del libro con [Service.PurgeLedger]. Un paso que falla
-// no para a los demás: la vuelta los hace todos y devuelve los errores juntos (la siguiente, dentro de
-// una hora, lo reintenta).
+// Run performs one pass of the retention jobs with the clock's time: each step in its own
+// statements (those of the large tables, in batches of [Batch]) and the ledger one with
+// [Service.PurgeLedger]. A step that fails does not stop the others: the pass runs them all and
+// returns the errors together (the next one, an hour later, retries it).
 func (s *Service) Run(ctx context.Context) (Result, error) {
 	now := s.clock.Now()
 	res := make(Result, len(Steps))
@@ -150,8 +151,8 @@ func (s *Service) Run(ctx context.Context) (Result, error) {
 	return res, errors.Join(errs...)
 }
 
-// Job es [Service.Run] como trabajo periódico de app (privacy_retention, cada hora): registra lo que
-// ha borrado cada paso, sin ids.
+// Job is [Service.Run] as a periodic app job (privacy_retention, every hour): it logs what each
+// step has deleted, without ids.
 func (s *Service) Job(ctx context.Context) error {
 	res, err := s.Run(ctx)
 	if res.Total() > 0 {
@@ -168,12 +169,12 @@ func (s *Service) Job(ctx context.Context) error {
 
 func (s *Service) steps() []step {
 	return []step{
-		// Primero se cierran los reportes abiertos de hace un año: cuentan desde ahora (§11.1).
+		// Open reports from a year ago are closed first: they count from now (§11.1).
 		{StepReportsClosed, func(ctx context.Context, now time.Time) (int64, error) {
 			return s.exec(ctx, `update reports set status = 'dismissed', closed_at = $1, resolution = $2
 				where status in ('open', 'in_review') and created_at < $3`, now, ExpiredReportResolution, now.Add(-ReportRetention))
 		}},
-		// report_evidence y sanction_reports caen en cascada con su reporte.
+		// report_evidence and sanction_reports cascade with their report.
 		{StepReports, func(ctx context.Context, now time.Time) (int64, error) {
 			return s.deleteBatched(ctx, `delete from reports where report_id in (select report_id from reports
 				where status in ('actioned', 'dismissed') and coalesce(closed_at, created_at) < $1 limit $2)`,
@@ -188,7 +189,7 @@ func (s *Service) steps() []step {
 				join accounts a on a.account_id = s.account_id where a.status = 'purged' and a.purged_at < $1 limit $2)`,
 				now.Add(-PurgedSanctionRetention))
 		}},
-		// El registro solo mira las vigentes (until > ahora): una vencida ya no sirve de nada.
+		// The registry only looks at active ones (until > now): an expired one is no longer of any use.
 		{StepSanctionedEmails, func(ctx context.Context, now time.Time) (int64, error) {
 			return s.exec(ctx, `delete from sanctioned_email_hashes where until <= $1`, now)
 		}},
@@ -200,8 +201,8 @@ func (s *Service) steps() []step {
 			return s.exec(ctx, `update sessions set ip = null, user_agent = null
 				where created_at < $1 and (ip is not null or user_agent is not null)`, now.Add(-SessionAccessRetention))
 		}},
-		// Una sesión caduca a las 12 h de abrirse (refresh_expires_at; revocarla no la alarga). Sus
-		// billetes caen en cascada y el arrendamiento que la tenga se queda sin sesión (set null).
+		// A session expires 12 h after opening (refresh_expires_at; revoking it does not extend it). Its
+		// tickets cascade and the lease that holds it is left without a session (set null).
 		{StepSessions, func(ctx context.Context, now time.Time) (int64, error) {
 			return s.deleteBatched(ctx, `delete from sessions where session_id in (select session_id from sessions
 				where refresh_expires_at < $1 limit $2)`, now.Add(-ExpiredSessionRetention))
@@ -213,9 +214,8 @@ func (s *Service) steps() []step {
 			return s.deleteBatched(ctx, `delete from enter_tickets where ticket_id in (select ticket_id from enter_tickets
 				where expires_at < $1 limit $2)`, now.Add(-TicketRetention))
 		}},
-		// Terminadas: paradas, perdidas o sustituidas (las tres ponen ended_at). Sus bloques de ids y
-		// billetes caen en cascada; los arrendamientos, fortalezas y eventos de guerra que las nombran se
-		// quedan sin ella (set null).
+		// Finished: stopped, lost or replaced (all three set ended_at). Their id blocks and tickets
+		// cascade; the leases, forts and war events that name them are left without it (set null).
 		{StepInstances, func(ctx context.Context, now time.Time) (int64, error) {
 			return s.deleteBatched(ctx, `delete from zone_instances where zone_instance_id in (select zone_instance_id
 				from zone_instances where status in ('stopped', 'lost', 'replaced') and ended_at < $1 limit $2)`,
@@ -225,15 +225,16 @@ func (s *Service) steps() []step {
 			return s.deleteBatched(ctx, `delete from outbound_mail where id in (select id from outbound_mail
 				where created_at < $1 limit $2)`, now.Add(-MailRetention))
 		}},
-		// El nombre de un personaje borrado (o el viejo de un renombrado) se reserva un plazo (§4.4); vencido,
-		// crear y restaurar ya lo tratan como libre, y la fila solo guardaría el nombre.
+		// The name of a deleted character (or the old one of a renamed one) is reserved for a period
+		// (§4.4); once expired, create and restore already treat it as free, and the row would only keep
+		// the name.
 		{StepNames, func(ctx context.Context, now time.Time) (int64, error) {
 			return s.exec(ctx, `delete from character_names where status = 'reserved' and reserved_until <= $1`, now)
 		}},
 	}
 }
 
-// exec corre una sentencia y devuelve las filas que toca.
+// exec runs a statement and returns the rows it touches.
 func (s *Service) exec(ctx context.Context, sql string, args ...any) (int64, error) {
 	tag, err := s.pool.Exec(ctx, sql, args...)
 	if err != nil {
@@ -242,8 +243,8 @@ func (s *Service) exec(ctx context.Context, sql string, args ...any) (int64, err
 	return tag.RowsAffected(), nil
 }
 
-// deleteBatched repite un borrado con «limit» (el último parámetro, que pone ella: [Batch]) hasta que
-// borra menos de un lote. Cada lote es su propia sentencia: no se bloquea la tabla entera.
+// deleteBatched repeats a delete with "limit" (the last parameter, which it sets: [Batch]) until
+// it deletes less than one batch. Each batch is its own statement: the whole table is not locked.
 func (s *Service) deleteBatched(ctx context.Context, sql string, args ...any) (int64, error) {
 	args = append(args, Batch)
 	var total int64
@@ -262,10 +263,11 @@ func (s *Service) deleteBatched(ctx context.Context, sql string, args ...any) (i
 	}
 }
 
-// PurgeLedger es la retención del libro (§11.1, progresion.md §3.5): llama a ProgressStore.PurgeRetention
-// en una transacción mientras borre algo y, en esa misma transacción, borra las filas de characters que
-// devuelve vacías (lápidas purgadas hace más de un año sin libro), sin mirar tablas del progreso. Devuelve
-// las filas del libro borradas y las lápidas borradas. El año lo mide el reloj del almacén.
+// PurgeLedger is the ledger retention (§11.1, progresion.md §3.5): it calls
+// ProgressStore.PurgeRetention in a transaction as long as it deletes anything and, in that same
+// transaction, deletes the characters rows it returns as emptied (tombstones purged more than a
+// year ago with no ledger), without looking at progress tables. It returns the ledger rows deleted
+// and the tombstones deleted. The year is measured by the store's clock.
 func (s *Service) PurgeLedger(ctx context.Context) (deleted, tombstones int64, err error) {
 	for {
 		var n, gone int64
@@ -280,7 +282,7 @@ func (s *Service) PurgeLedger(ctx context.Context) (deleted, tombstones int64, e
 			if len(emptied) == 0 {
 				return nil
 			}
-			// Solo lápidas: un personaje sin purgar nunca se borra aquí, diga lo que diga el almacén.
+			// Tombstones only: a character that has not been purged is never deleted here, whatever the store says.
 			tag, err := tx.Exec(ctx, `delete from characters where character_id = any($1) and purged_at is not null`,
 				emptied)
 			if err != nil {

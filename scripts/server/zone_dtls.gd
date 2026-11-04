@@ -1,33 +1,35 @@
 class_name ZoneDtls
 extends RefCounted
-## Certificado y clave DTLS de la zona (docs/plataforma.md §10.2, P9c; TEC-27).
+## Zone DTLS certificate and key (docs/plataforma.md §10.2, P9c; TEC-27).
 ## [br][br]
-## [code]ServerMain[/code] lo carga con [method load_files] de [code]--dtls-cert=<pem>[/code] y
-## [code]--dtls-key=<pem>[/code] (rutas: en staging y producción, secretos de Docker montados en
-## [code]/run/secrets/[/code]) y lo deja en [member ServerConfig.dtls]. De ahí lo usan:
-## [br]- [ZoneServer], que abre el puerto con [member server_options] ([method NetTransport.host]).
-## [br]- [ZonePlatform], que manda [member certificate_pem] y [member common_name] en el registro (§6): la
-## plataforma los da al cliente en [code]enter[/code] por HTTPS y el cliente ancla ese certificado con
-## [method TLSOptions.client] y comprueba ese nombre.
+## [code]ServerMain[/code] loads it with [method load_files] from [code]--dtls-cert=<pem>[/code] and
+## [code]--dtls-key=<pem>[/code] (paths: in staging and production, Docker secrets mounted at
+## [code]/run/secrets/[/code]) and leaves it in [member ServerConfig.dtls]. From there it is used by:
+## [br]- [ZoneServer], which opens the port with [member server_options] ([method NetTransport.host]).
+## [br]- [ZonePlatform], which sends [member certificate_pem] and [member common_name] in the
+## registration (§6): the platform gives them to the client in [code]enter[/code] over HTTPS and the
+## client pins that certificate with [method TLSOptions.client] and checks that name.
 ## [br][br]
-## [b]El nombre.[/b] [X509Certificate] de Godot no da el sujeto, así que el [code]CN[/code] se lee del DER con
-## un lector mínimo de ASN.1 ([method certificate_fields]): el primer [code]commonName[/code] (OID 2.5.4.3) del
-## sujeto del primer certificado del PEM. Un certificado sin [code]CN[/code] no vale: el cliente lo necesita
-## (mbedtls lo compara con el [code]subjectAltName[/code] si lo hay, y si no con el [code]CN[/code]).
+## [b]The name.[/b] Godot's [X509Certificate] does not expose the subject, so the [code]CN[/code] is
+## read from the DER with a minimal ASN.1 reader ([method certificate_fields]): the first
+## [code]commonName[/code] (OID 2.5.4.3) of the subject of the first certificate in the PEM. A
+## certificate without [code]CN[/code] is not valid: the client needs it (mbedtls compares it with the
+## [code]subjectAltName[/code] if there is one, and with the [code]CN[/code] otherwise).
 ## [br][br]
-## [b]La clave.[/b] Godot no comprueba que la clave sea la del certificado (con una que no lo es, la zona
-## arrancaría y todos los apretones de manos fallarían con un error del motor cada uno). Aquí se compara la clave
-## pública de la clave ([method CryptoKey.save_to_string] con [code]public_only[/code]) con la
-## [code]subjectPublicKeyInfo[/code] del certificado, byte a byte.
+## [b]The key.[/b] Godot does not check that the key belongs to the certificate (with one that does not,
+## the zone would start and every handshake would fail with one engine error each). Here the public key
+## of the key ([method CryptoKey.save_to_string] with [code]public_only[/code]) is compared with the
+## [code]subjectPublicKeyInfo[/code] of the certificate, byte by byte.
 ## [br][br]
-## El certificado lo ancla el cliente tal cual: autofirmado y uno por zona, sin CA propia (rotarlo es un
-## certificado nuevo y un reinicio; el cliente recibe el nuevo en su siguiente [code]enter[/code], §10.3).
+## The certificate is pinned by the client as is: self-signed and one per zone, with no CA of its own
+## (rotating it means a new certificate and a restart; the client receives the new one on its next
+## [code]enter[/code], §10.3).
 
-## Tamaño máximo del PEM del certificado (el mismo tope que la plataforma, [code]maxCertPEM[/code]).
+## Maximum size of the certificate PEM (the same cap as the platform, [code]maxCertPEM[/code]).
 const MAX_CERT_PEM_BYTES: int = 16 << 10
-## Largo máximo del nombre (el mismo que la plataforma, [code]maxDTLSName[/code]).
+## Maximum length of the name (the same as the platform, [code]maxDTLSName[/code]).
 const MAX_NAME_BYTES: int = 253
-## Etiquetas de ASN.1 que usa el lector.
+## ASN.1 tags used by the reader.
 const TAG_SEQUENCE: int = 0x30
 const TAG_SET: int = 0x31
 const TAG_OID: int = 0x06
@@ -38,22 +40,22 @@ const TAG_PRINTABLE_STRING: int = 0x13
 const TAG_TELETEX_STRING: int = 0x14
 const TAG_IA5_STRING: int = 0x16
 const TAG_BMP_STRING: int = 0x1E
-## OID de [code]commonName[/code] (2.5.4.3) ya codificado.
+## OID of [code]commonName[/code] (2.5.4.3), already encoded.
 const OID_COMMON_NAME: PackedByteArray = [0x55, 0x04, 0x03]
 
-## PEM del certificado tal como está en el archivo (con su cadena, si la trae): lo que va al registro.
+## Certificate PEM exactly as it is in the file (with its chain, if it has one): what goes in the registration.
 var certificate_pem: String = ""
-## El [code]CN[/code] del sujeto del primer certificado: el [code]dtls_name[/code] del registro.
+## The subject [code]CN[/code] of the first certificate: the [code]dtls_name[/code] of the registration.
 var common_name: String = ""
-## [method TLSOptions.server] con la clave y el certificado, para [method NetTransport.host].
+## [method TLSOptions.server] with the key and the certificate, for [method NetTransport.host].
 var server_options: TLSOptions = null
-## Vacío si todo ha ido bien; si no, el motivo en español (y lo demás queda vacío).
+## Empty if all went well; otherwise, the reason in Spanish (and everything else stays empty).
 var error: String = ""
 
 
-## Lee el certificado de [param cert_path] y la clave de [param key_path] (PEM). Con cualquier problema
-## (falta una de las dos, no se puede leer, el certificado no tiene [code]CN[/code], la clave no es la del
-## certificado) devuelve un [ZoneDtls] con [member error] puesto.
+## Reads the certificate from [param cert_path] and the key from [param key_path] (PEM). On any
+## problem (one of the two is missing, cannot be read, the certificate has no [code]CN[/code], the key
+## does not belong to the certificate) it returns a [ZoneDtls] with [member error] set.
 static func load_files(cert_path: String, key_path: String) -> ZoneDtls:
 	if cert_path.is_empty() or key_path.is_empty():
 		return _failed("DTLS necesita a la vez --dtls-cert=<pem> y --dtls-key=<pem>")
@@ -64,11 +66,11 @@ static func load_files(cert_path: String, key_path: String) -> ZoneDtls:
 	return from_pem(FileAccess.get_file_as_string(cert_path), FileAccess.get_file_as_string(key_path))
 
 
-## Como [method load_files], con el texto de los dos PEM.
+## Like [method load_files], with the text of the two PEMs.
 static func from_pem(cert_pem: String, key_pem: String) -> ZoneDtls:
 	if cert_pem.to_utf8_buffer().size() > MAX_CERT_PEM_BYTES:
 		return _failed("El certificado DTLS pasa de %d B" % MAX_CERT_PEM_BYTES)
-	# Antes de dárselo a Godot, que registra un error del motor con un PEM que no entiende.
+	# Before handing it to Godot, which logs an engine error on a PEM it does not understand.
 	var ders: Array[PackedByteArray] = pem_blocks(cert_pem, "CERTIFICATE")
 	if ders.is_empty():
 		return _failed("El certificado DTLS no es un PEM válido")
@@ -99,13 +101,13 @@ static func from_pem(cert_pem: String, key_pem: String) -> ZoneDtls:
 	return dtls
 
 
-## true si se ha cargado bien.
+## true if it loaded correctly.
 func is_valid() -> bool:
 	return error.is_empty() and server_options != null
 
 
-## Los bloques [code]-----BEGIN <label>-----[/code] de [param pem], en DER y en orden. Los que no son base64
-## válido se saltan.
+## The [code]-----BEGIN <label>-----[/code] blocks of [param pem], in DER and in order. Those that
+## are not valid base64 are skipped.
 static func pem_blocks(pem: String, label: String) -> Array[PackedByteArray]:
 	var blocks: Array[PackedByteArray] = []
 	var begin_marker: String = "-----BEGIN %s-----" % label
@@ -123,7 +125,7 @@ static func pem_blocks(pem: String, label: String) -> Array[PackedByteArray]:
 		var clean: String = ""
 		for part: String in body.split("\n"):
 			clean += part.strip_edges()
-		# Marshalls registra un error del motor con un base64 que no vale: se mira antes.
+		# Marshalls logs an engine error on invalid base64: check beforehand.
 		var der: PackedByteArray = Marshalls.base64_to_raw(clean) if _is_base64(clean) else PackedByteArray()
 		if not der.is_empty():
 			blocks.append(der)
@@ -131,7 +133,7 @@ static func pem_blocks(pem: String, label: String) -> Array[PackedByteArray]:
 	return blocks
 
 
-# true si [param text] es base64 estándar con relleno (no vacío, múltiplo de 4, el = solo al final).
+# true if [param text] is standard padded base64 (non-empty, multiple of 4, the = only at the end).
 static func _is_base64(text: String) -> bool:
 	if text.is_empty() or text.length() % 4 != 0:
 		return false
@@ -150,10 +152,10 @@ static func _is_base64(text: String) -> bool:
 	return padding <= 2
 
 
-## Lee lo que hace falta de un certificado X.509 en DER: [code]{"common_name": String,
-## "public_key": PackedByteArray}[/code] (el primer [code]commonName[/code] del sujeto, o vacío si no tiene; y
-## la [code]subjectPublicKeyInfo[/code] entera, con su cabecera). Vacío si el DER no tiene la forma de un
-## certificado.
+## Reads what is needed from an X.509 certificate in DER: [code]{"common_name": String,
+## "public_key": PackedByteArray}[/code] (the first [code]commonName[/code] of the subject, or empty if
+## it has none; and the whole [code]subjectPublicKeyInfo[/code], with its header). Empty if the DER
+## does not have the shape of a certificate.
 static func certificate_fields(der: PackedByteArray) -> Dictionary:
 	var certificate: Dictionary = _tlv(der, 0, der.size())
 	if certificate.is_empty() or int(certificate["tag"]) != TAG_SEQUENCE:
@@ -161,7 +163,7 @@ static func certificate_fields(der: PackedByteArray) -> Dictionary:
 	var tbs: Dictionary = _tlv(der, int(certificate["start"]), int(certificate["end"]))
 	if tbs.is_empty() or int(tbs["tag"]) != TAG_SEQUENCE:
 		return {}
-	# tbsCertificate: [0] version (opcional), serialNumber, signature, issuer, validity, subject,
+	# tbsCertificate: [0] version (optional), serialNumber, signature, issuer, validity, subject,
 	# subjectPublicKeyInfo...
 	var elements: Array[Dictionary] = _children(der, tbs)
 	var index: int = 0
@@ -182,8 +184,8 @@ static func certificate_fields(der: PackedByteArray) -> Dictionary:
 	}
 
 
-# El primer commonName de un Name (SEQUENCE OF SET OF SEQUENCE {OID, valor}): "" si no tiene, null si el Name
-# está roto.
+# The first commonName of a Name (SEQUENCE OF SET OF SEQUENCE {OID, value}): "" if it has none, null
+# if the Name is broken.
 static func _common_name(der: PackedByteArray, name: Dictionary) -> Variant:
 	for rdn: Dictionary in _children(der, name):
 		if int(rdn["tag"]) != TAG_SET:
@@ -200,7 +202,7 @@ static func _common_name(der: PackedByteArray, name: Dictionary) -> Variant:
 	return ""
 
 
-# El texto de un valor de tipo cadena de ASN.1 (UTF-8, Printable, IA5 o Teletex como UTF-8; BMP en UTF-16BE).
+# The text of an ASN.1 string-type value (UTF-8, Printable, IA5 or Teletex as UTF-8; BMP as UTF-16BE).
 static func _string_value(der: PackedByteArray, value: Dictionary) -> Variant:
 	var bytes: PackedByteArray = der.slice(int(value["start"]), int(value["end"]))
 	match int(value["tag"]):
@@ -218,7 +220,7 @@ static func _string_value(der: PackedByteArray, value: Dictionary) -> Variant:
 	return null
 
 
-# Los elementos que hay dentro de [param parent] (un TLV de _tlv); vacío si alguno está roto.
+# The elements inside [param parent] (a TLV from _tlv); empty if any is broken.
 static func _children(der: PackedByteArray, parent: Dictionary) -> Array[Dictionary]:
 	var children: Array[Dictionary] = []
 	var at: int = int(parent["start"])
@@ -232,8 +234,9 @@ static func _children(der: PackedByteArray, parent: Dictionary) -> Array[Diction
 	return children
 
 
-# Un TLV de DER que empieza en [param at] y no pasa de [param limit]: {tag, header (donde empieza), start (el
-# contenido), end}. Vacío si no cabe o la longitud no es DER (etiquetas de un byte; longitudes de hasta 4 B).
+# A DER TLV that starts at [param at] and does not go past [param limit]: {tag, header (where it
+# starts), start (the content), end}. Empty if it does not fit or the length is not DER (one-byte
+# tags; lengths of up to 4 B).
 static func _tlv(der: PackedByteArray, at: int, limit: int) -> Dictionary:
 	if at < 0 or at + 2 > limit or limit > der.size():
 		return {}

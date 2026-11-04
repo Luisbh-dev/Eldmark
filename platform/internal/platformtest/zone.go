@@ -8,27 +8,27 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// Zone es una zona de prueba que habla con la API interna con el token de su alcance.
+// Zone is a test zone that talks to the internal API with its scope's token.
 type Zone struct {
 	P     *Platform
 	Scope zones.Scope
 	Token string
-	ID    string // zone_instance_id tras registrarse
+	ID    string // zone_instance_id after registering
 }
 
-// NewZone prepara una zona de ese alcance (sin registrarla).
+// NewZone prepares a zone of that scope (without registering it).
 func (p *Platform) NewZone(world int16, zoneID string, channel int16) *Zone {
 	s := zones.Scope{WorldID: world, ZoneID: zoneID, Channel: channel}
 	return &Zone{P: p, Scope: s, Token: Token(s)}
 }
 
-// Do hace una petición a la API interna con el token de la zona.
+// Do makes a request to the internal API with the zone's token.
 func (z *Zone) Do(method, path string, body any) *Response {
 	z.P.T.Helper()
 	return do(z.P.T, z.P.Internal, method, path, body, map[string]string{"Authorization": "Bearer " + z.Token})
 }
 
-// RegisterBody es el cuerpo del registro de la zona; overrides cambia o quita (nil) campos.
+// RegisterBody is the zone's registration body; overrides changes or removes (nil) fields.
 func (z *Zone) RegisterBody(overrides map[string]any) map[string]any {
 	body := map[string]any{"world_id": z.Scope.WorldID, "zone_id": z.Scope.ZoneID, "channel": z.Scope.Channel,
 		"public_host": "203.0.113.5", "public_port": 24600 + int(z.Scope.Channel), "realms": []int{1, 2},
@@ -44,7 +44,7 @@ func (z *Zone) RegisterBody(overrides map[string]any) map[string]any {
 	return body
 }
 
-// Register registra la zona; con 200 apunta su zone_instance_id.
+// Register registers the zone; on 200 it records its zone_instance_id.
 func (z *Zone) Register(overrides map[string]any) *Response {
 	z.P.T.Helper()
 	res := z.Do("POST", "/internal/v1/zone-instances", z.RegisterBody(overrides))
@@ -54,13 +54,13 @@ func (z *Zone) Register(overrides map[string]any) *Response {
 	return res
 }
 
-// Live pasa la zona a live.
+// Live moves the zone to live.
 func (z *Zone) Live() *Response {
 	z.P.T.Helper()
 	return z.Do("POST", "/internal/v1/zone-instances/"+z.ID+"/live", nil)
 }
 
-// Start registra la zona y la pasa a live, o falla.
+// Start registers the zone and moves it to live, or fails.
 func (z *Zone) Start() *Zone {
 	z.P.T.Helper()
 	Expect(z.P.T, z.Register(nil), http.StatusOK, "")
@@ -68,13 +68,13 @@ func (z *Zone) Start() *Zone {
 	return z
 }
 
-// Lease es un personaje del conjunto del latido.
+// Lease is a character in the heartbeat set.
 type Lease struct {
 	CharacterID int64
 	LeaseID     string
 }
 
-// Heartbeat manda un latido con los personajes dados.
+// Heartbeat sends a heartbeat with the given characters.
 func (z *Zone) Heartbeat(players int, leases ...Lease) *Response {
 	z.P.T.Helper()
 	chars := make([]map[string]any, 0, len(leases))
@@ -85,14 +85,14 @@ func (z *Zone) Heartbeat(players int, leases ...Lease) *Response {
 		"characters": chars})
 }
 
-// Claim reclama al personaje con el billete.
+// Claim claims the character with the ticket.
 func (z *Zone) Claim(ticketID, characterID int64) *Response {
 	z.P.T.Helper()
 	return z.Do("POST", "/internal/v1/claims", map[string]any{"zone_instance_id": z.ID,
 		"ticket_id": strconv.FormatInt(ticketID, 10), "character_id": strconv.FormatInt(characterID, 10)})
 }
 
-// MustClaim reclama y devuelve el lease_id.
+// MustClaim claims and returns the lease_id.
 func (z *Zone) MustClaim(ticketID, characterID int64) string {
 	z.P.T.Helper()
 	res := z.Claim(ticketID, characterID)
@@ -100,8 +100,8 @@ func (z *Zone) MustClaim(ticketID, characterID int64) string {
 	return res.String("lease_id")
 }
 
-// Join hace entrar al personaje en esta zona: enter (que tiene que elegir esta instancia) y la
-// reclamación. Devuelve el lease_id.
+// Join makes the character enter this zone: enter (which must pick this instance) and the
+// claim. It returns the lease_id.
 func (z *Zone) Join(pl *Player, characterID int64) string {
 	z.P.T.Helper()
 	ticket, instance := z.P.MustEnter(pl, characterID)
@@ -111,8 +111,8 @@ func (z *Zone) Join(pl *Player, characterID int64) string {
 	return z.MustClaim(ticket, characterID)
 }
 
-// SaveBody es un sobre de guardado de §7.3 con una sección progress mínima; el que llama puede
-// cambiar lo que quiera antes de mandarlo.
+// SaveBody is a save envelope from §7.3 with a minimal progress section; the caller can change
+// whatever they want before sending it.
 func (z *Zone) SaveBody(characterID int64, leaseID string, seq int) map[string]any {
 	return map[string]any{"save_format": 1, "character_id": strconv.FormatInt(characterID, 10),
 		"zone_instance_id": z.ID, "lease_id": leaseID, "seq": seq, "reason": 1, "release_lease": false,
@@ -120,20 +120,20 @@ func (z *Zone) SaveBody(characterID int64, leaseID string, seq int) map[string]a
 			"location": map[string]any{"zone_id": z.Scope.ZoneID, "channel": z.Scope.Channel}}}
 }
 
-// Save manda un guardado (body: un mapa, que se serializa, o los bytes tal cual).
+// Save sends a save (body: a map, which is serialized, or the bytes as they are).
 func (z *Zone) Save(characterID int64, body any) *Response {
 	z.P.T.Helper()
 	return z.Do("PUT", "/internal/v1/characters/"+strconv.FormatInt(characterID, 10)+"/state", body)
 }
 
-// Release libera al personaje sin guardar.
+// Release releases the character without saving.
 func (z *Zone) Release(characterID int64, leaseID string) *Response {
 	z.P.T.Helper()
 	return z.Do("POST", "/internal/v1/characters/"+strconv.FormatInt(characterID, 10)+"/release",
 		map[string]any{"zone_instance_id": z.ID, "lease_id": leaseID})
 }
 
-// Marshal serializa un cuerpo una vez (los reintentos mandan los mismos bytes).
+// Marshal serializes a body once (retries send the same bytes).
 func Marshal(v any) []byte {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -142,7 +142,7 @@ func Marshal(v any) []byte {
 	return data
 }
 
-// Int lee un número del cuerpo (json.Number).
+// Int reads a number from the body (json.Number).
 func (r *Response) Int(name string) int64 {
 	n, _ := r.Body[name].(json.Number)
 	v, _ := n.Int64()

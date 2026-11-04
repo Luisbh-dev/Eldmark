@@ -1,22 +1,22 @@
 extends TestCase
-## El kit de la fase 4 (H5; docs/habilidades.md, sección 7.1) en el patrón de asedio de F6b ([constant
-## BotBrain.Pattern.SIEGE]; docs/fuerte.md, secciones 7 y 8.3), sin red ni física: un punto que se mueve donde dicen
-## las entradas, con una máquina de acciones que avanza con ellas ([KitWalker]), el fuerte del Vado Gris de verdad y sus
-## rutas. Se comprueba lo que pide la integración de las dos ramas: el bot de asedio pelea con el kit en el paso 1 de
-## su plan, también con el PNJ defensor (que sigue yendo antes que un jugador más cercano, y al que apunta el arco con su
-## velocidad); con el arco en la mano no deja de disparar por la regla de las persecuciones (la espada sí la sigue); en
-## la pasarela el arquero no da pasos de lado; no levanta a nadie (sigue su plan), y es determinista.
-## [br]Y lo que añade la revisión de la integración (docs/fuerte.md 8.3): en la pasarela mira al enemigo (la espada le
-## llega aunque esté de través) y mueve por el eje; el arco solo tira a tiro (ni a través de una puerta cerrada, ni la
-## suya, ni de la empalizada; con la puerta rota, por el vano; y lo que diga la línea de tiro), hasta
-## [constant BotBrain.SIEGE_BOW_FIGHT_RANGE], saca el arco con la espada en la mano, tira a otro nivel (el filtro de
-## nivel es del cuerpo a cuerpo), ir a rematar lleva la regla de las persecuciones y la puerta se golpea con la espada.
-## La física de verdad, en [code]test_siege_archers[/code].
+## The phase-4 kit (H5; docs/habilidades.md, section 7.1) in F6b's siege pattern ([constant
+## BotBrain.Pattern.SIEGE]; docs/fuerte.md, sections 7 and 8.3), without network or physics: a point that moves where
+## the inputs say, with an action machine that advances with them ([KitWalker]), the real Vado Gris fort and its
+## routes. It checks what the integration of the two branches demands: the siege bot fights with the kit in step 1 of
+## its plan, also against the defending NPC (who is still targeted before a closer player, and whom the bow aims at with its
+## velocity); with the bow in hand it does not stop firing because of the chase rule (the sword does follow it); on
+## the walkway the archer takes no steps sideways; it does not revive anyone (it follows its plan), and it is deterministic.
+## [br]And what the integration review adds (docs/fuerte.md 8.3): on the walkway it faces the enemy (the sword
+## reaches it even if it is sideways) and moves along the axis; the bow only fires within range (not through a closed gate, nor its
+## own, nor through the palisade; with the gate broken, through the doorway; and whatever the line of fire says), up to
+## [constant BotBrain.SIEGE_BOW_FIGHT_RANGE], it draws the bow when holding the sword, it fires at another level (the level
+## filter is for melee), going to finish someone off carries the chase rule and the gate is hit with the sword.
+## The real physics is in [code]test_siege_archers[/code].
 
 const V: int = NetProtocol.Realm.VARDHEIM
 const S: int = NetProtocol.Realm.SOLMARCH
 const ROUTES_PATH: String = "res://data/routes/vado_gris.tres"
-## Puerta y círculo del Vado Gris (el fuerte está en el origen; norte = -Z), como en test_bot_brain_siege.
+## Gate and circle of Vado Gris (the fort is at the origin; north = -Z), as in test_bot_brain_siege.
 const GATE: Vector3 = Vector3(-20.0, 0.0, 0.0)
 const CIRCLE: Vector3 = Vector3(-8.5, 0.0, 0.0)
 const CIRCLE_RADIUS: float = 5.0
@@ -29,8 +29,8 @@ var _routes: ApproachRoutes = null
 var _view: SiegeView = null
 
 
-## Un punto que obedece a las entradas (sin colisiones; con [member blocked] no se mueve) y lleva el estado de combate
-## que lee el kit: una máquina de acciones que avanza con esas mismas entradas.
+## A point that obeys the inputs (no collisions; with [member blocked] it does not move) and carries the combat state
+## the kit reads: an action machine that advances with those same inputs.
 class KitWalker:
 	extends RefCounted
 
@@ -40,7 +40,7 @@ class KitWalker:
 	var blocked: bool = false
 	var tick: int = START_TICK
 	var inputs: Array[PlayerInput] = []
-	## Cada pulsación (flanco) de una habilidad o un consumible: (tick, casilla, estado de la casilla en ese tick).
+	## Each press (edge) of an ability or a consumable: (tick, slot, slot state on that tick).
 	var presses: Array[Vector3i] = []
 
 
@@ -76,7 +76,7 @@ func before_each() -> void:
 	_view = SiegeView.new()
 	_view.fortress_id = &"vado_gris_fort"
 	_view.set_places(GATE, CIRCLE, CIRCLE_RADIUS)
-	# Un fuerte neutral con el capitán vivo (el círculo no está activo: los defensores van primero) y la puerta rota.
+	# A neutral fort with the captain alive (the circle is not active: the defenders go first) and the gate broken.
 	_view.known = true
 	_view.owner = 0
 	_view.phase = FortressState.Phase.GARRISONED
@@ -94,18 +94,18 @@ func _marksman_state() -> CombatState:
 			CombatCatalog.weapon_id(&"sword_shield"), CombatState.pack_charges(2, 3))
 
 
-## Un cerebro de asedio de Vardheim sin el papel de la pasarela que lee el estado de [param walker].
+## A Vardheim siege brain without the walkway role that reads the state of [param walker].
 func _brain(walker: KitWalker, rng_seed: int) -> BotBrain:
 	var brain := BotBrain.new(rng_seed, BotBrain.Pattern.SIEGE)
 	brain.set_siege(_view, _routes, V)
 	brain.set_walkway_role(false)
-	# El cierre guarda el estado, no el KitWalker: sin ciclos de referencias.
+	# The closure holds the state, not the KitWalker: no reference cycles.
 	var state: CombatState = walker.c
 	brain.set_combat_source(func() -> CombatState: return state)
 	return brain
 
 
-# El yaw (convención de PlayerInput: 0 mira hacia -Z) que mira de [param from] a [param to].
+# The yaw (PlayerInput convention: 0 looks toward -Z) that looks from [param from] to [param to].
 func _yaw_to(from: Vector3, to: Vector3) -> float:
 	return fposmod(atan2(-(to.x - from.x), -(to.z - from.z)), TAU)
 
@@ -114,26 +114,26 @@ func _angle_gap(a: float, b: float) -> float:
 	return absf(angle_difference(a, b))
 
 
-# Hacia dónde mueve [param input] en el mundo (la simulación mueve relativo a su look_yaw).
+# Where [param input] moves in the world (the simulation moves relative to its look_yaw).
 func _world_move(input: PlayerInput) -> Vector3:
 	var forward := Vector3(-sin(input.look_yaw), 0.0, -cos(input.look_yaw))
 	var right := Vector3(cos(input.look_yaw), 0.0, -sin(input.look_yaw))
 	return forward * input.move.y + right * input.move.x
 
 
-# Disparos del arco que ha decidido el kit (rápidos, tensados y habilidades de disparo).
+# Bow shots the kit has decided on (quick, drawn and shooting abilities).
 func _shots(brain: BotBrain) -> int:
 	var counts: Dictionary[StringName, int] = brain.get_kit_counts()
 	return counts.get(&"quick", 0) + counts.get(&"drawn", 0)
 
 
-# La plantilla del tirador con la espada en la mano (como tras cambiar de arma) y el arco a la espalda.
+# The archer template with the sword in hand (as after a weapon swap) and the bow on the back.
 func _marksman_sword_state() -> CombatState:
 	return CombatState.initial(CombatCatalog.rules(), CombatCatalog.weapon_id(&"sword_shield"),
 			CombatCatalog.weapon_id(&"bow"), CombatState.pack_charges(2, 3))
 
 
-# --- Pruebas ----------------------------------------------------------------------------------
+# --- Tests ----------------------------------------------------------------------------------
 
 func test_against_the_defender_npc_the_squire_fights_with_its_kit() -> void:
 	var walker := KitWalker.new(_squire_state(), CIRCLE + Vector3(-3.0, 0.0, 0.0))
@@ -148,19 +148,19 @@ func test_against_the_defender_npc_the_squire_fights_with_its_kit() -> void:
 		fighting += 1 if brain.get_siege_task() == BotBrain.SiegeTask.FIGHT else 0
 	var counts: Dictionary[StringName, int] = brain.get_kit_counts()
 	print("[asedio con kit] escudero contra el PNJ defensor, 3000 ticks: %s" % [counts])
-	assert_eq(fighting, 3000, "pelea todo el rato (el paso 1 de su plan)")
+	assert_eq(fighting, 3000, "fights the whole time (step 1 of its plan)")
 	assert_true(_angle_gap(walker.yaw, _yaw_to(walker.position, npc)) < 0.3,
-			"con el PNJ defensor aunque el jugador esté más cerca (yaw %.2f)" % walker.yaw)
+			"with the defending NPC even though the player is closer (yaw %.2f)" % walker.yaw)
 	assert_true(counts.get(&"ability_0", 0) + counts.get(&"ability_2", 0) >= 2,
-			"con las habilidades del escudero (%s)" % [counts])
+			"with the shield-bearer's abilities (%s)" % [counts])
 	for press: Vector3i in walker.presses:
 		assert_eq(press.z, ActionMachine.AbilityStatus.READY,
-				"solo pulsa una casilla lista (tick %d, casilla %d)" % [press.x, press.y])
+				"only presses a ready slot (tick %d, slot %d)" % [press.x, press.y])
 
 
 func test_the_bow_aims_at_the_defender_npc_leading_it_by_its_velocity() -> void:
-	# El defensor, a 10 m al este y corriendo hacia el sur; un jugador a 6 m al oeste. El arco apunta al defensor (el blanco
-	# de la pelea) y por delante de él: con su velocidad, más al sur que sin ella.
+	# The defender, 10 m to the east and running south; a player 6 m to the west. The bow aims at the defender (the fight's
+	# target) and ahead of it: with its velocity, farther south than without it.
 	var yaws: Array[float] = []
 	var direct: float = 0.0
 	for velocity: Vector3 in [Vector3.ZERO, Vector3(0.0, 0.0, 4.0)]:
@@ -171,22 +171,22 @@ func test_the_bow_aims_at_the_defender_npc_leading_it_by_its_velocity() -> void:
 		var player: Vector3 = walker.position + Vector3(-6.0, 0.0, 0.0)
 		brain.set_enemy_finder(func(_position: Vector3) -> Variant: return BotTarget.new(player))
 		brain.set_defender_finder(func(_position: Vector3) -> Variant: return BotTarget.new(npc, velocity))
-		# Un tick en que acaba de mirar dónde está (cada COMBAT_RETARGET_TICKS): sin extrapolar la posición.
+		# A tick on which it has just looked at where it is (every COMBAT_RETARGET_TICKS): without extrapolating the position.
 		for _i: int in 1 + BotBrain.COMBAT_RETARGET_TICKS * 3:
 			walker.step(brain)
 		assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT)
 		yaws.append(walker.yaw)
 		direct = _yaw_to(walker.position, npc)
 		assert_true(_angle_gap(walker.yaw, direct) < 0.4,
-				"al defensor (yaw %.3f, directo %.3f) y no al jugador" % [walker.yaw, direct])
-	# Hacia +Z el yaw baja (el este es 3π/2 y el sur, π): adelantarse al sur es un yaw menor.
+				"at the defender (yaw %.3f, direct %.3f) and not at the player" % [walker.yaw, direct])
+	# Toward +Z the yaw goes down (east is 3π/2 and south, π): leading to the south is a smaller yaw.
 	assert_true(yaws[1] < yaws[0] - 0.02,
-			"con la velocidad del defensor apunta por delante de él (%.3f frente a %.3f)" % [yaws[1], yaws[0]])
+			"with the defender's velocity it aims ahead of it (%.3f versus %.3f)" % [yaws[1], yaws[0]])
 
 
 func test_with_the_bow_in_hand_it_keeps_shooting_instead_of_giving_up_the_chase() -> void:
-	# F6b deja una persecución que no le acerca en SIEGE_STUCK_TICKS; el arquero no persigue (todo SIEGE_FIGHT_RANGE es
-	# distancia de tiro), así que sigue disparando. Con la espada, la regla se aplica igual que sin kit.
+	# F6b gives up a chase that does not bring it closer within SIEGE_STUCK_TICKS; the archer does not chase (the whole SIEGE_FIGHT_RANGE is
+	# firing distance), so it keeps shooting. With the sword, the rule applies the same as without the kit.
 	var archer := KitWalker.new(_marksman_state(), CIRCLE + Vector3(-1.0, 0.0, 0.0))
 	archer.blocked = true
 	var archer_brain: BotBrain = _brain(archer, 35)
@@ -197,8 +197,8 @@ func test_with_the_bow_in_hand_it_keeps_shooting_instead_of_giving_up_the_chase(
 		archer.step(archer_brain)
 		fighting += 1 if archer_brain.get_siege_task() == BotBrain.SiegeTask.FIGHT else 0
 	var counts: Dictionary[StringName, int] = archer_brain.get_kit_counts()
-	assert_eq(fighting, 900, "no deja de pelear con el de 10 m")
-	assert_true(counts.get(&"quick", 0) + counts.get(&"drawn", 0) >= 5, "y le dispara (%s)" % [counts])
+	assert_eq(fighting, 900, "does not stop fighting the one at 10 m")
+	assert_true(counts.get(&"quick", 0) + counts.get(&"drawn", 0) >= 5, "and shoots at it (%s)" % [counts])
 
 	var squire := KitWalker.new(_squire_state(), CIRCLE + Vector3(-1.0, 0.0, 0.0))
 	squire.blocked = true
@@ -212,12 +212,12 @@ func test_with_the_bow_in_hand_it_keeps_shooting_instead_of_giving_up_the_chase(
 			break
 	assert_true(gave_up >= BotBrain.SIEGE_STUCK_TICKS
 			and gave_up <= BotBrain.SIEGE_STUCK_TICKS + 2 * BotBrain.COMBAT_RETARGET_TICKS,
-			"con la espada deja la persecución a los %d ticks sin acercarse (%d)" % [BotBrain.SIEGE_STUCK_TICKS, gave_up])
+			"with the sword it gives up the chase after %d ticks without getting closer (%d)" % [BotBrain.SIEGE_STUCK_TICKS, gave_up])
 
 
 func test_an_archer_on_the_walkway_never_steps_sideways() -> void:
-	# Un guardia de la pasarela (el fuerte es suyo) con el arco y un enemigo que viene por ella a 10 m: guarda la distancia
-	# sin los pasos de lado del arquero (sin barandilla por dentro, se caería al patio).
+	# A walkway guard (the fort is theirs) with the bow and an enemy coming along it at 10 m: it keeps its distance
+	# without the archer's sidesteps (with no inner railing, it would fall into the courtyard).
 	_view.owner = V
 	_view.gate_health = 9000
 	_view.enclosure_size = Vector2(40.0, 40.0)
@@ -230,16 +230,16 @@ func test_an_archer_on_the_walkway_never_steps_sideways() -> void:
 	brain.set_combat_source(func() -> CombatState: return state)
 	var foe := Vector3(-18.77, _routes.walkway_height, 10.0)
 	brain.set_enemy_finder(func(_position: Vector3) -> Variant: return BotTarget.new(foe))
-	assert_true(brain.is_on_walkway(walker.position), "está en la pasarela")
+	assert_true(brain.is_on_walkway(walker.position), "is on the walkway")
 	var sideways: int = 0
 	for _i: int in 900:
 		var input: PlayerInput = walker.step(brain)
 		assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT)
 		sideways += 1 if absf(input.move.x) > 0.01 else 0
 	var counts: Dictionary[StringName, int] = brain.get_kit_counts()
-	assert_eq(sideways, 0, "ningún paso de lado en la pasarela")
-	assert_true(counts.get(&"quick", 0) + counts.get(&"drawn", 0) >= 5, "y dispara (%s)" % [counts])
-	# En el patio (no en la pasarela), el mismo arquero sí se mueve de lado entre disparo y disparo.
+	assert_eq(sideways, 0, "no sidesteps on the walkway")
+	assert_true(counts.get(&"quick", 0) + counts.get(&"drawn", 0) >= 5, "and shoots (%s)" % [counts])
+	# In the courtyard (not on the walkway), the same archer does move sideways between shots.
 	var below := KitWalker.new(_marksman_state(), CIRCLE)
 	below.blocked = true
 	var other: BotBrain = _brain(below, 43)
@@ -248,14 +248,14 @@ func test_an_archer_on_the_walkway_never_steps_sideways() -> void:
 	var strafes: int = 0
 	for _i: int in 900:
 		strafes += 1 if absf(below.step(other).move.x) > 0.01 else 0
-	assert_true(strafes > 0, "en el patio, de lado (%d ticks)" % strafes)
+	assert_true(strafes > 0, "in the courtyard, sideways (%d ticks)" % strafes)
 
 
 func test_fighting_on_the_walkway_it_faces_the_foe_moves_along_the_axis_and_never_dashes() -> void:
-	# Con el enemigo casi al lado (0,37 m hacia el patio y 0,1 a lo largo), una esquiva «hacia atrás» desde él le tiraba de
-	# la pasarela. La integración le hacía mirar por el eje, y entonces el de al lado era intocable para él (revisión de la
-	# integración, docs/fuerte.md 8.3): mira al enemigo, pero lo que mueve (acercarse, la esquiva) va por el eje, y no usa
-	# la embestida (avanza 6 m y empuja), con el kit y sin él.
+	# With the enemy almost alongside (0.37 m toward the courtyard and 0.1 along), a "backward" dodge away from it threw it off
+	# the walkway. The integration made it look along the axis, and then the one alongside was untouchable for it (integration
+	# review, docs/fuerte.md 8.3): it faces the enemy, but what it moves (approaching, the dodge) goes along the axis, and it does not use
+	# the charge (advances 6 m and pushes), with the kit and without it.
 	_view.owner = V
 	_view.gate_health = 9000
 	_view.enclosure_size = Vector2(40.0, 40.0)
@@ -278,7 +278,7 @@ func test_fighting_on_the_walkway_it_faces_the_foe_moves_along_the_axis_and_neve
 			var input: PlayerInput = walker.step(brain)
 			assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT)
 			away += 1 if _angle_gap(input.look_yaw, _yaw_to(walker.position, foe)) > 0.1 else 0
-			# El eje es la pared de la puerta (x = -18,77): por el eje es hacia ±Z en el mundo.
+			# The axis is the gate's wall (x = -18.77): along the axis is toward ±Z in the world.
 			var world: Vector3 = _world_move(input)
 			across += 1 if world.length() > 0.01 and absf(world.x) > 0.1 * world.length() else 0
 			if input.has(PlayerInput.DODGE):
@@ -286,15 +286,15 @@ func test_fighting_on_the_walkway_it_faces_the_foe_moves_along_the_axis_and_neve
 				var dodge_yaw: float = input.look_yaw + atan2(-input.move.x, input.move.y)
 				side_dodges += 1 if absf(sin(dodge_yaw)) > 0.1 else 0
 		var counts: Dictionary[StringName, int] = brain.get_kit_counts()
-		assert_eq(away, 0, "kit %s: siempre mira al enemigo" % with_kit)
-		assert_eq(across, 0, "kit %s: lo que mueve va por el eje" % with_kit)
-		assert_true(dodges > 0, "kit %s: alguna esquiva hubo (%d)" % [with_kit, dodges])
-		assert_eq(side_dodges, 0, "kit %s: y por el eje, no hacia el patio" % with_kit)
-		assert_false(counts.has(&"ability_1"), "kit %s: sin la embestida en la pasarela (%s)" % [with_kit, counts])
+		assert_eq(away, 0, "kit %s: always faces the enemy" % with_kit)
+		assert_eq(across, 0, "kit %s: what it moves goes along the axis" % with_kit)
+		assert_true(dodges > 0, "kit %s: there was some dodge (%d)" % [with_kit, dodges])
+		assert_eq(side_dodges, 0, "kit %s: and along the axis, not toward the courtyard" % with_kit)
+		assert_false(counts.has(&"ability_1"), "kit %s: without the charge on the walkway (%s)" % [with_kit, counts])
 		if with_kit:
 			assert_true(counts.get(&"ability_0", 0) + counts.get(&"ability_2", 0) > 0,
-					"con el golpe de escudo y el muro, que no se mueven (%s)" % [counts])
-	# A 5 m por el eje, la distancia de la embestida: en el patio la usa; en la pasarela, no.
+					"with the shield bash and the wall, which do not move (%s)" % [counts])
+	# At 5 m along the axis, the charge distance: in the courtyard it uses it; on the walkway, no.
 	for up: bool in [true, false]:
 		var height: float = _routes.walkway_height if up else 0.0
 		var walker := KitWalker.new(_squire_state(), Vector3(-18.77 if up else -14.0, height, 0.0))
@@ -310,23 +310,23 @@ func test_fighting_on_the_walkway_it_faces_the_foe_moves_along_the_axis_and_neve
 			walker.step(brain)
 		var rushes: int = brain.get_kit_counts().get(&"ability_1", 0)
 		if up:
-			assert_eq(rushes, 0, "en la pasarela, ninguna embestida")
+			assert_eq(rushes, 0, "on the walkway, no charge")
 		else:
-			assert_true(rushes > 0, "en el patio, la embestida (%d)" % rushes)
+			assert_true(rushes > 0, "in the courtyard, the charge (%d)" % rushes)
 
 
 func test_a_siege_bot_follows_its_plan_and_does_not_revive_allies() -> void:
-	# H5: los de asedio usan el kit al pelear pero no levantan a nadie (siguen su plan). Un aliado derribado a 2 m y ningún
-	# enemigo: sigue hacia el círculo sin pulsar INTERACT.
+	# H5: the siege ones use the kit when fighting but revive no one (they follow their plan). A knocked-down ally at 2 m and no
+	# enemy: it continues toward the circle without pressing INTERACT.
 	var walker := KitWalker.new(_squire_state(), CIRCLE + Vector3(-4.0, 0.0, 0.0))
 	var brain: BotBrain = _brain(walker, 44)
 	var ally: Vector3 = walker.position + Vector3(0.0, 0.0, 2.0)
 	brain.set_ally_finder(func(_position: Vector3) -> Variant: return ally)
 	for _i: int in 300:
 		var input: PlayerInput = walker.step(brain)
-		assert_false(input.has(PlayerInput.INTERACT), "no levanta al aliado")
-		assert_true(brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "no hay nadie con quien pelear")
-	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.HOLD, "está en el círculo")
+		assert_false(input.has(PlayerInput.INTERACT), "does not revive the ally")
+		assert_true(brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "there is no one to fight")
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.HOLD, "is in the circle")
 	assert_false(brain.get_kit_counts().has(&"revive"))
 
 
@@ -344,12 +344,12 @@ func test_the_kit_in_the_siege_is_deterministic() -> void:
 		for _i: int in 1500:
 			trace.append_array(walker.step(brain).encode())
 		traces.append(trace)
-	assert_eq(traces[0], traces[1], "mismas entradas con la misma semilla y el mismo mundo")
+	assert_eq(traces[0], traces[1], "same inputs with the same seed and the same world")
 
 
 func test_on_the_walkway_its_sword_reaches_a_foe_right_beside_it() -> void:
-	# La sonda de la revisión de la integración: mirando por el eje, el enemigo pegado de través (0,9 o 1,2 m de lado y
-	# casi nada a lo largo) quedaba fuera del sector de la espada (100°). Mirándole, le llega, con el kit y sin él.
+	# The integration review's probe: facing along the axis, the enemy stuck alongside (0.9 or 1.2 m to the side and
+	# almost nothing along) fell outside the sword's sector (100°). Facing it, it reaches, with the kit and without it.
 	_view.owner = V
 	_view.gate_health = 9000
 	_view.enclosure_size = Vector2(40.0, 40.0)
@@ -377,14 +377,14 @@ func test_on_the_walkway_its_sword_reaches_a_foe_right_beside_it() -> void:
 					yaw = brain.next_input(START_TICK + t, me, yaw).look_yaw
 				assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT)
 				assert_true(HitShapes.sector_hits_capsule(me, yaw, sword.shape, foe, HitShapes.CAPSULE_RADIUS,
-						HitShapes.CAPSULE_HEIGHT), "kit %s, %.1f m de lado y %.1f a lo largo: la espada le llega" % [
+						HitShapes.CAPSULE_HEIGHT), "kit %s, %.1f m to the side and %.1f along: the sword reaches it" % [
 						with_kit, lateral, along])
 
 
 func test_the_archer_never_shoots_through_a_closed_gate_not_even_its_own() -> void:
-	# Revisión de la integración (docs/fuerte.md 8.3): el dueño veía «alcanzables» a los de fuera (su puerta no le cierra el
-	# paso), pero su cuerpo de vista para las flechas en los dos sentidos: 70 de 70 flechas a su propia puerta. Con la
-	# puerta entera nadie tira de dentro afuera ni de fuera adentro; rota, solo por el vano.
+	# Integration review (docs/fuerte.md 8.3): the owner saw those outside as "reachable" (its gate does not block
+	# its way), but its body blocked the view for arrows in both directions: 70 of 70 arrows into its own gate. With the
+	# gate intact nobody shoots from inside out or from outside in; broken, only through the doorway.
 	_view.owner = V
 	_view.gate_health = 9000
 	_view.enclosure_size = Vector2(40.0, 40.0)
@@ -405,23 +405,23 @@ func test_the_archer_never_shoots_through_a_closed_gate_not_even_its_own() -> vo
 	for _i: int in 600:
 		owner.step(owner_brain)
 		outside.step(outside_brain)
-		assert_true(owner_brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "el dueño no tira a su puerta")
-		assert_true(outside_brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "ni el de fuera a la puerta cerrada")
+		assert_true(owner_brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "the owner does not shoot at its gate")
+		assert_true(outside_brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "nor the one outside at the closed gate")
 	assert_eq(_shots(owner_brain) + _shots(outside_brain), 0)
-	# Rota: los dos en el eje de la puerta, por el vano, se tiran.
+	# Broken: both on the gate's axis, through the doorway, shoot each other.
 	_view.gate_health = 0
 	var dueling: int = 0
 	for _i: int in 600:
 		owner.step(owner_brain)
 		dueling += 1 if owner_brain.get_siege_task() == BotBrain.SiegeTask.FIGHT else 0
-	assert_eq(dueling, 600, "con la puerta rota, el dueño tira por el vano al de la puerta")
-	assert_true(_shots(owner_brain) >= 5, "y le dispara (%s)" % [owner_brain.get_kit_counts()])
+	assert_eq(dueling, 600, "with the gate broken, the owner shoots through the doorway at the one at the gate")
+	assert_true(_shots(owner_brain) >= 5, "and shoots at it (%s)" % [owner_brain.get_kit_counts()])
 
 
 func test_with_the_gate_broken_it_only_shoots_through_the_opening() -> void:
-	# Revisión de la integración: con la puerta rota, un blanco a menos de 12 m detrás de la empalizada parecía alcanzable
-	# y el arquero se quedaba tirando a la madera (52 de 80 flechas al mundo; dos de cuatro no entraban en 30 s). Si la
-	# línea no pasa por el vano, sigue su plan: entra en el fuerte.
+	# Integration review: with the gate broken, a target less than 12 m away behind the palisade seemed reachable
+	# and the archer kept shooting at the wood (52 of 80 arrows into the world; two of four did not get in within 30 s). If the
+	# line does not pass through the doorway, it follows its plan: it enters the fort.
 	_view.enclosure_size = Vector2(40.0, 40.0)
 	var walker := KitWalker.new(_marksman_state(), GATE + Vector3(-4.0, 0.0, 7.0))
 	var brain: BotBrain = _brain(walker, 52)
@@ -434,11 +434,11 @@ func test_with_the_gate_broken_it_only_shoots_through_the_opening() -> void:
 			first_inside = i
 		if i < 60:
 			assert_true(brain.get_siege_task() != BotBrain.SiegeTask.FIGHT,
-					"delante de la empalizada, sin tiro al PNJ de dentro (tick %d, %s)" % [i, walker.position])
-	assert_true(first_inside >= 0, "entra en el fuerte por la puerta (%s)" % walker.position)
-	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "y dentro le tira")
+					"in front of the palisade, with no shot at the NPC inside (tick %d, %s)" % [i, walker.position])
+	assert_true(first_inside >= 0, "enters the fort through the gate (%s)" % walker.position)
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "and inside it shoots at it")
 	assert_true(_shots(brain) > 0, "(%s)" % [brain.get_kit_counts()])
-	# En el eje de la puerta, de fuera adentro por el vano, sí le tira.
+	# On the gate's axis, from outside in through the doorway, it does shoot at it.
 	var aligned := KitWalker.new(_marksman_state(), GATE + Vector3(-8.0, 0.0, 0.5))
 	aligned.blocked = true
 	var aligned_brain: BotBrain = _brain(aligned, 53)
@@ -446,12 +446,12 @@ func test_with_the_gate_broken_it_only_shoots_through_the_opening() -> void:
 	aligned_brain.set_defender_finder(func(_position: Vector3) -> Variant: return BotTarget.new(through))
 	for _i: int in 300:
 		aligned.step(aligned_brain)
-		assert_eq(aligned_brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "por el vano tiene tiro")
+		assert_eq(aligned_brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "through the doorway it has a shot")
 	assert_true(_shots(aligned_brain) > 0)
 
 
 func test_the_line_of_sight_decides_the_shot_and_is_asked_once_per_search() -> void:
-	# En el patio y a 10 m, lo que diga la línea de tiro (el servidor y --bot: el rayo de su mundo).
+	# In the courtyard and at 10 m, whatever the line of fire says (the server and --bot: the ray of its world).
 	var clear: Array[bool] = [false]
 	var asked: Array[int] = [0]
 	var walker := KitWalker.new(_marksman_state(), CIRCLE + Vector3(-1.0, 0.0, 0.0))
@@ -465,21 +465,21 @@ func test_the_line_of_sight_decides_the_shot_and_is_asked_once_per_search() -> v
 	brain.set_enemy_finder(func(_position: Vector3) -> Variant: return BotTarget.new(foe))
 	for _i: int in 300:
 		walker.step(brain)
-		assert_true(brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "sin línea de tiro no le tira")
+		assert_true(brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "without a line of fire it does not shoot at it")
 	assert_eq(_shots(brain), 0)
 	assert_true(asked[0] <= 300 / BotBrain.COMBAT_RETARGET_TICKS + 1,
-			"una pregunta por búsqueda del blanco (%d en 300 ticks)" % asked[0])
+			"one query per target search (%d in 300 ticks)" % asked[0])
 	clear[0] = true
 	var fighting: int = 0
 	for _i: int in 300:
 		walker.step(brain)
 		fighting += 1 if brain.get_siege_task() == BotBrain.SiegeTask.FIGHT else 0
-	assert_true(fighting >= 300 - BotBrain.COMBAT_RETARGET_TICKS, "con ella, sí (%d)" % fighting)
+	assert_true(fighting >= 300 - BotBrain.COMBAT_RETARGET_TICKS, "with it, yes (%d)" % fighting)
 	assert_true(_shots(brain) > 0)
 
 
 func test_the_bow_fights_further_than_the_sword() -> void:
-	# A 16 m: el arquero le tira (SIEGE_BOW_FIGHT_RANGE); el escudero sigue con su plan (SIEGE_FIGHT_RANGE).
+	# At 16 m: the archer shoots at it (SIEGE_BOW_FIGHT_RANGE); the shield-bearer follows its plan (SIEGE_FIGHT_RANGE).
 	var archer := KitWalker.new(_marksman_state(), CIRCLE)
 	archer.blocked = true
 	var archer_brain: BotBrain = _brain(archer, 55)
@@ -496,13 +496,13 @@ func test_the_bow_fights_further_than_the_sword() -> void:
 		squire.step(squire_brain)
 		archer_fights += 1 if archer_brain.get_siege_task() == BotBrain.SiegeTask.FIGHT else 0
 		squire_fights += 1 if squire_brain.get_siege_task() == BotBrain.SiegeTask.FIGHT else 0
-	assert_eq(archer_fights, 600, "el arquero tira a 16 m")
+	assert_eq(archer_fights, 600, "the archer shoots at 16 m")
 	assert_true(_shots(archer_brain) >= 5, "(%s)" % [archer_brain.get_kit_counts()])
-	assert_eq(squire_fights, 0, "el escudero no pelea a 16 m")
+	assert_eq(squire_fights, 0, "the shield-bearer does not fight at 16 m")
 
 
 func test_with_the_sword_in_hand_it_draws_the_bow_for_a_far_target_without_closing_in() -> void:
-	# El tirador que sacó la espada (de cerca, o para la puerta) vuelve al arco con un blanco a tiro y lejos: a 15 m.
+	# The shooter that drew the sword (up close, or for the gate) goes back to the bow with a target in range and far: at 15 m.
 	var walker := KitWalker.new(_marksman_sword_state(), CIRCLE)
 	var brain: BotBrain = _brain(walker, 56)
 	var foe := CIRCLE + Vector3(0.0, 0.0, 15.0)
@@ -513,16 +513,16 @@ func test_with_the_sword_in_hand_it_draws_the_bow_for_a_far_target_without_closi
 		walker.step(brain)
 		assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT)
 		if swapped_at < 0:
-			assert_true(walker.position.distance_to(CIRCLE) < 0.01, "sacando el arco no se acerca con la espada")
+			assert_true(walker.position.distance_to(CIRCLE) < 0.01, "while drawing the bow it does not approach with the sword")
 			if walker.c.weapon_id == bow:
 				swapped_at = i
-	assert_true(swapped_at >= 0 and swapped_at < 120, "saca el arco (tick %d)" % swapped_at)
-	assert_true(_shots(brain) > 0, "y tira (%s)" % [brain.get_kit_counts()])
+	assert_true(swapped_at >= 0 and swapped_at < 120, "draws the bow (tick %d)" % swapped_at)
+	assert_true(_shots(brain) > 0, "and shoots (%s)" % [brain.get_kit_counts()])
 
 
 func test_the_level_filter_is_for_the_sword_the_bow_shoots_across_levels() -> void:
-	# GUE-45: dentro del recinto, quien está a otro nivel no se alcanza con la espada. Con el arco sí, si hay tiro: un
-	# guardia de la pasarela tira al patio, y uno del patio con la espada en la mano saca el arco para el de la pasarela.
+	# GUE-45: inside the enclosure, whoever is at another level cannot be reached with the sword. With the bow they can, if there is a shot: a
+	# walkway guard shoots at the courtyard, and one in the courtyard with the sword in hand draws the bow for the one on the walkway.
 	_view.owner = V
 	_view.gate_health = 9000
 	_view.enclosure_size = Vector2(40.0, 40.0)
@@ -538,10 +538,10 @@ func test_the_level_filter_is_for_the_sword_the_bow_shoots_across_levels() -> vo
 	var moved: int = 0
 	for _i: int in 600:
 		var input: PlayerInput = guard.step(guard_brain)
-		assert_eq(guard_brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "el guardia tira al del patio")
+		assert_eq(guard_brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "the guard shoots at the one in the courtyard")
 		moved += 1 if input.move.length() > 0.01 else 0
 	assert_true(_shots(guard_brain) >= 5, "(%s)" % [guard_brain.get_kit_counts()])
-	assert_eq(moved, 0, "sin moverse en la pasarela")
+	assert_eq(moved, 0, "without moving on the walkway")
 	_view.owner = S
 	var yard := KitWalker.new(_marksman_sword_state(), Vector3(-12.0, 0.0, 3.0))
 	yard.blocked = true
@@ -550,22 +550,22 @@ func test_the_level_filter_is_for_the_sword_the_bow_shoots_across_levels() -> vo
 	yard_brain.set_enemy_finder(func(_position: Vector3) -> Variant: return BotTarget.new(up))
 	for _i: int in 600:
 		yard.step(yard_brain)
-		assert_eq(yard_brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "el del patio le tira al de la pasarela")
-	assert_eq(yard.c.weapon_id, CombatCatalog.weapon_id(&"bow"), "con el arco: la espada no le llega")
+		assert_eq(yard_brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "the one in the courtyard shoots at the one on the walkway")
+	assert_eq(yard.c.weapon_id, CombatCatalog.weapon_id(&"bow"), "with the bow: the sword does not reach it")
 	assert_true(_shots(yard_brain) > 0, "(%s)" % [yard_brain.get_kit_counts()])
-	# Sin el kit, el mismo de la pasarela no es un blanco desde el patio (GUE-45, como siempre).
+	# Without the kit, the same one on the walkway is not a target from the courtyard (GUE-45, as always).
 	var plain := KitWalker.new(_squire_state(), Vector3(-12.0, 0.0, 3.0))
 	var plain_brain := BotBrain.new(58, BotBrain.Pattern.SIEGE)
 	plain_brain.set_siege(_view, _routes, V)
 	plain_brain.set_walkway_role(false)
 	plain_brain.set_enemy_finder(func(_position: Vector3) -> Variant: return BotTarget.new(up))
 	plain.step(plain_brain)
-	assert_true(plain_brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "sin el arco no es un blanco")
+	assert_true(plain_brain.get_siege_task() != BotBrain.SiegeTask.FIGHT, "without the bow it is not a target")
 
 
 func test_going_to_finish_a_downed_foe_it_gives_up_a_chase_that_does_not_close_in() -> void:
-	# Revisión de la integración: ir a rematar con el arco en la mano no tenía ninguna regla para rendirse, y se quedaba
-	# empujando la empalizada hasta que el derribado se desangraba. Acercarse es perseguir: la regla de F6b.
+	# Integration review: going to finish someone off with the bow in hand had no rule for giving up, and it kept
+	# pushing against the palisade until the knocked-down character bled out. Approaching is chasing: the F6b rule.
 	_view.enclosure_size = Vector2(40.0, 40.0)
 	var walker := KitWalker.new(_marksman_state(), Vector3(-10.0, 0.0, 23.0))
 	walker.blocked = true
@@ -580,12 +580,12 @@ func test_going_to_finish_a_downed_foe_it_gives_up_a_chase_that_does_not_close_i
 			break
 	assert_true(gave_up >= BotBrain.SIEGE_STUCK_TICKS
 			and gave_up <= BotBrain.SIEGE_STUCK_TICKS + 2 * BotBrain.COMBAT_RETARGET_TICKS,
-			"deja de ir a rematarlo a los %d ticks sin acercarse (%d)" % [BotBrain.SIEGE_STUCK_TICKS, gave_up])
+			"stops going to finish it off after %d ticks without getting closer (%d)" % [BotBrain.SIEGE_STUCK_TICKS, gave_up])
 
 
 func test_a_marksman_swaps_to_the_sword_to_hit_the_gate() -> void:
-	# Revisión de la integración: a flechazos, 4 tiradores le quitaban a la puerta unas 2,6 veces menos que 4 escuderos.
-	# El tirador saca la espada para golpearla; el arquero puro de las pruebas de carga (kit_ranged_only), no.
+	# Integration review: with arrows, 4 shooters took off the gate about 2.6 times less than 4 shield-bearers.
+	# The shooter draws the sword to hit it; the pure archer of the load tests (kit_ranged_only) does not.
 	_view.gate_health = 9000
 	_view.enclosure_size = Vector2(40.0, 40.0)
 	var sword: int = CombatCatalog.weapon_id(&"sword_shield")
@@ -600,10 +600,10 @@ func test_a_marksman_swaps_to_the_sword_to_hit_the_gate() -> void:
 			if brain.get_siege_task() == BotBrain.SiegeTask.ASSAULT:
 				assaulting += 1
 				presses += 1 if input.has(PlayerInput.PRIMARY) else 0
-		assert_true(assaulting > 600, "llega a la puerta y la asalta (%d ticks)" % assaulting)
-		assert_true(presses > 0, "golpea la puerta")
+		assert_true(assaulting > 600, "reaches the gate and assaults it (%d ticks)" % assaulting)
+		assert_true(presses > 0, "hits the gate")
 		if ranged_only:
-			assert_true(walker.c.weapon_id != sword, "el arquero puro no cambia de arma")
+			assert_true(walker.c.weapon_id != sword, "the pure archer does not swap weapons")
 		else:
-			assert_eq(walker.c.weapon_id, sword, "con la espada")
-			assert_eq(brain.get_kit_counts().get(&"swap", 0), 1, "un cambio de arma")
+			assert_eq(walker.c.weapon_id, sword, "with the sword")
+			assert_eq(brain.get_kit_counts().get(&"swap", 0), 1, "one weapon swap")

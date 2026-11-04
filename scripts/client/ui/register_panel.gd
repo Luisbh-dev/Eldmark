@@ -1,19 +1,22 @@
 class_name RegisterPanel
 extends FrontScreen
-## Crear cuenta (docs/plataforma.md §4.2, §11.4 y §13.2): correo, la contraseña dos veces (10 caracteres como
-## mínimo), «Tengo 16 años o más», una casilla por cada texto legal (términos, privacidad y normas) con su enlace,
-## que abre el texto en un panel con desplazamiento, y los dos consentimientos opcionales, desmarcados (informes de
-## fallos y analítica). «Crear cuenta» solo se activa con todo eso y con las versiones vigentes de los textos
-## ([method set_legal_versions], de [code]GET /v1/legal[/code]); entonces emite [signal submitted] con el cuerpo de
-## [code]POST /v1/accounts[/code]. La respuesta es siempre la misma (§4.2): «Te hemos enviado un correo».
+## Create account (docs/plataforma.md §4.2, §11.4 and §13.2): email, the password twice (10 characters
+## minimum), "Tengo 16 años o más" (I am 16 or older), a checkbox for each legal text (terms, privacy and
+## rules) with its link, which opens the text in a scrolling panel, and the two optional consents,
+## unchecked (crash reports and analytics). "Crear cuenta" (Create account) is only enabled with all that
+## and with the current versions of the texts ([method set_legal_versions], from
+## [code]GET /v1/legal[/code]); then it emits [signal submitted] with the body of
+## [code]POST /v1/accounts[/code]. The response is always the same (§4.2): "Te hemos enviado un correo"
+## (We have sent you an email).
 ## [br][br]
-## Esc vuelve al título. Solo cliente.
+## Esc returns to the title. Client only.
 
-## Pulsó «Crear cuenta» con todo válido: [param body] es el cuerpo de [code]POST /v1/accounts[/code].
+## Pressed "Crear cuenta" (Create account) with everything valid: [param body] is the body of
+## [code]POST /v1/accounts[/code].
 signal submitted(body: Dictionary)
-## Pidió leer el texto [param kind] ([code]terms[/code], [code]privacy[/code] o [code]rules[/code]).
+## Asked to read text [param kind] ([code]terms[/code], [code]privacy[/code] or [code]rules[/code]).
 signal text_requested(kind: String)
-## Pulsó «Volver» o Esc.
+## Pressed "Volver" (Back) or Esc.
 signal canceled
 
 const KINDS: Array[String] = ["terms", "privacy", "rules"]
@@ -125,7 +128,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Vacía el formulario (al abrirlo de nuevo) con [param email] en el correo.
+## Clears the form (when opened again) with [param email] in the email field.
 func reset(email: String = "") -> void:
 	_email_edit.text = email
 	_password_edit.text = ""
@@ -143,7 +146,7 @@ func reset(email: String = "") -> void:
 		_email_edit.grab_focus()
 
 
-## Las versiones vigentes de los textos ([code]GET /v1/legal[/code]: [code]{terms: {version, sha256}, …}[/code]).
+## The current versions of the texts ([code]GET /v1/legal[/code]: [code]{terms: {version, sha256}, …}[/code]).
 func set_legal_versions(legal: Dictionary) -> void:
 	_versions = {}
 	for kind: String in KINDS:
@@ -154,12 +157,12 @@ func set_legal_versions(legal: Dictionary) -> void:
 	_refresh_state()
 
 
-## true si se conocen las versiones de los tres textos.
+## true if the versions of the three texts are known.
 func has_legal_versions() -> bool:
 	return _versions.size() == KINDS.size()
 
 
-## Enseña el texto [param kind] ([param text], Markdown tal cual) en el panel con desplazamiento.
+## Shows text [param kind] ([param text], Markdown as is) in the scrolling panel.
 func show_text(kind: String, text: String) -> void:
 	_text_title.text = "Texto de %s" % KIND_TITLES.get(kind, kind)
 	_text_title.visible = true
@@ -168,12 +171,12 @@ func show_text(kind: String, text: String) -> void:
 	_text_scroll.scroll_vertical = 0
 
 
-## El texto que se enseña en el panel (vacío si ninguno).
+## The text shown in the panel (empty if none).
 func get_shown_text() -> String:
 	return _text_view.text if _text_scroll.visible else ""
 
 
-## El cuerpo de [code]POST /v1/accounts[/code] con lo escrito (§4.2).
+## The body of [code]POST /v1/accounts[/code] with what was typed (§4.2).
 func build_body() -> Dictionary:
 	return {
 		"email": _email_edit.text.strip_edges().to_lower(),
@@ -185,7 +188,7 @@ func build_body() -> Dictionary:
 	}
 
 
-## Lo que falta para poder crear la cuenta (vacío si nada).
+## What is missing before the account can be created (empty if nothing).
 func missing_text() -> String:
 	var email: String = _email_edit.text.strip_edges()
 	if email.is_empty() or email.count("@") != 1 or email.begins_with("@") or email.ends_with("@"):
@@ -208,7 +211,7 @@ func missing_text() -> String:
 	return ""
 
 
-## Emite [signal submitted] si todo vale. Devuelve true si lo emitió.
+## Emits [signal submitted] if everything is valid. Returns true if it emitted it.
 func try_submit() -> bool:
 	if _busy or not missing_text().is_empty():
 		return false

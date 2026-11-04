@@ -1,17 +1,17 @@
 class_name BotEnemySight
 extends RefCounted
-## Dónde ve un bot del cliente a sus enemigos (el [code]enemy_finder[/code] de [constant
-## BotBrain.Pattern.COMBAT]): el más cercano de los remotos que dibuja su [RemoteWorld].
+## Where a client bot sees its enemies (the [code]enemy_finder[/code] of [constant
+## BotBrain.Pattern.COMBAT]): the nearest of the remotes that its [RemoteWorld] draws.
 ## [br][br]
-## Un remoto es enemigo si el servidor dejaría que el bot lo dañase en esta zona
-## ([method FactionRules.can_damage] con el reino del bot y el del remoto, y la zona del WELCOME), si
-## está dibujado y no está muerto ([method RemotePlayerView.get_drawn_health_q] mayor que 0). Los PNJ
-## (maniquíes) solo cuentan con [code]include_npcs[/code]; con [code]include_war_npcs[/code] cuentan los PNJ de
-## guerra (los que tienen un id de definición, [method RemotePlayerView.get_npc_def_id]: Huecos, capitanes,
-## guarniciones), no los maniquíes; con [code]war_npcs_only[/code], solo ellos (el buscador de defensores del
-## cerebro de asedio, [method BotBrain.set_defender_finder]). No conoce las zonas seguras ni la protección de
-## reaparición (eso lo sabe el servidor): un bot que persigue a alguien en su campamento no le hace
-## daño, y los jugadores falsos del servidor sí lo evitan.
+## A remote is an enemy if the server would let the bot damage it in this zone
+## ([method FactionRules.can_damage] with the bot's realm and the remote's, and the WELCOME's
+## zone), if it is drawn and not dead ([method RemotePlayerView.get_drawn_health_q] greater than
+## 0). NPCs (dummies) only count with [code]include_npcs[/code]; with [code]include_war_npcs[/code]
+## the war NPCs count (those with a definition id, [method RemotePlayerView.get_npc_def_id]: the
+## Hollow, captains, garrisons), not the dummies; with [code]war_npcs_only[/code], only them (the
+## siege brain's defender finder, [method BotBrain.set_defender_finder]). It does not know about
+## safe zones or respawn protection (the server knows that): a bot chasing someone in their camp
+## does no damage, and the server's fake players do avoid it.
 
 var _client: NetClient
 var _include_npcs: bool = false
@@ -27,16 +27,16 @@ func _init(client: NetClient, include_npcs: bool = false, include_war_npcs: bool
 	_war_npcs_only = war_npcs_only
 
 
-## Posición dibujada (un [Vector3]) del enemigo más cercano a [param position] (con la altura pesada:
-## [method BotBrain.target_distance_squared]), o null si no hay ninguno.
+## Drawn position (a [Vector3]) of the enemy nearest to [param position] (with height weighted:
+## [method BotBrain.target_distance_squared]), or null if there is none.
 func find(position: Vector3) -> Variant:
 	var view: RemotePlayerView = _nearest_enemy(position)
 	return view.get_drawn_position() if view != null else null
 
 
-## Como [method find], pero con lo que el kit de los bots necesita además (H5; docs/habilidades.md, sección
-## 7.1): un [BotTarget] con la posición dibujada, la velocidad de su cuerpo dibujado (para el tiro adelantado: el
-## servidor rebobina las flechas a lo que se dibujaba) y si está derribado (la acción DOWNED de su registro).
+## Like [method find], but with what the bots' kit also needs (H5; docs/habilidades.md, section
+## 7.1): a [BotTarget] with the drawn position, the velocity of its drawn body (for lead shots: the
+## server rewinds arrows to what was drawn) and whether it is knocked down (the DOWNED action in its record).
 func find_target(position: Vector3) -> Variant:
 	var view: RemotePlayerView = _nearest_enemy(position)
 	if view == null:
@@ -46,8 +46,8 @@ func find_target(position: Vector3) -> Variant:
 			_is_downed(view), view.get_net_id())
 
 
-## Los pies dibujados del aliado derribado (un jugador de su reino con la acción DOWNED) más cercano a
-## [param position], o null.
+## The drawn feet of the nearest knocked-down ally (a player of its realm with the DOWNED action)
+## to [param position], or null.
 func find_downed_ally(position: Vector3) -> Variant:
 	var world: RemoteWorld = _client.get_remote_world()
 	var config: ClientConfig = _client.get_config()

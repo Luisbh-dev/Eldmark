@@ -1,15 +1,15 @@
 class_name AuthOutcome
 extends RefCounted
-## El final de una autenticación que quedó pendiente ([constant AuthProvider.PENDING]): lo devuelve
-## [method AuthProvider.take_completed] en el paso «poll» del tick (docs/plataforma.md §5.2 y §14.3).
+## The outcome of an authentication that was left pending ([constant AuthProvider.PENDING]): returned by
+## [method AuthProvider.take_completed] in the tick's "poll" step (docs/plataforma.md §5.2 and §14.3).
 
 var peer_id: int = 0
-## [constant NetProtocol.Result.OK] o el motivo del REJECT.
+## [constant NetProtocol.Result.OK] or the REJECT reason.
 var result: int = NetProtocol.Result.UNAVAILABLE
-## Texto del REJECT; vacío = [method NetProtocol.result_text]. En [constant NetProtocol.Result.BANNED], el
-## [code]message[/code] del 403 [code]account_blocked[/code], que compone la plataforma.
+## REJECT text; empty = [method NetProtocol.result_text]. In [constant NetProtocol.Result.BANNED], the
+## [code]message[/code] of the 403 [code]account_blocked[/code], which the platform composes.
 var text: String = ""
-## Con OK, lo que trajo la reclamación; null en un rechazo.
+## With OK, what the claim brought; null on a rejection.
 var claimed: ClaimedCharacter = null
 
 

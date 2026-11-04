@@ -1,28 +1,27 @@
 class_name FractionBar
 extends Control
-## Barra horizontal de una fracción (0 a 1) con un texto opcional encima, para el HUD de guerra (barra
-## de captura, vida de la puerta, barra de jefe). Se dibuja con [method _draw]: fondo, relleno del
-## color pedido y borde. Solo muestra; no lee nada.
+## Horizontal bar of a fraction (0 to 1) with optional text on top, for the war HUD (capture bar, gate
+## health, boss bar). It is drawn with [method _draw]: background, fill in the requested color and border.
+## It only displays; it reads nothing.
 ## [br][br]
-## Los colores, el grosor y el tamaño de letra son provisionales (a revisar con el arte de la
-## interfaz, UI-02/ART-12).
+## The colors, thickness and font size are provisional (to be revised with the interface art, UI-02/ART-12).
 
 const BACK_COLOR: Color = Color(0.04, 0.04, 0.05, 0.7)
 const BORDER_COLOR: Color = Color(0.0, 0.0, 0.0, 0.85)
 const TEXT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.95)
 const TEXT_OUTLINE: Color = Color(0.0, 0.0, 0.0, 0.85)
 
-## Color del relleno.
+## Fill color.
 var fill_color: Color = Color(0.78, 0.13, 0.15, 1.0):
 	set(value):
 		fill_color = value
 		queue_redraw()
-## Texto centrado sobre la barra (vacío = ninguno).
+## Text centered over the bar (empty = none).
 var text: String = "":
 	set(value):
 		text = value
 		queue_redraw()
-## Tamaño de letra del texto.
+## Font size of the text.
 var font_size: int = 13
 
 var _fraction: float = 0.0
@@ -33,7 +32,7 @@ func _init() -> void:
 	custom_minimum_size = Vector2(120.0, 12.0)
 
 
-## Fracción rellena (0 a 1).
+## Filled fraction (0 to 1).
 func set_fraction(value: float) -> void:
 	var clamped: float = clampf(value, 0.0, 1.0)
 	if is_equal_approx(clamped, _fraction):

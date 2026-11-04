@@ -27,8 +27,8 @@ func checkPageHeaders(t *testing.T, res *response) {
 	}
 }
 
-// El formulario de /verify enviado como un navegador (urlencoded, sin cabeceras de /v1) verifica;
-// /verify?token=<script> no lo repite (§4.3).
+// The /verify form submitted like a browser (urlencoded, without /v1 headers) verifies;
+// /verify?token=<script> does not repeat it (§4.3).
 func TestVerifyPage(t *testing.T) {
 	h := newHarness(t)
 	id := h.register("pagina@example.org")
@@ -74,7 +74,7 @@ func TestVerifyPage(t *testing.T) {
 	}
 }
 
-// /verify confirma también un cambio de correo (change_email).
+// /verify also confirms an email change (change_email).
 func TestVerifyPageConfirmsAnEmailChange(t *testing.T) {
 	h := newHarness(t)
 	h.register("antes@example.org")
@@ -118,7 +118,7 @@ func TestResetAndRevertPages(t *testing.T) {
 	}
 	h.login("formulario@example.org", "una nueva larga")
 
-	// /revert: cambia el correo y lo devuelve desde la página.
+	// /revert: changes the email and gives it back from the page.
 	s := h.login("formulario@example.org", "una nueva larga")
 	h.do(call{method: "POST", path: "/v1/account/email", token: s.access,
 		body: map[string]any{"new_email": "otro@example.org", "password": "una nueva larga"}})
@@ -137,7 +137,7 @@ func TestResetAndRevertPages(t *testing.T) {
 		t.Fatal(res.raw)
 	}
 	h.accountID("formulario@example.org")
-	// Caducado: la página lo dice.
+	// Expired: the page says so.
 	h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "formulario@example.org"}, ip: h.nextIP()})
 	_, late := h.mailTo("formulario@example.org", "reset_password")
 	h.clock.Advance(2 * time.Hour)
@@ -153,7 +153,7 @@ func mustBody(t *testing.T, h *harness, email, template string) string {
 	return body
 }
 
-// Cuenta sin verificar purgada a los 7 días en staging (con el reloj); en test, nunca.
+// Unverified account purged after 7 days in staging (with the clock); in test, never.
 func TestUnverifiedAccountsArePurged(t *testing.T) {
 	h := newHarness(t, staging)
 	unverified := h.register("sinverificar@example.org")
@@ -189,7 +189,7 @@ func TestUnverifiedAccountsArePurged(t *testing.T) {
 	if !strings.Contains(h.logs.String(), "tiene personajes") {
 		t.Fatal("la cuenta con personajes se registra y se deja")
 	}
-	// El correo de la sancionada queda bloqueado para registrarse hasta 90 días tras el fin.
+	// The sanctioned account's email stays blocked from registering for up to 90 days after the end.
 	var until time.Time
 	h.scalar(&until, `select until from sanctioned_email_hashes where hmac = $1`, hmacOf("sancionada@example.org"))
 	if want := h.clock.Now().Add(-7*24*time.Hour - time.Second).Add(120 * 24 * time.Hour); !until.Equal(want) {
@@ -199,7 +199,7 @@ func TestUnverifiedAccountsArePurged(t *testing.T) {
 	if h.mailCount("sancionada@example.org", "register_blocked") != 1 {
 		t.Fatal("registro bloqueado")
 	}
-	// En test (y dev) las cuentas sin verificar no se purgan.
+	// In test (and dev) unverified accounts are not purged.
 	plain := newHarness(t)
 	id := plain.register("dev@example.org")
 	plain.clock.Advance(30 * 24 * time.Hour)

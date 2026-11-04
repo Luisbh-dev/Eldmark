@@ -1,81 +1,81 @@
 class_name ClientInventory
 extends RefCounted
-## El inventario del jugador local en el cliente (docs/progresion.md §11.3, UI-26): la intención optimista y su
-## reversión. Guarda el [b]estado confirmado[/b] (lo último que dijo el servidor), la lista de [b]peticiones
-## pendientes[/b] (las enviadas sin respuesta, [constant MAX_PENDING] como mucho) y una [b]vista[/b], que es el
-## confirmado con las pendientes aplicadas por [method InventoryOps.apply], la misma función que usa el servidor
-## para decidir: las dos validan igual.
+## The local player's inventory on the client (docs/progresion.md §11.3, UI-26): optimistic intent and its
+## rollback. It keeps the [b]confirmed state[/b] (the latest the server said), the list of [b]pending
+## requests[/b] (those sent without a response, at most [constant MAX_PENDING]) and a [b]view[/b], which is the
+## confirmed state with the pending ones applied by [method InventoryOps.apply], the same function the server uses
+## to decide: both validate identically.
 ## [br][br]
-## [b]Flujo.[/b]
-## [br]1. [method request]: se valida en local sobre la vista con el [InventoryOps.Context] del personaje
-## ([member context_provider]: nivel, ranura activa, «puede tocar el equipo» y «bebiendo» del estado predicho).
-## Si falla, [signal request_rejected] con el texto del código y no se envía nada.
-## [br]2. Si vale, sale un INVENTORY_REQUEST con el siguiente [code]request_id[/code] ([member send_request]),
-## se añade a pendientes y la vista cambia al instante. La pila nueva de un SPLIT lleva un [code]uid[/code]
-## provisional negativo (−[code]request_id[/code]) y no se puede tocar hasta que el delta trae el real.
-## [br]3. [method on_delta]: sus entradas se aplican al confirmado en orden de llegada; si responde a una
-## petición, sale de pendientes. Se rehace la vista; una pendiente que ya no vale en local deja de aplicarse
-## (su respuesta llegará igual).
-## [br]4. Un rechazo trae el contenido real de las ranuras: aplicado al confirmado, el objeto vuelve a su
-## casilla y sale [signal request_rejected] con el texto del código.
-## [br]5. [method tick]: sin respuesta en [constant RESPONSE_TIMEOUT_MSEC] ms se vacían las pendientes y se pide
-## un INVENTORY_SYNC_REQUEST ([member send_sync]); el FULL lo rehace todo.
+## [b]Flow.[/b]
+## [br]1. [method request]: validated locally against the view with the character's [InventoryOps.Context]
+## ([member context_provider]: level, active slot, "can touch equipment" and "drinking" from the predicted state).
+## If it fails, [signal request_rejected] with the code's text and nothing is sent.
+## [br]2. If valid, an INVENTORY_REQUEST goes out with the next [code]request_id[/code] ([member send_request]),
+## is added to pending and the view changes instantly. The new stack from a SPLIT carries a provisional
+## negative [code]uid[/code] (−[code]request_id[/code]) and cannot be touched until the delta brings the real one.
+## [br]3. [method on_delta]: its entries are applied to the confirmed state in arrival order; if it answers a
+## request, that one leaves pending. The view is rebuilt; a pending one that is no longer valid locally stops being applied
+## (its response will arrive anyway).
+## [br]4. A rejection brings the real contents of the slots: applied to the confirmed state, the item returns to its
+## slot and [signal request_rejected] fires with the code's text.
+## [br]5. [method tick]: with no response within [constant RESPONSE_TIMEOUT_MSEC] ms the pending ones are cleared and an
+## INVENTORY_SYNC_REQUEST is made ([member send_sync]); the FULL rebuilds everything.
 ## [br][br]
-## [b]Revisión.[/b] Un delta aplicado ([code]result[/code] 0) cuya revisión no es la confirmada + 1 hace pedir
-## sincronía. Las páginas de INVENTORY_FULL ([method on_full_page]) se juntan por revisión
-## ([method ProgressMessages.InventoryFull.assemble]) y solo entonces sustituyen el confirmado. Las peticiones de
-## sincronía van una cada [constant SYNC_INTERVAL_MSEC] ms como mucho (más, el servidor suma un aviso).
+## [b]Revision.[/b] An applied delta ([code]result[/code] 0) whose revision is not confirmed + 1 triggers a sync
+## request. The pages of INVENTORY_FULL ([method on_full_page]) are gathered by revision
+## ([method ProgressMessages.InventoryFull.assemble]) and only then replace the confirmed state. Sync requests
+## go at most one every [constant SYNC_INTERVAL_MSEC] ms (more, and the server adds a warning).
 ## [br][br]
-## [b]No es optimista[/b] el arma en las manos, la barra de acciones ni las cargas: cambian con el estado
-## confirmado del combate (LOADOUT y el estado propio), un RTT después, así un rechazo nunca hace parpadear el
-## arma. Esta clase no toca el [CombatState].
+## [b]Not optimistic[/b] are the weapon in hand, the action bar and the charges: they change with the confirmed
+## combat state (LOADOUT and the own state), one RTT later, so a rejection never makes the
+## weapon flicker. This class does not touch the [CombatState].
 ## [br][br]
-## [b]Gestos[/b] (§11.2): [method make_move], [method make_split], [method make_destroy] y [method equip_target]
-## construyen la petición de cada gesto con el [code]uid[/code] que se ve en el origen.
+## [b]Gestures[/b] (§11.2): [method make_move], [method make_split], [method make_destroy] and [method equip_target]
+## build the request for each gesture with the [code]uid[/code] seen at the source.
 ## [br][br]
-## Sin red ni nodos: [NetClient] la alimenta y le da con qué enviar; las pruebas, con funciones propias. El reloj
-## llega en [method tick]. Solo cliente.
+## No network or nodes: [NetClient] feeds it and gives it a way to send; tests use their own functions. The clock
+## arrives in [method tick]. Client only.
 
-## La vista cambió (petición enviada, delta, página completa, plazo vencido).
+## The view changed (request sent, delta, full page, timeout expired).
 signal view_changed
-## El estado confirmado cambió (delta o FULL).
+## The confirmed state changed (delta or FULL).
 signal confirmed_changed
-## Una petición no se envió (falla en local) o el servidor la rechazó: [param text] es el aviso en español.
+## A request was not sent (fails locally) or the server rejected it: [param text] is the notice in Spanish.
 signal request_rejected(result: int, text: String)
 
-## Peticiones sin respuesta como mucho: con estas en vuelo, la interfaz espera.
+## Maximum requests without a response: with this many in flight, the UI waits.
 const MAX_PENDING: int = 8
-## Plazo de una respuesta (ms). En un canal fiable no debería vencer nunca.
+## Timeout for a response (ms). On a reliable channel it should never expire.
 const RESPONSE_TIMEOUT_MSEC: int = 5000
-## Tiempo mínimo (ms) entre dos INVENTORY_SYNC_REQUEST (docs/progresion.md §4.6).
+## Minimum time (ms) between two INVENTORY_SYNC_REQUESTs (docs/progresion.md §4.6).
 const SYNC_INTERVAL_MSEC: int = 5000
-## [code]request_id[/code] más alto (u16); después vuelve a 1 (el 0 es «cambio del servidor»).
+## Highest [code]request_id[/code] (u16); after that it wraps back to 1 (0 means "server change").
 const MAX_REQUEST_ID: int = 0xFFFF
-## Revisión del inventario: u32 que da la vuelta.
+## Inventory revision: a u32 that wraps around.
 const REVISION_MASK: int = 0xFFFFFFFF
 
 
-## Una petición enviada sin respuesta.
+## A request sent without a response.
 class Pending:
 	var id: int = 0
 	var request: InventoryOps.Request = null
-	## Definición del objeto del origen al enviarla (para el «Necesitas nivel N» de un rechazo).
+	## Definition of the source item when it was sent (for the "Necesitas nivel N" (You need level N) of a rejection).
 	var def_id: StringName = &""
 	var sent_msec: int = 0
-	## Se sigue aplicando en la vista (false: ya no vale en local y solo se espera su respuesta).
+	## Still applied in the view (false: no longer valid locally and only its response is awaited).
 	var active: bool = true
 
 
-## [code](ProgressMessages.InventoryRequest) -> bool[/code]: envía el mensaje; false si no se pudo.
+## [code](ProgressMessages.InventoryRequest) -> bool[/code]: sends the message; false if it could not be sent.
 var send_request: Callable = Callable()
-## [code]() -> bool[/code]: envía un INVENTORY_SYNC_REQUEST; false si no se pudo.
+## [code]() -> bool[/code]: sends an INVENTORY_SYNC_REQUEST; false if it could not be sent.
 var send_sync: Callable = Callable()
-## [code]() -> InventoryOps.Context[/code]: el contexto del personaje ahora (sin él, el de por defecto: nivel 1,
-## WEAPON_1 activa y libre para tocar el equipo). [member InventoryOps.Context.new_uid] lo pone esta clase.
+## [code]() -> InventoryOps.Context[/code]: the character's context now (without it, the default one: level 1,
+## WEAPON_1 active and free to touch equipment). [member InventoryOps.Context.new_uid] is set by this class.
 var context_provider: Callable = Callable()
-## [code]() -> bool[/code]: si el personaje está en combate (el texto de NOT_NOW cambia).
+## [code]() -> bool[/code]: whether the character is in combat (the NOT_NOW text changes).
 var in_combat_provider: Callable = Callable()
-## Definiciones (null = [method ItemDatabase.shared]).
+## Definitions (null = [method ItemDatabase.shared]).
 var db: ItemDatabase = null
 
 var _confirmed: InventoryState = null
@@ -83,14 +83,14 @@ var _view: InventoryState = null
 var _revision: int = 0
 var _pending: Array[Pending] = []
 var _next_request_id: int = 1
-# Páginas del INVENTORY_FULL que se está juntando (por índice) y su revisión (−1 = ninguna).
+# Pages of the INVENTORY_FULL being gathered (by index) and its revision (−1 = none).
 var _pages: Dictionary[int, ProgressMessages.InventoryFull] = {}
 var _pages_revision: int = -1
 var _now_msec: int = 0
 var _sync_wanted: bool = false
 var _awaiting_full: bool = false
 var _last_sync_msec: int = -SYNC_INTERVAL_MSEC
-# Contadores para las pruebas y la depuración.
+# Counters for tests and debugging.
 var _requests_sent: int = 0
 var _local_rejections: int = 0
 var _server_rejections: int = 0
@@ -100,34 +100,34 @@ var _revision_gaps: int = 0
 var _deltas_ignored: int = 0
 
 
-# --- Consultas ------------------------------------------------------------------------------------
+# --- Queries --------------------------------------------------------------------------------------
 
-## true desde que llega el primer INVENTORY_FULL completo (antes no hay inventario que enseñar).
+## true once the first complete INVENTORY_FULL arrives (before that there is no inventory to show).
 func has_inventory() -> bool:
 	return _confirmed != null
 
 
-## La vista: el confirmado con las pendientes aplicadas (null sin inventario). No se debe cambiar.
+## The view: the confirmed state with the pending ones applied (null without an inventory). It must not be changed.
 func get_view() -> InventoryState:
 	return _view
 
 
-## Lo último que dijo el servidor (null sin inventario). No se debe cambiar.
+## The latest the server said (null without an inventory). It must not be changed.
 func get_confirmed() -> InventoryState:
 	return _confirmed
 
 
-## Revisión del confirmado.
+## Revision of the confirmed state.
 func get_revision() -> int:
 	return _revision
 
 
-## Peticiones enviadas sin respuesta (también las que ya no se aplican en la vista).
+## Requests sent without a response (including those no longer applied in the view).
 func get_pending_count() -> int:
 	return _pending.size()
 
 
-## Los [code]request_id[/code] de las pendientes, en orden de envío.
+## The [code]request_id[/code]s of the pending ones, in send order.
 func get_pending_ids() -> PackedInt32Array:
 	var ids := PackedInt32Array()
 	for pending: Pending in _pending:
@@ -135,19 +135,19 @@ func get_pending_ids() -> PackedInt32Array:
 	return ids
 
 
-## true mientras se espera el INVENTORY_FULL de una sincronía (o se quiere pedir).
+## true while waiting for the INVENTORY_FULL of a sync (or one is wanted).
 func is_syncing() -> bool:
 	return _awaiting_full or _sync_wanted
 
 
-## true si la instancia [param item] es una pila creada en local que aún no tiene su [code]uid[/code] real.
+## true if the instance [param item] is a locally created stack that does not yet have its real [code]uid[/code].
 static func is_provisional(item: ItemInstance) -> bool:
 	return item != null and item.uid < 0
 
 
-## Contadores: [code]requests_sent[/code], [code]local_rejections[/code], [code]server_rejections[/code],
-## [code]syncs_sent[/code], [code]timeouts[/code], [code]revision_gaps[/code] y [code]deltas_ignored[/code]
-## (antes del primer FULL).
+## Counters: [code]requests_sent[/code], [code]local_rejections[/code], [code]server_rejections[/code],
+## [code]syncs_sent[/code], [code]timeouts[/code], [code]revision_gaps[/code] and [code]deltas_ignored[/code]
+## (before the first FULL).
 func get_stats() -> Dictionary:
 	return {
 		"requests_sent": _requests_sent, "local_rejections": _local_rejections,
@@ -156,7 +156,7 @@ func get_stats() -> Dictionary:
 	}
 
 
-## El contexto del personaje ahora, sin ids (el de [member context_provider] o el de por defecto).
+## The character's context now, without ids (that of [member context_provider] or the default one).
 func current_context() -> InventoryOps.Context:
 	var context: InventoryOps.Context = null
 	if context_provider.is_valid():
@@ -168,29 +168,29 @@ func current_context() -> InventoryOps.Context:
 	return context
 
 
-# --- Gestos -------------------------------------------------------------------------------------
+# --- Gestures -----------------------------------------------------------------------------------
 
-## MOVE de [param from] a [param to] ([code](contenedor, ranura)[/code]) con el [code]uid[/code] que se ve en
-## el origen (0 si está vacío: el servidor diría STALE y aquí no se envía).
+## MOVE from [param from] to [param to] ([code](container, slot)[/code]) with the [code]uid[/code] seen at
+## the source (0 if empty: the server would say STALE and here it is not sent).
 func make_move(from: Vector2i, to: Vector2i) -> InventoryOps.Request:
 	return InventoryOps.make_request(InventoryOps.Op.MOVE, from.x, from.y, to.x, to.y, 0, _uid_at(from))
 
 
-## SPLIT de [param count] unidades de [param from] a la ranura vacía [param to] de la bolsa.
+## SPLIT of [param count] units from [param from] into the empty bag slot [param to].
 func make_split(from: Vector2i, to: Vector2i, count: int) -> InventoryOps.Request:
 	return InventoryOps.make_request(InventoryOps.Op.SPLIT, from.x, from.y, to.x, to.y, count, _uid_at(from))
 
 
-## DESTROY de [param count] unidades de [param from] (0 = toda la pila).
+## DESTROY of [param count] units from [param from] (0 = the whole stack).
 func make_destroy(from: Vector2i, count: int = 0) -> InventoryOps.Request:
 	return InventoryOps.make_request(InventoryOps.Op.DESTROY, from.x, from.y, InventoryOps.NO_SLOT,
 			InventoryOps.NO_SLOT, count, _uid_at(from))
 
 
-## Dónde va el objeto de [param from] con un doble clic o un clic derecho (§11.2): desde la bolsa, un arma a
-## WEAPON_2 si está vacía y si no a la ranura de arma que no está activa, y una armadura a su ranura; desde el
-## equipo, a la primera ranura libre de la bolsa. [code](−1, −1)[/code] si no hay a dónde (un objeto que no se
-## equipa, la ranura vacía o la bolsa llena).
+## Where the item at [param from] goes on a double click or right click (§11.2): from the bag, a weapon goes to
+## WEAPON_2 if it is empty and otherwise to the weapon slot that is not active, and armor to its slot; from
+## equipment, to the first free slot of the bag. [code](−1, −1)[/code] if there is nowhere to go (an item that is not
+## equippable, the empty slot or a full bag).
 func equip_target(from: Vector2i) -> Vector2i:
 	var none := Vector2i(-1, -1)
 	if _view == null:
@@ -213,12 +213,12 @@ func equip_target(from: Vector2i) -> Vector2i:
 	return Vector2i(equipment, 1 - active)
 
 
-# --- Peticiones -----------------------------------------------------------------------------------
+# --- Requests -------------------------------------------------------------------------------------
 
-## Valida [param op] en local y, si vale, la envía y la aplica en la vista. Devuelve el resultado local
-## ([enum InventoryOps.Result]; OK = enviada). Sin inventario, NOT_NOW; con [constant MAX_PENDING] en vuelo,
-## RATE; tocar una pila provisional, NOT_NOW; si no se puede enviar, NOT_NOW. Todo lo que no es OK emite
-## [signal request_rejected] con su texto.
+## Validates [param op] locally and, if valid, sends it and applies it to the view. Returns the local result
+## ([enum InventoryOps.Result]; OK = sent). Without an inventory, NOT_NOW; with [constant MAX_PENDING] in flight,
+## RATE; touching a provisional stack, NOT_NOW; if it cannot be sent, NOT_NOW. Everything that is not OK emits
+## [signal request_rejected] with its text.
 func request(op: InventoryOps.Request) -> int:
 	if op == null or _view == null:
 		return _reject_locally(InventoryOps.Result.NOT_NOW)
@@ -248,8 +248,8 @@ func request(op: InventoryOps.Request) -> int:
 	return InventoryOps.Result.OK
 
 
-## Lo que diría [method request] de [param op] ahora, sin enviar nada, sin cambiar la vista y sin avisar (para
-## que un gesto con diálogo, como dividir o destruir, no lo abra si la petición no va a valer).
+## What [method request] would say about [param op] now, without sending anything, without changing the view and without notifying (so
+## that a gesture with a dialog, such as splitting or destroying, does not open it if the request is not going to be valid).
 func validate(op: InventoryOps.Request) -> int:
 	if op == null or _view == null:
 		return InventoryOps.Result.NOT_NOW
@@ -260,15 +260,15 @@ func validate(op: InventoryOps.Request) -> int:
 	return InventoryOps.apply(_view.duplicate_state(), op, _context_for(_next_request_id)).result
 
 
-## Avisa de [param result] como un rechazo local ([signal request_rejected] con su texto) sin enviar nada: para
-## un gesto que no llega a ser petición (desequipar con la bolsa llena). Devuelve [param result].
+## Notifies [param result] as a local rejection ([signal request_rejected] with its text) without sending anything: for
+## a gesture that does not become a request (unequipping with a full bag). Returns [param result].
 func notify_rejected(result: int) -> int:
 	return _reject_locally(result)
 
 
-## Un INVENTORY_DELTA: sus entradas al confirmado (las ranuras que este cliente no tiene se ignoran), la
-## revisión, la pendiente a la que responde y, si es un rechazo, el aviso. Antes del primer FULL no hace nada
-## (el FULL lo traerá todo).
+## An INVENTORY_DELTA: its entries into the confirmed state (slots this client does not have are ignored), the
+## revision, the pending request it answers and, if it is a rejection, the notice. Before the first FULL it does nothing
+## (the FULL will bring everything).
 func on_delta(delta: ProgressMessages.InventoryDelta) -> void:
 	if delta == null:
 		return
@@ -296,8 +296,8 @@ func on_delta(delta: ProgressMessages.InventoryDelta) -> void:
 	_rebuild_view()
 
 
-## Una página de INVENTORY_FULL. Junta las de la misma revisión (una de otra revisión empieza de nuevo) y,
-## completas, sustituyen el confirmado; si no se pueden juntar, se pide otra sincronía.
+## A page of INVENTORY_FULL. Gathers those of the same revision (one of another revision starts over) and,
+## once complete, they replace the confirmed state; if they cannot be gathered, another sync is requested.
 func on_full_page(page: ProgressMessages.InventoryFull) -> void:
 	if page == null:
 		return
@@ -324,7 +324,7 @@ func on_full_page(page: ProgressMessages.InventoryFull) -> void:
 	_rebuild_view()
 
 
-## Avanza el reloj a [param now_msec] (ms): vence el plazo de las pendientes y manda la sincronía que espera.
+## Advances the clock to [param now_msec] (ms): expires the pending ones' timeouts and sends the sync that is waiting.
 func tick(now_msec: int) -> void:
 	_now_msec = now_msec
 	if not _pending.is_empty() and now_msec - _pending[0].sent_msec >= RESPONSE_TIMEOUT_MSEC:
@@ -334,12 +334,12 @@ func tick(now_msec: int) -> void:
 		if _confirmed != null:
 			_rebuild_view()
 	if _awaiting_full and now_msec - _last_sync_msec >= RESPONSE_TIMEOUT_MSEC:
-		# El FULL no llegó: se vuelve a pedir.
+		# The FULL did not arrive: it is requested again.
 		_sync_wanted = true
 	_flush_sync()
 
 
-## Olvida el inventario (fin de la sesión).
+## Forgets the inventory (end of the session).
 func clear() -> void:
 	_confirmed = null
 	_view = null
@@ -352,7 +352,7 @@ func clear() -> void:
 	view_changed.emit()
 
 
-# --- Interno ------------------------------------------------------------------------------------
+# --- Internal -------------------------------------------------------------------------------------
 
 func _db() -> ItemDatabase:
 	return db if db != null else ItemDatabase.shared()
@@ -365,7 +365,7 @@ func _uid_at(position: Vector2i) -> int:
 	return item.uid if item != null else 0
 
 
-# El contexto de la petición [param id]: el del personaje con los ids provisionales −id.
+# The context of request [param id]: the character's with the provisional ids −id.
 func _context_for(id: int) -> InventoryOps.Context:
 	var context: InventoryOps.Context = current_context()
 	context.new_uid = func() -> int: return -id
@@ -389,7 +389,7 @@ func _text(result: int, required_level: int) -> String:
 	return InventoryOps.result_text(result, required_level, in_combat)
 
 
-# Nivel que pide la definición [param def_id] si el personaje no llega (para «Necesitas nivel N»); 0 si llega.
+# Level that definition [param def_id] requires if the character does not reach it (for "Necesitas nivel N", You need level N); 0 if it does.
 func _required_level_of(def_id: StringName) -> int:
 	var definition: ItemDefinition = _db().get_definition(def_id) if def_id != &"" else null
 	if definition == null:
@@ -404,7 +404,7 @@ func _pending_index(id: int) -> int:
 	return -1
 
 
-# La vista de nuevo: el confirmado con las pendientes que aún valen, en orden de envío.
+# The view anew: the confirmed state with the pending ones that are still valid, in send order.
 func _rebuild_view() -> void:
 	var view: InventoryState = _confirmed.duplicate_state()
 	for pending: Pending in _pending:

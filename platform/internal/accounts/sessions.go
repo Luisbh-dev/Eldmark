@@ -13,39 +13,40 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// Session es la sesión de una petición autenticada.
+// Session is the session of an authenticated request.
 type Session struct {
 	ID        int64
 	AccountID int64
-	Scope     string // ScopeGame o ScopePrivacy
+	Scope     string // ScopeGame or ScopePrivacy
 	Email     string
 	Role      string
-	Status    string // active o pending_deletion
+	Status    string // active or pending_deletion
 }
 
 type sessionKey struct{}
 
-// WithSession guarda la sesión en el contexto.
+// WithSession stores the session in the context.
 func WithSession(ctx context.Context, s *Session) context.Context {
 	return context.WithValue(ctx, sessionKey{}, s)
 }
 
-// SessionFrom devuelve la sesión de la petición, o nil (fuera de [API.RequireSession]).
+// SessionFrom returns the request's session, or nil (outside [API.RequireSession]).
 func SessionFrom(ctx context.Context) *Session {
 	s, _ := ctx.Value(sessionKey{}).(*Session)
 	return s
 }
 
-// Restriction es la sanción que restringe una cuenta: suspensión o expulsión vigente.
+// Restriction is the sanction that restricts an account: a current suspension or ban.
 type Restriction struct {
-	Code   string     // account_suspended o account_banned
-	Until  *time.Time // nil: sin fin
+	Code   string     // account_suspended or account_banned
+	Until  *time.Time // nil: no end
 	Reason string
 }
 
-// Message es el texto para el jugador (§4.1 y §6.1): «Tu cuenta está suspendida hasta el
-// 3/11/2026 18:00 UTC: motivo» o «Tu cuenta está expulsada: motivo», cortado a 255 B
-// (sanctions.Restriction.Message, el mismo texto que la reclamación y el latido).
+// Message is the text for the player (§4.1 and §6.1): "Tu cuenta está suspendida hasta el
+// 3/11/2026 18:00 UTC: motivo" (your account is suspended until...) or "Tu cuenta está expulsada:
+// motivo" (your account is banned), truncated to 255 B (sanctions.Restriction.Message, the same
+// text as the claim and the heartbeat).
 func (r *Restriction) Message() string {
 	kind := sanctions.KindSuspension
 	if r.Code == "account_banned" {
@@ -54,13 +55,13 @@ func (r *Restriction) Message() string {
 	return (&sanctions.Restriction{Kind: kind, Until: r.Until, Reason: r.Reason}).Message()
 }
 
-// Error es el 403 de la restricción, con until (fecha Unix o null) y reason.
+// Error is the restriction's 403, with until (Unix date or null) and reason.
 func (r *Restriction) Error() *httpx.Error {
 	return &httpx.Error{Status: http.StatusForbidden, Code: r.Code, Message: r.Message(),
 		Extra: map[string]any{"until": unix(r.Until), "reason": r.Reason}}
 }
 
-// RestrictionView es la restricción en JSON: {code, until, reason}.
+// RestrictionView is the restriction in JSON: {code, until, reason}.
 type RestrictionView struct {
 	Code   string `json:"code"`
 	Until  *int64 `json:"until"`
@@ -74,8 +75,8 @@ func (r *Restriction) view() *RestrictionView {
 	return &RestrictionView{Code: r.Code, Until: unix(r.Until), Reason: r.Reason}
 }
 
-// ActiveRestriction devuelve la suspensión o expulsión vigente de la cuenta, o nil. Una expulsión
-// manda sobre una suspensión; entre suspensiones, la que acaba más tarde.
+// ActiveRestriction returns the account's current suspension or ban, or nil. A ban takes precedence
+// over a suspension; among suspensions, the one that ends later.
 func ActiveRestriction(ctx context.Context, q querier, accountID int64, now time.Time) (*Restriction, error) {
 	active, err := sanctions.Active(ctx, q, accountID, now)
 	if err != nil || active == nil {
@@ -88,7 +89,7 @@ func ActiveRestriction(ctx context.Context, q querier, accountID int64, now time
 	return r, nil
 }
 
-// Tokens es el par de tokens de una sesión.
+// Tokens is a session's token pair.
 type Tokens struct {
 	AccessToken      string `json:"access_token"`
 	AccessExpiresIn  int64  `json:"access_expires_in"`
@@ -97,7 +98,7 @@ type Tokens struct {
 	Scope            string `json:"scope"`
 }
 
-// LoginResult es la respuesta de POST /v1/sessions.
+// LoginResult is the response of POST /v1/sessions.
 type LoginResult struct {
 	Tokens
 	Restriction *RestrictionView `json:"restriction"`
@@ -106,9 +107,9 @@ type LoginResult struct {
 
 func seconds(d time.Duration) int64 { return int64(d.Round(time.Second) / time.Second) }
 
-// Login inicia sesión (§4.2). Con una contraseña mala, invalid_credentials esté o no sancionada
-// la cuenta (y exista o no); con una buena, una cuenta suspendida o expulsada recibe la sesión de
-// privacidad. Iniciar sesión revoca las demás sesiones de la cuenta (replaced).
+// Login logs in (§4.2). With a bad password, invalid_credentials whether or not the account is
+// sanctioned (and whether or not it exists); with a good one, a suspended or banned account gets the
+// privacy session. Logging in revokes the account's other sessions (replaced).
 func (s *Service) Login(ctx context.Context, email, password string, meta ClientMeta) (*LoginResult, error) {
 	email = NormalizeEmail(email)
 	fields := map[string]string{}
@@ -184,7 +185,7 @@ func (s *Service) Login(ctx context.Context, email, password string, meta Client
 	return res, nil
 }
 
-// createSession inserta la fila de una sesión nueva: 12 h desde ahora, acceso de 15 min.
+// createSession inserts the row of a new session: 12 h from now, 15 min access.
 func (s *Service) createSession(ctx context.Context, tx pgx.Tx, accountID int64, scope string, meta ClientMeta,
 	now time.Time) (Tokens, int64, error) {
 	access, accessHash := newToken()
@@ -204,17 +205,17 @@ func (s *Service) createSession(ctx context.Context, tx pgx.Tx, accountID int64,
 		RefreshExpiresIn: seconds(SessionTTL), Scope: scope}, id, nil
 }
 
-// revokeSessions revoca las sesiones vivas de la cuenta salvo except (0: todas).
+// revokeSessions revokes the account's live sessions except except (0: all).
 func revokeSessions(ctx context.Context, q execer, accountID, except int64, reason string, now time.Time) error {
 	_, err := q.Exec(ctx, `update sessions set revoked_at = $3, revoke_reason = $4
 		where account_id = $1 and session_id <> $2 and revoked_at is null`, accountID, except, now, reason)
 	return err
 }
 
-// Refresh rota el par de tokens en la misma fila (§4.2). El refresco anterior (prev_refresh_hash)
-// en una sesión viva es una reutilización: revoca la sesión (refresh_reuse) y da 401. Uno de hace
-// dos rotaciones da 401 sin revocar. La sesión no se alarga: el acceso nuevo no pasa de
-// refresh_expires_at, y el ámbito (game o privacy) se conserva.
+// Refresh rotates the token pair in the same row (§4.2). The previous refresh (prev_refresh_hash)
+// on a live session is a reuse: it revokes the session (refresh_reuse) and gives 401. One from two
+// rotations ago gives 401 without revoking. The session is not extended: the new access does not go
+// past refresh_expires_at, and the scope (game or privacy) is kept.
 func (s *Service) Refresh(ctx context.Context, refreshToken string, meta ClientMeta) (*Tokens, error) {
 	if !ValidToken(refreshToken) {
 		return nil, errUnauthorized()
@@ -251,7 +252,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta ClientM
 		if err != nil {
 			return err
 		}
-		// Se confirma la revocación y la respuesta es 401 (res sigue a nil).
+		// The revocation is committed and the response is 401 (res stays nil).
 		return s.event(ctx, tx, accountID, "refresh_reuse", meta, now)
 	})
 	if err != nil {
@@ -263,14 +264,14 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta ClientM
 	return res, nil
 }
 
-// Logout revoca la sesión (logout).
+// Logout revokes the session (logout).
 func (s *Service) Logout(ctx context.Context, sess *Session) error {
 	_, err := s.pool.Exec(ctx, `update sessions set revoked_at = $2, revoke_reason = 'logout'
 		where session_id = $1 and revoked_at is null`, sess.ID, s.clock.Now())
 	return err
 }
 
-// Authenticate devuelve la sesión de un token de acceso vivo, o nil.
+// Authenticate returns the session of a live access token, or nil.
 func (s *Service) Authenticate(ctx context.Context, accessToken string) (*Session, error) {
 	if !ValidToken(accessToken) {
 		return nil, nil

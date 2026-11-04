@@ -1,29 +1,30 @@
 class_name LevelCurve
 extends Resource
-## Curva de experiencia (docs/progresion.md §6.1, PRG-13), en
-## [code]data/progression/level_curve.tres[/code]: la XP que hace falta para pasar de cada nivel al
-## siguiente, hasta el tope.
+## Experience curve (docs/progresion.md §6.1, PRG-13), in
+## [code]data/progression/level_curve.tres[/code]: the XP needed to go from each level to the
+## next, up to the cap.
 ## [br][br]
-## El dato es la tabla [member xp_to_next], no la fórmula con que se generó
-## ([code]round((500 + 150 · (L − 1)^1,6) / 10) · 10[/code]): una cifra se puede retocar a mano sin
-## cambiar las demás. La exporta [ProgressionRulesExport] (sección [code]level_curve[/code]) y la
-## plataforma comprueba con ella el nivel de cada guardado (S6). Compartido: sin reloj ni azar.
+## The data is the [member xp_to_next] table, not the formula it was generated with
+## ([code]round((500 + 150 · (L − 1)^1.6) / 10) · 10[/code]): one figure can be tweaked by hand
+## without changing the others. It is exported by [ProgressionRulesExport] ([code]level_curve[/code]
+## section) and the platform uses it to check the level of each save (S6). Shared: no clock, no
+## randomness.
 
-## Ruta del recurso.
+## Path of the resource.
 const PATH: String = "res://data/progression/level_curve.tres"
 
-## Nivel máximo.
+## Maximum level.
 @export_range(2, 255) var level_cap: int = 40
-## XP para pasar del nivel [code]i + 1[/code] al [code]i + 2[/code]: [code]level_cap − 1[/code] valores.
+## XP to go from level [code]i + 1[/code] to [code]i + 2[/code]: [code]level_cap − 1[/code] values.
 @export var xp_to_next: PackedInt32Array = PackedInt32Array()
-## Puntos de atributo por nivel ganado (PRG-17; en la fase 5 se ven y no se gastan).
+## Attribute points per level gained (PRG-17; in phase 5 they are shown but not spent).
 @export_range(0, 100) var attribute_points_per_level: int = 1
 
 static var _shared: LevelCurve = null
 
 
-## La curva de [constant PATH], cargada una vez. Si no se puede cargar, registra el error y devuelve
-## una curva vacía (todo el mundo a nivel 1).
+## The curve at [constant PATH], loaded once. If it cannot be loaded, it logs the error and returns
+## an empty curve (everyone at level 1).
 static func shared() -> LevelCurve:
 	if _shared == null:
 		_shared = ResourceLoader.load(PATH) as LevelCurve
@@ -33,8 +34,8 @@ static func shared() -> LevelCurve:
 	return _shared
 
 
-## XP total que hace falta para llegar a [param level] desde 0: 0 para el nivel 1 y, para el tope,
-## lo que hace falta para llegar al tope. Fuera de [code]1..level_cap[/code], el extremo más cercano.
+## Total XP needed to reach [param level] from 0: 0 for level 1 and, for the cap, what is needed to
+## reach the cap. Outside [code]1..level_cap[/code], the nearest end.
 func total_to(level: int) -> int:
 	var steps: int = mini(clampi(level, 1, level_cap) - 1, xp_to_next.size())
 	var total: int = 0
@@ -43,8 +44,8 @@ func total_to(level: int) -> int:
 	return total
 
 
-## Nivel que corresponde a [param xp_total] (I8): el mayor nivel cuyo [method total_to] no pasa de
-## él, entre 1 y [member level_cap].
+## Level corresponding to [param xp_total] (I8): the highest level whose [method total_to] does not
+## exceed it, between 1 and [member level_cap].
 func level_for(xp_total: int) -> int:
 	var level: int = 1
 	var total: int = 0
@@ -56,15 +57,15 @@ func level_for(xp_total: int) -> int:
 	return level
 
 
-## XP que falta para el nivel siguiente desde el principio de [param level]; 0 en el tope.
+## XP missing for the next level from the start of [param level]; 0 at the cap.
 func xp_for_next(level: int) -> int:
 	if level < 1 or level >= level_cap or level - 1 >= xp_to_next.size():
 		return 0
 	return xp_to_next[level - 1]
 
 
-## Errores de los datos (vacío si la curva vale): tantos valores como pasos hasta el tope, todos
-## mayores que 0.
+## Data errors (empty if the curve is valid): as many values as steps up to the cap, all greater
+## than 0.
 func get_errors() -> PackedStringArray:
 	var errors := PackedStringArray()
 	if xp_to_next.size() != level_cap - 1:

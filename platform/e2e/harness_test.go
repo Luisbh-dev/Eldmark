@@ -38,15 +38,15 @@ import (
 	"eldmark/platform/internal/testdb"
 )
 
-// Variables de entorno del arnés.
+// Harness environment variables.
 const (
-	godotVar        = "ELDMARK_GODOT"         // ruta del ejecutable de Godot 4.7.2; sin ella, las pruebas se saltan
-	requireGodotVar = "ELDMARK_REQUIRE_GODOT" // 1 (la CI): sin ELDMARK_GODOT fallan en lugar de saltarse
-	artifactsVar    = "ELDMARK_E2E_ARTIFACTS" // carpeta donde se conservan los registros de cada prueba (opcional)
+	godotVar        = "ELDMARK_GODOT"         // path of the Godot 4.7.2 executable; without it, the tests are skipped
+	requireGodotVar = "ELDMARK_REQUIRE_GODOT" // 1 (CI): without ELDMARK_GODOT they fail instead of being skipped
+	artifactsVar    = "ELDMARK_E2E_ARTIFACTS" // folder where the logs of each test are kept (optional)
 )
 
-// La plataforma de las pruebas (plataforma.md §15, P10): un solo despliegue de zona, test_world en el mundo 1 y
-// el canal 0, que es la zona de entrada de los dos reinos; latido de 1 s y arrendamientos de 6 s.
+// The tests' platform (plataforma.md §15, P10): a single zone deployment, test_world in world 1 and
+// channel 0, which is the entry zone of both realms; 1 s heartbeat and 6 s leases.
 const (
 	ZoneID     = "test_world"
 	WorldID    = 1
@@ -54,20 +54,20 @@ const (
 	LeaseTTLS  = 6
 )
 
-// Plazos del arnés.
+// Harness timeouts.
 const (
 	importTimeout = 10 * time.Minute
-	bootTimeout   = 20 * time.Second // la plataforma, hasta el final de su arranque
-	stopTimeout   = 15 * time.Second // la plataforma, al acabar la prueba
+	bootTimeout   = 20 * time.Second // the platform, until the end of its startup
+	stopTimeout   = 15 * time.Second // the platform, when the test ends
 	pollEvery     = 100 * time.Millisecond
-	tailLines     = 40 // líneas del final de cada registro que se copian en la salida de una prueba que falla
+	tailLines     = 40 // lines from the end of each log that are copied into the output of a failing test
 )
 
 var (
 	godotBin  string // ELDMARK_GODOT
-	repoRoot  string // la raíz del proyecto de Godot (dos carpetas por encima de platform/e2e)
-	importLog string // el registro de la importación de TestMain
-	importErr error  // por qué falló la importación (todas las pruebas fallan con él)
+	repoRoot  string // root of the Godot project (two folders above platform/e2e)
+	importLog string // TestMain's import log
+	importErr error  // why the import failed (all the tests fail with it)
 )
 
 func TestMain(m *testing.M) {
@@ -88,8 +88,8 @@ func testMain(m *testing.M) int {
 	return testdb.Main(m)
 }
 
-// importProject importa el proyecto una vez (godot --headless --import): las zonas y los bots cargan escenas y
-// recursos importados. Necesita los objetos de LFS ya bajados.
+// importProject imports the project once (godot --headless --import): zones and bots load imported
+// scenes and resources. It needs the LFS objects already downloaded.
 func importProject() error {
 	if _, err := os.Stat(filepath.Join(repoRoot, "project.godot")); err != nil {
 		return fmt.Errorf("no está el proyecto de Godot en %s: %w", repoRoot, err)
@@ -123,8 +123,8 @@ func importProject() error {
 	return nil
 }
 
-// requireGodot salta la prueba sin ELDMARK_GODOT (o la hace fallar con ELDMARK_REQUIRE_GODOT=1) y la hace fallar si
-// la importación falló.
+// requireGodot skips the test without ELDMARK_GODOT (or makes it fail with ELDMARK_REQUIRE_GODOT=1)
+// and makes it fail if the import failed.
 func requireGodot(t *testing.T) {
 	t.Helper()
 	if godotBin == "" {
@@ -138,8 +138,8 @@ func requireGodot(t *testing.T) {
 	}
 }
 
-// childEnv es el entorno de un proceso de Godot: el de la prueba sin ninguna variable ELDMARK_* (una
-// ELDMARK_ZONE_TOKEN_FILE heredada chocaría con la de la prueba) más extra.
+// childEnv is the environment of a Godot process: the test's own without any ELDMARK_* variable (an
+// inherited ELDMARK_ZONE_TOKEN_FILE would clash with the test's) plus extra.
 func childEnv(extra []string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -150,19 +150,19 @@ func childEnv(extra []string) []string {
 	return append(env, extra...)
 }
 
-// Harness es la plataforma de una prueba (la de verdad, la de serve, en este proceso y sobre una base nueva) con lo
-// que hace falta para arrancar zonas y bots contra ella. Todo se para al acabar la prueba: primero los procesos de
-// Godot, luego la plataforma y al final la base.
+// Harness is a test's platform (the real one, the one from serve, in this process and on a fresh
+// database) with what is needed to start zones and bots against it. Everything is stopped when the
+// test ends: first the Godot processes, then the platform and finally the database.
 type Harness struct {
 	T           *testing.T
 	Pool        *pgxpool.Pool
 	Cfg         *config.Config
-	PublicURL   string // la API pública (la de los bots): http://127.0.0.1:<puerto>
-	InternalURL string // la API interna (la de las zonas)
-	Protocol    int    // el protocol_version de progression_rules.json (la cabecera X-Eldmark-Protocol)
-	Dir         string // los registros y los informes de la prueba
-	ZoneToken   string // ELDMARK_ZONE_TOKEN de las zonas (el alcance 1:test_world:0)
-	TicketKeys  string // ELDMARK_TICKET_KEYS, la misma en la plataforma y en las zonas
+	PublicURL   string // the public API (the bots' one): http://127.0.0.1:<port>
+	InternalURL string // the internal API (the zones' one)
+	Protocol    int    // the protocol_version from progression_rules.json (the X-Eldmark-Protocol header)
+	Dir         string // the test's logs and reports
+	ZoneToken   string // the zones' ELDMARK_ZONE_TOKEN (scope 1:test_world:0)
+	TicketKeys  string // ELDMARK_TICKET_KEYS, the same in the platform and in the zones
 	Started     time.Time
 
 	mu    sync.Mutex
@@ -170,12 +170,12 @@ type Harness struct {
 	seq   map[string]int
 }
 
-// Option cambia las variables ELDMARK_* de la plataforma antes de arrancarla.
+// Option changes the platform's ELDMARK_* variables before starting it.
 type Option func(env map[string]string)
 
-// New arranca la plataforma de la prueba: base nueva con todas las migraciones, la configuración de §15 cargada
-// con config.Load (ELDMARK_ENV=test), los servicios de serve (services.Mount) y las dos API en puertos libres.
-// Vuelve cuando el arranque ha terminado.
+// New starts the test's platform: fresh database with all the migrations, the §15 configuration
+// loaded with config.Load (ELDMARK_ENV=test), serve's services (services.Mount) and both APIs on
+// free ports. It returns once startup has finished.
 func New(t *testing.T, opts ...Option) *Harness {
 	t.Helper()
 	requireGodot(t)
@@ -266,8 +266,7 @@ func (h *Harness) startPlatform() {
 	h.Logf("plataforma lista (pública %s, interna %s)", h.PublicURL, h.InternalURL)
 }
 
-// artifactsDir es la carpeta de los registros de la prueba: ELDMARK_E2E_ARTIFACTS/<prueba> (vaciada) o una
-// temporal.
+// artifactsDir is the test's log folder: ELDMARK_E2E_ARTIFACTS/<test> (emptied) or a temporary one.
 func artifactsDir(t *testing.T) string {
 	t.Helper()
 	root := os.Getenv(artifactsVar)
@@ -284,16 +283,16 @@ func artifactsDir(t *testing.T) string {
 	return dir
 }
 
-// Logf escribe en la salida de la prueba con los segundos desde el arranque del arnés delante.
+// Logf writes to the test's output with the seconds since harness startup in front.
 func (h *Harness) Logf(format string, args ...any) {
 	h.T.Helper()
 	h.T.Logf("[%5.1f s] %s", time.Since(h.Started).Seconds(), fmt.Sprintf(format, args...))
 }
 
-// Elapsed son los segundos desde el arranque del arnés.
+// Elapsed is the seconds since harness startup.
 func (h *Harness) Elapsed() time.Duration { return time.Since(h.Started) }
 
-// dumpLogsOnFailure copia el final de cada registro en la salida de una prueba que ha fallado.
+// dumpLogsOnFailure copies the end of each log into the output of a test that has failed.
 func (h *Harness) dumpLogsOnFailure() {
 	if !h.T.Failed() {
 		return
@@ -315,7 +314,7 @@ func (h *Harness) dumpLogsOnFailure() {
 	h.T.Logf("registros en %s", h.Dir)
 }
 
-// tail son las últimas n líneas del archivo path.
+// tail is the last n lines of the file path.
 func tail(path string, n int) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -339,9 +338,9 @@ func randomBytes(t *testing.T, n int) []byte {
 
 func randomHex(t *testing.T, n int) string { return hex.EncodeToString(randomBytes(t, n)) }
 
-// --- Cuentas -----------------------------------------------------------------------------------------------
+// --- Accounts ----------------------------------------------------------------------------------------------
 
-// Account es una cuenta de la prueba con su contraseña en un archivo (el --password-file de los bots).
+// Account is a test account with its password in a file (the bots' --password-file).
 type Account struct {
 	ID           int64
 	Email        string
@@ -349,8 +348,8 @@ type Account struct {
 	PasswordFile string
 }
 
-// NewAccount registra una cuenta por la API pública (POST /v1/accounts, con los tres textos aceptados) y deja su
-// contraseña en un archivo de la prueba.
+// NewAccount registers an account through the public API (POST /v1/accounts, with the three texts
+// accepted) and leaves its password in a test file.
 func (h *Harness) NewAccount(email string) *Account {
 	t := h.T
 	t.Helper()
@@ -370,7 +369,8 @@ func (h *Harness) NewAccount(email string) *Account {
 	return acc
 }
 
-// PublicJSON hace una petición a la API pública con la cabecera del protocolo y devuelve el estado y el cuerpo.
+// PublicJSON makes a request to the public API with the protocol header and returns the status and
+// the body.
 func (h *Harness) PublicJSON(method, path string, body any) (int, string) {
 	t := h.T
 	t.Helper()
@@ -400,9 +400,9 @@ func (h *Harness) PublicJSON(method, path string, body any) (int, string) {
 	return res.StatusCode, string(raw)
 }
 
-// --- Base de datos -----------------------------------------------------------------------------------------
+// --- Database ----------------------------------------------------------------------------------------------
 
-// Scalar lee una fila de la base en dst o hace fallar la prueba.
+// Scalar reads a row from the database into dst or makes the test fail.
 func (h *Harness) Scalar(dst any, sql string, args ...any) {
 	h.T.Helper()
 	if err := h.Pool.QueryRow(context.Background(), sql, args...).Scan(dst); err != nil {
@@ -410,7 +410,7 @@ func (h *Harness) Scalar(dst any, sql string, args ...any) {
 	}
 }
 
-// Exists dice si la consulta devuelve alguna fila.
+// Exists says whether the query returns any row.
 func (h *Harness) Exists(sql string, args ...any) bool {
 	h.T.Helper()
 	var ok bool
@@ -418,7 +418,8 @@ func (h *Harness) Exists(sql string, args ...any) bool {
 	return ok
 }
 
-// WaitFor espera a que cond se cumpla, mirándola cada 100 ms, o hace fallar la prueba al pasar timeout.
+// WaitFor waits for cond to hold, checking it every 100 ms, or makes the test fail when timeout
+// passes.
 func (h *Harness) WaitFor(timeout time.Duration, what string, cond func() bool) {
 	h.T.Helper()
 	deadline := time.Now().Add(timeout)
@@ -430,10 +431,11 @@ func (h *Harness) WaitFor(timeout time.Duration, what string, cond func() bool) 
 	}
 }
 
-// CheckBooks comprueba por SQL que lo guardado del personaje cuadra, sin nada duplicado ni a medias (TEC-25; las
-// cuentas de progresion.md §15 P8): por definición, la suma de count_delta de item_events es la de count de sus
-// objetos vivos; por moneda, la suma de delta de ledger_entries es el saldo; el kit (operación STARTER_KIT) se dio
-// una sola vez, y tiene algún objeto vivo (si no, lo demás no diría nada).
+// CheckBooks checks by SQL that the character's saved data adds up, with nothing duplicated or
+// half-done (TEC-25; the sums of progresion.md §15 P8): by definition, the sum of count_delta in
+// item_events is the sum of count of its live objects; per currency, the sum of delta in
+// ledger_entries is the balance; the kit (STARTER_KIT operation) was given only once, and has some
+// live object (otherwise, the rest would say nothing).
 func (h *Harness) CheckBooks(characterID int64) {
 	t := h.T
 	t.Helper()
@@ -480,7 +482,8 @@ func (h *Harness) CheckBooks(characterID int64) {
 	}
 }
 
-// WaitCharacter espera a que exista el personaje name (sin borrar) en el mundo de las pruebas y devuelve su id.
+// WaitCharacter waits for the character name (not deleted) to exist in the tests' world and returns
+// its id.
 func (h *Harness) WaitCharacter(name string, timeout time.Duration, procs ...*Process) int64 {
 	h.T.Helper()
 	var id int64
@@ -493,20 +496,20 @@ func (h *Harness) WaitCharacter(name string, timeout time.Duration, procs ...*Pr
 	return id
 }
 
-// --- Procesos de Godot -------------------------------------------------------------------------------------
+// --- Godot processes ---------------------------------------------------------------------------------------
 
-// Process es un proceso de Godot de la prueba (una zona o un bot), con la salida en su registro.
+// Process is a Godot process of the test (a zone or a bot), with the output going to its log.
 type Process struct {
 	Name string
-	Log  string // la salida estándar y la de error
+	Log  string // standard output and standard error
 
 	cmd  *exec.Cmd
 	done chan struct{}
-	code int   // el código de salida; -1 si lo terminó una señal
-	err  error // el error de Wait que no es un código de salida
+	code int   // the exit code; -1 if it was ended by a signal
+	err  error // the error from Wait that is not an exit code
 }
 
-// start lanza godot --headless --path <raíz> -- args con el entorno de childEnv(env).
+// start launches godot --headless --path <root> -- args with the environment from childEnv(env).
 func (h *Harness) start(name string, env []string, args ...string) *Process {
 	t := h.T
 	t.Helper()
@@ -546,7 +549,8 @@ func (h *Harness) start(name string, env []string, args ...string) *Process {
 	return p
 }
 
-// next da el nombre del siguiente proceso de la clase kind (zona1, zona2, bot1…: los de sus registros).
+// next gives the name of the next process of class kind (zona1, zona2, bot1...: those of their
+// logs).
 func (h *Harness) next(kind string) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -557,7 +561,7 @@ func (h *Harness) next(kind string) string {
 	return kind + strconv.Itoa(h.seq[kind])
 }
 
-// killAll mata los procesos que sigan vivos al acabar la prueba.
+// killAll kills the processes still alive when the test ends.
 func (h *Harness) killAll() {
 	h.mu.Lock()
 	procs := append([]*Process(nil), h.procs...)
@@ -569,7 +573,7 @@ func (h *Harness) killAll() {
 	}
 }
 
-// Exited dice si el proceso ha terminado.
+// Exited says whether the process has finished.
 func (p *Process) Exited() bool {
 	select {
 	case <-p.done:
@@ -579,11 +583,11 @@ func (p *Process) Exited() bool {
 	}
 }
 
-// Code es el código de salida (solo tras terminar; -1 si lo terminó una señal).
+// Code is the exit code (only after finishing; -1 if it was ended by a signal).
 func (p *Process) Code() int { return p.code }
 
-// Wait espera a que el proceso termine y devuelve su código de salida; si no termina en timeout, lo mata y hace
-// fallar la prueba.
+// Wait waits for the process to finish and returns its exit code; if it does not finish within
+// timeout, it kills it and makes the test fail.
 func (p *Process) Wait(t *testing.T, timeout time.Duration) int {
 	t.Helper()
 	select {
@@ -598,7 +602,8 @@ func (p *Process) Wait(t *testing.T, timeout time.Duration) int {
 	return p.code
 }
 
-// Kill le manda SIGKILL (kill -9) y espera a que termine; devuelve la hora justo antes de la señal.
+// Kill sends it SIGKILL (kill -9) and waits for it to finish; it returns the time just before the
+// signal.
 func (p *Process) Kill() time.Time {
 	at := time.Now()
 	if p.Exited() {
@@ -609,7 +614,7 @@ func (p *Process) Kill() time.Time {
 	return at
 }
 
-// requireRunning hace fallar la prueba si alguno de los procesos ya ha terminado.
+// requireRunning makes the test fail if any of the processes has already finished.
 func requireRunning(t *testing.T, procs ...*Process) {
 	t.Helper()
 	for _, p := range procs {
@@ -619,11 +624,11 @@ func requireRunning(t *testing.T, procs ...*Process) {
 	}
 }
 
-// LogContains dice si el registro del proceso tiene alguna línea con text (léase tras terminar: la salida de
-// Godot puede no estar entera mientras corre).
+// LogContains says whether the process's log has any line with text (read it after finishing:
+// Godot's output may not be complete while it runs).
 func (p *Process) LogContains(text string) bool { return fileContains(p.Log, text) }
 
-// PlatformLogContains dice si el registro de la plataforma (JSON por líneas) tiene alguna línea con text.
+// PlatformLogContains says whether the platform's log (line-delimited JSON) has any line with text.
 func (h *Harness) PlatformLogContains(text string) bool {
 	return fileContains(filepath.Join(h.Dir, "plataforma.log"), text)
 }
@@ -644,20 +649,21 @@ func fileContains(path, text string) bool {
 	return false
 }
 
-// --- Zonas -------------------------------------------------------------------------------------------------
+// --- Zones -------------------------------------------------------------------------------------------------
 
-// Zone es un servidor de zona test_world con --platform contra la plataforma de la prueba.
+// Zone is a test_world zone server with --platform against the test's platform.
 type Zone struct {
 	*Process
 	h        *Harness
-	Port     int    // el puerto UDP (y el public_port de su registro, que la identifica en zone_instances)
-	StopFile string // --stop-file: crearlo pide el cierre ordenado
+	Port     int    // the UDP port (and the public_port of its registration, which identifies it in zone_instances)
+	StopFile string // --stop-file: creating it requests the orderly shutdown
 	Report   string // --report
-	Instance string // su zone_instance_id, desde WaitLive
+	Instance string // its zone_instance_id, from WaitLive
 }
 
-// StartZone arranca una zona test_world con --platform (la API interna de la prueba), un puerto UDP libre,
-// --stop-file, --report y args (--save-interval=5…). El token y las claves del billete van en el entorno.
+// StartZone starts a test_world zone with --platform (the test's internal API), a free UDP port,
+// --stop-file, --report and args (--save-interval=5...). The token and the ticket keys go in the
+// environment.
 func (h *Harness) StartZone(args ...string) *Zone {
 	h.T.Helper()
 	name := h.next("zona")
@@ -670,7 +676,8 @@ func (h *Harness) StartZone(args ...string) *Zone {
 	return z
 }
 
-// WaitLive espera a que la instancia de la zona esté live en la plataforma y devuelve su zone_instance_id.
+// WaitLive waits for the zone's instance to be live on the platform and returns its
+// zone_instance_id.
 func (z *Zone) WaitLive(timeout time.Duration) string {
 	h := z.h
 	h.T.Helper()
@@ -684,8 +691,8 @@ func (z *Zone) WaitLive(timeout time.Duration) string {
 	return z.Instance
 }
 
-// Stop pide el cierre ordenado (crea el --stop-file: guardados finales, liberación y baja) y devuelve el código
-// de salida.
+// Stop requests the orderly shutdown (creates the --stop-file: final saves, release and
+// deregistration) and returns the exit code.
 func (z *Zone) Stop(timeout time.Duration) int {
 	z.h.T.Helper()
 	if err := os.WriteFile(z.StopFile, nil, 0o644); err != nil {
@@ -696,7 +703,7 @@ func (z *Zone) Stop(timeout time.Duration) int {
 	return code
 }
 
-// freeUDPPort es un puerto UDP libre en este momento.
+// freeUDPPort is a UDP port that is free at this moment.
 func freeUDPPort(t *testing.T) int {
 	t.Helper()
 	c, err := net.ListenPacket("udp", "127.0.0.1:0")
@@ -709,15 +716,15 @@ func freeUDPPort(t *testing.T) int {
 
 // --- Bots --------------------------------------------------------------------------------------------------
 
-// Bot es un cliente --bot con cuenta (plataforma.md §19.16): inicia sesión, asegura el personaje, pide enter y
-// entra con el billete en la zona que da la plataforma.
+// Bot is a --bot client with an account (plataforma.md §19.16): it logs in, ensures the character,
+// requests enter and joins with the ticket in the zone the platform gives.
 type Bot struct {
 	*Process
 	Account *Account
 	Report  string
 }
 
-// StartBot arranca un bot con la cuenta y args (--character=<nombre>, --quit-after-ticks=N…).
+// StartBot starts a bot with the account and args (--character=<name>, --quit-after-ticks=N...).
 func (h *Harness) StartBot(acc *Account, args ...string) *Bot {
 	h.T.Helper()
 	name := h.next("bot")
@@ -728,7 +735,7 @@ func (h *Harness) StartBot(acc *Account, args ...string) *Bot {
 	return b
 }
 
-// BotReport es lo que la prueba mira del informe del bot.
+// BotReport is what the test looks at in the bot's report.
 type BotReport struct {
 	Raw      map[string]any
 	Platform struct {
@@ -740,7 +747,7 @@ type BotReport struct {
 	} `json:"platform"`
 }
 
-// ReadReport lee el informe del bot (lo escribe al salir).
+// ReadReport reads the bot's report (it writes it on exit).
 func (b *Bot) ReadReport(t *testing.T) *BotReport {
 	t.Helper()
 	data, err := os.ReadFile(b.Report)

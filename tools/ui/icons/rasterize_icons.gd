@@ -1,11 +1,11 @@
 extends SceneTree
-## Rasteriza con el rasterizador del propio motor (ThorVG) las capas SVG de los iconos de la interfaz
-## (ART-12). Recorre una carpeta entera, subcarpetas incluidas, y deja un PNG junto a cada SVG con el
-## tamaño que declara su `width` (el SVG trae el lado en píxeles: 256 para los iconos grandes, 4 veces
-## el tamaño final en los pequeños).
-## Uso:
-##   godot --headless --path . -s res://tools/ui/icons/rasterize_icons.gd -- <carpeta_de_capas>
-## Sin argumentos usa res://build/iconos/capas.
+## Rasterises the SVG layers of the interface icons (ART-12) with the engine's own rasteriser (ThorVG).
+## It walks a whole folder, subfolders included, and leaves a PNG next to each SVG at the
+## size declared by its `width` (the SVG carries the side in pixels: 256 for the large icons, 4 times
+## the final size for the small ones).
+## Usage:
+##   godot --headless --path . -s res://tools/ui/icons/rasterize_icons.gd -- <layers_folder>
+## Without arguments it uses res://build/iconos/capas.
 
 
 func _init() -> void:

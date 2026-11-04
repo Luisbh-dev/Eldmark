@@ -1,24 +1,24 @@
 class_name CombatClipSet
 extends Resource
-## Asigna a cada acción de combate su clip de animación (ART-07/ART-08). Es un recurso de texto
-## ([code]data/animation/sword_shield_clips.tres[/code]): quien ajuste el aspecto cambia aquí los
-## clips y los segundos de cada tramo sin tocar código.
+## Assigns each combat action its animation clip (ART-07/ART-08). It is a text resource
+## ([code]data/animation/sword_shield_clips.tres[/code]): whoever tunes the look changes the
+## clips and the seconds of each segment here without touching code.
 ## [br][br]
-## [member libraries] dice dónde están las bibliotecas de animación (UAL1 y UAL2 ya importadas, las
-## variantes sin root motion) y [method get_animation] resuelve un clip «biblioteca/nombre». Las
-## duraciones de las fases no están aquí: salen de los datos de combate ([CombatCatalog]), y la capa
-## estira los tramos para encajarlas.
+## [member libraries] says where the animation libraries are (UAL1 and UAL2, already imported, the
+## variants without root motion) and [method get_animation] resolves a "library/name" clip. The
+## phase durations are not here: they come from the combat data ([CombatCatalog]), and the layer
+## stretches the segments to fit them.
 
-## Acciones animadas.
+## Animated actions.
 @export var entries: Array[CombatActionAnim] = []
-## Biblioteca ([code]ual1[/code], [code]ual2[/code]) -> ruta del archivo de animaciones.
+## Library ([code]ual1[/code], [code]ual2[/code]) -> path of the animations file.
 @export var libraries: Dictionary[StringName, String] = {}
 
-# Bibliotecas ya cargadas (clave de biblioteca -> AnimationLibrary).
+# Libraries already loaded (library key -> AnimationLibrary).
 var _loaded: Dictionary[StringName, AnimationLibrary] = {}
 
 
-## La entrada de la acción [param key], o null.
+## The entry for action [param key], or null.
 func find(key: StringName) -> CombatActionAnim:
 	for entry: CombatActionAnim in entries:
 		if entry != null and entry.key == key:
@@ -26,8 +26,8 @@ func find(key: StringName) -> CombatActionAnim:
 	return null
 
 
-## Clip «biblioteca/nombre» (por ejemplo [code]ual2/Sword_Block[/code]), o null si la biblioteca o
-## el clip no existen.
+## "library/name" clip (for example [code]ual2/Sword_Block[/code]), or null if the library or
+## the clip does not exist.
 func get_animation(full_name: StringName) -> Animation:
 	var text: String = String(full_name)
 	var slash: int = text.find("/")
@@ -43,7 +43,7 @@ func get_animation(full_name: StringName) -> Animation:
 	return library.get_animation(clip_name)
 
 
-# Carga (una vez) la biblioteca [param key].
+# Loads library [param key] (once).
 func _library(key: StringName) -> AnimationLibrary:
 	if _loaded.has(key):
 		return _loaded[key]

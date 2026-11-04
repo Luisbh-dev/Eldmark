@@ -14,16 +14,16 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// Store es el almacén del progreso en PostgreSQL (progresion.md §13.2, P7): implementa
-// persistence.ProgressStore sobre las tablas de 0010_progress. Todo corre en la transacción o la conexión de
-// quien llama; las reglas son de solo lectura, así que vale entre gorrutinas.
+// Store is the progress store on PostgreSQL (progresion.md §13.2, P7): it implements
+// persistence.ProgressStore over the 0010_progress tables. Everything runs in the caller's
+// transaction or connection; the rules are read-only, so it is safe to share between goroutines.
 type Store struct {
 	rules *Rules
 	now   func() time.Time
 }
 
-// New prepara el almacén con las reglas exportadas y un reloj (nil: time.Now). El reloj da saved_at, la
-// fecha de las operaciones y los apuntes, el «ahora» de S2 y S7 y el año de la retención.
+// New prepares the store with the exported rules and a clock (nil: time.Now). The clock provides
+// saved_at, the date of operations and entries, the "now" of S2 and S7 and the retention year.
 func New(rules *Rules, now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
@@ -33,8 +33,9 @@ func New(rules *Rules, now func() time.Time) *Store {
 
 var _ persistence.ProgressStore = (*Store)(nil)
 
-// Create implementa persistence.ProgressStore: el progreso de un personaje recién creado, con los valores
-// por defecto de §3.3 y un saldo a 0 de cada moneda. worldID no se guarda (sale de characters).
+// Create implements persistence.ProgressStore: the progress of a newly created character, with
+// the defaults from §3.3 and a balance of 0 for each currency. worldID is not stored (it comes
+// from characters).
 func (s *Store) Create(ctx context.Context, tx pgx.Tx, _ int16, characterID int64, p persistence.CreateParams) error {
 	if _, err := tx.Exec(ctx, `insert into character_progress (character_id, race_id, appearance, starter_template_id,
 			bag_slots) values ($1, $2, $3, $4, $5)`, characterID, p.RaceID, p.Appearance[:], p.StarterTemplateID,
@@ -50,8 +51,9 @@ func (s *Store) Create(ctx context.Context, tx pgx.Tx, _ int16, characterID int6
 	return nil
 }
 
-// record es el ProgressRecord de la reclamación (progresion.md §3.4), con las claves en el orden de la zona
-// (encoding/json las escribe en el del struct; el orden no importa a nadie, pero así el diff se lee).
+// record is the claim's ProgressRecord (progresion.md §3.4), with keys in the zone's order
+// (encoding/json writes them in the struct's order; the order matters to nobody, but this way the
+// diff reads well).
 type record struct {
 	ActiveWeaponSlot  int            `json:"active_weapon_slot"`
 	Appearance        string         `json:"appearance"`
@@ -105,10 +107,10 @@ type recordWallet struct {
 	Currency int   `json:"currency"`
 }
 
-// Load implementa persistence.ProgressStore: el registro de §3.4 desde las tablas, con
-// location.saved_at_unix de saved_at, un saldo por moneda de las reglas (0 sin fila), los objetos vivos por
-// contenedor y ranura y los temporizadores por clave; persistence.ErrNotFound si el personaje no tiene
-// progreso (no existe o está purgado).
+// Load implements persistence.ProgressStore: the §3.4 record from the tables, with
+// location.saved_at_unix from saved_at, one balance per currency in the rules (0 with no row),
+// live objects by container and slot and timers by key; persistence.ErrNotFound if the character
+// has no progress (does not exist or is purged).
 func (s *Store) Load(ctx context.Context, q persistence.Querier, characterID int64) (json.RawMessage, error) {
 	rec, err := s.loadRecord(ctx, q, characterID)
 	if err != nil {
@@ -219,8 +221,8 @@ func (s *Store) loadRecord(ctx context.Context, q persistence.Querier, character
 	return rec, err
 }
 
-// Summaries implementa persistence.ProgressStore: raza, apariencia, nivel, última zona y canal y tiempo
-// jugado de los personajes con progreso (los que no tienen fila no salen).
+// Summaries implements persistence.ProgressStore: race, appearance, level, last zone and channel
+// and played time for the characters with progress (those without a row are not returned).
 func (s *Store) Summaries(ctx context.Context, q persistence.Querier, characterIDs []int64) (map[int64]persistence.Summary, error) {
 	out := make(map[int64]persistence.Summary, len(characterIDs))
 	if len(characterIDs) == 0 {
@@ -252,10 +254,10 @@ func (s *Store) Summaries(ctx context.Context, q persistence.Querier, characterI
 	return out, rows.Err()
 }
 
-// Purge implementa persistence.ProgressStore (progresion.md §3.5): borra el estado del progreso (progreso,
-// saldos, objetos vivos y retirados, temporizadores) y deja lo de solo añadir, que se queda con la lápida de
-// characters hasta la retención. La plataforma la llama con el arrendamiento y la fila del personaje
-// bloqueados (plataforma.md §11.2).
+// Purge implements persistence.ProgressStore (progresion.md §3.5): it deletes the progress state
+// (progress, balances, live and retired objects, timers) and leaves the append-only data, which
+// stays with the characters tombstone until retention. The platform calls it with the lease and
+// the character's row locked (plataforma.md §11.2).
 func (s *Store) Purge(ctx context.Context, tx pgx.Tx, characterID int64) error {
 	for _, table := range []string{"character_timers", "item_instances", "character_wallets", "character_progress"} {
 		if _, err := tx.Exec(ctx, "delete from "+table+" where character_id = $1", characterID); err != nil {

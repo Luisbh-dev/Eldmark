@@ -1,20 +1,20 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), vídeo: un minuto de combate con el modo Movie Maker del motor.
+## Quality capture bench (TEC-50), video: one minute of combat with the engine's Movie Maker mode.
 ##
-## Pensado para lanzarse con [code]--write-movie <archivo.avi>[/code] (lo hace [code]run.py video[/code]): el motor graba cada
-## fotograma y el audio del bus maestro, así que sirve para juzgar lo que las capturas no enseñan: sonido, parada de golpe y
-## fluidez. El conductor frena el juego a tiempo real mientras graba ([code]online_driver.gd[/code]), de modo que el servidor
-## y el cliente siguen sincronizados.
+## Meant to be launched with [code]--write-movie <file.avi>[/code] (which [code]run.py video[/code] does): the engine records each
+## frame and the master bus audio, so it is useful to judge what captures do not show: sound, hitstop and
+## smoothness. The driver throttles the game to real time while recording ([code]online_driver.gd[/code]), so that the server
+## and the client stay in sync.
 ## [br][br]
-## Guion (por fotogramas, así que dura lo mismo grabado que sin grabar): los primeros 45 % contra los Huecos y el Capitán del
-## fuerte (comando de depuración 8 para que estén todos) y el resto contra un bot enemigo de combate, delante de su campamento.
-## El cliente pelea con [code]spar.gd[/code] (ligeros, habilidades, esquiva, bloqueo y fuertes). Duración con
-## [code]--seconds=N[/code] (60 por defecto).
+## Script (by frames, so it lasts the same recorded or not): the first 45 % against the Hollow and the fort's Captain
+## (debug command 8 so that all of them are there) and the rest against an enemy combat bot, in front of its camp.
+## The client fights with [code]spar.gd[/code] (light attacks, abilities, dodge, block and heavy attacks). Duration with
+## [code]--seconds=N[/code] (60 by default).
 
 const Spar = preload("res://tools/quality/spar.gd")
 
 const FPS: int = 60
-## Patio del fuerte (la puerta cerrada no deja pasar a pie): el cliente aparece dentro, cerca del Capitán y de los Huecos.
+## Fort courtyard (the closed gate does not let anyone pass on foot): the client appears inside, near the Captain and the Hollow.
 const FORT_SPOT: Vector3 = Vector3(-12.0, 0.0, -6.0)
 const FORT_YAW: float = -60.0
 
@@ -35,7 +35,7 @@ func run(drv: Variant) -> void:
 	spar = Spar.new(d, 21)
 	spar.look_offset_deg = 0.0
 	_bot_spot = d.open_spot(Spar.MEET_CANDIDATES)
-	# Fuerte lleno de PNJ y el cliente a la puerta.
+	# Fort full of NPCs and the client at the gate.
 	d.cmd(NetProtocol.DEBUG_FORT_RESET)
 	await d.wait_healing(3.0)
 	await d.tp(FORT_SPOT.x, FORT_SPOT.z, FORT_YAW, 5.0, NAN, 1.0)
@@ -54,7 +54,7 @@ func _elapsed_fraction() -> float:
 	return float(Engine.get_process_frames() - _start_frame) / float(_seconds * FPS)
 
 
-# Pelea con el enemigo más cercano del tipo pedido hasta que pase la fracción [param until] del vídeo.
+# Fights the nearest enemy of the requested kind until the fraction [param until] of the video has passed.
 func _fight_until(until: float, kind: String) -> void:
 	var next_heal: int = 0
 	spar.set_mode("fight")
@@ -76,7 +76,7 @@ func _fight_until(until: float, kind: String) -> void:
 			spar.stop()
 			await d.step()
 			continue
-		# De vez en cuando, un golpe fuerte cargado para ver la parada de golpe y el derribo.
+		# Now and then, a charged heavy attack to see the hitstop and the knockdown.
 		if now >= heavy_next and spar.mode == "fight":
 			spar.set_mode("heavy")
 			heavy_next = now + 5000

@@ -1,14 +1,14 @@
-# Normaliza los finales de línea a LF
+# Normalize line endings to LF
 * text=auto eol=lf
 
-# Modelos 3D
+# 3D models
 *.glb filter=lfs diff=lfs merge=lfs -text
 *.bin filter=lfs diff=lfs merge=lfs -text
 *.fbx filter=lfs diff=lfs merge=lfs -text
 *.obj filter=lfs diff=lfs merge=lfs -text
 *.blend filter=lfs diff=lfs merge=lfs -text
 
-# Texturas e imágenes
+# Textures and images
 *.png filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
 *.jpeg filter=lfs diff=lfs merge=lfs -text
@@ -24,18 +24,18 @@
 *.ogg filter=lfs diff=lfs merge=lfs -text
 *.mp3 filter=lfs diff=lfs merge=lfs -text
 
-# Fuentes
+# Fonts
 *.ttf filter=lfs diff=lfs merge=lfs -text
 *.otf filter=lfs diff=lfs merge=lfs -text
 
-# Vídeo
+# Video
 *.ogv filter=lfs diff=lfs merge=lfs -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 
-# Datos de región de Terrain3D (única excepción al formato texto, ver CLAUDE.md)
+# Terrain3D region data (the only exception to the text format, see CLAUDE.md)
 *.res filter=lfs diff=lfs merge=lfs -text
 
-# Binarios nativos de GDExtension (Terrain3D)
+# Native GDExtension binaries (Terrain3D)
 *.dll filter=lfs diff=lfs merge=lfs -text
 *.so filter=lfs diff=lfs merge=lfs -text
 *.dylib filter=lfs diff=lfs merge=lfs -text

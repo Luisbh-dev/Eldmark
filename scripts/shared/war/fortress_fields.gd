@@ -1,19 +1,19 @@
 class_name FortressFields
 extends RefCounted
-## Ids de los campos de una fortaleza en OBJECT_STATE (docs/fuerte.md, sección 2) y cómo viaja
-## cada uno: su tipo de valor en el mensaje y su lectura y escritura sobre un [FortressState].
+## Ids of a fort's fields in OBJECT_STATE (docs/fuerte.md, section 2) and how each one travels: its
+## value type in the message and its read and write on a [FortressState].
 ## [br][br]
-## OBJECT_STATE lleva, por campo, [code]u8 field_id[/code], [code]u8 value_type[/code] y el valor. Los
-## tipos son los de [enum ValueType] (1 u8, 2 u16, 3 u32, 4 s32). Un [code]field_id[/code]
-## desconocido se salta al decodificar (compatibilidad hacia delante); uno conocido con otro tipo
-## de valor no es válido.
+## OBJECT_STATE carries, per field, [code]u8 field_id[/code], [code]u8 value_type[/code] and the
+## value. The types are those of [enum ValueType] (1 u8, 2 u16, 3 u32, 4 s32). An unknown
+## [code]field_id[/code] is skipped when decoding (forward compatibility); a known one with another
+## value type is not valid.
 ## [br][br]
-## Los booleanos viajan como 0 o 1. La presencia de cada reino (campos 14 a 17) es un u8 por reino,
-## de 0 (neutral) a 3. Los ticks son u32 y la velocidad de captura, que puede ser negativa, s32.
+## Booleans travel as 0 or 1. Each realm's presence (fields 14 to 17) is a u8 per realm, from 0
+## (neutral) to 3. Ticks are u32 and the capture speed, which can be negative, s32.
 ## [br][br]
-## Compartido: no depende del cliente ni del servidor.
+## Shared: depends on neither the client nor the server.
 
-## Tipo de valor de un campo en el mensaje.
+## Value type of a field in the message.
 enum ValueType { U8 = 1, U16 = 2, U32 = 3, S32 = 4 }
 
 const OWNER: int = 1
@@ -29,15 +29,15 @@ const CAPTURE_RATE: int = 10
 const CAPTURE_PROGRESS_AT_START: int = 11
 const CONTESTED: int = 12
 const UNDER_ATTACK_UNTIL_TICK: int = 13
-## Presencia del reino 0 (neutral); los de los reinos 1 a 3 son este id más el código de reino.
+## Presence of realm 0 (neutral); those of realms 1 to 3 are this id plus the realm code.
 const PRESENCE_BASE: int = 14
 
 const FIRST: int = OWNER
 const LAST: int = PRESENCE_BASE + 3
-## Reinos con campo de presencia (códigos de red 0 a 3).
+## Realms with a presence field (network codes 0 to 3).
 const PRESENCE_REALMS: int = 4
 
-## Id -> [nombre, tipo de valor].
+## Id -> [name, value type].
 const _TABLE: Dictionary = {
 	OWNER: [&"owner", ValueType.U8],
 	PHASE: [&"phase", ValueType.U8],
@@ -59,7 +59,7 @@ const _TABLE: Dictionary = {
 }
 
 
-## Todos los ids de campo, en orden.
+## All field ids, in order.
 static func all_ids() -> PackedInt32Array:
 	var ids := PackedInt32Array()
 	for id: int in range(FIRST, LAST + 1):
@@ -67,33 +67,33 @@ static func all_ids() -> PackedInt32Array:
 	return ids
 
 
-## true si [param field_id] es un campo conocido (1 a 17).
+## true if [param field_id] is a known field (1 to 17).
 static func is_known(field_id: int) -> bool:
 	return _TABLE.has(field_id)
 
 
-## Nombre del campo (el del miembro de [FortressState]); vacío si es desconocido.
+## Name of the field (that of the [FortressState] member); empty if unknown.
 static func name_of(field_id: int) -> StringName:
 	if not _TABLE.has(field_id):
 		return &""
 	return (_TABLE[field_id] as Array)[0]
 
 
-## Tipo de valor ([enum ValueType]) con el que viaja el campo, o 0 si es desconocido.
+## Value type ([enum ValueType]) the field travels with, or 0 if unknown.
 static func value_type(field_id: int) -> int:
 	if not _TABLE.has(field_id):
 		return 0
 	return (_TABLE[field_id] as Array)[1]
 
 
-## Id del campo de presencia del reino [param realm_code] (0 a 3), o -1 si el código no vale.
+## Id of the presence field of realm [param realm_code] (0 to 3), or -1 if the code is not valid.
 static func presence_field(realm_code: int) -> int:
 	if realm_code < 0 or realm_code >= PRESENCE_REALMS:
 		return -1
 	return PRESENCE_BASE + realm_code
 
 
-## Número de bytes del valor de un campo de tipo [param type] (0 si el tipo no existe).
+## Number of bytes of the value of a field of type [param type] (0 if the type does not exist).
 static func value_size(type: int) -> int:
 	match type:
 		ValueType.U8:
@@ -105,7 +105,7 @@ static func value_size(type: int) -> int:
 	return 0
 
 
-## true si [param value] cabe en el tipo del campo [param field_id].
+## true if [param value] fits the type of field [param field_id].
 static func fits(field_id: int, value: int) -> bool:
 	match value_type(field_id):
 		ValueType.U8:
@@ -119,8 +119,8 @@ static func fits(field_id: int, value: int) -> bool:
 	return false
 
 
-## Valor entero del campo [param field_id] en [param state] (los booleanos como 0 o 1). 0 si el id
-## es desconocido.
+## Integer value of field [param field_id] in [param state] (booleans as 0 or 1). 0 if the id is
+## unknown.
 static func get_value(state: FortressState, field_id: int) -> int:
 	match field_id:
 		OWNER:
@@ -154,8 +154,8 @@ static func get_value(state: FortressState, field_id: int) -> int:
 	return 0
 
 
-## Pone el campo [param field_id] de [param state] a [param value]. Devuelve false (sin tocar
-## nada) si el id es desconocido o el valor no cabe en el tipo del campo.
+## Sets field [param field_id] of [param state] to [param value]. Returns false (touching nothing)
+## if the id is unknown or the value does not fit the field's type.
 static func set_value(state: FortressState, field_id: int, value: int) -> bool:
 	if not is_known(field_id) or not fits(field_id, value):
 		return false

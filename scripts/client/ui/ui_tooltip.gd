@@ -1,50 +1,50 @@
 class_name UITooltip
 extends PanelContainer
-## Tooltip enriquecido (UI-09): título (con el color de rareza o de bando), subtítulo y cuerpo con
-## BBCode, que aparece tras un retraso y se ajusta a los bordes de la pantalla.
+## Rich tooltip (UI-09): title (in the rarity or faction color), subtitle and body with BBCode, which
+## appears after a delay and fits within the screen edges.
 ## [br][br]
-## [b]Uso.[/b] Un tooltip compartido por viewport ([method get_shared]) lo alimentan las casillas y
-## los controles que lo piden: [method request] arranca la espera ([member delay] segundos) y
-## [method cancel] la anula y lo oculta; [method bind_source] hace las dos cosas por su cuenta cuando
-## el ratón entra y sale de un control (o este recibe y pierde el foco, para el teclado y el mando).
-## Mientras la espera o la muestra siguen a un ratón, el tooltip lo acompaña.
+## [b]Usage.[/b] One tooltip shared per viewport ([method get_shared]) is fed by the slots and the
+## controls that request it: [method request] starts the wait ([member delay] seconds) and
+## [method cancel] aborts it and hides it; [method bind_source] does both on its own when the mouse enters
+## and leaves a control (or it gains and loses focus, for keyboard and gamepad). While the wait or the
+## display follow a mouse, the tooltip accompanies it.
 ## [br][br]
-## [b]Colocación.[/b] [method fit_position] es la regla (pura, para poder probarla): por defecto a la
-## derecha y debajo del cursor; si así se saldría de [param bounds] por la derecha pasa a la
-## izquierda, y por abajo, encima; después se encaja dentro dejando [constant MARGIN] px de borde.
+## [b]Placement.[/b] [method fit_position] is the rule (pure, so it can be tested): by default to the right
+## of and below the cursor; if that would go out of [param bounds] on the right it moves to the left, and
+## on the bottom, above; then it is fitted inside leaving [constant MARGIN] px of edge.
 ## [br][br]
-## [b]Foco.[/b] El tooltip por foco existe para el teclado y el mando: solo se abre si lo último que hizo el jugador
-## fue pulsar una tecla o un botón de mando ([method note_input]) y el foco no lo dio el código
-## ([method grab_focus_silently]). Con el ratón, o al abrir una ventana que enfoca su primer control, el foco no
-## enseña nada: antes un tooltip tapaba el inventario y la ventana de personaje al abrirlos (UI-49).
+## [b]Focus.[/b] The focus tooltip exists for keyboard and gamepad: it only opens if the last thing the
+## player did was press a key or a gamepad button ([method note_input]) and the focus was not given by
+## code ([method grab_focus_silently]). With the mouse, or when opening a window that focuses its first
+## control, focus shows nothing: previously a tooltip covered the inventory and the character window when
+## opening them (UI-49).
 ## [br][br]
-## El tiempo lo lleva [method advance] ([method _process] lo llama con el delta de cada fotograma);
-## las pruebas lo llaman con pasos exactos. Nunca captura el ratón.
+## Time is kept by [method advance] ([method _process] calls it with each frame's delta); the tests call it
+## with exact steps. It never captures the mouse.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Segundos que el ratón debe quedarse quieto sobre un control antes de que aparezca el tooltip.
+## Seconds the mouse must stay still over a control before the tooltip appears.
 const DEFAULT_DELAY: float = 0.45
-## Separación (px) entre el cursor y el tooltip, y borde mínimo con la pantalla.
+## Separation (px) between the cursor and the tooltip, and minimum edge to the screen.
 const CURSOR_OFFSET: Vector2 = Vector2(16.0, 22.0)
 const MARGIN: float = 8.0
-## Ancho máximo del texto (px).
+## Maximum width of the text (px).
 const MAX_TEXT_WIDTH: float = 320.0
 const MIN_TEXT_WIDTH: float = 140.0
-## Capa en la que vive el tooltip compartido (por encima del HUD y las ventanas).
+## Layer where the shared tooltip lives (above the HUD and the windows).
 const LAYER: int = 90
-## Metadatos de un control enlazado con [method bind_source]: su proveedor y si ya está conectado.
+## Metadata of a control bound with [method bind_source]: its provider and whether it is already connected.
 const PROVIDER_META: StringName = &"ui_tooltip_provider"
 const BOUND_META: StringName = &"ui_tooltip_bound"
 
-## Segundos de espera antes de mostrarlo.
+## Seconds to wait before showing it.
 var delay: float = DEFAULT_DELAY
-## Si no es null, los límites en los que se encaja (pruebas); si lo es, el rectángulo visible del
-## viewport.
+## If not null, the bounds it is fitted within (tests); if it is, the viewport's visible rectangle.
 var bounds_override: Variant = null
 
 static var _shared: UITooltip = null
-## Llamadas de [method grab_focus_silently] en curso: mientras haya alguna, el foco no abre tooltips.
+## [method grab_focus_silently] calls in progress: while there are any, focus does not open tooltips.
 static var _silent_focus: int = 0
 
 var _title: Label = null
@@ -55,11 +55,11 @@ var _showing: bool = false
 var _elapsed: float = 0.0
 var _anchor: Vector2 = Vector2.ZERO
 var _follow_mouse: bool = false
-# true si la última entrada del jugador fue de teclado o de mando (el foco solo enseña tooltips entonces).
+# true if the player's last input was from keyboard or gamepad (focus only shows tooltips then).
 var _navigation_input: bool = false
 
 
-## El tooltip compartido del árbol de [param tree], creado la primera vez (en su propia capa).
+## The shared tooltip of the tree of [param tree], created the first time (on its own layer).
 static func get_shared(tree: SceneTree) -> UITooltip:
 	if is_instance_valid(_shared) and _shared.is_inside_tree():
 		return _shared
@@ -73,16 +73,16 @@ static func get_shared(tree: SceneTree) -> UITooltip:
 	return tooltip
 
 
-## Da el foco a [param control] sin que abra su tooltip: el foco lo pone el código (una ventana que se abre), no el
-## jugador al navegar.
+## Gives focus to [param control] without it opening its tooltip: the focus is set by code (a window that
+## opens), not by the player when navigating.
 static func grab_focus_silently(control: Control) -> void:
 	_silent_focus += 1
 	control.grab_focus()
 	_silent_focus -= 1
 
 
-## Posición (esquina superior izquierda) de un tooltip de tamaño [param tooltip_size] para un cursor
-## en [param anchor], dentro de [param bounds]. Ver la regla en la documentación de la clase.
+## Position (top-left corner) of a tooltip of size [param tooltip_size] for a cursor at [param anchor],
+## within [param bounds]. See the rule in the class documentation.
 static func fit_position(anchor: Vector2, tooltip_size: Vector2, bounds: Rect2,
 		offset: Vector2 = CURSOR_OFFSET) -> Vector2:
 	var corner: Vector2 = anchor + offset
@@ -92,7 +92,7 @@ static func fit_position(anchor: Vector2, tooltip_size: Vector2, bounds: Rect2,
 		corner.y = anchor.y - offset.y - tooltip_size.y
 	var min_corner: Vector2 = bounds.position + Vector2(MARGIN, MARGIN)
 	var max_corner: Vector2 = bounds.end - Vector2(MARGIN, MARGIN) - tooltip_size
-	# Si el tooltip es mayor que la pantalla, manda la esquina superior izquierda.
+	# If the tooltip is larger than the screen, the top-left corner wins.
 	corner.x = maxf(min_corner.x, minf(corner.x, max_corner.x))
 	corner.y = maxf(min_corner.y, minf(corner.y, max_corner.y))
 	return corner
@@ -138,8 +138,8 @@ func _process(delta: float) -> void:
 	advance(delta)
 
 
-## Anota con qué dispositivo juega el jugador: el ratón apaga el tooltip por foco; una tecla o un botón (o un eje de
-## mando a más de la mitad) lo enciende. Lo llama [method _input] con cada evento.
+## Records which device the player is playing with: the mouse turns off the focus tooltip; a key or a
+## button (or a gamepad axis past half) turns it on. Called by [method _input] with each event.
 func note_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		_navigation_input = false
@@ -149,15 +149,16 @@ func note_input(event: InputEvent) -> void:
 		_navigation_input = true
 
 
-## true si un cambio de foco abriría ahora un tooltip: lo último fue teclado o mando y el foco no lo da el código.
+## true if a focus change would now open a tooltip: the last input was keyboard or gamepad and the focus
+## is not given by code.
 func allows_focus_tooltip() -> bool:
 	return _navigation_input and _silent_focus == 0
 
 
-## Pide un tooltip con [param title], [param body] (BBCode) y [param subtitle], con el título del
-## color [param accent], junto a [param anchor_position] (coordenadas de pantalla; con
-## [param follow_mouse] el tooltip sigue al ratón). Empieza la espera de [member delay]; si ya se
-## estaba mostrando, cambia el contenido al instante.
+## Requests a tooltip with [param title], [param body] (BBCode) and [param subtitle], with the title in
+## color [param accent], next to [param anchor_position] (screen coordinates; with [param follow_mouse]
+## the tooltip follows the mouse). Starts the [member delay] wait; if it was already being shown, it
+## changes the content instantly.
 func request(title: String, body: String = "", accent: Color = UIPalette.TITLE,
 		anchor_position: Vector2 = Vector2.ZERO, subtitle: String = "",
 		follow_mouse: bool = false) -> void:
@@ -180,7 +181,7 @@ func request(title: String, body: String = "", accent: Color = UIPalette.TITLE,
 	_elapsed = 0.0
 
 
-## Anula la petición y oculta el tooltip.
+## Aborts the request and hides the tooltip.
 func cancel() -> void:
 	_pending = false
 	_showing = false
@@ -189,7 +190,7 @@ func cancel() -> void:
 	visible = false
 
 
-## Avanza [param delta] segundos la espera y, si cumple el retraso, lo muestra.
+## Advances the wait by [param delta] seconds and, if it meets the delay, shows it.
 func advance(delta: float) -> void:
 	if _pending:
 		_elapsed += delta
@@ -202,24 +203,24 @@ func advance(delta: float) -> void:
 		_place()
 
 
-## Mueve el tooltip a [param anchor_position] (pantalla).
+## Moves the tooltip to [param anchor_position] (screen).
 func move_to(anchor_position: Vector2) -> void:
 	_anchor = anchor_position
 	if _showing:
 		_place()
 
 
-## true mientras hay una espera en curso.
+## true while a wait is in progress.
 func is_pending() -> bool:
 	return _pending
 
 
-## true mientras se ve.
+## true while it is visible.
 func is_showing() -> bool:
 	return _showing
 
 
-## Segundos que lleva esperando la petición actual.
+## Seconds the current request has been waiting.
 func get_elapsed() -> float:
 	return _elapsed
 
@@ -236,10 +237,10 @@ func get_body_label() -> RichTextLabel:
 	return _body
 
 
-## Enlaza [param control] con este tooltip: al entrar el ratón (o el foco) pide el contenido a
-## [param provider] (un [Callable] que devuelve un diccionario con [code]title[/code] y,
-## opcionalmente, [code]subtitle[/code], [code]body[/code] y [code]accent[/code]) y al salir lo
-## cancela. Un proveedor que devuelve un diccionario vacío no muestra nada.
+## Binds [param control] to this tooltip: when the mouse (or focus) enters, it asks [param provider] for
+## the content (a [Callable] that returns a dictionary with [code]title[/code] and, optionally,
+## [code]subtitle[/code], [code]body[/code] and [code]accent[/code]) and when it leaves it cancels. A
+## provider that returns an empty dictionary shows nothing.
 func bind_source(control: Control, provider: Callable) -> void:
 	control.set_meta(PROVIDER_META, provider)
 	if control.has_meta(BOUND_META):
@@ -272,8 +273,8 @@ func _on_source_exited(_control: Control) -> void:
 	cancel()
 
 
-# Ancho del texto: el natural del cuerpo, entre un mínimo y el máximo, para que el cuerpo largo se
-# ajuste en varias líneas y el corto no deje un hueco enorme.
+# Width of the text: the body's natural one, between a minimum and the maximum, so that a long body wraps
+# over several lines and a short one does not leave a huge gap.
 func _text_width(body: String, title: String) -> float:
 	var font: Font = get_theme_default_font()
 	var plain: String = _strip_bbcode(body)
@@ -292,9 +293,9 @@ static func _strip_bbcode(text: String) -> String:
 func _place() -> void:
 	if bounds_override == null and not is_inside_tree():
 		return
-	# El cuerpo y el título parten el texto según su ancho actual: se les da el ancho antes de medir
-	# (si no, con ancho 0 cada palabra ocuparía una línea y el tooltip saldría altísimo) y el alto del
-	# cuerpo se pide a su contenido en lugar de fiarlo a la maquetación diferida.
+	# The body and the title wrap the text according to their current width: they are given the width before
+	# measuring (otherwise, with width 0 each word would take a line and the tooltip would come out very
+	# tall) and the body's height is requested from its content instead of relying on deferred layout.
 	_body.size = Vector2(_body.custom_minimum_size.x, 0.0)
 	_title.size = Vector2(_title.custom_minimum_size.x, 0.0)
 	if _body.visible:

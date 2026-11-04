@@ -1,29 +1,29 @@
 class_name EconomyOp
 extends RefCounted
-## Una operación económica (docs/progresion.md §3.3, §5.2 y §9.3, PRG-12): lo que se aplica de una vez (I7) con
-## sus apuntes ([LedgerEntry]) y sus eventos de objeto ([ItemEvent]). La zona guarda en el diario de
-## [PlayerProgress] las que aún no ha confirmado un guardado; cada cuerpo lleva las que aún no iban en ninguno
-## ([member save_seq] 0) y les pone su [code]seq[/code] (§9.2).
+## An economic operation (docs/progresion.md §3.3, §5.2 and §9.3, PRG-12): what is applied at once (I7) with
+## its ledger entries ([LedgerEntry]) and its item events ([ItemEvent]). The zone keeps in the
+## [PlayerProgress] journal those that a save has not yet confirmed; each body carries those not yet in any
+## ([member save_seq] 0) and gives them their [code]seq[/code] (§9.2).
 ## [br][br]
-## [b]JSON[/b] ([method to_dictionary], la entrada de [code]ops[/code] de §9.3): ids en cadena
-## ([code]op_id[/code], [code]actor_account_id[/code] y [code]ref_op_id[/code], estos dos null si no hay), la
-## [code]note[/code] null si está vacía y [code]detail[/code] tal cual. [member save_seq] no viaja. Solo
-## servidor: sin reloj (la hora de [code]detail.at_unix[/code] la pone quien crea la operación, con
+## [b]JSON[/b] ([method to_dictionary], the [code]ops[/code] entry of §9.3): string ids
+## ([code]op_id[/code], [code]actor_account_id[/code] and [code]ref_op_id[/code], the latter two null if absent), the
+## [code]note[/code] null if empty and [code]detail[/code] as is. [member save_seq] does not travel. Server
+## only: no clock (the time of [code]detail.at_unix[/code] is set by whoever creates the operation, with
 ## [method ZonePlatform.now_unix]).
 
-## Tipos de operación ([code]economy_ops.kind[/code], §5.3). Los mismos números que
-## [constant ProgressionRulesExport.OP_KINDS] (lo comprueba [code]test_player_progress[/code]); 7 TRADE y 8 MAIL
-## son de la fase 6 y del 9 al 15, reservados.
+## Operation types ([code]economy_ops.kind[/code], §5.3). The same numbers as
+## [constant ProgressionRulesExport.OP_KINDS] (checked by [code]test_player_progress[/code]); 7 TRADE and 8 MAIL
+## are from phase 6 and 9 to 15 are reserved.
 enum Kind { PLAYER = 1, GAMEPLAY = 2, STARTER_KIT = 3, GM = 4, REVERSAL = 5, MIGRATION = 6 }
 
-## Claves de [method to_dictionary], en orden alfabético.
+## Keys of [method to_dictionary], in alphabetical order.
 const DICTIONARY_KEYS: Array[String] = ["actor_account_id", "detail", "items", "kind", "ledger", "note",
 		"op_id", "ref_op_id"]
-## Longitud máxima de [member note] (la columna, §3.3).
+## Maximum length of [member note] (the column, §3.3).
 const MAX_NOTE_LENGTH: int = 200
-## Tipos que [method from_dictionary] admite (1–15, §3.3).
+## Types that [method from_dictionary] accepts (1–15, §3.3).
 const MAX_KIND: int = 15
-## Motivos que admite cada tipo en apuntes y eventos (S2 de §13.3).
+## Reasons each type accepts in entries and events (S2 of §13.3).
 const KIND_REASONS: Dictionary[int, Array] = {
 	Kind.PLAYER: [EconomyReason.PLAYER_DESTROY],
 	Kind.GAMEPLAY: [EconomyReason.CAMP_REFILL, EconomyReason.PVP_KILL, EconomyReason.PVP_ASSIST,
@@ -34,26 +34,26 @@ const KIND_REASONS: Dictionary[int, Array] = {
 	Kind.MIGRATION: [EconomyReason.MIGRATION],
 }
 
-## 1 … 2^53 − 1; del mismo bloque de ids que los [code]uid[/code] (§4.5).
+## 1 … 2^53 − 1; from the same id block as the [code]uid[/code]s (§4.5).
 var op_id: int = 0
 ## [enum Kind].
 var kind: int = 0
-## La cuenta del GM en GM y REVERSAL; 0 (null) en las demás y desde la consola.
+## The GM's account in GM and REVERSAL; 0 (null) in the others and from the console.
 var actor_account_id: int = 0
-## La operación revertida (REVERSAL); 0 (null) en las demás.
+## The reverted operation (REVERSAL); 0 (null) in the others.
 var ref_op_id: int = 0
-## El motivo escrito (GM, REVERSAL; «debug» por DEBUG_COMMAND); vacío (null) en las demás.
+## The written reason (GM, REVERSAL; "debug" via DEBUG_COMMAND); empty (null) in the others.
 var note: String = ""
-## El rastro de §10 ([code]command[/code], [code]args[/code], [code]source[/code], [code]actor_character_id[/code],
-## [code]at_unix[/code]…); vacío en las de juego.
+## The trail of §10 ([code]command[/code], [code]args[/code], [code]source[/code], [code]actor_character_id[/code],
+## [code]at_unix[/code]…); empty in gameplay ones.
 var detail: Dictionary = {}
 var ledger: Array[LedgerEntry] = []
 var items: Array[ItemEvent] = []
-## El [code]seq[/code] del cuerpo en el que salió; 0 = aún en ningún guardado (§9.2).
+## The [code]seq[/code] of the body it went out in; 0 = not yet in any save (§9.2).
 var save_seq: int = 0
 
 
-## Una operación de [param op_kind] con [param id], sin apuntes ni eventos.
+## An operation of [param op_kind] with [param id], with no entries or events.
 static func create(id: int, op_kind: int, actor: int = 0, op_note: String = "",
 		op_detail: Dictionary = {}) -> EconomyOp:
 	var op := EconomyOp.new()
@@ -65,13 +65,13 @@ static func create(id: int, op_kind: int, actor: int = 0, op_note: String = "",
 	return op
 
 
-## true si no lleva apuntes ni eventos.
+## true if it carries no entries or events.
 func is_empty() -> bool:
 	return ledger.is_empty() and items.is_empty()
 
 
-## true si cada apunte y cada evento usa un motivo de su tipo ([constant KIND_REASONS]) y, en GM y REVERSAL, la
-## [member note] no está vacía: lo que exige S2 (§13.3) de la forma de la operación.
+## true if every entry and every event uses a reason of its type ([constant KIND_REASONS]) and, in GM and REVERSAL, the
+## [member note] is not empty: what S2 (§13.3) requires of the shape of the operation.
 func is_consistent() -> bool:
 	var allowed: Array = KIND_REASONS.get(kind, [])
 	if allowed.is_empty():
@@ -87,7 +87,7 @@ func is_consistent() -> bool:
 	return true
 
 
-## La entrada de [code]ops[/code] de un guardado (§9.3).
+## The [code]ops[/code] entry of a save (§9.3).
 func to_dictionary() -> Dictionary:
 	var ledger_list: Array = []
 	for entry: LedgerEntry in ledger:
@@ -107,13 +107,13 @@ func to_dictionary() -> Dictionary:
 	}
 
 
-## Lee una entrada de [method to_dictionary] (la de un guardado, o la de la ruta de operación de P5d sin sus campos
-## de más); null si no cuadra: una clave que falta o que no conoce, un id que no es una cadena decimal de 1 a
-## 2^53 − 1 ([code]actor_account_id[/code] y [code]ref_op_id[/code], también null), un tipo fuera de 1–15, una
-## [code]note[/code] que no es null ni texto de hasta 200 caracteres, un [code]detail[/code] que no es un objeto o
-## un apunte o un evento que no se lee ([method LedgerEntry.from_dictionary], [method ItemEvent.from_dictionary]).
-## No mira que los motivos cuadren con el tipo ([method is_consistent]): una operación antigua o de una migración
-## se lee igual.
+## Reads an entry from [method to_dictionary] (a save's, or the P5d operation route's without its extra
+## fields); null if it does not fit: a key that is missing or unknown, an id that is not a decimal string from 1 to
+## 2^53 − 1 ([code]actor_account_id[/code] and [code]ref_op_id[/code], also null), a type outside 1–15, a
+## [code]note[/code] that is neither null nor text of up to 200 characters, a [code]detail[/code] that is not an object or
+## an entry or event that cannot be read ([method LedgerEntry.from_dictionary], [method ItemEvent.from_dictionary]).
+## It does not check that the reasons fit the type ([method is_consistent]): an old operation or one from a migration
+## is read all the same.
 static func from_dictionary(data: Dictionary) -> EconomyOp:
 	if data.size() != DICTIONARY_KEYS.size():
 		return null
@@ -158,7 +158,7 @@ static func from_dictionary(data: Dictionary) -> EconomyOp:
 	return op
 
 
-## true si [param other] tiene los mismos valores (sin mirar [member save_seq]).
+## true if [param other] has the same values (not looking at [member save_seq]).
 func equals(other: EconomyOp) -> bool:
 	if other == null or op_id != other.op_id or kind != other.kind or actor_account_id != other.actor_account_id \
 			or ref_op_id != other.ref_op_id or note != other.note or detail != other.detail \
@@ -173,7 +173,7 @@ func equals(other: EconomyOp) -> bool:
 	return true
 
 
-## Nombre del tipo [param op_kind] en minúsculas (el de las reglas exportadas), o vacío.
+## Name of type [param op_kind] in lowercase (that of the exported rules), or empty.
 static func kind_name(op_kind: int) -> String:
 	for kind_key: String in Kind:
 		if Kind[kind_key] == op_kind:

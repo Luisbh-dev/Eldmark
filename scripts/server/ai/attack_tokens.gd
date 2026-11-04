@@ -1,27 +1,27 @@
 class_name AttackTokens
 extends RefCounted
-## Fichas de ataque (docs/fuerte.md, sección 4.2; MUN-08): como mucho [constant MAX_PER_TARGET] PNJ atacan a la
-## vez al mismo objetivo; los demás lo rodean a 3 o 4 m esperando su turno.
+## Attack tokens (docs/fuerte.md, section 4.2; MUN-08): at most [constant MAX_PER_TARGET] NPCs attack the
+## same target at once; the rest circle it at 3 or 4 m waiting for their turn.
 ## [br][br]
-## Un PNJ pide una ficha con [method try_claim] antes de empezar un ataque y la suelta con [method release]
-## cuando su ataque acaba. Una ficha caduca sola a los [constant TTL_TICKS] ticks si no se renueva, para que un
-## PNJ que muere, desaparece o pierde el objetivo no deje a nadie sin turno: quien la tiene la renueva con
-## [method renew] en cada pensamiento mientras ataca.
+## An NPC requests a token with [method try_claim] before starting an attack and releases it with
+## [method release] when its attack ends. A token expires on its own after [constant TTL_TICKS] ticks if not
+## renewed, so that an NPC that dies, despawns or loses its target does not leave anyone without a turn:
+## whoever holds it renews it with [method renew] on every think while attacking.
 
-## PNJ que pueden atacar a la vez al mismo objetivo.
+## NPCs that can attack the same target at once.
 const MAX_PER_TARGET: int = 2
-## Ticks que dura una ficha sin renovar (1 s).
+## Ticks a token lasts without renewal (1 s).
 const TTL_TICKS: int = 60
 
-# objetivo -> {pnj -> tick en el que caduca su ficha}.
+# target -> {NPC -> tick at which its token expires}.
 var _holders: Dictionary[int, Dictionary] = {}
-# Fichas concedidas desde que existe (para medir).
+# Tokens granted since it was created (for measurement).
 var _claims_granted: int = 0
 var _claims_denied: int = 0
 
 
-## Pide una ficha de ataque contra [param target_id] para el PNJ [param npc_id] en el tick [param tick]. true si
-## la tiene (ya la tenía, o quedaba alguna libre).
+## Requests an attack token against [param target_id] for NPC [param npc_id] at tick [param tick]. true if
+## it holds one (it already had it, or one was free).
 func try_claim(target_id: int, npc_id: int, tick: int) -> bool:
 	var holders: Dictionary = _holders.get(target_id, {})
 	if holders.has(npc_id) and int(holders[npc_id]) > tick:
@@ -37,8 +37,8 @@ func try_claim(target_id: int, npc_id: int, tick: int) -> bool:
 	return true
 
 
-## Renueva la ficha que [param npc_id] tiene contra [param target_id]. Devuelve false si no la tenía (o ya había
-## caducado).
+## Renews the token that [param npc_id] holds against [param target_id]. Returns false if it did not hold
+## one (or it had already expired).
 func renew(target_id: int, npc_id: int, tick: int) -> bool:
 	var holders: Dictionary = _holders.get(target_id, {})
 	if not holders.has(npc_id) or int(holders[npc_id]) <= tick:
@@ -47,13 +47,13 @@ func renew(target_id: int, npc_id: int, tick: int) -> bool:
 	return true
 
 
-## true si [param npc_id] tiene una ficha vigente contra [param target_id].
+## true if [param npc_id] holds a valid token against [param target_id].
 func holds(target_id: int, npc_id: int, tick: int) -> bool:
 	var holders: Dictionary = _holders.get(target_id, {})
 	return holders.has(npc_id) and int(holders[npc_id]) > tick
 
 
-## Suelta la ficha de [param npc_id] contra [param target_id].
+## Releases [param npc_id]'s token against [param target_id].
 func release(target_id: int, npc_id: int) -> void:
 	var holders: Dictionary = _holders.get(target_id, {})
 	holders.erase(npc_id)
@@ -61,13 +61,13 @@ func release(target_id: int, npc_id: int) -> void:
 		_holders.erase(target_id)
 
 
-## Suelta todas las fichas de [param npc_id] (muere o se retira).
+## Releases all of [param npc_id]'s tokens (it dies or withdraws).
 func release_all(npc_id: int) -> void:
 	for target_id: int in _holders.keys():
 		release(target_id, npc_id)
 
 
-## Fichas vigentes contra [param target_id] en el tick [param tick].
+## Valid tokens against [param target_id] at tick [param tick].
 func count(target_id: int, tick: int) -> int:
 	var holders: Dictionary = _holders.get(target_id, {})
 	var total: int = 0
@@ -77,12 +77,12 @@ func count(target_id: int, tick: int) -> int:
 	return total
 
 
-## Quita todas las fichas (al cerrar el servidor).
+## Removes all the tokens (when the server shuts down).
 func clear() -> void:
 	_holders.clear()
 
 
-## Fichas concedidas y denegadas desde que existe.
+## Tokens granted and denied since it was created.
 func get_stats() -> Dictionary:
 	return {"granted": _claims_granted, "denied": _claims_denied}
 

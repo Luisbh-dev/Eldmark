@@ -1,13 +1,14 @@
 class_name FrontScreen
 extends Control
-## Base de las pantallas de la cuenta de [FrontMain] (docs/plataforma.md §13.2): ocupan la pantalla entera sobre un
-## fondo oscuro, con el aviso de arriba ([method set_notice]) y el estado «ocupado» ([method set_busy]) que
-## desactiva los controles mientras vuela una llamada a la plataforma. Los controles se construyen en código, como
-## [UIWindow] y [TemplateSelector]; su escena en [code]scenes/ui/[/code] es solo la raíz con el script. Lo visual es
-## provisional (UI-02: tema, [code]WindowPanel[/code]; el fondo, el logotipo y la música son de ART-21).
+## Base of the account screens of [FrontMain] (docs/plataforma.md §13.2): they fill the whole screen over a
+## dark background, with the notice at the top ([method set_notice]) and the "busy" state
+## ([method set_busy]) that disables the controls while a call to the platform is in flight. The controls
+## are built in code, like [UIWindow] and [TemplateSelector]; their scene in [code]scenes/ui/[/code] is
+## just the root with the script. The visuals are provisional (UI-02: theme, [code]WindowPanel[/code]; the
+## background, logo and music belong to ART-21).
 ## [br][br]
-## Las pantallas no llaman a la red: emiten señales y [FrontMain] habla con la plataforma y les devuelve el
-## resultado. Así se prueban con datos falsos. Solo cliente.
+## The screens do not call the network: they emit signals and [FrontMain] talks to the platform and
+## returns the result to them. This way they are tested with fake data. Client only.
 
 const BACKGROUND_COLOR: Color = Color(0.04, 0.045, 0.06, 1.0)
 const PANEL_MIN_WIDTH: float = 560.0
@@ -17,7 +18,7 @@ const BUTTON_HEIGHT: float = 44.0
 
 var _notice_label: Label = null
 var _busy: bool = false
-# Controles que se desactivan mientras vuela una llamada (los demás se quedan como estén).
+# Controls that are disabled while a call is in flight (the others stay as they are).
 var _busy_controls: Array[Control] = []
 
 
@@ -32,7 +33,8 @@ func _init() -> void:
 	add_child(background)
 
 
-## Muestra [param text] en el aviso (como error con [param is_error]; si no, como información). Vacío lo quita.
+## Shows [param text] in the notice (as an error with [param is_error]; otherwise, as information). Empty
+## removes it.
 func set_notice(text: String, is_error: bool = true) -> void:
 	if _notice_label == null:
 		return
@@ -41,12 +43,12 @@ func set_notice(text: String, is_error: bool = true) -> void:
 	_notice_label.theme_type_variation = &"ErrorLabel" if is_error else &"WarningLabel"
 
 
-## El texto del aviso.
+## The notice text.
 func get_notice_text() -> String:
 	return _notice_label.text if _notice_label != null else ""
 
 
-## Desactiva (o vuelve a activar) los controles mientras vuela una llamada.
+## Disables (or re-enables) the controls while a call is in flight.
 func set_busy(busy: bool) -> void:
 	_busy = busy
 	_refresh_state()
@@ -56,7 +58,7 @@ func is_busy() -> bool:
 	return _busy
 
 
-# Cada pantalla recalcula aquí qué botones se pueden pulsar (llamado también al cambiar el estado «ocupado»).
+# Each screen recomputes here which buttons can be pressed (also called when the "busy" state changes).
 func _refresh_state() -> void:
 	for control: Control in _busy_controls:
 		if control is BaseButton:
@@ -65,7 +67,7 @@ func _refresh_state() -> void:
 			(control as LineEdit).editable = not _busy
 
 
-# Un panel centrado con su columna y el aviso arriba. Devuelve la columna.
+# A centered panel with its column and the notice on top. Returns the column.
 func _make_panel(title_text: String, min_width: float = PANEL_MIN_WIDTH) -> VBoxContainer:
 	var center := CenterContainer.new()
 	center.name = "Centro"
@@ -91,7 +93,7 @@ func _make_panel(title_text: String, min_width: float = PANEL_MIN_WIDTH) -> VBox
 	return column
 
 
-## Una etiqueta con la variación de tema [param variation].
+## A label with theme variation [param variation].
 static func make_label(text: String, variation: StringName = &"") -> Label:
 	var label := Label.new()
 	label.text = text
@@ -99,7 +101,7 @@ static func make_label(text: String, variation: StringName = &"") -> Label:
 	return label
 
 
-## Un botón de al menos [param min_width] de ancho.
+## A button at least [param min_width] wide.
 static func make_button(text: String, min_width: float = 140.0, variation: StringName = &"") -> Button:
 	var button := Button.new()
 	button.text = text
@@ -108,7 +110,7 @@ static func make_button(text: String, min_width: float = 140.0, variation: Strin
 	return button
 
 
-## Un campo de texto ([param secret] para contraseñas).
+## A text field ([param secret] for passwords).
 static func make_line_edit(placeholder: String, secret: bool = false, max_length: int = 254) -> LineEdit:
 	var edit := LineEdit.new()
 	edit.placeholder_text = placeholder
@@ -119,7 +121,7 @@ static func make_line_edit(placeholder: String, secret: bool = false, max_length
 	return edit
 
 
-## Una fila «etiqueta: control» dentro de [param parent].
+## A "label: control" row inside [param parent].
 static func add_row(parent: Control, label_text: String, control: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override(&"separation", ROW_SEPARATION)
@@ -132,7 +134,7 @@ static func add_row(parent: Control, label_text: String, control: Control) -> HB
 	return row
 
 
-## Una fila de botones que se reparten el ancho, con un hueco entre [param left] y [param right].
+## A row of buttons that share the width, with a gap between [param left] and [param right].
 static func add_button_row(parent: Control, left: Array[Button], right: Array[Button]) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override(&"separation", ROW_SEPARATION)

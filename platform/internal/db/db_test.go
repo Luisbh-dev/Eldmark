@@ -59,7 +59,7 @@ func TestClassifyRealErrors(t *testing.T) {
 }
 
 func TestUnavailableDatabase(t *testing.T) {
-	// Un socket en una carpeta vacía: la base «parada».
+	// A socket in an empty folder: the "stopped" database.
 	pool, err := db.Open(context.Background(), "host="+filepath.Join(t.TempDir(), "nadie")+" user=eldmark dbname=eldmark")
 	if err != nil {
 		t.Fatalf("Open no conecta todavía: %v", err)
@@ -115,7 +115,7 @@ func TestInTxRetriesSerializationFailures(t *testing.T) {
 	}
 }
 
-// Un error de una restricción diferida salta en el COMMIT y es de integridad, no se reintenta.
+// A deferred-constraint error fires on COMMIT and is an integrity one, not retried.
 func TestDeferredConstraintFailsAtCommit(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
@@ -143,7 +143,7 @@ func TestPing(t *testing.T) {
 	}
 }
 
-// El pool tiene al menos MinPoolConns conexiones salvo que la cadena diga otra cosa.
+// The pool has at least MinPoolConns connections unless the string says otherwise.
 func TestOpenPoolSize(t *testing.T) {
 	pool, err := db.Open(context.Background(), "host=127.0.0.1 port=1 user=x dbname=x")
 	if err != nil {

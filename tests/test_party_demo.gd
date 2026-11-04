@@ -1,10 +1,10 @@
 extends TestCase
-## Demo de SOC-08 con ENet de verdad (docs/social.md sección 12.5): un servidor y cinco bots de Vardheim; el
-## primero invita a los otros cuatro, que aceptan, y los marcos de grupo ([PartyFrames]) del primero, enlazados al
-## [PartyState] de su [NetClient], enseñan lo que dice el servidor: los cinco miembros por orden de llegada, la
-## corona del líder, la vida y la resistencia, la distancia, y atenuado al que se aleja, además de seguir la lista
-## cuando alguien sale. La parte con estados sintéticos (muertos, sin datos, comandos del chat y el aviso de
-## invitación) está en test_party_hud.gd.
+## SOC-08 demo with real ENet (docs/social.md section 12.5): a server and five Vardheim bots; the
+## first invites the other four, who accept, and the first one's party frames ([PartyFrames]), linked to
+## the [PartyState] of its [NetClient], show what the server says: the five members in order of
+## arrival, the leader's crown, health and stamina, the distance, and dimmed the one who moves away,
+## as well as following the list when someone leaves. The part with synthetic states (dead, no data,
+## chat commands and the invitation prompt) is in test_party_hud.gd.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const ZONE_ID: String = "test_world"
@@ -69,7 +69,7 @@ func test_four_bots_in_a_party_show_the_right_frames() -> void:
 		var viewport: SubViewport = NetHarness.make_world_viewport(_root, "")
 		_client_viewports.append(viewport)
 		_clients.append(NetHarness.start_bot(viewport, _port, VARDHEIM, bot_seed))
-	if not assert_true(await _wait_until(_all_in_world), "entran los cinco"):
+	if not assert_true(await _wait_until(_all_in_world), "all five get in"):
 		return
 	for client: NetClient in _clients:
 		var brain: BotBrain = client.get_meta(&"bot_brain") as BotBrain
@@ -79,22 +79,22 @@ func test_four_bots_in_a_party_show_the_right_frames() -> void:
 	_root.add_child(frames)
 	frames.bind(leader.get_party(), leader)
 
-	# El líder invita a los otros cuatro, de uno en uno (invitar tiene su ritmo), y cada uno acepta.
+	# The leader invites the other four, one at a time (inviting has its own pace), and each accepts.
 	for index: int in range(1, 5):
 		var member: NetClient = _clients[index]
-		assert_true(leader.send_party_invite(member.get_config().display_name), "invita al bot %d" % index)
+		assert_true(leader.send_party_invite(member.get_config().display_name), "invites bot %d" % index)
 		var invited: bool = await _wait_until(func() -> bool:
 			return member.get_party().get_current_invitation() != null)
-		if not assert_true(invited, "el bot %d recibe la invitación" % index):
+		if not assert_true(invited, "bot %d receives the invitation" % index):
 			return
-		assert_true(member.send_party_response(leader.get_config().display_name, true), "acepta")
+		assert_true(member.send_party_response(leader.get_config().display_name, true), "accepts")
 		var joined: bool = await _wait_until(func() -> bool:
 			return leader.get_party().get_member_count() == index + 1)
-		if not assert_true(joined, "el grupo llega a %d miembros" % (index + 1)):
+		if not assert_true(joined, "the party reaches %d members" % (index + 1)):
 			return
 		await wait_physics_frames(60)
 
-	# Los marcos del líder, con el estado a 2 Hz que manda el servidor.
+	# The leader's frames, with the 2 Hz state the server sends.
 	var all_with_data: Callable = func() -> bool:
 		if frames.get_frame_count() != 5:
 			return false
@@ -102,7 +102,7 @@ func test_four_bots_in_a_party_show_the_right_frames() -> void:
 			if not frame.has_data():
 				return false
 		return true
-	if not assert_true(await _wait_until(all_with_data), "los cinco marcos tienen datos"):
+	if not assert_true(await _wait_until(all_with_data), "all five frames have data"):
 		return
 	var names: PackedStringArray = PackedStringArray()
 	for frame: PartyFrame in frames.get_frames():
@@ -110,34 +110,34 @@ func test_four_bots_in_a_party_show_the_right_frames() -> void:
 	var expected: PackedStringArray = PackedStringArray()
 	for client: NetClient in _clients:
 		expected.append(client.get_config().display_name)
-	assert_eq(names, expected, "los cinco, por orden de llegada")
+	assert_eq(names, expected, "all five, in order of arrival")
 	for client: NetClient in _clients:
 		var frame: PartyFrame = frames.get_frame(client.get_net_id())
-		if not assert_not_null(frame, "hay marco de %s" % client.get_config().display_name):
+		if not assert_not_null(frame, "there is a frame for %s" % client.get_config().display_name):
 			continue
-		assert_eq(frame.is_own(), client == leader, "solo el primero es el propio jugador")
-		assert_eq(frame.is_leader_shown(), client == leader, "y solo él lleva la corona")
-		assert_eq(frame.get_health_fraction(), 1.0, "vida llena")
-		assert_eq(frame.get_stamina_fraction(), 1.0, "resistencia llena")
-		assert_false(frame.is_dead(), "vivo")
-		assert_false(frame.is_dimmed(), "cerca y con datos: sin atenuar")
+		assert_eq(frame.is_own(), client == leader, "only the first is the player itself")
+		assert_eq(frame.is_leader_shown(), client == leader, "and only it carries the crown")
+		assert_eq(frame.get_health_fraction(), 1.0, "full health")
+		assert_eq(frame.get_stamina_fraction(), 1.0, "full stamina")
+		assert_false(frame.is_dead(), "alive")
+		assert_false(frame.is_dimmed(), "near and with data: not dimmed")
 	assert_eq(frames.get_frames().filter(func(frame: PartyFrame) -> bool: return frame.is_leader_shown()).size(), 1,
-			"una sola corona")
+			"a single crown")
 
-	# Un miembro se aleja 200 m: su marco se atenúa; el estado le sigue llegando aunque no se le vea.
+	# A member moves away 200 m: its frame dims; the state keeps arriving even though it is not seen.
 	var far_client: NetClient = _clients[3]
 	_server.teleport(far_client.get_net_id(), Vector3(190.0, 0.0, 0.0))
 	var far_frame_dimmed: Callable = func() -> bool:
 		var frame: PartyFrame = frames.get_frame(far_client.get_net_id())
 		return frame != null and frame.is_far() and frame.is_dimmed()
-	assert_true(await _wait_until(far_frame_dimmed), "el marco del que se aleja se atenúa")
+	assert_true(await _wait_until(far_frame_dimmed), "the frame of the one moving away dims")
 	assert_true(frames.get_frame(far_client.get_net_id()).get_distance() > PartyRules.FAR_DISTANCE,
-			"a más de 100 m")
-	assert_false(frames.get_frame(_clients[1].get_net_id()).is_dimmed(), "y los demás, no")
+			"at more than 100 m")
+	assert_false(frames.get_frame(_clients[1].get_net_id()).is_dimmed(), "and the others do not")
 
-	# Un miembro sale: el marco desaparece y la corona sigue donde estaba.
+	# A member leaves: the frame disappears and the crown stays where it was.
 	var leaving: NetClient = _clients[4]
 	leaving.send_party_leave()
-	assert_true(await _wait_until(func() -> bool: return frames.get_frame_count() == 4), "sale un marco")
-	assert_null(frames.get_frame(leaving.get_net_id()), "el de quien salió")
-	assert_true(frames.get_frame(leader.get_net_id()).is_leader_shown(), "Ana sigue mandando")
+	assert_true(await _wait_until(func() -> bool: return frames.get_frame_count() == 4), "one frame leaves")
+	assert_null(frames.get_frame(leaving.get_net_id()), "that of whoever left")
+	assert_true(frames.get_frame(leader.get_net_id()).is_leader_shown(), "Ana is still in charge")

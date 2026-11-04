@@ -1,26 +1,27 @@
 class_name ZoneRoot
 extends Node3D
-## Raíz de una escena de zona (la carga igual el servidor dedicado que el cliente).
+## Root of a zone scene (loaded the same way by the dedicated server and the client).
 ##
-## Prepara el [Terrain3D] para los dos casos sin que la zona sepa en cuál está:
-## [br]- Servidor (sin cámara): la colisión completa ([code]FULL_GAME[/code]) no necesita
-## [code]_physics_process[/code], y sin cámara ese proceso registra un error en el primer tick
-## ("Cannot find the active camera"). Por eso se desactiva en [method _ready].
-## [br]- Cliente: en cuanto el viewport tiene una cámara activa, se le asigna al terreno y se
-## reactiva su proceso, para que el clipmap la siga. Si la cámara cambia, se vuelve a asignar.
+## It prepares the [Terrain3D] for both cases without the zone knowing which one it is in:
+## [br]- Server (no camera): full collision ([code]FULL_GAME[/code]) does not need
+## [code]_physics_process[/code], and with no camera that process logs an error on the first tick
+## ("Cannot find the active camera"). That is why it is disabled in [method _ready].
+## [br]- Client: as soon as the viewport has an active camera, it is assigned to the terrain and
+## its processing is re-enabled, so that the clipmap follows it. If the camera changes, it is
+## reassigned.
 ## [br][br]
-## El servidor dedicado llama además a [method strip_for_server] después de añadir la zona al
-## árbol: quita todo lo que solo se ve (mallas, luces, entorno, vegetación del instanciador) y
-## deja colisiones y marcadores. No se hace al detectar headless porque las pruebas y el cliente
-## sin ventana también corren headless y necesitan la zona entera.
+## The dedicated server additionally calls [method strip_for_server] after adding the zone to the
+## tree: it removes everything that is only seen (meshes, lights, environment, instancer
+## vegetation) and leaves collisions and markers. This is not done on detecting headless because
+## tests and the windowless client also run headless and need the whole zone.
 ## [br][br]
-## Los puntos de aparición se consultan con [method get_spawn_points], que delega en [Zones]
-## (una sola regla para cliente, servidor y pruebas). No depende de nada de
+## Spawn points are queried with [method get_spawn_points], which delegates to [Zones] (one rule
+## for client, server and tests). It does not depend on anything in
 ## [code]scripts/client/[/code].
 
-## Ruta al nodo Terrain3D de la zona.
+## Path to the zone's Terrain3D node.
 @export var terrain_path: NodePath = ^"Terrain3D"
-## Identificador de la zona (por ahora solo informativo).
+## Identifier of the zone (informational only for now).
 @export var zone_id: StringName = &""
 
 var _terrain: Node3D
@@ -33,7 +34,7 @@ func _ready() -> void:
 	if _terrain == null:
 		set_process(false)
 		return
-	# Sin cámara, el primer _physics_process de Terrain3D registraría un error.
+	# Without a camera, Terrain3D's first _physics_process would log an error.
 	_terrain.set_physics_process(false)
 
 
@@ -48,27 +49,27 @@ func _process(_delta: float) -> void:
 	_terrain.set_physics_process(true)
 
 
-## Nodo Terrain3D de la zona (o null si no tiene).
+## The zone's Terrain3D node (or null if it has none).
 func get_terrain() -> Node3D:
 	return _terrain
 
 
-## Puntos de aparición de la zona (ver [method Zones.get_spawn_points]); con [param realm] no
-## vacío, solo los de ese reino.
+## The zone's spawn points (see [method Zones.get_spawn_points]); with a non-empty [param realm],
+## only those of that realm.
 func get_spawn_points(realm: StringName = &"") -> Array[Node3D]:
 	return Zones.get_spawn_points(self, realm)
 
 
-## true si ya se ha llamado a [method strip_for_server].
+## true if [method strip_for_server] has already been called.
 func is_stripped() -> bool:
 	return _stripped
 
 
-## Quita la capa visual para el servidor dedicado: libera las [GeometryInstance3D] (mallas,
-## MultiMesh, partículas), las luces y el [WorldEnvironment], y vacía las instancias del
-## instanciador de Terrain3D (hierba, árboles, rocas: su colisión va aparte, en la escena).
-## Conserva los cuerpos y formas de colisión, el terreno (su colisión) y los marcadores.
-## Devuelve cuántos nodos ha quitado. Solo debe llamarlo el servidor, una vez.
+## Strips the visual layer for the dedicated server: frees the [GeometryInstance3D]s (meshes,
+## MultiMesh, particles), the lights and the [WorldEnvironment], and empties the Terrain3D
+## instancer's instances (grass, trees, rocks: their collision goes separately, in the scene). It
+## keeps the collision bodies and shapes, the terrain (its collision) and the markers. Returns how
+## many nodes it removed. Only the server should call it, once.
 func strip_for_server() -> int:
 	if _stripped:
 		return 0
@@ -88,12 +89,12 @@ func strip_for_server() -> int:
 	return removed.size()
 
 
-## Nodos solo visuales bajo [param node] (sin bajar dentro de ellos ni del Terrain3D, cuyos
-## hijos internos gestiona el propio terreno).
+## Visual-only nodes under [param node] (without descending into them or into the Terrain3D, whose
+## internal children the terrain itself manages).
 func _collect_visuals(node: Node, out: Array[Node]) -> void:
 	for child: Node in node.get_children():
 		if child is GeometryInstance3D or child is Light3D or child is WorldEnvironment:
-			# Un cuerpo de colisión colgado de una malla se perdería: se respeta.
+			# A collision body hanging from a mesh would be lost: it is preserved.
 			if _has_collision_descendant(child):
 				_collect_visuals(child, out)
 			else:

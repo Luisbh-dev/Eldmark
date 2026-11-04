@@ -1,27 +1,27 @@
 extends TestCase
-## La reconciliación en una refriega con red mala (TEC-15; docs/combate.md, secciones 1 y 3.4): cuatro
-## bots de combate ([code]--bot-brain=combat[/code], dos por reino) pelean entre sí con ENet real sobre
-## 127.0.0.1 y un [NetSim] de 120 ms de RTT, 20 ms de jitter y un 5 % de pérdida en cada uno.
+## Reconciliation in a melee with a bad network (TEC-15; docs/combate.md, sections 1 and 3.4): four
+## combat bots ([code]--bot-brain=combat[/code], two per realm) fight each other with real ENet over
+## 127.0.0.1 and a [NetSim] of 120 ms RTT, 20 ms jitter and 5 % loss on each.
 ## [br][br]
-## El servidor impone estados que el cliente no predice (tambaleo, aturdimiento, empuje, muerte,
-## reaparición, la resistencia que gasta un golpe bloqueado). Cada uno de ellos obliga a corregir la
-## predicción del que lo sufre, y esa corrección es [i]esperada[/i]: la tiene que explicar el
-## [NetClient] (un evento de combate propio en esos ticks), no contarse como un fallo de predicción. Lo
-## que se comprueba:
-## [br]- hay correcciones (la refriega de verdad cambia el estado) y todas están explicadas por una
-## entrada sustituida, un teletransporte o un evento de combate propio;
-## [br]- ningún reinicio duro ni resincronización de [TickSync] por culpa del combate;
-## [br]- al quedarse quietos, el estado predicho para el último tick del servidor es idéntico bit a bit
-## al del servidor (convergencia).
+## The server imposes states that the client does not predict (stagger, stun, knockback, death,
+## respawn, the stamina that a blocked hit spends). Each of them forces a correction of the
+## prediction of the one who suffers it, and that correction is [i]expected[/i]: the
+## [NetClient] has to explain it (an own combat event on those ticks), not count it as a prediction failure. What
+## is checked:
+## [br]- there are corrections (the real melee changes the state) and all are explained by a
+## substituted input, a teleport or an own combat event;
+## [br]- no hard reset or [TickSync] resync because of combat;
+## [br]- when they stand still, the state predicted for the server's last tick is bit-for-bit identical
+## to the server's (convergence).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ZONE_ID: String = "test_world"
 const WAIT_FRAMES: int = 900
-## Simulador de red de cada bot (la semilla se suma al índice del bot para que no pierdan lo mismo).
+## Network simulator of each bot (the seed is added to the bot's index so they do not lose the same packets).
 const NET_SIM: String = "rtt=120,jitter=20,loss=5,seed=%d"
-## Ticks que pelean y ticks quietos del final (más que lo que tarda en acabar la acción en curso y en
-## llegar el último snapshot).
+## Ticks they fight and idle ticks at the end (more than it takes for the current action to finish and for
+## the last snapshot to arrive).
 const FIGHT_TICKS: int = 900
 const IDLE_TICKS: int = 180
 
@@ -70,7 +70,7 @@ func _all_in_world() -> bool:
 	return true
 
 
-# --- Prueba -----------------------------------------------------------------------------------
+# --- Test -------------------------------------------------------------------------------------
 
 func test_a_brawl_of_combat_bots_over_a_bad_network_is_explained_and_converges() -> void:
 	var port: int = NetHarness.free_udp_port()
@@ -87,10 +87,10 @@ func test_a_brawl_of_combat_bots_over_a_bad_network_is_explained_and_converges()
 		_viewports.append(viewport)
 		_clients.append(NetHarness.start_bot(viewport, port, realms[index], index + 1,
 				NET_SIM % (7 * (index + 1)), "", ClientConfig.BOT_BRAIN_COMBAT))
-	if not assert_true(await _wait_until(_all_in_world), "entran los cuatro bots"):
+	if not assert_true(await _wait_until(_all_in_world), "the four bots enter"):
 		return
 	await wait_physics_frames(60)
-	# Corro: dos contra dos, a un par de metros.
+	# I run: two against two, a couple of meters apart.
 	var spots: Array[Vector3] = [Vector3(-2.0, 0.05, 0.0), Vector3(2.0, 0.05, 0.0),
 			Vector3(-2.0, 0.05, 3.0), Vector3(2.0, 0.05, 3.0), Vector3(-2.0, 0.05, 6.0),
 			Vector3(2.0, 0.05, 6.0)]
@@ -102,7 +102,7 @@ func test_a_brawl_of_combat_bots_over_a_bad_network_is_explained_and_converges()
 	print("[refriega] golpes %d, bloqueados %d, paradas %d, rotura de guardia %d, muertes %d, eventos %d" % [
 			combat[&"hits"], combat[&"blocked"], combat[&"parried"], combat[&"guard_breaks"],
 			combat[&"deaths"], combat[&"events"]])
-	assert_true(combat[&"hits"] >= 10, "de verdad se pelean (%d golpes)" % combat[&"hits"])
+	assert_true(combat[&"hits"] >= 10, "they really fight (%d hits)" % combat[&"hits"])
 	for client: NetClient in _clients:
 		var stats: Dictionary = client.get_stats()
 		print("[refriega] %s: diffs %d, explicadas %d, de combate %d, sin explicar %d, correcciones %d, "
@@ -111,7 +111,7 @@ func test_a_brawl_of_combat_bots_over_a_bad_network_is_explained_and_converges()
 				+ "reinicios duros %d, resincronizaciones %d, sustituciones %d" % [stats["hard_resets"],
 				stats["resyncs"], stats["substitutions_total"]])
 
-	# Quietos: se espera a que acabe lo que tuvieran en marcha y a que el servidor y el cliente coincidan.
+	# Idle: wait for whatever they had going to finish and for the server and client to agree.
 	for client: NetClient in _clients:
 		var brain: BotBrain = client.get_meta(&"bot_brain") as BotBrain
 		brain.set_idle_from(client.get_prediction().get_predicted_tick() + 1)
@@ -121,18 +121,18 @@ func test_a_brawl_of_combat_bots_over_a_bad_network_is_explained_and_converges()
 	for client: NetClient in _clients:
 		var name: String = client.get_config().display_name
 		var stats: Dictionary = client.get_stats()
-		assert_eq(client.get_state(), NetClient.State.IN_WORLD, "%s: sigue en el mundo" % name)
+		assert_eq(client.get_state(), NetClient.State.IN_WORLD, "%s: still in the world" % name)
 		assert_eq(stats["unexplained_diffs"], 0,
-				"%s: toda corrección la explica una sustitución, un teletransporte o el combate: %s"
+				"%s: every correction is explained by a substitution, a teleport or combat: %s"
 				% [name, stats])
-		assert_eq(stats["hard_resets"], 0, "%s: ningún reinicio duro" % name)
-		assert_eq(stats["resyncs"], 0, "%s: ninguna resincronización" % name)
+		assert_eq(stats["hard_resets"], 0, "%s: no hard reset" % name)
+		assert_eq(stats["resyncs"], 0, "%s: no resync" % name)
 		if int(stats.get("combat_diffs", 0)) > 0:
 			any_combat_correction = true
 		var server_state: PlayerState = client.get_last_server_state()
 		var predicted: PlayerState = client.get_prediction().get_predicted_state(client.get_last_snapshot_tick())
-		if assert_not_null(server_state, "%s: recibió su estado" % name) \
-				and assert_not_null(predicted, "%s: guarda lo que predijo" % name):
+		if assert_not_null(server_state, "%s: received its state" % name) \
+				and assert_not_null(predicted, "%s: stores what it predicted" % name):
 			assert_true(predicted.equals_exact(server_state),
-					"%s: convergencia exacta con el servidor al quedarse quieto" % name)
-	assert_true(any_combat_correction, "alguna corrección la causó un golpe (el combate se explica a sí mismo)")
+					"%s: exact convergence with the server when standing still" % name)
+	assert_true(any_combat_correction, "some correction was caused by a hit (combat explains itself)")

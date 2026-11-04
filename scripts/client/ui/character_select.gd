@@ -1,26 +1,27 @@
 class_name CharacterSelect
 extends FrontScreen
-## Selección de personaje (UI-23, docs/plataforma.md §4.4 y §13.2): la lista a la izquierda (nombre con el color de
-## su reino, nivel y última zona; los borrados en gris con su fecha límite para restaurarlos), la figura 3D del
-## elegido ([CharacterFigure] con su apariencia y los colores de su reino) y los huecos libres («Los borrados que aún
-## puedes restaurar ocupan hueco»). Botones: Entrar, Crear, Borrar (confirmación escribiendo el nombre), Restaurar y
-## Cerrar sesión.
+## Character selection (UI-23, docs/plataforma.md §4.4 and §13.2): the list on the left (name in its
+## realm's color, level and last zone; deleted ones in gray with their deadline to restore them), the 3D
+## figure of the selected one ([CharacterFigure] with its appearance and its realm's colors) and the free
+## slots ("Los borrados que aún puedes restaurar ocupan hueco" (Deleted characters you can still restore
+## take up a slot)). Buttons: Enter, Create, Delete (confirmation by typing the name), Restore and Log
+## out.
 ## [br][br]
-## Los datos son los de [code]GET /v1/worlds/{w}/characters[/code] ([method set_data]). Mientras se espera a que el
-## personaje salga del mundo ([code]character_busy[/code], §5.3) se enseña la cuenta atrás ([method show_waiting]).
-## Teclado: flechas eligen, Intro entra y Supr borra. Solo cliente.
+## The data is that of [code]GET /v1/worlds/{w}/characters[/code] ([method set_data]). While waiting for
+## the character to leave the world ([code]character_busy[/code], §5.3) the countdown is shown
+## ([method show_waiting]). Keyboard: arrows choose, Enter enters and Del deletes. Client only.
 
-## Pulsó «Entrar» (o Intro) con un personaje vivo elegido.
+## Pressed "Entrar" (Enter) (or Enter) with a living character selected.
 signal enter_requested(character_id: int)
-## Pulsó «Crear».
+## Pressed "Crear" (Create).
 signal create_requested
-## Confirmó el borrado escribiendo el nombre: [param confirm_name] es lo escrito.
+## Confirmed the deletion by typing the name: [param confirm_name] is what was typed.
 signal delete_requested(character_id: int, confirm_name: String)
-## Pulsó «Restaurar» en un personaje borrado.
+## Pressed "Restaurar" (Restore) on a deleted character.
 signal restore_requested(character_id: int)
-## Pulsó «Cerrar sesión».
+## Pressed "Cerrar sesión" (Log out).
 signal logout_requested
-## Pulsó «Cancelar» en la espera de un personaje que sale del mundo.
+## Pressed "Cancelar" (Cancel) while waiting for a character leaving the world.
 signal wait_canceled
 
 const TEXT_TITLE: String = "Tus personajes"
@@ -34,7 +35,7 @@ const TEXT_DELETE_HELP: String = "Escribe «%s» para borrarlo. Podrás restaura
 const TEXT_WAITING: String = "Tu personaje está saliendo del mundo… (%d s)"
 const TEXT_NO_ZONE: String = "Sin entrar aún"
 const DELETED_MODULATE: Color = Color(0.6, 0.6, 0.6, 0.85)
-## Nombre de cada zona para la lista.
+## Name of each zone for the list.
 const ZONE_NAMES: Dictionary = {"vado_gris": "Vado Gris", "test_world": "Mundo de pruebas"}
 
 var _list: VBoxContainer = null
@@ -170,9 +171,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 
-## Los personajes de [code]GET /v1/worlds/{w}/characters[/code] ([param data]: [code]{realm, unlock_at, slots,
-## used, characters}[/code]). Conserva la elección si el personaje sigue (o elige [param select_id] si no es 0);
-## si no, el primero vivo.
+## The characters from [code]GET /v1/worlds/{w}/characters[/code] ([param data]:
+## [code]{realm, unlock_at, slots, used, characters}[/code]). Keeps the selection if the character is still
+## there (or selects [param select_id] if it is not 0); otherwise, the first living one.
 func set_data(data: Dictionary, select_id: int = 0) -> void:
 	var previous: int = get_selected_id()
 	_characters.clear()
@@ -193,7 +194,7 @@ func set_data(data: Dictionary, select_id: int = 0) -> void:
 	select_index(index)
 
 
-## Elige el personaje [param index] de la lista (−1: ninguno).
+## Selects character [param index] in the list (−1: none).
 func select_index(index: int) -> void:
 	_selected = index if index >= 0 and index < _characters.size() else -1
 	for i: int in range(_entries.size()):
@@ -216,17 +217,17 @@ func get_selected_index() -> int:
 	return _selected
 
 
-## El personaje elegido (vacío si ninguno).
+## The selected character (empty if none).
 func get_selected_character() -> Dictionary:
 	return _characters[_selected] if _selected >= 0 and _selected < _characters.size() else {}
 
 
-## El id del personaje elegido (0 si ninguno).
+## The id of the selected character (0 if none).
 func get_selected_id() -> int:
 	return AccountFlow.parse_id(get_selected_character().get("character_id"))
 
 
-## true si el elegido está borrado (en plazo para restaurarlo).
+## true if the selected one is deleted (within the window to restore it).
 func is_selected_deleted() -> bool:
 	var character: Dictionary = get_selected_character()
 	return not character.is_empty() and character.get("deleted_at") != null
@@ -236,12 +237,12 @@ func get_character_count() -> int:
 	return _characters.size()
 
 
-## Huecos libres ([code]slots − used[/code]; los borrados en plazo ocupan).
+## Free slots ([code]slots − used[/code]; deleted characters within the window take up slots).
 func get_free_slots() -> int:
 	return maxi(_slots - _used, 0)
 
 
-## Emite [signal enter_requested] con el elegido si está vivo. Devuelve true si lo emitió.
+## Emits [signal enter_requested] with the selected one if it is alive. Returns true if it emitted it.
 func try_enter() -> bool:
 	if _busy or get_selected_id() <= 0 or is_selected_deleted():
 		return false
@@ -249,7 +250,7 @@ func try_enter() -> bool:
 	return true
 
 
-## Emite [signal restore_requested] con el elegido si está borrado. Devuelve true si lo emitió.
+## Emits [signal restore_requested] with the selected one if it is deleted. Returns true if it emitted it.
 func try_restore() -> bool:
 	if _busy or get_selected_id() <= 0 or not is_selected_deleted():
 		return false
@@ -257,7 +258,7 @@ func try_restore() -> bool:
 	return true
 
 
-## Abre la confirmación del borrado del elegido (vivo): hay que escribir su nombre.
+## Opens the deletion confirmation for the selected (living) character: its name must be typed.
 func ask_delete() -> void:
 	if _busy or get_selected_id() <= 0 or is_selected_deleted():
 		return
@@ -279,8 +280,8 @@ func is_delete_open() -> bool:
 	return _delete_box.visible
 
 
-## Confirma el borrado si lo escrito es el nombre (con la clave de [NameRules]: sin distinguir mayúsculas ni
-## tildes, como la plataforma). Devuelve true si emitió [signal delete_requested].
+## Confirms the deletion if what was typed is the name (using [NameRules]'s key: case- and
+## accent-insensitive, like the platform). Returns true if it emitted [signal delete_requested].
 func confirm_delete() -> bool:
 	if not _delete_box.visible or not _delete_matches():
 		return false
@@ -291,7 +292,7 @@ func confirm_delete() -> bool:
 	return true
 
 
-## Enseña la espera de un personaje que sale del mundo con [param seconds_left] s (−1 la quita).
+## Shows the wait for a character leaving the world with [param seconds_left] s (−1 removes it).
 func show_waiting(seconds_left: int) -> void:
 	_wait_box.visible = seconds_left >= 0
 	_wait_label.text = TEXT_WAITING % maxi(seconds_left, 0)
@@ -305,7 +306,8 @@ func get_waiting_text() -> String:
 	return _wait_label.text if _wait_box.visible else ""
 
 
-## El texto de la segunda línea de un personaje: «Nivel 7 · Vado Gris» o el de borrado con su fecha límite.
+## The text of a character's second line: "Nivel 7 · Vado Gris" (Level 7 · Vado Gris) or the deletion one with
+## its deadline.
 static func entry_detail(character: Dictionary) -> String:
 	if character.get("deleted_at") != null:
 		var until: Variant = character.get("restore_until")
@@ -429,7 +431,7 @@ func _build_wait_box() -> void:
 	column.add_child(_wait_cancel)
 
 
-# Un velo modal a pantalla completa con un panel centrado (oculto); su columna va en el metadato «column».
+# A full-screen modal veil with a centered panel (hidden); its column goes in the "column" metadata.
 func _make_overlay(overlay_name: String) -> Control:
 	var overlay := Control.new()
 	overlay.name = overlay_name
@@ -493,7 +495,7 @@ func _next_index(step: int) -> int:
 	return clampi(_selected + step, 0, _characters.size() - 1)
 
 
-# Doble clic en un personaje vivo: entra.
+# Double click on a living character: enter.
 func _on_entry_input(event: InputEvent, index: int) -> void:
 	var button: InputEventMouseButton = event as InputEventMouseButton
 	if button != null and button.pressed and button.double_click and button.button_index == MOUSE_BUTTON_LEFT:

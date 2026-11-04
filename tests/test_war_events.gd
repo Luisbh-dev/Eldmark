@@ -1,22 +1,21 @@
 extends TestCase
-## Pruebas de [WarEvents] (docs/fuerte.md, sección 5): los ids de los avisos de guerra y sus textos
-## en español.
+## Tests for [WarEvents] (docs/fuerte.md, section 5): the war alert ids and their Spanish texts.
 
 const FORT_NAME: String = "Fuerte del Vado Gris"
 
 
 func test_ids_follow_the_contract() -> void:
-	assert_eq(WarEvents.UNDER_ATTACK, 1, "fuerte atacado")
-	assert_eq(WarEvents.CAPTAIN_DOWN, 2, "capitán caído")
-	assert_eq(WarEvents.CAPTURE_STARTED, 3, "captura iniciada")
-	assert_eq(WarEvents.CAPTURE_CONTESTED, 4, "captura disputada")
-	assert_eq(WarEvents.GATE_BROKEN, 5, "puerta rota")
-	assert_eq(WarEvents.FORT_CAPTURED, 6, "fuerte capturado")
-	assert_eq(WarEvents.FORT_RESET, 7, "fuerte reiniciado")
+	assert_eq(WarEvents.UNDER_ATTACK, 1, "fort attacked")
+	assert_eq(WarEvents.CAPTAIN_DOWN, 2, "captain fallen")
+	assert_eq(WarEvents.CAPTURE_STARTED, 3, "capture started")
+	assert_eq(WarEvents.CAPTURE_CONTESTED, 4, "capture contested")
+	assert_eq(WarEvents.GATE_BROKEN, 5, "gate broken")
+	assert_eq(WarEvents.FORT_CAPTURED, 6, "fort captured")
+	assert_eq(WarEvents.FORT_RESET, 7, "fort reset")
 	assert_eq(WarEvents.all_ids(), PackedInt32Array([1, 2, 3, 4, 5, 6, 7]))
 	for id: int in WarEvents.all_ids():
 		assert_true(WarEvents.is_valid(id))
-		assert_false(String(WarEvents.key_of(id)).is_empty(), "nombre interno del aviso %d" % id)
+		assert_false(String(WarEvents.key_of(id)).is_empty(), "internal name of alert %d" % id)
 	assert_false(WarEvents.is_valid(0))
 	assert_false(WarEvents.is_valid(8))
 	assert_eq(WarEvents.key_of(8), &"")
@@ -27,10 +26,10 @@ func test_every_event_has_a_spanish_text_that_names_the_realm_and_the_fort() -> 
 	for id: int in [WarEvents.UNDER_ATTACK, WarEvents.CAPTAIN_DOWN, WarEvents.CAPTURE_STARTED,
 			WarEvents.GATE_BROKEN, WarEvents.FORT_CAPTURED]:
 		var text: String = WarEvents.text(id, 2, FORT_NAME)
-		assert_true(text.contains("Solmarch"), "aviso %d nombra al reino: %s" % [id, text])
-		assert_true(text.contains(FORT_NAME), "aviso %d nombra el fuerte: %s" % [id, text])
-		assert_false(text.contains("{"), "aviso %d sin marcas sin sustituir" % id)
-	# La disputa y el reinicio no necesitan reino.
+		assert_true(text.contains("Solmarch"), "alert %d names the realm: %s" % [id, text])
+		assert_true(text.contains(FORT_NAME), "alert %d names the fort: %s" % [id, text])
+		assert_false(text.contains("{"), "alert %d has no unreplaced placeholders" % id)
+	# The contest and the reset do not need a realm.
 	assert_true(WarEvents.text(WarEvents.CAPTURE_CONTESTED, 1, FORT_NAME).contains(FORT_NAME))
 	assert_true(WarEvents.text(WarEvents.FORT_RESET, 0, FORT_NAME).contains(FORT_NAME))
 
@@ -46,10 +45,10 @@ func test_exact_texts() -> void:
 
 
 func test_default_fort_name_unknown_ids_and_neutral_realm() -> void:
-	assert_eq(WarEvents.text(WarEvents.FORT_CAPTURED, 1), "¡Vardheim ha capturado el Fuerte!", "sin nombre de fuerte")
-	assert_eq(WarEvents.text(0, 1, FORT_NAME), "", "un aviso desconocido no tiene texto")
+	assert_eq(WarEvents.text(WarEvents.FORT_CAPTURED, 1), "¡Vardheim ha capturado el Fuerte!", "without a fort name")
+	assert_eq(WarEvents.text(0, 1, FORT_NAME), "", "an unknown alert has no text")
 	assert_eq(WarEvents.text(99, 1, FORT_NAME), "")
-	assert_eq(WarEvents.realm_label(0), "los Huecos", "el bando neutral")
+	assert_eq(WarEvents.realm_label(0), "los Huecos", "the neutral side")
 	assert_eq(WarEvents.realm_label(1), "Vardheim")
 	assert_eq(WarEvents.realm_label(3), "Askarra")
 	assert_eq(WarEvents.realm_label(9), "un reino desconocido")

@@ -1,51 +1,50 @@
 class_name NpcNavigation
 extends RefCounted
-## Navegación de los PNJ en el servidor (docs/fuerte.md, sección 4.1; MUN-06).
+## NPC navigation on the server (docs/fuerte.md, section 4.1; MUN-06).
 ## [br][br]
-## Crea un mapa propio de [NavigationServer3D] (con iteraciones síncronas: nada del mapa de la escena, que
-## el servidor no tiene), le pone la región de la malla horneada ([code]tools/bake_navmesh.gd[/code], con la
-## puerta del fuerte [b]cerrada[/b]) y, por cada puerta, un enlace por el vano creado por RID. Después
-## contesta [method get_path] con la ruta de un agente de un reino concreto.
+## Creates its own [NavigationServer3D] map (with synchronous iterations: nothing from the scene's map, which
+## the server does not have), gives it the region of the baked mesh ([code]tools/bake_navmesh.gd[/code], with the
+## fort's gate [b]closed[/b]) and, for each gate, a link through the doorway created by RID. Afterwards it
+## answers [method get_path] with the route of an agent of a given realm.
 ## [br][br]
-## [b]Capas de navegación.[/b] La región está en la capa [constant REGION_LAYER] (la miran todas las
-## consultas). El enlace de la puerta está siempre activo, pero en la capa del reino [b]dueño[/b]
-## ([method layer_of_realm]); cada consulta filtra con la capa de su reino ([method query_layers]), así que un
-## agente solo cruza por el enlace si la puerta lo deja pasar físicamente: el dueño (y los Huecos, con el
-## fuerte neutral, que no tienen capa de reino en su máscara de colisión) sí, los demás no. Con la puerta rota
-## el enlace está en las capas de todos. El filtro es inmediato (no espera a ninguna iteración del mapa).
+## [b]Navigation layers.[/b] The region is on layer [constant REGION_LAYER] (all queries look at it). The gate's link
+## is always active, but on the layer of the [b]owning[/b] realm ([method layer_of_realm]); each query filters with
+## the layer of its realm ([method query_layers]), so an agent only crosses the link if the gate physically lets it
+## through: the owner (and the Hollow, with the fort neutral, which have no realm layer in their collision mask) can,
+## the others cannot. With the gate broken, the link is on everyone's layers. The filter is immediate (it does not
+## wait for any map iteration).
 ## [br][br]
-## [b]Espera al mapa.[/b] Comprobado en Godot 4.7.2: la primera iteración del mapa sale vacía (las órdenes de
-## la región se aplican después, aunque sea síncrono) y las rutas buenas llegan unos pasos de física más
-## tarde; consultar el mapa antes de su primera iteración registra un error del motor. Por eso
-## [method poll] da el mapa por listo solo cuando una consulta de prueba devuelve un punto de la malla, y
-## [method get_path] devuelve una ruta vacía hasta entonces. Quien lo lleva llama a [method poll] en cada
-## tick hasta que devuelva true.
+## [b]Waiting for the map.[/b] Verified in Godot 4.7.2: the first map iteration comes out empty (the region's
+## commands are applied afterwards, even if synchronous) and good routes arrive a few physics steps later;
+## querying the map before its first iteration logs an engine error. That is why [method poll] considers the map
+## ready only when a test query returns a point of the mesh, and [method get_path] returns an empty route until then.
+## Whoever runs it calls [method poll] on every tick until it returns true.
 ## [br][br]
-## Libera sus RID con [method dispose] (hay que llamarla: un objeto que se destruye en su destructor no puede
-## llamar a sus propios métodos).
+## It frees its RIDs with [method dispose] (it must be called: an object that is destroyed in its destructor cannot
+## call its own methods).
 
-## Capa de la región: la incluyen todas las consultas.
+## Region layer: included by all queries.
 const REGION_LAYER: int = 1
-## Capas de los reinos: la del bando neutral (los Huecos) y la de cada reino (1 a 3) son los bits 1 a 4.
+## Realm layers: the neutral side's (the Hollow) and each realm's (1 to 3) are bits 1 to 4.
 const REALM_LAYER_SHIFT: int = 1
 const REALM_LAYERS_MASK: int = 0b11110
-## Puntos del enlace de una puerta respecto a su origen (centro del vano a ras de suelo, interior hacia +X):
-## 2,5 m dentro y 3 m fuera, fuera del grosor de la puerta y del radio del agente.
+## Points of a gate's link relative to its origin (center of the doorway at ground level, interior toward +X):
+## 2.5 m inside and 3 m outside, clear of the gate's thickness and the agent's radius.
 const GATE_INSIDE_OFFSET: Vector3 = Vector3(2.5, 0.0, 0.0)
 const GATE_OUTSIDE_OFFSET: Vector3 = Vector3(-3.0, 0.0, 0.0)
-## Distancia (m) a la que la consulta de prueba debe devolver el vértice de prueba para dar el mapa por listo.
+## Distance (m) within which the test query must return the test vertex for the map to be considered ready.
 const PROBE_TOLERANCE: float = 1.0
-## Una ruta llega a su destino si acaba a menos de esto (m) en horizontal y en vertical.
+## A route reaches its destination if it ends within this distance (m) horizontally and vertically.
 const REACH_XZ: float = 1.0
 const REACH_Y: float = 1.5
 
-## Un enlace por el vano de una puerta.
+## A link through a gate's doorway.
 class GateLink:
 	extends RefCounted
 
 	var id: StringName = &""
-	## Punto del lado de dentro y del de fuera, tal como se pidieron (se proyectan sobre la malla al crear
-	## el enlace).
+	## Point on the inside and the outside, as requested (they are projected onto the mesh when the link is
+	## created).
 	var inside: Vector3 = Vector3.ZERO
 	var outside: Vector3 = Vector3.ZERO
 	var rid: RID = RID()
@@ -62,18 +61,18 @@ var _result: NavigationPathQueryResult3D = NavigationPathQueryResult3D.new()
 var _paths_computed: int = 0
 
 
-## Capa de navegación del reino [param realm] (código de red; 0 = neutral, los Huecos): un bit entre el 1 y el 4.
+## Navigation layer of realm [param realm] (network code; 0 = neutral, the Hollow): a bit from 1 to 4.
 static func layer_of_realm(realm: int) -> int:
 	return 1 << (REALM_LAYER_SHIFT + clampi(realm, 0, 3))
 
 
-## Capas con las que consulta un agente del reino [param realm]: la de la región y la de su reino.
+## Layers an agent of realm [param realm] queries with: the region's and its realm's.
 static func query_layers(realm: int) -> int:
 	return REGION_LAYER | layer_of_realm(realm)
 
 
-## true si la ruta [param path] acaba a menos de [constant REACH_XZ] (en horizontal) y [constant REACH_Y]
-## (en vertical) de [param target].
+## true if route [param path] ends within [constant REACH_XZ] (horizontally) and [constant REACH_Y]
+## (vertically) of [param target].
 static func path_reaches(path: PackedVector3Array, target: Vector3) -> bool:
 	if path.is_empty():
 		return false
@@ -82,8 +81,8 @@ static func path_reaches(path: PackedVector3Array, target: Vector3) -> bool:
 			and absf(end.y - target.y) <= REACH_Y
 
 
-## Crea el mapa y la región con la malla [param navmesh] (en la posición [param region_transform]). Devuelve
-## false si no hay malla o no tiene polígonos. Solo se puede llamar una vez.
+## Creates the map and the region with the mesh [param navmesh] (at position [param region_transform]). Returns
+## false if there is no mesh or it has no polygons. Can only be called once.
 func setup(navmesh: NavigationMesh, region_transform: Transform3D = Transform3D.IDENTITY) -> bool:
 	if _map.is_valid() or navmesh == null or navmesh.get_polygon_count() == 0 \
 			or navmesh.get_vertices().is_empty():
@@ -104,9 +103,9 @@ func setup(navmesh: NavigationMesh, region_transform: Transform3D = Transform3D.
 	return true
 
 
-## Añade el enlace por el vano de la puerta [param id]: de [param inside] (dentro del fuerte) a
-## [param outside], en los dos sentidos. Sus extremos se proyectan sobre la malla cuando el mapa está listo
-## (antes no se puede consultar). El enlace empieza en la capa de los Huecos (fuerte neutral, puerta entera).
+## Adds the link through the doorway of gate [param id]: from [param inside] (inside the fort) to
+## [param outside], in both directions. Its endpoints are projected onto the mesh when the map is ready
+## (it cannot be queried before). The link starts on the Hollow's layer (neutral fort, gate intact).
 func add_gate_link(id: StringName, inside: Vector3, outside: Vector3) -> void:
 	if not _map.is_valid() or _links.has(id):
 		return
@@ -119,16 +118,16 @@ func add_gate_link(id: StringName, inside: Vector3, outside: Vector3) -> void:
 		_create_link(link)
 
 
-## Como [method add_gate_link] para una puerta cuyo origen está en [param gate_transform] (el centro del vano a
-## ras de suelo, con el interior del fuerte hacia +X): [constant GATE_INSIDE_OFFSET] y
-## [constant GATE_OUTSIDE_OFFSET] dan los dos extremos.
+## Like [method add_gate_link] for a gate whose origin is at [param gate_transform] (the center of the doorway at
+## ground level, with the fort's interior toward +X): [constant GATE_INSIDE_OFFSET] and
+## [constant GATE_OUTSIDE_OFFSET] give the two endpoints.
 func add_gate_link_at(id: StringName, gate_transform: Transform3D) -> void:
 	add_gate_link(id, gate_transform * GATE_INSIDE_OFFSET, gate_transform * GATE_OUTSIDE_OFFSET)
 
 
-## Pone el estado de la puerta [param id]: dueño del fuerte (0 = neutral) y si está rota. El enlace pasa a
-## la capa del dueño (a las de todos si está rota); el filtro de las consultas lo deja pasar solo a esos
-## agentes. Se puede llamar antes de que el mapa esté listo.
+## Sets the state of gate [param id]: fort owner (0 = neutral) and whether it is broken. The link moves to
+## the owner's layer (to everyone's if broken); the query filter lets only those agents through. Can be
+## called before the map is ready.
 func set_gate_state(id: StringName, owner_realm: int, broken: bool) -> void:
 	var link: GateLink = _links.get(id)
 	if link == null:
@@ -139,15 +138,15 @@ func set_gate_state(id: StringName, owner_realm: int, broken: bool) -> void:
 		NavigationServer3D.link_set_navigation_layers(link.rid, _link_layers(link))
 
 
-## Capas de navegación que tiene ahora el enlace de la puerta [param id] (0 si no existe).
+## Navigation layers that the link of gate [param id] has now (0 if it does not exist).
 func get_gate_layers(id: StringName) -> int:
 	var link: GateLink = _links.get(id)
 	return _link_layers(link) if link != null else 0
 
 
-## Comprueba si el mapa ya da rutas de verdad (una consulta de prueba devuelve un punto de la malla) y, la
-## primera vez que lo hace, crea los enlaces de las puertas. Devuelve true si está listo. Barato: no consulta
-## nada antes de la primera iteración del mapa (registraría un error del motor).
+## Checks whether the map already gives real routes (a test query returns a point of the mesh) and, the
+## first time it does, creates the gate links. Returns true if it is ready. Cheap: it queries
+## nothing before the map's first iteration (it would log an engine error).
 func poll() -> bool:
 	if _ready:
 		return true
@@ -161,14 +160,14 @@ func poll() -> bool:
 	return true
 
 
-## true si el mapa ya dio por buena una consulta de prueba ([method poll]).
+## true if the map has already accepted a test query ([method poll]).
 func is_ready() -> bool:
 	return _ready
 
 
-## Ruta de [param from] a [param to] para un agente del reino [param realm] (código de red; 0 = Huecos): la
-## lista de puntos de la ruta, o vacía si el mapa aún no está listo. Si no hay camino, acaba en el punto
-## alcanzable más cercano al destino ([method path_reaches] dice si llega de verdad).
+## Route from [param from] to [param to] for an agent of realm [param realm] (network code; 0 = Hollow): the
+## list of route points, or empty if the map is not ready yet. If there is no path, it ends at the reachable
+## point closest to the destination ([method path_reaches] says whether it truly arrives).
 func get_path(from: Vector3, to: Vector3, realm: int) -> PackedVector3Array:
 	if not _ready:
 		return PackedVector3Array()
@@ -181,24 +180,24 @@ func get_path(from: Vector3, to: Vector3, realm: int) -> PackedVector3Array:
 	return _result.path
 
 
-## El punto de la malla más cercano a [param position], o la propia posición si el mapa no está listo.
+## The mesh point closest to [param position], or the position itself if the map is not ready.
 func closest_point(position: Vector3) -> Vector3:
 	if not _ready:
 		return position
 	return NavigationServer3D.map_get_closest_point(_map, position)
 
 
-## Rutas calculadas desde que existe (para medir).
+## Routes computed since it came into existence (for measuring).
 func get_paths_computed() -> int:
 	return _paths_computed
 
 
-## El mapa de navegación (RID), para quien necesite consultas más finas; inválido antes de [method setup].
+## The navigation map (RID), for anyone who needs finer queries; invalid before [method setup].
 func get_map() -> RID:
 	return _map
 
 
-## Libera el enlace de cada puerta, la región y el mapa. Se puede llamar más de una vez.
+## Frees each gate's link, the region and the map. Can be called more than once.
 func dispose() -> void:
 	for link: GateLink in _links.values():
 		if link.rid.is_valid():
@@ -226,6 +225,6 @@ func _create_link(link: GateLink) -> void:
 	NavigationServer3D.link_set_enabled(link.rid, true)
 
 
-# Capas del enlace: las de todos los reinos si la puerta está rota; si no, la del dueño.
+# Layers of the link: all realms' if the gate is broken; otherwise, the owner's.
 func _link_layers(link: GateLink) -> int:
 	return REALM_LAYERS_MASK if link.broken else layer_of_realm(link.owner_realm)

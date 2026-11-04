@@ -1,18 +1,18 @@
 extends SceneTree
-## Resumen de un registro de batalla (GUE-17; docs/fuerte.md, sección 7): lee el JSON Lines que escribe el
-## servidor con [code]--battle-log=<ruta>[/code] y saca el tiempo hasta la captura, las muertes por ruta
-## (puente, vado, pasarela) y el tiempo hasta romper la puerta, para ajustar
-## [code]data/fortresses/vado_gris.tres[/code] sin tocar código. La lógica está en [BattleSummary].
+## Summary of a battle log (GUE-17; docs/fuerte.md, section 7): reads the JSON Lines that the
+## server writes with [code]--battle-log=<path>[/code] and extracts the time to capture, the deaths per route
+## (bridge, ford, walkway) and the time to break the gate, to tune
+## [code]data/fortresses/vado_gris.tres[/code] without touching code. The logic is in [BattleSummary].
 ## [br][br]
-## [b]Uso[/b], desde la raíz del proyecto (el [code]godot[/code] de consola):
+## [b]Usage[/b], from the project root (the console [code]godot[/code]):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/war/summarize_battle.gd -- build/batalla.jsonl
 ## godot --headless --path . -s res://tools/war/summarize_battle.gd -- build/batalla.jsonl --json
 ## godot --headless --path . -s res://tools/war/summarize_battle.gd -- build/batalla.jsonl --out=build/resumen.json
 ## [/codeblock]
-## Sin [code]--json[/code] imprime el resumen en español; con él, el JSON. [code]--out=<ruta>[/code] guarda
-## además el JSON. Las rutas de aproximación (para clasificar las muertes) se leen de
-## [code]data/routes/<zona>.tres[/code] si existe. Termina con código 0, o 1 si no hay archivo.
+## Without [code]--json[/code] it prints the summary in Spanish; with it, the JSON. [code]--out=<path>[/code] also saves
+## the JSON. The approach routes (to classify the deaths) are read from
+## [code]data/routes/<zone>.tres[/code] if it exists. Exits with code 0, or 1 if there is no file.
 
 
 func _initialize() -> void:
@@ -50,7 +50,7 @@ func _initialize() -> void:
 	quit(0)
 
 
-# La zona de la primera línea del registro (battle_start), o una cadena vacía.
+# The zone from the first line of the log (battle_start), or an empty string.
 func _zone_of(text: String) -> String:
 	var json := JSON.new()
 	if json.parse(text.get_slice("\n", 0)) == OK and json.data is Dictionary:

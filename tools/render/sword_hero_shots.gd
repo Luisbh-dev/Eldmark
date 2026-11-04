@@ -1,29 +1,29 @@
 extends SceneTree
-## Herramienta de revisión de ART-06: el héroe con la espada en reposo, golpeando y bloqueando, de
-## cerca y desde la cámara del juego.
+## ART-06 review tool: the hero with the sword at rest, striking and blocking, up
+## close and from the game camera.
 ##
-## Monta el sandbox de verdad (zona test_world, [PlayerCharacter] con [HumanoidVisual], [CameraRig] y
-## [LocalPlayerController]), lo conduce con un guion de entradas y, por cada acción, guarda una hoja de
-## contactos de 4 x 3 fotogramas por vista:
-## [br]- [code]game[/code]: la cámara real del juego (por encima del hombro), recortada alrededor del
-## personaje.
-## [br]- [code]side[/code]: cuerpo entero de lado (cámara a 5 m, FOV 42), la misma toma que
-## build/calidad/animacion/lado/com_ligero_1.png, para comparar con la caja de antes.
-## [br]- [code]hand[/code]: la mano de la espada de cerca, desde delante y a la derecha.
+## Builds the real sandbox (test_world zone, [PlayerCharacter] with [HumanoidVisual], [CameraRig] and
+## [LocalPlayerController]), drives it with an input script and, for each action, saves a
+## contact sheet of 4 x 3 frames per view:
+## [br]- [code]game[/code]: the game's real camera (over the shoulder), cropped around the
+## character.
+## [br]- [code]side[/code]: full body from the side (camera at 5 m, FOV 42), the same shot as
+## build/calidad/animacion/lado/com_ligero_1.png, to compare with the earlier box.
+## [br]- [code]hand[/code]: the sword hand up close, from the front and right.
 ## [br][br]
-## Necesita ventana (no headless). Uso (en esta máquina la ventana va a la segunda pantalla por
+## Needs a window (not headless). Usage (on this machine the window goes to the second screen via
 ## override.cfg):
 ## [codeblock]
 ## godot --path . --resolution 1920x1080 --fixed-fps 30 -s res://tools/render/sword_hero_shots.gd -- \
 ##     --sin-raton --out=build/sword/hero [--only=reposo,ligero,fuerte,bloqueo] [--views=game,side,hand] \
 ##     [--grip-offset=0,0.07,0] [--grip-rot=0,0,-90] [--variant=base|vardheim|solmarch|askarra] [--frames]
 ## [/codeblock]
-## [br]Con [code]--variant[/code] la espada de la mano es la de ese reino (y la estela, de su color). Con
-## [code]--fixed-fps 60[/code] la hoja de contactos de cada golpe reparte sus 12 fotogramas por la fase activa
-## (con un margen antes y después) y, con [code]--frames[/code], se guardan además todos los fotogramas de la fase
-## activa, uno a uno, en [code]<out>/frames/<acción>/<vista>/[/code] (para montar vídeo).
-## [br]Los dos últimos ajustes sustituyen el agarre de [WeaponProps] solo para esta ejecución: sirven
-## para probar posiciones antes de dejarlas en las constantes.
+## [br]With [code]--variant[/code] the hand's sword is that realm's (and the trail, in its colour). With
+## [code]--fixed-fps 60[/code] each strike's contact sheet spreads its 12 frames over the active phase
+## (with a margin before and after) and, with [code]--frames[/code], all the frames of the active
+## phase are also saved, one by one, in [code]<out>/frames/<action>/<view>/[/code] (to assemble video).
+## [br]The last two settings replace the [WeaponProps] grip only for this run: they are useful
+## for trying positions before committing them to the constants.
 
 const PLAYER_SCENE: String = "res://scenes/characters/player_character.tscn"
 const RIG_SCENE: String = "res://scenes/client/camera_rig.tscn"
@@ -35,8 +35,8 @@ const FRAMES: int = COLUMNS * ROWS
 const SIDE_SIZE: Vector2i = Vector2i(400, 520)
 const HAND_SIZE: Vector2i = Vector2i(520, 520)
 const GAME_CROP: Vector2i = Vector2i(480, 540)
-## Cámara de la mano: desplazamiento respecto a la mano (m), en el espacio del personaje (mira a -Z), y
-## campo de visión.
+## Hand camera: offset relative to the hand (m), in character space (it looks along -Z), and
+## field of view.
 const HAND_CAMERA_OFFSET: Vector3 = Vector3(0.75, 0.30, -0.85)
 const HAND_CAMERA_FOV: float = 34.0
 
@@ -58,7 +58,7 @@ var _cameras: Dictionary = {}
 var _game_center: Vector2i = Vector2i(960, 600)
 
 
-## Cerebro guionizado: devuelve la entrada que toque según el guion de la acción.
+## Scripted brain: returns the input due according to the action's script.
 class ScriptBrain extends BotBrain:
 	var active: bool = false
 	var start_tick: int = 0
@@ -252,7 +252,7 @@ func _actions() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	out.append({"id": "reposo", "segments": [], "from": 0, "to": 236,
 			"title": "Reposo"})
-	# Mismo guion y misma ventana que com_ligero_1 de build/calidad, para comparar con la caja.
+	# Same script and same window as com_ligero_1 in build/calidad, to compare with the box.
 	out.append({"id": "ligero", "title": "Golpe ligero 1",
 			"segments": [{"from": 10, "to": 13, "buttons": primary}],
 			"from": 6, "to": 10 + light.total_ticks + 6})
@@ -280,7 +280,7 @@ func _run_action(action: Dictionary) -> void:
 	while controller.get_tick() - start_tick < from_tick - 2:
 		await process_frame
 	_game_center = _project_center()
-	# Un fotograma por cada fotograma del motor entre `from` y `to`, con la marca de si el golpe estaba activo.
+	# One frame for each engine frame between `from` and `to`, with a flag for whether the strike was active.
 	var frames: Dictionary = {}
 	for view: String in _views:
 		frames[view] = []
@@ -299,7 +299,7 @@ func _run_action(action: Dictionary) -> void:
 		active_flags.append(trail != null and trail.is_active())
 	brain.stop()
 	var count: int = active_flags.size()
-	# Fase activa: del primer al último fotograma activo (con un margen); sin golpe, toda la toma.
+	# Active phase: from the first to the last active frame (with a margin); with no strike, the whole take.
 	var first: int = 0
 	var last: int = maxi(count - 1, 0)
 	var first_active: int = active_flags.find(true)

@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
-"""Láminas de muestra de los iconos de la interfaz (ART-12), hechas para no favorecer al resultado.
+"""Sample sheets of the interface icons (ART-12), made so as not to favour the result.
 
-Reglas de honestidad (la crítica del director de arte lo pidió): ningún icono se enseña ampliado sin
-decirlo, las muestras a escala real van a 1:1 y sin reescalar, y los estados se prueban al tamaño al que
-se usan. Las salidas van a build/iconos (Git las ignora):
+Honesty rules (the art director's critique asked for it): no icon is shown enlarged without
+saying so, real-scale samples go at 1:1 and without rescaling, and the states are tested at the size they
+are used at. Outputs go to build/iconos (Git ignores them):
 
-  muestra_iconos.png            todos los iconos a 64, 48 y 32 px en casillas simuladas (marco de 2 px
-                                de UIPalette.BORDER y el icono a sangre), sobre fondo oscuro y claro.
-  muestra_contacto.png          los iconos a su tamaño nativo (128 px), en color y en grises.
-  muestra_grises.png            la barra de espada y la de arco a 52 px, en color y en escala de grises.
-  muestra_estados.png           los estados a 14, 18, 26, 30 y 52 px, 1:1 y sin reescalar, con el borde
-                                rojo o verde de StatusIcons.
-  muestra_estados_x4.png        lo mismo ampliado x4 con vecino más próximo, SOLO para revisar píxeles.
-  muestra_capas.png             figura suelta, fondo de la categoría y suma: lo que se entrega.
-  muestra_barra_habilidades.png la barra de acciones 1:1 sobre la captura de 1920 x 1080: la captura
-                                de antes y las dos barras dibujadas por el motor (`engine_test.gd`).
-  prueba_en_motor.png           el tablero rotulado del motor (copia de motor_tablero.png).
+  muestra_iconos.png            all the icons at 64, 48 and 32 px in simulated slots (2 px frame
+                                of UIPalette.BORDER and the icon full-bleed), on dark and light backgrounds.
+  muestra_contacto.png          the icons at their native size (128 px), in colour and in greys.
+  muestra_grises.png            the sword bar and the bow bar at 52 px, in colour and in greyscale.
+  muestra_estados.png           the states at 14, 18, 26, 30 and 52 px, 1:1 and without rescaling, with the
+                                red or green border of StatusIcons.
+  muestra_estados_x4.png        the same enlarged x4 with nearest neighbour, ONLY for checking pixels.
+  muestra_capas.png             loose shape, category background and the sum: what is delivered.
+  muestra_barra_habilidades.png the action bar 1:1 over the 1920 x 1080 capture: the capture
+                                from before and the two bars drawn by the engine (`engine_test.gd`).
+  prueba_en_motor.png           the labelled board from the engine (copy of motor_tablero.png).
 
-Las dos últimas salen de las imágenes que escribe `engine_test.gd` (con ventana); sin ellas esas
-láminas se saltan. El resto solo necesita los PNG de assets/ui/icons.
+The last two come from the images written by `engine_test.gd` (with a window); without them those
+sheets are skipped. The rest only needs the PNGs in assets/ui/icons.
 
-Uso, desde la raíz del proyecto:
+Usage, from the project root:
 
-    python3 tools/ui/icons/make_sheets.py [--hud captura.png] [--motor build/iconos] [--out build/iconos]
+    python3 tools/ui/icons/make_sheets.py [--hud capture.png] [--motor build/iconos] [--out build/iconos]
 """
 
 import argparse
@@ -89,7 +89,7 @@ def rounded_mask(side, radius):
 
 
 def compose(name, side, border=BORDER):
-    """Casilla simulada: fondo de la categoría y figura a sangre dentro de un marco de 2 px (a escala)."""
+    """Simulated slot: category background and full-bleed shape inside a 2 px frame (to scale)."""
     bw = max(1, int(round(side * 2.0 / 52.0)))
     inner = side - 2 * bw
     base = Image.new("RGBA", (side, side), border + (255,))
@@ -160,7 +160,7 @@ def make_icon_sheet(out_path):
 
 
 def make_contact_sheet(out_path):
-    """Todos los iconos a 128 px, en color y en grises, con su nombre."""
+    """All the icons at 128 px, in colour and in greys, with their name."""
     names = list(glyphs.ICONS)
     cols = 6
     cell = 128
@@ -189,7 +189,7 @@ def make_contact_sheet(out_path):
 
 
 def make_gray_sheet(out_path):
-    """Las dos barras a 52 px, en color y en escala de grises, 1:1."""
+    """The two bars at 52 px, in colour and in greyscale, 1:1."""
     font = load_font(13, bold=True)
     gap, pad, side = 6, 12, 52
     width = pad * 2 + 9 * side + 8 * gap
@@ -215,7 +215,7 @@ def make_gray_sheet(out_path):
 
 
 def status_plate(name, plate, fig_side):
-    """Placa de efecto como la dibuja StatusIcons: borde de 2 px y el icono dentro, a su tamaño nativo."""
+    """Effect plate as StatusIcons draws it: 2 px border and the icon inside, at its native size."""
     harmful = name not in BENEFICIAL
     border = HARMFUL_BORDER if harmful else BENEFICIAL_BORDER
     inner = plate - 4
@@ -252,18 +252,18 @@ def make_state_sheets(out_1x, out_4x):
         harmful = name not in BENEFICIAL
         cat = "estado_malo" if harmful else "estado_bueno"
         x = pad + label_w
-        # 14 y 26 px: la figura suelta sobre el fondo
+        # 14 and 26 px: the loose shape over the background
         for size in (14, 26):
             t = tile(cat).resize((size, size), Image.LANCZOS)
             t.alpha_composite(small_figure(name, size))
             sheet.paste(t.convert("RGB"), (x, y + (30 - size // 2) - 8))
             x += size + gap
-        # placas de 18 y 30 px
+        # 18 and 30 px plates
         for plate, fig in ((18, 14), (30, 26)):
             img = status_plate(name, plate, fig)
             sheet.paste(img.convert("RGB"), (x, y + (30 - plate // 2) - 8))
             x += plate + gap
-        # casilla de 52 px con el icono grande
+        # 52 px slot with the large icon
         slot = compose(name, 52)
         sheet.paste(slot.convert("RGB"), (x, y - 8), slot.split()[3])
         y += row_h
@@ -288,7 +288,7 @@ def checker(side, cell=8):
 
 
 def make_layers_sheet(out_path):
-    """Figura suelta (sobre cuadros), fondo de la categoría y la suma, para algunos iconos."""
+    """Loose shape (over a checkerboard), category background and the sum, for some icons."""
     names = ["block", "bow_drawn", "potion_health", "bleed", "fort"]
     side, pad = 128, 12
     font = load_font(13, bold=True)
@@ -320,7 +320,7 @@ def make_layers_sheet(out_path):
 
 
 def make_bar_sheet(out_path, hud_path, motor_dir):
-    """La barra de acciones 1:1: captura de antes y las dos barras que dibuja el motor."""
+    """The action bar 1:1: capture from before and the two bars the engine draws."""
     sword = os.path.join(motor_dir, "motor_barra_espada.png")
     bow = os.path.join(motor_dir, "motor_barra_arco.png")
     if not (os.path.exists(sword) and os.path.exists(bow)):

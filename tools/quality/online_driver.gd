@@ -1,25 +1,25 @@
 extends SceneTree
-## Banco de capturas de calidad (TEC-50): conductor del cliente en red.
+## Quality capture bench (TEC-50): networked client driver.
 ##
-## Arranca el cliente de verdad (OnlineMain) contra un servidor real, espera a estar en el mundo y ejecuta un guion
-## («escenario»: un script con [code]func run(d)[/code]) que mueve la cámara, teletransporta con los comandos de
-## depuración del servidor, pulsa teclas y acciones y guarda capturas de la ventana. Nunca usa cuentas ni
-## contraseñas: el servidor va con --debug-commands y el cliente entra con un personaje efímero.
+## Starts the real client (OnlineMain) against a real server, waits to be in the world and runs a script
+## ("scenario": a script with [code]func run(d)[/code]) that moves the camera, teleports with the server's
+## debug commands, presses keys and actions and saves window captures. It never uses accounts or
+## passwords: the server runs with --debug-commands and the client joins with an ephemeral character.
 ##
-## Normalmente lo lanza [code]python tools/quality/run.py <área>[/code]; a mano:
+## Normally launched by [code]python tools/quality/run.py <area>[/code]; by hand:
 ## [codeblock]
 ## godot --path . --resolution 1920x1080 -s res://tools/quality/online_driver.gd -- \
 ##     --connect=127.0.0.1:24721 --realm=vardheim --name=Capturador \
 ##     --scenario=res://tools/quality/sc_mundo.gd --out=C:/ruta/build/calidad --tag=mundo_vardheim
 ## [/codeblock]
 ##
-## Opciones propias (el resto las lee [ClientConfig]): [code]--scenario=res://...gd[/code], [code]--out=<carpeta>[/code]
-## (capturas e índices), [code]--tag=<nombre>[/code] (nombre del registro [code]<out>/indices/<tag>.json[/code]),
-## [code]--raw=<carpeta>[/code] (fotogramas sueltos de las tiras; por defecto [code]<out>/raw[/code]),
-## [code]--scene=res://...tscn[/code] (en vez del cliente en red, una escena cualquiera: herramientas de vista previa) y
-## [code]--front[/code] (el título con cuenta, sin entrar al mundo).
-## Con el [code]--write-movie[/code] del motor, el conductor frena los fotogramas a tiempo real para que el servidor
-## (que no se entera de nada) y el cliente sigan sincronizados mientras se graba.
+## Own options (the rest are read by [ClientConfig]): [code]--scenario=res://...gd[/code], [code]--out=<folder>[/code]
+## (captures and indices), [code]--tag=<name>[/code] (name of the log [code]<out>/indices/<tag>.json[/code]),
+## [code]--raw=<folder>[/code] (loose frames of the strips; by default [code]<out>/raw[/code]),
+## [code]--scene=res://...tscn[/code] (instead of the networked client, any scene: preview tools) and
+## [code]--front[/code] (the title screen with account, without entering the world).
+## With the engine's [code]--write-movie[/code], the driver throttles frames to real time so that the server
+## (which knows nothing about it) and the client stay in sync while recording.
 
 const ONLINE_SCENE: String = "res://scenes/client/online_main.tscn"
 
@@ -34,10 +34,10 @@ var scenario_path: String = ""
 var tag: String = "run"
 var records: Array = []
 var notes: Array = []
-## Grabadora de tiras del escenario (null si no usa ninguna); [method step] la alimenta.
+## Strip recorder of the scenario (null if it uses none); [method step] feeds it.
 var recorder: Variant = null
-## Golpes y sonidos de combate vistos por el cliente local: [{ms, kind, blocked, parried, amount}]
-## (se llena tras [method enter_world]; ver [method _watch_feedback]).
+## Hits and combat sounds seen by the local client: [{ms, kind, blocked, parried, amount}]
+## (filled after [method enter_world]; see [method _watch_feedback]).
 var hit_events: Array = []
 var _args: PackedStringArray
 var _held: Dictionary = {}
@@ -71,10 +71,10 @@ func _initialize() -> void:
 		if a2.begins_with("--scene="):
 			scene_arg = a2.trim_prefix("--scene=")
 	if not scene_arg.is_empty():
-		# Una escena cualquiera (herramientas de vista previa).
+		# Any scene (preview tools).
 		main = (load(scene_arg) as PackedScene).instantiate()
 	elif _args.has("--front"):
-		# Título con cuenta (FrontMain), sin entrar en el mundo.
+		# Title screen with account (FrontMain), without entering the world.
 		FrontMain.config = cfg
 		main = (load("res://scenes/client/front_main.tscn") as PackedScene).instantiate()
 	else:
@@ -97,8 +97,8 @@ func _start() -> void:
 	quit(0)
 
 
-# Con --write-movie el motor avanza un fotograma de 1/fps por iteración sin esperar al reloj: más rápido que el
-# servidor si la máquina puede. Se frena cada fotograma hasta que haya pasado su tiempo real.
+# With --write-movie the engine advances one frame of 1/fps per iteration without waiting for the clock: faster than the
+# server if the machine can manage it. Each frame is held back until its real time has passed.
 func _pace_to_real_time() -> void:
 	var target_us: int = int(1000000.0 / float(maxi(Engine.physics_ticks_per_second, 1)))
 	var now: int = Time.get_ticks_usec()
@@ -110,15 +110,15 @@ func _pace_to_real_time() -> void:
 
 
 # ---------------------------------------------------------------------------------------------
-# Esperas
+# Waits
 # ---------------------------------------------------------------------------------------------
 func frames(n: int) -> void:
 	for _i: int in n:
 		await process_frame
 
 
-## Un fotograma con la grabadora de tiras al día: antes de dibujar coloca su cámara lateral y, tras dibujar, guarda la
-## muestra si toca. Sin grabadora equivale a [code]frames(1)[/code].
+## One frame with the strip recorder kept up to date: before drawing it places its side camera and, after drawing, it saves the
+## sample if due. Without a recorder it is equivalent to [code]frames(1)[/code].
 func step() -> void:
 	await process_frame
 	if recorder != null:
@@ -133,7 +133,7 @@ func wait(seconds: float) -> void:
 		await step()
 
 
-## Espera a estar en el mundo con HUD, cámara y personaje. Devuelve false si no llega en [param timeout] s.
+## Waits to be in the world with HUD, camera and character. Returns false if it does not arrive within [param timeout] s.
 func enter_world(timeout: float = 90.0) -> bool:
 	var end: int = Time.get_ticks_msec() + int(timeout * 1000.0)
 	while Time.get_ticks_msec() < end:
@@ -159,7 +159,7 @@ func note(text: String) -> void:
 	print("[driver] ", text)
 
 
-# Apunta los golpes que el cliente local da o recibe (ya temporizados para el dibujo) y los sonidos que pide.
+# Records the hits the local client deals or receives (already timed for drawing) and the sounds it requests.
 func _watch_feedback() -> void:
 	var feedback: CombatFeedback = hud.get_feedback() if hud != null else null
 	if feedback == null:
@@ -182,7 +182,7 @@ func _log_hit(kind: String, amount: int, event: NetMessages.EntityEvent) -> void
 
 
 # ---------------------------------------------------------------------------------------------
-# Entrada
+# Input
 # ---------------------------------------------------------------------------------------------
 func hold(action: StringName) -> void:
 	Input.action_press(action)
@@ -243,7 +243,7 @@ func look(yaw_deg: float, pitch_deg: float = 0.0) -> void:
 		rig.set_look(deg_to_rad(yaw_deg), deg_to_rad(pitch_deg))
 
 
-## Yaw (grados) para mirar desde (x, z) hacia (tx, tz).
+## Yaw (degrees) to look from (x, z) towards (tx, tz).
 static func yaw_to(x: float, z: float, tx: float, tz: float) -> float:
 	return rad_to_deg(atan2(-(tx - x), -(tz - z)))
 
@@ -252,7 +252,7 @@ func pos() -> Vector3:
 	return ch.global_position if ch != null else Vector3.ZERO
 
 
-## Anda hacia (x, z) mirando hacia allí hasta estar a menos de [param radius] m (o [param timeout] s).
+## Walks towards (x, z) looking that way until within [param radius] m (or [param timeout] s).
 func walk_to(x: float, z: float, sprint: bool = false, radius: float = 2.0, timeout: float = 20.0) -> void:
 	var end: int = Time.get_ticks_msec() + int(timeout * 1000.0)
 	hold(&"move_forward")
@@ -269,7 +269,7 @@ func walk_to(x: float, z: float, sprint: bool = false, radius: float = 2.0, time
 
 
 # ---------------------------------------------------------------------------------------------
-# Mundo / servidor
+# World / server
 # ---------------------------------------------------------------------------------------------
 func ground_y(x: float, z: float) -> float:
 	var world: Node3D = main.get_world() as Node3D
@@ -281,10 +281,10 @@ func ground_y(x: float, z: float) -> float:
 	return float(hit["position"].y) if not hit.is_empty() else 5.0
 
 
-## De los puntos [param candidates] (cada uno un [Vector2] con x y z del mundo), el más despejado: el que tiene menos
-## obstáculos (muros, postes, troncos, laderas) a menos de [param radius] m, medidos con 12 rayos a la altura del pecho. Sirve
-## para elegir dónde pelear delante de la cámara: junto a un poste o un muro la cámara por encima del hombro se acerca al
-## personaje y el recorte enseña solo una cara enorme.
+## From the points [param candidates] (each one a [Vector2] with world x and z), the most open one: the one with the fewest
+## obstacles (walls, posts, trunks, slopes) within [param radius] m, measured with 12 rays at chest height. Used
+## to choose where to fight in front of the camera: next to a post or a wall the over-the-shoulder camera moves closer to the
+## character and the crop shows only one huge face.
 func open_spot(candidates: Array, radius: float = 6.0) -> Vector2:
 	var world: Node3D = main.get_world() as Node3D
 	if world == null or candidates.is_empty():
@@ -316,7 +316,7 @@ var _last_heal_ms: int = 0
 
 
 func heal() -> void:
-	# Con más de unos pocos comandos por segundo el servidor expulsa por «exceso de ritmo».
+	# With more than a few commands per second the server kicks for "exceso de ritmo" (rate limit exceeded).
 	var now: int = Time.get_ticks_msec()
 	if now - _last_heal_ms < 400:
 		return
@@ -326,7 +326,7 @@ func heal() -> void:
 	cmd(NetProtocol.DEBUG_STAMINA_INF, PackedByteArray([1]))
 
 
-## Espera [param seconds] curando al jugador cada 0,3 s (para no caer mientras se hace una captura en zona de guerra).
+## Waits [param seconds] healing the player every 0.3 s (so as not to die while taking a capture in a war zone).
 func wait_healing(seconds: float) -> void:
 	var end: int = Time.get_ticks_msec() + int(seconds * 1000.0)
 	var next_heal: int = 0
@@ -337,8 +337,8 @@ func wait_healing(seconds: float) -> void:
 		await step()
 
 
-## Si el jugador está muerto o derribado, lo lleva de vuelta a estar vivo (derribado: se remata con el comando de
-## matar; muerto: espera el tick de reaparición y pide el punto 0). Devuelve true si tuvo que hacerlo.
+## If the player is dead or knocked down, brings them back to life (knocked down: finished off with the kill
+## command; dead: waits for the respawn tick and requests spawn point 0). Returns true if it had to do so.
 func ensure_alive(timeout: float = 60.0) -> bool:
 	var did: bool = false
 	var end: int = Time.get_ticks_msec() + int(timeout * 1000.0)
@@ -363,10 +363,10 @@ func ensure_alive(timeout: float = 60.0) -> bool:
 	return did
 
 
-## Teletransporta a (x, z) (sobre el suelo, o a [param y] si se da), orienta la cámara y deja un instante para que
-## el terreno, el LOD y la hierba carguen.
+## Teleports to (x, z) (on the ground, or at [param y] if given), orients the camera and leaves a moment for
+## the terrain, the LOD and the grass to load.
 func tp(x: float, z: float, yaw_deg: float = 0.0, pitch_deg: float = 0.0, y: float = NAN, settle: float = 1.2) -> void:
-	# El primer teletransporte tras entrar al mundo a veces no llega a aplicarse en el cliente: se comprueba y se repite.
+	# The first teleport after entering the world sometimes fails to apply on the client: it is checked and repeated.
 	for attempt: int in 3:
 		var py: float = (ground_y(x, z) + 0.2) if is_nan(y) else y
 		var message: NetMessages.DebugCommand = NetMessages.DebugCommand.teleport(Vector3(x, py, z))
@@ -376,7 +376,7 @@ func tp(x: float, z: float, yaw_deg: float = 0.0, pitch_deg: float = 0.0, y: flo
 			break
 		note("teletransporte a (%.0f, %.0f) sin efecto todavía (estoy en %.0f, %.0f), intento %d" % [x, z, pos().x, pos().z, attempt + 1])
 	look(yaw_deg, pitch_deg)
-	# Un paso hacia delante para que el personaje se encare hacia donde mira la cámara.
+	# One step forward so that the character faces where the camera is looking.
 	hold(&"move_forward")
 	await frames(6)
 	release(&"move_forward")
@@ -384,7 +384,7 @@ func tp(x: float, z: float, yaw_deg: float = 0.0, pitch_deg: float = 0.0, y: flo
 
 
 # ---------------------------------------------------------------------------------------------
-# Capturas
+# Captures
 # ---------------------------------------------------------------------------------------------
 func shot(rel: String, desc: String = "", how: String = "") -> Image:
 	await RenderingServer.frame_post_draw
@@ -409,9 +409,9 @@ func crop(rel: String, rect: Rect2i, desc: String = "", how: String = "", scale:
 
 
 # ---------------------------------------------------------------------------------------------
-# Remotos (otros jugadores, bots y PNJ vistos desde este cliente)
+# Remotes (other players, bots and NPCs seen from this client)
 # ---------------------------------------------------------------------------------------------
-## Vistas remotas visibles: [{view, pos, kind, realm, name, dist, npc, id, action}] ordenadas por distancia al jugador.
+## Visible remote views: [{view, pos, kind, realm, name, dist, npc, id, action}] sorted by distance to the player.
 func remotes() -> Array:
 	var out: Array = []
 	if client == null:
@@ -435,7 +435,7 @@ func remotes() -> Array:
 	return out
 
 
-## El enemigo más cercano (distinto reino; los PNJ neutros cuentan) dentro de [param max_dist], o {}.
+## The nearest enemy (different realm; neutral NPCs count) within [param max_dist], or {}.
 func nearest_enemy(max_dist: float = 60.0) -> Dictionary:
 	var my_realm: int = client.get_config().realm
 	for r: Dictionary in remotes():
@@ -449,7 +449,7 @@ func nearest_enemy(max_dist: float = 60.0) -> Dictionary:
 	return {}
 
 
-## Centro del grupo de jugadores/bots (no PNJ) con más vecinos a menos de [param radius] m. {} si hay menos de [param min_count].
+## Centre of the group of players/bots (not NPCs) with the most neighbours within [param radius] m. {} if there are fewer than [param min_count].
 func busiest_spot(radius: float = 9.0, min_count: int = 3, include_npc: bool = true) -> Dictionary:
 	var best: Dictionary = {}
 	var best_n: int = 0
@@ -471,7 +471,7 @@ func busiest_spot(radius: float = 9.0, min_count: int = 3, include_npc: bool = t
 	return best if best_n >= min_count else {}
 
 
-## Posición en pantalla (píxeles de la ventana) de un punto del mundo, o (-1, -1) si está detrás de la cámara.
+## Screen position (window pixels) of a world point, or (-1, -1) if it is behind the camera.
 func to_screen(world_pos: Vector3) -> Vector2:
 	var cam: Camera3D = rig.get_camera()
 	if cam.is_position_behind(world_pos):

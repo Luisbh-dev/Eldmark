@@ -1,61 +1,61 @@
 class_name DemoInput
 extends RefCounted
-## Entrada guionizada y determinista para pruebas visuales automáticas.
+## Scripted, deterministic input for automatic visual tests.
 ##
-## Es la demo del circuito de la fase 1 ([code]--zone=test_world[/code]); las zonas reales usan
-## [RouteDemoInput], que sigue una ruta de puntos de paso.
-## [br][br]Unos 10 s a 60 ticks/s. Cada tick devuelve siempre la misma entrada y la
-## misma vista, sin leer dispositivos ni el reloj, así dos ejecuciones de la
-## demo producen el mismo recorrido. Supone que el punto de aparición mira hacia
-## -Z (yaw 0) con unos 15 m libres por delante y la zona de rampas después,
-## delante a la derecha (en [code]test_world.tscn[/code], el pie de la rampa
-## transitable está hacia (15, 0, -24.5)).
-## [br][br]Guion (los ticks empiezan en 1):
-## [br]1. Quieto 0,5 s.
-## [br]2. Correr hacia delante 2 s.
-## [br]3. Esprintar 1,5 s mientras la cámara gira despacio a la izquierda (así el
-## desplazamiento lateral siguiente no choca con el pilar de (6, -20)).
-## [br]4. Dos saltos en el sitio.
-## [br]5. Desplazarse de lado a la derecha 1 s.
-## [br]6. Girar hacia +X y correr hacia la zona de rampas.
-## [br]7. Combate en el sitio ([CombatDemoScript]: combo de 3 golpes ligeros, un fuerte cargado, un
-## bloqueo y una esquiva) mientras la cámara da una vuelta completa (360°) alrededor del personaje.
-## Dura unos 5 s (el combo y la espera entre golpes salen de los datos de combate) en lugar de los 2 s
-## de la vuelta de cámara sola de antes: el guion pasa de unos 10,5 s a unos 13,5 s.
-## [br][br]Recorrido aproximado (x, z): (0, -9.8) al acabar de correr,
-## (-2.9, -20.4) al acabar el sprint, (0.6, -22.9) tras el paso lateral y
-## (8.7, -24.4) al empezar el combate.
+## It is the phase 1 course demo ([code]--zone=test_world[/code]); real zones use
+## [RouteDemoInput], which follows a route of waypoints.
+## [br][br]About 10 s at 60 ticks/s. Each tick always returns the same input and the
+## same view, without reading devices or the clock, so two runs of the
+## demo produce the same path. It assumes the spawn point faces
+## -Z (yaw 0) with about 15 m clear ahead and the ramp area after that,
+## ahead to the right (in [code]test_world.tscn[/code], the foot of the walkable
+## ramp is at about (15, 0, -24.5)).
+## [br][br]Script (ticks start at 1):
+## [br]1. Stand still 0.5 s.
+## [br]2. Run forward 2 s.
+## [br]3. Sprint 1.5 s while the camera turns slowly to the left (so the
+## next lateral movement does not hit the pillar at (6, -20)).
+## [br]4. Two jumps in place.
+## [br]5. Strafe to the right for 1 s.
+## [br]6. Turn toward +X and run to the ramp area.
+## [br]7. Combat in place ([CombatDemoScript]: 3-hit light combo, a charged heavy attack, a
+## block and a dodge) while the camera makes a full turn (360°) around the character.
+## It lasts about 5 s (the combo and the wait between hits come from the combat data) instead of the 2 s
+## of the camera-only turn from before: the script goes from about 10.5 s to about 13.5 s.
+## [br][br]Approximate path (x, z): (0, -9.8) at the end of the run,
+## (-2.9, -20.4) at the end of the sprint, (0.6, -22.9) after the sidestep and
+## (8.7, -24.4) at the start of combat.
 
-## Último tick (incluido) de cada fase.
+## Last tick (inclusive) of each phase.
 const IDLE_END: int = 30
 const RUN_END: int = 150
 const SPRINT_END: int = 240
 const JUMPS_END: int = 340
 const STRAFE_END: int = 400
 const APPROACH_END: int = 510
-## Primer tick del combate (el último de la aproximación).
+## First tick of combat (the last one of the approach).
 const COMBAT_START: int = APPROACH_END
 
-## Ticks en los que se empieza a pulsar el salto y cuánto se mantiene.
+## Ticks at which the jump starts being pressed and how long it is held.
 const JUMP_1_START: int = 246
 const JUMP_2_START: int = 296
 const JUMP_HOLD_TICKS: int = 6
 
-## Vista (grados). Yaw positivo gira a la izquierda y negativo a la derecha;
-## pitch negativo mira hacia abajo.
+## View (degrees). Positive yaw turns left and negative right;
+## negative pitch looks down.
 const BASE_PITCH_DEGREES: float = -10.0
 const SPRINT_TURN_YAW_DEGREES: float = 30.0
 const APPROACH_YAW_DEGREES: float = -90.0
 const ORBIT_PITCH_DEGREES: float = -20.0
-## Ticks que tarda la cámara en girar hacia las rampas al empezar la fase 6.
+## Ticks the camera takes to turn toward the ramps at the start of phase 6.
 const APPROACH_TURN_TICKS: int = 30
 
-## Guion del combate de la fase 7.
+## Combat script of phase 7.
 var _combat: CombatDemoScript = CombatDemoScript.new()
 
 
-## Entrada del tick [param tick]. Más allá del final devuelve una entrada en
-## reposo con la última vista.
+## Input of tick [param tick]. Past the end it returns an idle input
+## with the last view.
 func next(tick: int) -> PlayerInput:
 	var input: PlayerInput = PlayerInput.new()
 	input.tick = tick
@@ -78,13 +78,13 @@ func next(tick: int) -> PlayerInput:
 	elif tick <= APPROACH_END:
 		input.move = Vector2(0.0, 1.0)
 	else:
-		# Combate en el sitio: los ticks del guion empiezan en 0 con el primero tras la aproximación.
+		# Combat in place: the script's ticks start at 0 with the first one after the approach.
 		input.buttons |= _combat.buttons_at(tick - COMBAT_START - 1)
 	return input
 
 
-## Vista de la cámara en el tick [param tick]: x = yaw, y = pitch (radianes,
-## mismas convenciones que [PlayerInput]). El yaw se devuelve en [-PI, PI].
+## Camera view at tick [param tick]: x = yaw, y = pitch (radians,
+## same conventions as [PlayerInput]). Yaw is returned in [-PI, PI].
 func look_for(tick: int) -> Vector2:
 	var t: int = clampi(tick, 0, get_length())
 	var yaw_degrees: float = 0.0
@@ -93,7 +93,7 @@ func look_for(tick: int) -> Vector2:
 	if t <= RUN_END:
 		yaw_degrees = 0.0
 	elif t <= SPRINT_END:
-		# Giro lento y suave durante el sprint.
+		# Slow, smooth turn during the sprint.
 		var k: float = smoothstep(0.0, 1.0, _progress(t, RUN_END, SPRINT_END))
 		yaw_degrees = lerpf(0.0, SPRINT_TURN_YAW_DEGREES, k)
 	elif t <= STRAFE_END:
@@ -103,8 +103,8 @@ func look_for(tick: int) -> Vector2:
 		var k: float = smoothstep(0.0, 1.0, _progress(t, STRAFE_END, turn_end))
 		yaw_degrees = lerpf(SPRINT_TURN_YAW_DEGREES, APPROACH_YAW_DEGREES, k)
 	else:
-		# Órbita completa a velocidad constante; el pitch baja al principio para
-		# ver el personaje algo desde arriba.
+		# Full orbit at constant speed; the pitch lowers at the start to
+		# see the character somewhat from above.
 		var k: float = _progress(t, APPROACH_END, get_length())
 		yaw_degrees = APPROACH_YAW_DEGREES + 360.0 * k
 		var pitch_k: float = smoothstep(0.0, 1.0, minf(k * 4.0, 1.0))
@@ -113,18 +113,18 @@ func look_for(tick: int) -> Vector2:
 	return Vector2(wrapf(deg_to_rad(yaw_degrees), -PI, PI), deg_to_rad(pitch_degrees))
 
 
-## Personaje que recorre la demo. Este guion es fijo y no lo necesita; las demos que siguen
-## una ruta ([RouteDemoInput]) lo leen para orientarse hacia el siguiente punto de paso.
+## Character that walks the demo. This script is fixed and does not need it; demos that follow
+## a route ([RouteDemoInput]) read it to orient themselves toward the next waypoint.
 func bind(_character: PlayerCharacter) -> void:
 	pass
 
 
-## Número total de ticks del guion.
+## Total number of ticks of the script.
 func get_length() -> int:
 	return COMBAT_START + _combat.get_length()
 
 
-## true cuando ya se ha ejecutado el último tick del guion.
+## true once the script's last tick has been executed.
 func is_finished(tick: int) -> bool:
 	return tick >= get_length()
 
@@ -134,7 +134,7 @@ func _is_jump_held(tick: int) -> bool:
 			or (tick >= JUMP_2_START and tick < JUMP_2_START + JUMP_HOLD_TICKS)
 
 
-## Avance en [0, 1] de [param tick] dentro de la fase que va de
-## [param from_tick] (excluido) a [param to_tick] (incluido).
+## Progress in [0, 1] of [param tick] within the phase that goes from
+## [param from_tick] (excluded) to [param to_tick] (included).
 static func _progress(tick: int, from_tick: int, to_tick: int) -> float:
 	return clampf(float(tick - from_tick) / float(to_tick - from_tick), 0.0, 1.0)

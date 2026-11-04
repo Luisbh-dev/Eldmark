@@ -1,13 +1,13 @@
-// Package migrate aplica y deshace las migraciones del esquema (plataforma.md §2.4).
+// Package migrate applies and reverts the schema migrations (plataforma.md §2.4).
 //
-// Las migraciones son pares NNNN_nombre.up.sql y NNNN_nombre.down.sql embebidos en el binario
-// ([FS]). El ejecutor toma pg_advisory_lock(4815162342), aplica las pendientes en orden de número,
-// cada una en su transacción, y se niega a seguir si la suma SHA-256 de una aplicada ha cambiado o
-// si hay una pendiente por debajo de la mayor aplicada. Una base con migraciones posteriores a las
-// del binario vale (expandir y contraer): el binario N funciona con el esquema N + 1.
+// The migrations are NNNN_name.up.sql and NNNN_name.down.sql pairs embedded in the binary ([FS]).
+// The runner takes pg_advisory_lock(4815162342), applies the pending ones in number order, each in
+// its own transaction, and refuses to continue if the SHA-256 checksum of an applied one has changed
+// or if there is a pending one below the highest applied. A database with migrations later than the
+// binary's is fine (expand and contract): binary N works with schema N + 1.
 //
-// Una migración sin inversa lleva «-- irreversible» en la primera línea de su .up.sql y su
-// .down.sql hace «do $$ begin raise exception 'irreversible'; end $$;». Down no la deshace.
+// A migration without an inverse carries "-- irreversible" on the first line of its .up.sql and its
+// .down.sql does "do $$ begin raise exception 'irreversible'; end $$;". Down does not revert it.
 package migrate
 
 import (
@@ -27,16 +27,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// LockKey es la clave del bloqueo consultivo que serializa a los ejecutores.
+// LockKey is the key of the advisory lock that serializes the runners.
 const LockKey int64 = 4815162342
 
-// IrreversibleMarker es la primera línea de una migración sin inversa.
+// IrreversibleMarker is the first line of a migration without an inverse.
 const IrreversibleMarker = "-- irreversible"
 
 //go:embed migrations/*.sql
 var embedded embed.FS
 
-// FS devuelve las migraciones embebidas en el binario.
+// FS returns the migrations embedded in the binary.
 func FS() fs.FS {
 	sub, err := fs.Sub(embedded, "migrations")
 	if err != nil {
@@ -45,23 +45,23 @@ func FS() fs.FS {
 	return sub
 }
 
-// Migration es un par up/down.
+// Migration is an up/down pair.
 type Migration struct {
 	Version      int
-	Name         string // sin número ni extensión: «accounts»
+	Name         string // without number or extension: "accounts"
 	Up           string
 	Down         string
-	Checksum     [sha256.Size]byte // del .up.sql
+	Checksum     [sha256.Size]byte // of the .up.sql
 	Irreversible bool
 }
 
-// ID devuelve «0001_accounts».
+// ID returns "0001_accounts".
 func (m Migration) ID() string { return fmt.Sprintf("%04d_%s", m.Version, m.Name) }
 
 var fileName = regexp.MustCompile(`^(\d{4})_([a-z0-9_]+)\.(up|down)\.sql$`)
 
-// Load lee y comprueba las migraciones de fsys: nombres, pares completos, números sin repetir y la
-// marca de las irreversibles.
+// Load reads and checks the migrations in fsys: names, complete pairs, no repeated numbers and the
+// mark of the irreversible ones.
 func Load(fsys fs.FS) ([]Migration, error) {
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
@@ -117,7 +117,7 @@ func Load(fsys fs.FS) ([]Migration, error) {
 	return out, nil
 }
 
-// Applied es una fila de schema_migrations.
+// Applied is a schema_migrations row.
 type Applied struct {
 	Version   int
 	Name      string
@@ -125,33 +125,33 @@ type Applied struct {
 	AppliedAt time.Time
 }
 
-// State es el estado de una migración frente a la base.
+// State is a migration's state relative to the database.
 type State string
 
-// Estados.
+// States.
 const (
 	StateApplied  State = "aplicada"
 	StatePending  State = "pendiente"
-	StateChanged  State = "suma distinta"            // aplicada, pero el .up.sql ya no es el mismo
-	StateUnknown  State = "posterior"                // aplicada en la base, no está en este binario
-	StateOutOfSeq State = "pendiente fuera de orden" // pendiente por debajo de la mayor aplicada
+	StateChanged  State = "suma distinta"            // applied, but the .up.sql is no longer the same
+	StateUnknown  State = "posterior"                // applied in the database, not in this binary
+	StateOutOfSeq State = "pendiente fuera de orden" // pending below the highest applied
 )
 
-// Status es una línea de [Runner.Status].
+// Status is a line of [Runner.Status].
 type Status struct {
 	Version   int
 	Name      string
 	State     State
-	AppliedAt time.Time // cero si no está aplicada
+	AppliedAt time.Time // zero if not applied
 }
 
-// Runner aplica las migraciones de un conjunto sobre una base.
+// Runner applies a set's migrations on a database.
 type Runner struct {
 	pool       *pgxpool.Pool
 	migrations []Migration
 }
 
-// New prepara un ejecutor con las migraciones de fsys (normalmente [FS]).
+// New prepares a runner with the migrations in fsys (normally [FS]).
 func New(pool *pgxpool.Pool, fsys fs.FS) (*Runner, error) {
 	migrations, err := Load(fsys)
 	if err != nil {
@@ -160,7 +160,7 @@ func New(pool *pgxpool.Pool, fsys fs.FS) (*Runner, error) {
 	return &Runner{pool: pool, migrations: migrations}, nil
 }
 
-// Migrations devuelve las migraciones del ejecutor, en orden.
+// Migrations returns the runner's migrations, in order.
 func (r *Runner) Migrations() []Migration { return r.migrations }
 
 const createTable = `create table if not exists schema_migrations (
@@ -170,7 +170,7 @@ const createTable = `create table if not exists schema_migrations (
   applied_at timestamptz not null default now()
 )`
 
-// withLock ejecuta fn en una conexión con el bloqueo consultivo tomado y la tabla creada.
+// withLock runs fn on a connection with the advisory lock taken and the table created.
 func (r *Runner) withLock(ctx context.Context, fn func(conn *pgx.Conn) error) error {
 	c, err := r.pool.Acquire(ctx)
 	if err != nil {
@@ -182,7 +182,7 @@ func (r *Runner) withLock(ctx context.Context, fn func(conn *pgx.Conn) error) er
 		return fmt.Errorf("migrate: no se pudo tomar el bloqueo: %w", err)
 	}
 	defer func() {
-		// Con el contexto cancelado, el bloqueo se suelta al cerrar la conexión.
+		// With the context cancelled, the lock is released when the connection closes.
 		if _, err := conn.Exec(context.WithoutCancel(ctx), "select pg_advisory_unlock($1)", LockKey); err != nil {
 			_ = conn.Close(context.Background())
 		}
@@ -215,8 +215,8 @@ func readApplied(ctx context.Context, q interface {
 	return out, nil
 }
 
-// plan compara las migraciones con lo aplicado: devuelve las pendientes o el error que impide
-// seguir (suma cambiada o pendiente por debajo de la mayor aplicada).
+// plan compares the migrations with what is applied: it returns the pending ones or the error that
+// prevents continuing (changed checksum or pending one below the highest applied).
 func (r *Runner) plan(applied map[int]Applied) ([]Migration, error) {
 	maxApplied := 0
 	for v := range applied {
@@ -243,7 +243,7 @@ func (r *Runner) plan(applied map[int]Applied) ([]Migration, error) {
 	return pending, nil
 }
 
-// Up aplica las pendientes, cada una en su transacción, y devuelve las aplicadas.
+// Up applies the pending ones, each in its own transaction, and returns the ones applied.
 func (r *Runner) Up(ctx context.Context) ([]Migration, error) {
 	var done []Migration
 	err := r.withLock(ctx, func(conn *pgx.Conn) error {
@@ -274,8 +274,9 @@ func (r *Runner) Up(ctx context.Context) ([]Migration, error) {
 	return done, err
 }
 
-// Down deshace las n mayores aplicadas, en orden inverso, y devuelve las deshechas. Se para sin
-// tocar nada ante una irreversible o una aplicada que no está en este binario.
+// Down reverts the n highest applied, in reverse order, and returns the ones reverted. It stops
+// without touching anything when faced with an irreversible one or an applied one that is not in
+// this binary.
 func (r *Runner) Down(ctx context.Context, n int) ([]Migration, error) {
 	if n < 1 {
 		return nil, errors.New("migrate: down necesita un número de migraciones mayor que 0")
@@ -329,7 +330,8 @@ func (r *Runner) Down(ctx context.Context, n int) ([]Migration, error) {
 	return done, err
 }
 
-// Status devuelve el estado de cada migración del binario y de las aplicadas que no conoce.
+// Status returns the state of each of the binary's migrations and of the applied ones it does not
+// know.
 func (r *Runner) Status(ctx context.Context) ([]Status, error) {
 	var out []Status
 	err := r.withLock(ctx, func(conn *pgx.Conn) error {
@@ -373,11 +375,12 @@ func (r *Runner) status(applied map[int]Applied) []Status {
 	return out
 }
 
-// ErrNotMigrated es la causa de [Runner.Check] cuando falta alguna migración del binario.
+// ErrNotMigrated is the cause of [Runner.Check] when some migration of the binary is missing.
 var ErrNotMigrated = errors.New("el esquema no está al día")
 
-// Check dice si todas las migraciones del binario están aplicadas con su misma suma (lo que exige
-// serve y lo que mira /ready). Las posteriores no molestan. No toma el bloqueo ni crea nada.
+// Check says whether all the binary's migrations are applied with the same checksum (what serve
+// requires and what /ready looks at). Later ones do not interfere. It does not take the lock or
+// create anything.
 func (r *Runner) Check(ctx context.Context) error {
 	var exists bool
 	if err := r.pool.QueryRow(ctx, "select to_regclass('schema_migrations') is not null").Scan(&exists); err != nil {

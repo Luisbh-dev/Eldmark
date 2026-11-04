@@ -27,7 +27,7 @@ func TestHashAndVerify(t *testing.T) {
 	if err != nil || ok {
 		t.Fatalf("la mala: %v %v", ok, err)
 	}
-	// Sin normalizar: otra forma Unicode de la misma letra es otra contraseña.
+	// Not normalized: another Unicode form of the same letter is another password.
 	if ok, _, _ := Verify("contraseña larga", phc, fast); ok {
 		t.Fatal("la contraseña no se normaliza")
 	}
@@ -37,7 +37,7 @@ func TestHashAndVerify(t *testing.T) {
 	}
 }
 
-// needsRehash: los parámetros de la cadena no son los actuales (plataforma.md §4.2).
+// needsRehash: the string's parameters are not the current ones (plataforma.md §4.2).
 func TestNeedsRehash(t *testing.T) {
 	phc, _ := Hash("otra contraseña", fast)
 	current := Params{MemoryKiB: 16, Time: 1, Threads: 1}
@@ -86,7 +86,7 @@ func TestFillerCostsTheSame(t *testing.T) {
 }
 
 func TestContextCancelsTheWait(t *testing.T) {
-	// Ocupa todas las plazas y comprueba que una espera con contexto cancelado no se queda colgada.
+	// It occupies all the slots and checks that a wait with a cancelled context does not hang.
 	n := cap(slots)
 	for i := 0; i < n; i++ {
 		slots <- struct{}{}
@@ -103,8 +103,8 @@ func TestContextCancelsTheWait(t *testing.T) {
 	}
 }
 
-// Mide el coste de los parámetros de producción (plataforma.md §0: 59 ms en la máquina de las
-// sondas). Solo informa.
+// It measures the cost of the production parameters (plataforma.md §0: 59 ms on the probe machine).
+// It only reports.
 func TestProductionCost(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short")

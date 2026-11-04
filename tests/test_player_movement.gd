@@ -1,27 +1,26 @@
 extends TestCase
-## Pruebas de la simulación de movimiento de PlayerCharacter.
+## Tests of PlayerCharacter's movement simulation.
 ##
-## Cada prueba construye en código un mundo mínimo (suelo de 200 x 200 m en la capa 1, una rampa
-## transitable de 25°, otra empinada de 55° y una plataforma de 1 m con bordes), instancia el
-## personaje y llama a [method PlayerCharacter.simulate] en bucle con
-## [code]delta = 1 / Engine.physics_ticks_per_second[/code], igual que harán el servidor y la
-## predicción del cliente en la fase 2.
+## Each test builds a minimal world in code (a 200 x 200 m ground on layer 1, a walkable 25° ramp,
+## a steep 55° one and a 1 m platform with edges), instantiates the character and calls
+## [method PlayerCharacter.simulate] in a loop with
+## [code]delta = 1 / Engine.physics_ticks_per_second[/code], just as the server and the client
+## prediction will do in phase 2.
 ## [br][br]
-## [b]Importante:[/b] move_and_slide() toma su delta del tick de física solo si se llama dentro
-## de él ([method Engine.is_in_physics_frame]); fuera usa el delta de _process, que varía. Por eso
-## cada prueba empieza con [method _begin] (que espera un paso de física) y no vuelve a esperar
-## fotogramas entre llamadas a simulate(), salvo la que graba un tick por paso de física.
+## [b]Important:[/b] move_and_slide() takes its delta from the physics tick only if it is called
+## inside it ([method Engine.is_in_physics_frame]); outside it uses the _process delta, which varies.
+## That is why each test starts with [method _begin] (which waits one physics step) and does not wait
+## for frames again between calls to simulate(), except the one that records one tick per physics step.
 ## [br][br]
-## Las pruebas más importantes son las de repetición: restaurar un estado y repetir las mismas
-## entradas debe reproducir exactamente la misma trayectoria desde cualquier tick, aunque el
-## estado interno del CharacterBody3D (contacto con el suelo, normal del suelo) venga de otra
-## situación. Es lo que hará la reconciliación de la fase 2 cada vez que llegue un estado del
-## servidor.
+## The most important tests are the replay ones: restoring a state and repeating the same inputs
+## must reproduce exactly the same trajectory from any tick, even if the internal state of the
+## CharacterBody3D (floor contact, floor normal) comes from another situation. This is what the
+## phase 2 reconciliation will do every time a state arrives from the server.
 
-## Cómo se "ensucia" el estado interno del CharacterBody3D antes de restaurar un estado.
+## How the internal state of the CharacterBody3D is "dirtied" before restoring a state.
 enum Pollution {
-	AIRBORNE, ## El cuerpo viene de estar cayendo en el aire (sin contacto con el suelo).
-	GROUNDED, ## El cuerpo viene de estar apoyado en el suelo, en otro sitio.
+	AIRBORNE, ## The body comes from falling through the air (without ground contact).
+	GROUNDED, ## The body comes from resting on the ground, somewhere else.
 }
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
@@ -29,29 +28,29 @@ const WORLD_LAYER: int = 1
 const FLAT_SPAWN: Vector3 = Vector3(0.0, 0.0, 0.0)
 const RAMP_THICKNESS: float = 0.5
 const RAMP_WIDTH: float = 10.0
-## Centro del borde inferior de la rampa de 25°, que sube hacia -Z (ligeramente hundido para que
-## no haya escalón con el suelo).
+## Center of the bottom edge of the 25° ramp, which rises toward -Z (slightly sunk so that
+## there is no step with the ground).
 const RAMP_FOOT: Vector3 = Vector3(20.0, -0.02, 0.0)
 const RAMP_ANGLE_DEG: float = 25.0
 const RAMP_LENGTH: float = 12.0
 const STEEP_RAMP_FOOT: Vector3 = Vector3(-20.0, -0.02, 0.0)
 const STEEP_RAMP_ANGLE_DEG: float = 55.0
 const STEEP_RAMP_LENGTH: float = 8.0
-## Plataforma de 1 m de alto, lejos del resto, para caer por un borde.
+## 1 m high platform, far from the rest, to fall off an edge.
 const LEDGE_CENTER: Vector3 = Vector3(-40.0, 0.5, 30.0)
 const LEDGE_SIZE: Vector3 = Vector3(10.0, 1.0, 10.0)
-## Salida sobre la plataforma, a 9 m de su borde -Z.
+## Start on the platform, 9 m from its -Z edge.
 const LEDGE_START: Vector3 = Vector3(-40.0, 1.0, 34.0)
-## Salida del recorrido de la prueba de repetición: 6 m delante de la rampa de 25°.
+## Start of the replay test route: 6 m in front of the 25° ramp.
 const REPLAY_START: Vector3 = Vector3(20.0, 0.0, 6.0)
 const REPLAY_TICKS: int = 180
-## Tolerancia de las repeticiones en el mismo proceso. En la práctica son exactas bit a bit;
-## cualquier estado oculto que no viaje en PlayerState (como la escala que acumulaba el nodo al
-## girar) hace que la trayectoria se separe bastante más que esto.
+## Tolerance of the replays in the same process. In practice they are bit-exact; any hidden
+## state that does not travel in PlayerState (like the scale the node used to accumulate when
+## turning) makes the trajectory drift far more than this.
 const REPLAY_EPSILON: float = 1e-6
-## Repeticiones que divergen que se describen en el mensaje de fallo (el resto solo se cuentan).
+## Diverging replays that are described in the failure message (the rest are only counted).
 const MAX_REPORTED_REPLAYS: int = 3
-## Zona despejada donde se ensucia el estado interno antes de restaurar.
+## Clear area where the internal state is dirtied before restoring.
 const POLLUTION_SPOT: Vector3 = Vector3(0.0, 0.0, 60.0)
 const REPLAY_HINT: String = (
 	"Pista: tras set_state(), el estado interno de CharacterBody3D (is_on_floor(), normal del "
@@ -79,25 +78,25 @@ func before_each() -> void:
 	_add_static_box("Ledge", LEDGE_SIZE, LEDGE_CENTER, 0.0)
 
 	var scene: PackedScene = load(CHARACTER_SCENE_PATH) as PackedScene
-	if not assert_not_null(scene, "no se pudo cargar %s" % CHARACTER_SCENE_PATH):
+	if not assert_not_null(scene, "could not load %s" % CHARACTER_SCENE_PATH):
 		return
 	var instance: Node = scene.instantiate()
 	_character = instance as PlayerCharacter
 	if not assert_not_null(_character,
-			"la raíz de %s debe ser un PlayerCharacter" % CHARACTER_SCENE_PATH):
+			"the root of %s must be a PlayerCharacter" % CHARACTER_SCENE_PATH):
 		if instance != null:
 			instance.free()
 		return
 	_character.jumped.connect(_on_jumped)
 	_character.landed.connect(_on_landed)
 	_world.add_child(_character)
-	# Dos ticks para que el espacio de física registre los cuerpos recién añadidos.
+	# Two ticks for the physics space to register the newly added bodies.
 	await wait_physics_frames(2)
 
 
 func after_each() -> void:
 	if is_instance_valid(_world):
-		# Se saca del árbol ya (los cuerpos salen del espacio de física) y se libera después.
+		# It is removed from the tree right away (the bodies leave the physics space) and freed afterward.
 		_world.get_parent().remove_child(_world)
 		_world.queue_free()
 	_world = null
@@ -105,40 +104,40 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Configuración ----------------------------------------------------------------------------
+# --- Configuration ----------------------------------------------------------------------------
 
 func test_character_configuration() -> void:
 	if not await _begin():
 		return
-	assert_eq(_character.collision_layer, 2, "collision_layer (capa 2 = personajes)")
+	assert_eq(_character.collision_layer, 2, "collision_layer (layer 2 = characters)")
 	assert_eq(_character.collision_mask, 1 | 4,
-			"collision_mask (capa 1, mundo estático, y capa 3, bloqueos invisibles del jugador)")
+			"collision_mask (layer 1, static world, and layer 3, invisible player blockers)")
 	assert_near(_character.floor_max_angle, deg_to_rad(46.0), 1e-4, "floor_max_angle")
 	assert_near(_character.floor_snap_length, 0.35, 1e-4, "floor_snap_length")
 	assert_true(_character.floor_constant_speed, "floor_constant_speed")
 	assert_true(_character.floor_stop_on_slope, "floor_stop_on_slope")
 	assert_true(_character.jump_buffer_window <= PlayerState.MAX_JUMP_BUFFER_TICKS,
-			"jump_buffer_window cabe en el estado de red")
+			"jump_buffer_window fits in the network state")
 	assert_true(_character.coyote_window <= PlayerState.MAX_COYOTE_TICKS,
-			"coyote_window cabe en el estado de red")
+			"coyote_window fits in the network state")
 
 	var target: Node3D = _character.get_camera_target()
 	if assert_not_null(target, "get_camera_target()"):
-		assert_eq(target.name, "CameraTarget", "nombre del objetivo de cámara")
-		assert_true(_character.is_ancestor_of(target), "CameraTarget debe ser hijo del personaje")
-		assert_near(target.position.y, 1.6, 0.05, "CameraTarget a la altura de la cabeza")
+		assert_eq(target.name, "CameraTarget", "name of the camera target")
+		assert_true(_character.is_ancestor_of(target), "CameraTarget must be a child of the character")
+		assert_near(target.position.y, 1.6, 0.05, "CameraTarget at head height")
 
 	var collision: CollisionShape3D = _character.get_node_or_null(^"Collision") as CollisionShape3D
-	if assert_not_null(collision, "nodo Collision (CollisionShape3D)"):
+	if assert_not_null(collision, "Collision node (CollisionShape3D)"):
 		var capsule: CapsuleShape3D = collision.shape as CapsuleShape3D
-		if assert_not_null(capsule, "Collision debe usar un CapsuleShape3D"):
-			assert_near(capsule.radius, 0.4, 1e-3, "radio de la cápsula")
-			assert_near(capsule.height, 1.8, 1e-3, "altura de la cápsula")
+		if assert_not_null(capsule, "Collision must use a CapsuleShape3D"):
+			assert_near(capsule.radius, 0.4, 1e-3, "capsule radius")
+			assert_near(capsule.height, 1.8, 1e-3, "capsule height")
 		assert_near(collision.position.y, 0.9, 1e-3,
-				"la cápsula empieza en el origen: origen en los pies")
+				"the capsule starts at the origin: origin at the feet")
 
 
-# --- Caída, carrera y velocidades -------------------------------------------------------------
+# --- Falling, running and speeds --------------------------------------------------------------
 
 func test_falls_and_lands_from_one_meter() -> void:
 	if not await _begin():
@@ -146,8 +145,8 @@ func test_falls_and_lands_from_one_meter() -> void:
 	_place(Vector3(0.0, 1.0, 0.0), 0.0, false)
 	_reset_counters()
 	_step(Vector2.ZERO, 0.0)
-	assert_false(_character.grounded, "tras el primer tick de caída no puede estar en el suelo")
-	assert_true(_character.global_position.y < 1.0, "debe empezar a caer")
+	assert_false(_character.grounded, "after the first falling tick it cannot be on the ground")
+	assert_true(_character.global_position.y < 1.0, "it must start falling")
 
 	var landed_tick: int = -1
 	for tick: int in range(2, 91):
@@ -155,26 +154,26 @@ func test_falls_and_lands_from_one_meter() -> void:
 		if _character.grounded:
 			landed_tick = tick
 			break
-	# Caída libre de 1 m: t = sqrt(2 / g), unos 18-19 ticks con g = 22.
+	# Free fall of 1 m: t = sqrt(2 / g), about 18-19 ticks with g = 22.
 	var expected_ticks: int = ceili(sqrt(2.0 / _character.gravity)
 			* Engine.physics_ticks_per_second)
 	assert_true(landed_tick >= expected_ticks - 4 and landed_tick <= expected_ticks + 6,
-			"debe aterrizar hacia el tick %d (aterrizó en el %d)" % [expected_ticks, landed_tick])
+			"it must land around tick %d (it landed on %d)" % [expected_ticks, landed_tick])
 	assert_near(_character.global_position.y, 0.0, 0.05,
-			"aterriza con los pies sobre el suelo (y = 0)")
-	assert_near(_character.velocity.y, 0.0, 0.01, "al aterrizar se anula la velocidad vertical")
-	assert_eq(_landed_count, 1, "landed se emite una vez al aterrizar")
-	assert_eq(_jumped_count, 0, "jumped no se emite al caer")
+			"lands with its feet on the ground (y = 0)")
+	assert_near(_character.velocity.y, 0.0, 0.01, "on landing the vertical velocity is zeroed")
+	assert_eq(_landed_count, 1, "landed is emitted once on landing")
+	assert_eq(_jumped_count, 0, "jumped is not emitted when falling")
 
-	# En reposo debe seguir en el suelo sin parpadeos de 'grounded'.
+	# At rest it must stay on the ground without 'grounded' flickering.
 	for i: int in 60:
 		_step(Vector2.ZERO, 0.0)
 		if not _character.grounded:
-			fail("en reposo sobre el suelo, 'grounded' pasó a false en el tick %d" % i)
+			fail("at rest on the ground, 'grounded' turned false on tick %d" % i)
 			break
-	assert_near(_character.global_position.y, 0.0, 0.05, "sigue a ras de suelo")
-	assert_near(_character.get_horizontal_speed(), 0.0, 1e-4, "sin deriva horizontal en reposo")
-	assert_eq(_landed_count, 1, "landed no se repite mientras sigue en el suelo")
+	assert_near(_character.global_position.y, 0.0, 0.05, "stays at ground level")
+	assert_near(_character.get_horizontal_speed(), 0.0, 1e-4, "no horizontal drift at rest")
+	assert_eq(_landed_count, 1, "landed is not repeated while it stays on the ground")
 
 
 func test_runs_forward_at_run_speed() -> void:
@@ -185,40 +184,40 @@ func test_runs_forward_at_run_speed() -> void:
 	var velocity: Vector3 = _character.velocity
 	assert_vec_near(Vector3(velocity.x, 0.0, velocity.z),
 			Vector3(0.0, 0.0, -_character.run_speed), 0.05,
-			"tras 60 ticks hacia delante con look_yaw 0 corre a run_speed hacia -Z")
+			"after 60 ticks forward with look_yaw 0 it runs at run_speed toward -Z")
 	assert_near(_character.get_horizontal_speed(), _character.run_speed, 0.05,
 			"get_horizontal_speed()")
 	var moved: Vector3 = _character.global_position - start
 	assert_true(moved.z < -0.85 * _character.run_speed,
-			"en 1 s debe avanzar casi run_speed metros hacia -Z (avanzó %.3f)" % -moved.z)
+			"in 1 s it must advance almost run_speed meters toward -Z (it advanced %.3f)" % -moved.z)
 	assert_true(moved.z > -_character.run_speed - 0.01,
-			"en 1 s no puede avanzar más de run_speed metros (avanzó %.3f)" % -moved.z)
-	assert_near(moved.x, 0.0, 0.01, "sin deriva lateral")
-	assert_near(_character.global_position.y, 0.0, 0.05, "sigue a ras de suelo")
-	assert_true(_character.grounded, "sigue en el suelo")
+			"in 1 s it cannot advance more than run_speed meters (it advanced %.3f)" % -moved.z)
+	assert_near(moved.x, 0.0, 0.01, "no lateral drift")
+	assert_near(_character.global_position.y, 0.0, 0.05, "stays at ground level")
+	assert_true(_character.grounded, "stays on the ground")
 
 
 func test_movement_is_relative_to_look_yaw() -> void:
 	if not await _begin() or not _settle(FLAT_SPAWN):
 		return
-	# look_yaw = PI/2 mira hacia -X: "adelante" es -X.
+	# look_yaw = PI/2 looks toward -X: "forward" is -X.
 	_step(Vector2(0.0, 1.0), PI / 2.0, 0, 60)
 	assert_vec_near(_horizontal_velocity(), Vector3(-_character.run_speed, 0.0, 0.0), 0.05,
-			"adelante con look_yaw PI/2 va hacia -X")
+			"forward with look_yaw PI/2 goes toward -X")
 	_step(Vector2.ZERO, PI / 2.0, 0, 30)
 
-	# Derecha con look_yaw 0 es +X, a velocidad lateral.
+	# Right with look_yaw 0 is +X, at strafe speed.
 	_step(Vector2(1.0, 0.0), 0.0, 0, 60)
 	assert_vec_near(_horizontal_velocity(),
 			Vector3(_character.run_speed * _character.strafe_multiplier, 0.0, 0.0), 0.05,
-			"derecha con look_yaw 0 va hacia +X a run_speed * strafe_multiplier")
+			"right with look_yaw 0 goes toward +X at run_speed * strafe_multiplier")
 
-	# Diagonal (1, 1): se limita a longitud 1 y no cuenta como lateral (|x| == |y|).
+	# Diagonal (1, 1): it is clamped to length 1 and does not count as lateral (|x| == |y|).
 	_step(Vector2(1.0, 1.0), 0.0, 0, 60)
 	assert_near(_character.get_horizontal_speed(), _character.run_speed, 0.05,
-			"en diagonal la velocidad es run_speed (el deseo se limita a longitud 1)")
+			"on the diagonal the speed is run_speed (the desire is clamped to length 1)")
 	assert_vec_near(_horizontal_velocity().normalized(), Vector3(1.0, 0.0, -1.0).normalized(),
-			0.01, "la diagonal adelante-derecha va hacia (+X, -Z)")
+			0.01, "the forward-right diagonal goes toward (+X, -Z)")
 
 
 func test_sprint_is_faster_than_run() -> void:
@@ -226,21 +225,21 @@ func test_sprint_is_faster_than_run() -> void:
 		return
 	_step(Vector2(0.0, 1.0), 0.0, PlayerInput.SPRINT, 60)
 	assert_vec_near(_horizontal_velocity(), Vector3(0.0, 0.0, -_character.sprint_speed), 0.05,
-			"esprintando hacia delante va a sprint_speed")
+			"sprinting forward goes at sprint_speed")
 	assert_true(_character.sprint_speed > _character.run_speed + 1.0,
-			"sprint_speed debe superar claramente a run_speed")
+			"sprint_speed must clearly exceed run_speed")
 
-	# El esprint solo cuenta hacia delante: hacia atrás se ignora.
+	# Sprint only counts forward: backward it is ignored.
 	_step(Vector2(0.0, -1.0), 0.0, PlayerInput.SPRINT, 90)
 	assert_near(_character.get_horizontal_speed(),
 			_character.run_speed * _character.backward_multiplier, 0.05,
-			"hacia atrás el esprint no tiene efecto")
+			"backward the sprint has no effect")
 
-	# Ni en lateral puro.
+	# Nor in pure lateral.
 	_step(Vector2(1.0, 0.0), 0.0, PlayerInput.SPRINT, 90)
 	assert_near(_character.get_horizontal_speed(),
 			_character.run_speed * _character.strafe_multiplier, 0.05,
-			"en lateral el esprint no tiene efecto")
+			"laterally the sprint has no effect")
 
 
 func test_backward_is_slower() -> void:
@@ -249,9 +248,9 @@ func test_backward_is_slower() -> void:
 	_step(Vector2(0.0, -1.0), 0.0, 0, 60)
 	var expected: float = _character.run_speed * _character.backward_multiplier
 	assert_vec_near(_horizontal_velocity(), Vector3(0.0, 0.0, expected), 0.05,
-			"hacia atrás con look_yaw 0 va hacia +Z a run_speed * backward_multiplier")
+			"backward with look_yaw 0 goes toward +Z at run_speed * backward_multiplier")
 	assert_true(_character.get_horizontal_speed() < _character.run_speed - 0.5,
-			"hacia atrás es más lento que correr")
+			"backward is slower than running")
 
 
 func test_stops_when_input_released() -> void:
@@ -259,16 +258,16 @@ func test_stops_when_input_released() -> void:
 		return
 	_step(Vector2(0.0, 1.0), 0.0, 0, 60)
 	_step(Vector2.ZERO, 0.0)
-	assert_true(_character.get_horizontal_speed() > 0.5, "frena con deceleración, no en seco")
+	assert_true(_character.get_horizontal_speed() > 0.5, "brakes with deceleration, not instantly")
 	_step(Vector2.ZERO, 0.0, 0, 14)
 	assert_near(_character.get_horizontal_speed(), 0.0, 0.01,
-			"en el suelo se para en menos de 15 ticks")
+			"on the ground it stops in fewer than 15 ticks")
 	var stopped_at: Vector3 = _character.global_position
 	_step(Vector2.ZERO, 0.0, 0, 30)
-	assert_vec_near(_character.global_position, stopped_at, 0.005, "parado no se desliza")
+	assert_vec_near(_character.global_position, stopped_at, 0.005, "stopped, it does not slide")
 
 
-# --- Salto y aire -----------------------------------------------------------------------------
+# --- Jumping and air --------------------------------------------------------------------------
 
 func test_jump_apex_and_landing() -> void:
 	if not await _begin() or not _settle(FLAT_SPAWN):
@@ -276,10 +275,10 @@ func test_jump_apex_and_landing() -> void:
 	_reset_counters()
 	var ground_y: float = _character.global_position.y
 	_step(Vector2.ZERO, 0.0, PlayerInput.JUMP)
-	assert_eq(_jumped_count, 1, "jumped se emite en el tick del salto")
+	assert_eq(_jumped_count, 1, "jumped is emitted on the jump tick")
 	assert_near(_character.velocity.y, _character.jump_velocity, _character.gravity * _dt + 1e-3,
-			"la velocidad vertical tras saltar es jump_velocity")
-	assert_false(_character.grounded, "tras saltar ya no está en el suelo")
+			"the vertical velocity after jumping is jump_velocity")
+	assert_false(_character.grounded, "after jumping it is no longer on the ground")
 
 	var apex: float = _character.global_position.y
 	var landed_tick: int = -1
@@ -292,15 +291,15 @@ func test_jump_apex_and_landing() -> void:
 	var expected_apex: float = (_character.jump_velocity * _character.jump_velocity
 			/ (2.0 * _character.gravity))
 	assert_near(apex - ground_y, expected_apex, expected_apex * 0.08,
-			"altura máxima del salto ≈ jump_velocity² / (2 · gravity)")
+			"maximum jump height ≈ jump_velocity² / (2 · gravity)")
 	var expected_air_ticks: int = roundi(2.0 * _character.jump_velocity / _character.gravity
 			* Engine.physics_ticks_per_second)
 	assert_true(landed_tick >= expected_air_ticks - 4 and landed_tick <= expected_air_ticks + 6,
-			"debe aterrizar hacia el tick %d (aterrizó en el %d)" % [
+			"it must land around tick %d (it landed on %d)" % [
 				expected_air_ticks, landed_tick,
 			])
-	assert_eq(_landed_count, 1, "landed se emite una vez al aterrizar")
-	assert_near(_character.global_position.y, ground_y, 0.05, "vuelve a ras de suelo")
+	assert_eq(_landed_count, 1, "landed is emitted once on landing")
+	assert_near(_character.global_position.y, ground_y, 0.05, "back at ground level")
 
 
 func test_holding_jump_only_jumps_once() -> void:
@@ -308,12 +307,12 @@ func test_holding_jump_only_jumps_once() -> void:
 		return
 	_reset_counters()
 	_step(Vector2.ZERO, 0.0, PlayerInput.JUMP, 150)
-	assert_eq(_jumped_count, 1, "mantener el salto pulsado solo salta una vez (flanco de subida)")
-	assert_eq(_landed_count, 1, "aterriza una vez")
-	assert_true(_character.grounded, "acaba en el suelo aunque siga pulsado")
+	assert_eq(_jumped_count, 1, "holding the jump pressed only jumps once (rising edge)")
+	assert_eq(_landed_count, 1, "lands once")
+	assert_true(_character.grounded, "ends up on the ground even if still pressed")
 	_step(Vector2.ZERO, 0.0, 0)
 	_step(Vector2.ZERO, 0.0, PlayerInput.JUMP)
-	assert_eq(_jumped_count, 2, "soltar y volver a pulsar salta otra vez")
+	assert_eq(_jumped_count, 2, "releasing and pressing again jumps again")
 
 
 func test_no_second_jump_in_the_air() -> void:
@@ -321,12 +320,12 @@ func test_no_second_jump_in_the_air() -> void:
 		return
 	_reset_counters()
 	_step(Vector2.ZERO, 0.0, PlayerInput.JUMP)
-	# Volver a pulsar enseguida (dentro de lo que duraría el coyote time) no salta otra vez.
+	# Pressing again right away (within what the coyote time would last) does not jump again.
 	for _i: int in 4:
 		_step(Vector2.ZERO, 0.0, 0)
 		_step(Vector2.ZERO, 0.0, PlayerInput.JUMP)
-	assert_false(_character.grounded, "sigue en el aire")
-	assert_eq(_jumped_count, 1, "en el aire no hay segundo salto (saltar agota el coyote time)")
+	assert_false(_character.grounded, "still in the air")
+	assert_eq(_jumped_count, 1, "in the air there is no second jump (jumping uses up the coyote time)")
 
 
 func test_jump_pressed_just_before_landing_is_buffered() -> void:
@@ -335,16 +334,16 @@ func test_jump_pressed_just_before_landing_is_buffered() -> void:
 	_step(Vector2.ZERO, 0.0, PlayerInput.JUMP)
 	_step(Vector2.ZERO, 0.0, 0)
 	var airborne: PlayerState = _character.get_state()
-	# Tick (contando desde 'airborne') en el que vuelve a tocar el suelo sin pulsar nada.
+	# Tick (counting from 'airborne') at which it touches the ground again without pressing anything.
 	var landing_tick: int = 0
 	while not _character.grounded and landing_tick < 120:
 		_step(Vector2.ZERO, 0.0, 0)
 		landing_tick += 1
-	if not assert_true(_character.grounded, "el salto debe acabar en el suelo"):
+	if not assert_true(_character.grounded, "the jump must end on the ground"):
 		return
 
-	# La pulsación vale durante jump_buffer_window ticks contando el suyo; el salto ocurre en el
-	# primer tick en el suelo (landing_tick + 1).
+	# The press is valid for jump_buffer_window ticks counting its own; the jump happens on the
+	# first tick on the ground (landing_tick + 1).
 	var window: int = _character.jump_buffer_window
 	for early: int in [0, 1, window - 2, window, window + 3]:
 		var press_tick: int = landing_tick - early
@@ -352,29 +351,29 @@ func test_jump_pressed_just_before_landing_is_buffered() -> void:
 		_character.set_state(airborne)
 		_reset_counters()
 		for tick: int in range(1, landing_tick + 8):
-			# Se pulsa en press_tick y se mantiene: no hay más flancos de subida.
+			# Pressed at press_tick and held: there are no more rising edges.
 			_step(Vector2.ZERO, 0.0, PlayerInput.JUMP if tick >= press_tick else 0)
 		var label: String = "salto pulsado %d ticks antes de tocar el suelo" % early
 		if should_jump:
-			assert_eq(_jumped_count, 1, "%s: debe saltar al aterrizar (búfer)" % label)
+			assert_eq(_jumped_count, 1, "%s: it must jump on landing (buffer)" % label)
 		else:
-			assert_eq(_jumped_count, 0, "%s: demasiado pronto, no debe saltar" % label)
+			assert_eq(_jumped_count, 0, "%s: too early, it must not jump" % label)
 
 
 func test_coyote_time_after_walking_off_a_ledge() -> void:
 	if not await _begin() or not _settle(LEDGE_START):
 		return
-	# Camina hacia el borde -Z de la plataforma hasta dejar de pisarla.
+	# Walks toward the platform's -Z edge until it stops stepping on it.
 	var walked: int = 0
 	while _character.grounded and walked < 240:
 		_step(Vector2(0.0, 1.0), 0.0, 0)
 		walked += 1
-	if not assert_false(_character.grounded, "debe salir de la plataforma por el borde"):
+	if not assert_false(_character.grounded, "it must leave the platform over the edge"):
 		return
 	var left_ledge: PlayerState = _character.get_state()
-	assert_true(left_ledge.position.y > 0.6, "acaba de dejar la plataforma de 1 m")
+	assert_true(left_ledge.position.y > 0.6, "it has just left the 1 m platform")
 
-	# Se puede saltar durante coyote_window ticks en el aire; después ya no.
+	# You can jump during coyote_window ticks in the air; after that you cannot.
 	var window: int = _character.coyote_window
 	for delay: int in [1, 2, window, window + 2]:
 		_character.set_state(left_ledge)
@@ -383,15 +382,15 @@ func test_coyote_time_after_walking_off_a_ledge() -> void:
 		_step(Vector2(0.0, 1.0), 0.0, PlayerInput.JUMP)
 		var label: String = "salto pulsado en el tick %d en el aire" % delay
 		if delay <= window:
-			assert_eq(_jumped_count, 1, "%s: el coyote time debe permitirlo" % label)
+			assert_eq(_jumped_count, 1, "%s: the coyote time must allow it" % label)
 			assert_near(_character.velocity.y, _character.jump_velocity, 1e-3,
-					"%s: sale con jump_velocity" % label)
-			# Y no deja un segundo salto en el aire.
+					"%s: leaves with jump_velocity" % label)
+			# And it does not leave a second jump in the air.
 			_step(Vector2(0.0, 1.0), 0.0, 0)
 			_step(Vector2(0.0, 1.0), 0.0, PlayerInput.JUMP)
-			assert_eq(_jumped_count, 1, "%s: tras el salto no hay otro en el aire" % label)
+			assert_eq(_jumped_count, 1, "%s: after the jump there is no other in the air" % label)
 		else:
-			assert_eq(_jumped_count, 0, "%s: el coyote time ya ha pasado" % label)
+			assert_eq(_jumped_count, 0, "%s: the coyote time has already passed" % label)
 
 
 func test_sprint_jump_keeps_momentum() -> void:
@@ -401,26 +400,26 @@ func test_sprint_jump_keeps_momentum() -> void:
 	_step(Vector2(0.0, 1.0), 0.0, PlayerInput.SPRINT, 60)
 	_reset_counters()
 	_step(Vector2(0.0, 1.0), 0.0, sprint_jump)
-	assert_eq(_jumped_count, 1, "salta esprintando")
+	assert_eq(_jumped_count, 1, "jumps while sprinting")
 	var slowest: float = _character.get_horizontal_speed()
 	var air_ticks: int = 0
 	while not _character.grounded and air_ticks < 120:
 		_step(Vector2(0.0, 1.0), 0.0, sprint_jump)
 		slowest = minf(slowest, _character.get_horizontal_speed())
 		air_ticks += 1
-	assert_true(air_ticks > 30, "el salto dura más de medio segundo (%d ticks)" % air_ticks)
+	assert_true(air_ticks > 30, "the jump lasts more than half a second (%d ticks)" % air_ticks)
 	assert_near(slowest, _character.sprint_speed, 0.05,
-			"en el aire conserva la velocidad del esprint (mínimo %.3f m/s)" % slowest)
+			"in the air it keeps the sprint speed (minimum %.3f m/s)" % slowest)
 	assert_near(_character.get_horizontal_speed(), _character.sprint_speed, 0.05,
-			"aterriza a sprint_speed")
+			"lands at sprint_speed")
 
-	# Soltar el esprint en el aire, siguiendo hacia delante, tampoco frena hasta aterrizar.
+	# Releasing the sprint in the air, while still moving forward, does not brake either until landing.
 	_step(Vector2(0.0, 1.0), 0.0, PlayerInput.SPRINT, 5)
 	_step(Vector2(0.0, 1.0), 0.0, sprint_jump)
 	_step(Vector2(0.0, 1.0), 0.0, 0, 20)
-	assert_false(_character.grounded, "sigue en el aire")
+	assert_false(_character.grounded, "still in the air")
 	assert_near(_character.get_horizontal_speed(), _character.sprint_speed, 0.05,
-			"sin esprint en el aire mantiene el impulso que traía")
+			"without sprint in the air it keeps the momentum it had")
 
 
 func test_running_off_a_ledge_while_sprinting_keeps_momentum() -> void:
@@ -430,7 +429,7 @@ func test_running_off_a_ledge_while_sprinting_keeps_momentum() -> void:
 	while _character.grounded and walked < 240:
 		_step(Vector2(0.0, 1.0), 0.0, PlayerInput.SPRINT)
 		walked += 1
-	if not assert_false(_character.grounded, "debe salir de la plataforma por el borde"):
+	if not assert_false(_character.grounded, "it must leave the platform over the edge"):
 		return
 	var slowest: float = _character.get_horizontal_speed()
 	var air_ticks: int = 0
@@ -438,9 +437,9 @@ func test_running_off_a_ledge_while_sprinting_keeps_momentum() -> void:
 		_step(Vector2(0.0, 1.0), 0.0, PlayerInput.SPRINT)
 		slowest = minf(slowest, _character.get_horizontal_speed())
 		air_ticks += 1
-	assert_true(_character.grounded, "aterriza al pie de la plataforma")
+	assert_true(_character.grounded, "lands at the foot of the platform")
 	assert_near(slowest, _character.sprint_speed, 0.05,
-			"al caer por el borde conserva la velocidad del esprint (mínimo %.3f m/s)" % slowest)
+			"when falling off the edge it keeps the sprint speed (minimum %.3f m/s)" % slowest)
 
 
 func test_air_control_is_limited() -> void:
@@ -449,15 +448,15 @@ func test_air_control_is_limited() -> void:
 	_step(Vector2(0.0, 1.0), 0.0, 0, 60)
 	_step(Vector2(0.0, 1.0), 0.0, PlayerInput.JUMP)
 	_step(Vector2.ZERO, 0.0, 0, 10)
-	assert_false(_character.grounded, "sigue en el aire 10 ticks después de saltar")
+	assert_false(_character.grounded, "still in the air 10 ticks after jumping")
 	var speed: float = _character.get_horizontal_speed()
-	# En el suelo se habría parado del todo; en el aire solo pierde un poco de velocidad.
+	# On the ground it would have stopped completely; in the air it only loses a bit of speed.
 	assert_true(speed > _character.run_speed - 1.5 and speed < _character.run_speed - 0.3,
-			"sin entrada en el aire conserva casi toda la velocidad (%.3f m/s)" % speed)
+			"without input in the air it keeps almost all of its speed (%.3f m/s)" % speed)
 	_step(Vector2(0.0, 1.0), 0.0, PlayerInput.SPRINT, 15)
-	assert_false(_character.grounded, "sigue en el aire")
+	assert_false(_character.grounded, "still in the air")
 	assert_true(_character.get_horizontal_speed() <= _character.run_speed + 0.01,
-			"en el aire el esprint no acelera por encima de run_speed (%.3f m/s)"
+			"in the air the sprint does not accelerate above run_speed (%.3f m/s)"
 			% _character.get_horizontal_speed())
 
 
@@ -469,14 +468,14 @@ func test_fall_speed_is_clamped_to_terminal_velocity() -> void:
 	for _i: int in 180:
 		_step(Vector2.ZERO, 0.0)
 		lowest_vertical_speed = minf(lowest_vertical_speed, _character.velocity.y)
-	assert_false(_character.grounded, "tras 3 s de caída desde 150 m sigue en el aire")
+	assert_false(_character.grounded, "after 3 s of falling from 150 m it is still in the air")
 	assert_true(lowest_vertical_speed >= -_character.terminal_velocity - 1e-3,
-			"nunca cae más rápido que terminal_velocity (llegó a %.3f)" % lowest_vertical_speed)
+			"never falls faster than terminal_velocity (it reached %.3f)" % lowest_vertical_speed)
 	assert_near(_character.velocity.y, -_character.terminal_velocity, 1e-3,
-			"alcanza terminal_velocity")
+			"reaches terminal_velocity")
 
 
-# --- Orientación ------------------------------------------------------------------------------
+# --- Orientation ------------------------------------------------------------------------------
 
 func test_facing_turns_toward_look_yaw() -> void:
 	if not await _begin() or not _settle(FLAT_SPAWN, PI / 2.0):
@@ -484,44 +483,44 @@ func test_facing_turns_toward_look_yaw() -> void:
 	var max_turn: float = _character.turn_speed * _dt
 	_step(Vector2(0.0, 1.0), 0.0)
 	assert_near(absf(angle_difference(_character.yaw, PI / 2.0)), max_turn, 1e-3,
-			"en un tick gira turn_speed * delta hacia la cámara")
+			"in one tick it turns turn_speed * delta toward the camera")
 	_step(Vector2(0.0, 1.0), 0.0, 0, 30)
 	assert_near(absf(angle_difference(_character.yaw, 0.0)), 0.0, 1e-3,
-			"acaba mirando hacia la cámara")
+			"ends up facing the camera")
 	assert_near(absf(angle_difference(_character.rotation.y, _character.yaw)), 0.0, 1e-4,
 			"rotation.y = yaw")
 
-	# Gira por el camino corto al cruzar ±PI (de 3.0 a -3.0 hay 0.28 rad, no 6.0).
+	# Turns the short way when crossing ±PI (from 3.0 to -3.0 is 0.28 rad, not 6.0).
 	var state: PlayerState = _character.get_state()
 	state.yaw = 3.0
 	state.velocity = Vector3.ZERO
 	_character.set_state(state)
 	assert_near(absf(angle_difference(_character.rotation.y, 3.0)), 0.0, 1e-4,
-			"set_state() actualiza rotation.y")
+			"set_state() updates rotation.y")
 	_step(Vector2(0.0, 1.0), -3.0)
 	var remaining: float = absf(angle_difference(_character.yaw, -3.0))
 	assert_near(remaining, (TAU - 6.0) - max_turn, 1e-3,
-			"gira por el camino corto cruzando ±PI (le faltan %.3f rad)" % remaining)
+			"turns the short way across ±PI (%.3f rad remain)" % remaining)
 	_step(Vector2(0.0, 1.0), -3.0, 0, 5)
 	assert_near(absf(angle_difference(_character.yaw, -3.0)), 0.0, 1e-3,
-			"llega a -3.0 por el camino corto")
+			"reaches -3.0 the short way")
 
 
 func test_facing_unchanged_when_idle() -> void:
 	if not await _begin() or not _settle(FLAT_SPAWN, 0.0):
 		return
-	# La cámara orbita alrededor del personaje parado: el personaje no gira.
+	# The camera orbits around the stationary character: the character does not turn.
 	_step(Vector2.ZERO, 1.2, 0, 30)
-	assert_near(absf(angle_difference(_character.yaw, 0.0)), 0.0, 1e-6, "parado no gira")
-	# Un deseo de movimiento por debajo de 0.1 tampoco lo gira.
+	assert_near(absf(angle_difference(_character.yaw, 0.0)), 0.0, 1e-6, "stopped it does not turn")
+	# A movement desire below 0.1 does not turn it either.
 	_step(Vector2(0.05, 0.05), 1.2, 0, 30)
 	assert_near(absf(angle_difference(_character.yaw, 0.0)), 0.0, 1e-6,
-			"con un deseo < 0.1 no gira")
+			"with a desire < 0.1 it does not turn")
 
 
 func test_turning_keeps_the_basis_a_pure_function_of_yaw() -> void:
-	# Si la base del nodo acumulara escala al girar (como pasa al asignar 'rotation'), la cápsula
-	# cambiaría de tamaño según la historia de giros y la repetición dejaría de ser exacta.
+	# If the node's basis accumulated scale when turning (as happens when assigning 'rotation'), the capsule
+	# would change size depending on the history of turns and the replay would stop being exact.
 	if not await _begin() or not _settle(FLAT_SPAWN, 0.0):
 		return
 	for i: int in 1200:
@@ -531,25 +530,25 @@ func test_turning_keeps_the_basis_a_pure_function_of_yaw() -> void:
 			_step(Vector2.ZERO, look_yaw, 0, 20)
 	_assert_basis_is_pure_yaw("tras 20 s girando")
 
-	# Una escala o rotación externa se limpia en el siguiente tick. (Escala uniforme: Jolt no
-	# admite escalas no uniformes en una cápsula y registraría un error.)
+	# An external scale or rotation is cleared on the next tick. (Uniform scale: Jolt does not
+	# support non-uniform scales on a capsule and would log an error.)
 	_character.scale = Vector3.ONE * 1.02
 	_character.rotation = Vector3(0.2, 1.0, 0.0)
 	_step(Vector2.ZERO, 0.0)
 	_assert_basis_is_pure_yaw("tras tocar la escala y la rotación desde fuera")
 
 
-# --- Rampas -----------------------------------------------------------------------------------
+# --- Ramps ------------------------------------------------------------------------------------
 
 func test_walkable_ramp_is_climbable() -> void:
 	if not await _begin() or not _settle(RAMP_FOOT + Vector3(0.0, 0.02, 3.0)):
 		return
 	_step(Vector2(0.0, 1.0), 0.0, 0, 150)
 	assert_true(_character.global_position.y > 2.0,
-			"debe subir la rampa de %d° (altura %.2f m)" % [
+			"it must climb the %d° ramp (height %.2f m)" % [
 				RAMP_ANGLE_DEG, _character.global_position.y,
 			])
-	assert_true(_character.grounded, "sigue apoyado en la rampa mientras sube")
+	assert_true(_character.grounded, "stays resting on the ramp while climbing")
 
 
 func test_steep_ramp_is_not_climbable() -> void:
@@ -557,12 +556,12 @@ func test_steep_ramp_is_not_climbable() -> void:
 		return
 	_step(Vector2(0.0, 1.0), 0.0, 0, 150)
 	assert_true(_character.global_position.y < 0.5,
-			"no puede subir una pendiente de %d° (llegó a %.2f m)" % [
+			"it cannot climb a slope of %d° (it reached %.2f m)" % [
 				STEEP_RAMP_ANGLE_DEG, _character.global_position.y,
 			])
 
 
-# --- Estado -----------------------------------------------------------------------------------
+# --- State ------------------------------------------------------------------------------------
 
 func test_get_state_and_set_state_roundtrip() -> void:
 	if not await _begin():
@@ -579,22 +578,22 @@ func test_get_state_and_set_state_roundtrip() -> void:
 	_character.set_state(state)
 
 	assert_vec_near(_character.global_position, state.position, 1e-5,
-			"set_state() coloca global_position")
-	assert_vec_near(_character.velocity, state.velocity, 1e-5, "set_state() asigna velocity")
-	assert_near(_character.yaw, 0.75, 1e-6, "set_state() asigna yaw")
-	assert_near(_character.rotation.y, 0.75, 1e-5, "set_state() gira el nodo (rotation.y)")
-	assert_false(_character.grounded, "set_state() asigna grounded")
-	assert_eq(_character.prev_buttons, state.prev_buttons, "set_state() asigna prev_buttons")
-	assert_eq(_character.last_input_tick, 1234, "set_state() asigna last_input_tick")
-	assert_eq(_character.coyote_ticks, 3, "set_state() asigna coyote_ticks")
-	assert_eq(_character.jump_buffer_ticks, 5, "set_state() asigna jump_buffer_ticks")
+			"set_state() places global_position")
+	assert_vec_near(_character.velocity, state.velocity, 1e-5, "set_state() assigns velocity")
+	assert_near(_character.yaw, 0.75, 1e-6, "set_state() assigns yaw")
+	assert_near(_character.rotation.y, 0.75, 1e-5, "set_state() turns the node (rotation.y)")
+	assert_false(_character.grounded, "set_state() assigns grounded")
+	assert_eq(_character.prev_buttons, state.prev_buttons, "set_state() assigns prev_buttons")
+	assert_eq(_character.last_input_tick, 1234, "set_state() assigns last_input_tick")
+	assert_eq(_character.coyote_ticks, 3, "set_state() assigns coyote_ticks")
+	assert_eq(_character.jump_buffer_ticks, 5, "set_state() assigns jump_buffer_ticks")
 	assert_near(_character.get_horizontal_speed(), 5.0, 1e-4,
-			"get_horizontal_speed() ignora la componente vertical")
+			"get_horizontal_speed() ignores the vertical component")
 
 	var read_back: PlayerState = _character.get_state()
 	if not assert_not_null(read_back, "get_state()"):
 		return
-	assert_false(is_same(read_back, state), "get_state() devuelve un objeto nuevo")
+	assert_false(is_same(read_back, state), "get_state() returns a new object")
 	assert_vec_near(read_back.position, state.position, 1e-5, "get_state().position")
 	assert_vec_near(read_back.velocity, state.velocity, 1e-5, "get_state().velocity")
 	assert_near(read_back.yaw, 0.75, 1e-6, "get_state().yaw")
@@ -604,13 +603,13 @@ func test_get_state_and_set_state_roundtrip() -> void:
 	assert_eq(read_back.coyote_ticks, 3, "get_state().coyote_ticks")
 	assert_eq(read_back.jump_buffer_ticks, 5, "get_state().jump_buffer_ticks")
 
-	# Ni el estado leído ni el restaurado quedan enlazados al personaje.
+	# Neither the state read nor the one restored stays linked to the character.
 	read_back.position = Vector3(100.0, 100.0, 100.0)
 	state.yaw = 2.0
 	assert_vec_near(_character.global_position, Vector3(3.25, 1.5, -7.75), 1e-5,
-			"modificar el estado devuelto no mueve al personaje")
+			"modifying the returned state does not move the character")
 	assert_near(_character.get_state().yaw, 0.75, 1e-6,
-			"modificar el estado restaurado no cambia al personaje")
+			"modifying the restored state does not change the character")
 
 
 func test_simulate_records_tick_and_buttons() -> void:
@@ -622,8 +621,8 @@ func test_simulate_records_tick_and_buttons() -> void:
 	input.buttons = PlayerInput.SPRINT | PlayerInput.BLOCK
 	_character.simulate(input.quantized(), _dt)
 	var expected_buttons: int = PlayerInput.SPRINT | PlayerInput.BLOCK
-	assert_eq(_character.last_input_tick, 4242, "last_input_tick = tick de la entrada aplicada")
-	assert_eq(_character.prev_buttons, expected_buttons, "prev_buttons = botones aplicados")
+	assert_eq(_character.last_input_tick, 4242, "last_input_tick = tick of the applied input")
+	assert_eq(_character.prev_buttons, expected_buttons, "prev_buttons = applied buttons")
 	var state: PlayerState = _character.get_state()
 	assert_eq(state.last_input_tick, 4242, "get_state().last_input_tick")
 	assert_eq(state.prev_buttons, expected_buttons, "get_state().prev_buttons")
@@ -633,18 +632,18 @@ func test_set_state_restores_grounded_so_jump_works() -> void:
 	if not await _begin() or not _settle(FLAT_SPAWN):
 		return
 	var grounded_state: PlayerState = _character.get_state()
-	assert_true(grounded_state.grounded, "estado de partida en el suelo")
+	assert_true(grounded_state.grounded, "starting state on the ground")
 	_pollute(Pollution.AIRBORNE)
-	assert_false(_character.grounded, "tras ensuciar el estado está en el aire")
+	assert_false(_character.grounded, "after dirtying the state it is in the air")
 
 	_character.set_state(grounded_state)
-	assert_true(_character.grounded, "set_state() restaura grounded")
+	assert_true(_character.grounded, "set_state() restores grounded")
 	_reset_counters()
 	_step(Vector2.ZERO, 0.0, PlayerInput.JUMP)
-	assert_eq(_jumped_count, 1, "saltar justo después de restaurar un estado en el suelo funciona")
+	assert_eq(_jumped_count, 1, "jumping right after restoring a state on the ground works")
 	assert_near(_character.velocity.y, _character.jump_velocity, _character.gravity * _dt + 1e-3,
-			"velocidad vertical del salto tras restaurar")
-	assert_true(_character.global_position.y > grounded_state.position.y + 0.05, "despega")
+			"vertical velocity of the jump after restoring")
+	assert_true(_character.global_position.y > grounded_state.position.y + 0.05, "takes off")
 
 
 func test_set_state_restores_prev_buttons_for_jump_edge() -> void:
@@ -655,13 +654,13 @@ func test_set_state_restores_prev_buttons_for_jump_edge() -> void:
 	_character.set_state(state)
 	_reset_counters()
 	_step(Vector2.ZERO, 0.0, PlayerInput.JUMP, 5)
-	assert_eq(_jumped_count, 0, "con JUMP ya pulsado en el estado restaurado, mantenerlo no salta")
+	assert_eq(_jumped_count, 0, "with JUMP already pressed in the restored state, holding it does not jump")
 	_step(Vector2.ZERO, 0.0, 0)
 	_step(Vector2.ZERO, 0.0, PlayerInput.JUMP)
-	assert_eq(_jumped_count, 1, "soltar y volver a pulsar sí salta")
+	assert_eq(_jumped_count, 1, "releasing and pressing again does jump")
 
 
-# --- Determinismo -----------------------------------------------------------------------------
+# --- Determinism ------------------------------------------------------------------------------
 
 func test_replay_determinism_after_restore() -> void:
 	if not await _begin() or not _settle(REPLAY_START, 0.0):
@@ -676,21 +675,21 @@ func test_replay_determinism_after_restore() -> void:
 		max_height = maxf(max_height, _character.global_position.y)
 	states.append(_character.get_state())
 
-	# Comprobaciones del recorrido: si fallan, el escenario ya no prueba lo que debe.
+	# Checks of the route: if they fail, the scenario no longer tests what it should.
 	assert_true(max_height > 1.0,
-			"el recorrido debe subir por la rampa (altura máxima %.2f m)" % max_height)
+			"the route must climb the ramp (maximum height %.2f m)" % max_height)
 	assert_true(_jumped_count >= 2,
-			"el recorrido debe incluir dos saltos (hubo %d)" % _jumped_count)
-	assert_true(states[60].grounded, "en el tick 60 el personaje debe estar en el suelo")
+			"the route must include two jumps (there were %d)" % _jumped_count)
+	assert_true(states[60].grounded, "at tick 60 the character must be on the ground")
 	assert_true(_find_tick_just_before_landing(states) > 0,
-			"el recorrido debe tener un tick en el aire, bajando y a punto de aterrizar")
+			"the route must have a tick in the air, descending and about to land")
 	_assert_basis_is_pure_yaw("tras el recorrido con giros")
 
 	_check_replays_from_every_tick(inputs, states, false, "estado restaurado en el mismo proceso")
 
 
 func test_replay_from_decoded_network_state() -> void:
-	# Como en la fase 2: el estado restaurado llega por la red (PlayerState.encode/decode).
+	# As in phase 2: the restored state arrives over the network (PlayerState.encode/decode).
 	if not await _begin() or not _settle(REPLAY_START, 0.0):
 		return
 	var inputs: Array[PlayerInput] = _build_replay_inputs()
@@ -704,8 +703,8 @@ func test_replay_from_decoded_network_state() -> void:
 
 
 func test_replay_matches_recording_across_physics_frames() -> void:
-	# Como el controlador local: al jugar se simula un tick por paso de física, pero la
-	# reconciliación repetirá muchos ticks dentro de un mismo paso. Ambos deben coincidir.
+	# Like the local controller: when playing, one tick is simulated per physics step, but the
+	# reconciliation will replay many ticks within a single step. Both must match.
 	if not await _begin() or not _settle(REPLAY_START, 0.0):
 		return
 	var start: PlayerState = _character.get_state()
@@ -723,7 +722,7 @@ func test_replay_matches_recording_across_physics_frames() -> void:
 		_character.simulate(inputs[i], _dt)
 		var actual: PlayerState = _character.get_state()
 		if not actual.is_close_to(recorded[i + 1], REPLAY_EPSILON):
-			fail("las mismas entradas en un solo paso de física divergen en el tick %d. %s" % [
+			fail("the same inputs in a single physics step diverge at tick %d. %s" % [
 				i, _describe_difference(actual, recorded[i + 1]),
 			])
 			break
@@ -731,7 +730,7 @@ func test_replay_matches_recording_across_physics_frames() -> void:
 	_check_replays_from_every_tick(inputs, recorded, false, "grabación tick a tick")
 
 
-# --- Utilidades: mundo ------------------------------------------------------------------------
+# --- Utilities: world -------------------------------------------------------------------------
 
 func _add_static_box(node_name: String, size: Vector3, center: Vector3, pitch: float) -> void:
 	var body := StaticBody3D.new()
@@ -748,8 +747,8 @@ func _add_static_box(node_name: String, size: Vector3, center: Vector3, pitch: f
 	_world.add_child(body)
 
 
-## Rampa que sube hacia -Z con la inclinación dada. [param foot] es el centro de su borde
-## superior más cercano (+Z), a ras de suelo.
+## Ramp that rises toward -Z with the given incline. [param foot] is the center of its nearest
+## upper edge (+Z), at ground level.
 func _add_ramp(node_name: String, foot: Vector3, angle_deg: float, length: float) -> void:
 	var angle: float = deg_to_rad(angle_deg)
 	var surface_normal := Vector3(0.0, cos(angle), sin(angle))
@@ -759,18 +758,18 @@ func _add_ramp(node_name: String, foot: Vector3, angle_deg: float, length: float
 	_add_static_box(node_name, Vector3(RAMP_WIDTH, RAMP_THICKNESS, length), center, angle)
 
 
-# --- Utilidades: simulación -------------------------------------------------------------------
+# --- Utilities: simulation --------------------------------------------------------------------
 
-## Comprueba que el personaje existe y entra en un tick de física. Todas las pruebas que simulan
-## empiezan con [code]if not await _begin(): return[/code].
+## Checks that the character exists and enters a physics tick. All the tests that simulate
+## start with [code]if not await _begin(): return[/code].
 func _begin() -> bool:
 	if _character == null:
-		fail("el personaje no se pudo instanciar (ver before_each)")
+		fail("the character could not be instantiated (see before_each)")
 		return false
 	await wait_physics_frames()
 	return assert_true(Engine.is_in_physics_frame(),
-			"simulate() debe llamarse dentro del tick de física para que move_and_slide() "
-			+ "use su delta")
+			"simulate() must be called within the physics tick so that move_and_slide() "
+			+ "uses its delta")
 
 
 func _place(position: Vector3, yaw: float, grounded: bool,
@@ -783,8 +782,8 @@ func _place(position: Vector3, yaw: float, grounded: bool,
 	_character.set_state(state)
 
 
-## Coloca al personaje 5 cm por encima de [param position] y simula en reposo hasta que toca el
-## suelo. Devuelve false (y registra un fallo) si no lo consigue.
+## Places the character 5 cm above [param position] and simulates at rest until it touches the
+## ground. Returns false (and logs a failure) if it does not manage to.
 func _settle(position: Vector3, yaw: float = 0.0) -> bool:
 	_place(position + Vector3(0.0, 0.05, 0.0), yaw, false)
 	for _i: int in 60:
@@ -792,8 +791,8 @@ func _settle(position: Vector3, yaw: float = 0.0) -> bool:
 		if _character.grounded:
 			_step(Vector2.ZERO, yaw, 0, 2)
 			return assert_true(_character.grounded,
-					"el personaje debe quedarse en el suelo tras posarse en %s" % position)
-	fail("el personaje no llegó a posarse en el suelo en %s" % position)
+					"the character must stay on the ground after settling at %s" % position)
+	fail("the character never settled on the ground at %s" % position)
 	return false
 
 
@@ -806,7 +805,7 @@ func _make_input(move: Vector2, look_yaw: float, buttons: int = 0,
 	input.look_yaw = look_yaw
 	input.look_pitch = look_pitch
 	input.buttons = buttons
-	# Igual que el controlador: se simula con la entrada tal como la verá el servidor.
+	# Same as the controller: it simulates with the input as the server will see it.
 	return input.quantized()
 
 
@@ -819,15 +818,15 @@ func _horizontal_velocity() -> Vector3:
 	return Vector3(_character.velocity.x, 0.0, _character.velocity.z)
 
 
-## La base del nodo debe ser exactamente la rotación del yaw, sin escala acumulada.
+## The node's basis must be exactly the yaw rotation, without accumulated scale.
 func _assert_basis_is_pure_yaw(context: String) -> void:
 	var expected := Basis(Vector3.UP, _character.yaw)
 	assert_true(_character.transform.basis == expected,
-			"%s: la base del nodo debe salir solo del yaw (escala %s)" % [
+			"%s: the node's basis must come only from the yaw (scale %s)" % [
 				context, _character.transform.basis.get_scale(),
 			])
 	assert_true(_character.scale.is_equal_approx(Vector3.ONE),
-			"%s: la escala del personaje debe ser 1 (es %s)" % [context, _character.scale])
+			"%s: the character's scale must be 1 (it is %s)" % [context, _character.scale])
 
 
 func _reset_counters() -> void:
@@ -843,11 +842,11 @@ func _on_landed() -> void:
 	_landed_count += 1
 
 
-# --- Utilidades: repetición -------------------------------------------------------------------
+# --- Utilities: replay ------------------------------------------------------------------------
 
-## 180 ticks variados: carrera, esprint en diagonal girando la cámara, subida por la rampa, salto
-## mantenido sobre la pendiente, lateral, marcha atrás bajando, reposo y un segundo salto con
-## esprint en el aire.
+## 180 varied ticks: running, diagonal sprint while turning the camera, climbing the ramp, held jump
+## on the slope, strafing, backward walking while going down, rest and a second jump with
+## sprint in the air.
 func _build_replay_inputs() -> Array[PlayerInput]:
 	var inputs: Array[PlayerInput] = []
 	for i: int in REPLAY_TICKS:
@@ -891,9 +890,9 @@ func _build_replay_inputs() -> Array[PlayerInput]:
 	return inputs
 
 
-## Repite el recorrido desde cada uno de sus ticks, con las dos formas de ensuciar el estado
-## interno, y registra un único fallo con las primeras repeticiones que divergen. Si
-## [param through_network] es true, el estado restaurado pasa antes por encode()/decode().
+## Replays the route from each of its ticks, with both ways of dirtying the internal state, and
+## logs a single failure with the first diverging replays. If [param through_network] is true,
+## the restored state goes through encode()/decode() first.
 func _check_replays_from_every_tick(inputs: Array[PlayerInput], states: Array[PlayerState],
 		through_network: bool, label: String) -> void:
 	var problems: PackedStringArray = PackedStringArray()
@@ -906,15 +905,15 @@ func _check_replays_from_every_tick(inputs: Array[PlayerInput], states: Array[Pl
 			if not problem.is_empty():
 				problems.append(problem)
 	var shown: PackedStringArray = problems.slice(0, MAX_REPORTED_REPLAYS)
-	assert_true(problems.is_empty(), "%s: %d de %d repeticiones divergen.\n      %s\n      %s" % [
+	assert_true(problems.is_empty(), "%s: %d of %d replays diverge.\n      %s\n      %s" % [
 		label, problems.size(), replays, "\n      ".join(shown), REPLAY_HINT,
 	])
 
 
-## Restaura el estado del tick [param from_tick] después de ensuciar el estado interno del
-## CharacterBody3D y repite las mismas entradas hasta el final. Cada tick repetido debe
-## coincidir con el original (no solo el estado final). Devuelve una descripción de la primera
-## diferencia, o una cadena vacía si todo coincide.
+## Restores the state of tick [param from_tick] after dirtying the internal state of the
+## CharacterBody3D and repeats the same inputs until the end. Every replayed tick must match
+## the original (not just the final state). Returns a description of the first difference, or
+## an empty string if everything matches.
 func _replay_from(inputs: Array[PlayerInput], states: Array[PlayerState], from_tick: int,
 		pollution: Pollution, through_network: bool) -> String:
 	var context: String = "desde el tick %d (estado interno previo: %s)" % [
@@ -948,8 +947,8 @@ func _replay_from(inputs: Array[PlayerInput], states: Array[PlayerState], from_t
 	return ""
 
 
-## Deja el estado interno del CharacterBody3D en una situación distinta a la que se va a
-## restaurar, como ocurre en la fase 2 cuando la predicción ya ha avanzado con otras entradas.
+## Leaves the internal state of the CharacterBody3D in a situation different from the one about
+## to be restored, as happens in phase 2 when the prediction has already advanced with other inputs.
 func _pollute(pollution: Pollution) -> void:
 	if pollution == Pollution.AIRBORNE:
 		_place(POLLUTION_SPOT + Vector3(0.0, 20.0, 0.0), 2.5, false, Vector3(3.0, 0.0, -2.0))
@@ -958,11 +957,11 @@ func _pollute(pollution: Pollution) -> void:
 		_place(POLLUTION_SPOT + Vector3(0.0, 0.05, 0.0), -2.0, false)
 		_step(Vector2(-1.0, 0.0), -2.0, 0, 30)
 		assert_true(_character.grounded,
-				"al ensuciar el estado en el suelo, el personaje debe estar apoyado")
+				"when dirtying the state on the ground, the character must be resting on it")
 
 
-## Tick (índice en [param states]) dos ticks antes de un aterrizaje posterior al tick 60: el
-## personaje está en el aire, bajando y a pocos centímetros del suelo (al alcance del snap).
+## Tick (index in [param states]) two ticks before a landing after tick 60: the character is in
+## the air, descending and a few centimeters from the ground (within snap reach).
 func _find_tick_just_before_landing(states: Array[PlayerState]) -> int:
 	for landing: int in range(63, states.size()):
 		var candidate: PlayerState = states[landing - 2]

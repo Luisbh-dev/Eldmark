@@ -1,10 +1,10 @@
 extends TestCase
-## Pruebas de las acciones sociales sobre el jugador bajo el punto de mira (SOC-07, docs/social.md sección 12.6):
-## el rayo contra los remotos a 20 m ([SocialTarget.find], con la cámara de acción de verdad y remotos
-## sintéticos; solo aliados vivos, con nombre de persona y sin una pared delante), qué opciones ofrece cada jugador
-## ([SocialTarget.options_for]: invitar y susurrar a un aliado, solo susurrar a un miembro del grupo, nada con un
-## enemigo), el menú ([SocialMenu]) y la tecla del [HUD], que da el mismo aviso con un enemigo, tras una pared o
-## sin nadie.
+## Tests for social actions on the player under the crosshair (SOC-07, docs/social.md section 12.6):
+## the ray against remotes at 20 m ([SocialTarget.find], with the real action camera and synthetic
+## remotes; only living allies, with a human's name and without a wall in front), which options each player
+## offers ([SocialTarget.options_for]: invite and whisper an ally, only whisper a party member, nothing with an
+## enemy), the menu ([SocialMenu]) and the [HUD] key, which gives the same notice with an enemy, behind a wall or
+## with nobody.
 
 const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
 const HUD_SCENE_PATH: String = "res://scenes/ui/hud.tscn"
@@ -17,7 +17,7 @@ const ENEMY_ID: int = 41
 const FAKE_ID: int = 51
 
 
-## Reloj cuyo tick de dibujo se fija desde la prueba.
+## Clock whose render tick is set from the test.
 class FakeClock extends InterpolationClock:
 	var render: float = 0.0
 
@@ -25,7 +25,7 @@ class FakeClock extends InterpolationClock:
 		return render
 
 
-## Cliente de red que no conecta con nada: da el mundo remoto y el personaje y apunta las invitaciones.
+## Network client that connects to nothing: provides the remote world and the character and records the invitations.
 class FakeClient extends NetClient:
 	var fake_config: ClientConfig = ClientConfig.new()
 	var fake_character: PlayerCharacter = null
@@ -95,7 +95,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _track(node: Node) -> Node:
 	tree.root.add_child(node)
@@ -103,8 +103,8 @@ func _track(node: Node) -> Node:
 	return node
 
 
-## Un remoto de [param kind] y [param realm] con [param player_name] en [param feet], ya dibujándose con la vida
-## [param health_q] (0 = muerto).
+## A remote of [param kind] and [param realm] with [param player_name] at [param feet], already being drawn with health
+## [param health_q] (0 = dead).
 func _spawn(net_id: int, realm: int, player_name: String, feet: Vector3,
 		kind: int = NetProtocol.EntityKind.PLAYER, health_q: int = 255) -> void:
 	var spawn := NetMessages.EntitySpawn.new()
@@ -132,8 +132,8 @@ func _spawn(net_id: int, realm: int, player_name: String, feet: Vector3,
 	_remote_world.draw(float(_tick), 0.016)
 
 
-## Pies de un punto a [param meters] metros delante de la retícula, bajado al suelo para que el remoto quede en
-## el rayo de puntería.
+## Feet of a point [param meters] meters in front of the reticle, lowered to the ground so that the remote falls on
+## the aiming ray.
 func _on_the_aim_ray(meters: float) -> Vector3:
 	var ray: Dictionary = _rig.get_aim_ray()
 	var point: Vector3 = Vector3(ray["origin"]) + Vector3(ray["direction"]) * meters
@@ -148,8 +148,8 @@ func _space() -> PhysicsDirectSpaceState3D:
 	return _rig.get_world_3d().direct_space_state
 
 
-## Un muro de 20 x 10 x 0,5 m en la capa del mundo, cruzado sobre el rayo de puntería a [param meters] m de la
-## cámara. Las consultas de física lo ven tras un par de pasos de física.
+## A 20 x 10 x 0.5 m wall on the world layer, crossing the aiming ray at [param meters] m from the
+## camera. Physics queries see it after a couple of physics steps.
 func _wall_on_the_aim_ray(meters: float) -> StaticBody3D:
 	var ray: Dictionary = _rig.get_aim_ray()
 	var wall := StaticBody3D.new()
@@ -181,96 +181,96 @@ func _option_ids(options: Array[Dictionary]) -> PackedStringArray:
 	return ids
 
 
-# --- El rayo ----------------------------------------------------------------------------------
+# --- The ray ----------------------------------------------------------------------------------
 
 func test_the_crosshair_finds_the_player_it_points_at_within_twenty_meters() -> void:
-	assert_null(_find(), "sin nadie, nada")
+	assert_null(_find(), "with nobody, nothing")
 	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(10.0))
 	var found: RemotePlayerView = _find()
-	if not assert_not_null(found, "a 10 m, en el rayo, se le encuentra"):
+	if not assert_not_null(found, "at 10 m, on the ray, it is found"):
 		return
-	assert_eq(found.get_net_id(), ALLY_ID, "es Bruno")
-	assert_eq(found.get_display_name(), "Bruno", "con su nombre")
+	assert_eq(found.get_net_id(), ALLY_ID, "it is Bruno")
+	assert_eq(found.get_display_name(), "Bruno", "with their name")
 	_spawn(OTHER_ID, VARDHEIM, "Cora", _on_the_aim_ray(6.0))
-	assert_eq(_find().get_net_id(), OTHER_ID, "el más cercano a lo largo del rayo gana")
-	# Un enemigo no es objetivo aunque esté más cerca: se le ignora (no tapa a nadie, como las placas).
+	assert_eq(_find().get_net_id(), OTHER_ID, "the closest along the ray wins")
+	# An enemy is not a target even if closer: it is ignored (it does not cover anyone, like the nameplates).
 	_spawn(ENEMY_ID, SOLMARCH, "Hostil", _on_the_aim_ray(4.0))
-	assert_eq(_find().get_net_id(), OTHER_ID, "un enemigo delante no cuenta: sigue siendo Cora")
+	assert_eq(_find().get_net_id(), OTHER_ID, "an enemy in front does not count: it is still Cora")
 
 
 func test_only_living_allies_with_a_real_name_are_targets() -> void:
 	_spawn(ENEMY_ID, SOLMARCH, "Hostil", _on_the_aim_ray(5.0))
-	assert_null(_find(), "un enemigo solo bajo la retícula no es objetivo: como no apuntar a nadie")
+	assert_null(_find(), "an enemy alone under the reticle is not a target: like aiming at nobody")
 	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(7.0), NetProtocol.EntityKind.PLAYER, 0)
-	assert_null(_find(), "un aliado muerto tampoco (no tiene placa)")
-	# Los jugadores falsos del servidor (ZoneServer.add_fake_player, «Bot-01») no pueden recibir invitaciones ni
-	# susurros: su nombre no cumple NameRules, y el de una persona siempre la cumple.
+	assert_null(_find(), "a dead ally neither (has no nameplate)")
+	# The server's fake players (ZoneServer.add_fake_player, "Bot-01") cannot receive invitations or
+	# whispers: their name does not meet NameRules, and a human's always does.
 	_spawn(FAKE_ID, VARDHEIM, "Bot-01", _on_the_aim_ray(9.0))
-	assert_null(_find(), "un jugador falso de tu reino, tampoco")
+	assert_null(_find(), "a fake player of your realm, neither")
 	assert_false(SocialTarget.is_social_target(_remote_world.get_view(FAKE_ID), VARDHEIM), "Bot-01 no")
 	assert_false(SocialTarget.is_social_target(_remote_world.get_view(ENEMY_ID), VARDHEIM), "Hostil no")
-	assert_false(SocialTarget.is_social_target(_remote_world.get_view(ALLY_ID), VARDHEIM), "Bruno muerto no")
+	assert_false(SocialTarget.is_social_target(_remote_world.get_view(ALLY_ID), VARDHEIM), "dead Bruno no")
 	assert_false(SocialTarget.is_social_target(_remote_world.get_view(ENEMY_ID), NetProtocol.Realm.NONE),
-			"sin reino propio, nadie")
+			"with no own realm, nobody")
 	assert_true(SocialTarget.is_social_target(_remote_world.get_view(ENEMY_ID), SOLMARCH),
-			"para uno de Solmarch, Hostil sí")
+			"for a Solmarch one, Hostil yes")
 	_spawn(OTHER_ID, VARDHEIM, "Cora", _on_the_aim_ray(11.0))
 	var found: RemotePlayerView = _find()
-	if assert_not_null(found, "detrás de todos ellos, un aliado vivo sí"):
-		assert_eq(found.get_net_id(), OTHER_ID, "es Cora")
+	if assert_not_null(found, "behind all of them, a living ally yes"):
+		assert_eq(found.get_net_id(), OTHER_ID, "it is Cora")
 
 
 func test_a_wall_hides_players_from_the_social_target() -> void:
 	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(12.0))
-	assert_not_null(_find(), "sin muro, Bruno está a la vista")
+	assert_not_null(_find(), "without a wall, Bruno is in sight")
 	_wall_on_the_aim_ray(6.0)
 	await wait_physics_frames(2)
 	assert_false(HitShapes.is_ray_clear(_space(), Vector3(_rig.get_aim_ray()["origin"]),
-			_on_the_aim_ray(12.0) + Vector3(0.0, Nameplates.HEAD_HEIGHT, 0.0)), "el muro tapa la cabeza de Bruno")
-	assert_null(_find(), "tras el muro no se le apunta, como no se ve su placa")
+			_on_the_aim_ray(12.0) + Vector3(0.0, Nameplates.HEAD_HEIGHT, 0.0)), "the wall covers Bruno's head")
+	assert_null(_find(), "behind the wall he is not targeted, just as his nameplate is not seen")
 	assert_not_null(SocialTarget.find(_remote_world, _rig.get_aim_ray(), Vector3.ZERO, VARDHEIM, null),
-			"sin espacio de física no se comprueba la oclusión")
-	# Uno a la vista, delante del muro, sí.
+			"without a physics space, occlusion is not checked")
+	# One in sight, in front of the wall, yes.
 	_spawn(OTHER_ID, VARDHEIM, "Cora", _on_the_aim_ray(4.0))
 	var found: RemotePlayerView = _find()
-	if assert_not_null(found, "delante del muro, Cora sí"):
-		assert_eq(found.get_net_id(), OTHER_ID, "es Cora")
+	if assert_not_null(found, "in front of the wall, Cora yes"):
+		assert_eq(found.get_net_id(), OTHER_ID, "it is Cora")
 
 
 func test_players_off_the_ray_or_beyond_twenty_meters_are_not_found() -> void:
 	_spawn(ALLY_ID, VARDHEIM, "Lejos", _on_the_aim_ray(25.0))
 	assert_null(_find(), "a 25 m no")
 	_spawn(OTHER_ID, VARDHEIM, "Aparte", _on_the_aim_ray(8.0) + Vector3(4.0, 0.0, 0.0))
-	assert_null(_find(), "a 4 m del rayo tampoco")
+	assert_null(_find(), "at 4 m from the ray neither")
 	_spawn(ENEMY_ID, VARDHEIM, "Guardián", _on_the_aim_ray(8.0), NetProtocol.EntityKind.NPC)
-	assert_null(_find(), "un PNJ no es un jugador, aunque sea de tu reino")
+	assert_null(_find(), "an NPC is not a player, even if of your realm")
 
 
 func test_the_range_counts_from_the_player_not_from_the_camera() -> void:
-	# La cámara va detrás del jugador: el jugador está 4 m por delante de ella, sobre el rayo.
+	# The camera is behind the player: the player is 4 m in front of it, on the ray.
 	var own: Vector3 = _on_the_aim_ray(4.0)
 	_spawn(OTHER_ID, VARDHEIM, "Cora", _on_the_aim_ray(4.0 + 22.0))
-	assert_null(_find(own), "a 22 m del jugador (26 de la cámara) no se la alcanza")
+	assert_null(_find(own), "at 22 m from the player (26 from the camera) it is not reached")
 	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(4.0 + 18.0))
 	var found: RemotePlayerView = _find(own)
-	if assert_not_null(found, "a 18 m del jugador (22 m de la cámara) sí se le encuentra"):
-		assert_eq(found.get_net_id(), ALLY_ID, "es Bruno, no Cora")
+	if assert_not_null(found, "at 18 m from the player (22 m from the camera) it is found"):
+		assert_eq(found.get_net_id(), ALLY_ID, "it is Bruno, not Cora")
 
 
-# --- Opciones ---------------------------------------------------------------------------------
+# --- Options ----------------------------------------------------------------------------------
 
 func test_an_ally_offers_invite_and_whisper_and_an_enemy_offers_nothing() -> void:
 	var ally: Array[Dictionary] = SocialTarget.options_for(VARDHEIM, VARDHEIM, ALLY_ID, null)
 	assert_eq(_option_ids(ally), PackedStringArray(["invite", "whisper"]),
-			"un aliado: invitar y susurrar")
-	assert_eq(ally[0]["text"], "Invitar al grupo", "texto de invitar")
-	assert_eq(ally[1]["text"], "Susurrar", "texto de susurrar")
+			"an ally: invite and whisper")
+	assert_eq(ally[0]["text"], "Invitar al grupo", "invite text")
+	assert_eq(ally[1]["text"], "Susurrar", "whisper text")
 	assert_true(SocialTarget.options_for(VARDHEIM, SOLMARCH, ENEMY_ID, null).is_empty(),
-			"un enemigo: nada (ni grupos ni susurros cruzan entre reinos)")
+			"an enemy: nothing (neither parties nor whispers cross between realms)")
 	assert_true(SocialTarget.options_for(NetProtocol.Realm.NONE, VARDHEIM, ALLY_ID, null).is_empty(),
-			"sin reino propio, nada")
+			"with no own realm, nothing")
 	assert_true(SocialTarget.options_for(VARDHEIM, NetProtocol.Realm.NONE, ALLY_ID, null).is_empty(),
-			"y un Hueco tampoco")
+			"and a Hollow one neither")
 
 
 func test_a_party_member_or_a_full_party_only_offers_to_whisper() -> void:
@@ -280,19 +280,19 @@ func test_a_party_member_or_a_full_party_only_offers_to_whisper() -> void:
 	roster.members.append(NetMessages.PartyRoster.Member.make(ALLY_ID, "Bruno"))
 	party.apply_roster(roster)
 	assert_eq(_option_ids(SocialTarget.options_for(VARDHEIM, VARDHEIM, ALLY_ID, party)),
-			PackedStringArray(["whisper"]), "quien ya es del grupo: solo susurrar")
+			PackedStringArray(["whisper"]), "someone already in the party: only whisper")
 	assert_eq(_option_ids(SocialTarget.options_for(VARDHEIM, VARDHEIM, OTHER_ID, party)),
 			PackedStringArray(["invite", "whisper"]),
-			"otro aliado, con sitio en el grupo: las dos")
+			"another ally, with room in the party: both")
 	var full := NetMessages.PartyRoster.new()
 	for i: int in NetProtocol.PARTY_MAX_SIZE:
 		full.members.append(NetMessages.PartyRoster.Member.make(500 + i, "M%d" % i))
 	party.apply_roster(full)
 	assert_eq(_option_ids(SocialTarget.options_for(VARDHEIM, VARDHEIM, OTHER_ID, party)),
-			PackedStringArray(["whisper"]), "con el grupo completo, no se invita")
+			PackedStringArray(["whisper"]), "with a full party, no invite")
 
 
-# --- El menú ----------------------------------------------------------------------------------
+# --- The menu ---------------------------------------------------------------------------------
 
 func _menu_with_chat() -> Array:
 	var chat: ChatBox = _track(ChatBox.new()) as ChatBox
@@ -308,32 +308,32 @@ func test_the_menu_offers_invite_and_whisper_and_each_one_works() -> void:
 	var menu: SocialMenu = pair[0]
 	var chat: ChatBox = pair[1]
 	var view: RemotePlayerView = _find()
-	assert_true(menu.open_for(view), "el menú se abre sobre un aliado")
-	assert_true(menu.is_open(), "abierto")
-	assert_true(_rig.is_ui_holding_cursor(), "con el cursor libre")
-	assert_eq(menu.get_target_name(), "Bruno", "sobre Bruno")
-	assert_eq(menu.window_title, "Bruno", "y su nombre en el título")
-	assert_eq(menu.get_buttons().size(), 2, "dos botones")
-	assert_eq(menu.get_buttons()[0].text, "Invitar al grupo", "invitar")
-	assert_eq(menu.get_buttons()[1].text, "Susurrar", "susurrar")
-	assert_not_null(menu.get_button(SocialTarget.OPTION_INVITE), "se busca por acción")
+	assert_true(menu.open_for(view), "the menu opens on an ally")
+	assert_true(menu.is_open(), "open")
+	assert_true(_rig.is_ui_holding_cursor(), "with the cursor free")
+	assert_eq(menu.get_target_name(), "Bruno", "on Bruno")
+	assert_eq(menu.window_title, "Bruno", "and his name in the title")
+	assert_eq(menu.get_buttons().size(), 2, "two buttons")
+	assert_eq(menu.get_buttons()[0].text, "Invitar al grupo", "invite")
+	assert_eq(menu.get_buttons()[1].text, "Susurrar", "whisper")
+	assert_not_null(menu.get_button(SocialTarget.OPTION_INVITE), "looked up by action")
 
-	# Invitar: pulsa el botón; la petición sale y el menú se cierra.
+	# Invite: presses the button; the request goes out and the menu closes.
 	var chosen: Array[String] = []
 	menu.option_chosen.connect(func(option_id: StringName, target_name: String) -> void:
 		chosen.append("%s:%s" % [option_id, target_name]))
 	menu.get_button(SocialTarget.OPTION_INVITE).pressed.emit()
-	assert_eq(PackedStringArray(_client.invited), PackedStringArray(["Bruno"]), "se invita a Bruno")
-	assert_false(menu.is_open(), "el menú se cierra")
-	assert_false(_rig.is_ui_holding_cursor(), "y el cursor vuelve al juego")
-	# Susurrar: abre la línea del chat con «/s Bruno ».
-	assert_true(menu.open_for(view), "se vuelve a abrir")
+	assert_eq(PackedStringArray(_client.invited), PackedStringArray(["Bruno"]), "Bruno is invited")
+	assert_false(menu.is_open(), "the menu closes")
+	assert_false(_rig.is_ui_holding_cursor(), "and the cursor goes back to the game")
+	# Whisper: opens the chat line with "/s Bruno ".
+	assert_true(menu.open_for(view), "it opens again")
 	menu.get_button(SocialTarget.OPTION_WHISPER).pressed.emit()
-	assert_false(menu.is_open(), "el menú se cierra antes de abrir la línea")
-	assert_true(chat.is_open(), "se abre la línea del chat")
-	assert_eq(chat.get_input().text, "/s Bruno ", "con el susurro a Bruno escrito")
+	assert_false(menu.is_open(), "the menu closes before opening the line")
+	assert_true(chat.is_open(), "the chat line opens")
+	assert_eq(chat.get_input().text, "/s Bruno ", "with the whisper to Bruno written")
 	assert_eq(PackedStringArray(chosen), PackedStringArray(["invite:Bruno", "whisper:Bruno"]),
-			"option_chosen avisa de las dos")
+			"option_chosen reports both")
 
 
 func test_the_menu_does_not_open_on_an_enemy_and_shows_only_what_applies() -> void:
@@ -341,31 +341,31 @@ func test_the_menu_does_not_open_on_an_enemy_and_shows_only_what_applies() -> vo
 	_spawn(FAKE_ID, VARDHEIM, "Bot-01", _on_the_aim_ray(14.0))
 	var pair: Array = _menu_with_chat()
 	var menu: SocialMenu = pair[0]
-	assert_false(menu.open_for(_remote_world.get_view(ENEMY_ID)), "con un enemigo no hay nada que ofrecer")
-	assert_false(menu.is_open(), "el menú no se abre")
-	assert_false(_rig.is_ui_holding_cursor(), "ni toca el cursor")
-	assert_eq(menu.get_buttons().size(), 0, "sin botones")
+	assert_false(menu.open_for(_remote_world.get_view(ENEMY_ID)), "with an enemy there is nothing to offer")
+	assert_false(menu.is_open(), "the menu does not open")
+	assert_false(_rig.is_ui_holding_cursor(), "nor touch the cursor")
+	assert_eq(menu.get_buttons().size(), 0, "no buttons")
 	assert_false(menu.open_for(_remote_world.get_view(FAKE_ID)),
-			"con un jugador falso tampoco: el servidor contestaría «no está conectado»")
-	assert_eq(menu.get_buttons().size(), 0, "sin botones")
-	assert_false(menu.open_for(null), "sin objetivo, tampoco")
-	# Un miembro del grupo: solo susurrar.
+			"with a fake player neither: the server would answer \"no está conectado\" (is not connected)")
+	assert_eq(menu.get_buttons().size(), 0, "no buttons")
+	assert_false(menu.open_for(null), "with no target, neither")
+	# A party member: only whisper.
 	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(6.0))
 	var roster := NetMessages.PartyRoster.new()
 	roster.members.append(NetMessages.PartyRoster.Member.make(1, "Ana"))
 	roster.members.append(NetMessages.PartyRoster.Member.make(ALLY_ID, "Bruno"))
 	_client.get_party().apply_roster(roster)
-	assert_true(menu.open_for(_find()), "un compañero de grupo sí")
-	assert_eq(menu.get_buttons().size(), 1, "con una sola opción")
-	assert_eq(menu.get_buttons()[0].text, "Susurrar", "susurrar")
-	assert_null(menu.get_button(SocialTarget.OPTION_INVITE), "no se le invita")
-	# Esc cierra el menú y devuelve el cursor.
+	assert_true(menu.open_for(_find()), "a party mate yes")
+	assert_eq(menu.get_buttons().size(), 1, "with a single option")
+	assert_eq(menu.get_buttons()[0].text, "Susurrar", "whisper")
+	assert_null(menu.get_button(SocialTarget.OPTION_INVITE), "they are not invited")
+	# Esc closes the menu and returns the cursor.
 	menu._input(_key(KEY_ESCAPE))
-	assert_false(menu.is_open(), "Esc lo cierra")
-	assert_false(_rig.is_ui_holding_cursor(), "y devuelve el cursor")
+	assert_false(menu.is_open(), "Esc closes it")
+	assert_false(_rig.is_ui_holding_cursor(), "and returns the cursor")
 
 
-# --- La tecla del HUD -------------------------------------------------------------------------
+# --- The HUD key ------------------------------------------------------------------------------
 
 func _hud() -> HUD:
 	var character: PlayerCharacter = (load(CHARACTER_SCENE_PATH) as PackedScene).instantiate() as PlayerCharacter
@@ -381,32 +381,32 @@ func _hud() -> HUD:
 func test_the_hud_opens_the_menu_on_the_player_under_the_crosshair() -> void:
 	var hud: HUD = _hud()
 	var menu: SocialMenu = hud.get_social_menu()
-	if not assert_not_null(menu, "el HUD en red tiene menú social"):
+	if not assert_not_null(menu, "the networked HUD has a social menu"):
 		return
-	assert_true(menu.get_index() < hud.get_death_screen().get_index(), "por debajo de la pantalla de muerte")
-	assert_true(menu.get_index() < hud.get_scoreboard().get_index(), "y del marcador, que sigue siendo el último")
+	assert_true(menu.get_index() < hud.get_death_screen().get_index(), "below the death screen")
+	assert_true(menu.get_index() < hud.get_scoreboard().get_index(), "and the scoreboard, which is still the last")
 	var bare := HUD.new()
-	assert_null(bare.get_social_menu(), "el sandbox no tiene menú social")
+	assert_null(bare.get_social_menu(), "the sandbox has no social menu")
 	bare.free()
-	# Sin nadie a la vista: se avisa en el chat.
-	assert_false(hud.open_social_menu(), "sin nadie, no se abre")
-	assert_eq(hud.get_chat().get_log().get_lines().back().text, HUD.TEXT_NO_SOCIAL_TARGET, "y se dice por qué")
-	# Un aliado en el rayo: la tecla abre el menú.
+	# With nobody in sight: a notice goes to the chat.
+	assert_false(hud.open_social_menu(), "with nobody, it does not open")
+	assert_eq(hud.get_chat().get_log().get_lines().back().text, HUD.TEXT_NO_SOCIAL_TARGET, "and it says why")
+	# An ally on the ray: the key opens the menu.
 	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(10.0))
 	hud._unhandled_input(_key(KEY_G))
-	assert_true(menu.is_open(), "la tecla de jugador abre el menú")
-	assert_eq(menu.get_target_name(), "Bruno", "sobre Bruno")
-	# Con el menú abierto otra pulsación no hace nada (el cursor es de la ventana).
-	assert_false(hud.open_social_menu(), "con una ventana abierta no se abre otro")
+	assert_true(menu.is_open(), "the player key opens the menu")
+	assert_eq(menu.get_target_name(), "Bruno", "on Bruno")
+	# With the menu open another press does nothing (the cursor belongs to the window).
+	assert_false(hud.open_social_menu(), "with a window open another one does not open")
 	menu.close()
-	# Con la línea del chat abierta, tampoco.
+	# With the chat line open, neither.
 	hud.get_chat().open()
-	assert_false(hud.open_social_menu(), "escribiendo en el chat no se abre")
+	assert_false(hud.open_social_menu(), "while typing in the chat it does not open")
 	hud.get_chat().close()
-	# Un enemigo en el rayo, más cerca: no tapa a Bruno.
+	# An enemy on the ray, closer: it does not cover Bruno.
 	_spawn(ENEMY_ID, SOLMARCH, "Hostil", _on_the_aim_ray(4.0))
-	assert_true(hud.open_social_menu(), "un enemigo delante no cuenta")
-	assert_eq(menu.get_target_name(), "Bruno", "el menú es de Bruno")
+	assert_true(hud.open_social_menu(), "an enemy in front does not count")
+	assert_eq(menu.get_target_name(), "Bruno", "the menu is Bruno's")
 	menu.close()
 
 
@@ -414,46 +414,46 @@ func test_the_hud_gives_the_same_answer_for_an_enemy_a_wall_a_fake_or_nobody() -
 	var hud: HUD = _hud()
 	var menu: SocialMenu = hud.get_social_menu()
 	var log: ChatLog = hud.get_chat().get_log()
-	assert_false(hud.open_social_menu(), "sin nadie, no se abre")
+	assert_false(hud.open_social_menu(), "with nobody, it does not open")
 	var nobody: String = log.get_lines().back().text
-	assert_eq(nobody, HUD.TEXT_NO_SOCIAL_TARGET, "y se dice por qué")
-	# Un enemigo escondido tras un muro: pulsar la tecla contra el muro no puede delatarlo.
+	assert_eq(nobody, HUD.TEXT_NO_SOCIAL_TARGET, "and it says why")
+	# An enemy hidden behind a wall: pressing the key against the wall must not give it away.
 	var wall: StaticBody3D = _wall_on_the_aim_ray(6.0)
 	await wait_physics_frames(2)
 	_spawn(ENEMY_ID, SOLMARCH, "Oculto", _on_the_aim_ray(12.0))
 	var before: int = log.get_count()
-	assert_false(hud.open_social_menu(), "con un enemigo detrás del muro, no se abre")
-	assert_eq(log.get_count(), before + 1, "un aviso")
-	assert_eq(log.get_lines().back().text, nobody, "el mismo que sin nadie: no se delata a quien está detrás")
-	# Un aliado tras el muro tampoco abre el menú (su placa está oculta).
+	assert_false(hud.open_social_menu(), "with an enemy behind the wall, it does not open")
+	assert_eq(log.get_count(), before + 1, "a notice")
+	assert_eq(log.get_lines().back().text, nobody, "the same as with nobody: whoever is behind is not given away")
+	# An ally behind the wall does not open the menu either (their nameplate is hidden).
 	_spawn(ALLY_ID, VARDHEIM, "Tapado", _on_the_aim_ray(10.0))
-	assert_false(hud.open_social_menu(), "un aliado tapado no abre el menú")
-	assert_false(menu.is_open(), "cerrado")
-	assert_eq(log.get_lines().back().text, nobody, "mismo aviso")
+	assert_false(hud.open_social_menu(), "a covered ally does not open the menu")
+	assert_false(menu.is_open(), "closed")
+	assert_eq(log.get_lines().back().text, nobody, "same notice")
 	_root.remove_child(wall)
 	wall.free()
 	await wait_physics_frames(2)
-	assert_true(hud.open_social_menu(), "sin el muro, el aliado sí")
-	assert_eq(menu.get_target_name(), "Tapado", "sobre él")
+	assert_true(hud.open_social_menu(), "without the wall, the ally does")
+	assert_eq(menu.get_target_name(), "Tapado", "on them")
 	menu.close()
 
-	# En otro sitio, lejos de los de antes: un enemigo a la vista y un jugador falso de tu reino, delante de un
-	# aliado de verdad.
+	# Somewhere else, far from the earlier ones: an enemy in sight and a fake player of your realm, in front of a
+	# real ally.
 	_move_player_to(Vector3(100.0, 0.0, 0.0))
-	assert_false(hud.open_social_menu(), "allí no hay nadie")
+	assert_false(hud.open_social_menu(), "there is nobody there")
 	_spawn(ENEMY_ID + 1, SOLMARCH, "Hostil", _on_the_aim_ray(4.0))
-	assert_false(hud.open_social_menu(), "con un enemigo a la vista, no se abre")
-	assert_eq(log.get_lines().back().text, nobody, "y el aviso es el de siempre")
+	assert_false(hud.open_social_menu(), "with an enemy in sight, it does not open")
+	assert_eq(log.get_lines().back().text, nobody, "and the notice is the usual one")
 	_spawn(FAKE_ID, VARDHEIM, "Bot-01", _on_the_aim_ray(6.0))
-	assert_false(hud.open_social_menu(), "con un jugador falso, no se abre")
-	assert_eq(log.get_lines().back().text, nobody, "mismo aviso")
+	assert_false(hud.open_social_menu(), "with a fake player, it does not open")
+	assert_eq(log.get_lines().back().text, nobody, "same notice")
 	_spawn(OTHER_ID, VARDHEIM, "Cora", _on_the_aim_ray(8.0))
-	assert_true(hud.open_social_menu(), "un aliado de verdad detrás de los dos, sí")
-	assert_eq(menu.get_target_name(), "Cora", "sobre Cora")
+	assert_true(hud.open_social_menu(), "a real ally behind the two, yes")
+	assert_eq(menu.get_target_name(), "Cora", "on Cora")
 	menu.close()
 
 
-## Pulsa y suelta [param keycode] por la entrada de la ventana (la interfaz la ve antes que el juego).
+## Presses and releases [param keycode] through the window's input (the interface sees it before the game).
 func _tap(keycode: Key) -> void:
 	for pressed: bool in [true, false]:
 		var event := InputEventKey.new()
@@ -463,33 +463,33 @@ func _tap(keycode: Key) -> void:
 		tree.root.push_input(event)
 
 
-## Revisión de la fase 4 (cliente): el menú da el foco a su primer botón al abrirse («Intro lo pulsa») y las ventanas no
-## suspenden la entrada de juego, así que Espacio, que es saltar, pulsaba también «Invitar al grupo». Espacio ya no
-## confirma en la interfaz (ui_accept se queda con Intro).
+## Phase 4 review (client): the menu gives focus to its first button when it opens ("Intro" (Enter) presses it) and windows do not
+## suspend game input, so Space, which is jump, also pressed "Invitar al grupo" (Invite to party). Space no longer
+## confirms in the interface (ui_accept keeps Enter).
 func test_space_jumps_without_pressing_the_focused_button_and_enter_still_presses_it() -> void:
 	var accept: Array[Key] = []
 	for event: InputEvent in InputMap.action_get_events(&"ui_accept"):
 		if event is InputEventKey:
 			accept.append((event as InputEventKey).keycode if (event as InputEventKey).keycode != KEY_NONE
 					else (event as InputEventKey).physical_keycode)
-	assert_false(accept.has(KEY_SPACE), "Espacio no confirma (%s)" % [accept])
-	assert_true(accept.has(KEY_ENTER), "Intro sí")
+	assert_false(accept.has(KEY_SPACE), "Space does not confirm (%s)" % [accept])
+	assert_true(accept.has(KEY_ENTER), "Enter does")
 	var hud: HUD = _hud()
 	var menu: SocialMenu = hud.get_social_menu()
 	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(10.0))
 	hud._unhandled_input(_key(KEY_G))
-	if not assert_true(menu.is_open(), "G abre el menú sobre Bruno"):
+	if not assert_true(menu.is_open(), "G opens the menu on Bruno"):
 		return
-	assert_eq(tree.root.gui_get_focus_owner(), menu.get_buttons()[0], "con el foco en «Invitar al grupo»")
+	assert_eq(tree.root.gui_get_focus_owner(), menu.get_buttons()[0], "with focus on \"Invitar al grupo\" (Invite to party)")
 	_tap(KEY_SPACE)
-	assert_eq(_client.invited.size(), 0, "saltar no invita a nadie")
-	assert_true(menu.is_open(), "ni cierra el menú")
+	assert_eq(_client.invited.size(), 0, "jumping invites nobody")
+	assert_true(menu.is_open(), "nor closes the menu")
 	_tap(KEY_ENTER)
-	assert_eq(PackedStringArray(_client.invited), PackedStringArray(["Bruno"]), "Intro pulsa el botón enfocado")
+	assert_eq(PackedStringArray(_client.invited), PackedStringArray(["Bruno"]), "Enter presses the focused button")
 	assert_false(menu.is_open())
 
 
-## Lleva al jugador local (y la cámara, que va con él) a [param feet].
+## Moves the local player (and the camera, which goes with it) to [param feet].
 func _move_player_to(feet: Vector3) -> void:
 	_client.fake_character.global_position = feet
 	_rig.global_position = feet + Vector3(0.0, 1.6, 0.0)

@@ -1,14 +1,14 @@
 extends TestCase
-## Pruebas de la interfaz de combate (UI-10, UI-14) con estados falsos: las barras de vida y
-## resistencia ([VitalsHud]: valores, fantasma, parpadeo, resistencia oculta llena), los arcos de
-## dirección del daño ([DamageIndicator]: ángulo respecto a la cámara), la viñeta de vida baja, la
-## pantalla de muerte ([DeathScreen]: cuenta atrás con el tick del servidor, botón, 10 ciclos sin
-## restos) y la lista de puntos de reaparición ([RespawnPointList]). La última parte monta el [HUD]
-## entero con un cliente de red falso que da la vida y el estado a voluntad.
+## Tests for the combat interface (UI-10, UI-14) with fake states: the health and
+## stamina bars ([VitalsHud]: values, ghost, flashing, stamina hidden when full), the damage
+## direction arcs ([DamageIndicator]: angle relative to the camera), the low-health vignette, the
+## death screen ([DeathScreen]: countdown with the server tick, button, 10 cycles with no
+## leftovers) and the list of respawn points ([RespawnPointList]). The last part mounts the entire
+## [HUD] with a fake network client that provides health and state at will.
 ## [br][br]
-## Fase 4 (H4, docs/habilidades.md, sección 6.5): los avisos de derribado (cuenta atrás, levantar, rematar y
-## la invitación a levantar a un aliado), el selector de plantilla de la pantalla de muerte y la puntería
-## del arco (zoom de la cámara y retícula).
+## Phase 4 (H4, docs/habilidades.md, section 6.5): the knocked-down alerts (countdown, get up, finish off and
+## the invitation to help an ally up), the template selector on the death screen and the bow
+## aiming (camera zoom and reticle).
 
 const OWN_ID: int = 5
 const OTHER_ID: int = 21
@@ -17,8 +17,8 @@ const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.t
 const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
 
 
-## Cliente de red que no conecta con nada: da la vida, el estado y el tick del servidor que pide la
-## prueba y apunta las peticiones de reaparición.
+## Network client that connects to nothing: provides the health, state and server tick that the
+## test asks for and records the respawn requests.
 class FakeClient extends NetClient:
 	var fake_has_health: bool = true
 	var fake_health: int = 1000
@@ -95,28 +95,28 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-## Añade [param node] a la raíz de la prueba (o a [param parent]) y lo libera al acabar.
+## Adds [param node] to the test's root (or to [param parent]) and frees it at the end.
 func _track(node: Node, parent: Node = null) -> Node:
 	(parent if parent != null else _root).add_child(node)
 	_nodes.append(node)
 	return node
 
 
-# --- Barras de vida y resistencia -------------------------------------------------------------
+# --- Health and stamina bars ------------------------------------------------------------------
 
 func test_health_bar_shows_the_values_and_hides_without_network() -> void:
 	var vitals: VitalsHud = _track(VitalsHud.new()) as VitalsHud
-	assert_true(vitals.is_health_visible(), "por defecto se ve")
+	assert_true(vitals.is_health_visible(), "visible by default")
 	vitals.set_health(750, 1000)
 	assert_eq(vitals.get_health(), 750)
 	assert_eq(vitals.get_max_health(), 1000)
 	assert_near(vitals.get_health_fraction(), 0.75, 0.0001)
 	vitals.set_health(5000, 1000)
-	assert_eq(vitals.get_health(), 1000, "no pasa de la máxima")
+	assert_eq(vitals.get_health(), 1000, "does not exceed the maximum")
 	vitals.set_health(-3, 1000)
-	assert_eq(vitals.get_health(), 0, "ni baja de 0")
+	assert_eq(vitals.get_health(), 0, "nor go below 0")
 	vitals.set_health_visible(false)
-	assert_false(vitals.is_health_visible(), "sin red la vida se oculta")
+	assert_false(vitals.is_health_visible(), "without a network the health is hidden")
 
 
 func test_health_ghost_holds_then_shrinks_to_the_current_value() -> void:
@@ -124,15 +124,15 @@ func test_health_ghost_holds_then_shrinks_to_the_current_value() -> void:
 	vitals.snap_health(1000, 1000)
 	vitals.set_health(600, 1000)
 	assert_near(vitals.get_health_fraction(), 0.6, 0.0001)
-	assert_near(vitals.get_ghost_fraction(), 1.0, 0.0001, "el fantasma conserva la pérdida")
+	assert_near(vitals.get_ghost_fraction(), 1.0, 0.0001, "the ghost keeps the loss")
 	vitals.advance(VitalsHud.GHOST_HOLD_SECONDS * 0.9)
-	assert_near(vitals.get_ghost_fraction(), 1.0, 0.0001, "y espera")
+	assert_near(vitals.get_ghost_fraction(), 1.0, 0.0001, "and waits")
 	vitals.advance(VitalsHud.GHOST_HOLD_SECONDS * 0.2)
 	vitals.advance(0.2)
-	assert_true(vitals.get_ghost_fraction() < 1.0, "luego se encoge")
-	assert_true(vitals.get_ghost_fraction() > 0.6, "sin pasarse")
+	assert_true(vitals.get_ghost_fraction() < 1.0, "then it shrinks")
+	assert_true(vitals.get_ghost_fraction() > 0.6, "without overshooting")
 	vitals.advance(5.0)
-	assert_near(vitals.get_ghost_fraction(), 0.6, 0.0001, "hasta la vida actual")
+	assert_near(vitals.get_ghost_fraction(), 0.6, 0.0001, "down to the current health")
 
 
 func test_health_ghost_follows_when_healing_and_snaps_without_a_trail() -> void:
@@ -141,10 +141,10 @@ func test_health_ghost_follows_when_healing_and_snaps_without_a_trail() -> void:
 	vitals.set_health(400, 1000)
 	vitals.advance(10.0)
 	vitals.set_health(700, 1000)
-	assert_near(vitals.get_ghost_fraction(), 0.7, 0.0001, "al curarse el fantasma sigue a la barra")
+	assert_near(vitals.get_ghost_fraction(), 0.7, 0.0001, "when healing the ghost follows the bar")
 	vitals.set_health(300, 1000)
 	vitals.snap_health(1000, 1000)
-	assert_near(vitals.get_ghost_fraction(), 1.0, 0.0001, "snap_health no deja fantasma")
+	assert_near(vitals.get_ghost_fraction(), 1.0, 0.0001, "snap_health leaves no ghost")
 	assert_near(vitals.get_health_fraction(), 1.0, 0.0001)
 
 
@@ -154,7 +154,7 @@ func test_second_loss_during_the_ghost_keeps_the_trail() -> void:
 	vitals.set_health(800, 1000)
 	vitals.advance(0.3)
 	vitals.set_health(500, 1000)
-	assert_near(vitals.get_ghost_fraction(), 1.0, 0.0001, "el fantasma cubre las dos pérdidas")
+	assert_near(vitals.get_ghost_fraction(), 1.0, 0.0001, "the ghost covers both losses")
 	vitals.advance(VitalsHud.GHOST_HOLD_SECONDS + 5.0)
 	assert_near(vitals.get_ghost_fraction(), 0.5, 0.0001)
 
@@ -163,21 +163,21 @@ func test_stamina_bar_values_and_hiding_when_full() -> void:
 	var vitals: VitalsHud = _track(VitalsHud.new()) as VitalsHud
 	vitals.set_stamina(1000, 1000)
 	vitals.advance(VitalsHud.STAMINA_HIDE_DELAY + 1.0)
-	assert_false(vitals.is_stamina_visible(), "llena y quieta, se oculta")
+	assert_false(vitals.is_stamina_visible(), "full and still, it hides")
 	assert_eq(vitals.get_stamina_alpha(), 0.0)
 	vitals.set_stamina(700, 1000)
 	vitals.advance(0.5)
-	assert_true(vitals.is_stamina_visible(), "al gastar reaparece")
+	assert_true(vitals.is_stamina_visible(), "when spending it reappears")
 	assert_near(vitals.get_stamina_fraction(), 0.7, 0.0001)
 	assert_eq(vitals.get_stamina_alpha(), 1.0)
 	vitals.set_stamina(1000, 1000)
 	vitals.advance(VitalsHud.STAMINA_HIDE_DELAY * 0.5)
-	assert_eq(vitals.get_stamina_alpha(), 1.0, "recién llena aún se ve un momento")
+	assert_eq(vitals.get_stamina_alpha(), 1.0, "just filled it is still visible for a moment")
 	vitals.advance(VitalsHud.STAMINA_HIDE_DELAY + 1.0)
-	assert_eq(vitals.get_stamina_alpha(), 0.0, "y luego se desvanece")
+	assert_eq(vitals.get_stamina_alpha(), 0.0, "and then it fades")
 	vitals.set_stamina(120, 1000, true)
 	vitals.advance(0.5)
-	assert_true(vitals.is_exhausted(), "agotado")
+	assert_true(vitals.is_exhausted(), "exhausted")
 	assert_true(vitals.is_stamina_visible())
 
 
@@ -188,41 +188,41 @@ func test_stamina_bar_blinks_when_an_action_fails_for_lack_of_stamina() -> void:
 	assert_false(vitals.is_stamina_visible())
 	assert_false(vitals.is_blinking())
 	vitals.notify_no_stamina()
-	assert_true(vitals.is_blinking(), "parpadea")
-	assert_true(vitals.is_stamina_visible(), "y la barra aparece aunque esté llena")
+	assert_true(vitals.is_blinking(), "flashes")
+	assert_true(vitals.is_stamina_visible(), "and the bar appears even if full")
 	vitals.advance(VitalsHud.BLINK_SECONDS * 0.5)
 	assert_true(vitals.is_blinking())
 	vitals.advance(VitalsHud.BLINK_SECONDS)
-	assert_false(vitals.is_blinking(), "dura un momento")
+	assert_false(vitals.is_blinking(), "lasts a moment")
 
 
-# --- Arcos de dirección del daño --------------------------------------------------------------
+# --- Damage direction arcs --------------------------------------------------------------------
 
 func test_relative_angle_is_zero_in_front_and_signed_to_the_sides() -> void:
 	var victim := Vector3(10.0, 0.0, 10.0)
-	# Cámara mirando a -Z (yaw 0).
+	# Camera facing -Z (yaw 0).
 	assert_near(DamageIndicator.relative_angle(0.0, victim, victim + Vector3(0.0, 0.0, -5.0)), 0.0,
-			0.001, "delante")
+			0.001, "in front")
 	assert_near(DamageIndicator.relative_angle(0.0, victim, victim + Vector3(5.0, 0.0, 0.0)),
-			PI * 0.5, 0.001, "a la derecha")
+			PI * 0.5, 0.001, "to the right")
 	assert_near(DamageIndicator.relative_angle(0.0, victim, victim + Vector3(-5.0, 0.0, 0.0)),
-			-PI * 0.5, 0.001, "a la izquierda")
+			-PI * 0.5, 0.001, "to the left")
 	assert_near(absf(DamageIndicator.relative_angle(0.0, victim, victim + Vector3(0.0, 0.0, 5.0))),
-			PI, 0.001, "detrás")
+			PI, 0.001, "behind")
 	assert_near(DamageIndicator.relative_angle(0.0, victim, victim + Vector3(0.0, 40.0, 0.0)), 0.0,
-			0.001, "solo cuenta el plano horizontal")
+			0.001, "only the horizontal plane counts")
 
 
 func test_relative_angle_follows_the_camera_yaw() -> void:
 	var victim := Vector3.ZERO
 	var attacker := Vector3(0.0, 0.0, -5.0)
-	# Giro de 90° a la izquierda (yaw +PI/2): lo que estaba delante queda a la derecha.
+	# Turning 90° left (yaw +PI/2): what was in front is now to the right.
 	assert_near(DamageIndicator.relative_angle(PI * 0.5, victim, attacker), PI * 0.5, 0.001)
 	assert_near(DamageIndicator.relative_angle(-PI * 0.5, victim, attacker), -PI * 0.5, 0.001)
-	# Mirando justo al atacante, está delante.
+	# Looking right at the attacker, they are in front.
 	var facing: float = DamageIndicator.world_heading(victim, attacker)
 	assert_near(DamageIndicator.relative_angle(facing, victim, attacker), 0.0, 0.001)
-	# Dos posiciones en el mismo punto no dan dirección.
+	# Two positions at the same point give no direction.
 	assert_eq(DamageIndicator.world_heading(victim, victim), 0.0)
 
 
@@ -231,57 +231,57 @@ func test_damage_indicator_keeps_world_direction_when_the_camera_turns() -> void
 	indicator.set_camera_yaw(0.0)
 	indicator.add_hit(DamageIndicator.world_heading(Vector3.ZERO, Vector3(5.0, 0.0, 0.0)), 1.0)
 	assert_eq(indicator.get_arc_count(), 1)
-	assert_near(indicator.get_arc_angle(0), PI * 0.5, 0.001, "el golpe vino de la derecha")
+	assert_near(indicator.get_arc_angle(0), PI * 0.5, 0.001, "the hit came from the right")
 	indicator.set_camera_yaw(-PI * 0.5)
-	assert_near(indicator.get_arc_angle(0), 0.0, 0.001, "si la cámara gira a la derecha, queda delante")
+	assert_near(indicator.get_arc_angle(0), 0.0, 0.001, "if the camera turns right, it ends up in front")
 	indicator.set_camera_yaw(PI * 0.5)
-	assert_near(absf(indicator.get_arc_angle(0)), PI, 0.001, "y si gira a la izquierda, detrás")
+	assert_near(absf(indicator.get_arc_angle(0)), PI, 0.001, "and if it turns left, behind")
 
 
 func test_damage_indicator_fades_out_and_is_bounded() -> void:
 	var indicator: DamageIndicator = _track(DamageIndicator.new()) as DamageIndicator
 	for i: int in DamageIndicator.MAX_ARCS + 5:
 		indicator.add_hit(float(i) * 0.1, 1.0)
-	assert_eq(indicator.get_arc_count(), DamageIndicator.MAX_ARCS, "no más arcos que el tope")
+	assert_eq(indicator.get_arc_count(), DamageIndicator.MAX_ARCS, "no more arcs than the cap")
 	var fresh: float = indicator.get_arc_alpha(0)
 	indicator.advance(DamageIndicator.LIFETIME_SECONDS * 0.9)
-	assert_true(indicator.get_arc_alpha(0) < fresh, "se desvanecen")
+	assert_true(indicator.get_arc_alpha(0) < fresh, "they fade")
 	indicator.advance(DamageIndicator.LIFETIME_SECONDS)
-	assert_eq(indicator.get_arc_count(), 0, "y desaparecen")
+	assert_eq(indicator.get_arc_count(), 0, "and disappear")
 
 
-# --- Viñeta de vida baja ----------------------------------------------------------------------
+# --- Low-health vignette ----------------------------------------------------------------------
 
 func test_vignette_appears_only_with_low_health() -> void:
 	var vignette: LowHealthVignette = _track(LowHealthVignette.new()) as LowHealthVignette
 	vignette.set_health_fraction(1.0)
-	assert_eq(vignette.get_base_alpha(), 0.0, "con la vida llena no hay viñeta")
+	assert_eq(vignette.get_base_alpha(), 0.0, "with full health there is no vignette")
 	vignette.set_health_fraction(LowHealthVignette.START_FRACTION + 0.01)
-	assert_eq(vignette.get_base_alpha(), 0.0, "tampoco justo por encima del umbral")
+	assert_eq(vignette.get_base_alpha(), 0.0, "nor just above the threshold")
 	vignette.set_health_fraction(0.2)
 	var middle: float = vignette.get_base_alpha()
-	assert_true(middle > 0.0 and middle < LowHealthVignette.MAX_ALPHA, "a media subida")
+	assert_true(middle > 0.0 and middle < LowHealthVignette.MAX_ALPHA, "halfway up")
 	vignette.set_health_fraction(0.1)
-	assert_true(vignette.get_base_alpha() > middle, "cuanto menos vida, más viñeta")
+	assert_true(vignette.get_base_alpha() > middle, "the less health, the more vignette")
 	vignette.set_health_fraction(0.0)
-	assert_near(vignette.get_base_alpha(), LowHealthVignette.MAX_ALPHA, 0.0001, "con el tope")
+	assert_near(vignette.get_base_alpha(), LowHealthVignette.MAX_ALPHA, 0.0001, "at the cap")
 
 
 func test_vignette_flashes_on_a_hit_even_with_full_health() -> void:
 	var vignette: LowHealthVignette = _track(LowHealthVignette.new()) as LowHealthVignette
 	vignette.set_health_fraction(1.0)
 	vignette.advance(0.0)
-	assert_false(vignette.visible, "invisible sin motivo")
+	assert_false(vignette.visible, "invisible for no reason")
 	vignette.flash(90, 1000)
-	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "el golpe la enciende")
+	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "the hit lights it up")
 	assert_true(vignette.visible)
 	vignette.advance(LowHealthVignette.FLASH_SECONDS + 0.1)
-	assert_eq(vignette.get_alpha(), 0.0, "y se apaga")
+	assert_eq(vignette.get_alpha(), 0.0, "and it goes off")
 	assert_false(vignette.visible)
-	assert_not_null(vignette.texture, "la textura se genera al arrancar")
+	assert_not_null(vignette.texture, "the texture is generated at startup")
 
 
-# --- Puntos de reaparición --------------------------------------------------------------------
+# --- Respawn points ---------------------------------------------------------------------------
 
 func _point(world: Node3D, node_name: String, realm: StringName, group: StringName) -> Marker3D:
 	var marker := Marker3D.new()
@@ -301,14 +301,14 @@ func test_respawn_list_uses_the_respawn_group_filtered_by_realm_in_scene_order()
 	fort.set_meta(&"title", "Fuerte del Vado")
 	var points: Array[Node3D] = RespawnPointList.list(world, NetProtocol.Realm.VARDHEIM)
 	assert_eq(points.size(), 2)
-	assert_eq(String(points[0].name), "Campamento_Norte", "en el orden de la escena")
+	assert_eq(String(points[0].name), "Campamento_Norte", "in scene order")
 	assert_eq(String(points[1].name), "Fuerte")
 	assert_eq(RespawnPointList.labels(points), PackedStringArray(["Campamento Norte",
-			"Fuerte del Vado"]), "con el título si lo hay y los guiones bajos como espacios")
+			"Fuerte del Vado"]), "with the title if there is one and underscores as spaces")
 	var south: Array[Node3D] = RespawnPointList.list(world, NetProtocol.Realm.SOLMARCH)
 	assert_eq(south.size(), 1)
 	var no_realm: Array[Node3D] = RespawnPointList.list(world, NetProtocol.Realm.ASKARRA)
-	assert_eq(no_realm.size(), 3, "un reino sin puntos propios ve los del grupo entero")
+	assert_eq(no_realm.size(), 3, "a realm without its own points sees those of the whole group")
 
 
 func test_respawn_list_falls_back_to_spawn_points() -> void:
@@ -319,7 +319,7 @@ func test_respawn_list_falls_back_to_spawn_points() -> void:
 	assert_eq(points.size(), 1)
 	assert_eq(String(points[0].name), "Entrada_Sur")
 	assert_eq(RespawnPointList.list(world, NetProtocol.Realm.ASKARRA).size(), 2,
-			"y sin puntos del reino, todos")
+			"and without realm points, all of them")
 	var empty_world: Node3D = _track(Node3D.new()) as Node3D
 	assert_eq(RespawnPointList.list(empty_world, NetProtocol.Realm.VARDHEIM).size(), 0)
 	assert_eq(RespawnPointList.list(null, NetProtocol.Realm.VARDHEIM).size(), 0)
@@ -332,10 +332,10 @@ func test_the_real_zones_offer_respawn_points() -> void:
 		_track(world)
 		for realm: int in [NetProtocol.Realm.VARDHEIM, NetProtocol.Realm.SOLMARCH]:
 			assert_true(RespawnPointList.list(world, realm).size() >= 1,
-					"%s tiene puntos para el reino %d" % [zone_id, realm])
+					"%s has points for realm %d" % [zone_id, realm])
 
 
-# --- Pantalla de muerte -----------------------------------------------------------------------
+# --- Death screen -----------------------------------------------------------------------------
 
 func _death_screen() -> DeathScreen:
 	var screen: DeathScreen = _track(DeathScreen.new()) as DeathScreen
@@ -354,15 +354,15 @@ func test_death_screen_counts_down_with_the_server_tick_and_enables_the_button()
 	assert_eq(screen.get_remaining_ticks(), 600)
 	assert_eq(screen.get_remaining_seconds(), 10)
 	assert_eq(screen.get_countdown_text(), "Podrás reaparecer en 10 s")
-	assert_false(screen.is_respawn_enabled(), "hasta que el servidor lo permite, el botón está apagado")
+	assert_false(screen.is_respawn_enabled(), "until the server allows it, the button is off")
 	screen.update_countdown(461)
-	assert_eq(screen.get_remaining_seconds(), 9, "la cuenta va por ticks del servidor, redondeada hacia arriba")
+	assert_eq(screen.get_remaining_seconds(), 9, "the countdown runs on server ticks, rounded up")
 	screen.update_countdown(999)
 	assert_eq(screen.get_remaining_ticks(), 1)
-	assert_false(screen.is_respawn_enabled(), "a un tick de poder, aún no")
+	assert_false(screen.is_respawn_enabled(), "one tick short of being possible, not yet")
 	screen.update_countdown(1000)
 	assert_eq(screen.get_remaining_ticks(), 0)
-	assert_true(screen.is_respawn_enabled(), "al llegar el tick, se habilita")
+	assert_true(screen.is_respawn_enabled(), "when the tick arrives, it is enabled")
 	assert_eq(screen.get_countdown_text(), DeathScreen.TEXT_READY)
 
 
@@ -373,19 +373,19 @@ func test_death_screen_button_sends_the_chosen_point_once() -> void:
 	screen.open("x", 100, PackedStringArray(["Campamento", "Fuerte", "Torre"]))
 	assert_eq(screen.get_point_count(), 3)
 	assert_eq(screen.get_point_label(1), "Fuerte")
-	assert_eq(screen.get_selected_point(), 0, "por defecto el primero")
+	assert_eq(screen.get_selected_point(), 0, "the first by default")
 	screen.update_countdown(50)
 	screen.get_button().pressed.emit()
-	assert_eq(requests.size(), 0, "antes de tiempo no sale nada")
+	assert_eq(requests.size(), 0, "too early, nothing is sent")
 	screen.update_countdown(100)
 	screen.select_point(2)
 	assert_eq(screen.get_selected_point(), 2)
 	screen.get_button().pressed.emit()
-	assert_eq(requests, [2] as Array[int], "sale el punto elegido")
-	assert_false(screen.is_respawn_enabled(), "y el botón se apaga mientras espera")
+	assert_eq(requests, [2] as Array[int], "the chosen point is sent")
+	assert_false(screen.is_respawn_enabled(), "and the button turns off while waiting")
 	assert_eq(screen.get_countdown_text(), DeathScreen.TEXT_REQUESTED)
 	screen.get_button().pressed.emit()
-	assert_eq(requests.size(), 1, "una sola petición")
+	assert_eq(requests.size(), 1, "a single request")
 
 
 func test_death_screen_reenables_the_button_if_the_server_does_not_answer() -> void:
@@ -397,9 +397,9 @@ func test_death_screen_reenables_the_button_if_the_server_does_not_answer() -> v
 	screen.get_button().pressed.emit()
 	assert_false(screen.is_respawn_enabled())
 	screen.advance(DeathScreen.REQUEST_TIMEOUT_SECONDS * 0.5)
-	assert_false(screen.is_respawn_enabled(), "aún espera")
+	assert_false(screen.is_respawn_enabled(), "still waiting")
 	screen.advance(DeathScreen.REQUEST_TIMEOUT_SECONDS)
-	assert_true(screen.is_respawn_enabled(), "pasado el tiempo se puede volver a intentar")
+	assert_true(screen.is_respawn_enabled(), "after the time has passed it can be tried again")
 	screen.get_button().pressed.emit()
 	assert_eq(requests.size(), 2)
 
@@ -407,7 +407,7 @@ func test_death_screen_reenables_the_button_if_the_server_does_not_answer() -> v
 func test_death_screen_with_a_single_point_hides_the_list() -> void:
 	var screen: DeathScreen = _death_screen()
 	screen.open("x", 10, PackedStringArray())
-	assert_eq(screen.get_point_count(), 1, "sin lista se ofrece un único punto")
+	assert_eq(screen.get_point_count(), 1, "without a list a single point is offered")
 	screen.update_countdown(10)
 	var requests: Array[int] = []
 	screen.respawn_requested.connect(func(index: int) -> void: requests.append(index))
@@ -436,19 +436,19 @@ func test_dying_and_respawning_ten_times_leaves_nothing_behind() -> void:
 		screen.get_button().pressed.emit()
 		screen.close()
 		assert_false(screen.is_open())
-		assert_false(screen.visible, "cerrada, oculta")
-		assert_false(screen.is_respawn_enabled(), "y con el botón apagado")
+		assert_false(screen.visible, "closed, hidden")
+		assert_false(screen.is_respawn_enabled(), "and with the button off")
 	assert_eq(requests.size(), 10)
-	assert_eq(requests[4], 1, "cada ciclo envía su propio punto")
+	assert_eq(requests[4], 1, "each cycle sends its own point")
 	assert_eq(opened[0], 11)
-	assert_eq(closed[0], 11, "tantos cierres como aperturas")
-	assert_eq(screen.get_node_total(), baseline_nodes, "ningún nodo de más")
+	assert_eq(closed[0], 11, "as many closes as opens")
+	assert_eq(screen.get_node_total(), baseline_nodes, "no extra nodes")
 	assert_eq(screen.get_child_count(), baseline_children)
 	screen.close()
-	assert_eq(closed[0], 11, "cerrar una pantalla cerrada no hace nada")
+	assert_eq(closed[0], 11, "closing a closed screen does nothing")
 
 
-# --- El HUD entero con un cliente falso -------------------------------------------------------
+# --- The whole HUD with a fake client ---------------------------------------------------------
 
 class HudRig:
 	var hud: HUD
@@ -479,7 +479,7 @@ func _make_hud(online: bool = true) -> HudRig:
 	return hud_rig
 
 
-## Un fotograma de la interfaz con un paso de [param delta] s (sin esperar a un fotograma real).
+## One interface frame with a step of [param delta] s (without waiting for a real frame).
 func _step(hud_rig: HudRig, delta: float = 0.016) -> void:
 	hud_rig.hud._process(delta)
 
@@ -487,15 +487,15 @@ func _step(hud_rig: HudRig, delta: float = 0.016) -> void:
 func test_sandbox_hud_hides_health_but_shows_stamina() -> void:
 	var h: HudRig = _make_hud(false)
 	var vitals: VitalsHud = h.hud.get_vitals()
-	assert_false(vitals.is_health_visible(), "en el sandbox no hay vida")
+	assert_false(vitals.is_health_visible(), "in the sandbox there is no health")
 	h.character.combat.stamina = 500
 	_step(h)
-	assert_near(vitals.get_stamina_fraction(), 0.5, 0.001, "la resistencia sí: la simulación es local")
+	assert_near(vitals.get_stamina_fraction(), 0.5, 0.001, "stamina does: the simulation is local")
 	assert_eq(vitals.get_max_stamina(), CombatCatalog.rules().stamina_max)
 	h.character.combat.combat_flags |= CombatState.FLAG_EXHAUSTED
 	_step(h)
 	assert_true(vitals.is_exhausted())
-	assert_not_null(h.hud.get_feedback(), "y el reparto de combate sigue las acciones del personaje")
+	assert_not_null(h.hud.get_feedback(), "and the combat split follows the character's actions")
 	assert_false(h.hud.get_death_screen().is_open())
 
 
@@ -508,16 +508,16 @@ func test_hud_shows_the_servers_health_and_the_stamina_in_the_debug_panel() -> v
 	assert_true(vitals.is_health_visible())
 	assert_eq(vitals.get_health(), 640)
 	assert_near(vitals.get_health_fraction(), 0.64, 0.001)
-	assert_near(vitals.get_ghost_fraction(), 0.64, 0.001, "el primer valor no deja fantasma")
+	assert_near(vitals.get_ghost_fraction(), 0.64, 0.001, "the first value leaves no ghost")
 	h.client.fake_health = 400
 	_step(h)
 	assert_eq(vitals.get_health(), 400)
-	assert_near(vitals.get_ghost_fraction(), 0.64, 0.001, "pero una pérdida sí")
+	assert_near(vitals.get_ghost_fraction(), 0.64, 0.001, "but a loss does")
 	h.hud.set_debug_visible(true)
 	var label: Label = h.hud.get_node(^"DebugPanel/DebugLabel") as Label
-	assert_true(label.text.contains("Resistencia: 350 / 1000"), "F3 enseña la resistencia: %s" % label.text)
-	assert_true(label.text.contains("Vida: 400 / 1000"), "y la vida en red")
-	assert_true(label.text.contains("DPS (30 s): 0.0"), "y el DPS")
+	assert_true(label.text.contains("Resistencia: 350 / 1000"), "F3 shows the stamina: %s" % label.text)
+	assert_true(label.text.contains("Vida: 400 / 1000"), "and the health over the network")
+	assert_true(label.text.contains("DPS (30 s): 0.0"), "and the DPS")
 
 
 func test_stamina_blink_is_latched_from_the_one_tick_flag() -> void:
@@ -528,10 +528,10 @@ func test_stamina_blink_is_latched_from_the_one_tick_flag() -> void:
 	assert_false(vitals.is_blinking())
 	h.character.combat.combat_flags |= CombatState.FLAG_NO_STAMINA
 	h.hud._physics_process(0.016)
-	assert_true(vitals.is_blinking(), "el bit de un tick basta para que parpadee")
+	assert_true(vitals.is_blinking(), "the one-tick bit is enough to make it flash")
 	h.character.combat.combat_flags &= ~CombatState.FLAG_NO_STAMINA
 	_step(h, 0.1)
-	assert_true(vitals.is_blinking(), "y sigue parpadeando aunque el bit ya se haya borrado")
+	assert_true(vitals.is_blinking(), "and it keeps flashing even though the bit has been cleared")
 
 
 func test_damage_indicator_points_at_the_attacker_relative_to_the_camera() -> void:
@@ -544,23 +544,23 @@ func test_damage_indicator_points_at_the_attacker_relative_to_the_camera() -> vo
 	_step(h)
 	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 10, OTHER_ID, 80, 0, 0, 2), true)
 	var indicator: DamageIndicator = h.hud.get_damage_indicator()
-	assert_eq(indicator.get_arc_count(), 1, "un golpe recibido, un arco")
-	assert_near(indicator.get_arc_angle(0), 0.0, 0.001, "el atacante está delante")
+	assert_eq(indicator.get_arc_count(), 1, "one hit received, one arc")
+	assert_near(indicator.get_arc_angle(0), 0.0, 0.001, "the attacker is in front")
 	h.rig.set_look(PI * 0.5, 0.0)
 	_step(h)
-	assert_near(indicator.get_arc_angle(0), PI * 0.5, 0.01, "al girar la cámara a la izquierda, queda a la derecha")
-	assert_true(h.hud.get_vignette().get_alpha() > 0.0, "y la viñeta destella")
+	assert_near(indicator.get_arc_angle(0), PI * 0.5, 0.01, "when the camera turns left, they end up to the right")
+	assert_true(h.hud.get_vignette().get_alpha() > 0.0, "and the vignette flashes")
 	assert_true(h.hud.get_war_hud().get_world_markers().is_in_combat(),
-			"y los marcadores del mundo se quedan con el objetivo (UI-54)")
-	# Un daño de un atacante desconocido (fuera de interés) no dibuja arco pero sí la viñeta.
+			"and the world markers stay with the target (UI-54)")
+	# Damage from an unknown attacker (out of interest) draws no arc but does draw the vignette.
 	feedback.position_resolver = func(net_id: int) -> Vector3:
 		return Vector3.INF if net_id == OTHER_ID else Vector3.ZERO
 	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 11, OTHER_ID, 80, 0, 0, 2), true)
-	assert_eq(indicator.get_arc_count(), 1, "sin posición del atacante no hay arco")
+	assert_eq(indicator.get_arc_count(), 1, "without the attacker's position there is no arc")
 
 
 func test_a_parry_or_a_full_block_without_damage_does_not_flash_the_red_vignette() -> void:
-	# T8: la viñeta roja avisa de daño; una parada o un bloqueo completo (amount 0) no lo es.
+	# T8: the red vignette warns of damage; a parry or a full block (amount 0) is not.
 	var h: HudRig = _make_hud()
 	var feedback: CombatFeedback = h.hud.get_feedback()
 	feedback.position_resolver = func(_net_id: int) -> Vector3:
@@ -574,16 +574,16 @@ func test_a_parry_or_a_full_block_without_damage_does_not_flash_the_red_vignette
 	for flag: int in flags:
 		feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 10, OTHER_ID, 0, 0, flag, 2), true)
 		vignette.advance(0.0)
-		assert_eq(vignette.get_alpha(), 0.0, "sin daño (flags %d) no hay viñeta" % flag)
-		assert_false(vignette.visible, "y sigue oculta (flags %d)" % flag)
-	# Control: un golpe con daño sí la enciende, conozca o no al atacante.
+		assert_eq(vignette.get_alpha(), 0.0, "without damage (flags %d) there is no vignette" % flag)
+		assert_false(vignette.visible, "and it stays hidden (flags %d)" % flag)
+	# Control: a hit with damage does light it, whether or not it knows the attacker.
 	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 11, OTHER_ID, 90, 0, 0, 2), true)
-	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "con 90 de daño destella")
-	assert_true(vignette.get_alpha() <= LowHealthVignette.FLASH_MAX_ALPHA, "pero con el alfa de un golpe pequeño")
+	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "with 90 damage it flashes")
+	assert_true(vignette.get_alpha() <= LowHealthVignette.FLASH_MAX_ALPHA, "but with the alpha of a small hit")
 	vignette.advance(LowHealthVignette.FLASH_SECONDS + 0.1)
 	assert_eq(vignette.get_alpha(), 0.0)
 	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 12, 0, 90, 0, 0, 2), true)
-	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "y también si el atacante no se conoce")
+	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "and also if the attacker is not known")
 
 
 func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -> void:
@@ -593,7 +593,7 @@ func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -
 	h.client.get_remote_world().on_spawn(_remote_spawn(OTHER_ID, "Ana"))
 	h.client.fake_estimated_tick = 500
 	_step(h)
-	assert_false(screen.is_open(), "vivo, sin pantalla")
+	assert_false(screen.is_open(), "alive, no screen")
 	assert_false(h.rig.is_cursor_free())
 	assert_false(h.hud.is_dimmed())
 	var heavy: int = CombatCatalog.attack_id(&"sword_heavy")
@@ -603,41 +603,41 @@ func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -
 	h.client.fake_respawn_tick = 1100
 	h.client.fake_snapshot_tick = 521
 	_step(h)
-	assert_true(screen.is_open(), "muerto, se abre")
+	assert_true(screen.is_open(), "dead, it opens")
 	assert_eq(screen.get_cause_text(), "Te ha derrotado Ana con un golpe pesado.",
-			"quién te derrotó y con qué")
-	assert_eq(screen.get_point_count(), 2, "con la lista de puntos del reino")
+			"who defeated you and with what")
+	assert_eq(screen.get_point_count(), 2, "with the realm's list of points")
 	assert_eq(screen.get_point_label(1), "Fuerte Norte")
-	assert_true(h.hud.is_dimmed(), "el resto de la interfaz se atenúa")
-	assert_true(h.hud.get_vignette().is_suppressed(), "y sin viñeta roja encima de la pantalla de muerte (UI-50)")
+	assert_true(h.hud.is_dimmed(), "the rest of the interface dims")
+	assert_true(h.hud.get_vignette().is_suppressed(), "and no red vignette on top of the death screen (UI-50)")
 	assert_eq(h.hud.get_vignette().get_alpha(), 0.0)
-	assert_true(h.rig.is_cursor_free(), "el cursor queda libre")
-	assert_false(h.hud.get_node(^"Crosshair").visible, "y sin punto de mira")
-	assert_eq(screen.get_remaining_seconds(), 10, "cuenta atrás de 600 ticks")
+	assert_true(h.rig.is_cursor_free(), "the cursor is left free")
+	assert_false(h.hud.get_node(^"Crosshair").visible, "and no crosshair")
+	assert_eq(screen.get_remaining_seconds(), 10, "countdown of 600 ticks")
 	assert_false(screen.is_respawn_enabled())
-	# El servidor deja reaparecer cuando el tick estimado llega a respawn_tick.
+	# The server allows respawning when the estimated tick reaches respawn_tick.
 	h.client.fake_estimated_tick = 1100
 	_step(h)
 	assert_true(screen.is_respawn_enabled())
 	screen.select_point(1)
 	screen.get_button().pressed.emit()
-	assert_eq(h.client.respawn_requests, [1] as Array[int], "el HUD envía el RESPAWN_REQUEST con el índice elegido")
-	# Llega el evento RESPAWN y luego snapshots con vida.
+	assert_eq(h.client.respawn_requests, [1] as Array[int], "the HUD sends the RESPAWN_REQUEST with the chosen index")
+	# The RESPAWN event arrives and then snapshots with health.
 	feedback.handle_event(NetMessages.EntityEvent.respawn(OWN_ID, 1110, 1), true)
-	assert_false(screen.is_open(), "al reaparecer se cierra")
+	assert_false(screen.is_open(), "on respawning it closes")
 	h.client.fake_dead = false
 	h.client.fake_health = 1000
 	h.client.fake_respawn_tick = 0
 	h.client.fake_snapshot_tick = 1111
 	_step(h)
 	assert_false(screen.is_open())
-	assert_false(h.hud.is_dimmed(), "la interfaz vuelve a la normalidad")
-	assert_false(h.hud.get_vignette().is_suppressed(), "y la viñeta vuelve a poder dibujarse")
-	assert_false(h.rig.is_cursor_free(), "el cursor se recaptura")
-	assert_near(h.hud.get_vitals().get_ghost_fraction(), 1.0, 0.001, "sin restos de la vida anterior")
+	assert_false(h.hud.is_dimmed(), "the interface goes back to normal")
+	assert_false(h.hud.get_vignette().is_suppressed(), "and the vignette can be drawn again")
+	assert_false(h.rig.is_cursor_free(), "the cursor is recaptured")
+	assert_near(h.hud.get_vitals().get_ghost_fraction(), 1.0, 0.001, "without leftovers from the previous life")
 
 
-## Mata al jugador local en el cliente falso y deja que el HUD abra la pantalla de muerte.
+## Kills the local player in the fake client and lets the HUD open the death screen.
 func _die(h: HudRig, tick: int) -> void:
 	h.hud.get_feedback().handle_event(NetMessages.EntityEvent.death(OWN_ID, tick, OTHER_ID, 1), true)
 	h.client.fake_dead = true
@@ -648,7 +648,7 @@ func _die(h: HudRig, tick: int) -> void:
 	_step(h)
 
 
-## El jugador reaparece: llega el evento RESPAWN y luego un snapshot con vida.
+## The player respawns: the RESPAWN event arrives and then a snapshot with health.
 func _respawn(h: HudRig, tick: int) -> void:
 	h.hud.get_feedback().handle_event(NetMessages.EntityEvent.respawn(OWN_ID, tick, 0), true)
 	h.client.fake_dead = false
@@ -659,8 +659,8 @@ func _respawn(h: HudRig, tick: int) -> void:
 
 
 func test_closing_a_window_over_the_death_screen_keeps_the_cursor_free() -> void:
-	# T1: la ventana de ajustes (F10) y la pantalla de muerte piden el cursor a la vez; cerrar una
-	# no puede recapturar el ratón mientras la otra sigue abierta.
+	# T1: the settings window (F10) and the death screen both ask for the cursor; closing one
+	# must not recapture the mouse while the other is still open.
 	var h: HudRig = _make_hud()
 	var window: UIWindow = _track(UIWindow.new()) as UIWindow
 	window.bind_camera(h.rig)
@@ -670,11 +670,11 @@ func test_closing_a_window_over_the_death_screen_keeps_the_cursor_free() -> void
 	window.open()
 	window.close()
 	_step(h)
-	assert_true(h.rig.is_cursor_free(), "con la pantalla de muerte abierta el cursor sigue libre")
-	assert_false(h.hud.get_node(^"Crosshair").visible, "y el punto de mira sigue oculto")
+	assert_true(h.rig.is_cursor_free(), "with the death screen open the cursor stays free")
+	assert_false(h.hud.get_node(^"Crosshair").visible, "and the crosshair stays hidden")
 	_respawn(h, 1610)
 	assert_false(h.hud.get_death_screen().is_open())
-	assert_false(h.rig.is_cursor_free(), "al reaparecer, ahora sí se recaptura")
+	assert_false(h.rig.is_cursor_free(), "on respawning, now it is recaptured")
 	assert_true(h.hud.get_node(^"Crosshair").visible)
 
 
@@ -687,11 +687,11 @@ func test_respawning_with_a_window_open_keeps_the_cursor_free() -> void:
 	_respawn(h, 1610)
 	assert_false(h.hud.get_death_screen().is_open())
 	assert_true(window.is_open())
-	assert_true(h.rig.is_cursor_free(), "la ventana sigue abierta: el ratón sigue siendo suyo")
+	assert_true(h.rig.is_cursor_free(), "the window is still open: the mouse is still its own")
 	_step(h)
 	assert_false(h.hud.get_node(^"Crosshair").visible)
 	window.close()
-	assert_false(h.rig.is_cursor_free(), "al cerrarla, ya no queda nadie que lo pida")
+	assert_false(h.rig.is_cursor_free(), "once closed, nobody is left asking for it")
 
 
 func test_a_stale_dead_snapshot_after_the_respawn_does_not_reopen_the_screen() -> void:
@@ -705,10 +705,10 @@ func test_a_stale_dead_snapshot_after_the_respawn_does_not_reopen_the_screen() -
 	assert_true(screen.is_open())
 	h.hud.get_feedback().handle_event(NetMessages.EntityEvent.respawn(OWN_ID, 120, 0), true)
 	assert_false(screen.is_open())
-	# Un snapshot atrasado (tick 100 < 120) todavía dice «muerto».
+	# A delayed snapshot (tick 100 < 120) still says "dead".
 	h.client.fake_snapshot_tick = 100
 	_step(h)
-	assert_false(screen.is_open(), "un snapshot anterior a la reaparición no la reabre")
+	assert_false(screen.is_open(), "a snapshot older than the respawn does not reopen it")
 	h.client.fake_snapshot_tick = 130
 	h.client.fake_dead = false
 	h.client.fake_health = 1000
@@ -733,7 +733,7 @@ func test_ten_deaths_in_the_hud_leave_no_leftovers() -> void:
 		h.client.fake_snapshot_tick = tick + 1
 		h.client.fake_estimated_tick = tick + 2
 		_step(h)
-		assert_true(screen.is_open(), "ciclo %d: abierta" % cycle)
+		assert_true(screen.is_open(), "cycle %d: open" % cycle)
 		assert_true(h.rig.is_cursor_free())
 		h.client.fake_estimated_tick = tick + 600
 		_step(h)
@@ -744,17 +744,17 @@ func test_ten_deaths_in_the_hud_leave_no_leftovers() -> void:
 		h.client.fake_respawn_tick = 0
 		h.client.fake_snapshot_tick = tick + 611
 		_step(h)
-		assert_false(screen.is_open(), "ciclo %d: cerrada" % cycle)
+		assert_false(screen.is_open(), "cycle %d: closed" % cycle)
 		assert_false(h.hud.is_dimmed())
-		assert_false(h.rig.is_cursor_free(), "ciclo %d: cursor capturado otra vez" % cycle)
+		assert_false(h.rig.is_cursor_free(), "cycle %d: cursor captured again" % cycle)
 	assert_eq(h.client.respawn_requests.size(), 10)
 	assert_eq(h.hud.find_children("*", "", true, false).size(), baseline_nodes,
-			"el HUD no acumula nodos")
+			"the HUD does not accumulate nodes")
 	assert_eq(h.hud.get_damage_numbers().get_active_count(), 0)
 	assert_eq(h.hud.get_damage_indicator().get_arc_count(), 0)
 	for item: CanvasItem in [h.hud.get_vitals(), h.hud.get_node(^"Crosshair"),
 			h.hud.get_node(^"HintLabel")]:
-		assert_eq(item.modulate.a, 1.0, "nada se queda atenuado")
+		assert_eq(item.modulate.a, 1.0, "nothing is left dimmed")
 
 
 func _remote_spawn(net_id: int, display_name: String) -> NetMessages.EntitySpawn:
@@ -776,14 +776,14 @@ func test_hud_marks_damaged_entities_for_the_nameplates() -> void:
 	var plates: Nameplates = h.hud.get_nameplates()
 	assert_not_null(plates)
 	assert_false(plates.was_damaged_recently(OTHER_ID))
-	# Un golpe de un tercero a otro jugador: sus placas enseñan la barra de vida unos segundos.
+	# A hit by a third party on another player: their nameplates show the health bar for a few seconds.
 	h.hud.get_feedback().handle_event(NetMessages.EntityEvent.hit(OTHER_ID, 10, 33, 80, 0, 0, 2),
 			false)
-	assert_true(plates.was_damaged_recently(OTHER_ID), "el daño a otro marca su placa")
-	assert_false(plates.was_damaged_recently(33), "y no la del atacante")
+	assert_true(plates.was_damaged_recently(OTHER_ID), "damage to another marks their nameplate")
+	assert_false(plates.was_damaged_recently(33), "and not the attacker's")
 
 
-# --- Fase 4: derribado, plantillas y arco ---------------------------------------------------------
+# --- Phase 4: knocked down, templates and bow -----------------------------------------------------
 
 func _interact(downed_id: int, tick: int, actor: int, operation: int, ends: int) -> NetMessages.EntityEvent:
 	return NetMessages.EntityEvent.interact(downed_id, tick, actor, operation, ends)
@@ -792,59 +792,59 @@ func _interact(downed_id: int, tick: int, actor: int, operation: int, ends: int)
 func test_downed_notices_count_down_and_show_who_revives_or_executes_you() -> void:
 	var h: HudRig = _make_hud()
 	var notice: DownedNotice = h.hud.get_downed_notice()
-	if not assert_not_null(notice, "el HUD tiene los avisos de derribado"):
+	if not assert_not_null(notice, "the HUD has the knocked-down alerts"):
 		return
-	assert_true(notice.get_index() < h.hud.get_death_screen().get_index(), "por debajo de la pantalla de muerte")
+	assert_true(notice.get_index() < h.hud.get_death_screen().get_index(), "below the death screen")
 	h.client.get_remote_world().on_spawn(_remote_spawn(OTHER_ID, "Ana"))
 	h.client.get_directory().remember(OTHER_ID, "Ana", NetProtocol.Realm.VARDHEIM)
 	h.client.fake_estimated_tick = 1000
 	_step(h)
-	assert_false(notice.visible, "en pie y sin nadie derribado cerca, nada")
-	# Derribado: la vida del bloque extra es la de derribado (300 de 400: 15 s al ritmo del desangrado).
+	assert_false(notice.visible, "standing and with nobody knocked down nearby, nothing")
+	# Knocked down: the extra block's health is the knocked-down health (300 of 400: 15 s at the bleed-out rate).
 	h.client.combat_event.emit(NetMessages.EntityEvent.downed(OWN_ID, 1000, 33, 0), true)
 	h.client.fake_downed = true
 	h.client.fake_health = 300
 	h.client.fake_max_health = 400
 	_step(h)
 	assert_true(notice.visible)
-	assert_eq(notice.get_title_text(), CombatText.TEXT_DOWNED, "«Derribado»")
-	assert_eq(notice.get_countdown_text(), CombatText.TEXT_DOWNED_COUNTDOWN % 15, "con la cuenta atrás")
-	assert_false(h.hud.get_death_screen().is_open(), "derribado no es muerto: sin pantalla de muerte")
-	# Ana empieza a levantarlo (INTERACT 1, 180 ticks): «Ana te está levantando» con su barra.
+	assert_eq(notice.get_title_text(), CombatText.TEXT_DOWNED, "\"Derribado\" (knocked down)")
+	assert_eq(notice.get_countdown_text(), CombatText.TEXT_DOWNED_COUNTDOWN % 15, "with the countdown")
+	assert_false(h.hud.get_death_screen().is_open(), "knocked down is not dead: no death screen")
+	# Ana starts to lift him (INTERACT 1, 180 ticks): "Ana te está levantando" (Ana is lifting you) with its bar.
 	h.client.combat_event.emit(_interact(OWN_ID, 1000, OTHER_ID,
 			NetMessages.EntityEvent.InteractOp.REVIVE, 1180), true)
 	h.client.fake_estimated_tick = 1090
 	_step(h)
 	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_REVIVED_BY % "Ana")
-	assert_near(notice.get_progress(), 0.5, 0.01, "a medio levantar")
-	# Le cortan (INTERACT 2): la barra se va.
+	assert_near(notice.get_progress(), 0.5, 0.01, "halfway up")
+	# They cut it off (INTERACT 2): the bar goes away.
 	h.client.combat_event.emit(_interact(OWN_ID, 1095, OTHER_ID,
 			NetMessages.EntityEvent.InteractOp.REVIVE_CUT, 1180), true)
 	_step(h)
-	assert_eq(notice.get_detail_text(), "", "cortado, sin barra")
+	assert_eq(notice.get_detail_text(), "", "cut off, no bar")
 	assert_eq(notice.get_progress(), -1.0)
-	# Un enemigo empieza a rematarlo (INTERACT 4).
+	# An enemy starts to finish him off (INTERACT 4).
 	h.client.combat_event.emit(_interact(OWN_ID, 1100, 33,
 			NetMessages.EntityEvent.InteractOp.EXECUTE, 1160), true)
 	h.client.fake_estimated_tick = 1130
 	_step(h)
-	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "«¡Te rematan!»")
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "\"¡Te rematan!\" (they are finishing you off)")
 	assert_near(notice.get_progress(), 0.5, 0.01)
-	# Levantado (INTERACT 3) y de pie otra vez: nada.
+	# Lifted (INTERACT 3) and standing again: nothing.
 	h.client.combat_event.emit(_interact(OWN_ID, 1140, OTHER_ID,
 			NetMessages.EntityEvent.InteractOp.REVIVED, 1140), true)
 	h.client.fake_downed = false
 	h.client.fake_health = 300
 	h.client.fake_max_health = 1000
 	_step(h)
-	assert_false(notice.visible, "levantado, el aviso se va")
+	assert_false(notice.visible, "lifted, the alert goes away")
 
 
-## Revisión de la fase 4 (lente «habilidades»): el servidor deja que un aliado levante y uno o más enemigos
-## rematen al mismo derribado a la vez. El aviso guardaba una sola interacción y cualquier corte o fin la
-## borraba: el corte del que levantaba quitaba «¡Te rematan!» aunque el remate seguía, y un levantar que
-## empezaba durante el remate lo tapaba. Ahora guarda cada una con su actor, solo la quita el corte de ese
-## actor (o quedar en pie), y el remate se muestra antes que el levantar.
+## Phase 4 review ("abilities" lens): the server lets one ally lift and one or more enemies
+## finish off the same knocked-down player at the same time. The alert kept a single interaction and any cut or end
+## erased it: the lifter's cut removed "¡Te rematan!" even though the finishing continued, and a lift that
+## began during the finishing covered it. Now it keeps each one with its actor, only that actor's cut
+## (or standing up) removes it, and the finishing is shown before the lift.
 func test_the_downed_notice_keeps_each_interaction_until_its_own_actor_ends_it() -> void:
 	var notice: DownedNotice = _track(DownedNotice.new()) as DownedNotice
 	notice.set_own_id(OWN_ID)
@@ -852,49 +852,49 @@ func test_the_downed_notice_keeps_each_interaction_until_its_own_actor_ends_it()
 	notice.name_of = func(net_id: int) -> String: return names.get(net_id, "")
 	var op_revive: int = NetMessages.EntityEvent.InteractOp.REVIVE
 	var op_execute: int = NetMessages.EntityEvent.InteractOp.EXECUTE
-	# 1) Ana levanta (100-280) y Bruno remata (105-165); Ana se corta en 106: el remate sigue.
+	# 1) Ana lifts (100-280) and Bruno finishes (105-165); Ana is cut off at 106: the finishing continues.
 	notice.handle_event(_interact(OWN_ID, 100, 7, op_revive, 280))
 	notice.handle_event(_interact(OWN_ID, 105, 9, op_execute, 165))
 	notice.update_view(true, 300, 110)
-	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "el remate va antes que el levantar")
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "the finishing goes before the lift")
 	notice.handle_event(_interact(OWN_ID, 106, 7, NetMessages.EntityEvent.InteractOp.REVIVE_CUT, 106))
-	assert_eq(notice.get_interaction(), DownedNotice.Interaction.BEING_EXECUTED, "el corte de Ana no lo quita")
+	assert_eq(notice.get_interaction(), DownedNotice.Interaction.BEING_EXECUTED, "Ana's cut does not remove it")
 	notice.update_view(true, 300, 120)
-	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "«¡Te rematan!» sigue")
-	assert_near(notice.get_progress(), 0.25, 0.01, "con la barra del remate de Bruno")
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "\"¡Te rematan!\" continues")
+	assert_near(notice.get_progress(), 0.25, 0.01, "with the bar of Bruno's finishing")
 	notice.handle_event(_interact(OWN_ID, 130, 9, NetMessages.EntityEvent.InteractOp.EXECUTE_CUT, 130))
 	notice.update_view(true, 300, 131)
-	assert_eq(notice.get_detail_text(), "", "cortado el remate, nada")
-	# 2) Bruno remata (200-260) y Ana empieza a levantar en 210: se sigue viendo el remate; cuando a Bruno
-	# se le corta, el levantar que sigue.
+	assert_eq(notice.get_detail_text(), "", "finishing cut off, nothing")
+	# 2) Bruno finishes (200-260) and Ana starts lifting at 210: the finishing is still seen; when Bruno
+	# is cut off, the lift that follows.
 	notice.handle_event(_interact(OWN_ID, 200, 9, op_execute, 260))
 	notice.handle_event(_interact(OWN_ID, 210, 7, op_revive, 390))
 	notice.update_view(true, 300, 230)
-	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "un levantar que empieza no tapa el remate")
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "a lift that begins does not cover the finishing")
 	notice.handle_event(_interact(OWN_ID, 235, 9, NetMessages.EntityEvent.InteractOp.EXECUTE_CUT, 235))
 	notice.update_view(true, 300, 240)
 	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_REVIVED_BY % "Ana",
-			"cortado el remate, se ve el levantar que sigue")
+			"finishing cut off, the following lift is seen")
 	assert_near(notice.get_progress(), 30.0 / 180.0, 0.01)
-	# 3) Dos que rematan: el corte de uno no quita el remate del otro.
+	# 3) Two finishing: one's cut does not remove the other's finishing.
 	notice.handle_event(_interact(OWN_ID, 250, 9, op_execute, 310))
 	notice.handle_event(_interact(OWN_ID, 252, 10, op_execute, 312))
 	notice.handle_event(_interact(OWN_ID, 255, 10, NetMessages.EntityEvent.InteractOp.EXECUTE_CUT, 255))
 	notice.update_view(true, 300, 280)
-	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "el remate de Bruno sigue")
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "Bruno's finishing continues")
 	assert_near(notice.get_progress(), 0.5, 0.01)
-	# Levantado: en pie, ya no le rematan ni le levantan.
+	# Lifted: standing, they are no longer finished off or lifted.
 	notice.handle_event(_interact(OWN_ID, 290, 7, NetMessages.EntityEvent.InteractOp.REVIVED, 290))
-	assert_eq(notice.get_interaction(), DownedNotice.Interaction.NONE, "levantado, nada")
-	# 4) Lo que hace él: el corte de otro que levanta al mismo aliado no quita «Levantando a Ana».
+	assert_eq(notice.get_interaction(), DownedNotice.Interaction.NONE, "lifted, nothing")
+	# 4) What he does: the cut of another who lifts the same ally does not remove "Levantando a Ana" (lifting Ana).
 	notice.handle_event(_interact(7, 400, OWN_ID, op_revive, 580))
 	notice.handle_event(_interact(7, 405, 10, NetMessages.EntityEvent.InteractOp.EXECUTE_CUT, 405))
 	notice.update_view(false, 0, 445)
-	assert_eq(notice.get_detail_text(), CombatText.TEXT_REVIVING % "Ana", "«Levantando a Ana» sigue")
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_REVIVING % "Ana", "\"Levantando a Ana\" continues")
 	assert_near(notice.get_progress(), 0.25, 0.01)
 	notice.handle_event(_interact(7, 450, OWN_ID, NetMessages.EntityEvent.InteractOp.REVIVE_CUT, 450))
 	notice.update_view(false, 0, 451)
-	assert_eq(notice.get_detail_text(), "", "su propio corte, sí")
+	assert_eq(notice.get_detail_text(), "", "their own cut does")
 
 
 func test_a_downed_ally_nearby_shows_the_revive_prompt() -> void:
@@ -909,19 +909,19 @@ func test_a_downed_ally_nearby_shows_the_revive_prompt() -> void:
 	h.client.get_directory().remember(OTHER_ID, "Bruno", NetProtocol.Realm.VARDHEIM)
 	remote_world.draw(20.0, 0.0)
 	_step(h)
-	assert_eq(notice.get_prompt_text(), "", "en pie, no hay nada que levantar")
+	assert_eq(notice.get_prompt_text(), "", "standing, there is nothing to lift")
 	var record: EntityRecord = EntityRecord.from_state(OTHER_ID, NetProtocol.EntityKind.PLAYER, ally.state, 0)
 	record.action = CombatState.Action.DOWNED | (ActionMachine.PHASE_NONE << 4)
 	remote_world.get_view(OTHER_ID).push(22, record)
 	remote_world.draw(24.0, 0.0)
 	_step(h)
 	assert_eq(notice.get_prompt_text(), CombatText.TEXT_REVIVE_PROMPT % [
-			UIKeyGlyph.label_for_action(&"interact"), "Bruno"], "«Mantén E para levantar a Bruno»")
+			UIKeyGlyph.label_for_action(&"interact"), "Bruno"], "\"Mantén E para levantar a Bruno\" (hold E to lift Bruno)")
 	assert_eq(DownedNotice.find_downed_ally(remote_world, Vector3.ZERO, NetProtocol.Realm.SOLMARCH), 0,
-			"un derribado de otro reino no se levanta")
+			"a knocked-down player of another realm cannot be lifted")
 	assert_eq(DownedNotice.find_downed_ally(remote_world, Vector3(0.0, 0.0, 5.0), NetProtocol.Realm.VARDHEIM),
-			0, "ni uno lejos")
-	# Levantándolo (INTERACT 1 con el jugador local de actor): «Levantando a Bruno».
+			0, "nor one far away")
+	# Lifting him (INTERACT 1 with the local player as actor): "Levantando a Bruno" (lifting Bruno).
 	h.client.combat_event.emit(_interact(OTHER_ID, 30, OWN_ID,
 			NetMessages.EntityEvent.InteractOp.REVIVE, 210), true)
 	h.client.fake_estimated_tick = 75
@@ -933,18 +933,18 @@ func test_a_downed_ally_nearby_shows_the_revive_prompt() -> void:
 func test_the_death_screen_template_selector_sends_the_loadout_select() -> void:
 	var h: HudRig = _make_hud()
 	var selector: TemplateSelector = h.hud.get_death_screen().get_template_selector()
-	if not assert_not_null(selector, "la pantalla de muerte tiene el selector de plantilla"):
+	if not assert_not_null(selector, "the death screen has the template selector"):
 		return
 	var marksman: int = CombatCatalog.template_id(&"marksman")
 	var squire: int = CombatCatalog.template_id(&"squire")
 	assert_true(selector.get_template_ids().has(marksman) and selector.get_template_ids().has(squire),
-			"ofrece el escudero y el tirador")
-	assert_eq(selector.get_selected(), CombatCatalog.default_template_id(), "marcada la de por defecto")
-	assert_true(selector.get_button(marksman).text.begins_with("Tirador"), "con su nombre")
-	assert_true(selector.get_button(marksman).text.contains("Arco"), "y sus armas")
+			"it offers the squire and the marksman")
+	assert_eq(selector.get_selected(), CombatCatalog.default_template_id(), "the default one is checked")
+	assert_true(selector.get_button(marksman).text.begins_with("Tirador"), "with its name")
+	assert_true(selector.get_button(marksman).text.contains("Arco"), "and its weapons")
 	_die(h, 1000)
 	assert_true(selector.choose(marksman))
-	assert_eq(h.client.loadout_selects, [marksman] as Array[int], "elegir manda el LOADOUT_SELECT")
+	assert_eq(h.client.loadout_selects, [marksman] as Array[int], "choosing sends the LOADOUT_SELECT")
 	assert_eq(selector.get_selected(), marksman)
 
 
@@ -958,25 +958,25 @@ func test_drawing_the_bow_zooms_the_camera_and_closes_the_reticle() -> void:
 	h.character.combat.action_tick = 500
 	h.character.last_input_tick = 500 + drawn.charge_min_ticks / 2
 	_step(h)
-	assert_near(h.rig.get_aim_zoom(), 0.5, 0.05, "la cámara se cierra mientras se tensa")
-	assert_eq(crosshair.get_tension(), 0.0, "la retícula aún no (por debajo de la carga mínima)")
+	assert_near(h.rig.get_aim_zoom(), 0.5, 0.05, "the camera closes in while drawing")
+	assert_eq(crosshair.get_tension(), 0.0, "the reticle not yet (below the minimum charge)")
 	h.character.last_input_tick = 500 + drawn.charge_max_ticks
 	_step(h)
-	assert_eq(h.rig.get_aim_zoom(), 1.0, "tensado: el zoom entero")
-	assert_eq(crosshair.get_tension(), 1.0, "y la retícula cerrada")
+	assert_eq(h.rig.get_aim_zoom(), 1.0, "drawn: the full zoom")
+	assert_eq(crosshair.get_tension(), 1.0, "and the closed reticle")
 	assert_true(crosshair.get_ring_radius() < crosshair.ring_radius)
 	h.rig._process(10.0)
 	assert_near(h.rig.get_camera().fov, h.rig.get_fov() * CameraRig.AIM_ZOOM_FOV_SCALE, 0.01,
-			"al 75 % del campo de visión configurado")
-	assert_eq(h.rig.get_fov(), 72.0, "que no cambia")
-	# Con la espada, una carga no hace zoom.
+			"at 75 % during the zoom, relative to the configured field of view")
+	assert_eq(h.rig.get_fov(), 72.0, "which does not change")
+	# With the sword, a charge does not zoom.
 	h.character.combat.copy_from(CombatState.initial(CombatCatalog.rules(), CombatCatalog.weapon_id(&"sword_shield")))
 	h.character.combat.action = CombatState.Action.CHARGE
 	_step(h)
 	assert_eq(h.rig.get_aim_zoom(), 0.0)
 	assert_eq(crosshair.get_tension(), 0.0)
 	h.rig._process(10.0)
-	assert_near(h.rig.get_camera().fov, 72.0, 0.01, "vuelve al campo de visión configurado")
+	assert_near(h.rig.get_camera().fov, 72.0, 0.01, "it returns to the configured field of view")
 
 
 func test_the_kill_feed_shows_downed_players() -> void:
@@ -986,9 +986,9 @@ func test_the_kill_feed_shows_downed_players() -> void:
 	h.client.get_directory().remember(33, "Bruno", NetProtocol.Realm.VARDHEIM)
 	var drawn_source: int = CombatSource.make(CombatSource.Kind.ATTACK, CombatCatalog.attack_id(&"bow_drawn"))
 	var text: String = feed.show_downed(NetMessages.EntityEvent.downed(33, 100, OTHER_ID, drawn_source))
-	assert_eq(text, "Ana derribó a Bruno con un disparo tensado", "una línea por derribo")
+	assert_eq(text, "Ana derribó a Bruno con un disparo tensado", "one line per knockdown")
 	var slowing: int = CombatSource.make(CombatSource.Kind.ABILITY, CombatCatalog.ability_id(&"bow_slowing_shot"))
-	assert_eq(CombatText.source_label(slowing), "una flecha lastrante", "las habilidades tienen nombre")
+	assert_eq(CombatText.source_label(slowing), "una flecha lastrante", "the abilities have a name")
 	assert_eq(CombatText.death_text(OTHER_ID, "Ana", CombatSource.EXECUTE), "Te ha rematado Ana.")
 	assert_eq(CombatText.death_text(OTHER_ID, "Ana", CombatSource.BLEED_OUT), "Te has desangrado: te derribó Ana.")
 	assert_eq(CombatText.death_text(0, "", CombatSource.BLEED_OUT), "Te has desangrado.")

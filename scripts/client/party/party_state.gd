@@ -1,41 +1,41 @@
 class_name PartyState
 extends RefCounted
-## Lo que el cliente sabe de su grupo (SOC-06 y SOC-08, docs/social.md, secciones 3 y 12.4): quiénes son los
-## miembros y quién manda (PARTY_ROSTER), cómo están (PARTY_STATUS, a 2 Hz y aunque estén lejos) y las
-## invitaciones que tiene delante (PARTY_INVITATION). Es solo datos: lo alimenta [NetClient] con los
-## mensajes del servidor y lo pintan [PartyFrames], [PartyInvitePrompt] y [Nameplates].
+## What the client knows about its party (SOC-06 and SOC-08, docs/social.md, sections 3 and 12.4): who the
+## members are and who leads (PARTY_ROSTER), how they are doing (PARTY_STATUS, at 2 Hz and even if they are far away) and the
+## invitations in front of it (PARTY_INVITATION). It is data only: it is fed by [NetClient] with the
+## server's messages and drawn by [PartyFrames], [PartyInvitePrompt] and [Nameplates].
 ## [br][br]
-## [b]Orden y estado.[/b] Los miembros van en el orden de la lista del servidor (por antigüedad). Un miembro
-## nuevo no tiene estado hasta el siguiente PARTY_STATUS (como mucho medio segundo): [member Member.has_status]
-## lo dice y los marcos lo enseñan atenuado y sin datos. Un PARTY_STATUS de alguien que no está en la lista (un
-## mensaje atrasado) se ignora.
+## [b]Order and status.[/b] Members go in the order of the server's list (by seniority). A new
+## member has no status until the next PARTY_STATUS (half a second at most): [member Member.has_status]
+## says so and the frames show them dimmed and without data. A PARTY_STATUS from someone not in the list (a
+## late message) is ignored.
 ## [br][br]
-## [b]Invitaciones.[/b] Hay una por quien invitó (una nueva del mismo jugador sustituye a la anterior); se
-## quitan cuando el servidor dice que han caducado o se han cancelado y también por su cuenta al pasar el tick
-## de caducidad ([method prune_expired]), por si el aviso se pierde o la interfaz va por delante. La que se
-## enseña es la más antigua que siga vigente.
+## [b]Invitations.[/b] There is one per inviter (a new one from the same player replaces the previous one); they are
+## removed when the server says they have expired or been canceled and also on their own when the expiry
+## tick passes ([method prune_expired]), in case the notice is lost or the UI is ahead. The one
+## shown is the oldest that is still valid.
 
-## Cambió la lista de miembros o quién manda (también al entrar o salir de un grupo).
+## The member list or who leads changed (also on joining or leaving a party).
 signal roster_changed
-## Llegó un PARTY_STATUS: cambió la vida, la resistencia o la posición de algún miembro.
+## A PARTY_STATUS arrived: the health, stamina or position of some member changed.
 signal status_changed
-## Cambió el conjunto de invitaciones pendientes.
+## The set of pending invitations changed.
 signal invitation_changed
 
 
-## Un miembro del grupo.
+## A party member.
 class Member:
 	extends RefCounted
 
 	var net_id: int = 0
 	var display_name: String = ""
-	## Vida cuantizada del registro (0 muerto, de 1 a 255 vivo).
+	## Quantized health from the record (0 dead, 1 to 255 alive).
 	var health_q: int = 255
 	var stamina_q: int = PartyRules.STAMINA_Q_MAX
-	## Bits de [constant NetMessages.STATUS_IN_COMBAT] y compañía.
+	## Bits of [constant NetMessages.STATUS_IN_COMBAT] and company.
 	var status: int = 0
 	var position: Vector3 = Vector3.ZERO
-	## false hasta que llega el primer PARTY_STATUS con este miembro.
+	## false until the first PARTY_STATUS with this member arrives.
 	var has_status: bool = false
 
 	func is_dead() -> bool:
@@ -51,13 +51,13 @@ class Member:
 		return PartyRules.stamina_fraction(stamina_q)
 
 
-## Una invitación al grupo de otro jugador.
+## An invitation to another player's party.
 class Invitation:
 	extends RefCounted
 
-	## Nombre canónico de quien invita.
+	## Canonical name of the inviter.
 	var inviter: String = ""
-	## Tick del servidor en el que caduca.
+	## Server tick at which it expires.
 	var expire_tick: int = 0
 
 
@@ -66,14 +66,14 @@ var _leader_id: int = 0
 var _invitations: Array[Invitation] = []
 
 
-# --- Consultas --------------------------------------------------------------------------------
+# --- Queries ----------------------------------------------------------------------------------
 
-## true si el jugador está en un grupo.
+## true if the player is in a party.
 func is_in_party() -> bool:
 	return not _members.is_empty()
 
 
-## Los miembros, en el orden de la lista del servidor (el líder no tiene por qué ser el primero).
+## The members, in the order of the server's list (the leader need not be the first).
 func get_members() -> Array[Member]:
 	return _members.duplicate()
 
@@ -82,7 +82,7 @@ func get_member_count() -> int:
 	return _members.size()
 
 
-## El miembro con ese id de red, o null.
+## The member with that network id, or null.
 func get_member(net_id: int) -> Member:
 	for member: Member in _members:
 		if member.net_id == net_id:
@@ -94,7 +94,7 @@ func has_member(net_id: int) -> bool:
 	return get_member(net_id) != null
 
 
-## Id de red del líder (0 si no hay grupo).
+## Network id of the leader (0 if there is no party).
 func get_leader_id() -> int:
 	return _leader_id
 
@@ -103,20 +103,20 @@ func is_leader(net_id: int) -> bool:
 	return net_id != 0 and net_id == _leader_id
 
 
-## Las invitaciones pendientes, de la más antigua a la más nueva.
+## The pending invitations, from oldest to newest.
 func get_invitations() -> Array[Invitation]:
 	return _invitations.duplicate()
 
 
-## La invitación que se enseña ahora (la más antigua vigente), o null.
+## The invitation shown now (the oldest valid one), or null.
 func get_current_invitation() -> Invitation:
 	return _invitations[0] if not _invitations.is_empty() else null
 
 
-# --- Mensajes del servidor --------------------------------------------------------------------
+# --- Server messages --------------------------------------------------------------------------
 
-## Aplica una lista de miembros: sustituye a la anterior conservando el estado de quien sigue. Una lista vacía
-## es «ya no estás en un grupo».
+## Applies a member list: replaces the previous one while keeping the status of whoever remains. An empty list
+## means "you are no longer in a party".
 func apply_roster(roster: NetMessages.PartyRoster) -> void:
 	var previous: Dictionary[int, Member] = {}
 	for member: Member in _members:
@@ -134,7 +134,7 @@ func apply_roster(roster: NetMessages.PartyRoster) -> void:
 	roster_changed.emit()
 
 
-## Aplica el estado compacto de los miembros.
+## Applies the members' compact status.
 func apply_status(status: NetMessages.PartyStatus) -> void:
 	var changed: bool = false
 	for entry: NetMessages.PartyStatus.MemberStatus in status.members:
@@ -151,7 +151,7 @@ func apply_status(status: NetMessages.PartyStatus) -> void:
 		status_changed.emit()
 
 
-## Aplica una invitación nueva, o que ha caducado o se ha cancelado.
+## Applies a new invitation, or one that has expired or been canceled.
 func apply_invitation(message: NetMessages.PartyInvitation) -> void:
 	var key: String = NameRules.normalize_key(message.inviter)
 	var index: int = _index_of(key)
@@ -168,7 +168,7 @@ func apply_invitation(message: NetMessages.PartyInvitation) -> void:
 		invitation_changed.emit()
 
 
-## Quita la invitación de [param inviter] (el jugador ya ha respondido). Devuelve true si estaba.
+## Removes the invitation from [param inviter] (the player has already responded). Returns true if it was there.
 func remove_invitation(inviter: String) -> bool:
 	var index: int = _index_of(NameRules.normalize_key(inviter))
 	if index < 0:
@@ -178,8 +178,8 @@ func remove_invitation(inviter: String) -> bool:
 	return true
 
 
-## Quita las invitaciones cuyo tick de caducidad ya pasó ([param server_tick] es el tick estimado del
-## servidor). Devuelve cuántas quitó.
+## Removes the invitations whose expiry tick has passed ([param server_tick] is the estimated server
+## tick). Returns how many it removed.
 func prune_expired(server_tick: int) -> int:
 	var removed: int = 0
 	for invitation: Invitation in _invitations.duplicate():
@@ -191,7 +191,7 @@ func prune_expired(server_tick: int) -> int:
 	return removed
 
 
-## Olvida todo (sesión nueva o terminada).
+## Forgets everything (new or ended session).
 func clear() -> void:
 	var had_party: bool = not _members.is_empty()
 	var had_invitations: bool = not _invitations.is_empty()

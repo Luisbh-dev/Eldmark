@@ -1,11 +1,12 @@
 extends TestCase
-## Pruebas de los guardados en [ZoneServer] con [FakeZonePlatform], una [FakeSaveSection] y clientes de verdad sobre
-## ENet en 127.0.0.1 (docs/plataforma.md §7.2, §6.1 y §15 P5): el crítico justo tras track y el punto de control en
-## su fase, la salida en combate que guarda al irse el cuerpo, la baja sin guardado (un invalid_save en combate y
-## un revoked lease_lost en combate), un revoked que expulsa con guardado final, el cierre de §6.1
-## (instance_lost en el latido, instance_replaced en un guardado) con los finales antes del NOTICE, el cierre
-## ordenado que espera a la plataforma y libera a los de LOADING y VERIFYING, el mantenimiento del latido, la
-## reconexión que trae lo último aplicado y el mismo personaje que vuelve mientras su final se reintenta.
+## Tests for saves in [ZoneServer] with [FakeZonePlatform], a [FakeSaveSection] and real clients over
+## ENet on 127.0.0.1 (docs/plataforma.md §7.2, §6.1 and §15 P5): the critical save right after track and the
+## checkpoint in its phase, the combat exit that saves when the body leaves, removal without a save (an
+## invalid_save in combat and a revoked lease_lost in combat), a revoked that kicks with a final save, the
+## §6.1 shutdown (instance_lost in the heartbeat, instance_replaced in a save) with the final saves before the
+## NOTICE, the orderly shutdown that waits for the platform and releases those in LOADING and VERIFYING, the
+## heartbeat's maintenance, the reconnection that brings the latest applied state and the same character coming
+## back while its final save is being retried.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -57,11 +58,11 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
-## La zona de prueba con la plataforma falsa ya arrancada, el servidor escuchando con un punto de control cada 2 s
-## (120 ticks) y la sección falsa registrada. [param configure] recibe el [ServerConfig] y [param setup] la
-## plataforma antes de arrancar.
+## The test zone with the fake platform already started, the server listening with a checkpoint every 2 s
+## (120 ticks) and the fake section registered. [param configure] receives the [ServerConfig] and [param setup]
+## the platform before startup.
 func _start(configure: Callable = Callable(), setup: Callable = Callable()) -> bool:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
@@ -97,14 +98,14 @@ func _start(configure: Callable = Callable(), setup: Callable = Callable()) -> b
 		if not finished.is_empty():
 			break
 		await wait_process_frames()
-	if not assert_eq(finished, [[true, ""]], "la plataforma falsa arranca"):
+	if not assert_eq(finished, [[true, ""]], "the fake platform starts"):
 		return false
 	_provider = TicketAuthProvider.new(_platform, config.world_id, config.zone_id, config.channel, _keys)
 	_provider.log_sink = func(_text: String) -> void: pass
 	if not assert_eq(_server.start(config, _world, _server_transport, _provider, _platform), OK,
-			"el servidor abre el puerto %d" % _port):
+			"the server opens port %d" % _port):
 		return false
-	if not assert_not_null(_server.get_saver(), "con la plataforma hay CharacterSaver"):
+	if not assert_not_null(_server.get_saver(), "with the platform there is a CharacterSaver"):
 		return false
 	assert_eq(_server.get_saver().interval_ticks(), 120, "--save-interval=2: 120 ticks")
 	_section = FakeSaveSection.new()
@@ -158,7 +159,7 @@ func _connect(character_id: int, auto_ready: bool = true) -> RawTicketClient:
 	var client := RawTicketClient.new(transport, _hello(character_id))
 	client.auto_ready = auto_ready
 	_clients.append(client)
-	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "el cliente conecta")
+	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "the client connects")
 	return client
 
 
@@ -188,11 +189,11 @@ func _run_ms(ms: int) -> void:
 		await _step()
 
 
-## Entra con billete el personaje [param character_id] y espera su alta.
+## Character [param character_id] joins with a ticket and waits to be signed up.
 func _join(character_id: int) -> RawTicketClient:
 	var client: RawTicketClient = _connect(character_id)
 	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null or client.reject != null)
-	if not assert_true(joined and client.own_spawn != null, "el personaje %d entra en el mundo" % character_id):
+	if not assert_true(joined and client.own_spawn != null, "character %d enters the world" % character_id):
 		return null
 	return client
 
@@ -205,7 +206,7 @@ func _releases() -> Array[Dictionary]:
 	return _platform.sent(ZonePlatform.KIND_RELEASE)
 
 
-## Los guardados finales (con release_lease) de [param character_id].
+## The final saves (with release_lease) of [param character_id].
 func _finals_of(character_id: int) -> Array[Dictionary]:
 	var finals: Array[Dictionary] = []
 	for body: Dictionary in _saves():
@@ -228,10 +229,10 @@ func _script_heartbeat(revoked: Array, maintenance: Variant = null) -> void:
 	_platform.send_heartbeat_now()
 
 
-# --- Pruebas ----------------------------------------------------------------------------------
+# --- Tests ------------------------------------------------------------------------------------
 
-## Un crítico marcado justo tras track (en el alta) sale en ese mismo tick; después, el punto de control de cada
-## personaje sale en su fase (tick % 120 == character_id % 120) cuando su sección está sucia.
+## A critical flagged right after track (on sign-up) goes out on that same tick; afterwards, each character's
+## checkpoint goes out in its phase (tick % 120 == character_id % 120) when its section is dirty.
 func test_a_critical_right_after_track_and_checkpoints_in_their_phase() -> void:
 	var joined_tick: Dictionary[int, int] = {}
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
@@ -248,21 +249,21 @@ func test_a_critical_right_after_track_and_checkpoints_in_their_phase() -> void:
 	var net_10: int = first.own_spawn.net_id
 	var net_70: int = second.own_spawn.net_id
 	await _run_until(func() -> bool: return _section.acknowledged.size() == 2)
-	assert_eq(_section.build_ticks(net_10), [joined_tick[net_10]], "el crítico del alta sale en el tick del alta")
-	assert_eq(_section.build_ticks(net_70), [joined_tick[net_70]], "también el del segundo")
+	assert_eq(_section.build_ticks(net_10), [joined_tick[net_10]], "the sign-up critical goes out on the sign-up tick")
+	assert_eq(_section.build_ticks(net_70), [joined_tick[net_70]], "also the second one's")
 	_section.set_kills(net_10, 1)
 	_section.set_kills(net_70, 2)
 	await _run_until(func() -> bool:
 		return _section.build_ticks(net_10).size() == 2 and _section.build_ticks(net_70).size() == 2, 4500)
 	var tick_10: int = _section.build_ticks(net_10)[-1] if _section.build_ticks(net_10).size() == 2 else -1
 	var tick_70: int = _section.build_ticks(net_70)[-1] if _section.build_ticks(net_70).size() == 2 else -1
-	assert_eq(tick_10 % 120, 10, "el punto de control del 10 en su fase (tick %d)" % tick_10)
-	assert_eq(tick_70 % 120, 70, "el del 70 en la suya (tick %d)" % tick_70)
+	assert_eq(tick_10 % 120, 10, "the checkpoint of 10 in its phase (tick %d)" % tick_10)
+	assert_eq(tick_70 % 120, 70, "that of 70 in its own (tick %d)" % tick_70)
 	var reasons: Array = _saves().map(func(b: Dictionary) -> int: return int(b["reason"]))
-	assert_eq(reasons, [2, 2, 1, 1], "dos críticos y dos puntos de control")
+	assert_eq(reasons, [2, 2, 1, 1], "two criticals and two checkpoints")
 
 
-## Salida en combate (GUE-41): el cuerpo se queda y su final sale cuando se va, con el motivo 3.
+## Combat exit (GUE-41): the body stays and its final save goes out when it leaves, with reason 3.
 func test_leaving_in_combat_saves_when_the_body_goes() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
@@ -276,22 +277,22 @@ func test_leaving_in_combat_saves_when_the_body_goes() -> void:
 	_put_in_combat(net_id)
 	client.transport.close()
 	var lingering: bool = await _run_until(func() -> bool: return _server.is_lingering(net_id))
-	if not assert_true(lingering, "el cuerpo se queda"):
+	if not assert_true(lingering, "the body stays"):
 		return
-	assert_eq(_finals_of(42).size(), 0, "sin final mientras el cuerpo sigue")
+	assert_eq(_finals_of(42).size(), 0, "no final save while the body remains")
 	var gone: bool = await _run_until(func() -> bool: return not _has_body(net_id), 3000)
-	assert_true(gone, "el cuerpo se va")
+	assert_true(gone, "the body leaves")
 	await _run_until(func() -> bool: return not _finals_of(42).is_empty(), 1000)
 	var finals: Array[Dictionary] = _finals_of(42)
-	if assert_eq(finals.size(), 1, "un final al irse el cuerpo"):
-		assert_eq(int(finals[0]["reason"]), CharacterSaver.Reason.LOGOUT, "motivo 3")
-		assert_eq(int(finals[0]["pvp"]["kills"]), 3, "con su sección")
-	assert_eq(_releases().size(), 0, "el final libera: sin release aparte")
+	if assert_eq(finals.size(), 1, "one final save when the body leaves"):
+		assert_eq(int(finals[0]["reason"]), CharacterSaver.Reason.LOGOUT, "reason 3")
+		assert_eq(int(finals[0]["pvp"]["kills"]), 3, "with its section")
+	assert_eq(_releases().size(), 0, "the final save releases: no separate release")
 
 
-## La baja sin guardado: un invalid_save con el jugador en combate saca el cuerpo en el acto (sin salida en
-## combate), libera una vez, la «Salida» no manda nada y la sección no recibe nada más; un revoked lease_lost en
-## combate, igual pero sin liberar.
+## Removal without a save: an invalid_save with the player in combat takes the body out immediately (no
+## combat exit), releases once, the "Salida" section sends nothing and the section receives nothing more; a revoked lease_lost in
+## combat, the same but without releasing.
 func test_a_rejected_save_and_a_lease_lost_drop_the_body_at_once() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})
@@ -304,7 +305,7 @@ func test_a_rejected_save_and_a_lease_lost_drop_the_body_at_once() -> void:
 		return
 	var net_42: int = first.own_spawn.net_id
 	var net_43: int = second.own_spawn.net_id
-	# El kit de la primera entrada de cada uno ya ha salido como crítico (progresion.md P5a): se cuenta desde aquí.
+	# The kit from each one's first entry has already gone out as a critical (progresion.md P5a): counting starts from here.
 	await _run_until(func() -> bool: return _server.get_saver().pending_count() == 0)
 	var saves_before: int = _saves().size()
 	_put_in_combat(net_42)
@@ -314,32 +315,32 @@ func test_a_rejected_save_and_a_lease_lost_drop_the_body_at_once() -> void:
 	_section.set_kills(net_42, 1)
 	_server.get_saver().mark_critical(net_42, &"gm")
 	var kicked: bool = await _run_until(func() -> bool: return first.kick_notice() != null)
-	if not assert_true(kicked, "expulsión"):
+	if not assert_true(kicked, "kick"):
 		return
-	assert_eq(first.kick_notice().text, ZoneServer.SAVE_REJECTED_TEXT, "«No se ha podido guardar tu personaje…»")
+	assert_eq(first.kick_notice().text, ZoneServer.SAVE_REJECTED_TEXT, "\"No se ha podido guardar tu personaje…\" (your character could not be saved)")
 	await _run_until(func() -> bool: return not _has_body(net_42), 1000)
-	assert_false(_has_body(net_42), "el cuerpo sale en el acto")
-	assert_false(_server.is_lingering(net_42), "sin salida en combate")
+	assert_false(_has_body(net_42), "the body leaves immediately")
+	assert_false(_server.is_lingering(net_42), "no combat exit")
 	var calls: int = _section.calls_for(net_42)
 	await _run_ms(300)
-	assert_eq(_saves().size(), saves_before + 1, "la «Salida» no manda nada")
+	assert_eq(_saves().size(), saves_before + 1, "the \"Salida\" section sends nothing")
 	assert_eq(_releases().map(func(b: Dictionary) -> String: return String(b["lease_id"])),
-			[_platform.claimed(42).lease_id], "se libera una vez")
-	assert_eq(_section.calls_for(net_42), calls, "la sección no recibe nada más del cuerpo que se fue")
-	assert_false(_server.get_saver().is_tracked(net_42), "sin entrada")
+			[_platform.claimed(42).lease_id], "it is released once")
+	assert_eq(_section.calls_for(net_42), calls, "the section receives nothing more from the body that left")
+	assert_false(_server.get_saver().is_tracked(net_42), "no entry")
 	_script_heartbeat([{"character_id": "43", "lease_id": _platform.claimed(43).lease_id, "reason": "lease_lost",
 			"text": "Tu personaje ha entrado en otro servidor"}])
 	kicked = await _run_until(func() -> bool: return second.kick_notice() != null)
-	if assert_true(kicked, "lease_lost expulsa"):
-		assert_eq(second.kick_notice().text, ZoneServer.LEASE_LOST_TEXT, "con su texto")
+	if assert_true(kicked, "lease_lost kicks"):
+		assert_eq(second.kick_notice().text, ZoneServer.LEASE_LOST_TEXT, "with its text")
 	await _run_until(func() -> bool: return not _has_body(net_43), 1000)
-	assert_false(_has_body(net_43), "el cuerpo sale en el acto")
+	assert_false(_has_body(net_43), "the body leaves immediately")
 	await _run_ms(300)
-	assert_eq(_saves().size(), saves_before + 1, "sin guardado")
-	assert_eq(_releases().size(), 1, "ni liberación")
+	assert_eq(_saves().size(), saves_before + 1, "no save")
+	assert_eq(_releases().size(), 1, "nor release")
 
 
-## Un revoked que no es lease_lost (session_revoked) expulsa con su texto y el guardado final, con el motivo 5.
+## A revoked that is not lease_lost (session_revoked) kicks with its text and the final save, with reason 5.
 func test_a_revoked_session_kicks_with_a_final_save() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
@@ -351,23 +352,23 @@ func test_a_revoked_session_kicks_with_a_final_save() -> void:
 	_script_heartbeat([{"character_id": "42", "lease_id": _platform.claimed(42).lease_id,
 			"reason": "session_revoked", "text": "Has iniciado sesión desde otro lugar"}])
 	await _run_until(func() -> bool: return not _finals_of(42).is_empty())
-	if assert_not_null(client.kick_notice(), "expulsión"):
-		assert_eq(client.kick_notice().text, "Has iniciado sesión desde otro lugar", "con el texto de la plataforma")
+	if assert_not_null(client.kick_notice(), "kick"):
+		assert_eq(client.kick_notice().text, "Has iniciado sesión desde otro lugar", "with the platform's text")
 	var finals: Array[Dictionary] = _finals_of(42)
-	if assert_eq(finals.size(), 1, "con guardado final"):
-		assert_eq(int(finals[0]["reason"]), CharacterSaver.Reason.KICK, "motivo 5")
-		assert_eq(int(finals[0]["pvp"]["kills"]), 5, "con su sección")
+	if assert_eq(finals.size(), 1, "with a final save"):
+		assert_eq(int(finals[0]["reason"]), CharacterSaver.Reason.KICK, "reason 5")
+		assert_eq(int(finals[0]["pvp"]["kills"]), 5, "with its section")
 
 
-## El cierre de §6.1 por un instance_lost en el latido: los finales de todos salen y se contestan antes del NOTICE
-## de expulsión; los de LOADING se liberan; y quien vuelve a entrar enseguida carga su final.
+## The §6.1 shutdown from an instance_lost in the heartbeat: everyone's final saves go out and are answered before the kick
+## NOTICE; those in LOADING are released; and whoever re-enters right away loads their final save.
 func test_instance_lost_saves_everyone_before_the_kick_notice() -> void:
 	await _check_instance_closing(func() -> void:
 		_platform.script_next(PlatformEvent.KIND_HEARTBEAT, 409, FakeZonePlatform.error_body("instance_lost"))
 		_platform.send_heartbeat_now(), "instance_lost")
 
 
-## Igual con un instance_replaced que llega en el instance_status de un guardado.
+## The same with an instance_replaced arriving in the instance_status of a save.
 func test_instance_replaced_in_a_save_status_closes_the_same_way() -> void:
 	await _check_instance_closing(func() -> void:
 		_platform.script_next(PlatformEvent.KIND_SAVE, 200, {"applied": true, "duplicate": false, "save_version": 1,
@@ -392,31 +393,31 @@ func _check_instance_closing(trigger: Callable, expected_code: String) -> void:
 	var net_id: int = client.own_spawn.net_id
 	_section.set_kills(net_id, 11)
 	trigger.call()
-	# El final tarda 0,6 s en contestarse: el NOTICE tiene que esperarlo.
+	# The final save takes 0.6 s to be answered: the NOTICE has to wait for it.
 	_platform.script_next(PlatformEvent.KIND_SAVE, 200, FakeZonePlatform.DEFAULT, 0.6)
 	var closed: bool = await _run_until(func() -> bool: return not codes.is_empty(), 3000)
-	if not assert_true(closed, "la zona recibe instance_closed"):
+	if not assert_true(closed, "the zone receives instance_closed"):
 		return
 	var closed_at: int = Time.get_ticks_msec()
-	assert_eq(codes, [expected_code], "una vez, con su código")
+	assert_eq(codes, [expected_code], "once, with its code")
 	var released: bool = await _run_until(func() -> bool: return _releases().size() == 1, 1000)
-	if assert_true(released, "el de LOADING se libera enseguida"):
-		assert_eq(String(_releases()[0]["lease_id"]), _platform.claimed(43).lease_id, "con su arrendamiento")
-	assert_null(client.kick_notice(), "nadie expulsado antes de los finales")
+	if assert_true(released, "the one in LOADING is released right away"):
+		assert_eq(String(_releases()[0]["lease_id"]), _platform.claimed(43).lease_id, "with its lease")
+	assert_null(client.kick_notice(), "nobody is kicked before the final saves")
 	var kicked: bool = await _run_until(func() -> bool: return client.kick_notice() != null, 4000)
-	if not assert_true(kicked, "NOTICE de expulsión"):
+	if not assert_true(kicked, "kick NOTICE"):
 		return
-	assert_eq(client.kick_notice().text, ZoneServer.INSTANCE_CLOSED_TEXT, "«El servidor de la zona se ha reiniciado…»")
+	assert_eq(client.kick_notice().text, ZoneServer.INSTANCE_CLOSED_TEXT, "\"El servidor de la zona se ha reiniciado…\" (the zone server has restarted)")
 	assert_true(client.notice_time(NetProtocol.NoticeCode.KICK) - closed_at >= 500,
-			"después de la respuesta del final (%d ms)" % (client.notice_time(NetProtocol.NoticeCode.KICK) - closed_at))
-	assert_not_null(loading.kick_notice(), "también al de LOADING")
+			"after the final save's response (%d ms)" % (client.notice_time(NetProtocol.NoticeCode.KICK) - closed_at))
+	assert_not_null(loading.kick_notice(), "also to the one in LOADING")
 	var finals: Array[Dictionary] = _finals_of(42)
-	if assert_eq(finals.size(), 1, "un final"):
-		assert_eq(int(finals[0]["reason"]), CharacterSaver.Reason.SHUTDOWN, "motivo 4")
+	if assert_eq(finals.size(), 1, "one final save"):
+		assert_eq(int(finals[0]["reason"]), CharacterSaver.Reason.SHUTDOWN, "reason 4")
 	var stopped: bool = await _run_until(func() -> bool: return _server.is_stopped(), 2000)
-	assert_true(stopped, "la zona termina")
-	assert_eq(_server.get_saver().pending_count(), 0, "sin guardados pendientes")
-	# Quien vuelve a entrar enseguida carga su final.
+	assert_true(stopped, "the zone finishes")
+	assert_eq(_server.get_saver().pending_count(), 0, "with no pending saves")
+	# Whoever re-enters right away loads their final save.
 	_platform.take_events()
 	var ticket := HandoffTicket.new()
 	ticket.ticket_id = _next_ticket_id
@@ -430,14 +431,14 @@ func _check_instance_closing(trigger: Callable, expected_code: String) -> void:
 		if not claim.is_empty():
 			break
 		await wait_process_frames()
-	if assert_eq(claim.size(), 1, "la reclamación siguiente"):
+	if assert_eq(claim.size(), 1, "the next claim"):
 		var claimed: ClaimedCharacter = ClaimedCharacter.from_claim(claim[0].body_dict())
-		if assert_not_null(claimed, "se entiende"):
-			assert_eq(int(claimed.pvp["kills"]), 11, "trae el final")
+		if assert_not_null(claimed, "is understood"):
+			assert_eq(int(claimed.pvp["kills"]), 11, "brings the final save")
 
 
-## El cierre ordenado espera a que la plataforma conteste los finales (a los 2 s) y libera a los de LOADING y
-## VERIFYING (la reclamación que llega tarde) antes de terminar.
+## The orderly shutdown waits for the platform to answer the final saves (after 2 s) and releases those in LOADING and
+## VERIFYING (the claim that arrives late) before finishing.
 func test_the_ordered_stop_waits_for_the_platform_and_releases_loading_and_verifying() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})
@@ -460,25 +461,25 @@ func test_the_ordered_stop_waits_for_the_platform_and_releases_loading_and_verif
 	_platform.script_next(PlatformEvent.KIND_SAVE, 200, FakeZonePlatform.DEFAULT, 2.0)
 	var started: int = Time.get_ticks_msec()
 	_server.stop()
-	assert_false(_server.is_stopped(), "no termina mientras el final no tiene respuesta")
+	assert_false(_server.is_stopped(), "it does not finish while the final save has no response")
 	var stopped: bool = await _run_until(func() -> bool: return _server.is_stopped(), 5000)
 	var elapsed: int = Time.get_ticks_msec() - started
-	if not assert_true(stopped, "termina"):
+	if not assert_true(stopped, "it finishes"):
 		return
-	assert_true(elapsed >= 1900 and elapsed < 3500, "tras la respuesta del final (%d ms)" % elapsed)
+	assert_true(elapsed >= 1900 and elapsed < 3500, "after the final save's response (%d ms)" % elapsed)
 	var finals: Array[Dictionary] = _finals_of(42)
-	if assert_eq(finals.size(), 1, "el final de quien estaba en el mundo"):
-		assert_eq(int(finals[0]["reason"]), CharacterSaver.Reason.SHUTDOWN, "motivo 4")
+	if assert_eq(finals.size(), 1, "the final save of the one who was in the world"):
+		assert_eq(int(finals[0]["reason"]), CharacterSaver.Reason.SHUTDOWN, "reason 4")
 	var leases: Array = _releases().map(func(b: Dictionary) -> String: return String(b["lease_id"]))
 	assert_eq(leases, [_platform.claimed(43).lease_id, _platform.claimed(44).lease_id],
-			"se liberan el de LOADING y, cuando llega su reclamación, el de VERIFYING")
-	assert_true(_platform.is_flushed(), "nada en cola ni en vuelo")
-	assert_true(client.notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "NOTICE de cierre")
-	assert_null(verifying.welcome, "el de VERIFYING no llega a entrar")
+			"the one in LOADING is released and, when its claim arrives, so is the one in VERIFYING")
+	assert_true(_platform.is_flushed(), "nothing queued or in flight")
+	assert_true(client.notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "shutdown NOTICE")
+	assert_null(verifying.welcome, "the one in VERIFYING never gets in")
 
 
-## El maintenance del latido avisa a los 10, 5 y 1 min, a los 30 s y a los 10 s (con la hora de la plataforma) y,
-## a su hora, pide el cierre ordenado.
+## The heartbeat's maintenance warns at 10, 5 and 1 min, at 30 s and at 10 s (using the platform's time) and,
+## when the time comes, requests the orderly shutdown.
 func test_maintenance_announces_and_asks_for_the_shutdown() -> void:
 	var now: int = 1_800_000_000
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
@@ -493,11 +494,11 @@ func test_maintenance_announces_and_asks_for_the_shutdown() -> void:
 	_platform.fake_maintenance = {"at_unix": now + 600, "message": "versión nueva"}
 	_platform.send_heartbeat_now()
 	await _run_until(func() -> bool: return client.notice_texts(NetProtocol.NoticeCode.INFO).size() == 1)
-	assert_eq(_server.get_maintenance_at_unix(), now + 600, "anunciado")
+	assert_eq(_server.get_maintenance_at_unix(), now + 600, "announced")
 	for left: int in [300, 61, 60, 30, 11, 10, 1]:
 		_platform.fake_now_unix = now + 600 - left
 		await _run_ms(80)
-	assert_eq(requested.size(), 0, "aún sin cierre")
+	assert_eq(requested.size(), 0, "no shutdown yet")
 	_platform.fake_now_unix = now + 600
 	await _run_until(func() -> bool: return not requested.is_empty(), 1000)
 	assert_eq(client.notice_texts(NetProtocol.NoticeCode.INFO), PackedStringArray([
@@ -506,9 +507,9 @@ func test_maintenance_announces_and_asks_for_the_shutdown() -> void:
 			"El servidor se cerrará por mantenimiento en 1 min: versión nueva",
 			"El servidor se cerrará por mantenimiento en 30 s: versión nueva",
 			"El servidor se cerrará por mantenimiento en 10 s: versión nueva",
-	]), "los cinco avisos")
-	assert_eq(requested, ["mantenimiento de la plataforma"], "y a su hora, el cierre")
-	# Uno anunciado que la plataforma retira: aviso de cancelación y nada más.
+	]), "the five warnings")
+	assert_eq(requested, ["mantenimiento de la plataforma"], "and when the time comes, the shutdown")
+	# One that was announced and the platform withdraws: a cancellation warning and nothing more.
 	_platform.fake_maintenance = {"at_unix": now + 1200, "message": ""}
 	_platform.send_heartbeat_now()
 	await _run_until(func() -> bool: return client.notice_texts(NetProtocol.NoticeCode.INFO).size() == 6)
@@ -517,11 +518,11 @@ func test_maintenance_announces_and_asks_for_the_shutdown() -> void:
 	await _run_until(func() -> bool: return client.notice_texts(NetProtocol.NoticeCode.INFO).size() == 7)
 	var texts: PackedStringArray = client.notice_texts(NetProtocol.NoticeCode.INFO)
 	assert_eq(texts.slice(5), PackedStringArray(["El servidor se cerrará por mantenimiento en 10 min",
-			"Mantenimiento cancelado: el servidor sigue abierto"]), "anunciado y cancelado")
-	assert_eq(_server.get_maintenance_at_unix(), 0, "sin mantenimiento")
+			"Mantenimiento cancelado: el servidor sigue abierto"]), "announced and cancelled")
+	assert_eq(_server.get_maintenance_at_unix(), 0, "no maintenance")
 
 
-## La reconexión devuelve lo último aplicado de la sección.
+## Reconnecting returns the section's latest applied state.
 func test_reconnecting_brings_back_the_last_applied_section() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
@@ -533,18 +534,18 @@ func test_reconnecting_brings_back_the_last_applied_section() -> void:
 	_section.set_kills(client.own_spawn.net_id, 7)
 	client.leave()
 	await _run_until(func() -> bool: return _server.get_saver().entry_count() == 0)
-	assert_eq(_finals_of(42).size(), 1, "el final al salir")
+	assert_eq(_finals_of(42).size(), 1, "the final save on exit")
 	var again: RawTicketClient = await _join(42)
 	if again == null:
 		return
 	var claimed: ClaimedCharacter = _platform.claimed(42)
-	assert_false(claimed.lease_id == first_lease, "otra reclamación, otro lease_id")
-	assert_eq(int(claimed.pvp["kills"]), 7, "la reclamación trae lo último aplicado")
-	assert_eq(_server.get_saver().lease_of(42), claimed.lease_id, "y el cuerpo nuevo guarda con el arrendamiento nuevo")
+	assert_false(claimed.lease_id == first_lease, "another claim, another lease_id")
+	assert_eq(int(claimed.pvp["kills"]), 7, "the claim brings the latest applied state")
+	assert_eq(_server.get_saver().lease_of(42), claimed.lease_id, "and the new body saves with the new lease")
 
 
-## El mismo personaje vuelve a esta instancia mientras su final, ya aplicado, se reintenta: la entrada vieja recibe
-## lease_lost y solo se registra (sin liberar), y el cuerpo nuevo no se expulsa.
+## The same character returns to this instance while its final save, already applied, is being retried: the old entry receives
+## lease_lost and is only logged (without releasing), and the new body is not kicked.
 func test_the_same_character_back_while_its_final_is_retried() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
@@ -563,8 +564,8 @@ func test_the_same_character_back_while_its_final_is_retried() -> void:
 		return
 	await _run_until(func() -> bool: return _saves().size() >= 3 and _server.get_saver().entry_count() == 1, 4000)
 	await _run_ms(300)
-	assert_null(again.kick_notice(), "el cuerpo nuevo no se expulsa")
-	assert_false(again.disconnected, "y sigue conectado")
-	assert_eq(_server.get_saver().entry_count(), 1, "la entrada vieja se cierra")
-	assert_true(_server.get_saver().is_tracked(again.own_spawn.net_id), "la nueva sigue")
-	assert_eq(_releases().size(), 0, "lease_lost no libera")
+	assert_null(again.kick_notice(), "the new body is not kicked")
+	assert_false(again.disconnected, "and stays connected")
+	assert_eq(_server.get_saver().entry_count(), 1, "the old entry is closed")
+	assert_true(_server.get_saver().is_tracked(again.own_spawn.net_id), "the new one continues")
+	assert_eq(_releases().size(), 0, "lease_lost does not release")

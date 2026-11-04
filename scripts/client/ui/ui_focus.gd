@@ -1,38 +1,37 @@
 class_name UIFocus
 extends RefCounted
-## Vecinos de foco navegables (UI-09): ayudas para que cualquier fila, columna o cuadrícula de
-## controles (casillas, botones de una ventana) se pueda recorrer con teclado o mando sin tocar el
-## ratón. La decisión del backlog es que el soporte de mando llegue después del lanzamiento, pero que
-## los componentes lo tengan desde ahora para no rehacer todas las ventanas.
+## Navigable focus neighbors (UI-09): helpers so that any row, column or grid of controls (slots, window
+## buttons) can be traversed with keyboard or gamepad without touching the mouse. The backlog decision is
+## that gamepad support comes after launch, but that the components have it from now on so as not to
+## redo all the windows.
 ## [br][br]
-## Cada función fija [member Control.focus_neighbor_left] y compañía de los controles dados con rutas
-## relativas, así que hay que llamarlas cuando ya cuelgan del mismo árbol (o al menos del mismo
-## padre) y volver a llamarlas si se reordenan. Con [param wrap] a true el último salta al primero
-## (y al revés); con false los extremos no tienen vecino y el foco no sale de la fila.
+## Each function sets [member Control.focus_neighbor_left] and its siblings on the given controls with
+## relative paths, so they must be called when the controls already hang from the same tree (or at least
+## the same parent) and called again if they are reordered. With [param wrap] true the last one jumps to
+## the first (and vice versa); with false the ends have no neighbor and focus does not leave the row.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
 
-## Hace los controles enfocables con teclado y mando ([constant Control.FOCUS_ALL]).
+## Makes the controls focusable with keyboard and gamepad ([constant Control.FOCUS_ALL]).
 static func make_focusable(controls: Array[Control]) -> void:
 	for control: Control in controls:
 		control.focus_mode = Control.FOCUS_ALL
 
 
-## Enlaza [param controls] en una fila: derecha e izquierda recorren la lista.
+## Links [param controls] in a row: right and left traverse the list.
 static func chain_horizontal(controls: Array[Control], wrap: bool = true) -> void:
 	_chain(controls, wrap, SIDE_LEFT, SIDE_RIGHT)
 
 
-## Enlaza [param controls] en una columna: abajo y arriba recorren la lista.
+## Links [param controls] in a column: down and up traverse the list.
 static func chain_vertical(controls: Array[Control], wrap: bool = true) -> void:
 	_chain(controls, wrap, SIDE_TOP, SIDE_BOTTOM)
 
 
-## Enlaza [param controls] en una cuadrícula de [param columns] columnas (en orden de lectura, de
-## izquierda a derecha y de arriba abajo). Con [param wrap] los bordes dan la vuelta por su misma
-## fila o columna; en la última fila incompleta, bajar desde una columna sin casilla debajo lleva al
-## principio de esa columna.
+## Links [param controls] in a grid of [param columns] columns (in reading order, left to right and top to
+## bottom). With [param wrap] the edges wrap around within their own row or column; on the last, incomplete
+## row, going down from a column with no slot below leads to the top of that column.
 static func grid(controls: Array[Control], columns: int, wrap: bool = true) -> void:
 	if columns <= 0 or controls.is_empty():
 		return
@@ -51,7 +50,7 @@ static func grid(controls: Array[Control], columns: int, wrap: bool = true) -> v
 		var down: int = index + columns if index + columns < count else -1
 		if wrap:
 			if up < 0:
-				# La última casilla de esta columna.
+				# The last slot of this column.
 				up = column + (rows - 1) * columns
 				if up >= count:
 					up -= columns
@@ -63,7 +62,7 @@ static func grid(controls: Array[Control], columns: int, wrap: bool = true) -> v
 		_set_neighbor(control, SIDE_BOTTOM, controls, down)
 
 
-## Primer control visible y enfocable bajo [param root] (en orden de árbol), o null.
+## First visible, focusable control under [param root] (in tree order), or null.
 static func find_first_focusable(root: Node) -> Control:
 	for node: Node in root.find_children("*", "Control", true, false):
 		var control: Control = node as Control
@@ -72,8 +71,9 @@ static func find_first_focusable(root: Node) -> Control:
 	return null
 
 
-## Da el foco al primer control enfocable bajo [param root]. Devuelve ese control (null si no hay). El foco no abre su
-## tooltip: lo pone el código al abrir una ventana, no el jugador al navegar ([method UITooltip.grab_focus_silently]).
+## Gives focus to the first focusable control under [param root]. Returns that control (null if there is
+## none). Focus does not open its tooltip: it is set by code when opening a window, not by the player when
+## navigating ([method UITooltip.grab_focus_silently]).
 static func focus_first(root: Node) -> Control:
 	var control: Control = find_first_focusable(root)
 	if control != null:
@@ -81,9 +81,9 @@ static func focus_first(root: Node) -> Control:
 	return control
 
 
-## El control al que lleva el foco desde [param control] hacia [param side] ([constant SIDE_LEFT],
-## [constant SIDE_RIGHT], [constant SIDE_TOP] o [constant SIDE_BOTTOM]) según el vecino fijado, o
-## null si no tiene. Solo lee el vecino explícito, no el que el motor buscaría por posición.
+## The control that focus moves to from [param control] toward [param side] ([constant SIDE_LEFT],
+## [constant SIDE_RIGHT], [constant SIDE_TOP] or [constant SIDE_BOTTOM]) according to the set neighbor, or
+## null if it has none. It only reads the explicit neighbor, not the one the engine would find by position.
 static func get_neighbor(control: Control, side: Side) -> Control:
 	var path: NodePath = control.get_focus_neighbor(side)
 	if path.is_empty():
@@ -100,8 +100,8 @@ static func _chain(controls: Array[Control], wrap: bool, previous_side: Side, ne
 		_set_neighbor(controls[index], next_side, controls, next)
 
 
-# Fija (o quita, con un índice negativo) el vecino de [param side]. Un control es vecino de sí mismo
-# solo si es el único de la lista, y entonces se deja sin vecino.
+# Sets (or removes, with a negative index) the neighbor on [param side]. A control is its own neighbor
+# only if it is the only one in the list, and then it is left without a neighbor.
 static func _set_neighbor(control: Control, side: Side, controls: Array[Control], index: int) -> void:
 	if index < 0 or index >= controls.size() or controls[index] == control:
 		control.set_focus_neighbor(side, NodePath())

@@ -9,12 +9,13 @@ import (
 	"eldmark/platform/internal/httpx"
 )
 
-// Las páginas de los enlaces de los correos (§4.3): /verify, /reset y /revert, fuera de /v1 y sin
-// la regla del 426. El GET sirve un formulario mínimo (html/template, sin JavaScript ni CSS) con el
-// token en un campo oculto, que hace POST application/x-www-form-urlencoded a la misma ruta; así
-// un escáner de correo que abre el enlace no lo gasta. El token se valida (43 caracteres
-// base64url) antes de pintarlo; si no vale, la página dice «Enlace no válido» sin repetirlo. Por
-// dentro llaman a las mismas funciones que /v1. /verify vale para verify_email y change_email.
+// The email link pages (§4.3): /verify, /reset and /revert, outside /v1 and without the 426 rule.
+// The GET serves a minimal form (html/template, no JavaScript or CSS) with the token in a hidden
+// field, which POSTs application/x-www-form-urlencoded to the same route; that way an email scanner
+// that opens the link does not spend it. The token is validated (43 base64url characters) before
+// rendering it; if it is not valid, the page says "Enlace no válido" (invalid link) without
+// repeating it. Internally they call the same functions as /v1. /verify is valid for verify_email
+// and change_email.
 
 var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 <html lang="es">
@@ -70,7 +71,7 @@ func writePage(w http.ResponseWriter, status int, p page) {
 var invalidLinkPage = page{Title: "Enlace no válido",
 	Paragraphs: []string{"Este enlace no es válido. Copia el enlace entero del correo o pide otro desde el juego."}}
 
-// pageSpec describe una de las tres páginas.
+// pageSpec describes one of the three pages.
 type pageSpec struct {
 	path, title, intro, button string
 	password                   bool
@@ -145,7 +146,7 @@ func (a *API) mountPages(r Router) {
 			}
 			var e *httpx.Error
 			if !errors.As(err, &e) {
-				a.fail(w, req, err) // registra el error
+				a.fail(w, req, err) // logs the error
 				return
 			}
 			status := e.Status

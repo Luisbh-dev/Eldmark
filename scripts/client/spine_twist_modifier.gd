@@ -1,15 +1,14 @@
 class_name SpineTwistModifier
 extends SkeletonModifier3D
-## Gira la columna (Spine, Chest, UpperChest, Neck y Head) alrededor del eje vertical del
-## esqueleto, repartiendo [member twist] entre los huesos, después de que el AnimationTree haya
-## puesto la pose. Solo cliente.
+## Twists the spine (Spine, Chest, UpperChest, Neck and Head) around the skeleton's vertical axis,
+## distributing [member twist] among the bones, after the AnimationTree has set the pose. Client only.
 ##
-## Lo usa [CharacterAnimator]: como UAL no trae clips laterales, al desplazarse en diagonal o de
-## lado las caderas miran hacia donde se corre (los pies no patinan) y la columna se gira en
-## sentido contrario para que el pecho y la cabeza sigan mirando hacia el punto de mira.
-## Debe ser hijo del [Skeleton3D] (perfil humanoide de Godot).
+## Used by [CharacterAnimator]: since UAL has no sideways clips, when moving diagonally or sideways the
+## hips face the direction of travel (the feet do not slide) and the spine is twisted the opposite way
+## so that the chest and head keep facing the crosshair.
+## It must be a child of the [Skeleton3D] (Godot humanoid profile).
 
-## Huesos que se giran y fracción del giro que lleva cada uno (suman 1).
+## Bones that are twisted and the fraction of the twist each one carries (they add up to 1).
 const BONES: Dictionary[StringName, float] = {
 	&"Spine": 0.2,
 	&"Chest": 0.25,
@@ -18,7 +17,7 @@ const BONES: Dictionary[StringName, float] = {
 	&"Head": 0.15,
 }
 
-## Giro total (radianes, convención de [member Node3D.rotation].y) que se reparte por la columna.
+## Total twist (radians, [member Node3D.rotation].y convention) distributed along the spine.
 var twist: float = 0.0
 
 var _bone_ids: Array[int] = []
@@ -32,7 +31,7 @@ func _process_modification() -> void:
 		return
 	if skeleton != _cached_skeleton:
 		_cache_bones(skeleton)
-	# De la raíz a la punta: cada hueso hereda el giro de los anteriores y añade su parte.
+	# From root to tip: each bone inherits the twist of the previous ones and adds its own share.
 	for i: int in _bone_ids.size():
 		var bone: int = _bone_ids[i]
 		var pose: Transform3D = skeleton.get_bone_global_pose(bone)

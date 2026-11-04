@@ -1,26 +1,28 @@
 class_name ProgressJson
 extends RefCounted
-## Lectura estricta de los valores del JSON del progreso (docs/progresion.md §3.4; plataforma.md §4.1),
-## la misma que hace la plataforma en Go con [code]jsonx.ID[/code] y [code]jsonx.Int[/code].
+## Strict reading of the values in the progress JSON (docs/progresion.md §3.4; plataforma.md §4.1),
+## the same as the Go platform does with [code]jsonx.ID[/code] and [code]jsonx.Int[/code].
 ## [br][br]
-## [b]Ids[/b] ([code]uid[/code], [code]op_id[/code], [code]seed[/code]…): una cadena decimal, solo dígitos,
-## sin signo, espacios ni ceros a la izquierda. Un número sin comillas no vale: [code]JSON.parse_string[/code]
-## lo leería como [code]float[/code] y perdería precisión por encima de 2^53 sin avisar.
-## [b]Enteros[/b] (cantidades, códigos, ranuras): un número exacto ([code]v == floor(v)[/code]); Godot
-## escribe [code]820.0[/code] al volver a serializar lo que leyó, y eso vale. [b]Booleanos[/b]: solo
-## [code]true[/code] y [code]false[/code].
+## [b]Ids[/b] ([code]uid[/code], [code]op_id[/code], [code]seed[/code]…): a decimal string, digits
+## only, with no sign, spaces or leading zeros. An unquoted number is not valid:
+## [code]JSON.parse_string[/code] would read it as a [code]float[/code] and silently lose precision
+## above 2^53.
+## [b]Integers[/b] (quantities, codes, slots): an exact number ([code]v == floor(v)[/code]); Godot
+## writes [code]820.0[/code] when re-serializing what it read, and that is valid. [b]Booleans[/b]:
+## only [code]true[/code] and [code]false[/code].
 ## [br][br]
-## Las comprobaciones nunca registran errores del motor: un id de 30 cifras se rechaza antes de llamar a
-## [method String.to_int], que se quejaría al desbordar. Compartido: sin reloj ni azar.
+## The checks never log engine errors: a 30-digit id is rejected before calling
+## [method String.to_int], which would complain on overflow. Shared: no clock, no randomness.
 
-## El mayor entero que un número JSON lleva exacto (2^53 − 1): el tope de todos los ids del progreso.
+## The largest integer a JSON number carries exactly (2^53 − 1): the cap of all progress ids.
 const MAX_SAFE_INT: int = (1 << 53) - 1
-# Cifras de MAX_SAFE_INT (9007199254740991).
+# Digits of MAX_SAFE_INT (9007199254740991).
 const _MAX_ID_DIGITS: int = 16
 
 
-## true si [param value] es un id: una cadena decimal canónica con un entero entre [param minimum] y
-## [param maximum] (como mucho [constant MAX_SAFE_INT]). Se lee con [method id_value].
+## true if [param value] is an id: a canonical decimal string with an integer between
+## [param minimum] and [param maximum] (at most [constant MAX_SAFE_INT]). It is read with
+## [method id_value].
 static func is_id(value: Variant, minimum: int = 1, maximum: int = MAX_SAFE_INT) -> bool:
 	if typeof(value) != TYPE_STRING and typeof(value) != TYPE_STRING_NAME:
 		return false
@@ -35,18 +37,18 @@ static func is_id(value: Variant, minimum: int = 1, maximum: int = MAX_SAFE_INT)
 	return number >= minimum and number <= mini(maximum, MAX_SAFE_INT)
 
 
-## El valor de un id que ya ha pasado [method is_id].
+## The value of an id that has already passed [method is_id].
 static func id_value(value: Variant) -> int:
 	return String(value).to_int()
 
 
-## Un id como viaja en el JSON: su valor decimal en una cadena.
+## An id as it travels in the JSON: its decimal value in a string.
 static func id_text(number: int) -> String:
 	return str(number)
 
 
-## true si [param value] es un número entero exacto (int, o float sin parte fraccionaria) entre
-## [param minimum] y [param maximum]. Se lee con [code]int(value)[/code].
+## true if [param value] is an exact integer number (int, or float with no fractional part) between
+## [param minimum] and [param maximum]. It is read with [code]int(value)[/code].
 static func is_int(value: Variant, minimum: int, maximum: int) -> bool:
 	match typeof(value):
 		TYPE_INT:
@@ -59,6 +61,6 @@ static func is_int(value: Variant, minimum: int, maximum: int) -> bool:
 	return false
 
 
-## true si [param value] es un booleano de JSON.
+## true if [param value] is a JSON boolean.
 static func is_bool(value: Variant) -> bool:
 	return typeof(value) == TYPE_BOOL

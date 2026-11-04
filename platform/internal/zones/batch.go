@@ -20,15 +20,16 @@ import (
 	"eldmark/platform/internal/jsonx"
 )
 
-// Batch es un lote de la zona (§6, «Lotes»): {zone_instance_id, <campo>: [{key, …}]}. Las
-// entradas quedan crudas para validarlas una a una: una mala no tumba el lote.
+// Batch is a zone batch (§6, "Batches"): {zone_instance_id, <field>: [{key, …}]}. The entries
+// stay raw so they can be validated one by one: a bad one does not bring down the batch.
 type Batch struct {
 	InstanceID string
 	Entries    []json.RawMessage
 }
 
-// DecodeBatch lee un lote con las entradas en field («events», «messages» o «entries»). El objeto
-// de fuera es estricto (otra clave o una que falta: 400 bad_request); las entradas no se miran aquí.
+// DecodeBatch reads a batch with the entries in field ("events", "messages" or "entries"). The
+// outer object is strict (another key or a missing one: 400 bad_request); the entries are not
+// looked at here.
 func DecodeBatch(w http.ResponseWriter, r *http.Request, field string) (*Batch, *httpx.Error) {
 	var outer map[string]json.RawMessage
 	if e := Decode(w, r, &outer); e != nil {
@@ -49,11 +50,11 @@ func DecodeBatch(w http.ResponseWriter, r *http.Request, field string) (*Batch, 
 	return b, nil
 }
 
-// Entry son los campos de una entrada de un lote, crudos.
+// Entry holds the fields of a batch entry, raw.
 type Entry map[string]json.RawMessage
 
-// EntryKey lee la key de una entrada cruda aunque el resto no valga, para poder listarla en
-// rejected; "" si no hay una cadena.
+// EntryKey reads the key of a raw entry even if the rest is invalid, so it can be listed in
+// rejected; "" if there is no string.
 func EntryKey(raw json.RawMessage) string {
 	var probe struct {
 		Key json.RawMessage `json:"key"`
@@ -68,8 +69,8 @@ func EntryKey(raw json.RawMessage) string {
 	return key
 }
 
-// ParseEntry lee una entrada con exactamente estas claves (todas presentes, ninguna más): «se
-// rechaza la que no trae un campo» (§6).
+// ParseEntry reads an entry with exactly these keys (all present, no others): "an entry that
+// lacks a field is rejected" (§6).
 func ParseEntry(raw json.RawMessage, fields ...string) (Entry, bool) {
 	var e Entry
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -92,7 +93,7 @@ func ParseEntry(raw json.RawMessage, fields ...string) (Entry, bool) {
 
 func isNull(raw json.RawMessage) bool { return string(bytes.TrimSpace(raw)) == "null" }
 
-// String lee un campo de texto.
+// String reads a text field.
 func (e Entry) String(field string) (string, bool) {
 	var s string
 	if err := json.Unmarshal(e[field], &s); err != nil {
@@ -101,7 +102,7 @@ func (e Entry) String(field string) (string, bool) {
 	return s, true
 }
 
-// Int lee un campo entero (jsonx.Int: admite 4.0).
+// Int reads an integer field (jsonx.Int: accepts 4.0).
 func (e Entry) Int(field string) (int64, bool) {
 	var v jsonx.Int
 	if err := json.Unmarshal(e[field], &v); err != nil {
@@ -110,7 +111,7 @@ func (e Entry) Int(field string) (int64, bool) {
 	return int64(v), true
 }
 
-// ID lee un campo id (cadena decimal); con nullable, null da (nil, true).
+// ID reads an id field (decimal string); with nullable, null gives (nil, true).
 func (e Entry) ID(field string, nullable bool) (*int64, bool) {
 	raw := e[field]
 	if isNull(raw) {
@@ -124,8 +125,8 @@ func (e Entry) ID(field string, nullable bool) (*int64, bool) {
 	return &id, true
 }
 
-// Object lee un campo que tiene que ser un objeto JSON que quepa en jsonb ([IsJSONObject]) y lo
-// devuelve crudo.
+// Object reads a field that must be a JSON object that fits in jsonb ([IsJSONObject]) and
+// returns it raw.
 func (e Entry) Object(field string) (json.RawMessage, bool) {
 	raw := bytes.TrimSpace(e[field])
 	if !IsJSONObject(raw) {
@@ -134,9 +135,9 @@ func (e Entry) Object(field string) (json.RawMessage, bool) {
 	return json.RawMessage(raw), true
 }
 
-// IsJSONObject dice si raw es un objeto JSON que PostgreSQL guarda en jsonb: UTF-8 válido, sin
-// \u0000 y sin \uD800–\uDFFF sueltos (22P05 en la base). encoding/json no mira nada de eso: lo
-// aceptaba y la base lo rechazaba al insertar.
+// IsJSONObject says whether raw is a JSON object that PostgreSQL stores in jsonb: valid UTF-8,
+// without \u0000 and without lone \uD800–\uDFFF (22P05 in the database). encoding/json checks
+// none of that: it accepted it and the database rejected it on insert.
 func IsJSONObject(raw []byte) bool {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || raw[0] != '{' || !utf8.Valid(raw) {
@@ -149,9 +150,9 @@ func IsJSONObject(raw []byte) bool {
 	return jsonbEscapes(raw)
 }
 
-// jsonbEscapes repasa los escapes \u de un JSON ya válido: ninguno es \u0000 y cada suplente alto
-// va seguido de uno bajo (y ninguno bajo va suelto). Fuera de las cadenas no hay barras, así que
-// no hace falta seguir las comillas.
+// jsonbEscapes goes over the \u escapes of an already valid JSON: none is \u0000 and each high
+// surrogate is followed by a low one (and no low one is lone). Outside strings there are no
+// backslashes, so there is no need to track the quotes.
 func jsonbEscapes(raw []byte) bool {
 	hex4 := func(i int) (rune, bool) {
 		if i+4 > len(raw) {
@@ -166,7 +167,7 @@ func jsonbEscapes(raw []byte) bool {
 		}
 		i++
 		if i >= len(raw) || raw[i] != 'u' {
-			continue // otro escape de un carácter
+			continue // another single-character escape
 		}
 		r, ok := hex4(i + 1)
 		i += 4
@@ -187,12 +188,12 @@ func jsonbEscapes(raw []byte) bool {
 	return true
 }
 
-// MaxUnix es la fecha más tardía que admite un lote (9999-12-31T23:59:59Z, la de una sanción sin
-// fin): una posterior no cabe en timestamptz (22008) o pgx la desbordaba sin decir nada.
+// MaxUnix is the latest date a batch accepts (9999-12-31T23:59:59Z, that of a sanction with no
+// end): a later one does not fit in timestamptz (22008) or pgx overflowed it silently.
 const MaxUnix = 253402300799
 
-// BatchResponse escribe la respuesta de un lote: 204 si todas las entradas valían; si no, 200
-// {rejected: [key…]} (las demás ya se insertaron).
+// BatchResponse writes a batch's response: 204 if all entries were valid; otherwise 200
+// {rejected: [key…]} (the rest were already inserted).
 func BatchResponse(w http.ResponseWriter, rejected []string) {
 	if len(rejected) == 0 {
 		w.WriteHeader(http.StatusNoContent)
@@ -201,28 +202,28 @@ func BatchResponse(w http.ResponseWriter, rejected []string) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"rejected": rejected})
 }
 
-// MaxKeyLen acota la key de una entrada: «<uuid>:<n>» u «op:<op_id>» caben de sobra.
+// MaxKeyLen bounds an entry's key: "<uuid>:<n>" or "op:<op_id>" fit comfortably.
 const MaxKeyLen = 64
 
 var seqPattern = regexp.MustCompile(`^(0|[1-9][0-9]{0,18})$`)
 
-// BlockSize es lo que da cada bloque de ids (uid_block_seq va de 1024 en 1024).
+// BlockSize is what each id block gives (uid_block_seq advances by 1024).
 const BlockSize = 1024
 
-// KeyChecker valida las key de las entradas de un lote contra la instancia que lo manda (§6): una
-// «<uuid>:<n>» tiene que llevar el zone_instance_id del lote, y una «op:<op_id>» (solo donde se
-// admite: la auditoría) tiene que caer en un bloque de id_blocks dado a esa instancia.
+// KeyChecker validates the keys of a batch's entries against the instance that sends it (§6): a
+// "<uuid>:<n>" must carry the batch's zone_instance_id, and an "op:<op_id>" (only where it is
+// allowed: audit) must fall in an id_blocks block given to that instance.
 type KeyChecker struct {
 	inst   *Instance
 	q      Querier
-	blocks []int64 // first_id de los bloques de la instancia; se leen al ver la primera op
+	blocks []int64 // first_id of the instance's blocks; read on seeing the first op
 	loaded bool
 }
 
-// NewKeyChecker prepara la validación de las key de un lote de la instancia.
+// NewKeyChecker prepares the validation of the keys of an instance's batch.
 func NewKeyChecker(inst *Instance, q Querier) *KeyChecker { return &KeyChecker{inst: inst, q: q} }
 
-// Valid dice si la key vale. allowOp admite «op:<op_id>».
+// Valid says whether the key is valid. allowOp admits "op:<op_id>".
 func (k *KeyChecker) Valid(ctx context.Context, key string, allowOp bool) (bool, error) {
 	if key == "" || len(key) > MaxKeyLen {
 		return false, nil
@@ -275,18 +276,18 @@ func (k *KeyChecker) inBlock(ctx context.Context, id int64) (bool, error) {
 	return false, nil
 }
 
-// Inserter es lo que inserta las filas de un lote: *pgxpool.Pool.
+// Inserter is what inserts a batch's rows: *pgxpool.Pool.
 type Inserter interface {
 	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-// InsertEach inserta las filas de un lote con la misma sentencia (con on conflict do nothing, para
-// que reenviar no duplique), todas en una ida y vuelta. Si alguna falla con un error determinista
-// (una restricción, clase 23, o un dato que PostgreSQL rechaza, clase 22: db.Deterministic),
-// ninguna queda escrita y se insertan de una en una para rechazar solo esas: devuelve sus claves.
-// Cualquier otro error de la base se devuelve (el lote entero se reintenta): un error de una sola
-// entrada nunca atasca la cola de la zona (§6).
+// InsertEach inserts a batch's rows with the same statement (with on conflict do nothing, so
+// resending does not duplicate), all in one round trip. If any fails with a deterministic error
+// (a constraint, class 23, or data that PostgreSQL rejects, class 22: db.Deterministic), none is
+// written and they are inserted one by one to reject only those: it returns their keys. Any other
+// database error is returned (the whole batch is retried): an error in a single entry never
+// jams the zone's queue (§6).
 func InsertEach(ctx context.Context, q Inserter, sql string, rows [][]any, keys []string) ([]string, error) {
 	if len(rows) == 0 {
 		return nil, nil

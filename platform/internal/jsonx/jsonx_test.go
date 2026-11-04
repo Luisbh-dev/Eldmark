@@ -87,13 +87,13 @@ func TestIDRoundTripsTheFull63Bits(t *testing.T) {
 	if err != nil || string(out) != `"9223372036854775807"` {
 		t.Fatalf("se escribe como cadena: %s %v", out, err)
 	}
-	// El ticket_id del vector de §5.1 y un id por encima de 2^53, sin perder nada.
+	// The vector's ticket_id from §5.1 and an id above 2^53, without losing anything.
 	for in, want := range map[string]int64{
 		`"72623859790382856"`: 0x0102030405060708,
 		`"9007199254740993"`:  1<<53 + 1,
 		`"0"`:                 0,
 		`"42"`:                42,
-		`"\u0034\u0032"`:      42, // escapes de JSON dentro de la cadena
+		`"\u0034\u0032"`:      42, // JSON escapes inside the string
 	} {
 		var got ID
 		if err := json.Unmarshal([]byte(in), &got); err != nil || int64(got) != want {
@@ -154,7 +154,7 @@ func TestDecodeIsStrict(t *testing.T) {
 			t.Errorf("%s: se aceptó %s", name, in)
 		}
 	}
-	// Espacios y saltos de línea al final sí valen.
+	// Trailing spaces and line breaks are valid.
 	if err := DecodeBytes([]byte("{\"character_id\": \"1\", \"seq\": 1}\n\n"), &b); err != nil {
 		t.Fatalf("espacios al final: %v", err)
 	}

@@ -13,8 +13,8 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// sanctionWorld es lo común de las pruebas de caducidad: una zona viva, un admin para la CLI y una
-// jugadora con su personaje «Bran».
+// sanctionWorld is what the expiry tests have in common: a live zone, an admin for the CLI and a
+// player with her character "Bran".
 type sanctionWorld struct {
 	p     *platformtest.Platform
 	z     *platformtest.Zone
@@ -43,7 +43,7 @@ func (w *sanctionWorld) sanction(t *testing.T, kind string, d time.Duration) int
 	return created.SanctionID
 }
 
-// claim entra al mundo y reclama: la respuesta de la reclamación.
+// claim enters the world and claims: the claim's response.
 func (w *sanctionWorld) claim(t *testing.T) *platformtest.Response {
 	t.Helper()
 	ticket, _ := w.p.MustEnter(w.pl, w.id)
@@ -52,7 +52,7 @@ func (w *sanctionWorld) claim(t *testing.T) *platformtest.Response {
 	return res
 }
 
-// leave es la salida del mundo: el guardado final, que libera el arrendamiento.
+// leave is the exit from the world: the final save, which releases the lease.
 func (w *sanctionWorld) leave(t *testing.T, claim *platformtest.Response) {
 	t.Helper()
 	body := w.z.SaveBody(w.id, claim.String("lease_id"), 1)
@@ -60,8 +60,8 @@ func (w *sanctionWorld) leave(t *testing.T, claim *platformtest.Response) {
 	platformtest.Expect(t, w.z.Save(w.id, body), 200, "")
 }
 
-// reject es la zona que libera al personaje sin que llegue al mundo (REALM, FULL, un prepare que
-// falla o la baja en LOADING, §5.2): sin guardado.
+// reject is the zone releasing the character without it reaching the world (REALM, FULL, a prepare
+// that fails or the removal in LOADING, §5.2): without a save.
 func (w *sanctionWorld) reject(t *testing.T, claim *platformtest.Response) {
 	t.Helper()
 	platformtest.Expect(t, w.z.Release(w.id, claim.String("lease_id")), 204, "")
@@ -92,8 +92,9 @@ func (w *sanctionWorld) state(t *testing.T, id int64) string {
 
 func account(res *platformtest.Response) map[string]any { return res.Body["account"].(map[string]any) }
 
-// Aviso (§9.5: al entrar, NOTICE con el motivo): la reclamación siguiente lo trae, con el texto
-// compuesto por la plataforma, y solo esa; no tiene efecto mecánico y queda anotado en la cuenta.
+// Warning (§9.5: on entering, NOTICE with the reason): the next claim brings it, with the text
+// composed by the platform, and only that one; it has no mechanical effect and is recorded on the
+// account.
 func TestWarningIsShownOnce(t *testing.T) {
 	w := newSanctionWorld(t)
 	first := w.claim(t)
@@ -128,9 +129,9 @@ func TestWarningIsShownOnce(t *testing.T) {
 	}
 }
 
-// Un aviso no se da por visto si la zona libera al personaje sin que llegue al mundo (§5.2: REALM,
-// FULL, prepare o la baja en LOADING; ninguno guarda): la reclamación siguiente lo vuelve a traer.
-// Lo da por visto el primer guardado del arrendamiento.
+// A warning is not considered seen if the zone releases the character without it reaching the world
+// (§5.2: REALM, FULL, prepare or the removal in LOADING; none of them saves): the next claim brings
+// it again. The lease's first save marks it as seen.
 func TestWarningSurvivesARejectedEntry(t *testing.T) {
 	w := newSanctionWorld(t)
 	id := w.sanction(t, sanctions.KindWarning, 0)
@@ -155,8 +156,8 @@ func TestWarningSurvivesARejectedEntry(t *testing.T) {
 	}
 }
 
-// Silencio: el latido (mutes) y la reclamación (muted_until_unix) lo dicen hasta su fin; después,
-// nada.
+// Mute: the heartbeat (mutes) and the claim (muted_until_unix) report it until its end; afterwards,
+// nothing.
 func TestMuteExpires(t *testing.T) {
 	w := newSanctionWorld(t)
 	claim := w.claim(t)
@@ -195,11 +196,11 @@ func TestMuteExpires(t *testing.T) {
 	}
 }
 
-// Suspensión: tras la contraseña, solo la sesión de privacidad con su fin y su motivo; enter y la
-// reclamación dan 403; el latido expulsa (suspended). Al acabar, todo vuelve.
+// Suspension: after the password, only the privacy session with its end and its reason; enter and
+// the claim give 403; the heartbeat kicks out (suspended). When it ends, everything returns.
 func TestSuspensionExpires(t *testing.T) {
 	w := newSanctionWorld(t)
-	ticket, _ := w.p.MustEnter(w.pl, w.id) // un billete de antes de la sanción, sin usar
+	ticket, _ := w.p.MustEnter(w.pl, w.id) // a ticket from before the sanction, unused
 	claim := w.claim(t)
 	lease := platformtest.Lease{CharacterID: w.id, LeaseID: claim.String("lease_id")}
 	id := w.sanction(t, sanctions.KindSuspension, 3*24*time.Hour)
@@ -236,7 +237,7 @@ func TestSuspensionExpires(t *testing.T) {
 	}
 }
 
-// Expulsión: permanente (sigue a los diez años) hasta que la CLI la revoca.
+// Ban: permanent (still on after ten years) until the CLI revokes it.
 func TestBanUntilRevoked(t *testing.T) {
 	w := newSanctionWorld(t)
 	id := w.sanction(t, sanctions.KindBan, 0)
@@ -274,8 +275,8 @@ func TestBanUntilRevoked(t *testing.T) {
 	}
 }
 
-// Renombrado forzado: enter da 409 rename_required hasta que el jugador elige otro nombre; una
-// revocación antes de hacerlo quita must_rename.
+// Forced rename: enter gives 409 rename_required until the player picks another name; a revocation
+// before doing so removes must_rename.
 func TestRenameUntilRenamed(t *testing.T) {
 	w := newSanctionWorld(t)
 	id := w.sanction(t, sanctions.KindRename, 0)
@@ -286,7 +287,7 @@ func TestRenameUntilRenamed(t *testing.T) {
 	path := "/v1/characters/" + idStr(w.id) + "/rename"
 	platformtest.Expect(t, w.p.PublicDo("POST", path, w.pl.Token, map[string]any{"name": "Brandon"}), 200, "")
 	w.leave(t, w.claim(t))
-	// La sanción sigue apuntada con el id del personaje, que ahora se llama Brandon.
+	// The sanction is still pointed at by the character's id, which is now called Brandon.
 	_, list, err := w.p.Admin.Sanctions(ctx, w.actor, 1, "Brandon")
 	if err != nil || len(list) != 1 || list[0].State != admin.StateComplied {
 		t.Fatalf("%+v %v", list, err)
@@ -303,9 +304,9 @@ func TestRenameUntilRenamed(t *testing.T) {
 	w.claim(t)
 }
 
-// La CLI pasa las mismas comprobaciones que la zona con la cuenta del --actor (§9.5): un admin no
-// sanciona a otro admin (sanction_denied, source cli, sin nombres); los reportes tienen que ser de
-// ese mundo; tipo, duración y motivo se comprueban antes de tocar nada.
+// The CLI passes the same checks as the zone with the --actor's account (§9.5): an admin does not
+// sanction another admin (sanction_denied, source cli, without names); the reports have to be from
+// that world; kind, duration and reason are checked before touching anything.
 func TestCLISanctionChecks(t *testing.T) {
 	w := newSanctionWorld(t)
 	p := w.p
@@ -344,7 +345,7 @@ func TestCLISanctionChecks(t *testing.T) {
 	if _, _, err := p.Admin.Sanction(ctx, w.actor, order); !errors.Is(err, admin.ErrUnknownReports) {
 		t.Fatal(err)
 	}
-	// Con un reporte de verdad: enlazado, y la fila sanction con source cli.
+	// With a real report: linked, and the sanction row with source cli.
 	p.Exec(`insert into reports (world_id, target_account_id, target_character_id, target_name, category, context)
 		values (1, $1, $2, 'Bran', 'language', '{}')`, w.pl.ID, w.id)
 	var report int64

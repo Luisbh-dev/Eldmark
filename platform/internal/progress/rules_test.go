@@ -12,8 +12,8 @@ import (
 	"eldmark/platform/internal/progress"
 )
 
-// Los casos que comparte con test_character_appearance.gd (progresion.md §7.2). Las pruebas de Go corren
-// en el directorio del paquete.
+// The cases it shares with test_character_appearance.gd (progresion.md §7.2). Go tests run in the
+// package directory.
 const sharedAppearanceCases = "../../../tests/fixtures/progression/appearance_cases.json"
 
 type appearanceCase struct {
@@ -33,8 +33,8 @@ func embedded(t testing.TB) *progress.Rules {
 	return r
 }
 
-// valid aplica la regla a unos bytes cualesquiera, como la plataforma con el base64 de la API: lo que no
-// son 8 B no vale.
+// valid applies the rule to arbitrary bytes, as the platform does with the API's base64: anything
+// that is not 8 B is not valid.
 func valid(r *progress.Rules, realm int16, raceID string, b []byte) bool {
 	if len(b) != 8 {
 		return false
@@ -74,8 +74,8 @@ func TestSharedAppearanceCasesWithGodot(t *testing.T) {
 	}
 }
 
-// La regla de los cuerpos con unas reglas de dos cuerpos (las del repositorio solo tienen uno), las mismas
-// que el catálogo de prueba de test_character_appearance.gd.
+// The body rule with a two-body rule set (the repository's own has only one), the same as the
+// test catalog in test_character_appearance.gd.
 func TestPartOfAnotherBody(t *testing.T) {
 	r := twoBodyRules(t)
 	cases := []struct {
@@ -122,8 +122,8 @@ func twoBodyRules(t *testing.T) *progress.Rules {
 	return r
 }
 
-// Las reglas incrustadas son las de Godot: tres razas en el orden del catálogo, la curva de §6.1 y los
-// valores de §4.1, §5.1 y §5.3.
+// The embedded rules are Godot's: three races in catalog order, the curve from §6.1 and the
+// values from §4.1, §5.1 and §5.3.
 func TestEmbeddedRules(t *testing.T) {
 	r := embedded(t)
 	wantRaces := []struct {
@@ -176,7 +176,7 @@ func TestEmbeddedRules(t *testing.T) {
 	}
 }
 
-// Los objetos de progresion.md §2.4 y las plantillas elegibles de habilidades.md, como los exporta Godot.
+// The objects from progresion.md §2.4 and the selectable templates from habilidades.md, as Godot exports them.
 func TestEmbeddedItemsAndTemplates(t *testing.T) {
 	r := embedded(t)
 	want := []progress.Item{
@@ -209,8 +209,8 @@ func TestEmbeddedItemsAndTemplates(t *testing.T) {
 	}
 }
 
-// Cada byte, uno a uno, fuera de lo que permiten las reglas incrustadas (lo mismo que
-// test_validate_rejects_each_index_out_of_range en Godot).
+// Each byte, one by one, outside what the embedded rules allow (the same as
+// test_validate_rejects_each_index_out_of_range in Godot).
 func TestEachIndexOutOfRange(t *testing.T) {
 	r := embedded(t)
 	base := [8]byte{1, 0, 0, 1, 1, 0, 2, 1}
@@ -218,7 +218,7 @@ func TestEachIndexOutOfRange(t *testing.T) {
 		t.Fatal("la base no vale")
 	}
 	a := r.Appearance
-	// El primer valor que ya no existe en cada byte (el pelo y la barba van con +1).
+	// The first value that no longer exists in each byte (hair and beard go with +1).
 	limits := []int{len(r.Races) + 1, a.BodyCount, len(a.Heads), len(a.Hairs) + 1, len(a.Beards) + 1,
 		a.SkinToneCount, a.HairColorCount}
 	for i, limit := range limits {
@@ -245,7 +245,7 @@ func TestEachIndexOutOfRange(t *testing.T) {
 }
 
 func TestLoadRulesRejectsBrokenFiles(t *testing.T) {
-	// mutate devuelve el archivo incrustado con un cambio hecho sobre su JSON.
+	// mutate returns the embedded file with a change made to its JSON.
 	mutate := func(change func(m map[string]any)) []byte {
 		var m map[string]any
 		if err := json.Unmarshal(gamedata.Raw(), &m); err != nil {
@@ -350,11 +350,11 @@ func TestLoadRulesRejectsBrokenFiles(t *testing.T) {
 		}
 		t.Logf("%s: %v", name, strings.ReplaceAll(err.Error(), "\n", " | "))
 	}
-	// Las secciones que este paquete no lee (las de plataforma.md, las de fases siguientes) no molestan.
+	// Sections that this package does not read (those from plataforma.md, those of later phases) do not interfere.
 	if _, err := progress.LoadRules(mutate(func(m map[string]any) { m["vendors"] = []any{map[string]any{"id": "x"}} })); err != nil {
 		t.Errorf("una sección más no debería romper nada: %v", err)
 	}
-	// Sin plantillas elegibles el archivo vale (ninguna creación pasaría la validación de P7).
+	// With no selectable templates the file is valid (no creation would pass P7's validation).
 	if _, err := progress.LoadRules(mutate(func(m map[string]any) { m["starter_templates"] = []any{} })); err != nil {
 		t.Errorf("starter_templates vacía: %v", err)
 	}

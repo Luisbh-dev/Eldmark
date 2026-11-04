@@ -1,90 +1,90 @@
 class_name AbilityDefinition
 extends Resource
-## Una habilidad de arma o un consumible (docs/habilidades.md, sección 2.1). Todos los tiempos están
-## en segundos desde el inicio de la acción y [CombatCatalog] los convierte a ticks con
-## [code]roundi(s * 60)[/code] al cargar.
+## A weapon ability or a consumable (docs/habilidades.md, section 2.1). All times are in seconds
+## since the start of the action, and [CombatCatalog] converts them to ticks with
+## [code]roundi(s * 60)[/code] on load.
 ## [br][br]
-## Fases: lanzamiento [code][0, cast)[/code], activo [code][cast, cast + active)[/code] y
-## recuperación hasta el total. En una canalización, el activo es su tope y no hay recuperación. La
-## reutilización empieza en el compromiso (el primer tick activo); la de una canalización, al acabar.
+## Phases: cast [code][0, cast)[/code], active [code][cast, cast + active)[/code] and
+## recovery up to the total. In a channel, the active phase is its cap and there is no recovery. The
+## cooldown starts at the commit (the first active tick); for a channel, when it ends.
 ## [br][br]
-## Los campos «predichos» entran en [method CombatCatalog.prediction_hash]; los de «solo servidor»
-## los usa el resolutor (con ellos el catálogo sintetiza un [AttackTicks], el golpe de la habilidad).
+## The "predicted" fields go into [method CombatCatalog.prediction_hash]; the "server-only" ones
+## are used by the resolver (with them the catalog synthesizes an [AttackTicks], the ability's hit).
 
-## Identificador único (el catálogo le asigna un ID u16 por orden alfabético).
+## Unique identifier (the catalog assigns it a u16 ID in alphabetical order).
 @export var id: StringName
 
-# --- Predichos --------------------------------------------------------------------------------
+# --- Predicted --------------------------------------------------------------------------------
 
-## Lanzamiento (s).
+## Cast (s).
 @export var cast_s: float = 0.0
-## Activo (s); en una canalización, su tope.
+## Active (s); in a channel, its cap.
 @export var active_s: float = 0.1
-## Recuperación (s); 0 en las canalizaciones.
+## Recovery (s); 0 for channels.
 @export var recovery_s: float = 0.3
-## Reutilización (s); 0 en los consumibles (usan la compartida de [CombatRules]).
+## Cooldown (s); 0 for consumables (they use the shared one from [CombatRules]).
 @export var cooldown_s: float = 10.0
-## true: el activo es una canalización.
+## true: the active phase is a channel.
 @export var channel: bool = false
-## Canalización: soltar el botón de su ranura la acaba.
+## Channel: releasing its slot button ends it.
 @export var channel_hold: bool = true
-## Canalización: moverse la acaba.
+## Channel: moving ends it.
 @export var channel_breaks_on_move: bool = false
-## Instante (s desde el inicio) a partir del cual se puede cancelar a esquiva; -1 = desde la
-## recuperación.
+## Moment (s since the start) from which it can be canceled into a dodge; -1 = from
+## recovery.
 @export var cancel_to_dodge_from_s: float = -1.0
-## Instante (s desde el inicio) a partir del cual se puede cancelar a ataque; -1 = desde la
-## recuperación.
+## Moment (s since the start) from which it can be canceled into an attack; -1 = from
+## recovery.
 @export var cancel_to_attack_from_s: float = -1.0
-## Fracción de la velocidad de carrera permitida.
+## Fraction of the run speed allowed.
 @export var move_speed_scale: float = 0.3
-## Giro hacia la cámara (rad/s) en lanzamiento, activo y canalización.
+## Turn toward the camera (rad/s) during cast, active and channel.
 @export var turn_rate: float = 6.0
-## Velocidad hacia delante (m/s) en lanzamiento y activo.
+## Forward speed (m/s) during cast and active.
 @export var lunge_speed: float = 0.0
-## Avance impuesto (m; 0 = ninguno), horneado como la esquiva.
+## Forced advance (m; 0 = none), baked like the dodge.
 @export var dash_distance_m: float = 0.0
-## Ventana del avance [desde, hasta) en s desde el inicio de la acción.
+## Advance window [from, to) in s since the start of the action.
 @export var dash_from_s: float = 0.0
 @export var dash_to_s: float = 0.0
-## Forma del perfil de velocidad del avance (null = plana); se normaliza a [member dash_distance_m].
+## Shape of the advance's speed profile (null = flat); normalized to [member dash_distance_m].
 @export var dash_curve: Curve
-## Dirección del avance: 0 hacia look_yaw, 1 hacia atrás, 2 según el movimiento (como la esquiva).
+## Advance direction: 0 toward look_yaw, 1 backward, 2 following the movement (like the dodge).
 @export var dash_direction: int = 0
-## Se puede usar en el aire.
+## Can be used in the air.
 @export var usable_in_air: bool = false
-## Resistencia que devuelve al comprometer (poción de resistencia).
+## Stamina it restores on commit (stamina potion).
 @export var stamina_restore: int = 0
-## La canalización bloquea (muro de escudos).
+## The channel blocks (shield wall).
 @export var blocks: bool = false
-## Proyectil que sale en el compromiso (null = ninguno).
+## Projectile released at the commit (null = none).
 @export var projectile: ProjectileDefinition
-## Proyectiles por disparo (1-5) y ángulo entre ellos (grados).
+## Projectiles per shot (1-5) and angle between them (degrees).
 @export var projectile_count: int = 1
 @export var projectile_spread_deg: float = 0.0
-## Velocidad de salida del proyectil (m/s).
+## Projectile launch speed (m/s).
 @export var projectile_speed_mps: float = 45.0
 
-# --- Solo servidor ----------------------------------------------------------------------------
+# --- Server only ------------------------------------------------------------------------------
 
-## Forma del golpe en cada tick activo (null = sin golpe).
+## Shape of the hit on each active tick (null = no hit).
 @export var shape: HitShape
 @export var base_damage: int = 0
-## Tipo de daño ([enum DamageFormula.DamageType]).
+## Damage type ([enum DamageFormula.DamageType]).
 @export var damage_type: int = 0
 @export var stagger_s: float = 0.0
 @export var stun_s: float = 0.0
 @export var knockback_speed: float = 0.0
 @export var hyper_armor: bool = false
 @export var unblockable: bool = false
-## Efecto a quien golpea (también con su proyectil).
+## Effect applied to whoever is hit (also by its projectile).
 @export var target_status: StatusEffectDefinition
-## Efecto y curación propios, al comprometer.
+## Self effect and self healing, on commit.
 @export var self_status: StatusEffectDefinition
 @export var self_heal: int = 0
-## Un golpe recibido en el lanzamiento la interrumpe (siempre true en los consumibles).
+## A hit taken during the cast interrupts it (always true for consumables).
 @export var interrupt_on_damage: bool = false
-## Caja que para proyectiles mientras dura la canalización (semiejes en m; cero = ninguna).
+## Box that stops projectiles for the duration of the channel (half-extents in m; zero = none).
 @export var wall_half_extents: Vector3 = Vector3.ZERO
-## Distancia (m) del centro de la caja delante de los pies.
+## Distance (m) from the box center in front of the feet.
 @export var wall_forward_m: float = 0.7

@@ -1,18 +1,18 @@
 extends TestCase
-## El asedio con los PNJ de verdad (F6b; GUE-15, MUN-10, MUN-11; docs/fuerte.md, secciones 7 y 8.3): jugadores falsos con
-## el cerebro de asedio ([constant BotBrain.Pattern.SIEGE]) rompen la puerta del fuerte neutral del Vado Gris, matan a
-## los Huecos y al Capitán del Vado ellos solos (sin [code]fort_kill_captain[/code]) y lo capturan, saliendo de la zona
-## del golpe imbloqueable del Capitán cuando lo avisa (TELEGRAPH). Es la versión corta de
-## [code]tools/war/siege_battle.gd --npcs[/code]: para que quepa en la suite, los bots empiezan delante de la puerta,
-## la captura va x30 (orden 11) y los PNJ tienen menos vida, solo en este servidor
-## ([method SiegeRunner.set_npc_health]; los datos de [code]data/npcs/[/code] no cambian).
+## The siege with the real NPCs (F6b; GUE-15, MUN-10, MUN-11; docs/fuerte.md, sections 7 and 8.3): fake players with
+## the siege brain ([constant BotBrain.Pattern.SIEGE]) break the neutral fort's door in Vado Gris, kill
+## the Hollow and the Ford Captain all by themselves (without [code]fort_kill_captain[/code]) and capture it, leaving the zone
+## of the Captain's unblockable strike when it warns of it (TELEGRAPH). It is the short version of
+## [code]tools/war/siege_battle.gd --npcs[/code]: so that it fits in the suite, the bots start in front of the door,
+## the capture runs x30 (command 11) and the NPCs have less health, only on this server
+## ([method SiegeRunner.set_npc_health]; the [code]data/npcs/[/code] data does not change).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
-## Bots del asedio, y vida de los PNJ en esta prueba (la de verdad: Capitán 30 000, Huecos 2500).
+## Siege bots, and NPC health in this test (the real one: Captain 30,000, Hollow 2500).
 const BOTS: int = 12
 const CAPTAIN_HEALTH: int = 9000
 const HOLLOW_HEALTH: int = 1000
-## Delante de la puerta, en la explanada (la puerta está en x = -20 y el fuerte hacia +X).
+## In front of the door, on the esplanade (the door is at x = -20 and the fort toward +X).
 const START: Vector3 = Vector3(-27.0, 10.3, 0.0)
 
 var _runner: SiegeRunner = null
@@ -25,9 +25,9 @@ var _telegraphs: int = 0
 func before_each() -> void:
 	_runner = SiegeRunner.new()
 	tree.root.add_child(_runner)
-	assert_true(await _runner.start(tree.root, "", 64, true), "el servidor arranca sobre el Vado Gris con sus PNJ")
-	assert_true(_runner.set_npc_health(&"ford_captain", CAPTAIN_HEALTH), "Capitán más débil en esta prueba")
-	assert_true(_runner.set_npc_health(&"hollow", HOLLOW_HEALTH), "y Huecos")
+	assert_true(await _runner.start(tree.root, "", 64, true), "the server starts on Vado Gris with its NPCs")
+	assert_true(_runner.set_npc_health(&"ford_captain", CAPTAIN_HEALTH), "Captain weaker in this test")
+	assert_true(_runner.set_npc_health(&"hollow", HOLLOW_HEALTH), "and Hollow")
 	_evading.clear()
 	_unblockable_hits = 0
 	_unblockable_on_evading = 0
@@ -45,7 +45,7 @@ func after_each() -> void:
 
 func test_bots_capture_the_neutral_fort_killing_the_real_npcs_without_commands() -> void:
 	var system: NpcSpawnerSystem = _runner.server.get_npc_system()
-	if not assert_not_null(system, "con PNJ"):
+	if not assert_not_null(system, "with NPCs"):
 		return
 	var ids: Array[int] = _runner.add_siege_bots(VARDHEIM, BOTS, 40)
 	assert_eq(ids.size(), BOTS)
@@ -61,25 +61,25 @@ func test_bots_capture_the_neutral_fort_killing_the_real_npcs_without_commands()
 		SiegeRunner.seconds(_runner.tick_of_war(WarEvents.GATE_BROKEN)), SiegeRunner.seconds(captain_down),
 		SiegeRunner.seconds(_runner.tick_of_war(WarEvents.FORT_CAPTURED)), _npc_death_counts(),
 		_telegraphs, _unblockable_hits, _unblockable_on_evading])
-	if not assert_true(captured >= 0, "Vardheim captura el fuerte neutral (fase %d, dueño %d)" % [state.phase, state.owner]):
+	if not assert_true(captured >= 0, "Vardheim captures the neutral fort (phase %d, owner %d)" % [state.phase, state.owner]):
 		return
 	var ids_of_war: Array[int] = _runner.war_ids()
 	assert_true(ids_of_war.find(WarEvents.GATE_BROKEN) < ids_of_war.find(WarEvents.CAPTAIN_DOWN),
-			"rompen la puerta antes de matar al capitán: %s" % [ids_of_war])
-	assert_true(ids_of_war.find(WarEvents.CAPTAIN_DOWN) < ids_of_war.find(WarEvents.FORT_CAPTURED), "y lo matan antes de capturar")
+			"they break the door before killing the captain: %s" % [ids_of_war])
+	assert_true(ids_of_war.find(WarEvents.CAPTAIN_DOWN) < ids_of_war.find(WarEvents.FORT_CAPTURED), "and kill it before capturing")
 	var deaths: Dictionary = _npc_death_counts()
-	assert_eq(int(deaths.get(&"ford_captain", 0)), 1, "el Capitán del Vado muere a manos de los bots")
-	assert_true(int(deaths.get(&"hollow", 0)) >= 4, "y los cuatro Huecos (más los refuerzos): %s" % [deaths])
+	assert_eq(int(deaths.get(&"ford_captain", 0)), 1, "the Ford Captain dies at the hands of the bots")
+	assert_true(int(deaths.get(&"hollow", 0)) >= 4, "and the four Hollow (plus the reinforcements): %s" % [deaths])
 	for event: NetMessages.EntityEvent in _runner.war_events:
 		if event.war_event == WarEvents.CAPTAIN_DOWN:
-			assert_eq(event.war_realm, VARDHEIM, "lo mató Vardheim, no una orden")
-	# El golpe imbloqueable: salen de su zona en cuanto lo avisa, y los que salían no se lo comen.
-	assert_true(_telegraphs > 0, "el Capitán avisa sus golpes fuertes")
-	assert_true(_evading.size() > 0, "algún bot sale de la zona de un golpe avisado")
-	assert_eq(_unblockable_on_evading, 0, "ninguno de los que salían se come el golpe imbloqueable")
+			assert_eq(event.war_realm, VARDHEIM, "Vardheim killed it, not a command")
+	# The unblockable strike: they leave its zone as soon as it warns of it, and those who were leaving do not eat it.
+	assert_true(_telegraphs > 0, "the Captain warns of its heavy attacks")
+	assert_true(_evading.size() > 0, "some bot leaves the zone of a warned strike")
+	assert_eq(_unblockable_on_evading, 0, "none of those who were leaving eats the unblockable strike")
 
 
-# Cada tick, quién está saliendo de la zona de un golpe avisado.
+# Each tick, who is leaving the zone of a warned strike.
 func _on_tick(_tick: int) -> void:
 	for net_id: int in _runner.bots:
 		var brain: BotBrain = _runner.get_brain(net_id)
@@ -87,7 +87,7 @@ func _on_tick(_tick: int) -> void:
 			_evading[net_id] = true
 
 
-# Los golpes imbloqueables (el del Capitán) que dan a un bot, y a cuántos de los que estaban saliendo.
+# The unblockable strikes (the Captain's) that hit a bot, and how many of those who were leaving.
 func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
 	if event.event == NetMessages.EntityEvent.Kind.TELEGRAPH:
 		_telegraphs += 1

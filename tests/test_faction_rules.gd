@@ -1,25 +1,25 @@
 extends TestCase
-## Pruebas de [FactionRules] (quién puede dañar a quién) y de [method Zones.get_pvp_mode]:
-## la matriz completa de los cuatro bandos (0 los Huecos neutrales; 1, 2 y 3 los reinos) en una
-## zona RVR y en una zona segura, los códigos inválidos y el modo PvP de cada zona registrada.
+## Tests for [FactionRules] (who can damage whom) and [method Zones.get_pvp_mode]:
+## the full matrix of the four sides (0 the neutral Hollows; 1, 2 and 3 the realms) in an
+## RVR zone and in a safe zone, invalid codes and the PvP mode of each registered zone.
 
 const HUECOS: int = RealmCatalog.NEUTRAL_CODE
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ASKARRA: int = NetProtocol.Realm.ASKARRA
-## Zona que no está registrada: modo SAFE.
+## Zone that is not registered: SAFE mode.
 const SAFE_ZONE: StringName = &"zona_segura_de_prueba"
 
-## Matriz en una zona RVR: fila = atacante, columna = víctima, en el orden Huecos, Vardheim,
-## Solmarch, Askarra. Solo la diagonal (sin fuego amigo) es falsa.
+## Matrix in an RVR zone: row = attacker, column = victim, in the order Hollows, Vardheim,
+## Solmarch, Askarra. Only the diagonal (no friendly fire) is false.
 const RVR_MATRIX: Array = [
 	[false, true, true, true],
 	[true, false, true, true],
 	[true, true, false, true],
 	[true, true, true, false],
 ]
-## Matriz en una zona segura: los reinos no se dañan entre sí, pero los Huecos siguen siendo
-## hostiles a todos.
+## Matrix in a safe zone: the realms do not damage each other, but the Hollows are still
+## hostile to everyone.
 const SAFE_MATRIX: Array = [
 	[false, true, true, true],
 	[true, false, false, false],
@@ -42,16 +42,16 @@ func test_no_friendly_fire() -> void:
 	for zone_id: StringName in [&"vado_gris", &"test_world", SAFE_ZONE]:
 		for code: int in [HUECOS, VARDHEIM, SOLMARCH, ASKARRA]:
 			assert_false(FactionRules.can_damage(code, code, zone_id),
-					"el bando %d no se daña a sí mismo en %s" % [code, zone_id])
+					"side %d does not damage itself in %s" % [code, zone_id])
 
 
 func test_huecos_are_hostile_to_every_realm_in_any_zone() -> void:
 	for zone_id: StringName in [&"vado_gris", &"test_world", SAFE_ZONE]:
 		for realm: int in RealmCatalog.realm_codes():
 			assert_true(FactionRules.can_damage(HUECOS, realm, zone_id),
-					"los Huecos dañan al reino %d en %s" % [realm, zone_id])
+					"the Hollows damage realm %d in %s" % [realm, zone_id])
 			assert_true(FactionRules.can_damage(realm, HUECOS, zone_id),
-					"el reino %d daña a los Huecos en %s" % [realm, zone_id])
+					"realm %d damages the Hollows in %s" % [realm, zone_id])
 
 
 func test_enemy_realms_only_in_rvr_zones() -> void:
@@ -60,9 +60,9 @@ func test_enemy_realms_only_in_rvr_zones() -> void:
 			if attacker == victim:
 				continue
 			assert_true(FactionRules.can_damage(attacker, victim, &"vado_gris"),
-					"%d daña a %d en el Vado Gris (RVR)" % [attacker, victim])
+					"%d damages %d in Vado Gris (RVR)" % [attacker, victim])
 			assert_false(FactionRules.can_damage(attacker, victim, SAFE_ZONE),
-					"%d no daña a %d en una zona segura" % [attacker, victim])
+					"%d does not damage %d in a safe zone" % [attacker, victim])
 
 
 func test_invalid_codes_never_damage_or_get_damaged() -> void:
@@ -70,41 +70,41 @@ func test_invalid_codes_never_damage_or_get_damaged() -> void:
 		for zone_id: StringName in [&"vado_gris", SAFE_ZONE]:
 			for code: int in [HUECOS, VARDHEIM, SOLMARCH, ASKARRA, invalid]:
 				assert_false(FactionRules.can_damage(invalid, code, zone_id),
-						"el código %d no daña a %d en %s" % [invalid, code, zone_id])
+						"code %d does not damage %d in %s" % [invalid, code, zone_id])
 				assert_false(FactionRules.can_damage(code, invalid, zone_id),
-						"%d no daña al código %d en %s" % [code, invalid, zone_id])
+						"%d does not damage code %d in %s" % [code, invalid, zone_id])
 
 
 func test_codes_come_from_realm_catalog() -> void:
-	# La matriz habla en códigos de red: tienen que ser los del catálogo.
-	assert_eq(HUECOS, 0, "los Huecos son el código 0")
-	assert_eq(RealmCatalog.code_of(RealmCatalog.HUECOS), HUECOS, "catálogo: Huecos")
-	assert_eq(RealmCatalog.code_of(RealmCatalog.VARDHEIM), VARDHEIM, "catálogo: Vardheim")
-	assert_eq(RealmCatalog.code_of(RealmCatalog.SOLMARCH), SOLMARCH, "catálogo: Solmarch")
-	assert_eq(RealmCatalog.code_of(RealmCatalog.ASKARRA), ASKARRA, "catálogo: Askarra")
+	# The matrix speaks in network codes: they must be the catalog's.
+	assert_eq(HUECOS, 0, "the Hollows are code 0")
+	assert_eq(RealmCatalog.code_of(RealmCatalog.HUECOS), HUECOS, "catalog: Hollows")
+	assert_eq(RealmCatalog.code_of(RealmCatalog.VARDHEIM), VARDHEIM, "catalog: Vardheim")
+	assert_eq(RealmCatalog.code_of(RealmCatalog.SOLMARCH), SOLMARCH, "catalog: Solmarch")
+	assert_eq(RealmCatalog.code_of(RealmCatalog.ASKARRA), ASKARRA, "catalog: Askarra")
 
 
-# --- Modo PvP de las zonas --------------------------------------------------------------------
+# --- PvP mode of the zones --------------------------------------------------------------------
 
 func test_pvp_mode_of_known_and_unknown_zones() -> void:
-	assert_eq(Zones.get_pvp_mode(&"vado_gris"), Zones.PvpMode.RVR, "el Vado Gris es RVR")
-	assert_eq(Zones.get_pvp_mode(&"test_world"), Zones.PvpMode.RVR, "el mundo de pruebas es RVR")
-	assert_eq(Zones.get_pvp_mode(SAFE_ZONE), Zones.PvpMode.SAFE, "una zona desconocida es SAFE")
-	assert_eq(Zones.get_pvp_mode(&""), Zones.PvpMode.SAFE, "una zona vacía es SAFE")
-	assert_eq(Zones.PvpMode.SAFE, 0, "SAFE es el 0 del enum")
-	assert_eq(Zones.PvpMode.RVR, 1, "RVR es el 1 del enum")
+	assert_eq(Zones.get_pvp_mode(&"vado_gris"), Zones.PvpMode.RVR, "Vado Gris is RVR")
+	assert_eq(Zones.get_pvp_mode(&"test_world"), Zones.PvpMode.RVR, "the test world is RVR")
+	assert_eq(Zones.get_pvp_mode(SAFE_ZONE), Zones.PvpMode.SAFE, "an unknown zone is SAFE")
+	assert_eq(Zones.get_pvp_mode(&""), Zones.PvpMode.SAFE, "an empty zone is SAFE")
+	assert_eq(Zones.PvpMode.SAFE, 0, "SAFE is 0 in the enum")
+	assert_eq(Zones.PvpMode.RVR, 1, "RVR is 1 in the enum")
 
 
 func test_every_registered_zone_declares_its_pvp_mode() -> void:
 	for zone_id: StringName in Zones.get_zone_ids():
 		assert_true(Zones.PVP_MODES.has(zone_id),
-				"la zona %s tiene que declarar su modo PvP en Zones.PVP_MODES" % zone_id)
+				"zone %s must declare its PvP mode in Zones.PVP_MODES" % zone_id)
 	for zone_id: StringName in Zones.PVP_MODES:
 		assert_true(Zones.has_zone(zone_id),
-				"Zones.PVP_MODES habla de una zona que no existe: %s" % zone_id)
+				"Zones.PVP_MODES mentions a zone that does not exist: %s" % zone_id)
 
 
-# --- Utilidades -------------------------------------------------------------------------------
+# --- Utilities --------------------------------------------------------------------------------
 
 func _check_matrix(matrix: Array, zone_id: StringName) -> void:
 	var codes: Array[int] = [HUECOS, VARDHEIM, SOLMARCH, ASKARRA]
@@ -113,4 +113,4 @@ func _check_matrix(matrix: Array, zone_id: StringName) -> void:
 		for column: int in codes.size():
 			assert_eq(FactionRules.can_damage(codes[row], codes[column], zone_id),
 					expected_row[column] as bool,
-					"%s: atacante %d contra víctima %d" % [zone_id, codes[row], codes[column]])
+					"%s: attacker %d against victim %d" % [zone_id, codes[row], codes[column]])

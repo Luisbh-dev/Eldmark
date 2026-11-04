@@ -1,19 +1,19 @@
 extends TestCase
-## Propiedades del inventario (docs/progresion.md §3.2 y §4, PRG-11): 20 semillas × 1000 operaciones al azar,
-## válidas e inválidas (peticiones del cliente, SWAP de la ranura activa, CAMP_REFILL, CONSUME y los cambios
-## de GM), sobre un inventario que empieza con el kit de inicio. Ninguna secuencia crea ni pierde objetos ni
-## repite un uid.
+## Inventory properties (docs/progresion.md §3.2 and §4, PRG-11): 20 seeds × 1000 random operations,
+## valid and invalid (client requests, SWAP of the active slot, CAMP_REFILL, CONSUME and the GM
+## changes), on an inventory that starts with the starter kit. No sequence creates or loses objects or
+## repeats a uid.
 ## [br][br]
-## [b]Incremental[/b], tras cada operación: un espejo de las ranuras se pone al día con
-## [member InventoryOps.Outcome.changed]; la cantidad de cada definición que cambia en el espejo es la suma de
-## los [member InventoryOps.Outcome.events] (I4), los uids que salen mueren para siempre y los que entran son
-## nuevos (I1); tras CAMP_REFILL, [code]count_of(def) ≤ max(camp_refill, antes)[/code].
-## [b]Completa[/b], cada 100 operaciones y al final: el espejo es el estado (nada cambió fuera de
-## [code]changed[/code]), las cantidades son las de los eventos, ningún uid se repite ni es uno muerto, cada
-## instancia vale (I3), el ligado nunca vuelve atrás (I12) y en el equipo solo hay armas en 0 y 1, con la
-## activa ocupada (I10).
+## [b]Incremental[/b], after each operation: a mirror of the slots is brought up to date with
+## [member InventoryOps.Outcome.changed]; the quantity of each definition that changes in the mirror is the sum of
+## the [member InventoryOps.Outcome.events] (I4), the uids that leave die forever and those that enter are
+## new (I1); after CAMP_REFILL, [code]count_of(def) ≤ max(camp_refill, before)[/code].
+## [b]Full[/b], every 100 operations and at the end: the mirror is the state (nothing changed outside
+## [code]changed[/code]), the quantities are those of the events, no uid is repeated or is a dead one, every
+## instance is valid (I3), binding never goes back (I12) and in the equipment there are only weapons at 0 and 1, with the
+## active one occupied (I10).
 ## [br][br]
-## La versión larga (20 × 5000) solo corre con [code]--filter=inventory_properties_long[/code].
+## The long version (20 × 5000) only runs with [code]--filter=inventory_properties_long[/code].
 
 const BAG: int = InventoryState.ContainerId.BAG
 const EQUIP: int = InventoryState.ContainerId.EQUIPMENT
@@ -40,21 +40,21 @@ func test_random_operations_keep_the_invariants() -> void:
 			totals[key] = totals.get(key, 0) + stats[key]
 	var elapsed: int = Time.get_ticks_msec() - started
 	print("    %d × %d operaciones en %d ms: %s" % [SEEDS, OPERATIONS, elapsed, totals])
-	# Que la mezcla pruebe de verdad: aplicadas y rechazadas de cada clase.
+	# Let the mix truly test: applied and rejected of each kind.
 	for key: String in ["ok_move", "ok_split", "ok_destroy", "rejected", "refill", "consume", "gm_add",
 			"gm_remove", "swap", "merge", "uid_died"]:
-		assert_true(totals.get(key, 0) > 20, "la mezcla incluye bastantes '%s' (%d)" % [key, totals.get(key, 0)])
+		assert_true(totals.get(key, 0) > 20, "the mix includes quite a few '%s' (%d)" % [key, totals.get(key, 0)])
 	for code: int in [InventoryOps.Result.INVALID, InventoryOps.Result.STALE, InventoryOps.Result.NOT_NOW,
 			InventoryOps.Result.CANNOT_EQUIP, InventoryOps.Result.WEAPON_REQUIRED, InventoryOps.Result.NO_ROOM,
 			InventoryOps.Result.LOCKED]:
-		assert_true(totals.get("code_%d" % code, 0) > 5, "sale el código %d (%d)" % [code,
+		assert_true(totals.get("code_%d" % code, 0) > 5, "code %d comes up (%d)" % [code,
 				totals.get("code_%d" % code, 0)])
 
 
-## La versión larga: 20 × 5000. Solo con --filter=inventory_properties_long.
+## The long version: 20 × 5000. Only with --filter=inventory_properties_long.
 func test_inventory_properties_long() -> void:
 	if not _long_requested():
-		assert_true(true, "solo con --filter=%s" % LONG_FILTER)
+		assert_true(true, "only with --filter=%s" % LONG_FILTER)
 		return
 	var started: int = Time.get_ticks_msec()
 	for seed_index: int in range(SEEDS):
@@ -62,7 +62,7 @@ func test_inventory_properties_long() -> void:
 	print("    %d × %d operaciones en %d ms" % [SEEDS, LONG_OPERATIONS, Time.get_ticks_msec() - started])
 
 
-## La pila dividida: CAMP_REFILL repone el total de la definición, no cada pila, así que dividir no da más.
+## The split stack: CAMP_REFILL replenishes the definition's total, not each stack, so splitting gives no more.
 func test_camp_refill_after_splitting_gives_nothing_extra() -> void:
 	var state := InventoryState.new(8)
 	var ids: Dictionary = {"next": 100}
@@ -73,30 +73,30 @@ func test_camp_refill_after_splitting_gives_nothing_extra() -> void:
 			BAG, 0, BAG, 1, 1, 1), context)
 	var second: InventoryOps.Outcome = InventoryOps.apply(state, InventoryOps.make_request(InventoryOps.Op.SPLIT,
 			BAG, 0, BAG, 2, 1, 1), context)
-	assert_true(first.is_ok() and second.is_ok(), "tres pilas de 1")
+	assert_true(first.is_ok() and second.is_ok(), "three stacks of 1")
 	var refill: InventoryOps.Outcome = InventoryOps.camp_refill(state, context)
-	assert_eq(state.count_of(&"potion_health"), 3, "el total sigue en 3: nada que reponer")
+	assert_eq(state.count_of(&"potion_health"), 3, "the total is still 3: nothing to replenish")
 	for event: ItemEvent in refill.events:
-		assert_true(event.def_id != &"potion_health", "ningún evento de vida")
+		assert_true(event.def_id != &"potion_health", "no health events")
 	var drink: InventoryOps.Outcome = InventoryOps.remove_items(state, &"potion_health", 2, EconomyReason.CONSUME)
-	assert_true(drink.is_ok(), "bebe 2")
-	assert_eq(state.count_of(&"potion_health"), 1, "queda 1")
+	assert_true(drink.is_ok(), "drinks 2")
+	assert_eq(state.count_of(&"potion_health"), 1, "1 remains")
 	assert_true(state.get_item(BAG, 0) == null and state.get_item(BAG, 1) == null,
-			"de las pilas con la ranura más baja primero")
+			"from the stacks with the lowest slot first")
 	InventoryOps.camp_refill(state, context)
-	assert_eq(state.count_of(&"potion_health"), 3, "repone hasta el total")
-	assert_eq(state.get_item(BAG, 2).count, 3, "en la pila que queda")
-	assert_true(state.get_item(BAG, 0) == null and state.get_item(BAG, 1) == null, "sin abrir una pila nueva")
+	assert_eq(state.count_of(&"potion_health"), 3, "replenishes up to the total")
+	assert_eq(state.get_item(BAG, 2).count, 3, "in the stack that remains")
+	assert_true(state.get_item(BAG, 0) == null and state.get_item(BAG, 1) == null, "without opening a new stack")
 	var many := InventoryState.new(8)
 	many.set_item(BAG, 0, ItemInstance.create(7, potion, 15))
 	InventoryOps.apply(many, InventoryOps.make_request(InventoryOps.Op.SPLIT, BAG, 0, BAG, 1, 7, 7), context)
 	InventoryOps.camp_refill(many, context)
-	assert_eq(many.count_of(&"potion_health"), 15, "con más del total no repone ni quita nada")
+	assert_eq(many.count_of(&"potion_health"), 15, "with more than the total it neither replenishes nor removes anything")
 
 
-# --- La simulación -------------------------------------------------------------------------------
+# --- The simulation ------------------------------------------------------------------------------
 
-## Una semilla: devuelve cuántas operaciones hubo de cada clase.
+## One seed: returns how many operations there were of each kind.
 func _run(seed_value: int, operations: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x5EED0000 + seed_value
@@ -105,7 +105,7 @@ func _run(seed_value: int, operations: int) -> Dictionary:
 	var ids: Dictionary = {"next": 1000, "exhausted": false}
 	var template: StringName = [&"squire", &"marksman"][rng.randi_range(0, 1)]
 	var kit: Array[ItemEvent] = StarterKit.grant(state, template, _db, _uid_source(ids))
-	if not assert_false(kit.is_empty(), "semilla %d: el kit cabe" % seed_value):
+	if not assert_false(kit.is_empty(), "seed %d: the kit fits" % seed_value):
 		return stats
 	var sim := {
 		"state": state, "active": 0, "mirror": {}, "expected": {}, "live": {}, "dead": {}, "bound": {},
@@ -121,7 +121,7 @@ func _run(seed_value: int, operations: int) -> Dictionary:
 		return stats
 	for step: int in range(operations):
 		sim["label"] = "semilla %d, paso %d" % [seed_value, step]
-		# A ratos la zona se queda sin ids para clientes (la plataforma no da bloques, §4.5).
+		# At times the zone runs out of ids for clients (the platform gives no blocks, §4.5).
 		if rng.randf() < (0.2 if ids["exhausted"] else 0.02):
 			ids["exhausted"] = not ids["exhausted"]
 		if not _random_step(sim, rng, stats):
@@ -132,7 +132,7 @@ func _run(seed_value: int, operations: int) -> Dictionary:
 	return stats
 
 
-## Una operación al azar con sus comprobaciones incrementales; false si algo falla (para cortar la semilla).
+## A random operation with its incremental checks; false if something fails (to cut the seed short).
 func _random_step(sim: Dictionary, rng: RandomNumberGenerator, stats: Dictionary) -> bool:
 	var state: InventoryState = sim["state"]
 	var roll: float = rng.randf()
@@ -153,18 +153,18 @@ func _random_step(sim: Dictionary, rng: RandomNumberGenerator, stats: Dictionary
 		if outcome.is_ok():
 			stats["ok_%s" % ["", "move", "split", "destroy"][request.op]] = \
 					stats.get("ok_%s" % ["", "move", "split", "destroy"][request.op], 0) + 1
-			# Juntar: el destino conserva su uid (en un intercambio recibe el del origen).
+			# Merging: the destination keeps its uid (in a swap it receives the source's).
 			if request.op == InventoryOps.Op.MOVE and target != null \
 					and state.get_item(request.to_container, request.to_slot).uid == target.uid:
 				stats["merge"] = stats.get("merge", 0) + 1
 			if request.op != InventoryOps.Op.DESTROY and not outcome.events.is_empty():
-				fail("%s: MOVE y SPLIT no dan eventos (%s)" % [sim["label"], outcome.events])
+				fail("%s: MOVE and SPLIT give no events (%s)" % [sim["label"], outcome.events])
 				return false
 		else:
 			stats["rejected"] = stats.get("rejected", 0) + 1
 			stats["code_%d" % outcome.result] = stats.get("code_%d" % outcome.result, 0) + 1
 	elif roll < 0.72:
-		# SWAP (Q): cambia la ranura activa si la otra tiene arma, como la máquina.
+		# SWAP (Q): changes the active slot if the other has a weapon, like the state machine.
 		var other: int = 1 - int(sim["active"])
 		if state.get_item(EQUIP, other) != null:
 			sim["active"] = other
@@ -212,16 +212,16 @@ func _random_step(sim: Dictionary, rng: RandomNumberGenerator, stats: Dictionary
 			var after: int = state.count_of(id)
 			var limit: int = maxi(definition.camp_refill, refill_before[id])
 			if after > limit or after < refill_before[id]:
-				fail("%s: tras CAMP_REFILL, %s tiene %d (antes %d, total %d)" % [sim["label"], id, after,
+				fail("%s: after CAMP_REFILL, %s has %d (before %d, total %d)" % [sim["label"], id, after,
 						refill_before[id], definition.camp_refill])
 				return false
 	if state.get_item(EQUIP, sim["active"]) == null:
-		fail("%s: la ranura activa %d se quedó sin arma" % [sim["label"], sim["active"]])
+		fail("%s: the active slot %d was left without a weapon" % [sim["label"], sim["active"]])
 		return false
 	return true
 
 
-## Una petición al azar: casi siempre desde una ranura ocupada y con el uid que hay, para que muchas valgan.
+## A random request: almost always from an occupied slot and with the uid that is there, so that many are valid.
 func _random_request(state: InventoryState, rng: RandomNumberGenerator) -> InventoryOps.Request:
 	var op_roll: float = rng.randf()
 	var op: int = InventoryOps.Op.MOVE
@@ -237,8 +237,8 @@ func _random_request(state: InventoryState, rng: RandomNumberGenerator) -> Inven
 		from = occupied[rng.randi_range(0, occupied.size() - 1)]
 	var to := _random_slot(state, rng)
 	var source: ItemInstance = state.get_item(from.x, from.y)
-	# A menudo, a la ranura de equipo que le va (las armas a 0 o 1, cada armadura a la suya, cerradas en la
-	# fase 5): equipar y desequipar de verdad, y que una regla de ranuras rota se vea.
+	# Often, to the equipment slot it fits (weapons at 0 or 1, each armour at its own, closed in
+	# phase 5): real equipping and unequipping, and so that a broken slot rule shows.
 	if source != null and from.x == BAG and rng.randf() < 0.3:
 		var definition: ItemDefinition = _db.get_definition(source.def_id)
 		if definition.equip_slot == ItemDefinition.EquipSlot.WEAPON:
@@ -270,19 +270,19 @@ func _random_slot(state: InventoryState, rng: RandomNumberGenerator) -> Vector2i
 	return Vector2i(rng.randi_range(0, 3), rng.randi_range(-1, state.bag_slots + 1))
 
 
-## Pone al día el espejo con las ranuras de [code]changed[/code] y comprueba I4 e I1 de esta operación.
+## Brings the mirror up to date with the [code]changed[/code] slots and checks I4 and I1 for this operation.
 func _incremental_check(sim: Dictionary, outcome: InventoryOps.Outcome, stats: Dictionary) -> bool:
 	var state: InventoryState = sim["state"]
 	var mirror: Dictionary = sim["mirror"]
 	var label: String = sim["label"]
 	if not outcome.is_ok():
-		# Un rechazo no cambia nada: las ranuras que tocaba siguen como el espejo.
+		# A rejection changes nothing: the slots it touched stay like the mirror.
 		for position: Vector2i in outcome.changed:
 			if not _same(mirror.get(position, []), _entry(state, position)):
-				fail("%s: un rechazo (%d) cambió %s" % [label, outcome.result, position])
+				fail("%s: a rejection (%d) changed %s" % [label, outcome.result, position])
 				return false
 		if not outcome.events.is_empty():
-			fail("%s: un rechazo con eventos" % label)
+			fail("%s: a rejection with events" % label)
 			return false
 		return true
 	var delta_by_def: Dictionary = {}
@@ -301,13 +301,13 @@ func _incremental_check(sim: Dictionary, outcome: InventoryOps.Outcome, stats: D
 	var event_by_def: Dictionary = {}
 	for event: ItemEvent in outcome.events:
 		if not EconomyReason.sign_matches(event.reason, event.count_delta):
-			fail("%s: evento con el signo de otro motivo: %s" % [label, event])
+			fail("%s: event with the sign of another reason: %s" % [label, event])
 			return false
 		event_by_def[event.def_id] = event_by_def.get(event.def_id, 0) + event.count_delta
 		sim["expected"][event.def_id] = sim["expected"].get(event.def_id, 0) + event.count_delta
 	for def_id: Variant in delta_by_def.keys() + event_by_def.keys():
 		if delta_by_def.get(def_id, 0) != event_by_def.get(def_id, 0):
-			fail("%s: %s cambió %d y sus eventos suman %d" % [label, def_id, delta_by_def.get(def_id, 0),
+			fail("%s: %s changed by %d and its events add up to %d" % [label, def_id, delta_by_def.get(def_id, 0),
 					event_by_def.get(def_id, 0)])
 			return false
 	for uid: int in removed:
@@ -320,14 +320,14 @@ func _incremental_check(sim: Dictionary, outcome: InventoryOps.Outcome, stats: D
 			sim["live"][uid] = added[uid]
 			continue
 		if sim["dead"].has(uid) or sim["live"].has(uid):
-			fail("%s: el uid %d vuelve o se repite" % [label, uid])
+			fail("%s: uid %d returns or is repeated" % [label, uid])
 			return false
 		sim["live"][uid] = added[uid]
 	return true
 
 
-## Todo desde cero: espejo = estado, cantidades = eventos, uids únicos y vivos, instancias válidas, ligado
-## que no vuelve atrás e I10.
+## Everything from scratch: mirror = state, quantities = events, unique live uids, valid instances, binding
+## that never goes back and I10.
 func _full_check(sim: Dictionary, label: String) -> bool:
 	var state: InventoryState = sim["state"]
 	var mirror: Dictionary = sim["mirror"]
@@ -339,37 +339,37 @@ func _full_check(sim: Dictionary, label: String) -> bool:
 			var position := Vector2i(container, slot)
 			var now: Array = _entry(state, position)
 			if not _same(mirror.get(position, []), now):
-				ok = fail_and_false("%s: %s cambió sin estar en changed (%s → %s)" % [label, position,
+				ok = fail_and_false("%s: %s changed without being in changed (%s → %s)" % [label, position,
 						mirror.get(position, []), now])
 			var item: ItemInstance = state.get_item(container, slot)
 			if item == null:
 				continue
 			counts[item.def_id] = counts.get(item.def_id, 0) + item.count
 			if seen.has(item.uid):
-				ok = fail_and_false("%s: el uid %d está dos veces" % [label, item.uid])
+				ok = fail_and_false("%s: uid %d is there twice" % [label, item.uid])
 			seen[item.uid] = true
 			if sim["dead"].has(item.uid):
-				ok = fail_and_false("%s: el uid muerto %d ha vuelto" % [label, item.uid])
+				ok = fail_and_false("%s: the dead uid %d has come back" % [label, item.uid])
 			if not item.is_valid(_db):
-				ok = fail_and_false("%s: instancia que no vale en %s: uid %d, %s ×%d" % [label, position, item.uid,
+				ok = fail_and_false("%s: invalid instance in %s: uid %d, %s ×%d" % [label, position, item.uid,
 						item.def_id, item.count])
 			if sim["bound"].get(item.uid, false) and not item.bound:
-				ok = fail_and_false("%s: el uid %d dejó de estar ligado" % [label, item.uid])
+				ok = fail_and_false("%s: uid %d stopped being bound" % [label, item.uid])
 			sim["bound"][item.uid] = item.bound
 			if container == EQUIP:
 				var definition: ItemDefinition = _db.get_definition(item.def_id)
 				if slot >= InventoryState.OPEN_EQUIPMENT_SLOTS \
 						or definition.equip_slot != ItemDefinition.EquipSlot.WEAPON:
-					ok = fail_and_false("%s: %s en la ranura de equipo %d" % [label, item.def_id, slot])
+					ok = fail_and_false("%s: %s in equipment slot %d" % [label, item.def_id, slot])
 	for def_id: Variant in counts.keys() + sim["expected"].keys():
 		if counts.get(def_id, 0) != sim["expected"].get(def_id, 0):
-			ok = fail_and_false("%s: hay %d de %s y los eventos dicen %d" % [label, counts.get(def_id, 0), def_id,
+			ok = fail_and_false("%s: there are %d of %s and the events say %d" % [label, counts.get(def_id, 0), def_id,
 					sim["expected"].get(def_id, 0)])
 	if seen.size() != sim["live"].size():
-		ok = fail_and_false("%s: %d uids en el estado y %d vivos anotados" % [label, seen.size(), sim["live"].size()])
+		ok = fail_and_false("%s: %d uids in the state and %d live ones recorded" % [label, seen.size(), sim["live"].size()])
 	if state.get_item(EQUIP, sim["active"]) == null:
-		ok = fail_and_false("%s: la ranura activa está vacía" % label)
-	assert_true(ok, "%s: comprobación completa" % label)
+		ok = fail_and_false("%s: the active slot is empty" % label)
+	assert_true(ok, "%s: full check" % label)
 	return ok
 
 
@@ -386,7 +386,7 @@ func _note_slot(sim: Dictionary, position: Vector2i) -> void:
 		sim["mirror"][position] = entry
 
 
-## [uid, def_id, cantidad, ligado] de la ranura, o vacío.
+## [uid, def_id, quantity, bound] of the slot, or empty.
 func _entry(state: InventoryState, position: Vector2i) -> Array:
 	var item: ItemInstance = state.get_item(position.x, position.y)
 	return [] if item == null else [item.uid, item.def_id, item.count, item.bound]
@@ -403,7 +403,7 @@ func _context(ids: Dictionary) -> InventoryOps.Context:
 	return context
 
 
-## Ids desde [code]ids.next[/code]; 0 mientras [code]ids.exhausted[/code] (la plataforma no da bloques).
+## Ids from [code]ids.next[/code]; 0 while [code]ids.exhausted[/code] (the platform gives no blocks).
 func _uid_source(ids: Dictionary) -> Callable:
 	return func() -> int:
 		if ids.get("exhausted", false):
@@ -419,7 +419,7 @@ func _long_requested() -> bool:
 	return false
 
 
-## Los objetos de data/items, las armaduras de los casos (no se equipan en la fase 5) y un mineral apilable.
+## The objects from data/items, the armours of the cases (not equipped in phase 5) and a stackable ore.
 func _property_db() -> ItemDatabase:
 	var definitions: Array[ItemDefinition] = []
 	var shared: ItemDatabase = ItemDatabase.shared()
@@ -435,5 +435,5 @@ func _property_db() -> ItemDatabase:
 	ore.max_stack = 20
 	definitions.append(ore)
 	var db: ItemDatabase = ItemDatabase.build_from_definitions(definitions)
-	assert_eq(db.errors, PackedStringArray(), "la base de prueba no tiene errores")
+	assert_eq(db.errors, PackedStringArray(), "the test base has no errors")
 	return db

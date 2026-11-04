@@ -1,13 +1,13 @@
-// Orden eldmark-platform: el servicio de plataforma de Eldmark (docs/plataforma.md).
+// The eldmark-platform command: the Eldmark platform service (docs/plataforma.md).
 //
-//	eldmark-platform serve                 arranca las API pública e interna (no migra)
-//	eldmark-platform migrate up            aplica las migraciones pendientes
-//	eldmark-platform migrate down N        deshace las N mayores aplicadas (solo dev y test)
-//	eldmark-platform migrate status        estado de cada migración
-//	eldmark-platform admin --actor <correo> <orden>
-//	                                       moderación y cuentas, con identidad (plataforma.md §9.1)
+//	eldmark-platform serve                 starts the public and internal APIs (does not migrate)
+//	eldmark-platform migrate up            applies the pending migrations
+//	eldmark-platform migrate down N        reverts the N most recent applied ones (dev and test only)
+//	eldmark-platform migrate status        status of each migration
+//	eldmark-platform admin --actor <email> <command>
+//	                                       moderation and accounts, with identity (plataforma.md §9.1)
 //
-// La configuración va en variables de entorno (plataforma.md §2.3); admin usa la misma que serve.
+// Configuration goes in environment variables (plataforma.md §2.3); admin uses the same as serve.
 package main
 
 import (
@@ -29,7 +29,7 @@ import (
 	"eldmark/platform/internal/services"
 )
 
-// Códigos de salida.
+// Exit codes.
 const (
 	exitOK    = 0
 	exitError = 1
@@ -199,7 +199,7 @@ func migrateCmd(ctx context.Context, args []string, lookup config.Lookup, stdout
 		}
 		_ = w.Flush()
 		if pending > 0 {
-			// Como /ready: el esquema no está al día para este binario.
+			// Same as /ready: the schema is not up to date for this binary.
 			return exitError
 		}
 	}

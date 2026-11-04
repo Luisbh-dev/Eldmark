@@ -1,54 +1,54 @@
 extends SceneTree
-## Comprueba que las rutas del Vado Gris se pueden recorrer y que son justas: un PlayerCharacter
-## sale de un punto de aparición de cada reino y va, simulando su movimiento real (correr, sin
-## esprintar), por el puente y por el vado hasta la puerta del fuerte. Imprime metros y segundos
-## de cada ruta y falla si el personaje se atasca o si las dos facciones difieren más de un 3 %.
-## Además cruza cada puente por los carriles x = -1,5, 0 y 1,5 en los dos sentidos, recorre el
-## interior del fuerte (rampa norte y sur, pasarela hasta encima de la puerta; la puerta cerrada no
-## lo para porque el personaje no lleva capa de reino en la máscara) y comprueba que el cauce
-## profundo no se puede recorrer desde el vado.
+## Checks that the Vado Gris routes can be walked and that they are fair: a PlayerCharacter
+## leaves from a spawn point of each realm and goes, simulating its real movement (running, without
+## sprinting), over the bridge and through the ford to the fort gate. It prints metres and seconds
+## for each route and fails if the character gets stuck or if the two factions differ by more than 3 %.
+## It also crosses each bridge along the lanes x = -1.5, 0 and 1.5 in both directions, walks the
+## interior of the fort (north and south ramp, walkway up to above the gate; the closed gate does not
+## stop it because the character carries no realm layer in the mask) and checks that the deep
+## channel cannot be walked from the ford.
 ##
-## Uso (sin ventana; --fixed-fps hace que la física vaya tan rápido como pueda):
+## Usage (windowless; --fixed-fps makes the physics run as fast as it can):
 ## [codeblock]
 ## godot --headless --path . --fixed-fps 60 -s res://tools/terrain/verify_vado_gris_routes.gd
 ## [/codeblock]
 
 const SCENE_PATH: String = "res://scenes/world/zones/vado_gris/vado_gris.tscn"
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
-## Distancia a la que se da por alcanzado un punto de paso.
+## Distance at which a waypoint is considered reached.
 const REACH: float = 1.6
-## Ticks sin acercarse al siguiente punto antes de declarar al personaje atascado.
+## Ticks without getting closer to the next point before declaring the character stuck.
 const STUCK_TICKS: int = 180
 const MAX_TICKS: int = 60 * 120
-## Diferencia relativa máxima permitida entre reinos.
+## Maximum relative difference allowed between realms.
 const FAIRNESS_TOLERANCE: float = 0.03
-## Cruces que NO deben poder hacerse (fuera del puente y del vado el borde del agua no se
-## cruza): [nombre, inicio, meta]. El personaje debe atascarse antes de llegar.
+## Crossings that must NOT be possible (outside the bridge and the ford the water's edge cannot
+## be crossed): [name, start, goal]. The character must get stuck before arriving.
 const BLOCKED_CROSSINGS: Array[Array] = [
 	["brazo_norte_este", Vector2(40, -90), Vector2(40, -30)],
 	["brazo_sur_este", Vector2(40, 90), Vector2(40, 30)],
 	["curva_noroeste", Vector2(-70, -70), Vector2(-30, -30)],
 	["curva_suroeste", Vector2(-70, 70), Vector2(-30, 30)],
-	# Por el lecho profundo desde el vado hacia los puentes, siguiendo el eje del cauce (está
-	# cerrado a los dos lados del vado).
+	# Along the deep bed from the ford towards the bridges, following the channel axis (it is
+	# closed off on both sides of the ford).
 	["cauce_desde_vado_norte", Vector2(-62, -3), [Vector2(-61.1, -10.8), Vector2(-58.3, -21.2), Vector2(-53.7, -31.0), Vector2(-43.8, -43.8)]],
 	["cauce_desde_vado_sur", Vector2(-62, 3), [Vector2(-61.1, 10.8), Vector2(-58.3, 21.2), Vector2(-53.7, 31.0), Vector2(-43.8, 43.8)]],
 ]
-## Carriles de los puentes que deben cruzarse en los dos sentidos.
+## Bridge lanes that must be crossed in both directions.
 const BRIDGE_LANES: Array[float] = [-1.5, 0.0, 1.5]
-## Interior del fuerte (el personaje de la prueba no lleva capa de reino y cruza la puerta cerrada):
-## explanada y puerta ([constant FORT_ENTRY]) y, desde GUE-45, la subida a la pasarela de los datos de las rutas, la que
-## siguen los bots de asedio: por cada rampa, sus puntos del patio, su cima y el eje de la pasarela hasta el puesto
-## encima de la puerta. Los puntos van por el eje de la rampa y de la pasarela (que no tiene barandilla por dentro): se
-## recorre con un alcance de [constant FORT_REACH] m para no recortar las esquinas y caerse al patio.
+## Fort interior (the test character carries no realm layer and crosses the closed gate):
+## esplanade and gate ([constant FORT_ENTRY]) and, since GUE-45, the climb to the walkway from the route data, the one
+## followed by the siege bots: for each ramp, its courtyard points, its top and the walkway axis up to the post
+## above the gate. The points follow the axis of the ramp and the walkway (which has no railing on the inside): it is
+## walked with a reach of [constant FORT_REACH] m so as not to cut corners and fall into the courtyard.
 const FORT_ENTRY: Array[Vector2] = [Vector2(-26, 0), Vector2(-15, 0)]
 const FORT_REACH: float = 0.5
-## Altura mínima de la pasarela sobre la meseta al acabar la ruta del interior.
+## Minimum height of the walkway above the plateau at the end of the interior route.
 const WALKWAY_MIN_HEIGHT: float = 3.0
 
-## Rutas de aproximación al fuerte, como datos compartidos (las escribe export_vado_gris_routes.gd y
-## las siguen los bots de asedio): del punto de aparición de cada reino a la explanada delante de la
-## puerta del fuerte (cara oeste, x = -20). Las de Solmarch son el reflejo de las de Vardheim.
+## Approach routes to the fort, as shared data (written by export_vado_gris_routes.gd and
+## followed by the siege bots): from each realm's spawn point to the esplanade in front of the
+## fort gate (west face, x = -20). Solmarch's are the mirror of Vardheim's.
 const ROUTES_PATH: String = "res://data/routes/vado_gris.tres"
 
 var _failed: bool = false
@@ -161,8 +161,8 @@ func _run() -> void:
 	quit(1 if _failed else 0)
 
 
-## La subida a la pasarela por la rampa [param ramp_index] de [param routes] (GUE-45), como la sigue un bot de asedio:
-## la entrada por la puerta, los puntos de la rampa y, por el eje de la pasarela, sus esquinas hasta el puesto.
+## The climb to the walkway via ramp [param ramp_index] of [param routes] (GUE-45), as a siege bot follows it:
+## the entry through the gate, the ramp points and, along the walkway axis, its corners up to the post.
 func _walkway_route(routes: ApproachRoutes, ramp_index: int) -> Array[Vector2]:
 	var waypoints: Array[Vector2] = []
 	waypoints.assign(FORT_ENTRY)
@@ -198,7 +198,7 @@ func _first_spawn(zone: Node, realm: String) -> Marker3D:
 	return null
 
 
-## Recorre los puntos de paso corriendo hacia cada uno. Devuelve ok, distancia, segundos y ticks.
+## Walks the waypoints running towards each one. Returns ok, distance, seconds and ticks.
 func _walk(zone: Node3D, spawn: Marker3D, waypoints: Array[Vector2], reach: float = REACH) -> Dictionary:
 	var character: PlayerCharacter = (load(CHARACTER_SCENE_PATH) as PackedScene).instantiate() as PlayerCharacter
 	zone.add_child(character)
@@ -228,7 +228,7 @@ func _walk(zone: Node3D, spawn: Marker3D, waypoints: Array[Vector2], reach: floa
 				ok = true
 				break
 			continue
-		# look_yaw: 0 mira a -Z (misma convención que Node3D.rotation.y).
+		# look_yaw: 0 looks along -Z (same convention as Node3D.rotation.y).
 		var input := PlayerInput.new()
 		input.tick = _tick
 		_tick += 1

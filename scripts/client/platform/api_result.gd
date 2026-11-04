@@ -1,43 +1,43 @@
 class_name ApiResult
 extends RefCounted
-## La respuesta de una llamada a la API pública de la plataforma (docs/plataforma.md §4.1 y §14.4), la que devuelve
+## The response of a call to the platform's public API (docs/plataforma.md §4.1 and §14.4), the one returned by
 ## [method PlatformApi.call_api].
 ## [br][br]
-## [member ok] es true con un 2xx. Con un error, [member data] es el objeto [code]error[/code] del cuerpo entero
-## ([code]{code, message, retry_after_s, fields, …}[/code], con lo propio de cada código: [code]until[/code] y
-## [code]reason[/code] de una sanción, [code]realm[/code] y [code]unlock_at[/code] de [code]realm_locked[/code]…) y
-## [member code], [member message] y [member retry_after_s] salen de él. Sin respuesta (sin conexión, plazo
-## vencido, fallo de TLS) [member status] es 0 y [member code] es [constant CODE_NETWORK]. El texto para el jugador
-## lo da [method PlatformErrors.text_for]. Solo cliente.
+## [member ok] is true on a 2xx. On an error, [member data] is the [code]error[/code] object of the whole body
+## ([code]{code, message, retry_after_s, fields, …}[/code], with what is specific to each code: [code]until[/code] and
+## [code]reason[/code] of a sanction, [code]realm[/code] and [code]unlock_at[/code] of [code]realm_locked[/code]…) and
+## [member code], [member message] and [member retry_after_s] come from it. With no response (offline, timeout
+## expired, TLS failure) [member status] is 0 and [member code] is [constant CODE_NETWORK]. The text for the player
+## is given by [method PlatformErrors.text_for]. Client only.
 
-## Código de una llamada sin respuesta del servidor (sin conexión, plazo vencido, TLS).
+## Code of a call with no response from the server (offline, timeout expired, TLS).
 const CODE_NETWORK: String = "network"
-## Código de una respuesta que no se entiende (un error sin cuerpo JSON de error).
+## Code of a response that is not understood (an error without a JSON error body).
 const CODE_BAD_RESPONSE: String = "bad_response"
-## Código de una URL de plataforma que no se admite (http:// fuera de esta máquina…): la llamada no sale.
+## Code of a platform URL that is not admitted (http:// outside this machine…): the call does not go out.
 const CODE_BAD_URL: String = "bad_url"
-## Código de una llamada con sesión sin sesión iniciada: no sale.
+## Code of a call that needs a session made without being logged in: it does not go out.
 const CODE_NO_SESSION: String = "unauthorized"
 
 var ok: bool = false
-## Código HTTP (0 sin respuesta).
+## HTTP code (0 without a response).
 var status: int = 0
-## El cuerpo JSON (un objeto) de un 2xx, o el objeto [code]error[/code] de un error. Vacío con un 204 o un cuerpo
-## que no es un objeto JSON (entonces está en [member text]).
+## The JSON body (an object) of a 2xx, or the [code]error[/code] object of an error. Empty with a 204 or a body
+## that is not a JSON object (then it is in [member text]).
 var data: Dictionary = {}
-## Código de error de la plataforma ([code]name_taken[/code]…); vacío si [member ok].
+## Platform error code ([code]name_taken[/code]…); empty if [member ok].
 var code: String = ""
-## Mensaje de la plataforma (o el del cliente si no hay respuesta).
+## Message from the platform (or the client's if there is no response).
 var message: String = ""
-## Segundos que pide esperar un 429 o un 503 (del cuerpo o de [code]Retry-After[/code]).
+## Seconds a 429 or a 503 asks to wait (from the body or from [code]Retry-After[/code]).
 var retry_after_s: int = 0
-## El cuerpo como texto (UTF-8 válido): el Markdown de [code]/v1/legal/{kind}[/code], el JSON de la exportación…
+## The body as text (valid UTF-8): the Markdown of [code]/v1/legal/{kind}[/code], the JSON of the export…
 var text: String = ""
-## Cabeceras de la respuesta, tal cual.
+## Response headers, as is.
 var headers: PackedStringArray = PackedStringArray()
 
 
-## Una respuesta correcta con [param body] (pruebas y [member PlatformApi.request_hook]).
+## A successful response with [param body] (tests and [member PlatformApi.request_hook]).
 static func success(body: Dictionary = {}, http_status: int = 200) -> ApiResult:
 	var result := ApiResult.new()
 	result.ok = true
@@ -46,8 +46,8 @@ static func success(body: Dictionary = {}, http_status: int = 200) -> ApiResult:
 	return result
 
 
-## Una respuesta de error con el cuerpo de §4.1 (pruebas y [member PlatformApi.request_hook]). [param extra] añade
-## campos al objeto [code]error[/code] ([code]until[/code], [code]fields[/code]…).
+## An error response with the body from §4.1 (tests and [member PlatformApi.request_hook]). [param extra] adds
+## fields to the [code]error[/code] object ([code]until[/code], [code]fields[/code]…).
 static func failure(http_status: int, error_code: String, error_message: String = "", extra: Dictionary = {},
 		retry_after: int = 0) -> ApiResult:
 	var result := ApiResult.new()
@@ -64,7 +64,7 @@ static func failure(http_status: int, error_code: String, error_message: String 
 	return result
 
 
-## Una llamada que no recibió respuesta (o que no llegó a salir) con el código [param error_code].
+## A call that received no response (or never got to go out) with code [param error_code].
 static func no_response(error_code: String = CODE_NETWORK, error_message: String = "") -> ApiResult:
 	var result := ApiResult.new()
 	result.ok = false
@@ -75,20 +75,20 @@ static func no_response(error_code: String = CODE_NETWORK, error_message: String
 	return result
 
 
-## [code]fields[/code] del error de validación ({campo: motivo}); vacío si no hay.
+## [code]fields[/code] of the validation error ({field: reason}); empty if there is none.
 func get_fields() -> Dictionary:
 	var fields: Variant = data.get("fields", {})
 	return fields if fields is Dictionary else {}
 
 
-## Un campo de texto de [member data] (vacío si falta o no es texto).
+## A text field of [member data] (empty if missing or not text).
 func text_of(key: String) -> String:
 	var value: Variant = data.get(key)
 	return value if value is String else ""
 
 
-## Un campo entero de [member data] ([param fallback] si falta o no es un número entero). Los números de JSON
-## llegan como float.
+## An integer field of [member data] ([param fallback] if missing or not an integer). JSON numbers
+## arrive as float.
 func int_of(key: String, fallback: int = 0) -> int:
 	var value: Variant = data.get(key)
 	if value is int:
@@ -98,7 +98,7 @@ func int_of(key: String, fallback: int = 0) -> int:
 	return fallback
 
 
-## La cabecera [param header_name] (sin distinguir mayúsculas), o vacío.
+## The header [param header_name] (case-insensitive), or empty.
 func header(header_name: String) -> String:
 	var wanted: String = header_name.to_lower() + ":"
 	for line: String in headers:

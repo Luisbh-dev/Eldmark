@@ -1,7 +1,7 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área interfaz (escenario de online_driver.gd).
+## Quality capture bench (TEC-50), interfaz area (scenario of online_driver.gd).
 ##
-## Elección de reino (cliente sin --realm): pantalla con contadores de jugadores, plantilla de equipo y validación.
+## Realm selection (client without --realm): screen with player counters, equipment template and validation.
 
 var d: Variant
 

@@ -1,10 +1,10 @@
 extends TestCase
-## Pruebas de [FrontMain] con la escena de verdad y la plataforma de mentira ([FakePublicPlatform] como
-## [member PlatformApi.request_hook]; docs/plataforma.md §13 y §15 P8): título → selección (y «Recordar correo» sin
-## la contraseña), la cuenta sancionada (exportar y borrar), los textos nuevos, entrar con billete hacia
-## [OnlineMain] ([member ClientConfig.from_front]), el renombrado forzado, la espera de [code]character_busy[/code],
-## crear, borrar y restaurar, cerrar sesión, la sesión perdida, el registro (solo inicia sesión contra una plataforma
-## local) y la vuelta desde [OnlineMain] con el motivo.
+## Tests for [FrontMain] with the real scene and the fake platform ([FakePublicPlatform] as
+## [member PlatformApi.request_hook]; docs/plataforma.md §13 and §15 P8): title → selection (and "Recordar correo"
+## (remember email) without the password), the sanctioned account (export and delete), the new texts, entering with a ticket towards
+## [OnlineMain] ([member ClientConfig.from_front]), the forced rename, waiting on [code]character_busy[/code],
+## create, delete and restore, log out, the lost session, registration (it only logs in against a local
+## platform) and the return from [OnlineMain] with the reason.
 
 const FRONT_SCENE: String = "res://scenes/client/front_main.tscn"
 const ONLINE_MAIN_SCENE: String = "res://scenes/client/online_main.tscn"
@@ -69,7 +69,7 @@ func after_each() -> void:
 	await wait_process_frames(2)
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _mount() -> void:
 	var packed: PackedScene = load(FRONT_SCENE) as PackedScene
@@ -85,12 +85,12 @@ func _wait_until(condition: Callable, max_frames: int = 300) -> bool:
 	return condition.call()
 
 
-## Monta FrontMain e inicia sesión desde el título hasta la pantalla que toque.
+## Mounts FrontMain and logs in from the title to whichever screen applies.
 func _login(remember: bool = false, password: String = "") -> void:
 	_mount()
 	var title: TitleScreen = _front.get_title_screen()
 	assert_true(await _wait_until(func() -> bool: return title.get_status_text() == "En línea · Eld"),
-			"el título enseña el estado: %s" % title.get_status_text())
+			"the title shows the state: %s" % title.get_status_text())
 	var typed: String = password if not password.is_empty() else _platform.password
 	title.get_email_edit().text = _platform.email
 	title.get_password_edit().text = typed
@@ -104,23 +104,23 @@ func _on_select() -> bool:
 			and not _front.get_character_select().is_busy()
 
 
-# --- Pruebas ----------------------------------------------------------------------------------
+# --- Tests ------------------------------------------------------------------------------------
 
 func test_login_reaches_the_selection_and_remembers_only_the_email() -> void:
 	_platform.make_character("Anéira", "solmarch", 7)
 	_platform.make_character("Bruno", "solmarch")
 	await _login(true)
-	assert_true(await _wait_until(_on_select), "tras entrar, la selección")
+	assert_true(await _wait_until(_on_select), "after entering, the selection")
 	var select: CharacterSelect = _front.get_character_select()
 	assert_eq(select.get_character_count(), 2)
 	assert_eq(select.get_selected_id(), AccountFlow.parse_id(_platform.characters[0]["character_id"]))
-	assert_true(FrontMain.session != null and FrontMain.session.is_active(), "la sesión queda para otras escenas")
-	assert_eq(FrontMain.remembered_email(), _platform.email, "el correo recordado")
+	assert_true(FrontMain.session != null and FrontMain.session.is_active(), "the session stays for other scenes")
+	assert_eq(FrontMain.remembered_email(), _platform.email, "the remembered email")
 	var stored: String = FileAccess.get_file_as_string(FrontMain.settings_path)
 	assert_true(stored.contains("[account]"), stored)
-	assert_false(stored.contains(_platform.password), "la contraseña nunca se guarda")
-	assert_false(stored.contains("acceso-"), "ni los tokens")
-	assert_eq(_front.get_title_screen().get_password_edit().text, "", "y el campo se vacía")
+	assert_false(stored.contains(_platform.password), "the password is never saved")
+	assert_false(stored.contains("acceso-"), "nor the tokens")
+	assert_eq(_front.get_title_screen().get_password_edit().text, "", "and the field is emptied")
 
 
 func test_a_wrong_password_stays_on_the_title_with_its_text() -> void:
@@ -129,7 +129,7 @@ func test_a_wrong_password_stays_on_the_title_with_its_text() -> void:
 	assert_true(await _wait_until(func() -> bool: return not title.get_notice_text().is_empty()))
 	assert_eq(title.get_notice_text(), "Correo o contraseña incorrectos")
 	assert_eq(_front.get_current_screen(), title)
-	assert_eq(FrontMain.remembered_email(), "", "sin «Recordar correo» no se guarda")
+	assert_eq(FrontMain.remembered_email(), "", "without \"Recordar correo\" it is not saved")
 
 
 func test_a_sanctioned_account_only_exports_deletes_or_logs_out() -> void:
@@ -138,9 +138,9 @@ func test_a_sanctioned_account_only_exports_deletes_or_logs_out() -> void:
 	await _login()
 	var panel: SanctionedPanel = _front.get_sanctioned_panel()
 	assert_true(await _wait_until(func() -> bool: return _front.get_current_screen() == panel),
-			"la sesión de privacidad va a su pantalla")
+			"the privacy session goes to its screen")
 	assert_eq(panel.get_reason_text(), "Cuenta expulsada: Trampas")
-	assert_true(_platform.calls_to("/v1/worlds/").is_empty(), "sin pedir personajes")
+	assert_true(_platform.calls_to("/v1/worlds/").is_empty(), "without requesting characters")
 	var export := ApiResult.success({"account": {}})
 	export.text = "{\"account\": {}}"
 	export.headers = PackedStringArray(["Content-Disposition: attachment; filename=\"eldmark-datos-2026-10-30.json\""])
@@ -150,7 +150,7 @@ func test_a_sanctioned_account_only_exports_deletes_or_logs_out() -> void:
 	panel.try_export()
 	var expected: String = NetHarness.get_build_dir().path_join("eldmark-datos-2026-10-30.json")
 	assert_true(await _wait_until(func() -> bool: return panel.get_notice_text().contains(expected)),
-			"guardado: %s" % panel.get_notice_text())
+			"saved: %s" % panel.get_notice_text())
 	assert_eq(FileAccess.get_file_as_string(expected), "{\"account\": {}}")
 	assert_eq(_platform.calls_to("/v1/account/export")[0]["body"], {"password": _platform.password})
 	DirAccess.remove_absolute(expected)
@@ -163,7 +163,7 @@ func test_a_sanctioned_account_only_exports_deletes_or_logs_out() -> void:
 	assert_eq(_platform.calls_to("/v1/sessions/current", HTTPClient.METHOD_DELETE).size(), 1)
 	assert_null(FrontMain.session)
 	assert_eq(FrontMain.export_file_name("attachment; filename=\"../../etc/passwd\""), "eldmark-datos.json",
-			"un nombre de archivo raro no sale de la carpeta")
+			"an odd file name does not escape the folder")
 
 
 func test_new_texts_are_accepted_before_the_selection() -> void:
@@ -176,9 +176,9 @@ func test_new_texts_are_accepted_before_the_selection() -> void:
 	terms.text_requested.emit("privacy")
 	assert_true(await _wait_until(func() -> bool: return _platform.calls_to("/v1/legal/privacy").size() == 1))
 	terms.get_accept_button().pressed.emit()
-	assert_true(await _wait_until(_on_select), "aceptados, la selección")
+	assert_true(await _wait_until(_on_select), "accepted, the selection")
 	assert_eq(_platform.calls_to("/v1/account/accept")[0]["body"], {"terms": 1, "privacy": 2, "rules": 1},
-			"con las versiones vigentes de /v1/legal")
+			"with the current versions from /v1/legal")
 
 
 func test_enter_goes_online_with_the_ticket_and_from_front() -> void:
@@ -186,16 +186,16 @@ func test_enter_goes_online_with_the_ticket_and_from_front() -> void:
 	await _login()
 	assert_true(await _wait_until(_on_select))
 	_front.get_character_select().try_enter()
-	assert_true(await _wait_until(func() -> bool: return not _online_configs.is_empty()), "pasa a OnlineMain")
+	assert_true(await _wait_until(func() -> bool: return not _online_configs.is_empty()), "switches to OnlineMain")
 	var config: ClientConfig = _online_configs[0]
-	assert_true(config.from_front, "con from_front: vuelve aquí tras un rechazo")
+	assert_true(config.from_front, "with from_front: it comes back here after a rejection")
 	assert_eq(config.mode, ClientConfig.Mode.ONLINE)
 	assert_eq(config.ticket, _platform.ticket)
 	assert_eq(config.character_id, AccountFlow.parse_id(character["character_id"]))
 	assert_eq(config.realm, NetProtocol.Realm.SOLMARCH)
 	assert_eq(config.display_name, "Aneira")
-	assert_eq(OnlineMain.config, config, "la configuración de OnlineMain")
-	assert_true(FrontMain.session.is_active(), "la sesión sigue para volver")
+	assert_eq(OnlineMain.config, config, "the OnlineMain configuration")
+	assert_true(FrontMain.session.is_active(), "the session remains so it can go back")
 
 
 func test_rename_required_opens_the_rename_dialog() -> void:
@@ -205,7 +205,7 @@ func test_rename_required_opens_the_rename_dialog() -> void:
 	assert_true(await _wait_until(_on_select))
 	_front.get_character_select().try_enter()
 	var dialog: RenameDialog = _front.get_rename_dialog()
-	assert_true(await _wait_until(dialog.is_open), "rename_required abre el diálogo")
+	assert_true(await _wait_until(dialog.is_open), "rename_required opens the dialog")
 	dialog.get_name_edit().text = "Brunilda"
 	dialog.get_name_edit().text_changed.emit("Brunilda")
 	assert_true(dialog.try_rename())
@@ -214,7 +214,7 @@ func test_rename_required_opens_the_rename_dialog() -> void:
 			{"name": "Brunilda"})
 	assert_eq(_front.get_character_select().get_notice_text(), "Nombre cambiado")
 	assert_eq(_front.get_character_select().get_selected_character().get("name"), "Brunilda")
-	assert_true(_online_configs.is_empty(), "no entra hasta pulsar Entrar otra vez")
+	assert_true(_online_configs.is_empty(), "it does not enter until Enter (\"Entrar\") is pressed again")
 
 
 func test_a_busy_character_shows_the_countdown_and_then_enters() -> void:
@@ -225,10 +225,10 @@ func test_a_busy_character_shows_the_countdown_and_then_enters() -> void:
 	_front.get_flow().busy_retry_s = 0.2
 	var select: CharacterSelect = _front.get_character_select()
 	select.try_enter()
-	assert_true(await _wait_until(select.is_waiting), "la cuenta atrás")
+	assert_true(await _wait_until(select.is_waiting), "the countdown")
 	assert_true(select.get_waiting_text().begins_with("Tu personaje está saliendo del mundo… ("),
 			select.get_waiting_text())
-	assert_true(await _wait_until(func() -> bool: return not _online_configs.is_empty()), "y entra al quedar libre")
+	assert_true(await _wait_until(func() -> bool: return not _online_configs.is_empty()), "and it enters once free")
 	assert_false(select.is_waiting())
 
 
@@ -240,7 +240,7 @@ func test_create_delete_and_restore_from_the_selection() -> void:
 	select.get_create_button().pressed.emit()
 	var create: CharacterCreate = _front.get_character_create()
 	assert_eq(_front.get_current_screen(), create)
-	assert_eq(create.get_realm(), &"solmarch", "el reino de la cuenta")
+	assert_eq(create.get_realm(), &"solmarch", "the account's realm")
 	assert_true(create.next() and create.next() and create.next())
 	create.set_name_text("Bruno")
 	create.flush_name_check()
@@ -251,7 +251,7 @@ func test_create_delete_and_restore_from_the_selection() -> void:
 	assert_true(await _wait_until(func() -> bool: return create.get_name_reason_text() == "Nombre libre"))
 	assert_true(create.try_create())
 	assert_true(await _wait_until(func() -> bool: return _on_select() and select.get_character_count() == 2))
-	assert_eq(select.get_selected_character().get("name"), "Aneira", "elige el nuevo")
+	assert_eq(select.get_selected_character().get("name"), "Aneira", "selects the new one")
 	assert_eq(select.get_notice_text(), "Personaje creado")
 	var body: Dictionary = _platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST)[0]["body"]
 	assert_eq(body.get("realm"), "solmarch")
@@ -264,7 +264,7 @@ func test_create_delete_and_restore_from_the_selection() -> void:
 	select.get_delete_edit().text_changed.emit("ANEIRA")
 	assert_true(select.confirm_delete())
 	assert_true(await _wait_until(func() -> bool: return _on_select() and select.is_selected_deleted()))
-	assert_eq(select.get_selected_id(), id, "sigue elegido, ya borrado")
+	assert_eq(select.get_selected_id(), id, "still selected, now deleted")
 	assert_eq(select.get_notice_text(), FrontMain.TEXT_DELETED)
 	select.try_restore()
 	assert_true(await _wait_until(func() -> bool: return _on_select() and not select.is_selected_deleted()))
@@ -294,7 +294,7 @@ func test_registration_logs_in_only_against_a_local_platform() -> void:
 	_front.get_title_screen().register_requested.emit()
 	var register: RegisterPanel = _front.get_register_panel()
 	assert_eq(_front.get_current_screen(), register)
-	assert_true(await _wait_until(register.has_legal_versions), "con las versiones de /v1/legal")
+	assert_true(await _wait_until(register.has_legal_versions), "with the versions from /v1/legal")
 	register.get_email_edit().text = _platform.email
 	register.get_password_edit().text = _platform.password
 	register.get_repeat_edit().text = _platform.password
@@ -302,7 +302,7 @@ func test_registration_logs_in_only_against_a_local_platform() -> void:
 	for kind: String in RegisterPanel.KINDS:
 		register.get_accept_check(kind).button_pressed = true
 	assert_true(register.try_submit(), register.get_hint_text())
-	assert_true(await _wait_until(_on_select), "en desarrollo, inicia sesión con lo escrito")
+	assert_true(await _wait_until(_on_select), "in development, it logs in with what was typed")
 	assert_eq(_platform.calls_to("/v1/sessions", HTTPClient.METHOD_POST).size(), 1)
 	_front.get_parent().remove_child(_front)
 	_front.free()
@@ -325,7 +325,7 @@ func test_registration_logs_in_only_against_a_local_platform() -> void:
 	assert_true(await _wait_until(func() -> bool: return _front.get_current_screen() == title))
 	assert_eq(title.get_notice_text(), RegisterPanel.TEXT_SENT)
 	assert_true(_platform.calls_to("/v1/sessions").is_empty(),
-			"fuera de esta máquina no inicia sesión: delataría si el correo ya tenía cuenta")
+			"off this machine it does not log in: it would reveal whether the email already had an account")
 
 
 func test_coming_back_from_the_world_shows_the_reason_on_the_selection() -> void:
@@ -334,9 +334,9 @@ func test_coming_back_from_the_world_shows_the_reason_on_the_selection() -> void
 			"refresh_token": "refresco-1", "refresh_expires_in": 43200, "scope": "game"}, Time.get_ticks_msec())
 	FrontMain.return_notice = "Conexión rechazada: Tu personaje sigue en el mundo: espera unos segundos"
 	_mount()
-	assert_eq(_front.get_current_screen(), _front.get_character_select(), "con sesión, directo a la selección")
+	assert_eq(_front.get_current_screen(), _front.get_character_select(), "with a session, straight to the selection")
 	assert_eq(_front.get_character_select().get_notice_text(), "Conexión rechazada: Tu personaje sigue en el mundo: espera unos segundos")
-	assert_eq(FrontMain.return_notice, "", "el motivo se enseña una vez")
+	assert_eq(FrontMain.return_notice, "", "the reason is shown once")
 	assert_true(await _wait_until(func() -> bool: return _front.get_character_select().get_character_count() == 1))
 
 
@@ -358,10 +358,10 @@ func test_online_main_from_front_returns_to_the_selection_with_the_reason() -> v
 	_online = packed.instantiate() as OnlineMain
 	_online.get_node(^"ClientServices").free()
 	tree.root.add_child(_online)
-	assert_null(_online.get_realm_select(), "con billete no hay elección de reino")
+	assert_null(_online.get_realm_select(), "with a ticket there is no realm choice")
 	assert_true(await _wait_until(func() -> bool: return not _front_notices.is_empty(), 1500),
-			"un fallo vuelve a FrontMain")
+			"a failure goes back to FrontMain")
 	assert_true(_front_notices[0].begins_with("No se pudo conectar con el servidor"), _front_notices[0])
-	assert_eq(FrontMain.return_notice, _front_notices[0], "con el motivo para la selección")
-	assert_null(_online.get_realm_select(), "y nunca a la elección de reino")
-	assert_true(_quits.is_empty(), "sin cerrar el proceso")
+	assert_eq(FrontMain.return_notice, _front_notices[0], "with the reason for the selection")
+	assert_null(_online.get_realm_select(), "and never to the realm choice")
+	assert_true(_quits.is_empty(), "without closing the process")

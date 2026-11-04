@@ -1,89 +1,97 @@
 class_name InventoryOps
 extends RefCounted
-## Las operaciones del inventario (docs/progresion.md §4.2–§4.4, PRG-11), puras y compartidas: el servidor
-## las usa para decidir y el cliente para su intención optimista (§11.3), así que las dos validan igual.
+## The inventory operations (docs/progresion.md §4.2–§4.4, PRG-11), pure and shared: the server
+## uses them to decide and the client for its optimistic intent (§11.3), so both validate the same
+## way.
 ## [br][br]
-## [b]Peticiones del cliente[/b] ([method apply]): MOVE (mover, juntar, intercambiar, equipar y desequipar),
-## SPLIT y DESTROY. Se validan en el orden de §4.2 y el primer fallo da el código; si todo vale, se escribe
-## entera en el [InventoryState] y, si no, no cambia nada. RATE no sale de aquí: lo mira el servidor al
-## recibir la petición, antes que todo lo demás. Tampoco «sin personaje o fuera del mundo» (NOT_NOW) ni el
-## tope de 256 operaciones sin confirmar de DESTROY, que mira [code]PlayerProgress.apply_request[/code].
+## [b]Client requests[/b] ([method apply]): MOVE (move, merge, swap, equip and unequip), SPLIT and
+## DESTROY. They are validated in the order of §4.2 and the first failure gives the code; if
+## everything is valid, it is written whole into the [InventoryState] and, if not, nothing
+## changes. RATE does not come from here: the server checks it on receiving the request, before
+## everything else. Neither do "no character or outside the world" (NOT_NOW) or the cap of 256
+## unconfirmed DESTROY operations, which [code]PlayerProgress.apply_request[/code] checks.
 ## [br][br]
-## [b]Cambios del servidor[/b] (§4.4): [method camp_refill] (CAMP_REFILL), [method add_items] (kit, GM) y
-## [method remove_items] (CONSUME, GM, reversión). Sus eventos llevan siempre el [code]uid[/code] de la
-## instancia que tocan; agregarlos (§5.2) es cosa del diario del servidor.
+## [b]Server changes[/b] (§4.4): [method camp_refill] (CAMP_REFILL), [method add_items] (kit, GM)
+## and [method remove_items] (CONSUME, GM, reversal). Their events always carry the [code]uid[/code]
+## of the instance they touch; aggregating them (§5.2) is the server journal's job.
 ## [br][br]
-## Solo DESTROY y los cambios del servidor dan eventos ([ItemEvent]): mover, dividir, juntar, intercambiar y
-## equipar no cambian la cantidad de ninguna definición (I4). Ninguna función cambia una [ItemInstance] que ya
-## está en el estado: las que cambian se sustituyen por copias, así que el cliente puede rehacer su vista
-## sobre una copia del confirmado sin tocarlo. Sin reloj ni azar.
+## Only DESTROY and server changes produce events ([ItemEvent]): moving, splitting, merging,
+## swapping and equipping do not change the quantity of any definition (I4). No function mutates an
+## [ItemInstance] that is already in the state: those that change are replaced by copies, so the
+## client can rebuild its view on a copy of the confirmed state without touching it. No clock, no
+## randomness.
 
-## Operaciones del cliente (INVENTORY_REQUEST, §4.6).
+## Client operations (INVENTORY_REQUEST, §4.6).
 enum Op { MOVE = 1, SPLIT = 2, DESTROY = 3 }
-## Resultados (§4.2), en el orden en que se comprueban.
+## Results (§4.2), in the order they are checked.
 enum Result { OK = 0, INVALID = 1, STALE = 2, NOT_NOW = 3, CANNOT_EQUIP = 4,
 		WEAPON_REQUIRED = 5, NO_ROOM = 6, LOCKED = 7, RATE = 8 }
 
-## Destino de un DESTROY en el cable ([code]0xFF[/code]): [method apply] no lo mira.
+## Destination of a DESTROY on the wire ([code]0xFF[/code]): [method apply] does not look at it.
 const NO_SLOT: int = 0xFF
 
 
-## Una petición del cliente: los campos de INVENTORY_REQUEST (§4.6) sin el [code]request_id[/code].
+## A client request: the fields of INVENTORY_REQUEST (§4.6) without the [code]request_id[/code].
 class Request:
 	var op: int = 0
 	var from_container: int = 0
 	var from_slot: int = 0
-	## En DESTROY no cuentan ([constant InventoryOps.NO_SLOT] en el cable).
+	## In DESTROY they do not count ([constant InventoryOps.NO_SLOT] on the wire).
 	var to_container: int = 0
 	var to_slot: int = 0
-	## MOVE: 0. SPLIT: las que salen (1 … count − 1). DESTROY: las que se destruyen (0 = toda la pila).
+	## MOVE: 0. SPLIT: the ones that leave (1 … count − 1). DESTROY: the ones destroyed (0 = the whole
+	## stack).
 	var count: int = 0
-	## El [code]uid[/code] que el cliente ve en el origen.
+	## The [code]uid[/code] the client sees at the source.
 	var expected_uid: int = 0
 
 
-## Lo que la petición necesita saber del personaje.
+## What the request needs to know about the character.
 class Context:
-	## Definiciones (null = [method ItemDatabase.shared]).
+	## Definitions (null = [method ItemDatabase.shared]).
 	var db: ItemDatabase
-	## Nivel del personaje, para [member ItemDefinition.required_level].
+	## Character level, for [member ItemDefinition.required_level].
 	var level: int = 1
-	## Bit0 de [code]combat_flags2[/code]: del [CombatState] del servidor o del predicho en el cliente.
+	## Bit0 of [code]combat_flags2[/code]: from the server's [CombatState] or the one predicted on the
+	## client.
 	var active_weapon_slot: int = 0
-	## false: muerto, derribado, en combate o con una acción en curso (NOT_NOW si toca el equipo).
+	## false: dead, knocked down, in combat or with an action in progress (NOT_NOW if it touches
+	## equipment).
 	var can_touch_equipment: bool = true
-	## Bebiendo un consumible (ABILITY de consumible en curso): no se destruye ninguno.
+	## Drinking a consumable (consumable ABILITY in progress): none is destroyed.
 	var drinking: bool = false
-	## [code]() -> int[/code]: un id nuevo; 0 = sin ids (para el cliente, el servidor da los de su tramo,
-	## §4.5). Sin asignar, no hay ids. SPLIT lo usa para el [code]uid[/code] de la pila nueva y DESTROY para
-	## su operación PLAYER; los cambios del servidor, para sus pilas nuevas.
+	## [code]() -> int[/code]: a new id; 0 = no ids (for the client; the server hands out those of its
+	## range, §4.5). Unassigned, there are no ids. SPLIT uses it for the [code]uid[/code] of the new
+	## stack and DESTROY for its PLAYER operation; server changes, for their new stacks.
 	var new_uid: Callable = Callable()
 
 
-## El resultado de una operación.
+## The result of an operation.
 class Outcome:
 	var result: int = Result.OK
-	## Con OK, las ranuras [code](contenedor, ranura)[/code] que cambiaron. Si no, las que existen de las que
-	## tocaba la petición: el delta del rechazo lleva su contenido real (§4.6).
+	## With OK, the [code](container, slot)[/code] slots that changed. Otherwise, those of the ones the
+	## request touched that exist: the rejection delta carries their real content (§4.6).
 	var changed: Array[Vector2i] = []
-	## Solo DESTROY y los cambios del servidor.
+	## Only DESTROY and server changes.
 	var events: Array[ItemEvent] = []
-	## Tocó EQUIPMENT 0 o 1: hay que imponer las armas ([method ActionMachine.set_weapons], §4.1).
+	## It touched EQUIPMENT 0 or 1: the weapons must be imposed ([method ActionMachine.set_weapons],
+	## §4.1).
 	var weapons_changed: bool = false
-	## El id que tomó de [member Context.new_uid] (SPLIT: el [code]uid[/code] de la pila nueva; DESTROY: el
-	## [code]op_id[/code] de su operación PLAYER); 0 si ninguno.
+	## The id taken from [member Context.new_uid] (SPLIT: the [code]uid[/code] of the new stack;
+	## DESTROY: the [code]op_id[/code] of its PLAYER operation); 0 if none.
 	var new_id: int = 0
-	## CANNOT_EQUIP por nivel: el que pide el objeto («Necesitas nivel N»); 0 si no.
+	## CANNOT_EQUIP due to level: the one the item requires ("Necesitas nivel N", i.e. "You need level
+	## N"); 0 if not.
 	var required_level: int = 0
-	## [method camp_refill]: una pila nueva no cupo (aviso «Bolsa llena»).
+	## [method camp_refill]: a new stack did not fit ("Bolsa llena", i.e. "Bag full", notice).
 	var bag_full: bool = false
 
-	## true si se aplicó.
+	## true if it was applied.
 	func is_ok() -> bool:
 		return result == Result.OK
 
 
-## Una petición con esos campos.
+## A request with those fields.
 static func make_request(op: int, from_container: int, from_slot: int, to_container: int, to_slot: int,
 		count: int, expected_uid: int) -> Request:
 	var request := Request.new()
@@ -97,15 +105,17 @@ static func make_request(op: int, from_container: int, from_slot: int, to_contai
 	return request
 
 
-## Valida [param request] contra [param state] y [param context] en el orden de §4.2 y, si todo vale, la
-## aplica. [b]Orden:[/b] INVALID (operación, contenedores y ranuras que no existen, origen igual a destino,
-## MOVE con cantidad, SPLIT de menos de 1 o fuera de la bolsa, cantidad negativa) → STALE (origen vacío o con
-## otro uid) → INVALID por la cantidad frente a la pila (SPLIT de [code]count[/code] o más, DESTROY de más de
-## las que hay: sin el objeto que se esperaba no hay pila contra la que medirla) → NOT_NOW (toca el equipo sin
-## poder, o destruye un consumible bebiendo) → CANNOT_EQUIP (ranura que no le va, 2–6 en la fase 5, nivel) →
-## WEAPON_REQUIRED (dejaría vacía la ranura de arma activa) → NO_ROOM (SPLIT a una ranura ocupada) → LOCKED
-## (DESTROY de algo equipado o indestructible) → NOT_NOW sin id para SPLIT o DESTROY: el id se pide al final,
-## para que una petición rechazada no gaste ninguno.
+## Validates [param request] against [param state] and [param context] in the order of §4.2 and,
+## if everything is valid, applies it. [b]Order:[/b] INVALID (operation, containers and slots that
+## do not exist, source equal to destination, MOVE with a quantity, SPLIT of less than 1 or outside
+## the bag, negative quantity) → STALE (empty source or with another uid) → INVALID by quantity
+## versus the stack (SPLIT of [code]count[/code] or more, DESTROY of more than there are: without
+## the expected item there is no stack to measure against) → NOT_NOW (touches equipment when it
+## cannot, or destroys a consumable while drinking) → CANNOT_EQUIP (slot that does not suit it, 2–6
+## in phase 5, level) → WEAPON_REQUIRED (would leave the active weapon slot empty) → NO_ROOM (SPLIT
+## to an occupied slot) → LOCKED (DESTROY of something equipped or indestructible) → NOT_NOW with
+## no id for SPLIT or DESTROY: the id is requested last, so that a rejected request does not
+## consume any.
 static func apply(state: InventoryState, request: Request, context: Context) -> Outcome:
 	var out := Outcome.new()
 	var db: ItemDatabase = context.db if context.db != null else ItemDatabase.shared()
@@ -119,7 +129,7 @@ static func apply(state: InventoryState, request: Request, context: Context) -> 
 		out.changed.append(from)
 	if to_exists and to != from:
 		out.changed.append(to)
-	# 1 · INVALID: la forma de la petición.
+	# 1 · INVALID: the shape of the request.
 	if op != Op.MOVE and op != Op.SPLIT and op != Op.DESTROY:
 		return _fail(out, Result.INVALID)
 	if not from_exists or (has_target and not to_exists) or (has_target and from == to):
@@ -138,14 +148,14 @@ static func apply(state: InventoryState, request: Request, context: Context) -> 
 	var source: ItemInstance = state.get_item(from.x, from.y)
 	if source == null or source.uid != request.expected_uid:
 		return _fail(out, Result.STALE)
-	# 1 · INVALID por la cantidad frente a la pila.
+	# 1 · INVALID by quantity versus the stack.
 	if op == Op.SPLIT and request.count >= source.count:
 		return _fail(out, Result.INVALID)
 	if op == Op.DESTROY and request.count > source.count:
 		return _fail(out, Result.INVALID)
 	var definition: ItemDefinition = db.get_definition(source.def_id)
 	if definition == null:
-		# Una instancia sin definición no llega al estado (decode y from_dictionary la rechazan).
+		# An instance without a definition never reaches the state (decode and from_dictionary reject it).
 		return _fail(out, Result.INVALID)
 	var target: ItemInstance = state.get_item(to.x, to.y) if has_target else null
 	# 3 · NOT_NOW.
@@ -155,7 +165,7 @@ static func apply(state: InventoryState, request: Request, context: Context) -> 
 		return _fail(out, Result.NOT_NOW)
 	if op == Op.DESTROY and context.drinking and definition.category == ItemDefinition.Category.CONSUMABLE:
 		return _fail(out, Result.NOT_NOW)
-	# Lo que quedaría en el origen y en el destino.
+	# What would remain at the source and at the destination.
 	var new_from: ItemInstance = null
 	var new_to: ItemInstance = null
 	var destroyed: int = 0
@@ -176,8 +186,8 @@ static func apply(state: InventoryState, request: Request, context: Context) -> 
 		Op.DESTROY:
 			destroyed = request.count if request.count > 0 else source.count
 			new_from = _with_count(source, source.count - destroyed) if destroyed < source.count else null
-	# 4 · CANNOT_EQUIP: lo que entra en una ranura del equipo desde otra (lo que se queda donde estaba no
-	# se vuelve a mirar).
+	# 4 · CANNOT_EQUIP: what enters an equipment slot from another one (what stays where it was is not
+	# checked again).
 	if from.x == InventoryState.ContainerId.EQUIPMENT and new_from != null and new_from.uid != source.uid:
 		var code: int = _equip_check(out, new_from, from.y, db, context)
 		if code != Result.OK:
@@ -197,7 +207,7 @@ static func apply(state: InventoryState, request: Request, context: Context) -> 
 	# 7 · LOCKED.
 	if op == Op.DESTROY and (from.x == InventoryState.ContainerId.EQUIPMENT or not definition.destroyable):
 		return _fail(out, Result.LOCKED)
-	# 3 · NOT_NOW sin id (se pide ahora, cuando todo lo demás vale).
+	# 3 · NOT_NOW with no id (it is requested now, when everything else is valid).
 	if op == Op.SPLIT or op == Op.DESTROY:
 		var id: int = _take_id(context)
 		if id == 0:
@@ -205,7 +215,7 @@ static func apply(state: InventoryState, request: Request, context: Context) -> 
 		out.new_id = id
 		if op == Op.SPLIT:
 			new_to.uid = id
-	# Ligado al equipar (§4.2): lo que entra en el equipo con ON_EQUIP.
+	# Bound on equip (§4.2): what enters equipment with ON_EQUIP.
 	if from.x == InventoryState.ContainerId.EQUIPMENT:
 		new_from = _bound_if_equipped(new_from, db)
 	if has_target and to.x == InventoryState.ContainerId.EQUIPMENT:
@@ -219,8 +229,9 @@ static func apply(state: InventoryState, request: Request, context: Context) -> 
 	return out
 
 
-## Texto en español de [param result] (§4.2) para el aviso del cliente; vacío con OK. Con CANNOT_EQUIP y
-## [param required_level] > 0, «Necesitas nivel N»; con NOT_NOW y [param in_combat], el de combate.
+## Spanish text of [param result] (§4.2) for the client notice; empty with OK. With CANNOT_EQUIP
+## and [param required_level] > 0, "Necesitas nivel N" (You need level N); with NOT_NOW and
+## [param in_combat], the combat one.
 static func result_text(result: int, required_level: int = 0, in_combat: bool = false) -> String:
 	match result:
 		Result.INVALID:
@@ -242,8 +253,8 @@ static func result_text(result: int, required_level: int = 0, in_combat: bool = 
 	return ""
 
 
-## true si [param definition] va en la ranura [param slot] del equipo (las dos de arma para WEAPON y la suya
-## para cada armadura), sin mirar si la ranura está abierta en la fase 5.
+## true if [param definition] goes in equipment slot [param slot] (both weapon slots for WEAPON and
+## its own for each armor piece), without checking whether the slot is open in phase 5.
 static func fits_slot(definition: ItemDefinition, slot: int) -> bool:
 	if definition == null:
 		return false
@@ -253,12 +264,14 @@ static func fits_slot(definition: ItemDefinition, slot: int) -> bool:
 			and int(definition.equip_slot) == slot
 
 
-## CAMP_REFILL (§4.4): por cada definición con [member ItemDefinition.camp_refill], en orden de id, lo que
-## falta hasta ese total ([method InventoryState.count_of]: bolsa y equipo) se suma a su pila de la bolsa con
-## la ranura más baja (con el mismo ligado que tendrían las nuevas) hasta la pila llena, y el resto va a una
-## pila nueva en la primera ranura libre con un id de [member Context.new_uid]. Sin ranura libre esa parte no
-## se repone y [member Outcome.bag_full] lo dice; sin id, espera al siguiente intento. Reponer mira el
-## [b]total[/b]: dividir la pila no da más. Eventos con motivo CAMP_REFILL, uno por instancia tocada.
+## CAMP_REFILL (§4.4): for each definition with [member ItemDefinition.camp_refill], in id order,
+## what is missing up to that total ([method InventoryState.count_of]: bag and equipment) is added
+## to its stack in the bag with the lowest slot (with the same binding the new ones would have)
+## until the stack is full, and the rest goes to a new stack in the first free slot with an id from
+## [member Context.new_uid]. With no free slot that part is not replenished and
+## [member Outcome.bag_full] says so; with no id, it waits for the next attempt. Replenishing looks
+## at the [b]total[/b]: splitting the stack gives no more. Events with reason CAMP_REFILL, one per
+## touched instance.
 static func camp_refill(state: InventoryState, context: Context) -> Outcome:
 	var out := Outcome.new()
 	var db: ItemDatabase = context.db if context.db != null else ItemDatabase.shared()
@@ -296,11 +309,12 @@ static func camp_refill(state: InventoryState, context: Context) -> Outcome:
 	return out
 
 
-## Suma [param count] unidades de [param def_id] a la bolsa con el motivo [param reason] (una fuente o un
-## interno): primero a sus pilas con hueco (en orden de ranura, con el mismo ligado que tendrían las nuevas) y
-## el resto en pilas nuevas en las primeras ranuras libres, con ids de [member Context.new_uid]. Entera o
-## nada: INVALID con una definición que no existe o [param count] < 1; NO_ROOM si no cabe; NOT_NOW si falta
-## algún id (los ya tomados se pierden: un hueco en los ids no importa, §4.5). Un evento por instancia tocada.
+## Adds [param count] units of [param def_id] to the bag with reason [param reason] (a source or an
+## internal one): first to its stacks with room (in slot order, with the same binding the new ones
+## would have) and the rest in new stacks in the first free slots, with ids from
+## [member Context.new_uid]. All or nothing: INVALID with a definition that does not exist or
+## [param count] < 1; NO_ROOM if it does not fit; NOT_NOW if any id is missing (those already
+## taken are lost: a gap in the ids does not matter, §4.5). One event per touched instance.
 static func add_items(state: InventoryState, def_id: StringName, count: int, reason: int,
 		context: Context) -> Outcome:
 	var out := Outcome.new()
@@ -310,7 +324,7 @@ static func add_items(state: InventoryState, def_id: StringName, count: int, rea
 		return _fail(out, Result.INVALID)
 	var bag: int = InventoryState.ContainerId.BAG
 	var bound: bool = definition.bind_rule == ItemDefinition.BindRule.ON_PICKUP
-	# Plan: [ranura, instancia existente o null, unidades].
+	# Plan: [slot, existing instance or null, units].
 	var plan: Array[Array] = []
 	var left: int = count
 	if definition.max_stack > 1:
@@ -351,13 +365,14 @@ static func add_items(state: InventoryState, def_id: StringName, count: int, rea
 	return out
 
 
-## Quita [param count] unidades de [param def_id] con el motivo [param reason] (un sumidero o un interno):
-## primero de la instancia [param prefer_uid] si es de esa definición, después de la bolsa en orden de ranura
-## (CONSUME: la pila con la ranura más baja) y por último del equipo. Una pila que se queda en 0 desaparece y
-## su [code]uid[/code] muere. Las ranuras de [param protected] no se tocan (la reversión de progresion.md §10 no
-## quita de la ranura activa del equipo). Entera o nada: INVALID con [param count] < 1, STALE si no hay tantas
-## fuera de las protegidas. No mira la ranura activa (I10): quitar un arma equipada es cosa de quien llama
-## ([member Outcome.weapons_changed]).
+## Removes [param count] units of [param def_id] with reason [param reason] (a sink or an internal
+## one): first from instance [param prefer_uid] if it is of that definition, then from the bag in
+## slot order (CONSUME: the stack with the lowest slot) and finally from equipment. A stack that
+## drops to 0 disappears and its [code]uid[/code] dies. The slots in [param protected] are not
+## touched (the reversal in progresion.md §10 does not remove from the active equipment slot).
+## All or nothing: INVALID with [param count] < 1, STALE if there are not that many outside the
+## protected ones. It does not look at the active slot (I10): removing an equipped weapon is up to
+## the caller ([member Outcome.weapons_changed]).
 static func remove_items(state: InventoryState, def_id: StringName, count: int, reason: int,
 		prefer_uid: int = 0, protected: Array[Vector2i] = []) -> Outcome:
 	var out := Outcome.new()
@@ -391,7 +406,7 @@ static func remove_items(state: InventoryState, def_id: StringName, count: int, 
 	return out
 
 
-## Las unidades de [param def_id] en la bolsa y el equipo fuera de las ranuras de [param protected].
+## The units of [param def_id] in the bag and equipment outside the [param protected] slots.
 static func count_outside(state: InventoryState, def_id: StringName, protected: Array[Vector2i] = []) -> int:
 	var total: int = state.count_of(def_id)
 	var seen: Dictionary[Vector2i, bool] = {}
@@ -405,13 +420,15 @@ static func count_outside(state: InventoryState, def_id: StringName, protected: 
 	return total
 
 
-## Crea [param count] unidades de [param def_id] en pilas nuevas (hasta [member ItemDefinition.max_stack] cada una)
-## en las primeras ranuras libres de la bolsa, con ids de [member Context.new_uid] y el motivo [param reason]: sin
-## juntar con las que ya hay (el [code]item_give[/code] de GM y la reversión de progresion.md §10, que crean «con
-## otros uid»). Con [param template], cada pila copia su durabilidad, rareza, ligado, semilla y afijos (la fila
-## retirada de lo que se revierte); sin ella, como [method ItemInstance.create]. Entera o nada: INVALID con una
-## definición que no existe, [param count] < 1 o una plantilla de otra definición; NO_ROOM sin ranuras libres
-## bastantes; NOT_NOW si falta algún id. Un evento por pila.
+## Creates [param count] units of [param def_id] in new stacks (up to
+## [member ItemDefinition.max_stack] each) in the first free bag slots, with ids from
+## [member Context.new_uid] and reason [param reason]: without merging with existing ones (the GM
+## [code]item_give[/code] and the reversal in progresion.md §10, which create "with other uids").
+## With [param template], each stack copies its durability, rarity, binding, seed and affixes (the
+## retired row of what is being reverted); without it, like [method ItemInstance.create]. All or
+## nothing: INVALID with a definition that does not exist, [param count] < 1 or a template from
+## another definition; NO_ROOM without enough free slots; NOT_NOW if any id is missing. One event
+## per stack.
 static func create_items(state: InventoryState, def_id: StringName, count: int, reason: int, context: Context,
 		template: ItemInstance = null) -> Outcome:
 	var out := Outcome.new()
@@ -448,7 +465,7 @@ static func create_items(state: InventoryState, def_id: StringName, count: int, 
 	return out
 
 
-# --- Interno ---------------------------------------------------------------------------------
+# --- Internal --------------------------------------------------------------------------------
 
 static func _fail(out: Outcome, result: int) -> Outcome:
 	out.result = result
@@ -458,20 +475,21 @@ static func _fail(out: Outcome, result: int) -> Outcome:
 	return out
 
 
-# Juntar: misma definición apilable, mismo ligado y hueco en el destino.
+# Merging: same stackable definition, same binding and room at the destination.
 static func _can_merge(source: ItemInstance, target: ItemInstance, definition: ItemDefinition) -> bool:
 	return source.def_id == target.def_id and definition.max_stack > 1 and source.bound == target.bound \
 			and target.count < definition.max_stack
 
 
-# Copia de [param item] con [param count] unidades (nunca se cambia la instancia que ya está en el estado).
+# Copy of [param item] with [param count] units (the instance already in the state is never
+# changed).
 static func _with_count(item: ItemInstance, count: int) -> ItemInstance:
 	var copy: ItemInstance = item.duplicate_instance()
 	copy.count = count
 	return copy
 
 
-# CANNOT_EQUIP de lo que entra en la ranura [param slot] del equipo; OK si vale.
+# CANNOT_EQUIP for what enters equipment slot [param slot]; OK if valid.
 static func _equip_check(out: Outcome, item: ItemInstance, slot: int, db: ItemDatabase,
 		context: Context) -> int:
 	var definition: ItemDefinition = db.get_definition(item.def_id)
@@ -483,7 +501,7 @@ static func _equip_check(out: Outcome, item: ItemInstance, slot: int, db: ItemDa
 	return Result.OK
 
 
-# Lo que entra en el equipo con ON_EQUIP queda ligado (una copia si cambia).
+# What enters equipment with ON_EQUIP becomes bound (a copy if it changes).
 static func _bound_if_equipped(item: ItemInstance, db: ItemDatabase) -> ItemInstance:
 	if item == null or item.bound:
 		return item
@@ -500,7 +518,7 @@ static func _is_weapon_slot(position: Vector2i) -> bool:
 			and position.y < InventoryState.OPEN_EQUIPMENT_SLOTS and position.y >= 0
 
 
-# Un id de [member Context.new_uid], o 0 si no hay.
+# An id from [member Context.new_uid], or 0 if there is none.
 static func _take_id(context: Context) -> int:
 	if not context.new_uid.is_valid():
 		return 0

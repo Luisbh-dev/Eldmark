@@ -1,8 +1,8 @@
 extends TestCase
-## Difuminado de los personajes ajenos pegados a la cámara (ART-53): [member HumanoidVisual.camera_fade] pone un
-## rango de visibilidad con fundido en todas las mallas del visual (también las de las piezas y las armas que se
-## monten después), lo quita al apagarlo, y los remotos de [RemoteWorld] lo llevan encendido mientras que el
-## visual propio no.
+## Fading of other characters pressed against the camera (ART-53): [member HumanoidVisual.camera_fade] sets a
+## visibility range with a fade on all the visual's meshes (also those of the pieces and weapons mounted
+## later), removes it when turned off, and the [RemoteWorld] remotes have it on while the
+## own visual does not.
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 
@@ -47,9 +47,9 @@ func test_the_visual_does_not_fade_by_default() -> void:
 	var visual: HumanoidVisual = _install()
 	await wait_process_frames()
 	var meshes: Array[MeshInstance3D] = _meshes(visual)
-	assert_false(meshes.is_empty(), "el visual tiene mallas")
+	assert_false(meshes.is_empty(), "the visual has meshes")
 	for mesh: MeshInstance3D in meshes:
-		assert_eq(mesh.transparency, 0.0, "%s opaca" % mesh.name)
+		assert_eq(mesh.transparency, 0.0, "%s opaque" % mesh.name)
 
 
 func _camera_at(distance: float, visual: HumanoidVisual) -> Camera3D:
@@ -62,10 +62,10 @@ func _camera_at(distance: float, visual: HumanoidVisual) -> Camera3D:
 
 
 func test_fade_for_distance_goes_from_solid_to_hidden() -> void:
-	assert_eq(HumanoidVisual.fade_for_distance(HumanoidVisual.CAMERA_FADE_SOLID + 1.0), 0.0, "lejos, opaco")
-	assert_eq(HumanoidVisual.fade_for_distance(HumanoidVisual.CAMERA_FADE_HIDDEN - 0.1), 1.0, "pegado, invisible")
+	assert_eq(HumanoidVisual.fade_for_distance(HumanoidVisual.CAMERA_FADE_SOLID + 1.0), 0.0, "far away, opaque")
+	assert_eq(HumanoidVisual.fade_for_distance(HumanoidVisual.CAMERA_FADE_HIDDEN - 0.1), 1.0, "right up close, invisible")
 	var middle: float = HumanoidVisual.fade_for_distance((HumanoidVisual.CAMERA_FADE_SOLID + HumanoidVisual.CAMERA_FADE_HIDDEN) * 0.5)
-	assert_near(middle, 0.5, 0.001, "a medio camino, mitad")
+	assert_near(middle, 0.5, 0.001, "halfway, half")
 
 
 func test_camera_fade_gives_every_mesh_the_same_transparency() -> void:
@@ -74,12 +74,12 @@ func test_camera_fade_gives_every_mesh_the_same_transparency() -> void:
 	_camera_at(0.8, visual)
 	visual.camera_fade = true
 	var expected: float = HumanoidVisual.fade_for_distance(0.8)
-	assert_true(expected > 0.0 and expected < 1.0, "a 0,8 m está a medias")
+	assert_true(expected > 0.0 and expected < 1.0, "at 0.8 m it is half faded")
 	var meshes: Array[MeshInstance3D] = _meshes(visual)
-	assert_false(meshes.is_empty(), "el visual tiene mallas")
-	# Todas, también el escudo, las armas y las botas, llevan la misma atenuación.
+	assert_false(meshes.is_empty(), "the visual has meshes")
+	# All of them, also the shield, the weapons and the boots, carry the same attenuation.
 	for mesh: MeshInstance3D in meshes:
-		assert_near(mesh.transparency, expected, 0.001, "%s con la transparencia del visual" % mesh.name)
+		assert_near(mesh.transparency, expected, 0.001, "%s with the visual's transparency" % mesh.name)
 
 
 func test_camera_fade_reaches_the_weapons_and_the_parts_mounted_later() -> void:
@@ -90,17 +90,17 @@ func test_camera_fade_reaches_the_weapons_and_the_parts_mounted_later() -> void:
 	var expected: float = HumanoidVisual.fade_for_distance(0.8)
 	var skeleton: Skeleton3D = visual.get_skeleton()
 	var sword: Node = skeleton.get_node_or_null(NodePath(WeaponProps.SWORD_ATTACHMENT))
-	if assert_not_null(sword, "la espada provisional está colgada"):
+	if assert_not_null(sword, "the placeholder sword is attached"):
 		for mesh: MeshInstance3D in _meshes(sword):
-			assert_near(mesh.transparency, expected, 0.001, "la malla de la espada se atenúa")
+			assert_near(mesh.transparency, expected, 0.001, "the sword's mesh is attenuated")
 	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
-	if assert_not_null(catalog, "hay catálogo de apariencia") and catalog.heads.size() > 1:
+	if assert_not_null(catalog, "there is an appearance catalog") and catalog.heads.size() > 1:
 		var other: PackedScene = load(catalog.heads[1].scene_path) as PackedScene
 		visual.set_part(&"head", other)
 		var head_meshes: Array[MeshInstance3D] = visual.get_part_meshes(&"head")
-		assert_false(head_meshes.is_empty(), "la cabeza nueva tiene mallas")
+		assert_false(head_meshes.is_empty(), "the new head has meshes")
 		for mesh: MeshInstance3D in head_meshes:
-			assert_near(mesh.transparency, expected, 0.001, "%s montada después se atenúa" % mesh.name)
+			assert_near(mesh.transparency, expected, 0.001, "%s mounted afterward is attenuated" % mesh.name)
 
 
 func test_turning_camera_fade_off_clears_the_ranges() -> void:
@@ -110,7 +110,7 @@ func test_turning_camera_fade_off_clears_the_ranges() -> void:
 	visual.camera_fade = true
 	visual.camera_fade = false
 	for mesh: MeshInstance3D in _meshes(visual):
-		assert_eq(mesh.transparency, 0.0, "%s opaca" % mesh.name)
+		assert_eq(mesh.transparency, 0.0, "%s opaque" % mesh.name)
 
 
 func test_remote_visuals_fade_but_the_local_one_does_not() -> void:
@@ -131,13 +131,13 @@ func test_remote_visuals_fade_but_the_local_one_does_not() -> void:
 	spawn.state = state
 	remote_world.on_spawn(spawn)
 	var view: RemotePlayerView = remote_world.get_view(21)
-	if not assert_not_null(view, "el remoto tiene vista"):
+	if not assert_not_null(view, "the remote has a view"):
 		return
 	var remote_visual: HumanoidVisual = view.get_body().get_node_or_null(^"Visual/HumanoidVisual") as HumanoidVisual
-	if not assert_not_null(remote_visual, "el remoto lleva el humanoide"):
+	if not assert_not_null(remote_visual, "the remote carries the humanoid"):
 		return
 	await wait_process_frames()
-	assert_true(remote_visual.camera_fade, "el remoto se difumina junto a la cámara")
+	assert_true(remote_visual.camera_fade, "the remote fades next to the camera")
 	var local_visual: HumanoidVisual = _install()
 	await wait_process_frames()
-	assert_false(local_visual.camera_fade, "el visual propio no lleva el fundido")
+	assert_false(local_visual.camera_fade, "the own visual carries no fade")

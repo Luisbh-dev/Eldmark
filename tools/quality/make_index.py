@@ -1,18 +1,18 @@
 #!/usr/bin/env python
-"""Genera <salida>/indice.md a partir de lo que hay en la carpeta del banco de capturas.
+"""Generates <output>/indice.md from what is in the capture bench folder.
 
-Lee los meta.json de las tiras (<salida>/raw/<accion>/<ventana>/meta.json), los registros que escriben los escenarios
-(<salida>/indices/<etiqueta>.json) y run_info.json (qué áreas se regeneraron, cuándo y con qué). Solo lista lo que existe en
-disco, así que se puede regenerar el índice de una carpeta con solo algunas áreas.
+Reads the strips' meta.json (<output>/raw/<accion>/<ventana>/meta.json), the logs written by the scenarios
+(<output>/indices/<tag>.json) and run_info.json (which areas were regenerated, when and with what). It only lists what exists on
+disk, so the index of a folder with only some areas can be regenerated.
 
-Uso: python make_index.py <salida>
+Usage: python make_index.py <output>
 """
 import glob
 import json
 import os
 import sys
 
-# prefijo de la tira -> título de la tabla
+# strip prefix -> table title
 CATS = [
     ("loc_", "Locomoción (sandbox, personaje del jugador, espada y escudo)"),
     ("com_", "Combate (espada y escudo): golpes, bloqueo, esquiva, controles, muerte, derribado, habilidades, poción"),
@@ -20,10 +20,10 @@ CATS = [
     ("npc_", "PNJ en el sandbox (arma, ticks y clips del PNJ con el aspecto del jugador): Hueco, Capitán, guardia de reino y Guardián de la Puerta"),
     ("rem_", "Personajes vistos desde otro cliente de verdad (servidor real; carpetas animacion/remoto y animacion/remoto_lado)"),
 ]
-# acciones de combate que cuentan para la cobertura de clips
+# combat actions that count towards clip coverage
 ACTION_STATES = {"LIGHT", "HEAVY", "CHARGE", "BLOCK", "DODGE", "STAGGER", "STUN", "DEAD", "ABILITY", "SWAP", "DOWNED",
                  "REVIVE", "EXECUTE"}
-# etiquetas de los registros de escenarios, por área
+# scenario log tags, per area
 TAGS = {
     "mapa": ["mapa"],
     "interfaz": ["interfaz", "extras", "extras_boss", "realm", "front", "galeria"],
@@ -82,7 +82,7 @@ def dedupe(recs):
 
 
 def clip_summary(meta):
-    """Clips distintos que enseñó la capa de animación y fotogramas de acción de combate con y sin clip."""
+    """Distinct clips shown by the animation layer and combat-action frames with and without a clip."""
     clips = []
     in_action = 0
     with_clip = 0
@@ -125,7 +125,7 @@ def anim_section(out, base):
     keys = sorted(metas.keys())
     for prefix, title in CATS:
         rows = [k for k in keys if k[0].startswith(prefix)]
-        # com_bloqueo_recibir_golpe viene de la partida en red, pero se lista con el resto de com_
+        # com_bloqueo_recibir_golpe comes from the networked game, but is listed with the rest of com_
         if prefix == "com_":
             rows = [k for k in rows]
         if not rows:

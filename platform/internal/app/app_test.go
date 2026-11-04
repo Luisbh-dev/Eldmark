@@ -42,7 +42,7 @@ func testConfig() *config.Config {
 	}
 }
 
-// syncBuffer es un registro que se puede leer mientras se escribe.
+// syncBuffer is a log that can be read while it is being written.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -71,7 +71,7 @@ func newApp(t *testing.T, pool *pgxpool.Pool, migrations fs.FS) (*app.App, *sync
 	return a, logs
 }
 
-// serve arranca la plataforma en puertos libres y la para al terminar la prueba.
+// serve starts the platform on free ports and stops it when the test ends.
 func serve(t *testing.T, a *app.App) {
 	t.Helper()
 	if err := a.Listen(); err != nil {
@@ -123,7 +123,8 @@ func waitReady(t *testing.T, addr string) {
 	}
 }
 
-// Con la base parada, /health sigue en 200 y /ready da 503 con el motivo (plataforma.md §15 P0).
+// With the database stopped, /health stays at 200 and /ready gives 503 with the reason
+// (plataforma.md §15 P0).
 func TestReadyWithTheDatabaseDown(t *testing.T) {
 	pool, err := db.Open(context.Background(), "host="+filepath.Join(t.TempDir(), "parada")+" user=eldmark dbname=eldmark")
 	if err != nil {
@@ -148,8 +149,8 @@ func TestReadyWithTheDatabaseDown(t *testing.T) {
 	}
 }
 
-// serve no migra: con migraciones pendientes no arranca, /ready dice por qué y, en cuanto se
-// aplican, arranca sin reiniciar.
+// serve does not migrate: with pending migrations it does not start, /ready says why and, as soon
+// as they are applied, it starts without restarting.
 func TestServeWaitsForTheMigrations(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	a, logs := newApp(t, pool, migrate.FS())
@@ -164,7 +165,7 @@ func TestServeWaitsForTheMigrations(t *testing.T) {
 	if a.Started() {
 		t.Fatal("no arranca sin el esquema")
 	}
-	// Mientras el motivo no cambia, se registra una sola vez aunque se mire cada 50 ms.
+	// As long as the reason does not change, it is logged only once even if checked every 50 ms.
 	time.Sleep(300 * time.Millisecond)
 	if n := strings.Count(logs.String(), "no puede arrancar todavía"); n != 1 {
 		t.Errorf("el mismo motivo se registra una vez, no %d: %s", n, logs.String())
@@ -188,8 +189,8 @@ func TestServeWaitsForTheMigrations(t *testing.T) {
 	}
 }
 
-// Una base con una migración posterior a las del binario vale: serve arranca (expandir y
-// contraer, plataforma.md §2.4).
+// A database with a migration later than the binary's is fine: serve starts (expand and contract,
+// plataforma.md §2.4).
 func TestServeStartsWithALaterMigration(t *testing.T) {
 	pool := testdb.New(t)
 	newer := fstest.MapFS{}
@@ -212,9 +213,9 @@ func TestServeStartsWithALaterMigration(t *testing.T) {
 	waitReady(t, a.PublicAddr())
 }
 
-// La gracia de arranque (§2.5): latido de las instancias vivas a ahora y arrendamientos vivos con
-// al menos el TTL; lo demás no se toca. Un arrendamiento que ya había caducado antes del último
-// latido de su instancia (la zona dejó de renovarlo: el personaje se fue) no resucita.
+// The startup grace period (§2.5): heartbeat of the live instances set to now and live leases with
+// at least the TTL; the rest is not touched. A lease that had already expired before its instance's
+// last heartbeat (the zone stopped renewing it: the character left) does not come back to life.
 func TestStartupGrace(t *testing.T) {
 	pool := testdb.New(t)
 	testdb.Exec(t, pool, `
@@ -283,8 +284,8 @@ func TestListenFailsOnABusyPort(t *testing.T) {
 	}
 }
 
-// Las rutas de los paquetes responden 503 hasta que el arranque termina; los ganchos de arranque
-// corren con el esquema al día y los trabajos periódicos, al terminar y después cada vuelta.
+// The packages' routes answer 503 until startup finishes; the startup hooks run with the schema up
+// to date and the periodic jobs, when it finishes and then every round.
 func TestBootHooksJobsAndGate(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	a, logs := newApp(t, pool, migrate.FS())
@@ -335,7 +336,7 @@ func TestBootHooksJobsAndGate(t *testing.T) {
 	}
 }
 
-// Un trabajo periódico no corre en dos procesos a la vez: si otro tiene el bloqueo, se salta.
+// A periodic job does not run in two processes at once: if another holds the lock, it is skipped.
 func TestJobsTakeTheAdvisoryLock(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()

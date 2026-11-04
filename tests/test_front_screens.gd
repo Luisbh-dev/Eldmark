@@ -1,9 +1,9 @@
 extends TestCase
-## Pruebas de las pantallas de la cuenta con datos falsos (docs/plataforma.md §13.2 y §15 P8): el título (Entrar solo
-## con correo y contraseña, el estado del servicio, el panel de recuperar), crear cuenta (la contraseña, la edad y
-## los tres textos), los textos nuevos, la cuenta sancionada, la selección (nombres, huecos, Entrar desactivado sin
-## personaje, borrar escribiendo el nombre, restaurar, teclado), la creación (reino fijado, apariencia, plantilla y
-## nombre) y el renombrado. Las pantallas no llaman a la red: se comprueban sus señales.
+## Tests for the account screens with fake data (docs/plataforma.md §13.2 and §15 P8): the title (Enter ("Entrar") only
+## with email and password, the service status, the recover panel), create account (the password, the age and
+## the three texts), the new texts, the sanctioned account, the selection (names, slots, Enter disabled without a
+## character, delete by typing the name, restore, keyboard), creation (fixed realm, appearance, template and
+## name) and the rename. The screens do not call the network: their signals are checked.
 
 var _screen: Control
 
@@ -37,7 +37,7 @@ func _character(id: String, display_name: String, realm: String, level: int, del
 			"restore_until": 1800600000 if deleted else null, "must_rename": false}
 
 
-# --- Título ---------------------------------------------------------------------------------------
+# --- Title ----------------------------------------------------------------------------------------
 
 func test_title_enters_only_with_email_and_password() -> void:
 	var title := TitleScreen.new()
@@ -45,24 +45,24 @@ func test_title_enters_only_with_email_and_password() -> void:
 	var logins: Array[Array] = []
 	title.login_requested.connect(func(email: String, password: String, remember: bool) -> void:
 		logins.append([email, password, remember]))
-	assert_true(title.get_enter_button().disabled, "sin nada escrito, Entrar desactivado")
+	assert_true(title.get_enter_button().disabled, "with nothing typed, Enter disabled")
 	title.get_email_edit().text = "  ana@eldmark.test "
 	title.get_email_edit().text_changed.emit(title.get_email_edit().text)
-	assert_true(title.get_enter_button().disabled, "falta la contraseña")
+	assert_true(title.get_enter_button().disabled, "the password is missing")
 	assert_false(title.try_login())
 	title.get_password_edit().text = "secreto"
 	title.get_password_edit().text_changed.emit("secreto")
 	assert_false(title.get_enter_button().disabled)
 	title.get_remember_check().button_pressed = true
 	title.get_password_edit().text_submitted.emit("secreto")
-	assert_eq(logins, [["ana@eldmark.test", "secreto", true]], "Intro entra, con el correo sin espacios")
-	assert_true(title.get_password_edit().secret, "la contraseña no se ve")
+	assert_eq(logins, [["ana@eldmark.test", "secreto", true]], "Enter key submits, with the email stripped of spaces")
+	assert_true(title.get_password_edit().secret, "the password is not visible")
 	title.set_busy(true)
-	assert_false(title.try_login(), "ocupado no vuelve a entrar")
+	assert_false(title.try_login(), "busy does not enter again")
 	assert_true(title.get_enter_button().disabled)
 	title.set_busy(false)
 	title.clear_password()
-	assert_true(title.get_enter_button().disabled, "sin contraseña otra vez")
+	assert_true(title.get_enter_button().disabled, "without a password again")
 	title.set_remembered_email("bea@eldmark.test")
 	assert_eq(title.get_email_edit().text, "bea@eldmark.test")
 	assert_true(title.get_remember_check().button_pressed)
@@ -84,9 +84,9 @@ func test_title_status_news_and_the_recovery_panel() -> void:
 	title.get_email_edit().text = "ana@eldmark.test"
 	title.open_forgot()
 	assert_true(title.is_forgot_open())
-	assert_eq(title.get_forgot_email_edit().text, "ana@eldmark.test", "con el correo escrito")
+	assert_eq(title.get_forgot_email_edit().text, "ana@eldmark.test", "with the email typed")
 	title._unhandled_key_input(_action(&"ui_cancel"))
-	assert_false(title.is_forgot_open(), "Esc cierra el panel")
+	assert_false(title.is_forgot_open(), "Esc closes the panel")
 	title.open_forgot()
 	assert_true(title.try_forgot())
 	assert_eq(forgot, ["ana@eldmark.test"])
@@ -95,7 +95,7 @@ func test_title_status_news_and_the_recovery_panel() -> void:
 	assert_eq(title.get_notice_text(), "Si existe una cuenta, te hemos enviado un enlace")
 
 
-# --- Crear cuenta y textos --------------------------------------------------------------------------
+# --- Create account and texts -----------------------------------------------------------------
 
 func test_register_needs_the_password_the_age_and_the_three_texts() -> void:
 	var register := RegisterPanel.new()
@@ -120,16 +120,16 @@ func test_register_needs_the_password_the_age_and_the_three_texts() -> void:
 	for i: int in range(steps.size()):
 		steps[i].call()
 		register.get_password_edit().text_changed.emit(register.get_password_edit().text)
-		assert_eq(register.get_hint_text(), hints[i], "paso %d" % i)
-		assert_eq(register.get_submit_button().disabled, i < steps.size() - 1, "Crear cuenta en el paso %d" % i)
+		assert_eq(register.get_hint_text(), hints[i], "step %d" % i)
+		assert_eq(register.get_submit_button().disabled, i < steps.size() - 1, "Create account at step %d" % i)
 	for check: CheckBox in register.get_consent_checks():
-		assert_false(check.button_pressed, "los consentimientos van desmarcados")
+		assert_false(check.button_pressed, "the consents start unchecked")
 	assert_true(register.try_submit())
 	if not assert_eq(bodies.size(), 1):
 		return
 	assert_eq(bodies[0], {"email": "ana@eldmark.test", "password": "una contraseña larga", "age_confirmed": true,
 			"accept": {"terms": 1, "privacy": 2, "rules": 1},
-			"consents": {"crash_reports": false, "analytics": false}}, "el cuerpo de POST /v1/accounts")
+			"consents": {"crash_reports": false, "analytics": false}}, "the body of POST /v1/accounts")
 	register.get_password_edit().text = "ana@eldmark.test"
 	register.get_repeat_edit().text = "ana@eldmark.test"
 	register.get_password_edit().text_changed.emit("")
@@ -137,7 +137,7 @@ func test_register_needs_the_password_the_age_and_the_three_texts() -> void:
 	var asked: Array[String] = []
 	register.text_requested.connect(func(kind: String) -> void: asked.append(kind))
 	(register.find_child("Leer_privacy", true, false) as Button).pressed.emit()
-	assert_eq(asked, ["privacy"], "el enlace pide el texto")
+	assert_eq(asked, ["privacy"], "the link asks for the text")
 	register.show_text("privacy", "# Privacidad")
 	assert_eq(register.get_shown_text(), "# Privacidad")
 
@@ -155,7 +155,7 @@ func test_terms_panel_lists_the_changed_texts() -> void:
 	terms.get_accept_button().pressed.emit()
 	terms._unhandled_key_input(_action(&"ui_cancel"))
 	assert_eq(accepted, [true])
-	assert_eq(logouts, [true], "Esc cierra sesión")
+	assert_eq(logouts, [true], "Esc logs out")
 
 
 func test_sanctioned_account_only_exports_deletes_or_logs_out() -> void:
@@ -164,7 +164,7 @@ func test_sanctioned_account_only_exports_deletes_or_logs_out() -> void:
 	panel.set_restriction({"code": "account_suspended", "until": 1800000000, "reason": "Insultos"})
 	assert_true(panel.get_reason_text().begins_with("Cuenta suspendida hasta el "), panel.get_reason_text())
 	assert_true(panel.get_reason_text().ends_with(": Insultos"))
-	assert_true(panel.get_export_button().disabled, "sin contraseña no se descarga")
+	assert_true(panel.get_export_button().disabled, "without a password nothing is downloaded")
 	assert_true(panel.get_delete_button().disabled)
 	var exports: Array[String] = []
 	var deletions: Array[String] = []
@@ -176,7 +176,7 @@ func test_sanctioned_account_only_exports_deletes_or_logs_out() -> void:
 	panel.get_export_button().pressed.emit()
 	assert_eq(exports, ["secreto"])
 	panel.get_delete_button().pressed.emit()
-	assert_true(panel.get_confirm_dialog().is_open(), "borrar pide confirmación")
+	assert_true(panel.get_confirm_dialog().is_open(), "delete asks for confirmation")
 	assert_true(deletions.is_empty())
 	panel.get_confirm_dialog().confirm()
 	assert_eq(deletions, ["secreto"])
@@ -186,7 +186,7 @@ func test_sanctioned_account_only_exports_deletes_or_logs_out() -> void:
 	assert_eq(panel.get_reason_text(), "Cuenta expulsada: Trampas")
 
 
-# --- Selección ------------------------------------------------------------------------------------
+# --- Selection ------------------------------------------------------------------------------------
 
 func _select_data() -> Dictionary:
 	var appearance: CharacterAppearance = CharacterAppearance.default_for(AppearanceCatalog.shared(),
@@ -208,19 +208,19 @@ func test_select_lists_the_characters_and_the_free_slots() -> void:
 	assert_true(buttons[0].text.begins_with("Anéira\nNivel 7 · Vado Gris"), buttons[0].text)
 	assert_true(buttons[1].text.ends_with("Nivel 1 · Sin entrar aún"), buttons[1].text)
 	assert_true(buttons[2].text.contains("Borrado · se puede restaurar hasta el "), buttons[2].text)
-	assert_true(buttons[2].modulate.r < 1.0, "el borrado, en gris")
-	assert_eq(select.get_slots_text(), "Huecos libres: 3 de 6", "los borrados en plazo ocupan hueco")
-	assert_eq(select.get_selected_id(), 11, "elige el primero vivo")
+	assert_true(buttons[2].modulate.r < 1.0, "the deleted one, in grey")
+	assert_eq(select.get_slots_text(), "Huecos libres: 3 de 6", "deleted ones within the grace period still take a slot")
+	assert_eq(select.get_selected_id(), 11, "selects the first live one")
 	var shown: CharacterAppearance = select.get_figure().get_appearance()
-	if assert_not_null(shown, "la figura enseña su apariencia"):
-		assert_eq(shown.skin, 3, "la suya, no la de por defecto")
+	if assert_not_null(shown, "the figure shows its appearance"):
+		assert_eq(shown.skin, 3, "its own, not the default")
 	select.select_index(1)
 	assert_eq(select.get_figure().get_appearance().encode(), AccountFlow.default_appearance(&"solmarch"),
-			"sin apariencia, la de por defecto de su pueblo")
+			"without an appearance, the default of its people")
 	assert_false(select.get_enter_button().disabled)
 	select.select_index(2)
 	assert_true(select.is_selected_deleted())
-	assert_true(select.get_enter_button().disabled, "un borrado no entra")
+	assert_true(select.get_enter_button().disabled, "a deleted one does not enter")
 	assert_true(select.get_restore_button().visible)
 	assert_false(select.get_delete_button().visible)
 	var restores: Array[int] = []
@@ -230,8 +230,8 @@ func test_select_lists_the_characters_and_the_free_slots() -> void:
 	var full: Dictionary = _select_data()
 	full["used"] = 6
 	select.set_data(full)
-	assert_true(select.get_create_button().disabled, "sin huecos no se crea")
-	assert_eq(select.get_selected_id(), 13, "la elección se conserva al recargar")
+	assert_true(select.get_create_button().disabled, "with no free slots nothing is created")
+	assert_eq(select.get_selected_id(), 13, "the choice is kept on reload")
 
 
 func test_enter_is_disabled_without_a_character() -> void:
@@ -239,14 +239,14 @@ func test_enter_is_disabled_without_a_character() -> void:
 	_mount(select)
 	select.set_data({"realm": null, "unlock_at": null, "slots": 6, "used": 0, "characters": []})
 	assert_eq(select.get_selected_index(), -1)
-	assert_true(select.get_enter_button().disabled, "Entrar desactivado sin personaje")
+	assert_true(select.get_enter_button().disabled, "Enter disabled without a character")
 	assert_true(select.get_delete_button().disabled)
-	assert_false(select.get_create_button().disabled, "pero se puede crear")
+	assert_false(select.get_create_button().disabled, "but one can be created")
 	assert_false(select.try_enter())
 	var entered: Array[int] = []
 	select.enter_requested.connect(func(id: int) -> void: entered.append(id))
 	select._unhandled_key_input(_action(&"ui_accept"))
-	assert_true(entered.is_empty(), "Intro no hace nada")
+	assert_true(entered.is_empty(), "Enter key does nothing")
 
 
 func test_delete_needs_the_name_typed() -> void:
@@ -257,21 +257,21 @@ func test_delete_needs_the_name_typed() -> void:
 	select.delete_requested.connect(func(id: int, typed: String) -> void: deletions.append([id, typed]))
 	select.ask_delete()
 	assert_true(select.is_delete_open())
-	assert_true(select.get_delete_confirm_button().disabled, "sin escribir el nombre no se borra")
+	assert_true(select.get_delete_confirm_button().disabled, "without typing the name nothing is deleted")
 	for wrong: String in ["", "Anei", "Bruno"]:
 		select.get_delete_edit().text = wrong
 		select.get_delete_edit().text_changed.emit(wrong)
-		assert_true(select.get_delete_confirm_button().disabled, "«%s» no es el nombre" % wrong)
+		assert_true(select.get_delete_confirm_button().disabled, "\"%s\" is not the name" % wrong)
 		assert_false(select.confirm_delete())
 	select.get_delete_edit().text = "aneira"
 	select.get_delete_edit().text_changed.emit("aneira")
-	assert_false(select.get_delete_confirm_button().disabled, "la clave de NameRules: sin tildes ni mayúsculas")
+	assert_false(select.get_delete_confirm_button().disabled, "the NameRules key: no accents or capitals")
 	select.get_delete_confirm_button().pressed.emit()
-	assert_eq(deletions, [[11, "aneira"]], "se manda lo escrito, que la plataforma compara igual")
+	assert_eq(deletions, [[11, "aneira"]], "what was typed is sent, since the platform compares it the same way")
 	assert_false(select.is_delete_open())
 	select.select_index(2)
 	select.ask_delete()
-	assert_false(select.is_delete_open(), "un borrado no se vuelve a borrar")
+	assert_false(select.is_delete_open(), "a deleted one is not deleted again")
 
 
 func test_select_keyboard_and_waiting() -> void:
@@ -281,22 +281,22 @@ func test_select_keyboard_and_waiting() -> void:
 	var entered: Array[int] = []
 	select.enter_requested.connect(func(id: int) -> void: entered.append(id))
 	select._unhandled_key_input(_action(&"ui_down"))
-	assert_eq(select.get_selected_id(), 12, "flecha abajo")
+	assert_eq(select.get_selected_id(), 12, "down arrow")
 	select._unhandled_key_input(_action(&"ui_up"))
-	assert_eq(select.get_selected_id(), 11, "flecha arriba")
+	assert_eq(select.get_selected_id(), 11, "up arrow")
 	select._unhandled_key_input(_action(&"ui_accept"))
-	assert_eq(entered, [11], "Intro entra")
+	assert_eq(entered, [11], "Enter key enters")
 	var delete_key := InputEventKey.new()
 	delete_key.keycode = KEY_DELETE
 	delete_key.pressed = true
 	select._unhandled_key_input(delete_key)
-	assert_true(select.is_delete_open(), "Supr borra")
+	assert_true(select.is_delete_open(), "Del deletes")
 	select._unhandled_key_input(_action(&"ui_cancel"))
-	assert_false(select.is_delete_open(), "y Esc cierra la confirmación")
+	assert_false(select.is_delete_open(), "and Esc closes the confirmation")
 	select.show_waiting(27)
 	assert_eq(select.get_waiting_text(), "Tu personaje está saliendo del mundo… (27 s)")
 	select._unhandled_key_input(_action(&"ui_accept"))
-	assert_eq(entered, [11], "mientras espera no se vuelve a entrar")
+	assert_eq(entered, [11], "while waiting it does not enter again")
 	select.show_waiting(-1)
 	assert_false(select.is_waiting())
 	select.set_busy(true)
@@ -304,23 +304,23 @@ func test_select_keyboard_and_waiting() -> void:
 	assert_true(select.get_logout_button().disabled)
 
 
-# --- Creación -------------------------------------------------------------------------------------
+# --- Creation -------------------------------------------------------------------------------------
 
 func test_create_fixes_the_realm_of_the_account_and_askarra_is_coming_soon() -> void:
 	var create := CharacterCreate.new()
 	_mount(create)
 	create.setup(&"solmarch")
-	assert_eq(create.get_realm(), &"solmarch", "fijado al de la cuenta")
+	assert_eq(create.get_realm(), &"solmarch", "fixed to the account's one")
 	assert_true(create.get_realm_button(&"vardheim").disabled)
 	assert_true(create.get_realm_button(&"askarra").disabled)
 	assert_true(create.get_realm_button(&"askarra").text.contains("Próximamente"))
-	assert_true(create.get_realm_button(&"solmarch").text.contains("Valcorin"), "con su capital")
+	assert_true(create.get_realm_button(&"solmarch").text.contains("Valcorin"), "with its capital")
 	assert_false(create.select_realm(&"vardheim"))
 	create.setup(&"")
-	assert_eq(create.get_realm(), &"", "una cuenta nueva elige")
+	assert_eq(create.get_realm(), &"", "a new account chooses")
 	assert_false(create.get_realm_button(&"vardheim").disabled)
-	assert_true(create.get_realm_button(&"askarra").disabled, "Askarra sigue sin abrir")
-	assert_true(create.get_next_button().disabled, "sin reino no se avanza")
+	assert_true(create.get_realm_button(&"askarra").disabled, "Askarra still does not open")
+	assert_true(create.get_next_button().disabled, "without a realm you cannot advance")
 	assert_false(create.next())
 	assert_true(create.select_realm(&"vardheim"))
 	assert_true(create.next())
@@ -336,22 +336,22 @@ func test_create_appearance_stays_valid_for_the_people() -> void:
 		create.select_realm(realm)
 		var code: int = RealmCatalog.code_of(realm)
 		var race: StringName = AccountFlow.race_id_for(realm)
-		assert_true(create.get_appearance().validate(catalog, code, race), "la de por defecto de %s" % realm)
+		assert_true(create.get_appearance().validate(catalog, code, race), "the default of %s" % realm)
 		for field: StringName in CharacterCreate.FIELDS:
 			for _i: int in range(4):
 				create.cycle(field, 1)
 				assert_true(create.get_appearance().validate(catalog, code, race),
-						"%s tras cambiar %s: %s" % [realm, field, create.get_appearance()])
+						"%s after changing %s: %s" % [realm, field, create.get_appearance()])
 			create.cycle(field, -1)
 			assert_true(create.get_appearance().validate(catalog, code, race))
 		for _i: int in range(50):
 			create.randomize_appearance()
-			assert_true(create.get_appearance().validate(catalog, code, race), "aleatoria de %s" % realm)
-		assert_true(create.get_figure().get_appearance().equals(create.get_appearance()), "la figura la enseña")
+			assert_true(create.get_appearance().validate(catalog, code, race), "random of %s" % realm)
+		assert_true(create.get_figure().get_appearance().equals(create.get_appearance()), "the figure shows it")
 	create.select_realm(&"solmarch")
-	assert_eq(create.options_for(&"hair")[0], CharacterAppearance.NONE, "Solmarch admite ir sin pelo")
+	assert_eq(create.options_for(&"hair")[0], CharacterAppearance.NONE, "Solmarch allows going bald")
 	create.select_realm(&"vardheim")
-	assert_false(create.options_for(&"hair").has(CharacterAppearance.NONE), "Vardheim no")
+	assert_false(create.options_for(&"hair").has(CharacterAppearance.NONE), "Vardheim does not")
 	create.cycle(&"hair", 1)
 	assert_ne_text(create.get_field_text(&"skin"), "—")
 
@@ -371,30 +371,30 @@ func test_create_template_and_name_steps() -> void:
 	create.name_check_requested.connect(func(display_name: String) -> void: checks.append(display_name))
 	create.canceled.connect(func() -> void: canceled.append(true))
 	assert_true(create.next())
-	assert_true(create.next(), "la apariencia por defecto vale")
+	assert_true(create.next(), "the default appearance is valid")
 	assert_eq(create.get_step(), CharacterCreate.Step.TEMPLATE)
-	assert_eq(create.get_template_ids(), [&"marksman", &"squire"], "las plantillas de starter_templates")
-	assert_eq(create.get_template(), &"marksman", "marcada la primera por id")
+	assert_eq(create.get_template_ids(), [&"marksman", &"squire"], "the templates from starter_templates")
+	assert_eq(create.get_template(), &"marksman", "the first by id is selected")
 	assert_true(create.get_template_button(&"marksman").text.contains("Arco"), create.get_template_button(
 			&"marksman").text)
 	assert_true(create.select_template(&"squire"))
 	assert_false(create.select_template(&"rompefilas"))
 	assert_true(create.next())
 	assert_eq(create.get_step(), CharacterCreate.Step.NAME)
-	assert_true(create.get_create_button().disabled, "sin nombre no se crea")
+	assert_true(create.get_create_button().disabled, "without a name it is not created")
 	create.set_name_text("ana maria")
 	assert_eq(create.get_name_reason_text(), NameRules.reason_text(NameRules.validate("ana maria")))
 	assert_true(create.get_create_button().disabled)
 	create.set_name_text("Aneira")
 	assert_eq(create.get_name_reason_text(), "Comprobando el nombre…")
 	create.flush_name_check()
-	assert_eq(checks, ["Aneira"], "name-check tras 500 ms quieto")
+	assert_eq(checks, ["Aneira"], "name-check after 500 ms idle")
 	create.set_name_check("Aneira", false, "Ese nombre ya está en uso")
-	assert_true(create.get_create_button().disabled, "ocupado no se crea")
+	assert_true(create.get_create_button().disabled, "busy: it is not created")
 	assert_eq(create.get_name_reason_text(), "Ese nombre ya está en uso")
 	create.set_name_text("Aneiro")
 	create.set_name_check("Aneira", true)
-	assert_eq(create.get_name_reason_text(), "Comprobando el nombre…", "una respuesta vieja no cuenta")
+	assert_eq(create.get_name_reason_text(), "Comprobando el nombre…", "an old response does not count")
 	create.set_name_check("Aneiro", true)
 	assert_eq(create.get_name_reason_text(), "Nombre libre")
 	assert_false(create.get_create_button().disabled)
@@ -407,18 +407,18 @@ func test_create_template_and_name_steps() -> void:
 		assert_eq(body["starter_template_id"], &"squire")
 		assert_eq((body["appearance"] as PackedByteArray).size(), 8)
 	create.show_name_error("Ese nombre ya está en uso")
-	assert_true(create.get_create_button().disabled, "un name_taken de la plataforma lo bloquea")
+	assert_true(create.get_create_button().disabled, "a name_taken from the platform blocks it")
 	create._unhandled_key_input(_action(&"ui_cancel"))
-	assert_eq(create.get_step(), CharacterCreate.Step.TEMPLATE, "Esc vuelve un paso")
+	assert_eq(create.get_step(), CharacterCreate.Step.TEMPLATE, "Esc goes back one step")
 	create.back()
 	create.back()
 	assert_eq(create.get_step(), CharacterCreate.Step.REALM)
 	assert_true(canceled.is_empty())
 	create.back()
-	assert_eq(canceled, [true], "en el primer paso, vuelve a la selección")
+	assert_eq(canceled, [true], "at the first step, it goes back to the selection")
 
 
-# --- Renombrar ------------------------------------------------------------------------------------
+# --- Rename ---------------------------------------------------------------------------------------
 
 func test_rename_dialog_validates_the_new_name() -> void:
 	var dialog := RenameDialog.new()

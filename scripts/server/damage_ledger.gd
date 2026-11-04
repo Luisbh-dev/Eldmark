@@ -1,30 +1,30 @@
 class_name DamageLedger
 extends RefCounted
-## Registro del daño que ha recibido una víctima (docs/combate.md, sección 5; GUE-05): quién le
-## hizo cuánto y cuándo, durante los últimos [constant WINDOW_TICKS] ticks (15 s).
+## Log of the damage a victim has received (docs/combate.md, section 5; GUE-05): who did it
+## how much and when, during the last [constant WINDOW_TICKS] ticks (15 s).
 ## [br][br]
-## Con él, al morir, el servidor reparte el crédito: el golpe de gracia es para quien dio el golpe
-## mortal (o, si murió por el entorno, para el último enemigo que la golpeó) y las asistencias son
-## para quienes hicieron al menos el [constant ASSIST_PERCENT] % del daño de la ventana.
+## With it, on death, the server splits the credit: the killing blow goes to whoever dealt the lethal
+## hit (or, if it died to the environment, to the last enemy that hit it) and assists go
+## to those who did at least [constant ASSIST_PERCENT] % of the window's damage.
 ## [br][br]
-## Solo se apunta el daño que llega a la vida y de un atacante concreto: el entorno (id 0) y las
-## autolesiones no cuentan. Los aliados nunca aparecen porque no hay fuego amigo
+## Only damage that reaches health and from a specific attacker is recorded: the environment (id 0) and
+## self-harm do not count. Allies never appear because there is no friendly fire
 ## ([FactionRules]).
 
-## Ventana del registro (15 s a 60 Hz).
+## Log window (15 s at 60 Hz).
 const WINDOW_TICKS: int = 900
-## Porcentaje mínimo del daño de la ventana para contar como asistencia.
+## Minimum percentage of the window's damage to count as an assist.
 const ASSIST_PERCENT: int = 10
-## Máximo de asistentes que se devuelven (con un 10 % mínimo nunca son más de 10).
+## Maximum assistants returned (with a 10 % minimum there are never more than 10).
 const MAX_ASSISTANTS: int = 10
 
-# Una entrada por golpe, en orden cronológico. Los ticks van en 64 bits (son u32 en el servidor).
+# One entry per hit, in chronological order. Ticks are 64-bit (they are u32 on the server).
 var _ticks: PackedInt64Array = PackedInt64Array()
 var _attackers: PackedInt32Array = PackedInt32Array()
 var _amounts: PackedInt32Array = PackedInt32Array()
-# Primera entrada vigente; lo anterior se descarta al compactar.
+# First valid entry; anything earlier is discarded when compacting.
 var _head: int = 0
-# net_id de la víctima: sus propios golpes no cuentan.
+# net_id of the victim: its own hits do not count.
 var _victim_id: int = 0
 
 
@@ -32,8 +32,8 @@ func _init(victim_id: int = 0) -> void:
 	_victim_id = victim_id
 
 
-## Apunta [param amount] de daño de [param attacker_id] en el tick [param tick]. No hace nada con
-## una cantidad no positiva, con el entorno (id 0) ni con las autolesiones.
+## Records [param amount] of damage from [param attacker_id] at tick [param tick]. Does nothing with
+## a non-positive amount, with the environment (id 0) or with self-harm.
 func record(tick: int, attacker_id: int, amount: int) -> void:
 	if amount <= 0 or attacker_id <= 0 or attacker_id == _victim_id:
 		return
@@ -43,7 +43,7 @@ func record(tick: int, attacker_id: int, amount: int) -> void:
 	_prune(tick)
 
 
-## Daño total de la ventana que termina en [param tick].
+## Total damage in the window ending at [param tick].
 func total_damage(tick: int) -> int:
 	var total: int = 0
 	for i: int in range(_first_valid(tick), _ticks.size()):
@@ -51,7 +51,7 @@ func total_damage(tick: int) -> int:
 	return total
 
 
-## Daño que [param attacker_id] hizo en la ventana que termina en [param tick].
+## Damage that [param attacker_id] did in the window ending at [param tick].
 func damage_by(attacker_id: int, tick: int) -> int:
 	var total: int = 0
 	for i: int in range(_first_valid(tick), _ticks.size()):
@@ -60,9 +60,9 @@ func damage_by(attacker_id: int, tick: int) -> int:
 	return total
 
 
-## Asistentes de la muerte en [param tick]: quienes (salvo [param killer_id]) hicieron al menos el
-## [constant ASSIST_PERCENT] % del daño total de la ventana, ordenados por daño descendente y, a
-## igual daño, por id.
+## Assistants of the death at [param tick]: those who (except [param killer_id]) did at least
+## [constant ASSIST_PERCENT] % of the window's total damage, sorted by descending damage and, with
+## equal damage, by id.
 func get_assistants(killer_id: int, tick: int) -> PackedInt32Array:
 	var by_attacker: Dictionary[int, int] = {}
 	var total: int = 0
@@ -86,9 +86,9 @@ func get_assistants(killer_id: int, tick: int) -> PackedInt32Array:
 	return result
 
 
-## Contribuyentes de la muerte en [param tick] (docs/progresion.md §0 y §6.2): quienes hicieron al menos el
-## [constant ASSIST_PERCENT] % del daño total de la ventana, el autor del golpe de gracia incluido si llega, por id
-## ascendente. Son los que cobran la recompensa de un PNJ (cada uno, entera). Con un 10 % mínimo nunca son más de 10.
+## Contributors to the death at [param tick] (docs/progresion.md §0 and §6.2): those who did at least
+## [constant ASSIST_PERCENT] % of the window's total damage, the killing blow's author included if they qualify, by ascending
+## id. They are the ones who collect an NPC's reward (each one, in full). With a 10 % minimum there are never more than 10.
 func contributors(tick: int) -> PackedInt32Array:
 	var by_attacker: Dictionary[int, int] = {}
 	var total: int = 0
@@ -103,19 +103,19 @@ func contributors(tick: int) -> PackedInt32Array:
 	return result
 
 
-## Último atacante que le hizo daño (id), o 0 si no hay ninguno en la ventana.
+## Last attacker that damaged it (id), or 0 if there is none in the window.
 func last_attacker(tick: int) -> int:
 	if _ticks.size() > _first_valid(tick):
 		return _attackers[_ticks.size() - 1]
 	return 0
 
 
-## Número de golpes apuntados en la ventana que termina en [param tick].
+## Number of hits recorded in the window ending at [param tick].
 func entry_count(tick: int) -> int:
 	return _ticks.size() - _first_valid(tick)
 
 
-## Borra todo lo apuntado de [param attacker_id] (se ha ido del servidor: su id puede reutilizarse).
+## Erases everything recorded from [param attacker_id] (it has left the server: its id may be reused).
 func forget_attacker(attacker_id: int) -> void:
 	var kept_ticks := PackedInt64Array()
 	var kept_attackers := PackedInt32Array()
@@ -131,7 +131,7 @@ func forget_attacker(attacker_id: int) -> void:
 	_head = 0
 
 
-## Vacía el registro (al reaparecer).
+## Empties the log (on respawning).
 func clear() -> void:
 	_ticks.clear()
 	_attackers.clear()
@@ -139,7 +139,7 @@ func clear() -> void:
 	_head = 0
 
 
-# Índice de la primera entrada dentro de la ventana que termina en [param tick].
+# Index of the first entry within the window ending at [param tick].
 func _first_valid(tick: int) -> int:
 	var index: int = _head
 	while index < _ticks.size() and tick - _ticks[index] >= WINDOW_TICKS:
@@ -147,7 +147,7 @@ func _first_valid(tick: int) -> int:
 	return index
 
 
-# Descarta lo que ya salió de la ventana y compacta los arrays cuando lo descartado es la mitad.
+# Discards what has left the window and compacts the arrays when what was discarded is half.
 func _prune(tick: int) -> void:
 	_head = _first_valid(tick)
 	if _head > 32 and _head * 2 > _ticks.size():

@@ -1,22 +1,22 @@
 class_name MarkerSource
 extends RefCounted
-## De dónde salen los [WorldMarker] de una zona (UI-19, docs/fuerte.md sección 6): los lugares fijos del
-## mapa horneado ([ZoneMapDefinition]: campamentos y pasos) y lo que sabe el cliente de cada fortaleza
-## ([FortressView]: el fuerte, su puerta y su círculo con el color del dueño o del captor). Puro: no
-## dibuja ni lee la escena, solo junta datos.
+## Where a zone's [WorldMarker]s come from (UI-19, docs/fuerte.md section 6): the fixed places of the baked
+## map ([ZoneMapDefinition]: camps and passes) and what the client knows about each fortress
+## ([FortressView]: the fort, its gate and its circle with the owner's or the capturer's color). Pure: it
+## neither draws nor reads the scene, it only gathers data.
 ## [br][br]
-## [b]Colores.[/b] Los lugares de un reino llevan su color de bando; el fuerte, el de su dueño (los Huecos
-## si es neutral); la puerta, el del dueño; el círculo, el del captor mientras se captura y el blanco
-## de la interfaz mientras está activo sin captor. El círculo solo es un marcador mientras está activo
-## (el capitán ha caído o hay una captura en marcha).
+## [b]Colors.[/b] A realm's places carry its faction color; the fort, its owner's (the Hollow's if it is
+## neutral); the gate, the owner's; the circle, the capturer's while being captured and the interface's
+## white while active with no capturer. The circle is only a marker while active (the captain has fallen
+## or a capture is in progress).
 
 const CIRCLE_COLOR: Color = Color(1.0, 0.95, 0.8, 1.0)
 const TEXT_GATE: String = "Puerta"
 const TEXT_CIRCLE: String = "Círculo de captura"
 
 
-## Marcadores de la zona. [param map] puede ser null (zona sin mapa horneado) y [param view] también
-## (aún sin cliente): se usa lo que haya.
+## The zone's markers. [param map] may be null (a zone with no baked map) and so may [param view] (no client
+## yet): whatever is available is used.
 static func build(map: ZoneMapDefinition, view: FortressView) -> Array[WorldMarker]:
 	var markers: Array[WorldMarker] = []
 	var fort_ids: Array[int] = []
@@ -30,7 +30,7 @@ static func build(map: ZoneMapDefinition, view: FortressView) -> Array[WorldMark
 		for landmark: MapLandmark in map.landmarks:
 			match landmark.kind:
 				MapLandmark.KIND_FORT:
-					# El del mapa solo vale mientras el cliente no conoce la fortaleza (sin dueño ni estado).
+					# The map's one only applies while the client does not know the fortress (no owner or state).
 					if not seen_forts.has(landmark.fortress_id):
 						markers.append(WorldMarker.make(StringName("fort_%s" % landmark.fortress_id),
 								WorldMarker.Kind.FORT, landmark.label, landmark.position,
@@ -46,7 +46,7 @@ static func build(map: ZoneMapDefinition, view: FortressView) -> Array[WorldMark
 	return markers
 
 
-## Marcador de [param markers] cuyo id es [param id], o null.
+## Marker from [param markers] whose id is [param id], or null.
 static func find(markers: Array[WorldMarker], id: StringName) -> WorldMarker:
 	for marker: WorldMarker in markers:
 		if marker.id == id:

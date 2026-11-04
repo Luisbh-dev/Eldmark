@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Compone las comparativas "antes / ahora" del torreón del fuerte (ART-57) y las hojas de contactos
-del modelo solo, a partir de las capturas de tools/render/*.gd.
+"""Composes the "before / now" comparisons of the fort keep (ART-57) and the contact sheets
+of the model alone, from the captures made by tools/render/*.gd.
 
-Uso, desde la raíz del repo (necesita Pillow):
+Usage, from the repo root (needs Pillow):
 
-    python tools/blender/compose_fort_keep_comparison.py [carpeta_build]
+    python tools/blender/compose_fort_keep_comparison.py [build_folder]
 
-Por defecto la carpeta es build/torreon (la que usan las herramientas de render). Lee, de esa
-carpeta, antes/ y camaras_antes/ (la torre original de 6 x 6 m), v1_despues/ y v1_camaras_despues/
-(la primera versión del torreón, ya sin ellas se omite la columna) y despues/, camaras_despues/ y
-modelo/ (la versión actual), y escribe en comparativas/ un PNG por vista con las columnas
-(original | primera versión | actual) y las hojas del modelo solo.
+By default the folder is build/torreon (the one the render tools use). From that
+folder it reads antes/ and camaras_antes/ (the original 6 x 6 m tower), v1_despues/ and v1_camaras_despues/
+(the keep's first version; if they are missing, the column is omitted) and despues/, camaras_despues/ and
+modelo/ (the current version), and writes to comparativas/ one PNG per view with the columns
+(original | first version | current) and the sheets of the model alone.
 """
 
 import os
@@ -50,7 +50,7 @@ def label(image: Image.Image, text: str) -> Image.Image:
 
 
 def compare(columns: list, out_path: str) -> bool:
-	"""columns: lista de (ruta, etiqueta). Las que no existen se omiten; hace falta al menos la última."""
+	"""columns: list of (path, label). Those that do not exist are omitted; at least the last one is required."""
 	found = [(p, t) for p, t in columns if os.path.exists(p)]
 	if not found or found[-1][0] != columns[-1][0]:
 		return False
@@ -91,7 +91,7 @@ def main() -> None:
 		done += compare(cols, os.path.join(OUT, "jugador_" + name + ".png"))
 	modelo = os.path.join(BUILD, "modelo")
 	old = os.path.join(BUILD, "v1_modelo")
-	# la primera versión frente a la actual desde el mismo ángulo
+	# the first version against the current one from the same angle
 	for name in ("vuelta_1_suroeste", "detalle_base_esquina", "detalle_puerta", "detalle_cadalso", "aerea"):
 		cols = [(os.path.join(old, name + ".png"), "PRIMERA VERSION"), (os.path.join(modelo, name + ".png"), "AHORA")]
 		if os.path.exists(cols[0][0]) and os.path.exists(cols[1][0]):

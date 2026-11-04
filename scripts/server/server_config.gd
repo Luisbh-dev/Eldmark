@@ -1,182 +1,175 @@
 class_name ServerConfig
 extends RefCounted
-## Configuración del servidor dedicado de una zona (docs/red.md, secciones 1.2 y 17.4).
+## Configuration of a zone's dedicated server (docs/red.md, sections 1.2 and 17.4).
 ## [br][br]
-## Se rellena con [method from_args] a partir de los argumentos de usuario (los que van tras
-## [code]--[/code]):
+## It is filled by [method from_args] from the user arguments (those after [code]--[/code]):
 ## [codeblock]
 ## --server --port=24600 --zone=<id> --max-players=N --max-per-ip=4 --idle-quit=<s>
 ## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --fake-brain=<combat|siege>
-## --fake-center=<x>,<z> --fake-loadout=<plantilla>[:<porcentaje>] --fake-archers=<porcentaje>
-## --max-realm-diff=N --run-at=<tick>:<orden>
-## --debug-commands --dev-lock --dev-lock-path=<ruta>
-## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
-## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies --no-npcs --battle-log=<ruta.jsonl>
-## --platform=<url interna> --world=<id> --channel=<n> --public-address=<host>[:<puerto>] --save-interval=<s>
+## --fake-center=<x>,<z> --fake-loadout=<template>[:<percentage>] --fake-archers=<percentage>
+## --max-realm-diff=N --run-at=<tick>:<command>
+## --debug-commands --dev-lock --dev-lock-path=<path>
+## --quit-after-ticks=N --report=<path.json> --state-log=<path.csv> --net-sim=rtt=120,jitter=20
+## --stop-file=<path> --combat-log=<path.csv> --console --no-dummies --no-npcs --battle-log=<path.jsonl>
+## --platform=<internal url> --world=<id> --channel=<n> --public-address=<host>[:<port>] --save-interval=<s>
 ## --replace --dtls-cert=<pem> --dtls-key=<pem>
 ## [/codeblock]
-## [b]Con la plataforma[/b] (docs/plataforma.md §5.5 y §14.3): [code]--platform=<url>[/code] es la API interna
-## (sin ella, [DevAuthProvider] y personajes efímeros); [code]--world[/code] (1) y [code]--channel[/code] (0) son
-## el alcance del token de la zona; [code]--public-address[/code] es el host (y puerto) al que conectan los
-## clientes (127.0.0.1 y [member port] por defecto); [code]--save-interval[/code] el punto de control de
-## [code]CharacterSaver[/code] (60 s, P5); [code]--replace[/code] sustituye a una instancia viva de la misma zona y
-## canal; [code]--dtls-cert[/code] y [code]--dtls-key[/code] el certificado de DTLS y su clave (P9c, con o sin
-## plataforma; ver [member dtls]). Con un
-## [code]env[/code] de [code]staging[/code] o [code]production[/code] las opciones de desarrollo
-## ([method platform_dev_options]) hacen salir a la zona.
-## [code]--combat-log=<ruta>[/code] escribe un CSV con una línea por golpe resuelto
-## ([code]tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño[/code]; en el proyecto
-## usa otra extensión, p. ej. [code].txt[/code], porque el importador convierte los [code].csv[/code]
-## en traducciones). [code]--console[/code] lee comandos de la entrada estándar (anunciar, expulsar,
-## cerrar...; ver [CommandRegistry]), [code]--no-dummies[/code] no coloca los maniquíes de la zona y
-## [code]--no-npcs[/code] no crea los PNJ de sus generadores (Huecos, Capitán, guarnición y Guardianes; [NpcSpawnerSystem]).
-## [code]--battle-log=<ruta>[/code] escribe los eventos de guerra y las muertes en JSON Lines
-## ([BattleLog]; lo resume [code]tools/war/summarize_battle.gd[/code], GUE-17).
-## [code]--fake-loadout=<plantilla>[:<porcentaje>][/code] (docs/habilidades.md, sección 4.6) da a los jugadores
-## falsos la plantilla de equipo con ese nombre ([code]marksman[/code], [code]squire[/code]…): a todos o, con un
-## porcentaje, a esa parte repartida en orden de creación (con 50, uno de cada dos); los demás, la de por defecto.
-## [code]--fake-archers=<porcentaje>[/code] (pruebas de carga, H5) hace arqueros puros de los falsos que llevan el arco
-## en la mano: no cambian a la espada ([member BotBrain.kit_ranged_only]) y ese porcentaje de ellos (de 0 a 100,
-## repartido en orden) dispara al cielo ([member BotBrain.kit_aim_raise]): sus flechas viven los 2 s y llenan el tope
-## de proyectiles de la zona.
-## [code]--max-realm-diff=N[/code] (GUE-42) limita la diferencia de personas conectadas entre los reinos de la zona:
-## el HELLO de quien entraría en un reino y dejaría más de N personas de ventaja sobre el reino con menos
-## recibe un REJECT 9 (IMBALANCE); 0 = sin límite. Con N > 0 los jugadores falsos de reino automático
-## rellenan el bando corto, se retiran al entrar personas y no ocupan sus plazas: con el servidor lleno solo
-## por ellos, una persona entra y un falso le cede su plaza (GUE-43; ver [RealmBalance]).
-## [code]--run-at=<tick>:<orden>[/code] (repetible) ejecuta una orden de la consola ([CommandRegistry],
-## por ejemplo [code]fort_kill_captain[/code]) al terminar el tick dado: así una prueba de carga sin
-## entrada estándar puede abrir el círculo del fuerte.
-## SIGTERM y SIGINT (Ctrl+C, [code]docker stop[/code], systemd) matan el proceso de Godot sin pasar
-## por GDScript, así que no hay cierre ordenado. Para pararlo desde fuera con NOTICE de cierre,
-## informe y borrado del bloqueo de [code]--dev-lock[/code] está [code]--stop-file=<ruta>[/code]: el
-## servidor mira cada segundo si el archivo existe (por ejemplo, un [code]ExecStop[/code] que lo
-## cree con [code]touch[/code]).
-## Sin [code]--max-players[/code], el aforo es el de la zona ([method NetZones.max_players]: 40 en el Vado Gris,
-## el límite de jugadores por batalla medido con el kit de la fase 4, docs/red.md, sección 14) o, si la zona no
-## tiene uno propio, [constant DEFAULT_MAX_PLAYERS].
-## Un valor que no es un número válido o está fuera de rango se ignora y se queda el valor por
-## defecto: el servidor nunca arranca con una configuración absurda por un error al teclear.
+## [b]With the platform[/b] (docs/plataforma.md §5.5 and §14.3): [code]--platform=<url>[/code] is the internal API
+## (without it, [DevAuthProvider] and ephemeral characters); [code]--world[/code] (1) and [code]--channel[/code] (0) are
+## the scope of the zone's token; [code]--public-address[/code] is the host (and port) clients connect to (127.0.0.1 and
+## [member port] by default); [code]--save-interval[/code] the [code]CharacterSaver[/code] checkpoint (60 s, P5);
+## [code]--replace[/code] replaces a live instance of the same zone and channel; [code]--dtls-cert[/code] and
+## [code]--dtls-key[/code] the DTLS certificate and its key (P9c, with or without a platform; see [member dtls]). With an
+## [code]env[/code] of [code]staging[/code] or [code]production[/code] the development options
+## ([method platform_dev_options]) make the zone exit.
+## [code]--combat-log=<path>[/code] writes a CSV with one line per resolved hit
+## ([code]tick,attacker,target,attack,view_tick,rewind,result,damage[/code]; in the project use another extension, e.g.
+## [code].txt[/code], because the importer converts [code].csv[/code] files into translations). [code]--console[/code]
+## reads commands from standard input (announce, kick, shutdown...; see [CommandRegistry]), [code]--no-dummies[/code]
+## does not place the zone's dummies and [code]--no-npcs[/code] does not create the NPCs of its spawners (the Hollow, the
+## Captain, the garrison and the Guardians; [NpcSpawnerSystem]).
+## [code]--battle-log=<path>[/code] writes war events and deaths in JSON Lines ([BattleLog]; summarized by
+## [code]tools/war/summarize_battle.gd[/code], GUE-17).
+## [code]--fake-loadout=<template>[:<percentage>][/code] (docs/habilidades.md, section 4.6) gives the fake players the
+## equipment template of that name ([code]marksman[/code], [code]squire[/code]…): to all of them or, with a percentage,
+## to that share distributed in creation order (with 50, every other one); the rest get the default.
+## [code]--fake-archers=<percentage>[/code] (load tests, H5) makes pure archers of the fakes that carry the bow in hand:
+## they do not switch to the sword ([member BotBrain.kit_ranged_only]) and that percentage of them (0 to 100,
+## distributed in order) fires at the sky ([member BotBrain.kit_aim_raise]): their arrows live for 2 s and fill the
+## zone's projectile cap.
+## [code]--max-realm-diff=N[/code] (GUE-42) limits the difference in connected people between the zone's realms: the
+## HELLO of whoever would enter a realm and leave more than N people of advantage over the realm with the fewest
+## receives a REJECT 9 (IMBALANCE); 0 = no limit. With N > 0 the auto-realm fake players fill the short side, withdraw
+## when people join and do not take their seats: with the server full only because of them, a person enters and a fake
+## gives up their seat (GUE-43; see [RealmBalance]).
+## [code]--run-at=<tick>:<command>[/code] (repeatable) runs a console command ([CommandRegistry], for example
+## [code]fort_kill_captain[/code]) at the end of the given tick: so a load test without standard input can open the
+## fort's circle.
+## SIGTERM and SIGINT (Ctrl+C, [code]docker stop[/code], systemd) kill the Godot process without going through
+## GDScript, so there is no orderly shutdown. To stop it from outside with a shutdown NOTICE, a report and removal of
+## the [code]--dev-lock[/code] lock there is [code]--stop-file=<path>[/code]: the server checks every second whether
+## the file exists (for example, an [code]ExecStop[/code] that creates it with [code]touch[/code]).
+## Without [code]--max-players[/code], the capacity is the zone's ([method NetZones.max_players]: 40 in Vado Gris, the
+## per-battle player limit measured with the phase 4 kit, docs/red.md, section 14) or, if the zone has none of its own,
+## [constant DEFAULT_MAX_PLAYERS].
+## A value that is not a valid number or is out of range is ignored and the default value stays: the server never starts
+## with an absurd configuration because of a typo.
 
-## Puerto UDP en el que escucha.
+## UDP port it listens on.
 var port: int = NetProtocol.DEFAULT_PORT
-## Id de la zona que sirve ([method NetZones.default_zone_id] si no se indica). No se comprueba
-## aquí que exista: [code]ServerMain[/code] lo hace con [method NetZones.scene_path].
+## Id of the zone it serves ([method NetZones.default_zone_id] if not given). Its existence is not checked here:
+## [code]ServerMain[/code] does it with [method NetZones.scene_path].
 var zone_id: String = ""
-## Aforo de una zona sin uno propio ([method NetZones.max_players]).
+## Capacity of a zone without one of its own ([method NetZones.max_players]).
 const DEFAULT_MAX_PLAYERS: int = 64
 
-## Jugadores como mucho (los falsos cuentan; los de relleno de [member max_realm_diff] ceden su plaza a las
-## personas, GUE-43). [method from_args] pone el de la zona si no se indica.
+## Maximum players (fakes count; the [member max_realm_diff] fillers give up their seat to people, GUE-43).
+## [method from_args] sets the zone's if not given.
 var max_players: int = DEFAULT_MAX_PLAYERS
-## Conexiones simultáneas como mucho desde una misma IP (salvo loopback).
+## Maximum simultaneous connections from the same IP (except loopback).
 var max_connections_per_ip: int = 4
-## Segundos sin jugadores tras los que el servidor se cierra solo. 0 = nunca.
+## Seconds without players after which the server shuts itself down. 0 = never.
 var idle_quit_seconds: int = 0
-## Ticks tras los que el servidor se cierra solo. 0 = nunca.
+## Ticks after which the server shuts itself down. 0 = never.
 var quit_after_ticks: int = 0
-## Ruta del informe JSON que se escribe al cerrar. Vacío = ninguno.
+## Path of the JSON report written on shutdown. Empty = none.
 var report_path: String = ""
-## Ruta del CSV con el estado de cada jugador en cada tick. Vacío = ninguno.
+## Path of the CSV with each player's state at each tick. Empty = none.
 var state_log_path: String = ""
-## Ruta de un archivo cuya existencia pide el cierre ordenado del servidor (se comprueba cada
-## segundo; se borra al cerrar, y si ya existía al arrancar es de una parada anterior y se borra).
-## Vacío = ninguno.
+## Path of a file whose existence requests an orderly server shutdown (checked every second; deleted on shutdown, and if
+## it already existed at startup it is from a previous stop and is deleted). Empty = none.
 var stop_file_path: String = ""
-## Especificación del simulador de red ([code]rtt=120,jitter=20,loss=5,dup=0,seed=1[/code]).
-## Vacío = sin simulador.
+## Network simulator specification ([code]rtt=120,jitter=20,loss=5,dup=0,seed=1[/code]). Empty = no simulator.
 var net_sim_spec: String = ""
-## Jugadores falsos (sin red) que se crean al arrancar.
+## Fake players (without a network) created at startup.
 var fake_players: int = 0
-## Dónde se reparten los jugadores falsos (pruebas de carga): [constant LAYOUT_CLUSTER] (todos en un
-## mismo punto, a menos de 60 m unos de otros), [constant LAYOUT_SPREAD] (repartidos por la zona) o
-## vacío (cada uno cerca del campamento de su reino).
+## Where fake players are distributed (load tests): [constant LAYOUT_CLUSTER] (all at the same point, within 60 m of
+## each other), [constant LAYOUT_SPREAD] (spread across the zone) or empty (each one near its realm's camp).
 var fake_layout: String = ""
-## Cada cuántos ticks sale el jugador falso más antiguo y entra uno nuevo, para medir altas y bajas
-## (60 = una alta y una baja por segundo). 0 = ninguna.
+## Every how many ticks the oldest fake player leaves and a new one enters, to measure joins and leaves (60 = one join
+## and one leave per second). 0 = none.
 var fake_churn_ticks: int = 0
-## Admite los comandos de depuración del cliente (teletransporte, curar, matar...; ver
-## [CommandRegistry]).
+## Allows the client's debug commands (teleport, heal, kill...; see [CommandRegistry]).
 var debug_commands: bool = false
-## Ruta del registro de combate (CSV). Vacío = ninguno.
+## Path of the combat log (CSV). Empty = none.
 var combat_log_path: String = ""
-## Ruta del registro de batalla (JSON Lines: avisos de guerra y muertes). Vacío = ninguno.
+## Path of the battle log (JSON Lines: war notices and deaths). Empty = none.
 var battle_log_path: String = ""
-## Cerebro de los jugadores falsos: vacío = el de paseo, [constant FAKE_BRAIN_COMBAT] = el de combate
-## (buscan al enemigo más cercano, atacan, bloquean y esquivan) y [constant FAKE_BRAIN_SIEGE] = el de asedio
-## (siguen la ruta de su reino hasta el fuerte, rompen la puerta, capturan y defienden; GUE-15).
+## Brain of the fake players: empty = the wandering one, [constant FAKE_BRAIN_COMBAT] = the combat one (they look for the
+## nearest enemy, attack, block and dodge) and [constant FAKE_BRAIN_SIEGE] = the siege one (they follow their realm's
+## route to the fort, break the door, capture and defend; GUE-15).
 var fake_brain: String = ""
-## Con el cerebro de combate y [constant LAYOUT_CLUSTER]: punto (x, z) de la zona, a nivel del suelo,
-## en torno al que se juntan los falsos en lugar del campamento del primer reino (donde la zona segura
-## les impide pelear). [constant NO_FAKE_CENTER] = ninguno ([method has_fake_center]).
+## With the combat brain and [constant LAYOUT_CLUSTER]: point (x, z) of the zone, at ground level, around which the
+## fakes gather instead of the first realm's camp (where the safe zone prevents them from fighting).
+## [constant NO_FAKE_CENTER] = none ([method has_fake_center]).
 var fake_center: Vector2 = NO_FAKE_CENTER
-## Plantilla de equipo de los jugadores falsos ([code]--fake-loadout[/code]): su nombre en el catálogo de combate
-## (vacío = la de por defecto) y a qué porcentaje de ellos se da (1 a 100).
+## Equipment template of the fake players ([code]--fake-loadout[/code]): its name in the combat catalog (empty = the
+## default) and to what percentage of them it is given (1 to 100).
 var fake_loadout: StringName = &""
 var fake_loadout_percent: int = 100
-## Arqueros puros entre los falsos con arco ([code]--fake-archers[/code]; pruebas de carga): -1 = no; si no, el
-## porcentaje de ellos que dispara al cielo.
+## Pure archers among the fakes with a bow ([code]--fake-archers[/code]; load tests): -1 = no; otherwise, the percentage
+## of them that fires at the sky.
 var fake_archers_sky_percent: int = -1
-## Diferencia máxima de personas conectadas entre los reinos de la zona (GUE-42); 0 = sin límite. Los
-## jugadores falsos no cuentan para rechazar a una persona.
+## Maximum difference in connected people between the zone's realms (GUE-42); 0 = no limit. Fake players do not count
+## towards rejecting a person.
 var max_realm_diff: int = 0
-## Órdenes de consola programadas ([code]--run-at=<tick>:<orden>[/code]): diccionarios con
-## [code]tick[/code] y [code]line[/code], en el orden en que se dieron.
+## Scheduled console commands ([code]--run-at=<tick>:<command>[/code]): dictionaries with [code]tick[/code] and
+## [code]line[/code], in the order they were given.
 var scheduled_commands: Array[Dictionary] = []
-## Lee los comandos de la consola de la entrada estándar (en un hilo, sin bloquear el tick).
+## Reads console commands from standard input (in a thread, without blocking the tick).
 var console: bool = false
-## No coloca los maniquíes de entrenamiento de los marcadores [code]dummy_points[/code] de la zona.
+## Does not place the training dummies from the zone's [code]dummy_points[/code] markers.
 var no_dummies: bool = false
-## No crea los PNJ de los generadores de la zona (Huecos, Capitán del Vado, guarnición y Guardianes de la
-## Puerta; [NpcSpawnerSystem]).
+## Does not create the NPCs of the zone's spawners (the Hollow, the Ford Captain, the garrison and the Gate Guardians;
+## [NpcSpawnerSystem]).
 var no_npcs: bool = false
-## URL de la API interna de la plataforma ([code]--platform[/code]); vacía = sin plataforma.
+## URL of the platform's internal API ([code]--platform[/code]); empty = no platform.
 var platform_url: String = ""
-## Mundo y canal de la zona ([code]--world[/code], [code]--channel[/code]): el alcance de su token.
+## World and channel of the zone ([code]--world[/code], [code]--channel[/code]): the scope of its token.
 var world_id: int = 1
 var channel: int = 0
-## [code]<host>[:<puerto>][/code] al que conectan los clientes ([code]--public-address[/code]); vacío = 127.0.0.1
-## y [member port]. Ver [method public_host] y [method public_port].
+## [code]<host>[:<port>][/code] that clients connect to ([code]--public-address[/code]); empty = 127.0.0.1 and
+## [member port]. See [method public_host] and [method public_port].
 var public_address: String = ""
-## Segundos entre puntos de control de [code]CharacterSaver[/code] ([code]--save-interval[/code], P5).
+## Seconds between [code]CharacterSaver[/code] checkpoints ([code]--save-interval[/code], P5).
 var save_interval_s: int = 60
-## Sustituye a la instancia viva de la misma zona y canal al registrarse ([code]--replace[/code]).
+## Replaces the live instance of the same zone and channel on registering ([code]--replace[/code]).
 var replace: bool = false
-## Rutas del certificado y la clave de DTLS en PEM ([code]--dtls-cert[/code], [code]--dtls-key[/code];
-## docs/plataforma.md §10.2). Las lee [code]ServerMain[/code] con [method ZoneDtls.load_files].
+## Paths of the DTLS certificate and key in PEM ([code]--dtls-cert[/code], [code]--dtls-key[/code];
+## docs/plataforma.md §10.2). Read by [code]ServerMain[/code] with [method ZoneDtls.load_files].
 var dtls_cert_path: String = ""
 var dtls_key_path: String = ""
-## El certificado y la clave ya cargados: no sale de los argumentos, lo pone [code]ServerMain[/code] (o una prueba).
-## Con él, [ZoneServer] abre el puerto con DTLS y [ZonePlatform] manda el certificado y su nombre en el registro;
-## null = sin DTLS.
+## The certificate and key already loaded: it does not come from the arguments, it is set by [code]ServerMain[/code] (or
+## a test). With it, [ZoneServer] opens the port with DTLS and [ZonePlatform] sends the certificate and its name in the
+## registration; null = no DTLS.
 var dtls: ZoneDtls = null
-## Escribe [code]user://dev_server.json[/code] para que [code]--local[/code] reutilice el servidor.
+## Writes [code]user://dev_server.json[/code] so that [code]--local[/code] reuses the server.
 var dev_lock: bool = false
-## Dónde se escribe el bloqueo de [member dev_lock] en lugar de [code]user://dev_server.json[/code]
-## ([code]--dev-lock-path=<ruta>[/code]): las pruebas de procesos lo usan para no pisar el servidor
-## local real de quien las ejecuta. Vacío = el de siempre.
+## Where the [member dev_lock] lock is written instead of [code]user://dev_server.json[/code]
+## ([code]--dev-lock-path=<path>[/code]): process tests use it so as not to overwrite the real local server of whoever
+## runs them. Empty = the usual one.
 var dev_lock_path: String = ""
 
-## Valores de [member fake_layout].
+## Values of [member fake_layout].
 const LAYOUT_CLUSTER: String = "cluster"
 const LAYOUT_SPREAD: String = "spread"
-## Valor de [member fake_brain] para el cerebro de combate.
+## Value of [member fake_brain] for the combat brain.
 const FAKE_BRAIN_COMBAT: String = "combat"
-## Valor de [member fake_brain] para el cerebro de asedio ([constant BotBrain.Pattern.SIEGE]).
+## Value of [member fake_brain] for the siege brain ([constant BotBrain.Pattern.SIEGE]).
 const FAKE_BRAIN_SIEGE: String = "siege"
-## Valor de [member fake_center] cuando no se indica.
+## Value of [member fake_center] when not given.
 const NO_FAKE_CENTER: Vector2 = Vector2(INF, INF)
-## Coordenada máxima (en valor absoluto, m) que admite [member fake_center].
+## Maximum coordinate (absolute value, m) that [member fake_center] admits.
 const MAX_FAKE_CENTER: float = 5000.0
-## Prefijo de la opción de las órdenes programadas.
+## Prefix of the scheduled commands option.
 const RUN_AT_PREFIX: String = "--run-at="
 const _MAX_PORT: int = 65535
-## Tope razonable de jugadores y de jugadores falsos (los ids de red son de 16 bits).
+## Reasonable cap on players and fake players (network ids are 16-bit).
 const _MAX_PLAYERS_LIMIT: int = 4096
 
 
-## Lee [param args] (los argumentos de usuario) y devuelve la configuración. Todo lo que no
-## viene se queda en su valor por defecto; la zona, en [method NetZones.default_zone_id].
+## Reads [param args] (the user arguments) and returns the configuration. Everything that is not given stays at its
+## default value; the zone, at [method NetZones.default_zone_id].
 static func from_args(args: PackedStringArray) -> ServerConfig:
 	var config := ServerConfig.new()
 	config.zone_id = NetZones.parse_zone_arg(args)
@@ -184,7 +177,7 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 		config.zone_id = NetZones.default_zone_id()
 
 	config.port = _int_option(args, "--port=", config.port, 1, _MAX_PORT)
-	# El aforo de la zona si lo tiene (revisión de H5: el Vado Gris, el límite medido por batalla).
+	# The zone's capacity if it has one (H5 revision: Vado Gris, the limit measured per battle).
 	var zone_capacity: int = NetZones.max_players(config.zone_id)
 	if zone_capacity > 0:
 		config.max_players = zone_capacity
@@ -241,12 +234,12 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	return config
 
 
-## true si la zona trabaja con la plataforma ([code]--platform[/code]).
+## true if the zone works with the platform ([code]--platform[/code]).
 func uses_platform() -> bool:
 	return not platform_url.is_empty()
 
 
-## El host de [member public_address] (127.0.0.1 si no se dio). Admite [code][::1]:24600[/code].
+## The host of [member public_address] (127.0.0.1 if not given). Accepts [code][::1]:24600[/code].
 func public_host() -> String:
 	var text: String = public_address.strip_edges()
 	if text.is_empty():
@@ -260,7 +253,7 @@ func public_host() -> String:
 	return text
 
 
-## El puerto de [member public_address], o [member port] si no lo trae (o no vale).
+## The port of [member public_address], or [member port] if it has none (or is invalid).
 func public_port() -> int:
 	var text: String = public_address.strip_edges()
 	var colon: int = text.rfind(":")
@@ -272,9 +265,9 @@ func public_port() -> int:
 	return port_text.to_int()
 
 
-## Opciones de desarrollo dadas que con la plataforma solo valen en [code]dev[/code] y [code]test[/code]
-## (docs/plataforma.md §5.5): [code]--debug-commands[/code], [code]--fake-players[/code],
-## [code]--fake-churn[/code], [code]--battle-log[/code], [code]--combat-log[/code] y [code]--state-log[/code].
+## Development options given that with the platform are only valid in [code]dev[/code] and [code]test[/code]
+## (docs/plataforma.md §5.5): [code]--debug-commands[/code], [code]--fake-players[/code], [code]--fake-churn[/code],
+## [code]--battle-log[/code], [code]--combat-log[/code] and [code]--state-log[/code].
 func platform_dev_options() -> PackedStringArray:
 	var options := PackedStringArray()
 	if debug_commands:
@@ -292,8 +285,8 @@ func platform_dev_options() -> PackedStringArray:
 	return options
 
 
-## La plantilla de [code]--fake-loadout=<plantilla>[:<porcentaje>][/code]: una plantilla del catálogo de combate
-## que se pueda elegir y, si se da, un porcentaje de 1 a 100. Si algo no vale se ignora entera.
+## The template of [code]--fake-loadout=<template>[:<percentage>][/code]: a combat catalog template that can be chosen
+## and, if given, a percentage from 1 to 100. If anything is invalid the whole thing is ignored.
 static func _parse_fake_loadout(config: ServerConfig, text: String) -> void:
 	var value: String = text.strip_edges()
 	if value.is_empty():
@@ -315,9 +308,9 @@ static func _parse_fake_loadout(config: ServerConfig, text: String) -> void:
 	config.fake_loadout_percent = percent
 
 
-## La plantilla del jugador falso número [param index] (0, 1, 2…) según [code]--fake-loadout[/code]: su id en el
-## catálogo o 0 (la de por defecto). Con un porcentaje se reparte en orden: el falso [param index] la lleva si el
-## recuento acumulado sube al contarlo ([code]⌊(i + 1)·p / 100⌋ > ⌊i·p / 100⌋[/code]).
+## The template of fake player number [param index] (0, 1, 2…) according to [code]--fake-loadout[/code]: its id in the
+## catalog or 0 (the default). With a percentage it is distributed in order: fake [param index] carries it if the
+## cumulative count rises when counting it ([code]⌊(i + 1)·p / 100⌋ > ⌊i·p / 100⌋[/code]).
 func fake_template_for(index: int) -> int:
 	if fake_loadout.is_empty():
 		return 0
@@ -326,8 +319,8 @@ func fake_template_for(index: int) -> int:
 	return CombatCatalog.template_id(fake_loadout) if takes else 0
 
 
-## true si el arquero puro número [param archer_index] (0, 1, 2…, en orden de creación entre los falsos con arco)
-## dispara al cielo según [code]--fake-archers[/code] (el mismo reparto que [method fake_template_for]).
+## true if pure archer number [param archer_index] (0, 1, 2…, in creation order among the fakes with a bow) fires at the
+## sky according to [code]--fake-archers[/code] (the same distribution as [method fake_template_for]).
 func is_sky_archer(archer_index: int) -> bool:
 	if fake_archers_sky_percent <= 0:
 		return false
@@ -335,8 +328,8 @@ func is_sky_archer(archer_index: int) -> bool:
 	return (archer_index + 1) * fake_archers_sky_percent / 100 > archer_index * fake_archers_sky_percent / 100
 
 
-## Las órdenes programadas de [param args] ([code]--run-at=<tick>:<orden>[/code]): las que tienen un tick
-## entero no negativo y una orden no vacía, en el orden en que se dieron.
+## The scheduled commands from [param args] ([code]--run-at=<tick>:<command>[/code]): those with a non-negative integer
+## tick and a non-empty command, in the order they were given.
 static func _scheduled_commands(args: PackedStringArray) -> Array[Dictionary]:
 	var commands: Array[Dictionary] = []
 	for arg: String in args:
@@ -355,14 +348,13 @@ static func _scheduled_commands(args: PackedStringArray) -> Array[Dictionary]:
 	return commands
 
 
-## true si se indicó [member fake_center].
+## true if [member fake_center] was given.
 func has_fake_center() -> bool:
 	return fake_center.is_finite()
 
 
-## Valor entero de la primera opción [param prefix] (por ejemplo [code]"--port="[/code]) de
-## [param args], o [param fallback] si no viene, no es un entero o está fuera de
-## [[param min_value], [param max_value]].
+## Integer value of the first [param prefix] option (for example [code]"--port="[/code]) in [param args], or
+## [param fallback] if absent, not an integer or outside [[param min_value], [param max_value]].
 static func _int_option(args: PackedStringArray, prefix: String, fallback: int, min_value: int,
 		max_value: int) -> int:
 	var text: String = _string_option(args, prefix)
@@ -374,8 +366,8 @@ static func _int_option(args: PackedStringArray, prefix: String, fallback: int, 
 	return value
 
 
-## Valor de la primera opción [param prefix] de [param args] sin espacios ni comillas alrededor,
-## o una cadena vacía si no viene.
+## Value of the first [param prefix] option in [param args] without spaces or quotes around it, or an empty string if
+## absent.
 static func _string_option(args: PackedStringArray, prefix: String) -> String:
 	for arg: String in args:
 		if arg.begins_with(prefix):

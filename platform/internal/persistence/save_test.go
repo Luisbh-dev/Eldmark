@@ -18,7 +18,7 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// inWorld es un personaje reclamado en una zona live.
+// inWorld is a character claimed in a live zone.
 type inWorld struct {
 	p     *platformtest.Platform
 	z     *platformtest.Zone
@@ -37,7 +37,7 @@ func newInWorld(t *testing.T) *inWorld {
 
 func (w *inWorld) body(seq int) map[string]any { return w.z.SaveBody(w.id, w.lease, seq) }
 
-// leaseState es lo que guarda el arrendamiento del último guardado.
+// leaseState is what the lease stores from the last save.
 func (w *inWorld) leaseState() (seq, version int64) {
 	w.p.T.Helper()
 	if err := w.p.Pool.QueryRow(context.Background(), `select last_seq, last_save_version from character_leases
@@ -56,10 +56,10 @@ func expectSave(t *testing.T, res *platformtest.Response, applied, duplicate boo
 	}
 }
 
-// Idempotencia por (lease_id, seq): un reintento con los mismos bytes (el plazo venció pero el
-// guardado se aplicó) es duplicate con el save_version de entonces y no vuelve a llamar a Apply,
-// así que el siguiente, con sus ops nuevas, pasa S2; el mismo seq con otro cuerpo es seq_conflict y
-// uno menor, stale_seq.
+// Idempotency by (lease_id, seq): a retry with the same bytes (the deadline expired but the save was
+// applied) is duplicate with the save_version of that time and does not call Apply again, so the
+// next one, with its new ops, passes S2; the same seq with another body is seq_conflict and a lower
+// one, stale_seq.
 func TestSaveSeqIdempotency(t *testing.T) {
 	w := newInWorld(t)
 	first := w.body(1)
@@ -78,7 +78,7 @@ func TestSaveSeqIdempotency(t *testing.T) {
 	other["reason"] = 2
 	platformtest.Expect(t, w.z.Save(w.id, other), 409, "seq_conflict")
 	platformtest.Expect(t, w.z.Save(w.id, raw), 409, "stale_seq")
-	// Un op_id ya guardado en un seq nuevo es S2 del falso: nada escrito.
+	// An op_id already stored in a new seq is the fake's S2: nothing written.
 	third := w.body(3)
 	third["progress"].(map[string]any)["ops"] = []any{map[string]any{"op_id": "5"}}
 	res := w.z.Save(w.id, third)
@@ -94,8 +94,8 @@ func TestSaveSeqIdempotency(t *testing.T) {
 	}
 }
 
-// Un duplicate devuelve el save_version de cuando se aplicó (el de character_leases), aunque el
-// del almacén haya seguido.
+// A duplicate returns the save_version from when it was applied (character_leases'), even if the
+// store's has moved on.
 func TestDuplicateKeepsItsSaveVersion(t *testing.T) {
 	w := newInWorld(t)
 	raw := platformtest.Marshal(w.body(1))
@@ -111,33 +111,34 @@ func TestDuplicateKeepsItsSaveVersion(t *testing.T) {
 	expectSave(t, w.z.Save(w.id, raw), false, true, 1)
 }
 
-// Sin el arrendamiento: otro lease_id, otra instancia o sin fila (personaje purgado) → lease_lost.
+// Without the lease: another lease_id, another instance or no row (purged character) -> lease_lost.
 func TestSaveLeaseLost(t *testing.T) {
 	w := newInWorld(t)
 	b := w.body(1)
 	b["lease_id"] = zones.FormatUUID(zones.NewUUID())
 	platformtest.Expect(t, w.z.Save(w.id, b), 409, "lease_lost")
-	// Desde otra instancia de la misma zona y canal (sustituta) con el lease_id bueno.
+	// From another instance of the same zone and channel (replacement) with the right lease_id.
 	fresh := w.p.NewZone(1, "vado_gris", 0)
 	platformtest.Expect(t, fresh.Register(map[string]any{"replace": true}), 200, "")
 	platformtest.Expect(t, fresh.Live(), 204, "")
 	b = fresh.SaveBody(w.id, w.lease, 1)
 	platformtest.Expect(t, fresh.Save(w.id, b), 409, "lease_lost")
-	// Sin fila de arrendamiento.
+	// Without a lease row.
 	w.p.Exec(`delete from character_leases where character_id = $1`, w.id)
 	platformtest.Expect(t, w.z.Save(w.id, w.body(1)), 409, "lease_lost")
-	// La instancia del sobre tiene que ser del alcance del token.
+	// The envelope's instance has to be within the token's scope.
 	other := w.p.NewZone(1, "test_world", 0).Start()
 	b = w.body(1)
 	b["zone_instance_id"] = other.ID
 	platformtest.Expect(t, w.z.Save(w.id, b), 403, "forbidden")
 }
 
-// Un guardado tardío tras liberar vale (lease_id no cambia al liberar); tras otra reclamación, no.
+// A late save after releasing is valid (lease_id does not change on release); after another claim,
+// it is not.
 func TestLateSaveAfterReleaseAndAfterAnotherClaim(t *testing.T) {
 	w := newInWorld(t)
 	platformtest.Expect(t, w.z.Release(w.id, w.lease), 204, "")
-	platformtest.Expect(t, w.z.Release(w.id, w.lease), 204, "") // repetida
+	platformtest.Expect(t, w.z.Release(w.id, w.lease), 204, "") // repeated
 	expectSave(t, w.z.Save(w.id, w.body(1)), true, false, 1)
 	var free bool
 	w.p.Scalar(&free, `select zone_instance_id is null from character_leases where character_id = $1`, w.id)
@@ -152,11 +153,11 @@ func TestLateSaveAfterReleaseAndAfterAnotherClaim(t *testing.T) {
 	b := w.z.SaveBody(w.id, old, 2)
 	platformtest.Expect(t, w.z.Save(w.id, b), 409, "lease_lost")
 	platformtest.Expect(t, w.z.Release(w.id, old), 409, "lease_lost")
-	// El arrendamiento nuevo empieza en seq 1.
+	// The new lease starts at seq 1.
 	expectSave(t, w.z.Save(w.id, w.body(1)), true, false, 2)
 }
 
-// release_lease libera el arrendamiento con el guardado: el personaje puede volver a entrar.
+// release_lease releases the lease with the save: the character can enter again.
 func TestSaveWithReleaseLease(t *testing.T) {
 	w := newInWorld(t)
 	platformtest.Expect(t, w.p.Enter(w.pl, w.id), 409, "character_busy")
@@ -173,7 +174,7 @@ func TestSaveWithReleaseLease(t *testing.T) {
 	platformtest.Expect(t, w.p.Enter(w.pl, w.id), 200, "")
 }
 
-// Los errores del sobre son 400 invalid_save con check envelope, antes de tocar la base.
+// Envelope errors are 400 invalid_save with check envelope, before touching the database.
 func TestEnvelopeErrors(t *testing.T) {
 	w := newInWorld(t)
 	cases := map[string]func(map[string]any){
@@ -191,8 +192,8 @@ func TestEnvelopeErrors(t *testing.T) {
 		"pvp incompleto":     func(b map[string]any) { b["pvp"] = map[string]any{"kills": 1} },
 		"pvp negativo":       func(b map[string]any) { b["pvp"] = pvp(-1) },
 		"pvp con otra clave": func(b map[string]any) { p := pvp(1); p["score"] = 1; b["pvp"] = p },
-		// Los cinco totales int4 de character_pvp_stats (solo gate_damage es bigint): más de 2^31 − 1
-		// era un 500 que la zona reintentaba sin fin.
+		// The five int4 totals of character_pvp_stats (only gate_damage is bigint): more than 2^31 - 1 was
+		// a 500 that the zone retried endlessly.
 		"kills de más de int4":    func(b map[string]any) { p := pvp(1); p["kills"] = int64(1) << 31; b["pvp"] = p },
 		"defend_s de más de int4": func(b map[string]any) { p := pvp(1); p["defend_s"] = 3000000000; b["pvp"] = p },
 		"instancia rota":          func(b map[string]any) { b["zone_instance_id"] = strings.ToUpper(w.z.ID) },
@@ -222,8 +223,8 @@ func pvp(n int) map[string]any {
 	return map[string]any{"kills": n, "deaths": n, "assists": n, "captures": n, "gate_damage": n, "defend_s": n}
 }
 
-// La sección pvp: un guardado con "kills": 4.0 se aplica; uno sin pvp no cambia
-// character_pvp_stats y uno con kills menor no lo baja.
+// The pvp section: a save with "kills": 4.0 is applied; one without pvp does not change
+// character_pvp_stats and one with lower kills does not lower it.
 func TestSavePvP(t *testing.T) {
 	w := newInWorld(t)
 	raw := `{"save_format": 1, "character_id": "` + strconv.FormatInt(w.id, 10) + `", "zone_instance_id": "` + w.z.ID +
@@ -243,7 +244,7 @@ func TestSavePvP(t *testing.T) {
 	if got := stats(); !equal(got, want) {
 		t.Fatalf("pvp %v", got)
 	}
-	expectSave(t, w.z.Save(w.id, w.body(2)), true, false, 2) // sin pvp
+	expectSave(t, w.z.Save(w.id, w.body(2)), true, false, 2) // without pvp
 	if got := stats(); !equal(got, want) {
 		t.Fatalf("sin pvp no cambia: %v", got)
 	}
@@ -253,12 +254,12 @@ func TestSavePvP(t *testing.T) {
 	if got := stats(); !equal(got, []int64{4, 5, 0, 1, 450, 130}) {
 		t.Fatalf("greatest: %v", got)
 	}
-	// El tope de cada columna vale: 2^31 − 1 en las int4 y más en gate_damage (bigint).
+	// Each column's cap is valid: 2^31 - 1 in the int4 ones and more in gate_damage (bigint).
 	b = w.body(4)
 	b["pvp"] = map[string]any{"kills": 1<<31 - 1, "deaths": 1<<31 - 1, "assists": 1<<31 - 1, "captures": 1<<31 - 1,
 		"gate_damage": int64(1) << 40, "defend_s": 1<<31 - 1}
 	expectSave(t, w.z.Save(w.id, b), true, false, 4)
-	// La reclamación siguiente trae los totales.
+	// The next claim brings the totals.
 	b = w.body(5)
 	b["release_lease"] = true
 	expectSave(t, w.z.Save(w.id, b), true, false, 5)
@@ -282,7 +283,8 @@ func equal(a, b []int64) bool {
 	return true
 }
 
-// Un *InvalidSaveError del falso es 400 invalid_save con su check y su detail, y no se escribe nada.
+// An *InvalidSaveError from the fake is 400 invalid_save with its check and its detail, and nothing
+// is written.
 func TestInvalidSaveFromTheStore(t *testing.T) {
 	w := newInWorld(t)
 	w.p.Progress.SetApplyHook(func(persistence.SaveKey, json.RawMessage) error {
@@ -300,8 +302,8 @@ func TestInvalidSaveFromTheStore(t *testing.T) {
 	}
 }
 
-// Un 23505 en el COMMIT (una restricción diferida, como la de las ranuras de progresion.md) es 400
-// invalid_save con check S8 y el SQLSTATE y la restricción en detail; no se escribe nada.
+// A 23505 on COMMIT (a deferred constraint, like the slots one of progresion.md) is 400
+// invalid_save with check S8 and the SQLSTATE and the constraint in detail; nothing is written.
 func TestDeferredConstraintAtCommit(t *testing.T) {
 	w := newInWorld(t)
 	w.p.Exec(`create table test_slots (character_id bigint, slot int,
@@ -324,8 +326,8 @@ func TestDeferredConstraintAtCommit(t *testing.T) {
 	}
 }
 
-// Un 40001 que se repite: la plataforma reintenta la transacción entera (cuatro intentos) y después
-// responde 503 db_unavailable; no se escribe nada.
+// A 40001 that repeats: the platform retries the whole transaction (four attempts) and then answers
+// 503 db_unavailable; nothing is written.
 func TestSerializationFailureThatRepeats(t *testing.T) {
 	w := newInWorld(t)
 	var calls atomic.Int32
@@ -341,7 +343,7 @@ func TestSerializationFailureThatRepeats(t *testing.T) {
 	if seq, _ := w.leaseState(); seq != 0 {
 		t.Fatal("nada escrito")
 	}
-	// Uno que choca una vez y después va: se aplica.
+	// One that clashes once and then goes through: it is applied.
 	calls.Store(0)
 	w.p.Progress.SetApplyHook(func(persistence.SaveKey, json.RawMessage) error {
 		if calls.Add(1) == 1 {
@@ -352,9 +354,9 @@ func TestSerializationFailureThatRepeats(t *testing.T) {
 	expectSave(t, w.z.Save(w.id, w.body(1)), true, false, 1)
 }
 
-// 100 guardados concurrentes del mismo personaje: ocho a la vez, cada uno con el siguiente seq de
-// un contador común (así se cruzan y llegan desordenados). Los que se aplican son exactamente el
-// save_version final; los demás son stale_seq.
+// 100 concurrent saves of the same character: eight at a time, each with the next seq from a
+// shared counter (so they cross and arrive out of order). Those that are applied are exactly the
+// final save_version; the others are stale_seq.
 func TestConcurrentSaves(t *testing.T) {
 	w := newInWorld(t)
 	bodies := make([][]byte, 100)
@@ -399,9 +401,9 @@ func TestConcurrentSaves(t *testing.T) {
 	t.Logf("aplicados %d de 100", applied.Load())
 }
 
-// Tras replace, la sustituida manda su guardado final y vale (instance_status replaced); hasta
-// entonces, reclamar al personaje en la nueva da character_busy, y después la reclamación trae ese
-// final.
+// After replace, the replaced instance sends its final save and it is valid (instance_status
+// replaced); until then, claiming the character on the new one gives character_busy, and afterwards
+// the claim brings that final one.
 func TestReplacedInstanceFinalSave(t *testing.T) {
 	w := newInWorld(t)
 	expectSave(t, w.z.Save(w.id, w.body(1)), true, false, 1)
@@ -410,7 +412,7 @@ func TestReplacedInstanceFinalSave(t *testing.T) {
 	platformtest.Expect(t, fresh.Live(), 204, "")
 
 	platformtest.Expect(t, w.p.Enter(w.pl, w.id), 409, "character_busy")
-	// Un billete a mano para la nueva (enter no lo da con el personaje dentro).
+	// A hand-made ticket for the new one (enter does not give it with the character inside).
 	var session int64
 	w.p.Scalar(&session, `select session_id from sessions where account_id = $1 and revoked_at is null`, w.pl.ID)
 	w.p.Exec(`insert into enter_tickets (ticket_id, world_id, character_id, session_id, zone_instance_id, issued_at,
@@ -433,7 +435,7 @@ func TestReplacedInstanceFinalSave(t *testing.T) {
 	}
 }
 
-// Sin guardado final, el arrendamiento de la sustituida caduca con el TTL.
+// Without a final save, the replaced instance's lease expires with the TTL.
 func TestReplacedInstanceLeaseExpires(t *testing.T) {
 	w := newInWorld(t)
 	fresh := w.p.NewZone(1, "vado_gris", 0)
@@ -445,7 +447,7 @@ func TestReplacedInstanceLeaseExpires(t *testing.T) {
 	fresh.Join(w.pl, w.id)
 }
 
-// Varios guardados en un lote: todos o ninguno; todos nuevos o todos repetidos.
+// Several saves in a batch: all or none; all new or all repeated.
 func TestSaveMany(t *testing.T) {
 	w := newInWorld(t)
 	b := w.p.NewPlayer("b@example.org")
@@ -471,10 +473,10 @@ func TestSaveMany(t *testing.T) {
 	if res.Body["saves"].([]any)[1].(map[string]any)["duplicate"] != true {
 		t.Fatal(res.Raw)
 	}
-	// Mezcla de nuevo y repetido.
+	// A mix of new and repeated.
 	platformtest.Expect(t, w.z.Do("POST", "/internal/v1/saves", batch(w.body(1), w.z.SaveBody(idB, leaseB, 2))), 409,
 		"seq_conflict")
-	// Uno sin arrendamiento: falla el lote entero, con el personaje.
+	// One without a lease: the whole batch fails, with the character.
 	res = w.z.Do("POST", "/internal/v1/saves", batch(w.body(2), w.z.SaveBody(idB, zones.FormatUUID(zones.NewUUID()), 2)))
 	platformtest.Expect(t, res, 409, "lease_lost")
 	if res.ErrValue("character_id") != strconv.FormatInt(idB, 10) {
@@ -483,12 +485,13 @@ func TestSaveMany(t *testing.T) {
 	if seq, _ := w.leaseState(); seq != 1 {
 		t.Fatal("todo o nada")
 	}
-	// El mismo personaje dos veces y un sobre de otra instancia: envelope.
+	// The same character twice and an envelope from another instance: envelope.
 	platformtest.Expect(t, w.z.Do("POST", "/internal/v1/saves", batch(w.body(2), w.body(3))), 400, "invalid_save")
 	other := w.body(2)
 	other["zone_instance_id"] = zones.FormatUUID(zones.NewUUID())
 	platformtest.Expect(t, w.z.Do("POST", "/internal/v1/saves", batch(other)), 400, "invalid_save")
-	// Un total pvp que no cabe en su columna: envelope (definitivo), no un 500 que tumba el lote.
+	// A pvp total that does not fit in its column: envelope (final), not a 500 that takes down the
+	// batch.
 	big := w.body(2)
 	big["pvp"] = map[string]any{"kills": 3000000000, "deaths": 0, "assists": 0, "captures": 0, "gate_damage": 0, "defend_s": 0}
 	res = w.z.Do("POST", "/internal/v1/saves", batch(big, w.z.SaveBody(idB, leaseB, 2)))
@@ -498,8 +501,8 @@ func TestSaveMany(t *testing.T) {
 	}
 }
 
-// Operación y libro: solo con arrendamiento en la instancia (el del personaje para el libro; el de
-// algún participante para la operación); si no, 404.
+// Operation and ledger: only with a lease on the instance (the character's for the ledger; some
+// participant's for the operation); otherwise, 404.
 func TestOpsAndLedger(t *testing.T) {
 	w := newInWorld(t)
 	b := w.p.NewPlayer("b@example.org")
@@ -528,11 +531,11 @@ func TestOpsAndLedger(t *testing.T) {
 	platformtest.Expect(t, ledger(w.id, "&limit=0"), 400, "validation")
 	platformtest.Expect(t, ledger(w.id, "&limit=101"), 400, "validation")
 	platformtest.Expect(t, ledger(w.id, "&before_entry_id=-1"), 400, "validation")
-	// Otra instancia de otra zona no ve el libro ni la operación.
+	// Another instance of another zone sees neither the ledger nor the operation.
 	other := w.p.NewZone(1, "test_world", 0).Start()
 	platformtest.Expect(t, other.Do("GET", "/internal/v1/ops/77?zone_instance_id="+other.ID, nil), 404, "not_found")
 	platformtest.Expect(t, other.Do("GET", "/internal/v1/characters/"+strconv.FormatInt(w.id, 10)+
 		"/ledger?zone_instance_id="+other.ID, nil), 404, "not_found")
-	// Sin zone_instance_id: 400.
+	// Without zone_instance_id: 400.
 	platformtest.Expect(t, w.z.Do("GET", "/internal/v1/ops/77", nil), 400, "validation")
 }

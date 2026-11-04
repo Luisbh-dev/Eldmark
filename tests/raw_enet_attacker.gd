@@ -1,46 +1,46 @@
 class_name RawEnetAttacker
 extends RefCounted
-## Cliente ENet en bruto para las pruebas de seguridad: habla con el servidor por un
-## [ENetMultiplayerPeer] sin [SceneMultiplayer] ni [NetTransport], así que puede mandar cualquier
-## cosa, antes y después de autenticarse (docs/red.md, secciones 5.7 y 12).
+## Raw ENet client for the security tests: talks to the server through an
+## [ENetMultiplayerPeer] without [SceneMultiplayer] or [NetTransport], so it can send anything,
+## before and after authenticating (docs/red.md, sections 5.7 and 12).
 ## [br][br]
-## Conoce el formato interno de [SceneMultiplayer] que usa [GuardedEnetPeer]: el byte 0 &amp; 7 es el
-## comando (RAW = 3, SYS = 7, RPC = 0, SIMPLIFY_PATH = 1, SPAWN = 4) y, en un SYS, el byte 1 es el
-## subcomando (AUTH = 0). Un mensaje de autenticación es [code][7, 0] + contenido[/code], y la
-## confirmación de que cada lado ha terminado es [code][7, 0][/code] a secas, por el canal 0.
+## It knows the internal [SceneMultiplayer] format used by [GuardedEnetPeer]: byte 0 &amp; 7 is the
+## command (RAW = 3, SYS = 7, RPC = 0, SIMPLIFY_PATH = 1, SPAWN = 4) and, in a SYS, byte 1 is the
+## subcommand (AUTH = 0). An authentication message is [code][7, 0] + content[/code], and the
+## confirmation that each side is done is a bare [code][7, 0][/code], on channel 0.
 
 const COMMAND_RAW: int = 3
 const COMMAND_SYS: int = 7
 const SYS_AUTH: int = 0
 
 var peer: ENetMultiplayerPeer = ENetMultiplayerPeer.new()
-## Contenido (sin la cabecera) de cada mensaje de autenticación recibido: WELCOME o REJECT.
+## Content (without the header) of each authentication message received: WELCOME or REJECT.
 var auth_messages: Array[PackedByteArray] = []
-## true cuando el servidor ha mandado su confirmación de 2 bytes.
+## true once the server has sent its 2-byte confirmation.
 var server_confirmed: bool = false
-## Paquetes de aplicación recibidos (RAW), sin la cabecera de un byte.
+## Application packets received (RAW), without the one-byte header.
 var app_packets: Array[PackedByteArray] = []
-## Todo lo demás que llegó, tal cual.
+## Everything else that arrived, as is.
 var other_packets: Array[PackedByteArray] = []
 
 
-## Empieza a conectar con 127.0.0.1:[param port].
+## Starts connecting to 127.0.0.1:[param port].
 func connect_to(port: int) -> Error:
 	return peer.create_client("127.0.0.1", port, NetProtocol.CUSTOM_CHANNELS)
 
 
-## true si ENet ha completado la conexión.
+## true once ENet has completed the connection.
 func is_connected_to_server() -> bool:
 	return peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
 
-## true si la conexión se ha cortado (o nunca llegó a abrirse).
+## true if the connection was dropped (or never got to open).
 func is_closed() -> bool:
 	return peer.get_connection_status() == MultiplayerPeer.CONNECTION_DISCONNECTED
 
 
-## Procesa lo que haya llegado y lo clasifica. No hace nada si la conexión está cerrada (un peer
-## inactivo registraría un error del motor).
+## Processes whatever has arrived and classifies it. Does nothing if the connection is closed (an
+## idle peer would log an engine error).
 func poll() -> void:
 	if is_closed():
 		return
@@ -57,7 +57,7 @@ func poll() -> void:
 			other_packets.append(bytes)
 
 
-## Manda [param bytes] tal cual por [param channel] (0 es el de sistema).
+## Sends [param bytes] as is over [param channel] (0 is the system one).
 func send(bytes: PackedByteArray, channel: int = 0, reliable: bool = true) -> void:
 	if is_closed():
 		return
@@ -68,32 +68,32 @@ func send(bytes: PackedByteArray, channel: int = 0, reliable: bool = true) -> vo
 	peer.put_packet(bytes)
 
 
-## Mensaje de autenticación (el HELLO).
+## Authentication message (the HELLO).
 func send_auth(payload: PackedByteArray) -> void:
 	var bytes := PackedByteArray([COMMAND_SYS, SYS_AUTH])
 	bytes.append_array(payload)
 	send(bytes, 0, true)
 
 
-## La confirmación de que este lado ha terminado de autenticarse.
+## The confirmation that this side has finished authenticating.
 func send_confirmation() -> void:
 	send(PackedByteArray([COMMAND_SYS, SYS_AUTH]), 0, true)
 
 
-## Paquete de aplicación (RAW) por [param channel].
+## Application packet (RAW) over [param channel].
 func send_app(payload: PackedByteArray, channel: int, reliable: bool = true) -> void:
 	var bytes := PackedByteArray([COMMAND_RAW])
 	bytes.append_array(payload)
 	send(bytes, channel, reliable)
 
 
-## Vuelca a ENet lo encolado (varios paquetes seguidos salen en el mismo datagrama).
+## Flushes the queued data to ENet (several consecutive packets go out in the same datagram).
 func flush() -> void:
 	if not is_closed():
 		peer.host.flush()
 
 
-## Cierra la conexión sin avisar.
+## Closes the connection without notice.
 func close() -> void:
 	if not is_closed():
 		peer.close()

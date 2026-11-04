@@ -1,32 +1,32 @@
 class_name NpcCatalog
 extends RefCounted
-## Catálogo de PNJ (docs/fuerte.md, sección 4.2): lee las [NpcDefinition] de [code]data/npcs/[/code] una sola vez
-## (carga perezosa) y les da un número del 1 al n por orden alfabético del nombre del archivo (el id): el
-## [code]npc_def_id[/code] que viaja en el ENTITY_SPAWN de un PNJ. El cliente lo resuelve con el mismo orden
-## ([code]BossInfo[/code] ordena los nombres de la carpeta), así que añadir un archivo nuevo cambia los
-## números de los que le siguen en el alfabeto: nada puede depender de un número fijo.
+## NPC catalog (docs/fuerte.md, section 4.2): reads the [NpcDefinition] files from [code]data/npcs/[/code] only once
+## (lazy loading) and gives them a number from 1 to n in alphabetical order of the file name (the id): the
+## [code]npc_def_id[/code] that travels in the ENTITY_SPAWN of an NPC. The client resolves it with the same order
+## ([code]BossInfo[/code] sorts the folder's names), so adding a new file changes the
+## numbers of those that follow it alphabetically: nothing may depend on a fixed number.
 ## [br][br]
-## El 0 es «sin definición». Un archivo cuyo [member NpcDefinition.id] no es su nombre, un arma que no existe
-## en el catálogo de combate o una sustitución de guarnición desconocida son errores
-## ([method get_errors]), que el catálogo anota una vez en el registro.
+## 0 means "no definition". A file whose [member NpcDefinition.id] is not its name, a weapon that does not exist
+## in the combat catalog or an unknown garrison substitution are errors
+## ([method get_errors]), which the catalog logs once.
 
-## Carpeta de las definiciones.
+## Folder of the definitions.
 const DATA_DIR: String = "res://data/npcs"
 
-# Definiciones cargadas por orden (el índice 0 es la número 1), id -> número y errores; vacío hasta el primer uso.
+# Definitions loaded in order (index 0 is number 1), id -> number and errors; empty until first use.
 static var _loaded: bool = false
 static var _definitions: Array[NpcDefinition] = []
 static var _numbers: Dictionary[StringName, int] = {}
 static var _errors: PackedStringArray = PackedStringArray()
 
 
-## Cuántas definiciones hay.
+## How many definitions there are.
 static func count() -> int:
 	_ensure_loaded()
 	return _definitions.size()
 
 
-## Ids de las definiciones en el orden del catálogo: el primero es el número 1.
+## Ids of the definitions in catalog order: the first is number 1.
 static func ids() -> Array[StringName]:
 	_ensure_loaded()
 	var result: Array[StringName] = []
@@ -35,32 +35,32 @@ static func ids() -> Array[StringName]:
 	return result
 
 
-## La definición [param id] (el nombre del archivo sin extensión), o null si no existe.
+## Definition [param id] (the file name without extension), or null if it does not exist.
 static func get_definition(id: StringName) -> NpcDefinition:
 	_ensure_loaded()
 	var number: int = _numbers.get(id, 0)
 	return _definitions[number - 1] if number > 0 else null
 
 
-## La definición número [param number] (1..n), o null.
+## Definition number [param number] (1..n), or null.
 static func get_by_number(number: int) -> NpcDefinition:
 	_ensure_loaded()
 	return _definitions[number - 1] if number >= 1 and number <= _definitions.size() else null
 
 
-## Número (1..n) de la definición [param id]; 0 si no existe.
+## Number (1..n) of definition [param id]; 0 if it does not exist.
 static func number_of(id: StringName) -> int:
 	_ensure_loaded()
 	return _numbers.get(id, 0)
 
 
-## Errores encontrados al cargar la carpeta (vacío si todo está bien).
+## Errors found while loading the folder (empty if all is well).
 static func get_errors() -> PackedStringArray:
 	_ensure_loaded()
 	return _errors
 
 
-## Descarta lo cargado; la siguiente consulta lee la carpeta de nuevo.
+## Discards what was loaded; the next query reads the folder again.
 static func reload() -> void:
 	_loaded = false
 	_definitions = []
@@ -68,8 +68,8 @@ static func reload() -> void:
 	_errors = PackedStringArray()
 
 
-## Nombres de archivo ([param file_names] de una carpeta) sin extensión, ordenados: el orden del catálogo.
-## Es el mismo cálculo que hace [code]BossInfo[/code] en el cliente.
+## File names ([param file_names] of a folder) without extension, sorted: the catalog order.
+## It is the same computation that [code]BossInfo[/code] does on the client.
 static func ids_in_order(file_names: PackedStringArray) -> PackedStringArray:
 	var result := PackedStringArray()
 	for file_name: String in file_names:
@@ -94,7 +94,7 @@ static func _ensure_loaded() -> void:
 		var definition: NpcDefinition = ResourceLoader.load(path) as NpcDefinition
 		if definition == null:
 			_errors.append("%s no es una NpcDefinition" % path)
-			# Se deja un hueco con una definición vacía para que los números sigan al orden alfabético.
+			# A gap is left with an empty definition so that the numbers follow alphabetical order.
 			definition = NpcDefinition.new()
 			definition.id = StringName(file_id)
 		elif String(definition.id) != file_id:

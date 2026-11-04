@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// La purga horaria deja como lápida al personaje cuyo plazo de restaurar venció (§11.2): sin
-// nombre, con purged_at y su fila en purge_log, sin progreso, estadísticas ni billetes; el nombre
-// sigue reservado lo que le tocaba.
+// The hourly purge leaves as a tombstone the character whose restore window expired (§11.2):
+// without a name, with purged_at and its purge_log row, without progression, stats or tickets; the
+// name stays reserved for as long as it should.
 func TestPurgeExpiredLeavesATombstone(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -23,14 +23,14 @@ func TestPurgeExpiredLeavesATombstone(t *testing.T) {
 	purger := h.svc.Purger()
 	ctx := context.Background()
 
-	// En plazo, no se purga.
+	// Within the window, it is not purged.
 	if err := purger.PurgeExpired(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if h.count(`select count(*) from characters where purged_at is not null`) != 0 {
 		t.Fatal("purgado en plazo")
 	}
-	// Vencido, pero con un arrendamiento vivo (el borrado no lo deja, pero la purga lo mira).
+	// Expired, but with a live lease (deletion does not allow it, but the purge checks it).
 	h.clock.Advance(7*day + time.Second)
 	h.lease(id, zone, h.clock.Now().Add(20*time.Second))
 	if err := purger.PurgeExpired(ctx); err != nil {
@@ -62,12 +62,12 @@ func TestPurgeExpiredLeavesATombstone(t *testing.T) {
 	if h.progress.Has(id) || !h.progress.Has(keep) {
 		t.Fatal("ProgressStore.Purge de quien no toca")
 	}
-	// El nombre sigue reservado (hasta restore_until + 30 días), ya sin personaje.
+	// The name stays reserved (until restore_until + 30 days), now without a character.
 	if h.count(`select count(*) from character_names where name_key = 'brenna' and status = 'reserved'
 		and character_id is null and reserved_until > $1`, h.clock.Now()) != 1 {
 		t.Fatal("el nombre no sigue reservado")
 	}
-	// Ni sale en la lista ni se restaura; el otro sigue entero.
+	// It neither appears in the list nor can be restored; the other one stays intact.
 	h.login(p)
 	l := h.list(p)
 	if l.body["used"] != 1.0 {
@@ -77,7 +77,7 @@ func TestPurgeExpiredLeavesATombstone(t *testing.T) {
 	if h.count(`select count(*) from characters where character_id = $1 and name = 'Aneira' and purged_at is null`, keep) != 1 {
 		t.Error("el otro personaje no debería cambiar")
 	}
-	// Otra vuelta no hace nada más.
+	// Another round does nothing more.
 	if err := purger.PurgeExpired(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestPurgeExpiredLeavesATombstone(t *testing.T) {
 	}
 }
 
-// Una restauración justo antes de la purga gana: la purga vuelve a mirar con la fila bloqueada.
+// A restoration right before the purge wins: the purge checks again with the row locked.
 func TestRestoredCharacterIsNotPurged(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -103,8 +103,8 @@ func TestRestoredCharacterIsNotPurged(t *testing.T) {
 	}
 }
 
-// La purga de una cuenta (P1) deja como lápida a todos sus personajes, también a los vivos, cuyos
-// nombres quedan reservados 30 días; con un personaje en el mundo no purga nada.
+// An account's purge (P1) leaves all its characters as tombstones, the living ones too, whose names
+// stay reserved 30 days; with a character in the world it purges nothing.
 func TestAccountPurgeWithCharacters(t *testing.T) {
 	h := newHarness(t)
 	p := h.newPlayer("ana@example.org")
@@ -145,7 +145,7 @@ func TestAccountPurgeWithCharacters(t *testing.T) {
 	if !reserved.Equal(at.Add(30 * day)) {
 		t.Errorf("el nombre del vivo, reservado hasta %v", reserved)
 	}
-	// El del borrado conserva su reserva (restore_until + 30 días).
+	// The deleted one keeps its reservation (restore_until + 30 days).
 	h.scalar(&reserved, `select reserved_until from character_names where name_key = 'brenna'`)
 	if !reserved.After(at.Add(15 * day)) {
 		t.Errorf("el nombre del borrado, reservado hasta %v", reserved)

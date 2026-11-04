@@ -1,53 +1,53 @@
 extends TestCase
-## El combate de punta a punta con ENet real sobre 127.0.0.1, en un solo proceso (docs/combate.md,
-## secciones 4 a 6; CMB-10): un [ZoneServer] y varios [NetClient] bots, cada uno en su
-## [SubViewport] con su propio mundo de física y su propio [NetTransport].
+## Combat end to end with real ENet over 127.0.0.1, in a single process (docs/combate.md,
+## sections 4 to 6; CMB-10): a [ZoneServer] and several bot [NetClient]s, each in its own
+## [SubViewport] with its own physics world and its own [NetTransport].
 ## [br][br]
-## Un bot ataca a otro: el atacante, la víctima y un tercero reciben el mismo HIT y el bloque extra
-## de los snapshots de la víctima lleva su vida bajada. Con rebobinado de verdad: las entradas del
-## cliente real llevan su [code]view_offset_q[/code] y el servidor las acepta dentro del tope. El
-## tercer escenario golpea a un maniquí: todos ven bajar su vida en el registro del snapshot.
+## One bot attacks another: the attacker, the victim and a third party receive the same HIT and the extra block
+## of the victim's snapshots carries its lowered health. With real rewind: the real
+## client's inputs carry its [code]view_offset_q[/code] and the server accepts them within the cap. The
+## third scenario hits a dummy: everyone sees its health drop in the snapshot ledger.
 ## [br][br]
-## Los bots no leen los ENTITY_EVENT (eso es del cliente de combate): la prueba escucha los paquetes
-## del transporte de cada uno.
+## The bots do not read the ENTITY_EVENTs (that belongs to the combat client): the test listens to the transport
+## packets of each one.
 ## [br][br]
-## [b]Rebobinado con red mala[/b] (CMB-09, TEC-14; docs/combate.md, secciones 4.3 y 4.5): el servidor
-## lleva un [NetSim] de 150 ms de RTT y 30 ms de jitter (el del cliente no cuenta para el tope: red.md,
-## sección 10) y dos atacantes golpean a un objetivo que corre en lateral. [SwingRecorder] guarda, en cada
-## entrada que genera el atacante, dónde dibuja al objetivo (su [code]render_tick[/code]) y, con su estado
-## predicho, calcula qué golpes [i]veía[/i] dentro del arco; el servidor debe confirmar al menos el 95 %.
-## Con un [code]view_offset_q[/code] de 40 ticks contra un objetivo quieto, ningún golpe entra (tope de 24 más la
-## holgura de 8 que se recorta sin rechazar).
+## [b]Rewind with a bad network[/b] (CMB-09, TEC-14; docs/combate.md, sections 4.3 and 4.5): the server
+## carries a [NetSim] of 150 ms RTT and 30 ms jitter (the client's does not count towards the cap: red.md,
+## section 10) and two attackers hit a target running sideways. [SwingRecorder] stores, in each
+## input the attacker generates, where it draws the target (its [code]render_tick[/code]) and, with its predicted
+## state, computes which hits it [i]saw[/i] inside the arc; the server must confirm at least 95 %.
+## With a [code]view_offset_q[/code] of 40 ticks against a still target, no hit goes through (cap of 24 plus the
+## slack of 8 that is clamped without rejecting).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ZONE_ID: String = "test_world"
 const WAIT_FRAMES: int = 600
-## Simulador de red del servidor en las pruebas de rebobinado: 150 ms de RTT y 30 ms de jitter por sentido
-## (el criterio de TEC-14), retardo en los dos sentidos. Con 200 ms ya no se llega al 95 %: el tope de
-## 24 ticks no cubre el margen de [TickSync] y la interpolación (docs/red.md, sección 10).
+## Server network simulator in the rewind tests: 150 ms RTT and 30 ms jitter per direction
+## (the TEC-14 criterion), delay in both directions. With 200 ms 95 % is no longer reached: the cap of
+## 24 ticks does not cover the margin of [TickSync] and interpolation (docs/red.md, section 10).
 const REWIND_NET_SIM: String = "rtt=150,jitter=30,seed=5"
-## Distancia (m) a la que está el objetivo de cada atacante y semianchura (m) de su carrera en lateral.
+## Distance (m) at which each attacker's target is and half-width (m) of its sideways run.
 const REWIND_DISTANCE: float = 2.7
 const REWIND_RUN_HALF_WIDTH: float = 3.6
-## Ticks entre dos pulsaciones del atacante (el ligero dura 36) y cuánto se adelanta (ticks) al objetivo
-## al apuntar (el golpe activo llega ~15 ticks después de pulsar).
+## Ticks between two attacker presses (the light attack lasts 36) and how far ahead (ticks) of the target it
+## aims (the active hit lands ~15 ticks after pressing).
 const REWIND_CYCLE_TICKS: int = 48
 const REWIND_LEAD_TICKS: float = 15.0
-## Ticks desde la pulsación a partir de los que el atacante retrocede (recuperación del ligero) y desde
-## los que vuelve a su sitio con las piernas libres; distancia máxima (m) al objetivo con la que pulsa y
-## probabilidad por tick de pulsar cuando lo tiene a su alcance y ya pasó el ciclo.
+## Ticks since the press from which the attacker backs off (light attack recovery) and since
+## which it returns to its place with free legs; maximum distance (m) to the target at which it presses and
+## probability per tick of pressing when it has it within reach and the cycle has already passed.
 const REWIND_RECOVERY_FROM: int = 20
 const REWIND_FREE_FROM: int = 36
 const REWIND_PRESS_DISTANCE: float = 3.0
 const REWIND_PRESS_CHANCE: float = 0.07
-## Ticks de medida de la prueba del 95 % y mínimo de golpes vistos para que la cifra signifique algo.
+## Measurement ticks of the 95 % test and minimum hits seen for the figure to mean anything.
 const REWIND_MEASURED_TICKS: int = 900
 const REWIND_MIN_SEEN_SWINGS: int = 16
-## Fracción de los golpes vistos que el servidor debe confirmar.
+## Fraction of the seen hits that the server must confirm.
 const REWIND_MIN_CONFIRMED: float = 0.95
-## Ticks de rebobinado que falsea el atacante de la prueba del tope: más que el tope de 24 y su holgura
-## ([constant CombatResolver.REWIND_REJECT_SLACK_TICKS]), que se recorta sin rechazar (revisión de la fase 4: eran 30).
+## Rewind ticks that the attacker of the cap test fakes: more than the cap of 24 and its slack
+## ([constant CombatResolver.REWIND_REJECT_SLACK_TICKS]), which is clamped without rejecting (phase 4 revision: it was 30).
 const CHEAT_VIEW_TICKS: int = 40
 
 var _root: Node
@@ -59,7 +59,7 @@ var _client_viewports: Array[SubViewport] = []
 var _listeners: Array[Listener] = []
 
 
-## Escucha los paquetes que llegan a un cliente y guarda los eventos y el último snapshot.
+## Listens to the packets that reach a client and stores the events and the last snapshot.
 class Listener:
 	extends RefCounted
 
@@ -91,22 +91,22 @@ class Listener:
 		return snapshots[snapshots.size() - 1] if not snapshots.is_empty() else null
 
 
-## Lo que ve un atacante mientras juega y qué golpes veía dentro del arco (ver la documentación del
-## archivo). Cada entrada que genera guarda dónde dibuja al objetivo en ese momento; [method evaluate]
-## (una vez por fotograma de física) la cruza con el estado que predijo para ese tick: si el golpe estaba
-## activo y el objetivo dibujado cae en el sector, el atacante [i]veía[/i] ese golpe acertar. Además anota
-## si el objetivo habría estado dentro con su posición [b]del servidor en ese mismo tick[/b] (lo que
-## probaría un servidor sin rebobinado).
+## What an attacker sees while playing and which hits it saw inside the arc (see the file
+## documentation). Each input it generates stores where it draws the target at that moment; [method evaluate]
+## (once per physics frame) crosses it with the state it predicted for that tick: if the hit was
+## active and the drawn target falls in the sector, the attacker [i]saw[/i] that hit land. It also notes
+## whether the target would have been inside with its [b]server position at that same tick[/b] (which
+## would prove a server without rewind).
 class SwingRecorder:
 	extends RefCounted
 
 	var client: NetClient
 	var server: ZoneServer
 	var target_id: int = 0
-	## Tick de la entrada -> posición con la que dibujaba al objetivo al generarla.
+	## Input tick -> position with which it drew the target when generating it.
 	var views: Dictionary[int, Vector3] = {}
-	## action_tick del golpe -> {"seen": lo veía dentro del arco, "now": el objetivo estaba dentro en el
-	## servidor sin rebobinar}.
+	## action_tick of the hit -> {"seen": saw it inside the arc, "now": the target was inside on the
+	## server without rewinding}.
 	var swings: Dictionary[int, Dictionary] = {}
 
 	func _init(p_client: NetClient, p_server: ZoneServer, p_target_id: int) -> void:
@@ -123,8 +123,8 @@ class SwingRecorder:
 			return
 		views[input.tick] = view.get_drawn_position()
 
-	## Cruza las entradas generadas con el estado predicho (solo los ticks que el servidor ya ha simulado,
-	## para poder mirar su historial).
+	## Crosses the generated inputs with the predicted state (only the ticks the server has already simulated,
+	## so its history can be consulted).
 	func evaluate() -> void:
 		var prediction: ClientPrediction = client.get_prediction()
 		var limit: int = mini(prediction.get_predicted_tick(), server.get_tick())
@@ -153,7 +153,7 @@ class SwingRecorder:
 		return HitShapes.sector_hits_capsule(state.position, state.yaw, attack.shape, feet,
 				HitShapes.CAPSULE_RADIUS, HitShapes.CAPSULE_HEIGHT)
 
-	## Golpes que veía acertar.
+	## Hits it saw land.
 	func seen_swings() -> Array[int]:
 		var found: Array[int] = []
 		for action_tick: int in swings:
@@ -161,7 +161,7 @@ class SwingRecorder:
 				found.append(action_tick)
 		return found
 
-	## De los que veía acertar, cuántos también habrían acertado sin rebobinar.
+	## Of those it saw land, how many would also have landed without rewinding.
 	func seen_and_current() -> int:
 		var count: int = 0
 		for action_tick: int in swings:
@@ -194,7 +194,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _start_server(configure: Callable = Callable()) -> void:
 	_port = NetHarness.free_udp_port()
@@ -233,7 +233,7 @@ func _all_in_world() -> bool:
 	return true
 
 
-## Cambia lo que hace el bot: [param script] es [code](tick, position, yaw) -> PlayerInput[/code].
+## Changes what the bot does: [param script] is [code](tick, position, yaw) -> PlayerInput[/code].
 func _set_script(client: NetClient, script: Callable) -> void:
 	var brain := CombatFixture.ScriptBrain.new(1)
 	brain.script_fn = script
@@ -247,19 +247,19 @@ func _idle(tick: int, _position: Vector3, yaw: float) -> PlayerInput:
 	return input
 
 
-# --- Pruebas ----------------------------------------------------------------------------------
+# --- Tests ------------------------------------------------------------------------------------
 
 func test_a_bot_hits_another_and_attacker_victim_and_a_third_get_the_same_event() -> void:
 	await _start_server()
 	var attacker: NetClient = _add_bot(VARDHEIM, 1)
 	var victim: NetClient = _add_bot(SOLMARCH, 2)
 	var third: NetClient = _add_bot(VARDHEIM, 3)
-	if not assert_true(await _wait_until(_all_in_world), "los tres bots entran en el mundo"):
+	if not assert_true(await _wait_until(_all_in_world), "the three bots enter the world"):
 		return
 	await wait_physics_frames(30)
 	var attacker_id: int = attacker.get_net_id()
 	var victim_id: int = victim.get_net_id()
-	# Primero se les quita el paseo (que no se muevan), después se les coloca.
+	# First their walk is removed (so they do not move), then they are placed.
 	var press: int = _server.get_tick() + 150
 	_set_script(attacker, func(tick: int, _position: Vector3, _yaw: float) -> PlayerInput:
 		var input := PlayerInput.new()
@@ -282,45 +282,45 @@ func test_a_bot_hits_another_and_attacker_victim_and_a_third_get_the_same_event(
 	var delivered: bool = await _wait_until(func() -> bool:
 		return not _listeners[0].hits().is_empty() and not _listeners[1].hits().is_empty() \
 				and not _listeners[2].hits().is_empty())
-	if not assert_true(delivered, "los tres reciben el HIT"):
+	if not assert_true(delivered, "all three receive the HIT"):
 		return
 	var first: NetMessages.EntityEvent = _listeners[0].hits()[0]
 	for index: int in [1, 2]:
 		assert_eq(_listeners[index].hits()[0].encode(), first.encode(),
-				"el cliente %d recibe el mismo HIT, byte a byte" % index)
-	assert_eq(first.attacker, attacker_id, "del atacante")
-	assert_eq(first.net_id, victim_id, "a la víctima")
-	assert_eq(first.amount, 90, "un ligero de frente")
+				"client %d receives the same HIT, byte for byte" % index)
+	assert_eq(first.attacker, attacker_id, "from the attacker")
+	assert_eq(first.net_id, victim_id, "to the victim")
+	assert_eq(first.amount, 90, "a frontal light attack")
 	assert_eq(first.attack_id, CombatCatalog.attack_id(&"sword_light_1"))
 	assert_eq(first.hit_flags, 0)
-	assert_eq(_listeners[0].hits().size(), 1, "y un solo golpe por ataque")
-	# El rebobinado de un cliente real no se rechaza: las entradas llevan su vista y entran en el tope.
-	assert_eq(_server.get_combat().stats[&"rewind_rejected"], 0, "ningún rebobinado excesivo")
+	assert_eq(_listeners[0].hits().size(), 1, "and a single hit per attack")
+	# A real client's rewind is not rejected: the inputs carry their view and fall within the cap.
+	assert_eq(_server.get_combat().stats[&"rewind_rejected"], 0, "no excessive rewind")
 	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
-	assert_eq(peer.suspicion_score, 0, "y ninguna sospecha")
-	# La vida de la víctima baja en su bloque extra y en el registro que ven los demás.
+	assert_eq(peer.suspicion_score, 0, "and no suspicion")
+	# The victim's health drops in its extra block and in the ledger that the others see.
 	await wait_physics_frames(12)
 	var own: NetMessages.Snapshot = _listeners[1].last_snapshot()
-	assert_not_null(own.own_state, "el snapshot lleva el estado propio")
-	assert_eq(own.health, 910, "el bloque extra de la víctima lleva su vida")
+	assert_not_null(own.own_state, "the snapshot carries its own state")
+	assert_eq(own.health, 910, "the victim's extra block carries its health")
 	assert_eq(own.max_health, 1000)
 	assert_true(own.is_in_combat())
 	var seen: EntityRecord = null
 	for record: EntityRecord in _listeners[2].last_snapshot().records:
 		if record.net_id == victim_id:
 			seen = record
-	if assert_not_null(seen, "el tercero ve a la víctima"):
-		assert_eq(seen.health_q, EntityRecord.quantize_health(910, 1000), "con su vida en el registro")
-	assert_eq(_listeners[0].last_snapshot().health, 1000, "el atacante no pierde vida")
-	# El envío de los eventos tiene su sección de medida y sus bytes en el informe (pruebas de carga).
+	if assert_not_null(seen, "the third party sees the victim"):
+		assert_eq(seen.health_q, EntityRecord.quantize_health(910, 1000), "with its health in the ledger")
+	assert_eq(_listeners[0].last_snapshot().health, 1000, "the attacker loses no health")
+	# The sending of events has its measurement section and its bytes in the report (load tests).
 	var sections: Dictionary = _server.get_metrics().summary()["sections"]
-	assert_true(sections.has("combat_events"), "la sección del envío de eventos (%s)" % [sections.keys()])
+	assert_true(sections.has("combat_events"), "the event-sending section (%s)" % [sections.keys()])
 	assert_true(sections.has("combat_resolve"))
 	var report_path: String = NetHarness.build_path("test_combat_loopback_report.json")
 	assert_eq(_server.write_report(report_path), OK)
 	var combat_report: Dictionary = NetHarness.read_report(report_path).get("combat", {})
 	assert_true(int(combat_report.get("event_bytes_sent", 0)) >= 3 * first.encode().size(),
-			"tres paquetes de ese evento al menos")
+			"at least three packets of that event")
 
 
 func test_both_players_hit_the_dummy_and_every_snapshot_shows_its_health_drop() -> void:
@@ -331,7 +331,7 @@ func test_both_players_hit_the_dummy_and_every_snapshot_shows_its_health_drop() 
 		return
 	await wait_physics_frames(30)
 	var dummy: int = _server.spawn_dummy(Vector3(0.0, 0.0, -1.5), PI)
-	assert_true(dummy > 0, "el servidor coloca el maniquí")
+	assert_true(dummy > 0, "the server places the dummy")
 	var press: int = _server.get_tick() + 150
 	for client: NetClient in [first, second]:
 		_set_script(client, func(tick: int, _position: Vector3, _yaw: float) -> PlayerInput:
@@ -346,26 +346,26 @@ func test_both_players_hit_the_dummy_and_every_snapshot_shows_its_health_drop() 
 	_server.teleport(second.get_net_id(), Vector3(0.6, 0.05, 0.0))
 	var done: bool = await _wait_until(func() -> bool:
 		return _listeners[0].hits().size() >= 2 and _listeners[1].hits().size() >= 2)
-	if not assert_true(done, "los dos golpean al maniquí y los dos ven los dos golpes"):
+	if not assert_true(done, "both hit the dummy and both see both hits"):
 		return
 	for listener: Listener in _listeners:
 		for event: NetMessages.EntityEvent in listener.hits():
-			assert_eq(event.net_id, dummy, "todos los golpes son al maniquí")
+			assert_eq(event.net_id, dummy, "all hits are on the dummy")
 	await wait_physics_frames(12)
 	var combatant: Combatant = _server.get_combat().get_combatant(dummy)
-	assert_eq(combatant.health, 1000 - 180, "dos ligeros de 90")
+	assert_eq(combatant.health, 1000 - 180, "two light attacks of 90")
 	for listener: Listener in _listeners:
 		var record: EntityRecord = null
 		for candidate: EntityRecord in listener.last_snapshot().records:
 			if candidate.net_id == dummy:
 				record = candidate
-		if assert_not_null(record, "cada cliente recibe el registro del maniquí") and record != null:
+		if assert_not_null(record, "each client receives the dummy's ledger") and record != null:
 			assert_eq(record.kind, NetProtocol.EntityKind.NPC)
-			assert_eq(record.health_q, EntityRecord.quantize_health(820, 1000), "con su vida")
+			assert_eq(record.health_q, EntityRecord.quantize_health(820, 1000), "with its health")
 	assert_eq(_server.get_combat().stats[&"rewind_rejected"], 0)
 
 
-## Peer del servidor del jugador con ese net_id (null si no existe).
+## Server peer of the player with that net_id (null if it does not exist).
 func _peer_of(net_id: int) -> ServerPeer:
 	for peer_id: int in _server.get_peer_ids():
 		var peer: ServerPeer = _server.get_peer(peer_id)
@@ -374,13 +374,13 @@ func _peer_of(net_id: int) -> ServerPeer:
 	return null
 
 
-## Guion del atacante: mira al objetivo que dibuja (adelantándose [param lead_ticks] a donde estará cuando
-## el golpe llegue), pulsa PRIMARY (dos ticks) si lo tiene a su alcance y no ha pulsado hace un ciclo,
-## retrocede durante la recuperación del ligero (lo que avanzó al lanzarlo) y entre golpes vuelve a su
-## sitio. Pulsa con una probabilidad por tick ([constant REWIND_PRESS_CHANCE], con el generador
-## [code]rng[/code] de [param state]) para que no caiga siempre en la misma fase de la carrera del
-## objetivo. [param state] guarda lo que recuerda entre ticks ([code]last_press[/code]) y deja que la
-## prueba lo desarme ([code]armed[/code]).
+## Attacker script: looks at the target it draws (leading by [param lead_ticks] to where it will be when
+## the hit lands), presses PRIMARY (two ticks) if it has it within reach and has not pressed within a cycle,
+## backs off during the light attack's recovery (what it advanced when throwing it) and between hits returns to its
+## place. It presses with a probability per tick ([constant REWIND_PRESS_CHANCE], with the generator
+## [code]rng[/code] of [param state]) so it does not always land in the same phase of the target's
+## run. [param state] stores what it remembers between ticks ([code]last_press[/code]) and lets the
+## test disarm it ([code]armed[/code]).
 func _attacker_script(client: NetClient, target_id: int, home: Vector3, lead_ticks: float,
 		state: Dictionary) -> Callable:
 	return func(tick: int, position: Vector3, _yaw: float) -> PlayerInput:
@@ -413,8 +413,8 @@ func _attacker_script(client: NetClient, target_id: int, home: Vector3, lead_tic
 		return input
 
 
-## Guion del objetivo: corre a lo ancho de [constant REWIND_RUN_HALF_WIDTH] m a cada lado, de ida y vuelta
-## ([param state] guarda el sentido en [code]dir[/code]).
+## Target script: runs across [constant REWIND_RUN_HALF_WIDTH] m on each side, back and forth
+## ([param state] stores the direction in [code]dir[/code]).
 func _runner_script(state: Dictionary) -> Callable:
 	return func(tick: int, position: Vector3, _yaw: float) -> PlayerInput:
 		var input := PlayerInput.new()
@@ -429,8 +429,8 @@ func _runner_script(state: Dictionary) -> Callable:
 		return input
 
 
-## Golpes de [param recorder] que el servidor confirmó con un HIT al objetivo: los que el atacante
-## [param listener] vio llegar con un tick dentro de la duración del golpe.
+## Hits from [param recorder] that the server confirmed with a HIT on the target: the ones the attacker
+## [param listener] saw arrive with a tick within the hit's duration.
 func _confirmed(recorder: SwingRecorder, listener: Listener, attacker_id: int) -> int:
 	var confirmed: int = 0
 	for action_tick: int in recorder.seen_swings():
@@ -445,7 +445,7 @@ func _confirmed(recorder: SwingRecorder, listener: Listener, attacker_id: int) -
 	return confirmed
 
 
-## Registro de combate del servidor (líneas ya partidas en columnas), tras cerrarlo para que se vuelque.
+## Server combat log (lines already split into columns), after closing it so it is flushed.
 func _read_combat_log(path: String) -> Array[PackedStringArray]:
 	_server.stop()
 	var rows: Array[PackedStringArray] = []
@@ -455,7 +455,7 @@ func _read_combat_log(path: String) -> Array[PackedStringArray]:
 	return rows
 
 
-# --- Rebobinado con 150 ms de RTT ----------------------------------------------------------------
+# --- Rewind with 150 ms RTT -------------------------------------------------------------------
 
 func test_the_server_confirms_at_least_95_percent_of_the_hits_attackers_saw_on_a_lateral_target() -> void:
 	var log_path: String = NetHarness.build_path("test_combat_loopback_rewind.csv")
@@ -465,13 +465,13 @@ func test_the_server_confirms_at_least_95_percent_of_the_hits_attackers_saw_on_a
 	var first: NetClient = _add_bot(VARDHEIM, 1)
 	var second: NetClient = _add_bot(VARDHEIM, 2)
 	var runner: NetClient = _add_bot(SOLMARCH, 3)
-	if not assert_true(await _wait_until(_all_in_world, 900), "entran los tres bots"):
+	if not assert_true(await _wait_until(_all_in_world, 900), "the three bots enter"):
 		return
 	await wait_physics_frames(30)
 	var target_id: int = runner.get_net_id()
 	_server.get_combat().get_combatant(target_id).immortal = true
-	# El objetivo corre por z = -REWIND_DISTANCE; un atacante lo mira desde z = 0 y el otro desde el lado
-	# opuesto de su carrera.
+	# The target runs along z = -REWIND_DISTANCE; one attacker looks at it from z = 0 and the other from the
+	# opposite side of its run.
 	var homes: Array[Vector3] = [Vector3(0.0, 0.05, 0.0),
 			Vector3(0.0, 0.05, -2.0 * REWIND_DISTANCE)]
 	var attackers: Array[NetClient] = [first, second]
@@ -496,8 +496,8 @@ func test_the_server_confirms_at_least_95_percent_of_the_hits_attackers_saw_on_a
 		await tree.physics_frame
 		for recorder: SwingRecorder in recorders:
 			recorder.evaluate()
-	# Dejan de pulsar y se espera a que lleguen los HIT de los golpes que quedaban en el aire (lo que
-	# dura un ligero más el retardo de la red).
+	# They stop pressing and it waits for the HITs of the hits still in the air to arrive (the time
+	# a light attack lasts plus the network delay).
 	for state: Dictionary in script_states:
 		state["armed"] = false
 	for _frame: int in 80:
@@ -515,17 +515,17 @@ func test_the_server_confirms_at_least_95_percent_of_the_hits_attackers_saw_on_a
 	print("[rebobinado] vistos %d, confirmados %d, habrían acertado sin rebobinar %d" % [
 			seen, confirmed, current])
 	assert_true(seen >= REWIND_MIN_SEEN_SWINGS,
-			"los atacantes ven acertar suficientes golpes para que la cifra signifique algo (%d)" % seen)
+			"the attackers see enough hits land for the figure to mean something (%d)" % seen)
 	assert_true(float(confirmed) >= REWIND_MIN_CONFIRMED * float(seen),
-			"el servidor confirma al menos el 95 %% de los golpes vistos: %d de %d" % [confirmed, seen])
-	# Sin rebobinar, una parte de ellos habría fallado: la prueba discrimina.
+			"the server confirms at least 95 %% of the seen hits: %d of %d" % [confirmed, seen])
+	# Without rewind, some of them would have missed: the test discriminates.
 	assert_true(float(current) <= 0.9 * float(seen),
-			"sin rebobinado fallarían golpes que el atacante veía acertar (%d de %d acertarían)"
+			"without rewind, hits the attacker saw land would fail (%d of %d would land)"
 			% [current, seen])
-	assert_eq(_server.get_combat().stats[&"rewind_rejected"], 0, "ningún rebobinado pasa del tope")
+	assert_eq(_server.get_combat().stats[&"rewind_rejected"], 0, "no rewind exceeds the cap")
 	for client: NetClient in attackers:
-		assert_eq(_peer_of(client.get_net_id()).suspicion_score, 0, "y ninguna sospecha")
-		assert_eq(client.get_stats()["unexplained_diffs"], 0, "el atacante predice sin fallos")
+		assert_eq(_peer_of(client.get_net_id()).suspicion_score, 0, "and no suspicion")
+		assert_eq(client.get_stats()["unexplained_diffs"], 0, "the attacker predicts without failures")
 	var rows: Array[PackedStringArray] = _read_combat_log(log_path)
 	var rewound: int = 0
 	var rewind_total: float = 0.0
@@ -533,11 +533,11 @@ func test_the_server_confirms_at_least_95_percent_of_the_hits_attackers_saw_on_a
 		if row[6] == "hit":
 			rewound += 1
 			rewind_total += row[5].to_float()
-	assert_true(rewound >= confirmed, "el registro de combate anota los golpes (%d)" % rewound)
+	assert_true(rewound >= confirmed, "the combat log records the hits (%d)" % rewound)
 	var mean_rewind: float = rewind_total / float(maxi(rewound, 1))
 	print("[rebobinado] rebobinado medio %.1f ticks en %d golpes" % [mean_rewind, rewound])
 	assert_true(mean_rewind > 8.0 and mean_rewind <= float(NetProtocol.MAX_REWIND_TICKS),
-			"se rebobina de verdad: %.1f ticks de media (tope %d)" % [mean_rewind,
+			"it truly rewinds: %.1f ticks on average (cap %d)" % [mean_rewind,
 			NetProtocol.MAX_REWIND_TICKS])
 
 
@@ -545,7 +545,7 @@ func test_a_view_offset_of_40_ticks_against_a_still_target_is_rejected_by_the_ca
 	await _start_server(func(config: ServerConfig) -> void: config.net_sim_spec = REWIND_NET_SIM)
 	var attacker: NetClient = _add_bot(VARDHEIM, 1)
 	var target: NetClient = _add_bot(SOLMARCH, 2)
-	if not assert_true(await _wait_until(_all_in_world, 900), "entran los dos bots"):
+	if not assert_true(await _wait_until(_all_in_world, 900), "the two bots enter"):
 		return
 	await wait_physics_frames(30)
 	var home := Vector3(0.0, 0.05, 0.0)
@@ -566,11 +566,11 @@ func test_a_view_offset_of_40_ticks_against_a_still_target_is_rejected_by_the_ca
 	await wait_physics_frames(60)
 	var peer: ServerPeer = _peer_of(attacker.get_net_id())
 
-	# Primero, sin trampa: tres golpes entran.
+	# First, without cheating: three hits go through.
 	assert_true(await _wait_until(func() -> bool: return _listeners[0].hits().size() >= 3, 600),
-			"con la vista de verdad, los golpes entran")
+			"with the true view, the hits go through")
 	assert_eq(peer.suspicion_score, 0)
-	# Ahora el atacante falsea su vista: 40 ticks atrás en todas sus entradas, más que el tope y su holgura.
+	# Now the attacker fakes its view: 40 ticks back on all its inputs, more than the cap and its slack.
 	script_state["armed"] = false
 	await wait_physics_frames(REWIND_CYCLE_TICKS)
 	var honest_hits: int = _listeners[0].hits().size()
@@ -581,14 +581,14 @@ func test_a_view_offset_of_40_ticks_against_a_still_target_is_rejected_by_the_ca
 			batch.view_offsets_q[index] = int(CHEAT_VIEW_TICKS * NetClient.VIEW_OFFSET_SCALE)
 	script_state["armed"] = true
 	assert_true(await _wait_until(func() -> bool: return peer.swings >= swings_before + 4, 600),
-			"el tramposo lanza cuatro golpes más")
+			"the cheater throws four more hits")
 	await wait_physics_frames(60)
-	assert_eq(_listeners[0].hits().size(), honest_hits, "ninguno de los golpes con la vista falseada entra")
+	assert_eq(_listeners[0].hits().size(), honest_hits, "none of the hits with the faked view goes through")
 	assert_true(_server.get_combat().get_combatant(target_id).health >= health_before,
-			"y el objetivo no pierde vida")
+			"and the target loses no health")
 	assert_true(_server.get_combat().stats[&"rewind_rejected"] >= 4,
-			"el servidor los rechaza por el tope (%d)" % _server.get_combat().stats[&"rewind_rejected"])
+			"the server rejects them because of the cap (%d)" % _server.get_combat().stats[&"rewind_rejected"])
 	assert_eq(peer.rewind_rejects, _server.get_combat().stats[&"rewind_rejected"])
-	assert_eq(peer.suspicion_score, peer.rewind_rejects, "y suman a su puntuación de sospecha")
-	assert_eq(attacker.get_state(), NetClient.State.IN_WORLD, "no es un delito de red: sigue jugando")
-	assert_eq(peer.strikes_total, 0, "sin avisos")
+	assert_eq(peer.suspicion_score, peer.rewind_rejects, "and they add to its suspicion score")
+	assert_eq(attacker.get_state(), NetClient.State.IN_WORLD, "it is not a network offense: it keeps playing")
+	assert_eq(peer.strikes_total, 0, "no notices")

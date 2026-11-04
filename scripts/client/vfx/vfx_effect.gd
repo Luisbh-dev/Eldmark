@@ -1,42 +1,42 @@
 class_name VfxEffect
 extends Node3D
-## Efecto visual reutilizable de combate (ART-09, solo cliente): raíz de las escenas de
-## [code]scenes/vfx/[/code]. Pensado para un grupo de reutilización ([VfxPool]): se crea una vez y se
-## relanza con [method play] o [method play_at] sin instanciar nada.
+## Reusable combat visual effect (ART-09, client only): root of the scenes in [code]scenes/vfx/[/code].
+## Designed for a reuse pool ([VfxPool]): it is created once and relaunched with [method play] or
+## [method play_at] without instantiating anything.
 ## [br][br]
-## Un efecto es un nodo con hijos de dos clases: [GPUParticles3D] (de un disparo, o continuos si el
-## efecto es [member looping]) y mallas con sombreador animadas por el parámetro de instancia
-## [code]progress[/code] ([code]MeshInstance3D[/code] con un [QuadMesh], por ejemplo). Como el avance y
-## el tinte son parámetros de [b]instancia[/b], todas las copias de un efecto comparten los mismos
-## materiales y se pueden recolorear sin duplicarlos.
+## An effect is a node with children of two kinds: [GPUParticles3D] (one-shot, or continuous if the effect
+## is [member looping]) and shader meshes animated by the instance parameter [code]progress[/code]
+## ([code]MeshInstance3D[/code] with a [QuadMesh], for example). Since progress and tint are
+## [b]instance[/b] parameters, all copies of an effect share the same materials and can be recolored
+## without duplicating them.
 ## [br][br]
-## [b]Metadatos de los hijos[/b] (en el .tscn, [code]metadata/...[/code]):
-## [br]- [code]vfx_time[/code] ([Vector2]): retardo y duración en segundos. En una malla es lo que dura su
-## [code]progress[/code] de 0 a 1 (se oculta fuera de ese intervalo); en unas partículas, cuándo se lanzan.
-## [br]- [code]vfx_cue[/code] ([StringName]): aviso que lo dispara. Por defecto [constant CUE_START], que
-## arranca con [method play]; los demás se lanzan con [method trigger] (el pulso de carga del aura, por
-## ejemplo).
-## [br]- [code]vfx_tint[/code] ([Color]) y [code]vfx_tint_weight[/code] (0 a 1): color base del tinte de
-## instancia del hijo y cuánto le afecta [member tint] (0 = nada: un destello blanco sigue blanco).
-## [br]- [code]vfx_no_tint[/code] ([bool]): el hijo no lleva el parámetro [code]tint[/code] (una distorsión de calor
-## no tiene color): el efecto no se lo pone.
-## [br]- [code]vfx_variants[/code] ([int]) y [code]vfx_variant_offset[/code] ([int]): la malla tiene un atlas de
-## variantes (filas) y el efecto elige una en cada disparo (parámetros de instancia [code]variant[/code] y
-## [code]flip[/code]), de forma determinista: dos disparos seguidos no repiten el mismo chorro.
+## [b]Children's metadata[/b] (in the .tscn, [code]metadata/...[/code]):
+## [br]- [code]vfx_time[/code] ([Vector2]): delay and duration in seconds. On a mesh it is how long its
+## [code]progress[/code] lasts from 0 to 1 (hidden outside that interval); on particles, when they fire.
+## [br]- [code]vfx_cue[/code] ([StringName]): the cue that triggers it. By default [constant CUE_START],
+## which starts with [method play]; the others are fired with [method trigger] (the aura's charge pulse,
+## for example).
+## [br]- [code]vfx_tint[/code] ([Color]) and [code]vfx_tint_weight[/code] (0 to 1): base color of the
+## child's instance tint and how much [member tint] affects it (0 = not at all: a white flash stays white).
+## [br]- [code]vfx_no_tint[/code] ([bool]): the child does not carry the [code]tint[/code] parameter (a heat
+## distortion has no color): the effect does not set it.
+## [br]- [code]vfx_variants[/code] ([int]) and [code]vfx_variant_offset[/code] ([int]): the mesh has an
+## atlas of variants (rows) and the effect picks one on each shot (instance parameters [code]variant[/code]
+## and [code]flip[/code]), deterministically: two consecutive shots do not repeat the same spurt.
 ## [br][br]
-## [b]Orientación.[/b] El eje +Z local es la normal del impacto: hacia donde salen las chispas, hacia
-## quien golpeó. [method play_at] lo orienta desde una posición y una normal de mundo y, si se le da la
-## dirección del golpe, deja el eje +X local a lo largo de ella (un chorro de sangre sale hacia donde iba
-## el tajo) y, con [member direction_bias], inclina el +Z hacia ella (las chispas de un tajo salen
-## desviadas en el sentido del filo).
+## [b]Orientation.[/b] The local +Z axis is the impact normal: where the sparks go, toward whoever struck.
+## [method play_at] orients it from a world position and normal and, if given the blow's direction, leaves
+## the local +X axis along it (a spurt of blood goes where the slash was heading) and, with
+## [member direction_bias], tilts +Z toward it (the sparks of a slash fly off skewed in the direction of
+## the edge).
 ## [br][br]
-## No se conecta al combate todavía: quien lo haga ([CombatFeedback], por ejemplo) pide
-## [method VfxPool.spawn] en el punto de contacto.
+## It is not connected to combat yet: whoever does so ([CombatFeedback], for example) requests
+## [method VfxPool.spawn] at the contact point.
 
-## Se emite cuando el efecto acaba (las partículas y las formas han terminado) y ya se puede reutilizar.
+## Emitted when the effect ends (the particles and shapes have finished) and it can be reused.
 signal finished
 
-## Aviso por defecto: lo que arranca con [method play].
+## Default cue: what starts with [method play].
 const CUE_START: StringName = &"start"
 const META_TIME: StringName = &"vfx_time"
 const META_CUE: StringName = &"vfx_cue"
@@ -50,18 +50,18 @@ const PARAM_TINT: StringName = &"tint"
 const PARAM_VARIANT: StringName = &"variant"
 const PARAM_FLIP: StringName = &"flip"
 
-## Segundos hasta que el efecto se da por terminado y se puede reutilizar (en los continuos, lo que
-## tarda en apagarse tras [method stop] sale de la vida de sus partículas).
+## Seconds until the effect is considered finished and can be reused (for continuous ones, the time they
+## take to fade out after [method stop] comes from their particles' lifetime).
 @export var duration: float = 0.6
-## Un efecto continuo no acaba solo: sigue hasta [method stop] (auras, por ejemplo).
+## A continuous effect does not end on its own: it goes on until [method stop] (auras, for example).
 @export var looping: bool = false
-## Color con el que se tiñen los hijos (según su [code]vfx_tint_weight[/code]).
+## Color the children are tinted with (according to their [code]vfx_tint_weight[/code]).
 @export var tint: Color = Color.WHITE:
 	set = set_tint
-## Cuánto inclina [method play_at] el eje +Z hacia la dirección del golpe (0 = nada; 1 = a 45 grados).
+## How much [method play_at] tilts the +Z axis toward the blow's direction (0 = none; 1 = at 45 degrees).
 @export_range(0.0, 2.0, 0.05) var direction_bias: float = 0.0
 
-# Una malla animada por progreso.
+# A mesh animated by progress.
 class _Shape extends RefCounted:
 	var node: GeometryInstance3D
 	var enabled: bool = true
@@ -70,7 +70,7 @@ class _Shape extends RefCounted:
 	var length: float = 0.1
 	var started: float = -1.0
 
-# Unas partículas, con su aviso y el retardo con que se lanzan.
+# Some particles, with their cue and the delay with which they are fired.
 class _Burst extends RefCounted:
 	var node: GPUParticles3D
 	var enabled: bool = true
@@ -90,7 +90,7 @@ var _playing: bool = false
 var _stopping: bool = false
 var _elapsed: float = 0.0
 var _end_time: float = 0.0
-# Instante en que acaba lo último que han lanzado los avisos (para que stop() no lo corte).
+# Instant at which the last thing launched by the cues ends (so that stop() does not cut it off).
 var _cue_end: float = 0.0
 
 
@@ -99,7 +99,7 @@ func _ready() -> void:
 	reset()
 
 
-## Lanza el efecto desde el principio en su sitio actual. Si ya sonaba, lo reinicia.
+## Launches the effect from the start at its current place. If it was already playing, it restarts it.
 func play() -> void:
 	_ensure_setup()
 	_elapsed = 0.0
@@ -117,10 +117,10 @@ func play() -> void:
 	set_process(true)
 
 
-## Pone el efecto en [param position] con su eje +Z en [param normal] (la normal del impacto, en
-## mundo) y lo lanza. El tinte es el de [member tint]. Con [param direction] (hacia dónde iba el golpe, en
-## mundo; se proyecta sobre el plano del impacto) el eje +X queda a lo largo de ella y, si el efecto tiene
-## [member direction_bias], el +Z se inclina hacia ella.
+## Places the effect at [param position] with its +Z axis along [param normal] (the impact normal, in
+## world space) and launches it. The tint is that of [member tint]. With [param direction] (where the blow
+## was heading, in world space; projected onto the impact plane) the +X axis lies along it and, if the
+## effect has [member direction_bias], +Z tilts toward it.
 func play_at(position: Vector3, normal: Vector3 = Vector3.UP, direction: Vector3 = Vector3.ZERO) -> void:
 	var facing: Vector3 = normal.normalized() if normal.length_squared() > 0.0001 else Vector3.UP
 	var tangent: Vector3 = direction - facing * direction.dot(facing)
@@ -137,8 +137,8 @@ func play_at(position: Vector3, normal: Vector3 = Vector3.UP, direction: Vector3
 	play()
 
 
-## Lanza lo que lleve el aviso [param cue] (formas y partículas con ese [code]vfx_cue[/code]). Solo vale
-## con el efecto en marcha.
+## Fires whatever carries the cue [param cue] (shapes and particles with that [code]vfx_cue[/code]). Only
+## valid while the effect is running.
 func trigger(cue: StringName) -> void:
 	_ensure_setup()
 	if not _playing:
@@ -158,9 +158,9 @@ func trigger(cue: StringName) -> void:
 	_end_time = maxf(_end_time, cue_end)
 
 
-## Enciende o apaga una parte del efecto por el nombre de su nodo (una forma o unas partículas): una parte
-## apagada no se lanza con su aviso. Sirve para que un efecto de varios usos ([DustKick]) deje fuera lo que
-## no toca (el anillo de polvo solo en las caídas fuertes).
+## Turns a part of the effect on or off by its node name (a shape or some particles): a part that is off
+## is not fired by its cue. It lets a multi-use effect ([DustKick]) leave out what does not apply (the dust
+## ring only on hard falls).
 func set_part_enabled(part_name: StringName, enabled: bool) -> void:
 	_ensure_setup()
 	for shape: _Shape in _shapes:
@@ -171,7 +171,7 @@ func set_part_enabled(part_name: StringName, enabled: bool) -> void:
 			burst.enabled = enabled
 
 
-## Deja de emitir y acaba cuando se apaguen las últimas partículas (en los efectos continuos).
+## Stops emitting and ends when the last particles fade out (for continuous effects).
 func stop() -> void:
 	if not _playing or _stopping:
 		return
@@ -182,7 +182,7 @@ func stop() -> void:
 		burst.node.emitting = false
 
 
-## Lo apaga todo de golpe y lo deja listo para reutilizarse (oculto, sin emitir).
+## Turns everything off at once and leaves it ready for reuse (hidden, not emitting).
 func reset() -> void:
 	_ensure_setup()
 	_playing = false
@@ -198,12 +198,12 @@ func reset() -> void:
 	set_process(false)
 
 
-## True mientras el efecto está sonando (de [method play] hasta [signal finished]).
+## True while the effect is playing (from [method play] until [signal finished]).
 func is_playing() -> bool:
 	return _playing
 
 
-## Segundos desde el último [method play].
+## Seconds since the last [method play].
 func get_elapsed() -> float:
 	return _elapsed
 
@@ -247,8 +247,8 @@ func _finish() -> void:
 	finished.emit()
 
 
-# Recorre los hijos una sola vez (también la hace [method _ready]; así un efecto se puede usar antes de
-# entrar en el árbol).
+# Walks the children only once (also done by [method _ready]; this way an effect can be used before
+# entering the tree).
 func _ensure_setup() -> void:
 	if _is_setup:
 		return
@@ -302,8 +302,8 @@ func _apply_tint() -> void:
 				Color(base.r * mixed.r, base.g * mixed.g, base.b * mixed.b, base.a * mixed.a))
 
 
-# Elige la variante (fila del atlas) y el reflejo de cada malla con atlas de variantes, de forma que dos
-# disparos seguidos no repitan chorro. Determinista: depende del número de disparos de esta copia.
+# Picks the variant (atlas row) and the flip of each mesh with an atlas of variants, so that two
+# consecutive shots do not repeat the spurt. Deterministic: it depends on the number of shots of this copy.
 func _apply_variants() -> void:
 	for instance: GeometryInstance3D in _variant_nodes:
 		var count: int = maxi(int(instance.get_meta(META_VARIANTS)), 1)

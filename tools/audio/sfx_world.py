@@ -1,16 +1,16 @@
-"""Catálogo de sonidos del mundo de Eldmark (ART-11): pasos, poción, interfaz, cuernos y voces.
+"""Catalog of Eldmark's world sounds (ART-11): footsteps, potion, interface, horns and voices.
 
-Los pasos, la poción y las voces van en seco (la reverberación la pone el motor por zonas). El cuerno lleva
-el eco de un rebote exterior en vez de una sala; la interfaz conserva su reverberación corta.
+Footsteps, potion and voices are dry (reverb is added by the engine per zone). The horn carries
+the echo of an outdoor bounce instead of a room; the interface keeps its short reverb.
 
-    step_dirt/    pasos en tierra: 8 variaciones, el talón cae en los primeros 5 ms
-    step_stone/   pasos en piedra: chasquido y roce de 2 a 6 kHz más un golpe sordo de 80 a 150 Hz (8)
-    potion/       beber una poción: corcho de 40 ms, tres tragos y un destello en la
-    ui/           clic y confirmación (cuerda pulsada, madera y campanilla; mantiene el motivo re-la)
-    alert/        cuernos de fuerte ganado y perdido, con un timbre por reino (6)
-    hollow/       voces de los Huecos: heridas (4) y muerte (2)
+    step_dirt/    footsteps on dirt: 8 variations, the heel lands in the first 5 ms
+    step_stone/   footsteps on stone: a click and 2 to 6 kHz scrape plus a dull 80 to 150 Hz thud (8)
+    potion/       drinking a potion: 40 ms cork, three gulps and a flash at the end
+    ui/           click and confirmation (plucked string, wood and small bell; keeps the D-A motif)
+    alert/        horns for a fort won and lost, with one timbre per realm (6)
+    hollow/       voices of the Hollow: wounds (4) and death (2)
 
-Ver `synth_sfx.py` para el uso y `sfx_dsp.py` para las herramientas.
+See `synth_sfx.py` for usage and `sfx_dsp.py` for the tools.
 """
 
 import numpy as np
@@ -24,20 +24,20 @@ def _jit(rng, value, spread):
 
 
 def _strata(v, count, mult):
-    """Valor de 0 a 1 que recorre las variaciones en un orden distinto para cada `mult` (primo con `count`),
-    de modo que dos parámetros no suben y bajan a la vez entre variaciones."""
+    """A value from 0 to 1 that runs through the variations in a different order for each `mult` (coprime with `count`),
+    so that two parameters do not rise and fall together between variations."""
     return ((v * mult) % count) / max(1, count - 1)
 
 
 # ---------------------------------------------------------------------------
-# Pasos en piedra
+# Footsteps on stone
 # ---------------------------------------------------------------------------
 
 def _stone_strike(rng, crack_hz, crack_tau, scuff_hz, thud_hz, thud_tau, grit_n, mid_g, click_g):
-    """Un apoyo de bota sobre piedra: chasquido seco, roce de 2 a 6 kHz y un golpe sordo de 80 a 150 Hz.
+    """A boot landing on stone: a dry click, a 2 to 6 kHz scrape and a dull 80 to 150 Hz thud.
 
-    El «tock» de madera de la primera versión (un modo estrecho hacia 700 Hz) desaparece: lo que queda de
-    cuerpo es un ruido ancho de Q bajo y 12 dB por debajo del chasquido.
+    The wooden "tock" of the first version (a narrow mode around 700 Hz) is gone: what is left of the
+    body is a broad, low-Q noise 12 dB below the click.
     """
     m = ms(220)
     click = pk(hp(noise(m, rng), 2500, 2) * edecay(m, 0.0015, 0.00004))
@@ -46,7 +46,7 @@ def _stone_strike(rng, crack_hz, crack_tau, scuff_hz, thud_hz, thud_tau, grit_n,
     scuff = unit(bp2(noise(ns, rng, -3.0), scuff_hz, 0.7)) * edecay(ns, 0.026, 0.002)
     scuff *= np.clip(1.0 + 0.8 * smooth_noise(ns, rng, 120), 0.1, 2.3)
     thud = pk(sine_sweep(m, thud_hz * 1.25, thud_hz * 0.75, 0.012) * edecay(m, thud_tau, 0.0008))
-    mid = pk(bp2(noise(m, rng, -3.0), 700.0, 0.8) * edecay(m, 0.012, 0.0005))  # denso y de Q bajo
+    mid = pk(bp2(noise(m, rng, -3.0), 700.0, 0.8) * edecay(m, 0.012, 0.0005))  # dense and low-Q
     g = grains(m, rng, grit_n, 0.03, 0.12, amp_tau=0.05)
     grit = pk(svf(g, 5200, 3.0, "bp") + 0.5 * svf(g, 2900, 2.5, "bp"))
     y = click_g * click + 1.6 * crack + 0.28 * mid_g * mid + 0.80 * thud + 0.20 * grit
@@ -56,9 +56,9 @@ def _stone_strike(rng, crack_hz, crack_tau, scuff_hz, thud_hz, thud_tau, grit_n,
 
 @sound("step_stone", "step_stone", 8, mix_db=-11.0, dur=(0.15, 0.6), grainy=True, pitch=1.05, vol_db=2.0)
 def step_stone(rng, v):
-    """Ocho pasos distintos: talón (el golpe, fuerte) y punta (más suave y más aguda) a 90-140 ms."""
-    crack_hz = 2200.0 + 3400.0 * _strata(v, 8, 3)       # chasquido: 2,2 a 5,6 kHz
-    thud_hz = 80.0 + 70.0 * _strata(v, 8, 5)            # golpe sordo: 80 a 150 Hz
+    """Eight different footsteps: heel (the hit, strong) and toe (softer and higher) at 90-140 ms."""
+    crack_hz = 2200.0 + 3400.0 * _strata(v, 8, 3)       # click: 2.2 to 5.6 kHz
+    thud_hz = 80.0 + 70.0 * _strata(v, 8, 5)            # dull thud: 80 to 150 Hz
     toe_at = 0.090 + 0.050 * _strata(v, 8, 7)
     toe_g = 0.36 + 0.24 * _strata(v, 8, 3)
     heel = _stone_strike(rng, _jit(rng, crack_hz, 0.06), _jit(rng, 0.0085, 0.25), _jit(rng, 2200.0 + 2400.0 * _strata(v, 8, 7), 0.12), thud_hz,
@@ -73,7 +73,7 @@ def step_stone(rng, v):
 
 
 # ---------------------------------------------------------------------------
-# Pasos en tierra
+# Footsteps on dirt
 # ---------------------------------------------------------------------------
 
 def _dirt_strike(rng, f_hi, f_lo, tau, lp_hz, crunch_n, crunch_hz, crunch_gain, mid_hz):
@@ -81,7 +81,7 @@ def _dirt_strike(rng, f_hi, f_lo, tau, lp_hz, crunch_n, crunch_hz, crunch_gain, 
     thump = pk(sine_sweep(m, f_hi * 1.25, f_lo * 1.25, 0.02) * edecay(m, tau, 0.0025))
     low = pk(lp(noise(m, rng), lp_hz, 2) * edecay(m, tau * 0.9, 0.0020))
     mid = pk(bp2(noise(m, rng, -3.0), mid_hz, 0.9) * edecay(m, 0.040, 0.0015))
-    tap = pk(bp2(noise(m, rng), 1500.0, 1.0) * edecay(m, 0.003, 0.00006))  # el talón entra en los primeros 5 ms
+    tap = pk(bp2(noise(m, rng), 1500.0, 1.0) * edecay(m, 0.003, 0.00006))  # the heel comes in within the first 5 ms
     g = grains(m, rng, crunch_n, 0.040, 0.2, amp_tau=0.08)
     crunch = svf(g, crunch_hz, 2.5, "bp") + 0.8 * svf(g, crunch_hz * 0.45, 1.8, "bp")
     crunch = pk(crunch)
@@ -90,7 +90,7 @@ def _dirt_strike(rng, f_hi, f_lo, tau, lp_hz, crunch_n, crunch_hz, crunch_gain, 
 
 @sound("step_dirt", "step_dirt", 8, mix_db=-12.0, dur=(0.15, 0.6), grainy=True, pitch=1.05, vol_db=2.0)
 def step_dirt(rng, v):
-    """Ocho pasos en tierra con gravilla. Sin arrastre previo: el talón es lo primero que suena."""
+    """Eight footsteps on gravelly dirt. No prior drag: the heel is the first thing heard."""
     f_hi = 80.0 + 50.0 * _strata(v, 8, 3)
     tau = 0.030 + 0.040 * _strata(v, 8, 5)
     lp_hz = 220.0 + 260.0 * _strata(v, 8, 7)
@@ -104,7 +104,7 @@ def step_dirt(rng, v):
     place(out, heel, 0.0, 1.0)
     toe = _dirt_strike(rng, f_hi * 1.35, f_hi * 0.8, tau * 0.6, lp_hz * 1.5, crunch_n // 2, crunch_hz * 1.15, 0.7, mid_hz * 1.4)
     place(out, toe, toe_at, toe_g)
-    # La suela que arrastra la tierra, después de pisar y baja.
+    # The sole dragging the dirt, after stepping, and low.
     ns = ms(200)
     scuff = unit(bp2(noise(ns, rng, -3.0), _jit(rng, 1400.0 + 1200.0 * _strata(v, 8, 3), 0.15), 0.9)) * edecay(ns, 0.045, 0.004)
     place(out, scuff, 0.01, 0.20 + 0.14 * _strata(v, 8, 5))
@@ -113,7 +113,7 @@ def step_dirt(rng, v):
 
 
 # ---------------------------------------------------------------------------
-# Poción
+# Potion
 # ---------------------------------------------------------------------------
 
 def _bubble(rng, f0, rise, tau, attack=0.004):
@@ -128,13 +128,13 @@ def _bubble(rng, f0, rise, tau, attack=0.004):
 def potion_drink(rng, v):
     n = sec(1.7)
     y = np.zeros(n)
-    # Corcho: un «pop» seco de 40 ms como mucho (antes era un tono de 380 Hz que duraba 150 ms: sonaba a «bup»).
+    # Cork: a dry "pop" of 40 ms at most (it used to be a 380 Hz tone lasting 150 ms: it sounded like a "bup").
     pn = ms(40)
     pop = pk(sine_sweep(pn, 1050, 640, 0.005) * edecay(pn, 0.0065, 0.0002))
     pop += 0.8 * pk(bp2(noise(pn, rng), 1900, 1.8) * edecay(pn, 0.0035, 0.0001))
     pop += 0.5 * pk(hp(noise(pn, rng), 3500, 2) * edecay(pn, 0.0015, 0.00005))
     place(y, taper(pop, 0.012), 0.0, 0.85)
-    # Tres tragos: burbuja grave que sube, soplido de garganta y chapoteo.
+    # Three gulps: a low bubble that rises, a throat breath and a splash.
     for k, t0 in enumerate((0.34, 0.62, 0.90)):
         t0 += rng.uniform(-0.015, 0.015)
         f0 = rng.uniform(210, 290) * (1.0 - 0.07 * k)
@@ -146,12 +146,12 @@ def potion_drink(rng, v):
         slosh = unit(lp(bp2(noise(gn, rng, -3.0), 850, 1.4), 2200, 1)) * bump(gn, 1.2, 2.0) \
             * np.clip(1.0 + 0.8 * smooth_noise(gn, rng, 70), 0.1, 2.2)
         place(y, slosh, t0 - 0.04, 0.16)
-    # Burbujeo menudo del líquido (a partir de 0,16 s, bien separado del corcho).
+    # Fine bubbling of the liquid (from 0.16 s on, well separated from the cork).
     for _ in range(16):
         t0 = rng.uniform(0.16, 1.28)
         f0 = float(np.exp(rng.uniform(np.log(650), np.log(2600))))
         place(y, pk(_bubble(rng, f0, 8.0, rng.uniform(0.007, 0.02), 0.002)), t0, rng.uniform(0.04, 0.16))
-    # Destello final: dos parciales de cristal con temblor (la, y su quinta), como un reflejo: el motivo re-la.
+    # Final flash: two crystal partials with tremolo (A, and its fifth), like a glint: the D-A motif.
     sn = sec(0.55)
     ts = tvec(sn)
     shim = (np.sin(2 * np.pi * 1760 * ts) + 0.6 * np.sin(2 * np.pi * 2640 * ts + 0.7) + 0.3 * np.sin(2 * np.pi * 3960 * ts))
@@ -162,7 +162,7 @@ def potion_drink(rng, v):
 
 
 # ---------------------------------------------------------------------------
-# Interfaz
+# Interface
 # ---------------------------------------------------------------------------
 
 @sound("ui", "ui_click", 1, mix_db=-10.0, dur=(0.04, 0.3), pitch=1.03, vol_db=1.0, dry=False)
@@ -178,8 +178,8 @@ def ui_click(rng, v):
 
 
 def _pluck(n, f, rng, t60=0.9, bright=1.0):
-    """Cuerda pulsada: parciales de una cuerda rígida (algo inarmónicos) que se apagan más deprisa cuanto más
-    agudos, más el chasquido de la uña y la resonancia de la caja de madera."""
+    """Plucked string: partials of a stiff string (slightly inharmonic) that decay faster the higher
+    they are, plus the fingernail click and the resonance of the wooden body."""
     t = tvec(n)
     hs = np.arange(1, 15)
     fr = f * hs * np.sqrt(1.0 + 0.0004 * hs * hs)
@@ -191,17 +191,17 @@ def _pluck(n, f, rng, t60=0.9, bright=1.0):
 
 
 def _small_bell(n, f, rng):
-    """Campanilla de mano: parciales inarmónicos que se apagan rápido (cobre, no cristal)."""
+    """Hand bell: inharmonic partials that die out fast (copper, not crystal)."""
     return pk(modal(n, [f * r for r in (1.0, 2.31, 4.18, 6.69)], [0.50, 0.28, 0.16, 0.09], [1.0, 0.55, 0.32, 0.18], rng))
 
 
 @sound("ui", "ui_confirm", 1, mix_db=-9.0, dur=(0.3, 1.4), stereo=True, pitch=1.03, vol_db=1.0, dry=False)
 def ui_confirm(rng, v):
-    """Dos notas de cuerda pulsada, re y la (la quinta que sube del cuerno), con un toque de madera y una
-    campanilla de cobre sobre la segunda. Ya no es el carillón armónico limpio de la primera versión."""
+    """Two plucked-string notes, D and A (the fifth that rises from the horn), with a touch of wood and a
+    copper bell over the second. It is no longer the clean harmonic chime of the first version."""
     n = sec(1.0)
     y = np.zeros(n)
-    tick = pk(modal(ms(60), [820.0, 1380.0, 2250.0], [0.014, 0.01, 0.007], [1.0, 0.6, 0.3], rng))  # madera / pergamino
+    tick = pk(modal(ms(60), [820.0, 1380.0, 2250.0], [0.014, 0.01, 0.007], [1.0, 0.6, 0.3], rng))  # wood / parchment
     place(y, tick, 0.0, 0.40)
     place(y, _pluck(n, 587.3, rng, 0.85, 1.0), 0.0, 0.80)                 # re
     place(y, _pluck(n, 880.0, rng, 1.0, 0.85), 0.105, 1.0)                # la
@@ -211,11 +211,11 @@ def ui_confirm(rng, v):
 
 
 # ---------------------------------------------------------------------------
-# Cuernos de fuerte: ganado (una quinta que sube) y perdido (una que baja), con un timbre por reino
+# Fort horns: won (a rising fifth) and lost (a falling one), with one timbre per realm
 # ---------------------------------------------------------------------------
 
-# Cada reino tiene su instrumento: cuerno grave de guerra (Vardheim), clarín brillante (Solmarch) y un cuerno
-# de bronce nasal y áspero (Askarra). `fm` son las resonancias del tubo (centro Hz, anchura Hz, ganancia).
+# Each realm has its own instrument: a low war horn (Vardheim), a bright bugle (Solmarch) and a nasal,
+# harsh bronze horn (Askarra). `fm` are the tube's resonances (center Hz, width Hz, gain).
 _HORNS = {
     "vardheim": dict(d=73.42, a=110.0, fm=((330, 260, 1.0), (760, 400, 0.7), (1500, 700, 0.25)), rolloff=1500,
                      harm=0.80, open=0.42, atk=0.075, breath=0.10, breath_hz=700, buzz=0.0, vib=(5.0, 6.0), tempo=1.05),
@@ -227,9 +227,9 @@ _HORNS = {
 
 
 def _horn_note(rng, f0, dur, attack, release, cfg, swell, drop_cents):
-    """Una nota de metal, una sola voz: aditiva, con los armónicos que se abren con la fuerza (más en el
-    crescendo de la nota larga), arrastre de afinación al atacar, vibrato leve, soplido y una caída de
-    afinación de `drop_cents` al soltar."""
+    """A brass note, a single voice: additive, with harmonics that open up with effort (more in the
+    crescendo of the long note), pitch slide on attack, slight vibrato, breath and a pitch drop
+    of `drop_cents` on release."""
     n = sec(dur + release * 2.4)
     t = tvec(n)
     sustain = np.where(t < dur, 1.0, np.exp(-(t - dur) / (release / 3.2)))
@@ -237,7 +237,7 @@ def _horn_note(rng, f0, dur, attack, release, cfg, swell, drop_cents):
     prog = np.clip(t / dur, 0.0, 1.0)
     swell_curve = (1.0 + swell * (smoothstep(prog) - 0.5) * 2.0) if swell >= 0 else (1.0 + swell * smoothstep(prog))
     env = np.clip(env * swell_curve / (1.0 + abs(swell)), 0.0, 1.5)
-    # Afinación: arrastre inicial, vibrato que llega tarde, caída al soltar y un temblor de los labios.
+    # Pitch: initial slide, vibrato that arrives late, drop on release and a lip tremble.
     cents = (-62.0 * np.exp(-t / 0.05)
              - drop_cents * smoothstep((t - dur) / (release * 0.9))
              + cfg["vib"][1] * smoothstep((t - 0.15) / 0.30) * np.sin(2 * np.pi * cfg["vib"][0] * t + rng.uniform(0, 6.28))
@@ -254,7 +254,7 @@ def _horn_note(rng, f0, dur, attack, release, cfg, swell, drop_cents):
         h += 1
     sig = sig / (np.max(np.abs(sig)) + 1e-12)
     sig *= np.clip(1.0 + 0.012 * smooth_noise(n, rng, 70.0), 0.9, 1.1)
-    if cfg["buzz"] > 0:  # los labios zumban: modulación áspera de la amplitud
+    if cfg["buzz"] > 0:  # the lips buzz: harsh amplitude modulation
         sig *= 1.0 + cfg["buzz"] * np.sin(2 * np.pi * (f0 * 0.5 + 40.0) * t + 3.0 * smooth_noise(n, rng, 20.0))
     puff = np.exp(-t / 0.09) * (1.0 - np.exp(-t / 0.008))
     breath = unit(bp2(noise(n, rng), cfg["breath_hz"], 0.9)) * (puff + 0.22 * env + 0.20 * np.clip(env, 0, 1) * smoothstep(prog))
@@ -262,12 +262,12 @@ def _horn_note(rng, f0, dur, attack, release, cfg, swell, drop_cents):
 
 
 def _horn_call(rng, cfg, notes, tail=0.5):
-    """Frase de cuerno de una sola voz centrada, con eco exterior (rebotes de 150 a 300 ms)."""
+    """Horn phrase of a single centered voice, with outdoor echo (bounces of 150 to 300 ms)."""
     total = max(t0 + d + r * 2.4 for t0, f, d, a, r, vol, sw, dr in notes) + tail
     y = np.zeros(sec(total))
     for t0, f, d, a, r, vol, sw, dr in notes:
         place(y, _horn_note(rng, f, d, a, r, cfg, sw, dr), t0, vol)
-    y = sat(y, 1.45)  # el metal se vuelve más brillante al apretar
+    y = sat(y, 1.45)  # the metal gets brighter when pressed
     return outdoor_echo(y, [(0.18, 0.36, -0.55), (0.27, 0.24, 0.65), (0.41, 0.13, -0.25)], damp_hz=3000.0)
 
 
@@ -275,7 +275,7 @@ def _horn_won(rng, realm):
     c = _HORNS[realm]
     k = c["tempo"]
     d, a = c["d"], c["a"]
-    # «tu-tu-TUUU»: dos llamadas cortas sobre re y una larga sobre la (quinta que sube), con el crescendo.
+    # "tu-tu-TUUU": two short calls on D and a long one on A (the rising fifth), with the crescendo.
     return _horn_call(rng, c, [(0.0, d, 0.19 * k, c["atk"], 0.11, 0.62, 0.0, 30.0),
                                (0.31 * k, d, 0.19 * k, c["atk"], 0.11, 0.72, 0.0, 30.0),
                                (0.63 * k, a, 0.66 * k, c["atk"] * 1.35, 0.30, 1.0, 0.8, 38.0)])
@@ -285,7 +285,7 @@ def _horn_lost(rng, realm):
     c = _HORNS[realm]
     k = c["tempo"]
     d, a = c["d"], c["a"]
-    # Dos notas lentas que bajan (la y re): la segunda se apaga y se hunde 50 cents. Tristeza, no triunfo.
+    # Two slow falling notes (A and D): the second dies out and sinks 50 cents. Sadness, not triumph.
     return _horn_call(rng, c, [(0.0, a, 0.40 * k, c["atk"] * 1.2, 0.18, 0.85, 0.2, 32.0),
                                (0.58 * k, d, 0.98 * k, c["atk"] * 1.5, 0.62, 1.0, -0.45, 50.0)], tail=0.6)
 
@@ -321,7 +321,7 @@ def horn_fort_lost_askarra(rng, v):
 
 
 # ---------------------------------------------------------------------------
-# Voces de los Huecos: soldados no muertos de la vieja guarnición de Eld
+# Voices of the Hollow: undead soldiers of the old garrison of Eld
 # ---------------------------------------------------------------------------
 
 def _res(f, fc, bw):
@@ -329,11 +329,11 @@ def _res(f, fc, bw):
 
 
 def _hollow_voice(rng, dur, f_start, f_end, vowel_a, vowel_b, breath, rasp, fry_hz, attack, release, rattle, jitter=0.035):
-    """Voz de no muerto por fuente y filtro: pulso glotal (suma de armónicos con el tono que cae y tiembla),
-    tres formantes que se mueven de una vocal a otra, soplo de aire por los mismos formantes, un temblor de
-    «voz quebrada» a `fry_hz` y un gruñido una octava más grave. Sin reverberación: seca como el resto.
+    """Undead voice by source and filter: glottal pulse (sum of harmonics with a pitch that falls and trembles),
+    three formants that move from one vowel to another, a breath of air through the same formants, a
+    "broken voice" tremor at `fry_hz` and a growl an octave lower. No reverb: dry like the rest.
 
-    `vowel_*` son (F1, F2, F3) en Hz. `rattle` es la fuerza del estertor final (golpes de aire a 20-30 Hz).
+    `vowel_*` are (F1, F2, F3) in Hz. `rattle` is the strength of the final death rattle (air bursts at 20-30 Hz).
     """
     n = sec(dur)
     t = tvec(n)
@@ -353,28 +353,28 @@ def _hollow_voice(rng, dur, f_start, f_end, vowel_a, vowel_b, breath, rasp, fry_
         voiced += (h ** -(1.45 - 0.30 * rasp)) * formants * np.sin(h * ph + rng.uniform(0, 6.28))
         h += 1
     voiced = voiced / (np.max(np.abs(voiced)) + 1e-12)
-    # Gruñido: una subarmónica (una octava más grave) que da peso y aspereza.
+    # Growl: a subharmonic (an octave lower) that gives weight and roughness.
     growl = np.sin(0.5 * ph + 1.0) * _res(0.5 * f0, f1, 200.0)
     voiced = voiced + rasp * 0.55 * growl
-    # Voz quebrada: la fuente se corta a rachas.
+    # Broken voice: the source cuts out in bursts.
     fry = np.clip(0.55 + 0.9 * np.abs(np.sin(np.pi * np.cumsum(fry_hz * (1.0 + 0.3 * smooth_noise(n, rng, 8.0))) / SR)), 0.0, 1.0)
     voiced *= 0.35 + 0.65 * fry
     voiced = sat(voiced, 1.0 + 0.9 * rasp)
-    # Soplo: ruido por los formantes que se mueven.
+    # Breath: noise through the moving formants.
     air = unit(svf(svf(noise(n, rng), f2, 2.5, "bp"), f1 * 1.3, 1.5, "bp")) + 0.5 * unit(bp2(noise(n, rng), f2 * 1.4, 1.5))
     env = (1.0 - np.exp(-t / attack)) * np.exp(-np.clip(t - dur * 0.45, 0.0, None) / release)
     y = voiced * env + breath * air * (0.4 * np.exp(-t / 0.08) + 0.6 * env * (0.5 + 0.5 * u))
-    # Aspereza: ruido agudo que sale a cada pulso glotal (la voz de un pecho que ya no tiene aire limpio).
+    # Roughness: high noise that comes out on each glottal pulse (the voice of a chest that no longer has clean air).
     pulse = np.maximum(np.sin(ph), 0.0) ** 2
     y = y + (0.07 + 0.13 * rasp) * unit(bp2(noise(n, rng), 3600.0, 0.6)) * pulse * env
-    if rattle > 0:  # estertor: ráfagas graves de aire a 20-30 Hz que se espacian
+    if rattle > 0:  # death rattle: low air bursts at 20-30 Hz that space out
         gate = np.clip(np.sin(2 * np.pi * np.cumsum(28.0 - 14.0 * u) / SR), 0.0, 1.0) ** 2
         rat = unit(lp(noise(n, rng, -3.0), 700, 2)) * gate * smoothstep((u - 0.45) / 0.3) * np.exp(-np.clip(u - 0.7, 0.0, None) / 0.12)
         y = y + rattle * rat
     return y
 
 
-# Vocales: (F1, F2, F3) en Hz.
+# Vowels: (F1, F2, F3) in Hz.
 _VOW_A = (720.0, 1150.0, 2500.0)   # a
 _VOW_O = (480.0, 900.0, 2400.0)    # o
 _VOW_E = (550.0, 1750.0, 2500.0)   # e
@@ -383,7 +383,7 @@ _VOW_U = (330.0, 780.0, 2300.0)    # u
 
 @sound("hollow", "hollow_hurt", 4, mix_db=-4.0, dur=(0.15, 0.7), grainy=True, pitch=1.06, vol_db=2.0)
 def hollow_hurt(rng, v):
-    """Herida de un Hueco: un quejido corto, grave y áspero, con soplo."""
+    """A Hollow's wound: a short, low, harsh groan, with breath."""
     p = [dict(dur=0.36, f=(140, 88), a=_VOW_A, b=_VOW_O, rasp=0.55, breath=0.30),
          dict(dur=0.30, f=(165, 105), a=_VOW_E, b=_VOW_A, rasp=0.70, breath=0.25),
          dict(dur=0.44, f=(120, 72), a=_VOW_A, b=_VOW_U, rasp=0.60, breath=0.38),
@@ -396,7 +396,7 @@ def hollow_hurt(rng, v):
 
 @sound("hollow", "hollow_death", 2, mix_db=-3.0, dur=(0.6, 2.0), grainy=True, pitch=1.05, vol_db=2.0)
 def hollow_death(rng, v):
-    """Muerte de un Hueco: un gemido largo que se hunde y se apaga en un estertor."""
+    """A Hollow's death: a long moan that sinks and dies out in a death rattle."""
     p = [dict(dur=1.15, f=(118, 46), a=_VOW_A, b=_VOW_U, rasp=0.65, breath=0.45, rattle=0.55),
          dict(dur=1.30, f=(100, 40), a=_VOW_O, b=_VOW_U, rasp=0.75, breath=0.50, rattle=0.70)][v]
     y = _hollow_voice(rng, p["dur"], _jit(rng, p["f"][0], 0.05), _jit(rng, p["f"][1], 0.05), p["a"], p["b"],

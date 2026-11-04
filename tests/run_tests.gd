@@ -1,42 +1,42 @@
 extends SceneTree
-## Ejecutor de las pruebas automáticas de Eldmark.
+## Automated test runner for Eldmark.
 ##
-## Uso (desde la raíz del proyecto):
+## Usage (from the project root):
 ## [codeblock]
 ## godot --headless --path . -s res://tests/run_tests.gd
 ## godot --headless --path . -s res://tests/run_tests.gd -- --filter=replay
 ## [/codeblock]
-## Descubre [code]res://tests/test_*.gd[/code] (cada uno hereda de [TestCase]), ejecuta todos sus
-## métodos que empiezan por [code]test_[/code] (pueden usar [code]await[/code]) con
-## [code]before_each()[/code]/[code]after_each()[/code] opcionales, imprime PASS/FAIL por prueba
-## y un resumen, y termina con código 0 si todo pasa o 1 si algo falla.
+## Discovers [code]res://tests/test_*.gd[/code] (each inherits from [TestCase]), runs all of their
+## methods that start with [code]test_[/code] (they may use [code]await[/code]) with optional
+## [code]before_each()[/code]/[code]after_each()[/code], prints PASS/FAIL per test and a summary,
+## and exits with code 0 if everything passes or 1 if anything fails.
 ## [br][br]
-## Una prueba también falla si durante su ejecución se registra un error de script o del motor
-## (salvo que llame a [method TestCase.allow_logged_errors], que solo tolera los del motor).
-## Nunca se queda colgado: cada fase tiene un tiempo límite y hay un temporizador global.
+## A test also fails if a script or engine error is logged while it runs (unless it calls
+## [method TestCase.allow_logged_errors], which only tolerates engine ones).
+## It never hangs: each phase has a time limit and there is a global timer.
 ## [br][br]
-## [code]--filter=<texto>[/code] ejecuta solo las pruebas cuyo nombre
-## ([code]archivo::método[/code]) contiene el texto.
+## [code]--filter=<text>[/code] runs only the tests whose name
+## ([code]file::method[/code]) contains the text.
 ## [br][br]
-## [code]--shard=K/N[/code] ejecuta solo la parte K (de 1 a N) de los archivos de prueba, repartidos
-## por turnos en orden alfabético: la integración continua lanza las N partes a la vez.
+## [code]--shard=K/N[/code] runs only part K (1 to N) of the test files, distributed
+## round-robin in alphabetical order: continuous integration launches the N parts at once.
 
 const TESTS_DIR: String = "res://tests"
 const TEST_FILE_PREFIX: String = "test_"
 const TEST_METHOD_PREFIX: String = "test_"
-## Fotogramas que se esperan antes de empezar, para que la caché de clases y los autoloads
-## estén listos.
+## Frames to wait before starting, so the class cache and the autoloads
+## are ready.
 const STARTUP_FRAMES: int = 2
-## Tiempo máximo de cada fase (before_each, la prueba, after_each).
+## Maximum time for each phase (before_each, the test, after_each).
 const PHASE_TIMEOUT_MSEC: int = 30000
-## Temporizador de seguridad para toda la ejecución.
+## Safety timer for the whole run.
 const GLOBAL_TIMEOUT_SEC: float = 3600.0
 
 const TestCaseScript = preload("res://tests/test_case.gd")
 
 
-## Captura los errores del motor y de los scripts mientras se ejecuta cada prueba.
-## Se puede llamar desde cualquier hilo, de ahí el mutex.
+## Captures engine and script errors while each test runs.
+## It can be called from any thread, hence the mutex.
 class ErrorCatcher extends Logger:
 	var _mutex: Mutex = Mutex.new()
 	var _capturing: bool = false
@@ -88,7 +88,7 @@ class ErrorCatcher extends Logger:
 
 var _catcher: ErrorCatcher = ErrorCatcher.new()
 var _filter: String = ""
-## Parte que se ejecuta (de 1 a [member _shard_count]); con 1 de 1, todas.
+## Part being run (1 to [member _shard_count]); with 1 of 1, all of them.
 var _shard_index: int = 1
 var _shard_count: int = 1
 var _finished: bool = false
@@ -154,7 +154,7 @@ func _discover_test_files() -> PackedStringArray:
 	var own_file: String = (TestCaseScript as Script).resource_path.get_file()
 	var result: PackedStringArray = PackedStringArray()
 	for file_name: String in DirAccess.get_files_at(TESTS_DIR):
-		# En proyectos exportados los scripts aparecen como .gd.remap.
+		# In exported projects the scripts show up as .gd.remap.
 		var plain: String = file_name.trim_suffix(".remap")
 		if plain.begins_with(TEST_FILE_PREFIX) and plain.ends_with(".gd") and plain != own_file:
 			if not result.has(plain):
@@ -166,8 +166,8 @@ func _discover_test_files() -> PackedStringArray:
 	return paths
 
 
-## Los archivos de la parte pedida: el i-ésimo (en orden alfabético) va a la parte i % N + 1. Con
-## [code]--shard[/code] mal escrito no devuelve ninguno, y la ejecución falla.
+## The files of the requested part: the i-th one (in alphabetical order) goes to part i % N + 1. With a
+## misspelled [code]--shard[/code] it returns none, and the run fails.
 func _shard_of(files: PackedStringArray) -> PackedStringArray:
 	if _shard_count == 1:
 		return files
@@ -254,14 +254,14 @@ func _run_test(instance: TestCaseScript, method_name: String, full_name: String)
 		_record_failure(full_name, failures, elapsed_ms)
 
 
-## Llama a un método (síncrono o corrutina) y espera a que termine, con tiempo límite.
-## Devuelve false si no terminó a tiempo; en ese caso añade el motivo a [param problems].
+## Calls a method (synchronous or coroutine) and waits for it to finish, with a time limit.
+## Returns false if it did not finish in time; in that case it adds the reason to [param problems].
 func _call_with_timeout(target: Object, method: StringName, problems: Array[String]) -> bool:
 	var flow: Dictionary = {"done": false}
 	_invoke(target, method, flow)
 	var started_msec: int = Time.get_ticks_msec()
-	# Una corrutina que sufre un error de script termina igualmente (Godot emite su "completed"),
-	# así que solo hace falta el tiempo límite para las que esperan algo que nunca llega.
+	# A coroutine that hits a script error still finishes (Godot emits its "completed"),
+	# so the time limit is only needed for those waiting on something that never arrives.
 	while not flow["done"]:
 		if Time.get_ticks_msec() - started_msec > PHASE_TIMEOUT_MSEC:
 			problems.append("%s superó el tiempo límite (%.0f s)" % [

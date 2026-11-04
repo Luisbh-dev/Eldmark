@@ -1,16 +1,17 @@
 extends TestCase
-## Pruebas de [ZoneServer] con la plataforma ([FakeZonePlatform] y [TicketAuthProvider]) y clientes de verdad
-## sobre ENet en 127.0.0.1 (docs/plataforma.md §5.2, §5.4 y §15 P4): billete → VERIFYING → WELCOME con el reino y el
-## nombre del personaje; sin billete, TICKET; el cupo cuenta a los que verifican; un HELLO tardío con una
-## reclamación lenta entra (auth_timeout de 10 s); la plataforma muda da UNAVAILABLE a los 7 s; la zona cercada
-## también; las bajas en VERIFYING y en LOADING liberan sin guardar; los revoked del latido; BUSY y BANNED con su
-## texto; el bit del personal del juego; y el HELLO ya no delata nombres (docs/social.md, 12.7).
+## Tests for [ZoneServer] with the platform ([FakeZonePlatform] and [TicketAuthProvider]) and real
+## clients over ENet on 127.0.0.1 (docs/plataforma.md §5.2, §5.4 and §15 P4): ticket → VERIFYING →
+## WELCOME with the character's realm and name; with no ticket, TICKET; the quota counts those who are
+## verifying; a late HELLO with a slow claim gets in (10 s auth_timeout); a silent platform gives
+## UNAVAILABLE at 7 s; the fenced zone too; removals in VERIFYING and in LOADING release without saving;
+## the heartbeat's revoked; BUSY and BANNED with their text; the game staff bit; and the HELLO no longer
+## gives names away (docs/social.md, 12.7).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
 const ZONE_ID: String = "test_world"
-## El primer ticket_id: por encima de 2^53, como los de verdad.
+## The first ticket_id: above 2^53, like the real ones.
 const FIRST_TICKET_ID: int = 9007199254740993
 
 var _viewport: SubViewport
@@ -56,10 +57,10 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
-## La zona de prueba con la plataforma falsa ya arrancada y el servidor escuchando. [param configure] recibe el
-## [ServerConfig] y [param setup] la plataforma antes de arrancar.
+## The test zone with the fake platform already started and the server listening. [param configure]
+## receives the [ServerConfig] and [param setup] the platform before startup.
 func _start(configure: Callable = Callable(), setup: Callable = Callable()) -> bool:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
@@ -94,18 +95,18 @@ func _start(configure: Callable = Callable(), setup: Callable = Callable()) -> b
 		if not finished.is_empty():
 			break
 		await wait_process_frames()
-	if not assert_eq(finished, [[true, ""]], "la plataforma falsa arranca"):
+	if not assert_eq(finished, [[true, ""]], "the fake platform starts"):
 		return false
 	_provider = TicketAuthProvider.new(_platform, config.world_id, config.zone_id, config.channel, _keys)
 	_provider.log_sink = func(_text: String) -> void: pass
 	if not assert_eq(_server.start(config, _world, _server_transport, _provider, _platform), OK,
-			"el servidor abre el puerto %d" % _port):
+			"the server opens port %d" % _port):
 		return false
 	_platform.go_live()
 	return true
 
 
-## Un billete válido para [param character_id] en esta zona (o el de [param zone_id]).
+## A valid ticket for [param character_id] in this zone (or in [param zone_id]).
 func _ticket(character_id: int, zone_id: String = ZONE_ID) -> PackedByteArray:
 	var ticket := HandoffTicket.new()
 	ticket.key_id = 2
@@ -152,7 +153,7 @@ func _connect(hello: PackedByteArray, auto_ready: bool = true, hello_delay_ms: i
 	client.auto_ready = auto_ready
 	client.hello_delay_ms = hello_delay_ms
 	_clients.append(client)
-	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "el cliente conecta")
+	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "the client connects")
 	return client
 
 
@@ -167,7 +168,7 @@ func _step() -> void:
 		client.transport.flush()
 
 
-## Avanza hasta que [param condition] sea verdadera o pasen [param max_ms] ms.
+## Advances until [param condition] is true or [param max_ms] ms pass.
 func _run_until(condition: Callable, max_ms: int = 5000) -> bool:
 	var started: int = Time.get_ticks_msec()
 	while Time.get_ticks_msec() - started < max_ms:
@@ -183,7 +184,7 @@ func _run_ms(ms: int) -> void:
 		await _step()
 
 
-## El peer del servidor en [param state], o null.
+## The server's peer in [param state], or null.
 func _server_peer_in(state: ServerPeer.State) -> ServerPeer:
 	for peer_id: int in _server.get_peer_ids():
 		var peer: ServerPeer = _server.get_peer(peer_id)
@@ -192,20 +193,20 @@ func _server_peer_in(state: ServerPeer.State) -> ServerPeer:
 	return null
 
 
-## Entra con billete el personaje [param character_id] y espera su alta.
+## Character [param character_id] joins with a ticket and waits to be signed up.
 func _join(character_id: int) -> RawTicketClient:
 	var client: RawTicketClient = _connect(_hello(character_id, _ticket(character_id)))
 	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null or client.reject != null)
-	if not assert_true(joined and client.own_spawn != null, "el personaje %d entra en el mundo" % character_id):
+	if not assert_true(joined and client.own_spawn != null, "character %d enters the world" % character_id):
 		return null
 	return client
 
 
-# --- Pruebas ----------------------------------------------------------------------------------
+# --- Tests ------------------------------------------------------------------------------------
 
-## Billete → VERIFYING → WELCOME: el reino y el nombre son los del personaje, no los del HELLO; la reclamación
-## lleva los ids en cadena (ticket_id > 2^53), el personaje entra en el conjunto del latido, el VERIFYING cuenta
-## para el cupo y el personal del juego lleva el bit 3 en su SPAWN.
+## Ticket → VERIFYING → WELCOME: the realm and name are the character's, not the HELLO's; the claim
+## carries the ids as strings (ticket_id > 2^53), the character enters the heartbeat set, VERIFYING counts
+## toward the quota and game staff carry bit 3 in their SPAWN.
 func test_ticket_goes_through_verifying_to_welcome() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"gm", VARDHEIM, {}, {}, "Aneira")
@@ -215,35 +216,35 @@ func test_ticket_goes_through_verifying_to_welcome() -> void:
 	var client: RawTicketClient = _connect(_hello(42, _ticket(42), SOLMARCH, "Impostor"))
 	var verifying: bool = await _run_until(func() -> bool:
 		return _server_peer_in(ServerPeer.State.VERIFYING) != null)
-	if not assert_true(verifying, "el peer espera la reclamación en VERIFYING"):
+	if not assert_true(verifying, "the peer waits for the claim in VERIFYING"):
 		return
-	assert_eq(_server.get_player_count(), 1, "VERIFYING cuenta para el cupo")
-	assert_null(client.welcome, "aún sin WELCOME")
+	assert_eq(_server.get_player_count(), 1, "VERIFYING counts toward the quota")
+	assert_null(client.welcome, "still no WELCOME")
 	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null)
-	if not assert_true(joined, "con el 200 llega el WELCOME y entra en el mundo"):
+	if not assert_true(joined, "with the 200 the WELCOME arrives and it enters the world"):
 		return
-	assert_eq(client.welcome.realm, VARDHEIM, "el WELCOME lleva el reino del personaje, no el del HELLO")
-	assert_eq(client.own_spawn.display_name, "Aneira", "y el nombre del personaje")
-	assert_eq(client.own_spawn.realm, VARDHEIM, "su SPAWN es de su reino")
-	assert_true(client.own_spawn.is_staff, "un gm lleva el bit del personal del juego")
+	assert_eq(client.welcome.realm, VARDHEIM, "the WELCOME carries the character's realm, not the HELLO's")
+	assert_eq(client.own_spawn.display_name, "Aneira", "and the character's name")
+	assert_eq(client.own_spawn.realm, VARDHEIM, "its SPAWN is of its realm")
+	assert_true(client.own_spawn.is_staff, "a gm carries the game staff bit")
 	var claims: Array[Dictionary] = _platform.sent(PlatformEvent.KIND_CLAIM)
 	assert_eq(claims, [{"zone_instance_id": _platform.instance_id(), "ticket_id": str(FIRST_TICKET_ID),
-			"character_id": "42"}], "una reclamación, con el ticket_id > 2^53 en cadena")
+			"character_id": "42"}], "one claim, with the ticket_id > 2^53 as a string")
 	var claimed: ClaimedCharacter = _platform.claimed(42)
-	assert_eq(_platform.heartbeat_set(), {42: claimed.lease_id}, "el personaje entra en el conjunto del latido")
+	assert_eq(_platform.heartbeat_set(), {42: claimed.lease_id}, "the character enters the heartbeat set")
 	_platform.send_heartbeat_now()
 	await _run_until(func() -> bool: return not _platform.sent(PlatformEvent.KIND_HEARTBEAT).is_empty())
 	var beats: Array[Dictionary] = _platform.sent(PlatformEvent.KIND_HEARTBEAT)
 	assert_eq(beats.back()["characters"], [{"character_id": "42", "lease_id": claimed.lease_id}],
-			"y el latido late por él")
+			"and the heartbeat beats for it")
 	var other: RawTicketClient = await _join(43)
 	if other != null:
-		assert_false(other.own_spawn.is_staff, "un player no")
+		assert_false(other.own_spawn.is_staff, "a player does not")
 		var seen: NetMessages.EntitySpawn = other.spawn_named("Aneira")
-		if assert_not_null(seen, "Brais ve a Aneira"):
-			assert_true(seen.is_staff, "con su etiqueta")
+		if assert_not_null(seen, "Brais sees Aneira"):
+			assert_true(seen.is_staff, "with her tag")
 	assert_true(_server.get_connected_names().has("Aneira") and not _server.get_connected_names().has("Impostor"),
-			"el nombre del HELLO no cuenta")
+			"the HELLO's name does not count")
 
 
 func test_hello_without_ticket_gets_ticket_with_the_menu_text() -> void:
@@ -253,16 +254,16 @@ func test_hello_without_ticket_gets_ticket_with_the_menu_text() -> void:
 	var answered: bool = await _run_until(func() -> bool: return client.reject != null or client.welcome != null)
 	if assert_true(answered and client.reject != null, "REJECT"):
 		assert_eq(client.reject.result, NetProtocol.Result.TICKET, "TICKET")
-		assert_eq(client.reject.text, TicketAuthProvider.NO_TICKET_TEXT, "«Entra desde el menú con tu cuenta»")
+		assert_eq(client.reject.text, TicketAuthProvider.NO_TICKET_TEXT, "\"Entra desde el menú con tu cuenta\" (join from the menu with your account)")
 	var forged: RawTicketClient = _connect(_hello(42, _ticket(42, "vado_gris")))
 	await _run_until(func() -> bool: return forged.reject != null)
-	if assert_not_null(forged.reject, "un billete de otra zona"):
+	if assert_not_null(forged.reject, "a ticket from another zone"):
 		assert_eq(forged.reject.result, NetProtocol.Result.TICKET, "TICKET")
-		assert_eq(forged.reject.text, NetProtocol.result_text(NetProtocol.Result.TICKET), "con su texto")
-	assert_eq(_platform.sent(PlatformEvent.KIND_CLAIM).size(), 0, "nada llega a la plataforma")
+		assert_eq(forged.reject.text, NetProtocol.result_text(NetProtocol.Result.TICKET), "with its text")
+	assert_eq(_platform.sent(PlatformEvent.KIND_CLAIM).size(), 0, "nothing reaches the platform")
 
 
-## Cupo de 4 con 5 a la vez en VERIFYING: el quinto recibe FULL y nunca se reclama.
+## Quota of 4 with 5 at once in VERIFYING: the fifth receives FULL and is never claimed.
 func test_quota_of_four_with_five_verifying_rejects_one_with_full() -> void:
 	if not await _start(func(config: ServerConfig) -> void: config.max_players = 4,
 			func(platform: FakeZonePlatform) -> void:
@@ -276,19 +277,19 @@ func test_quota_of_four_with_five_verifying_rejects_one_with_full() -> void:
 		clients.append(_connect(_hello(character_id, _ticket(character_id)), false))
 	var one_full: bool = await _run_until(func() -> bool:
 		return clients.filter(func(c: RawTicketClient) -> bool: return c.reject != null).size() == 1)
-	if not assert_true(one_full, "uno recibe REJECT enseguida"):
+	if not assert_true(one_full, "one receives REJECT right away"):
 		return
 	var rejected: RawTicketClient = clients.filter(func(c: RawTicketClient) -> bool: return c.reject != null)[0]
-	assert_eq(rejected.reject.result, NetProtocol.Result.FULL, "FULL: los cuatro que verifican ocupan el cupo")
-	assert_eq(_server.get_player_count(), 4, "cuatro en VERIFYING")
+	assert_eq(rejected.reject.result, NetProtocol.Result.FULL, "FULL: the four that are verifying take up the quota")
+	assert_eq(_server.get_player_count(), 4, "four in VERIFYING")
 	var welcomed: bool = await _run_until(func() -> bool:
 		return clients.filter(func(c: RawTicketClient) -> bool: return c.welcome != null).size() == 4)
-	assert_true(welcomed, "los cuatro reciben su WELCOME con el 200")
-	assert_eq(_platform.sent(PlatformEvent.KIND_CLAIM).size(), 4, "solo cuatro reclamaciones")
+	assert_true(welcomed, "the four receive their WELCOME with the 200")
+	assert_eq(_platform.sent(PlatformEvent.KIND_CLAIM).size(), 4, "only four claims")
 
 
-## El HELLO llega a 1,4 s de la conexión y la reclamación tarda 5 s: el WELCOME sale a ~6,4 s, antes del plazo de 7 s
-## y del auth_timeout de 10 s de los dos lados (con 5 s, el cliente habría caído).
+## The HELLO arrives 1.4 s after connecting and the claim takes 5 s: the WELCOME goes out at ~6.4 s, before the 7 s deadline
+## and the 10 s auth_timeout on both sides (with 5 s, the client would have dropped).
 func test_late_hello_and_slow_claim_still_get_welcome() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
@@ -297,15 +298,15 @@ func test_late_hello_and_slow_claim_still_get_welcome() -> void:
 	var client: RawTicketClient = _connect(_hello(42, _ticket(42)), true, 1400)
 	var joined: bool = await _run_until(func() -> bool:
 		return client.own_spawn != null or client.reject != null or client.failed, 9000)
-	if not assert_true(joined and client.own_spawn != null, "entra en el mundo (rechazo: %s)"
+	if not assert_true(joined and client.own_spawn != null, "enters the world (rejection: %s)"
 			% (client.reject.text if client.reject != null else "ninguno")):
 		return
 	var elapsed: int = client.welcome_at_msec - client.connected_at_msec
-	assert_true(elapsed >= 6000 and elapsed < 7000, "el WELCOME llega a los %d ms de la conexión" % elapsed)
-	assert_false(client.failed or client.disconnected, "nadie cae por el auth_timeout")
+	assert_true(elapsed >= 6000 and elapsed < 7000, "the WELCOME arrives %d ms after connecting" % elapsed)
+	assert_false(client.failed or client.disconnected, "nobody drops because of the auth_timeout")
 
 
-## Plataforma muda: REJECT UNAVAILABLE a los 7 s (reloj real) y, cuando la reclamación llega después, se libera.
+## Silent platform: REJECT UNAVAILABLE at 7 s (real clock) and, when the claim arrives afterwards, it is released.
 func test_mute_platform_rejects_with_unavailable_after_seven_seconds() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
@@ -317,15 +318,15 @@ func test_mute_platform_rejects_with_unavailable_after_seven_seconds() -> void:
 		return
 	assert_eq(client.reject.result, NetProtocol.Result.UNAVAILABLE, "UNAVAILABLE")
 	assert_eq(client.reject.text, NetProtocol.result_text(NetProtocol.Result.UNAVAILABLE),
-			"«El servicio de cuentas no responde: inténtalo más tarde»")
+			"\"El servicio de cuentas no responde: inténtalo más tarde\" (the accounts service is not responding: try again later)")
 	var elapsed: int = client.reject_at_msec - client.connected_at_msec
-	assert_true(elapsed >= 6900 and elapsed < 8000, "a los 7 s de la conexión (%d ms)" % elapsed)
+	assert_true(elapsed >= 6900 and elapsed < 8000, "7 s after connecting (%d ms)" % elapsed)
 	var released: bool = await _run_until(func() -> bool:
 		return not _platform.sent(ZonePlatform.KIND_RELEASE).is_empty(), 3000)
-	if assert_true(released, "la reclamación que llega después se libera"):
+	if assert_true(released, "the claim that arrives afterwards is released"):
 		assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE)[0]["lease_id"], _platform.claimed(42).lease_id,
-				"con su lease_id")
-	assert_true(_platform.heartbeat_set().is_empty(), "y no queda en el latido")
+				"with its lease_id")
+	assert_true(_platform.heartbeat_set().is_empty(), "and it does not stay in the heartbeat")
 
 
 func test_fenced_zone_rejects_with_unavailable() -> void:
@@ -336,12 +337,12 @@ func test_fenced_zone_rejects_with_unavailable() -> void:
 	var client: RawTicketClient = _connect(_hello(42, _ticket(42)))
 	await _run_until(func() -> bool: return client.reject != null)
 	if assert_not_null(client.reject, "REJECT"):
-		assert_eq(client.reject.result, NetProtocol.Result.UNAVAILABLE, "zona cercada: UNAVAILABLE")
-	assert_eq(_platform.sent(PlatformEvent.KIND_CLAIM).size(), 0, "sin reclamación")
+		assert_eq(client.reject.result, NetProtocol.Result.UNAVAILABLE, "fenced zone: UNAVAILABLE")
+	assert_eq(_platform.sent(PlatformEvent.KIND_CLAIM).size(), 0, "no claim")
 	_platform.set_fenced(false)
 	var later: RawTicketClient = _connect(_hello(42, _ticket(42)))
 	await _run_until(func() -> bool: return later.own_spawn != null)
-	assert_not_null(later.own_spawn, "con el latido de vuelta, entra")
+	assert_not_null(later.own_spawn, "with the heartbeat back, it gets in")
 
 
 func test_leaving_while_verifying_releases_the_late_claim() -> void:
@@ -353,14 +354,14 @@ func test_leaving_while_verifying_releases_the_late_claim() -> void:
 	await _run_until(func() -> bool: return _server_peer_in(ServerPeer.State.VERIFYING) != null)
 	client.transport.close()
 	var gone: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty())
-	assert_true(gone, "el servidor da de baja al peer que verificaba")
-	assert_eq(_server.get_player_count(), 0, "y deja su plaza")
+	assert_true(gone, "the server removes the peer that was verifying")
+	assert_eq(_server.get_player_count(), 0, "and frees its slot")
 	var released: bool = await _run_until(func() -> bool:
 		return not _platform.sent(ZonePlatform.KIND_RELEASE).is_empty(), 3000)
-	if assert_true(released, "la reclamación que llega después se libera"):
+	if assert_true(released, "the claim that arrives afterwards is released"):
 		assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE)[0]["lease_id"], _platform.claimed(42).lease_id,
-				"con su lease_id")
-	assert_eq(_provider.pending_count(), 0, "el proveedor no espera a nadie")
+				"with its lease_id")
+	assert_eq(_provider.pending_count(), 0, "the provider is not waiting for anyone")
 
 
 func test_leaving_while_loading_releases_without_saving() -> void:
@@ -370,21 +371,21 @@ func test_leaving_while_loading_releases_without_saving() -> void:
 	var client: RawTicketClient = _connect(_hello(42, _ticket(42)), false)
 	var loading: bool = await _run_until(func() -> bool:
 		return client.connected and _server_peer_in(ServerPeer.State.LOADING) != null)
-	if not assert_true(loading, "WELCOME y LOADING"):
+	if not assert_true(loading, "WELCOME and LOADING"):
 		return
 	var lease_id: String = _platform.claimed(42).lease_id
 	client.transport.close()
 	var released: bool = await _run_until(func() -> bool:
 		return not _platform.sent(ZonePlatform.KIND_RELEASE).is_empty())
-	if assert_true(released, "la baja en LOADING libera"):
+	if assert_true(released, "the removal in LOADING releases"):
 		assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE), [{"zone_instance_id": _platform.instance_id(),
-				"lease_id": lease_id}], "una vez, con su lease_id")
-	assert_eq(_platform.sent(PlatformEvent.KIND_SAVE).size(), 0, "sin guardar")
-	assert_true(_platform.heartbeat_set().is_empty(), "y sale del latido")
+				"lease_id": lease_id}], "once, with its lease_id")
+	assert_eq(_platform.sent(PlatformEvent.KIND_SAVE).size(), 0, "without saving")
+	assert_true(_platform.heartbeat_set().is_empty(), "and leaves the heartbeat")
 
 
-## Un revoked del latido con un personaje en LOADING: NOTICE de expulsión con el texto de la plataforma y
-## liberación sin guardar.
+## A heartbeat revoked with a character in LOADING: kick NOTICE with the platform's text and release
+## without saving.
 func test_revoked_while_loading_kicks_and_releases() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
@@ -398,18 +399,18 @@ func test_revoked_while_loading_kicks_and_releases() -> void:
 			"text": "Has iniciado sesión desde otro lugar"}], "mutes": [], "maintenance": null})
 	_platform.send_heartbeat_now()
 	var kicked: bool = await _run_until(func() -> bool: return client.kick_notice() != null)
-	if assert_true(kicked, "NOTICE de expulsión"):
-		assert_eq(client.kick_notice().text, "Has iniciado sesión desde otro lugar", "con el texto de la plataforma")
+	if assert_true(kicked, "kick NOTICE"):
+		assert_eq(client.kick_notice().text, "Has iniciado sesión desde otro lugar", "with the platform's text")
 	var released: bool = await _run_until(func() -> bool:
 		return not _platform.sent(ZonePlatform.KIND_RELEASE).is_empty())
-	if assert_true(released, "y se libera"):
-		assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE)[0]["lease_id"], lease_id, "su arrendamiento")
-	assert_eq(_platform.sent(PlatformEvent.KIND_SAVE).size(), 0, "sin guardar")
+	if assert_true(released, "and it is released"):
+		assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE)[0]["lease_id"], lease_id, "its lease")
+	assert_eq(_platform.sent(PlatformEvent.KIND_SAVE).size(), 0, "without saving")
 
 
-## En el mundo: un revoked con un lease_id viejo no expulsa; con el de ahora, sí (y al irse el cuerpo sale su final
-## con release_lease, que libera: desde progresion.md P5a la sección progress siempre se construye); un lease_lost
-## expulsa sin liberar ni guardar.
+## In the world: a revoked with an old lease_id does not kick; with the current one, it does (and when the body leaves its final
+## save goes out with release_lease, which releases: since progresion.md P5a the progress section is always built); a lease_lost
+## kicks without releasing or saving.
 func test_revoked_in_the_world_only_with_the_current_lease() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})
@@ -428,31 +429,31 @@ func test_revoked_in_the_world_only_with_the_current_lease() -> void:
 		_platform.send_heartbeat_now()
 	revoke.call("42", "00000000-0000-4000-8000-999999999999", "banned", "Tu cuenta está expulsada: trampas")
 	await _run_ms(400)
-	assert_null(first.kick_notice(), "un lease_id viejo no expulsa")
-	assert_false(first.disconnected, "sigue conectado")
+	assert_null(first.kick_notice(), "an old lease_id does not kick")
+	assert_false(first.disconnected, "still connected")
 	revoke.call("42", lease_42, "banned", "Tu cuenta está expulsada: trampas")
 	await _run_until(func() -> bool: return first.kick_notice() != null)
-	if assert_not_null(first.kick_notice(), "con el de ahora, expulsión"):
-		assert_eq(first.kick_notice().text, "Tu cuenta está expulsada: trampas", "con el texto de la plataforma")
+	if assert_not_null(first.kick_notice(), "with the current one, a kick"):
+		assert_eq(first.kick_notice().text, "Tu cuenta está expulsada: trampas", "with the platform's text")
 	var final_of_42: Callable = func() -> Array[Dictionary]:
 		return _platform.sent(PlatformEvent.KIND_SAVE).filter(func(b: Dictionary) -> bool:
 			return bool(b["release_lease"]) and String(b["lease_id"]) == lease_42)
 	var finished: bool = await _run_until(func() -> bool: return not (final_of_42.call() as Array).is_empty())
-	assert_true(finished, "al irse el cuerpo sale su final con release_lease, que libera")
+	assert_true(finished, "when the body leaves its final save goes out with release_lease, which releases")
 	var saves_before: int = _platform.sent(PlatformEvent.KIND_SAVE).size()
 	revoke.call("43", lease_43, "lease_lost", "Tu personaje ha entrado en otro servidor")
 	await _run_until(func() -> bool: return second.kick_notice() != null)
-	if assert_not_null(second.kick_notice(), "lease_lost expulsa"):
-		assert_eq(second.kick_notice().text, "Tu personaje ha entrado en otro servidor", "con su texto")
+	if assert_not_null(second.kick_notice(), "lease_lost kicks"):
+		assert_eq(second.kick_notice().text, "Tu personaje ha entrado en otro servidor", "with its text")
 	await _run_until(func() -> bool: return _server.get_registry().get_sorted().filter(
 			func(e: NetEntity) -> bool: return e.kind == NetProtocol.EntityKind.PLAYER).is_empty(), 2000)
 	await _run_ms(200)
-	assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE).size(), 0, "lease_lost no libera (ya no es de la zona)")
-	assert_eq(_platform.sent(PlatformEvent.KIND_SAVE).size(), saves_before, "ni guarda")
-	assert_false(_platform.heartbeat_set().has(43), "ni se sigue latiendo por él")
+	assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE).size(), 0, "lease_lost does not release (it no longer belongs to the zone)")
+	assert_eq(_platform.sent(PlatformEvent.KIND_SAVE).size(), saves_before, "nor save")
+	assert_false(_platform.heartbeat_set().has(43), "nor does the heartbeat keep beating for it")
 
 
-## BUSY con su texto y BANNED con el message del 403 en suspensión, expulsión y borrado pendiente.
+## BUSY with its text and BANNED with the 403's message, for suspension, kick and pending deletion.
 func test_busy_and_banned_rejections_carry_their_text() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
@@ -475,14 +476,14 @@ func test_busy_and_banned_rejections_carry_their_text() -> void:
 		_platform.script_next(PlatformEvent.KIND_CLAIM, entry[0], entry[1])
 		var client: RawTicketClient = _connect(_hello(42, _ticket(42)))
 		await _run_until(func() -> bool: return client.reject != null or client.welcome != null)
-		if assert_not_null(client.reject, "REJECT para %s" % entry[3]):
+		if assert_not_null(client.reject, "REJECT for %s" % entry[3]):
 			assert_eq([client.reject.result, client.reject.text], [entry[2], entry[3]], entry[3])
-	assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE).size(), 0, "sin arrendamiento, nada que liberar")
+	assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE).size(), 0, "with no lease, nothing to release")
 
 
-## docs/social.md 12.7: con billete, el nombre del HELLO no se compara con los conectados. Un HELLO con el billete
-## de otro personaje y el nombre de un enemigo conectado no recibe NAME: entra con su personaje (o, con un billete
-## que no vale, recibe TICKET). Nada delata si el enemigo está en la zona.
+## docs/social.md 12.7: with a ticket, the HELLO's name is not compared with the connected players. A HELLO with another
+## character's ticket and the name of a connected enemy does not receive NAME: it enters with its character (or, with a ticket
+## that is not valid, receives TICKET). Nothing gives away whether the enemy is in the zone.
 func test_hello_cannot_probe_an_enemy_name() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(2, 20, &"player", SOLMARCH, {}, {}, "Bruna")
@@ -491,30 +492,30 @@ func test_hello_cannot_probe_an_enemy_name() -> void:
 	var enemy: RawTicketClient = await _join(2)
 	if enemy == null:
 		return
-	assert_true(_server.get_connected_names().has("Bruna"), "Bruna está en la zona")
+	assert_true(_server.get_connected_names().has("Bruna"), "Bruna is in the zone")
 	var probe: RawTicketClient = _connect(_hello(3, _ticket(3), SOLMARCH, "Bruna"))
 	await _run_until(func() -> bool: return probe.own_spawn != null or probe.reject != null)
-	assert_null(probe.reject, "ni NAME ni ningún otro REJECT")
-	if assert_not_null(probe.own_spawn, "entra con su personaje"):
-		assert_eq(probe.own_spawn.display_name, "Ana", "con su nombre")
-		assert_eq(probe.welcome.realm, VARDHEIM, "y su reino")
+	assert_null(probe.reject, "neither NAME nor any other REJECT")
+	if assert_not_null(probe.own_spawn, "enters with its character"):
+		assert_eq(probe.own_spawn.display_name, "Ana", "with its name")
+		assert_eq(probe.welcome.realm, VARDHEIM, "and its realm")
 	var forged: RawTicketClient = _connect(_hello(3, _ticket(2), SOLMARCH, "Bruna"))
 	await _run_until(func() -> bool: return forged.reject != null or forged.welcome != null)
-	if assert_not_null(forged.reject, "el billete de otro personaje"):
-		assert_eq(forged.reject.result, NetProtocol.Result.TICKET, "TICKET, no NAME")
+	if assert_not_null(forged.reject, "another character's ticket"):
+		assert_eq(forged.reject.result, NetProtocol.Result.TICKET, "TICKET, not NAME")
 	var bare: RawTicketClient = _connect(_hello(0, PackedByteArray(), SOLMARCH, "Bruna"))
 	await _run_until(func() -> bool: return bare.reject != null or bare.welcome != null)
-	if assert_not_null(bare.reject, "sin billete"):
-		assert_eq(bare.reject.result, NetProtocol.Result.TICKET, "TICKET, no NAME")
+	if assert_not_null(bare.reject, "no ticket"):
+		assert_eq(bare.reject.result, NetProtocol.Result.TICKET, "TICKET, not NAME")
 	var absent: RawTicketClient = _connect(_hello(3, PackedByteArray(), SOLMARCH, "Nadie"))
 	await _run_until(func() -> bool: return absent.reject != null or absent.welcome != null)
-	if assert_not_null(absent.reject, "con un nombre que no está"):
+	if assert_not_null(absent.reject, "with a name that is not there"):
 		assert_eq([absent.reject.result, absent.reject.text], [bare.reject.result, bare.reject.text],
-				"la misma respuesta que con el del enemigo")
+				"the same response as with the enemy's")
 
 
-## Con un env de production, --debug-commands hace que el arranque falle (la zona sale) y la instancia se da de
-## baja.
+## With a production env, --debug-commands makes startup fail (the zone exits) and the instance
+## deregisters.
 func test_debug_commands_with_production_env_stop_the_startup() -> void:
 	_platform = FakeZonePlatform.new()
 	_platform.fake_env = &"production"
@@ -524,7 +525,7 @@ func test_debug_commands_with_production_env_stop_the_startup() -> void:
 	_viewport.add_child(_platform)
 	var config := ServerConfig.from_args(PackedStringArray(["--server", "--zone=test_world",
 			"--platform=http://fake", "--debug-commands"]))
-	assert_true(config.uses_platform() and config.debug_commands, "las opciones se leen")
+	assert_true(config.uses_platform() and config.debug_commands, "the options are read")
 	var finished: Array = []
 	_platform.startup_finished.connect(func(ok: bool, error: String) -> void: finished.append([ok, error]))
 	_platform.start(config, {"token": "token", "ticket_keys": {2: _keys[2]}})
@@ -532,10 +533,10 @@ func test_debug_commands_with_production_env_stop_the_startup() -> void:
 		if not finished.is_empty():
 			break
 		await wait_process_frames()
-	if assert_eq(finished.size(), 1, "el arranque termina"):
-		assert_false(finished[0][0], "mal")
+	if assert_eq(finished.size(), 1, "startup finishes"):
+		assert_false(finished[0][0], "badly")
 		assert_eq(finished[0][1], "Esa opción no se admite con la plataforma en staging/production: --debug-commands",
-				"con el motivo")
+				"with the reason")
 	await wait_process_frames(3)
-	assert_eq(_platform.sent(ZonePlatform.KIND_STOP).size(), 1, "y la instancia se da de baja")
-	assert_eq(_platform.sent(ZonePlatform.KIND_FORTRESSES).size(), 0, "sin seguir con el arranque")
+	assert_eq(_platform.sent(ZonePlatform.KIND_STOP).size(), 1, "and the instance deregisters")
+	assert_eq(_platform.sent(ZonePlatform.KIND_FORTRESSES).size(), 0, "without continuing with startup")

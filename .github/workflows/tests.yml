@@ -1,10 +1,10 @@
 name: Pruebas
 
-# Suite completa de pruebas (también las de red y las de procesos) con Godot 4.7.2 headless en
-# Linux, en cada push a main y en cada pull request (un push a la rama de un PR ya la lanza por
-# pull_request; lanzarla también por push gastaba el doble de minutos). Para que una prueba rota bloquee el merge hay que
-# marcar el trabajo «Suite completa» como comprobación obligatoria en la protección de la rama
-# (Settings > Branches): eso no se puede configurar desde este archivo.
+# Full test suite (including the network and process tests) with Godot 4.7.2 headless on Linux, on
+# every push to main and on every pull request (a push to a PR branch already triggers it through
+# pull_request; triggering it on push too burned double the minutes). For a broken test to block the
+# merge, the "Suite completa" job has to be marked as a required check in the branch protection
+# (Settings > Branches): that cannot be configured from this file.
 
 on:
   push:
@@ -15,7 +15,7 @@ on:
 permissions:
   contents: read
 
-# Un push nuevo a la misma rama cancela la ejecución anterior que sigue en marcha.
+# A new push to the same branch cancels the previous run that is still in progress.
 concurrency:
   group: pruebas-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -23,12 +23,12 @@ concurrency:
 env:
   GODOT_VERSION: 4.7.2-stable
   GODOT_FILE: Godot_v4.7.2-stable_linux.x86_64
-  # Suma de comprobación SHA-512 del zip, de SHA512-SUMS.txt de la versión 4.7.2-stable.
+  # SHA-512 checksum of the zip, from SHA512-SUMS.txt of the 4.7.2-stable release.
   GODOT_SHA512: 9aa00f7a605200940bce3027a567b782f49bd8e940dd06ae9e987bd65aee1b1467edd56ed84fcdcbdd44354bf613bdbb4e5d2913e925850368e150c59ed54c65
 
 jobs:
-  # La suite se reparte en cuatro partes que corren a la vez (run_tests.gd --shard=K/4): entera
-  # dura unos 18 min en una máquina de 4 núcleos y crece con cada fase.
+  # The suite is split into four parts that run at the same time (run_tests.gd --shard=K/4): the whole
+  # thing takes about 18 min on a 4-core machine and grows with every phase.
   tests:
     name: Suite ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
@@ -41,9 +41,9 @@ jobs:
       run:
         shell: bash
     steps:
-      # Sin lfs: el checkout deja los punteros LFS. Los objetos se bajan después de restaurar la
-      # caché, así solo se descargan los que faltan (con lfs: true el checkout los bajaría todos
-      # en cada ejecución, antes de poder consultar la caché).
+      # No lfs: the checkout leaves the LFS pointers. The objects are downloaded after restoring the
+      # cache, so only the missing ones get downloaded (with lfs: true the checkout would download all of
+      # them on every run, before the cache could be consulted).
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -99,8 +99,8 @@ jobs:
             exit 1
           }
 
-      # Las pruebas arrancan procesos de Godot propios (servidor y clientes). El plazo de este paso
-      # es menor que el del trabajo para que el paso de logs siga a tiempo si se cuelga.
+      # The tests start their own Godot processes (server and clients). This step's timeout is shorter
+      # than the job's so that the logs step still gets to run in time if it hangs.
       - name: Pruebas
         timeout-minutes: 15
         run: |
@@ -123,8 +123,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # Una sola comprobación con el nombre de siempre, para la protección de la rama: pasa solo si
-  # pasan las cuatro partes.
+  # A single check with the usual name, for the branch protection: it passes only if all four parts
+  # pass.
   suite:
     name: Suite completa
     needs: tests
@@ -134,16 +134,16 @@ jobs:
       - name: Resultado de las cuatro partes
         run: test "${{ needs.tests.result }}" = "success"
 
-  # Windows es la plataforma de desarrollo y allí OS.is_process_running solo conoce los procesos
-  # hijos propios: este trabajo ejecuta las pruebas de LocalServerLauncher (con sus procesos
-  # auxiliares), no la suite completa, que se ejecuta a mano en Windows (docs/informe_noche.md).
+  # Windows is the development platform and there OS.is_process_running only knows about its own child
+  # processes: this job runs the LocalServerLauncher tests (with their helper processes), not the
+  # full suite, which is run by hand on Windows (docs/informe_noche.md).
   tests-windows:
     name: Windows (LocalServerLauncher)
     runs-on: windows-latest
     timeout-minutes: 25
     env:
       GODOT_WIN_FILE: Godot_v4.7.2-stable_win64
-      # Suma de comprobación SHA-512 del zip, de SHA512-SUMS.txt de la versión 4.7.2-stable.
+      # SHA-512 checksum of the zip, from SHA512-SUMS.txt of the 4.7.2-stable release.
       GODOT_WIN_SHA512: 83decd58fdf67b9d657958a1ae6bf1929c20785315a81effe245874cdc57acb709bf868e00778a96984338c1b29dafdb453c6847747694621c6ecf5da2259993
     defaults:
       run:
@@ -186,9 +186,9 @@ jobs:
           echo "${GODOT_WIN_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
           7z x -y -o"$HOME/godot" "$RUNNER_TEMP/godot.zip"
 
-      # El ejecutable de consola (el que escribe en la salida estándar) es un envoltorio que lanza el
-      # principal buscándolo por su propio nombre sin «_console»: renombrado, falla con «Invalid wrapper
-      # executable name». Un guion «godot» lo llama con su nombre original.
+      # The console executable (the one that writes to standard output) is a wrapper that launches the
+      # main one by looking it up under its own name without "_console": if renamed, it fails with
+      # "Invalid wrapper executable name". A "godot" script calls it by its original name.
       - name: Godot en el PATH
         run: |
           printf '#!/usr/bin/env bash\nexec "%s/%s_console.exe" "$@"\n' "$HOME/godot" "$GODOT_WIN_FILE" > "$HOME/godot/godot"
@@ -228,14 +228,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # Servicio de plataforma en Go (docs/plataforma.md §2.6 y §10.3), independiente de los trabajos de
-  # Godot: comprobación de secretos del índice, gofmt, go vet y go test con un PostgreSQL efímero
-  # (initdb del PostgreSQL de ubuntu-latest; ELDMARK_REQUIRE_PG=1 hace que las pruebas fallen si
-  # falta, en lugar de saltarse). Las pruebas de platform/deploy (P9b) corren además los scripts de
-  # copias y restauración, shellcheck y «docker compose config» (sin demonio), que la imagen de
-  # ubuntu-latest trae; ELDMARK_REQUIRE_DEPLOY_TOOLS=1 hace que fallen si falta alguna herramienta.
-  # Para que bloquee el merge hay que marcar también «Plataforma» como comprobación obligatoria en la
-  # protección de la rama.
+  # Go platform service (docs/plataforma.md §2.6 and §10.3), independent of the Godot jobs: secrets
+  # check of the index, gofmt, go vet and go test with an ephemeral PostgreSQL (initdb from the
+  # ubuntu-latest PostgreSQL; ELDMARK_REQUIRE_PG=1 makes the tests fail if it is missing, instead of
+  # skipping). The platform/deploy tests (P9b) also run the backup and restore scripts, shellcheck and
+  # "docker compose config" (no daemon), which the ubuntu-latest image ships with;
+  # ELDMARK_REQUIRE_DEPLOY_TOOLS=1 makes them fail if any tool is missing. For it to block the merge,
+  # "Plataforma" must also be marked as a required check in the branch protection.
   platform:
     name: Plataforma
     runs-on: ubuntu-latest
@@ -283,8 +282,8 @@ jobs:
             exit 1
           fi
 
-      # Las pruebas de extremo a extremo (platform/e2e, etiqueta e2e) se compilan y se revisan aquí también; las
-      # corre el trabajo «Plataforma e2e».
+      # The end-to-end tests (platform/e2e, e2e tag) are also compiled and vetted here; they are run by
+      # the "Plataforma e2e" job.
       - name: go vet
         working-directory: platform
         run: |
@@ -296,12 +295,13 @@ jobs:
         timeout-minutes: 10
         run: go test -p 2 ./...
 
-  # Extremo a extremo (docs/plataforma.md P10, §15): la plataforma de Go de verdad en el proceso de la prueba, con
-  # un PostgreSQL efímero, contra zonas test_world con --platform y bots con cuenta de Godot de verdad
-  # (platform/e2e, etiqueta e2e: TestEnterAndSave y TestZoneCrash, y las de progresion.md P8 cuando lleguen).
-  # Reutiliza las cachés de LFS y de Godot de los trabajos de Godot (las mismas claves) y exporta ELDMARK_GODOT;
-  # TestMain importa el proyecto. Si falla, sube los registros de la plataforma, las zonas y los bots. Para que
-  # bloquee el merge hay que marcar «Plataforma e2e» como comprobación obligatoria en la protección de la rama.
+  # End to end (docs/plataforma.md P10, §15): the real Go platform in the test process, with an
+  # ephemeral PostgreSQL, against test_world zones with --platform and bots with a real Godot account
+  # (platform/e2e, e2e tag: TestEnterAndSave and TestZoneCrash, and those of progresion.md P8 when
+  # they arrive). It reuses the LFS and Godot caches of the Godot jobs (same keys) and exports
+  # ELDMARK_GODOT; TestMain imports the project. If it fails, it uploads the platform, zone and bot
+  # logs. For it to block the merge, "Plataforma e2e" must be marked as a required check in the branch
+  # protection.
   platform-e2e:
     name: Plataforma e2e
     runs-on: ubuntu-latest
@@ -371,7 +371,7 @@ jobs:
           go version
           "$HOME/godot/${GODOT_FILE}" --headless --version
 
-      # Los registros de cada prueba quedan en $RUNNER_TEMP/e2e (fuera del proyecto, que Godot importa).
+      # The logs of each test are left in $RUNNER_TEMP/e2e (outside the project, which Godot imports).
       - name: Pruebas de extremo a extremo
         working-directory: platform
         timeout-minutes: 15

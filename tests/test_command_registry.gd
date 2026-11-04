@@ -1,7 +1,7 @@
 extends TestCase
-## Pruebas de [CommandRegistry] (docs/combate.md, sección 6; TEC-19): el registro único de los
-## comandos de red (con ids fijos de [constant NetProtocol.DEBUG_COMMAND_IDS]) y de consola, la
-## ejecución, los resultados y la auditoría de cada uso.
+## Tests for [CommandRegistry] (docs/combate.md, section 6; TEC-19): the single registry of
+## network commands (with fixed ids from [constant NetProtocol.DEBUG_COMMAND_IDS]) and console
+## commands, execution, results and the audit of each use.
 
 var _calls: Array[String] = []
 var _sink: Array[String] = []
@@ -49,7 +49,7 @@ func test_registers_console_and_network_commands() -> void:
 	assert_true(registry.register(&"announce", "announce <texto>", _console_ok))
 	assert_true(registry.has_command(&"heal"))
 	assert_false(registry.has_command(&"kill"))
-	assert_eq(registry.get_names(), PackedStringArray(["announce", "heal"]), "ordenados")
+	assert_eq(registry.get_names(), PackedStringArray(["announce", "heal"]), "sorted")
 	assert_eq(registry.get_usage(&"heal"), "heal <jugador>")
 	assert_eq(registry.get_usage(&"nada"), "")
 
@@ -58,12 +58,12 @@ func test_a_network_command_needs_a_fixed_id() -> void:
 	var registry: CommandRegistry = _registry()
 	allow_logged_errors()
 	assert_false(registry.register(&"inventado", "x", _console_ok, _net_ok),
-			"un comando de red sin id fijo en NetProtocol se rechaza")
+			"a network command without a fixed id in NetProtocol is rejected")
 	assert_false(registry.has_command(&"inventado"))
 	assert_true(registry.register(&"inventado", "x", _console_ok),
-			"como comando de consola sí se admite")
-	assert_false(registry.register(&"inventado", "x", _console_ok), "un nombre repetido, no")
-	assert_false(registry.register(&"vacio", "x", Callable()), "sin manejadores, no")
+			"as a console command it is accepted")
+	assert_false(registry.register(&"inventado", "x", _console_ok), "a repeated name, no")
+	assert_false(registry.register(&"vacio", "x", Callable()), "without handlers, no")
 
 
 func test_missing_network_commands_lists_the_ids_without_a_handler() -> void:
@@ -72,17 +72,17 @@ func test_missing_network_commands_lists_the_ids_without_a_handler() -> void:
 	for command_name: StringName in NetProtocol.DEBUG_COMMAND_IDS:
 		all_names.append(String(command_name))
 	all_names.sort()
-	assert_eq(registry.missing_network_commands(), all_names, "al principio faltan todos")
+	assert_eq(registry.missing_network_commands(), all_names, "at first all are missing")
 	registry.register(&"teleport", "x", _console_ok, _net_ok)
 	registry.register(&"heal", "x", _console_ok)
 	var missing: PackedStringArray = registry.missing_network_commands()
-	assert_false(missing.has("teleport"), "teleport ya tiene manejador de red")
-	assert_true(missing.has("heal"), "heal solo tiene el de consola")
+	assert_false(missing.has("teleport"), "teleport already has a network handler")
+	assert_true(missing.has("heal"), "heal only has the console one")
 	assert_eq(missing.size(), all_names.size() - 1)
 
 
 func test_ids_of_the_network_commands_are_fixed() -> void:
-	# Los ids son parte del protocolo: no se reutilizan ni se reordenan.
+	# The ids are part of the protocol: they are never reused or reordered.
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"teleport"], 1)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"heal"], 2)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"kill"], 3)
@@ -95,12 +95,12 @@ func test_ids_of_the_network_commands_are_fixed() -> void:
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_kill_captain"], 10)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_capture_speed"], 11)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"npc_debug"], 12)
-	# Protocolo 6 (docs/habilidades.md, sección 5.1).
+	# Protocol 6 (docs/habilidades.md, section 5.1).
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"cooldowns_off"], 13)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"apply_status"], 14)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"down"], 15)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"refill"], 16)
-	# Protocolo 7 (docs/progresion.md §10): los de GM de la progresión.
+	# Protocol 7 (docs/progresion.md §10): the progression GM ones.
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"item_give"], 40)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"currency_add"], 41)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"level_set"], 42)
@@ -121,17 +121,17 @@ func test_network_execution_results_and_audit() -> void:
 	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_STAMINA_INF, PackedByteArray()),
 			CommandRegistry.Result.REFUSED)
 	assert_eq(registry.execute_network(peer, 99, PackedByteArray()), CommandRegistry.Result.UNKNOWN,
-			"un id que no existe")
+			"an id that does not exist")
 	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_SET_WEAPON, PackedByteArray()),
-			CommandRegistry.Result.UNKNOWN, "un id con nombre pero sin manejador registrado")
+			CommandRegistry.Result.UNKNOWN, "an id with a name but no registered handler")
 	assert_eq(_calls, ["red:0"] as Array[String])
-	assert_eq(registry.audit_total, 5, "los cinco usos, también los fallidos, quedan auditados")
+	assert_eq(registry.audit_total, 5, "the five uses, even the failed ones, are audited")
 	assert_eq(registry.audit.size(), 5)
 	assert_eq(registry.audit[0], "[auditoría] peer 4 (Ana): heal -> ok")
 	assert_eq(registry.audit[1], "[auditoría] peer 4 (Ana): kill [2 B] -> argumentos no válidos (datos mal)")
 	assert_eq(registry.audit[2], "[auditoría] peer 4 (Ana): stamina_inf -> rechazado")
 	assert_eq(registry.audit[3], "[auditoría] peer 4 (Ana): id 99 -> desconocido")
-	assert_eq(_sink.size(), 5, "y cada línea va al registro del servidor")
+	assert_eq(_sink.size(), 5, "and each line goes to the server log")
 	assert_eq(_sink[0], registry.audit[0])
 
 
@@ -150,17 +150,17 @@ func test_console_parsing_and_responses() -> void:
 	registry.register(&"kick", "kick <jugador> [motivo]", _console_ok)
 	registry.register(&"announce", "announce <texto>", _console_noted)
 	assert_eq(registry.execute_console("kick Ana por tramposa"), "hecho")
-	assert_eq(_calls, ["consola:Ana,por,tramposa"] as Array[String], "los argumentos separados")
-	assert_eq(registry.execute_console("  /KICK   Bea  "), "hecho", "barra, mayúsculas y espacios")
+	assert_eq(_calls, ["consola:Ana,por,tramposa"] as Array[String], "the arguments split")
+	assert_eq(registry.execute_console("  /KICK   Bea  "), "hecho", "slash, uppercase and spaces")
 	assert_eq(_calls[1], "consola:Bea")
-	assert_eq(registry.execute_console("kick"), "hecho", "sin argumentos")
+	assert_eq(registry.execute_console("kick"), "hecho", "without arguments")
 	assert_eq(_calls[2], "consola:")
 	assert_eq(registry.execute_console("announce hola"), "respuesta")
-	assert_eq(registry.execute_console(""), "", "una línea vacía no hace nada")
+	assert_eq(registry.execute_console(""), "", "an empty line does nothing")
 	assert_eq(registry.execute_console("   "), "")
 	assert_true(registry.execute_console("help").begins_with("Comandos: announce, kick"))
 	assert_true(registry.execute_console("volar alto").begins_with("Comando desconocido: volar"))
-	# La auditoría: las vacías no cuentan; las desconocidas sí; la nota sustituye a la respuesta.
+	# The audit: empty ones do not count; unknown ones do; the note replaces the response.
 	assert_eq(registry.audit_total, 6)
 	assert_eq(registry.audit[0], "[auditoría] consola: kick Ana por tramposa -> hecho")
 	assert_eq(registry.audit[3], "[auditoría] consola: announce hola -> con nota")
@@ -181,7 +181,7 @@ func test_audit_keeps_only_the_latest_entries() -> void:
 		registry.execute_console("kick jugador%d" % index)
 	assert_eq(registry.audit_total, CommandRegistry.MAX_AUDIT_ENTRIES + 25)
 	assert_eq(registry.audit.size(), CommandRegistry.MAX_AUDIT_ENTRIES)
-	assert_true(registry.audit[0].contains("jugador25"), "se pierden las más antiguas")
+	assert_true(registry.audit[0].contains("jugador25"), "the oldest are lost")
 	assert_true(registry.audit[registry.audit.size() - 1].contains(
 			"jugador%d" % (CommandRegistry.MAX_AUDIT_ENTRIES + 24)))
 
@@ -189,19 +189,19 @@ func test_audit_keeps_only_the_latest_entries() -> void:
 # --- Roles (docs/plataforma.md §9.1, P7b) ----------------------------------------------------------
 
 func test_roles_are_ordered_and_a_command_declares_its_minimum() -> void:
-	assert_eq(CommandRegistry.ROLES, ClaimedCharacter.ROLES, "los mismos roles que la reclamación")
+	assert_eq(CommandRegistry.ROLES, ClaimedCharacter.ROLES, "the same roles as the claim")
 	assert_true(CommandRegistry.role_allows(&"admin", &"gm"))
 	assert_true(CommandRegistry.role_allows(&"gm", &"gm"))
 	assert_false(CommandRegistry.role_allows(&"moderator", &"gm"))
 	assert_false(CommandRegistry.role_allows(&"player", &"moderator"))
-	assert_false(CommandRegistry.role_allows(&"inventado", &"player"), "un rol desconocido no llega a nada")
+	assert_false(CommandRegistry.role_allows(&"inventado", &"player"), "an unknown role reaches nothing")
 	var registry: CommandRegistry = _registry()
 	assert_true(registry.register(&"heal", "heal <jugador>", _console_ok, _net_ok))
 	assert_true(registry.register(&"kick", "kick <jugador>", _console_ok, Callable(), &"moderator"))
-	assert_eq(registry.get_min_role(&"heal"), &"gm", "gm por defecto")
+	assert_eq(registry.get_min_role(&"heal"), &"gm", "gm by default")
 	assert_eq(registry.get_min_role(&"kick"), &"moderator")
 	allow_logged_errors()
-	assert_false(registry.register(&"announce", "x", _console_ok, Callable(), &"jefe"), "un rol que no existe")
+	assert_false(registry.register(&"announce", "x", _console_ok, Callable(), &"jefe"), "a role that does not exist")
 	assert_eq(registry.get_names_for(&"moderator"), PackedStringArray(["kick"]))
 	assert_eq(registry.get_names_for(&"gm"), PackedStringArray(["heal", "kick"]))
 	assert_eq(registry.get_names_for(&"player"), PackedStringArray())
@@ -215,36 +215,36 @@ func test_a_network_command_with_a_role_needs_its_minimum() -> void:
 	registry.register(&"heal", "x", _console_ok, _net_ok)
 	var peer: ServerPeer = _peer()
 	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_HEAL, PackedByteArray(), &"player"),
-			CommandRegistry.Result.FORBIDDEN, "un jugador no")
+			CommandRegistry.Result.FORBIDDEN, "a player does not")
 	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_HEAL, PackedByteArray(), &"moderator"),
-			CommandRegistry.Result.FORBIDDEN, "un moderador tampoco")
-	assert_eq(_calls, [] as Array[String], "no se ejecuta")
+			CommandRegistry.Result.FORBIDDEN, "a moderator neither")
+	assert_eq(_calls, [] as Array[String], "it does not run")
 	assert_eq(registry.audit[0], "[auditoría] peer 4 (Ana): heal -> sin permiso (player; hace falta gm)")
 	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_HEAL, PackedByteArray(), &"gm"),
 			CommandRegistry.Result.OK)
 	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_HEAL, PackedByteArray()), CommandRegistry.Result.OK,
-			"sin rol (sin plataforma), como en la fase 4")
+			"without a role (without a platform), as in phase 4")
 	assert_eq(_calls, ["red:0", "red:0"] as Array[String])
 	assert_eq(entries, [[CommandRegistry.Origin.NETWORK, &"gm", &"heal", "ok"],
-			[CommandRegistry.Origin.NETWORK, &"", &"heal", "ok"]], "solo lo ejecutado va a la auditoría de la plataforma")
+			[CommandRegistry.Origin.NETWORK, &"", &"heal", "ok"]], "only what was executed goes to the platform audit")
 
 
-## progresion.md P5d: un comando puede pedir por la red otro rol que por /gm (los 40–43 y el 16: admin y gm).
+## progresion.md P5d: a command can require a different role over the network than through /gm (40–43 and 16: admin and gm).
 func test_a_network_command_can_need_another_role_than_by_chat() -> void:
 	var registry: CommandRegistry = _registry()
 	assert_true(registry.register(&"item_give", "x", _console_ok, _net_ok, &"gm", &"admin"))
 	allow_logged_errors()
-	assert_false(registry.register(&"refill", "x", _console_ok, _net_ok, &"gm", &"jefe"), "un rol que no existe")
+	assert_false(registry.register(&"refill", "x", _console_ok, _net_ok, &"gm", &"jefe"), "a role that does not exist")
 	assert_eq([registry.get_min_role(&"item_give"), registry.get_network_min_role(&"item_give")], [&"gm", &"admin"])
 	var peer: ServerPeer = _peer()
 	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_ITEM_GIVE, PackedByteArray(), &"gm"),
-			CommandRegistry.Result.FORBIDDEN, "por la red, gm no llega")
+			CommandRegistry.Result.FORBIDDEN, "over the network, gm does not reach")
 	assert_eq(registry.audit[0], "[auditoría] peer 4 (Ana): item_give -> sin permiso (gm; hace falta admin)")
 	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_ITEM_GIVE, PackedByteArray(), &"admin"),
 			CommandRegistry.Result.OK)
-	assert_true(registry.can_use(&"item_give", &"gm"), "por /gm basta gm")
+	assert_true(registry.can_use(&"item_give", &"gm"), "through /gm gm is enough")
 	registry.register(&"heal", "x", _console_ok, _net_ok)
-	assert_eq(registry.get_network_min_role(&"heal"), &"gm", "sin él, el de siempre")
+	assert_eq(registry.get_network_min_role(&"heal"), &"gm", "without it, the usual one")
 
 
 func test_chat_commands_answer_unknown_without_the_role() -> void:
@@ -257,20 +257,20 @@ func test_chat_commands_answer_unknown_without_the_role() -> void:
 	registry.register(&"kill", "x", Callable(), _net_ok)
 	var peer: ServerPeer = _peer()
 	for line: String in ["heal Bea", "kick Bea", "volar", "", "ayuda", "kill"]:
-		assert_eq(registry.execute_chat(peer, line, &"player"), CommandRegistry.TEXT_UNKNOWN, "«%s» sin rol" % line)
+		assert_eq(registry.execute_chat(peer, line, &"player"), CommandRegistry.TEXT_UNKNOWN, "\"%s\" without a role" % line)
 	assert_eq(registry.execute_chat(peer, "heal Bea", &"moderator"), CommandRegistry.TEXT_UNKNOWN,
-			"un moderador no tiene los de gm")
-	assert_eq(registry.execute_chat(peer, "KICK  Bea por spam", &"moderator"), "hecho", "sin distinguir mayúsculas")
+			"a moderator does not have the gm ones")
+	assert_eq(registry.execute_chat(peer, "KICK  Bea por spam", &"moderator"), "hecho", "case-insensitive")
 	assert_eq(_calls, ["consola:Bea,por,spam"] as Array[String])
 	assert_eq(registry.execute_chat(peer, "ayuda", &"moderator"), CommandRegistry.TEXT_CHAT_HELP % "kick")
 	assert_eq(registry.execute_chat(peer, "", &"gm"), CommandRegistry.TEXT_CHAT_HELP % "heal, kick",
-			"/gm solo da la ayuda de su rol")
+			"/gm only gives the help for its role")
 	assert_eq(registry.execute_chat(peer, "ayuda kick", &"gm"), "Uso: /gm kick <jugador> [motivo]")
 	assert_eq(registry.execute_chat(peer, "kill", &"admin"), CommandRegistry.TEXT_UNKNOWN,
-			"uno solo de red no está en el chat")
+			"a network-only one is not in the chat")
 	assert_eq(entries, [[CommandRegistry.Origin.CHAT, 4, PackedStringArray(["Bea", "por", "spam"]), &"kick"]],
-			"solo lo ejecutado va a la auditoría de la plataforma")
+			"only what was executed goes to the platform audit")
 	assert_true(registry.audit[registry.audit.size() - 1].begins_with("[auditoría] /gm peer 4 (Ana): kill"))
-	# La consola no mira el rol.
+	# The console does not look at the role.
 	assert_eq(registry.execute_console("heal Bea"), "hecho")
 	assert_eq(entries.back(), [CommandRegistry.Origin.CONSOLE, 0, PackedStringArray(["Bea"]), &"heal"])

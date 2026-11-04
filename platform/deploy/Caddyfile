@@ -1,17 +1,17 @@
-# HTTPS de la API pública de la plataforma (docs/plataforma.md §10.1): Caddy con Let's Encrypt, de 80
-# a 443, delante de platform:24680 (la API interna, :24681, no pasa por aquí). Las variables vienen
-# del compose (staging.env / production.env).
+# HTTPS for the platform's public API (docs/plataforma.md §10.1): Caddy with Let's Encrypt, from 80
+# to 443, in front of platform:24680 (the internal API, :24681, does not go through here). The
+# variables come from the compose file (staging.env / production.env).
 #
-# Sin registro de accesos (§10.1 y §11.1): no hay directiva «log» en el sitio, así que Caddy no
-# escribe ninguna línea por petición; solo sus avisos y errores, que van a journald con el resto.
+# No access log (§10.1 and §11.1): there is no "log" directive on the site, so Caddy writes no
+# per-request line; only its warnings and errors, which go to journald with the rest.
 {
 	email {$ELDMARK_ACME_EMAIL}
 }
 
 {$ELDMARK_DOMAIN} {
-	# La plataforma lee la IP del cliente solo de X-Real-IP y solo desde ELDMARK_TRUSTED_PROXIES
-	# (la IP fija de este contenedor en la red edge); header_up la pisa siempre, así que un
-	# X-Real-IP que mande el cliente no llega.
+	# The platform reads the client IP only from X-Real-IP and only from ELDMARK_TRUSTED_PROXIES (this
+	# container's fixed IP on the edge network); header_up always overwrites it, so an X-Real-IP sent by
+	# the client does not get through.
 	reverse_proxy platform:24680 {
 		header_up X-Real-IP {remote_host}
 	}

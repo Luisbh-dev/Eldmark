@@ -10,20 +10,20 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// defaultBlockReason es el motivo de un bloqueo sin --reason.
+// defaultBlockReason is the reason for a block without --reason.
 const defaultBlockReason = "bloqueado por la moderación"
 
-// NameBlock es el resultado de names block|unblock.
+// NameBlock is the result of names block|unblock.
 type NameBlock struct {
-	Key     string      // la clave de NameRules que se bloquea
-	Changed bool        // false: ya estaba bloqueada (block) o no lo estaba (unblock)
-	Holders []Character // personajes vivos con ese nombre (block): se renombran con sanction add … rename
+	Key     string      // the NameRules key being blocked
+	Changed bool        // false: it was already blocked (block) or was not (unblock)
+	Holders []Character // live characters with that name (block): they are renamed with sanction add ... rename
 }
 
-// BlockName es names block (admin, SOC-13): pone la clave de NameRules del nombre en
-// name_blacklist (crear y renombrar responden 422 reserved, §4.4). No toca a los personajes que ya
-// lo llevan: los devuelve para que se les ponga un renombrado. Deja la fila names block con el
-// término en args (ya vive en name_blacklist, §9.1).
+// BlockName is names block (admin, SOC-13): it puts the name's NameRules key in name_blacklist
+// (create and rename answer 422 reserved, §4.4). It does not touch the characters that already have
+// it: it returns them so that a rename can be applied to them. It leaves the names block row with
+// the term in args (it already lives in name_blacklist, §9.1).
 func (s *Service) BlockName(ctx context.Context, actor *Actor, name, reason string) (*NameBlock, error) {
 	key, err := s.nameKey(name)
 	if err != nil {
@@ -70,8 +70,8 @@ func (s *Service) BlockName(ctx context.Context, actor *Actor, name, reason stri
 	return res, nil
 }
 
-// UnblockName es names unblock (admin): quita la clave del nombre de name_blacklist. Deja la fila
-// names unblock con el término en args.
+// UnblockName is names unblock (admin): it removes the name's key from name_blacklist. It leaves
+// the names unblock row with the term in args.
 func (s *Service) UnblockName(ctx context.Context, actor *Actor, name string) (*NameBlock, error) {
 	key, err := s.nameKey(name)
 	if err != nil {
@@ -96,8 +96,8 @@ func (s *Service) UnblockName(ctx context.Context, actor *Actor, name string) (*
 	return res, nil
 }
 
-// nameKey es la clave de NameRules de un término de la lista negra: solo letras (la clave de un
-// nombre válido no tiene otra cosa), de 1 a 64 B.
+// nameKey is the NameRules key of a blacklist term: letters only (the key of a valid name has
+// nothing else), 1 to 64 B.
 func (s *Service) nameKey(name string) (string, error) {
 	key := s.names.NormalizeKey(strings.TrimSpace(name))
 	if key == "" || len(key) > 64 {

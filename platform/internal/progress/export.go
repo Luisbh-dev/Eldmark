@@ -13,11 +13,11 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// Lo que sale del almacén hacia fuera del guardado: la exportación de datos (RGPD, progresion.md §3.5) y los
-// cuerpos de las rutas de operación y libro (progresion.md §13.2), con los ids en cadena.
+// What leaves the store outside the save path: the data export (GDPR, progresion.md §3.5) and the
+// bodies of the operation and ledger routes (progresion.md §13.2), with ids as strings.
 
-// exportOp es una operación de la exportación: sin actor_account_id, note ni detail (datos del personal en
-// las GM y REVERSAL; vacíos en las demás).
+// exportOp is an operation in the export: without actor_account_id, note or detail (staff data on
+// GM and REVERSAL operations; empty on the others).
 type exportOp struct {
 	OpID          jsonx.ID      `json:"op_id"`
 	Kind          int16         `json:"kind"`
@@ -47,10 +47,10 @@ type exportEvent struct {
 	Reason     int16     `json:"reason"`
 }
 
-// Export implementa persistence.ProgressStore (progresion.md §3.5): {"record": …, "ops": […]}, con el
-// registro de la reclamación (null en una lápida, que ya no tiene estado) y, en orden, las operaciones en las
-// que participa el personaje con sus propios apuntes y eventos (los de otros participantes no salen). De
-// ninguna sale actor_account_id, note ni detail.
+// Export implements persistence.ProgressStore (progresion.md §3.5): {"record": …, "ops": […]},
+// with the claim record (null for a tombstone, which no longer has state) and, in order, the
+// operations the character takes part in with its own entries and events (those of other
+// participants are not included). None of them includes actor_account_id, note or detail.
 func (s *Store) Export(ctx context.Context, q persistence.Querier, characterID int64) (json.RawMessage, error) {
 	out := struct {
 		Record *record     `json:"record"`
@@ -139,7 +139,7 @@ func idPtr(v *int64) *jsonx.ID {
 	return &id
 }
 
-// opView es el cuerpo de GET /internal/v1/ops/{op_id} (progresion.md §13.2).
+// opView is the body of GET /internal/v1/ops/{op_id} (progresion.md §13.2).
 type opView struct {
 	OpID           jsonx.ID         `json:"op_id"`
 	Kind           int16            `json:"kind"`
@@ -187,11 +187,11 @@ type opInstanceView struct {
 	Retired    bool     `json:"retired"`
 }
 
-// Op implementa persistence.ProgressStore: {"op": …} con la operación, sus participantes, quién la revirtió,
-// todos sus apuntes y eventos y las filas de item_instances de los uids de sus eventos (también las retiradas:
-// la reversión de un DESTROY copia sus campos, progresion.md §10). persistence.ErrNotFound si no existe o si
-// ningún participante tiene su arrendamiento en instance (en la misma consulta: la plataforma no lee
-// op_participants).
+// Op implements persistence.ProgressStore: {"op": …} with the operation, its participants, who
+// reverted it, all its entries and events, and the item_instances rows of the uids in its events
+// (retired ones too: the reversal of a DESTROY copies their fields, progresion.md §10).
+// persistence.ErrNotFound if it does not exist or if no participant has its lease in instance (in
+// the same query: the platform does not read op_participants).
 func (s *Store) Op(ctx context.Context, q persistence.Querier, opID int64, instance [16]byte) (json.RawMessage, error) {
 	v := opView{OpID: jsonx.ID(opID)}
 	var actor, refOp, reversedBy *int64
@@ -280,7 +280,7 @@ func (s *Store) Op(ctx context.Context, q persistence.Querier, opID int64, insta
 	return json.Marshal(map[string]opView{"op": v})
 }
 
-// ledgerView es un apunte de GET /internal/v1/characters/{id}/ledger (progresion.md §13.2).
+// ledgerView is an entry of GET /internal/v1/characters/{id}/ledger (progresion.md §13.2).
 type ledgerView struct {
 	EntryID       jsonx.ID `json:"entry_id"`
 	OpID          jsonx.ID `json:"op_id"`
@@ -294,12 +294,12 @@ type ledgerView struct {
 	CreatedAtUnix int64    `json:"created_at_unix"`
 }
 
-// MaxLedgerLimit es el mayor limit de Ledger (la ruta lo valida antes).
+// MaxLedgerLimit is the largest limit of Ledger (the route validates it beforehand).
 const MaxLedgerLimit = 100
 
-// Ledger implementa persistence.ProgressStore: {"entries": […]} con los limit apuntes más recientes del
-// personaje (por entry_id, de mayor a menor) anteriores a beforeEntryID (0: sin cota). persistence.ErrNotFound
-// si el personaje no tiene progreso.
+// Ledger implements persistence.ProgressStore: {"entries": […]} with the character's limit most
+// recent entries (by entry_id, descending) before beforeEntryID (0: unbounded).
+// persistence.ErrNotFound if the character has no progress.
 func (s *Store) Ledger(ctx context.Context, q persistence.Querier, characterID int64, limit int,
 	beforeEntryID int64) (json.RawMessage, error) {
 	if limit < 1 || limit > MaxLedgerLimit {

@@ -1,26 +1,26 @@
 extends SceneTree
-## Herramienta de revisión: carga una zona y guarda una captura desde cada Marker3D del grupo
-## "screenshot_points", con las métricas de render de esa vista (FPS, llamadas de dibujo,
-## primitivas y objetos visibles).
+## Review tool: loads a zone and saves a capture from each Marker3D of the group
+## "screenshot_points", with the render metrics of that view (FPS, draw calls,
+## primitives and visible objects).
 ##
-## Necesita ventana (no headless). Uso desde la raíz del proyecto:
+## Needs a window (not headless). Usage from the project root:
 ## [codeblock]
 ## godot --path . -s res://tools/render/render_screenshot_points.gd -- --out=C:/ruta/build/vado_gris
 ## [/codeblock]
-## Opciones: [code]--scene=res://...tscn[/code] (por defecto el Vado Gris),
-## [code]--only=<nombre>[/code] (una sola vista), [code]--no-capsules[/code] (sin las cápsulas
-## rojas de 1,8 m que se ponen en los puntos de aparición y en lugares clave como referencia de
-## escala). Las capturas se guardan como [code]<out>/<nombre>.png[/code] y las métricas en
+## Options: [code]--scene=res://...tscn[/code] (by default Vado Gris),
+## [code]--only=<name>[/code] (a single view), [code]--no-capsules[/code] (without the
+## 1.8 m red capsules placed at spawn points and at key places as a scale
+## reference). Captures are saved as [code]<out>/<name>.png[/code] and the metrics in
 ## [code]<out>/metricas.txt[/code].
 
 const DEFAULT_SCENE: String = "res://scenes/world/zones/vado_gris/vado_gris.tscn"
 const SCREENSHOT_GROUP: StringName = &"screenshot_points"
 const SPAWN_GROUP: StringName = &"spawn_points"
-## Fotogramas de espera tras mover la cámara (sombras, LOD y el clipmap del terreno).
+## Frames to wait after moving the camera (shadows, LOD and the terrain clipmap).
 const SETTLE_FRAMES: int = 24
-## Fotogramas medidos por vista para las métricas.
+## Frames measured per view for the metrics.
 const MEASURE_FRAMES: int = 90
-## Puntos de referencia de escala extra (cápsulas), en coordenadas de la zona.
+## Extra scale reference points (capsules), in zone coordinates.
 const EXTRA_CAPSULES: Array[Vector3] = [
 	Vector3(0.0, 0.0, -56.0), Vector3(-1.2, 0.0, 56.0), Vector3(-56.0, 0.0, 0.0),
 	Vector3(-24.0, 0.0, 0.0), Vector3(-104.0, 0.0, 2.0), Vector3(-6.0, 0.0, -6.0),
@@ -113,7 +113,7 @@ func _run() -> void:
 	quit(0)
 
 
-## Cápsulas rojas de 1,8 m (el tamaño de PlayerCharacter) como referencia de escala.
+## 1.8 m red capsules (the size of PlayerCharacter) as a scale reference.
 func _add_capsules(zone: Node3D) -> void:
 	var mesh := CapsuleMesh.new()
 	mesh.radius = 0.4

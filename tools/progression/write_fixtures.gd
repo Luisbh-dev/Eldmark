@@ -1,16 +1,16 @@
 extends SceneTree
-## Escribe [code]tests/fixtures/progression/save_cases.json[/code] con [method SaveFixtures.to_json]: los casos de las
-## comprobaciones del guardado (docs/progresion.md §13.3) que comparten la zona y el almacén de Go (progresion.md P7).
-## Es la única forma de cambiar ese archivo: [code]tests/test_progression_fixtures.gd[/code] falla si no coincide con
-## lo que genera [PlayerProgress].
+## Writes [code]tests/fixtures/progression/save_cases.json[/code] with [method SaveFixtures.to_json]: the cases for the
+## save checks (docs/progresion.md §13.3) shared by the zone and the Go store (progresion.md P7).
+## It is the only way to change that file: [code]tests/test_progression_fixtures.gd[/code] fails if it does not match
+## what [PlayerProgress] generates.
 ## [br][br]
-## [b]Uso[/b], desde la raíz del proyecto (el [code]godot[/code] de consola):
+## [b]Usage[/b], from the project root (the console [code]godot[/code]):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/progression/write_fixtures.gd
 ## godot --headless --path . -s res://tools/progression/write_fixtures.gd -- --check
 ## [/codeblock]
-## Con [code]--check[/code] no escribe nada: sale con código 0 si el archivo está al día y 1 si no.
-## Sin él, escribe el archivo (si ha cambiado) y sale con 0, o con 1 si no puede escribirlo.
+## With [code]--check[/code] it writes nothing: it exits with code 0 if the file is up to date and 1 if not.
+## Without it, it writes the file (if it changed) and exits with 0, or with 1 if it cannot write it.
 
 
 func _initialize() -> void:

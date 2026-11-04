@@ -25,13 +25,13 @@ func auditEntry(key, source string, actor any, command string) map[string]any {
 		"at_unix": 1800000000, "source": source}
 }
 
-// Un lote de auditoría con entradas malas inserta las demás y devuelve sus claves: una sin un
-// campo; con source cli; con la key <uuid>:<n> de otra instancia; con un op:<op_id> de un bloque de
-// otra instancia; con un command de la CLI o de la plataforma; console con actor o zone sin él; con
-// datos que PostgreSQL rechaza (un NUL o UTF-8 roto en args, una fecha fuera de rango), que antes
-// tumbaban el lote entero con 500 y la zona lo reintentaba sin fin. Reenviar no duplica, la entrada
-// op:<op_id> de un bloque propio vale y no pisa la fila que ya escribió el guardado (S8) con esa
-// clave.
+// An audit batch with bad entries inserts the rest and returns their keys: one missing a field;
+// with source cli; with a <uuid>:<n> key from another instance; with an op:<op_id> from another
+// instance's block; with a CLI or platform command; console with an actor or zone without one;
+// with data PostgreSQL rejects (a NUL or broken UTF-8 in args, an out-of-range date), which used
+// to bring down the whole batch with a 500 and the zone retried it endlessly. Resending does not
+// duplicate, the op:<op_id> entry from its own block is valid and does not overwrite the row the
+// save (S8) already wrote with that key.
 func TestAuditBatch(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -45,7 +45,7 @@ func TestAuditBatch(t *testing.T) {
 	foreign := blockOf(other) // 1025
 	ownOp, _ := strconv.Atoi(own)
 	opKey := "op:" + strconv.Itoa(ownOp+5)
-	// El guardado (S8) ya escribió la fila de esa operación, con sus campos.
+	// The save (S8) already wrote that operation's row, with its fields.
 	p.Exec(`insert into audit_log (world_id, zone_id, source, actor_account_id, command, args, at, event_key)
 		values (1, 'vado_gris', 'zone', 99, 'op_revert', '{"s8": true}', to_timestamp(1700000000), $1)`, opKey)
 	missing := map[string]any{"key": z.ID + ":9", "source": "zone"}
@@ -101,7 +101,7 @@ func TestAuditBatch(t *testing.T) {
 	if n := p.Count(`select count(*) from audit_log where source = 'console' and actor_account_id is null`); n != 1 {
 		t.Fatal("la de la consola")
 	}
-	// La fila op:<op_id> del guardado sigue como estaba: on conflict do nothing, ni se pisa ni se rechaza.
+	// The save's op:<op_id> row is as it was: on conflict do nothing, neither overwritten nor rejected.
 	intact := func() {
 		t.Helper()
 		if n := p.Count(`select count(*) from audit_log where event_key = $1 and actor_account_id = 99
@@ -118,9 +118,9 @@ func TestAuditBatch(t *testing.T) {
 	intact()
 }
 
-// Un lote de chat: world_id, zone_id y zone_channel de la instancia y sender_account_id de
-// characters; un emisor de otro mundo, un texto de más de 255 caracteres o una key ajena van a
-// rejected. Los lotes valen también con la instancia perdida.
+// A chat batch: the instance's world_id, zone_id and zone_channel and sender_account_id from
+// characters; a sender from another world, a text of more than 255 characters or a foreign key
+// go to rejected. Batches are also accepted with the instance lost.
 func TestChatBatch(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 1).Start()
@@ -135,7 +135,7 @@ func TestChatBatch(t *testing.T) {
 	whisper["target_character_id"] = idStr(far)
 	whisper["channel"] = 3
 	late := msg(z.ID+":8", id, "del año 285 millones")
-	late["sent_at_unix"] = 9000000000000000 // fuera de rango: antes, 500 y el lote atascado
+	late["sent_at_unix"] = 9000000000000000 // out of range: before, a 500 and the batch stuck
 	res := z.Do("POST", "/internal/v1/chat", map[string]any{"zone_instance_id": z.ID, "messages": []any{
 		msg(z.ID+":1", id, "¡Hola, Vado Gris!"),
 		whisper,
@@ -171,8 +171,8 @@ func TestChatBatch(t *testing.T) {
 		"messages": []any{msg(z.ID+":7", id, "tarde")}}), 204, "")
 }
 
-// Un reporte, un ignorado o una sanción con world_id en el cuerpo → 400; sin él, el nombre se
-// resuelve en el mundo de la instancia (hay una «Bran» en cada mundo).
+// A report, an ignore or a sanction with world_id in the body → 400; without it, the name is
+// resolved in the instance's world (there is a "Bran" in each world).
 func TestWorldComesFromTheInstance(t *testing.T) {
 	p := platformtest.New(t)
 	w1 := p.NewZone(1, "vado_gris", 0).Start()
@@ -184,7 +184,7 @@ func TestWorldComesFromTheInstance(t *testing.T) {
 	p.NewCharacter(b1, "Bran", "vardheim")
 	b2 := p.NewPlayer("b2@example.org")
 	bran2 := p.NewCharacterIn(b2, 2, "Bran", 1)
-	// El GM, dentro de la instancia del mundo 2.
+	// The GM, inside world 2's instance.
 	p.Exec(`insert into character_leases (character_id, world_id, lease_id, zone_instance_id, claimed_by, expires_at)
 		values ($1, 2, gen_random_uuid(), $2, $2, $3)`, gmChar, w2.ID, p.Clock.Now().Add(30*time.Second))
 
@@ -228,13 +228,13 @@ func TestWorldComesFromTheInstance(t *testing.T) {
 	if sanctioned != b2.ID || p.Count(`select count(*) from sanction_reports`) != 1 {
 		t.Fatal("sanción en el mundo 2")
 	}
-	// Desde la instancia del mundo 1 el GM no tiene arrendamiento: 403.
+	// From world 1's instance the GM has no lease: 403.
 	ignore["zone_instance_id"] = w1.ID
 	platformtest.Expect(t, w1.Do("POST", "/internal/v1/ignores", ignore), 403, "forbidden")
 }
 
-// Ignorados (§9.3): con arrendamiento; no a uno mismo; nombre que no existe → 404; la reclamación
-// trae las cuentas ignoradas; dejar de ignorar por el nombre que se escribió.
+// Ignores (§9.3): with a lease; not oneself; a name that does not exist → 404; the claim brings
+// the ignored accounts; stop ignoring by the name that was typed.
 func TestIgnores(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -246,16 +246,16 @@ func TestIgnores(t *testing.T) {
 	body := func(target string) map[string]any {
 		return map[string]any{"zone_instance_id": z.ID, "character_id": idStr(idA), "target_name": target}
 	}
-	platformtest.Expect(t, z.Do("POST", "/internal/v1/ignores", body("Bran")), 403, "forbidden") // aún fuera
+	platformtest.Expect(t, z.Do("POST", "/internal/v1/ignores", body("Bran")), 403, "forbidden") // still outside
 	z.Join(a, idA)
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/ignores", body("Bran")), 200, "")
-	platformtest.Expect(t, z.Do("POST", "/internal/v1/ignores", body("brán")), 200, "") // la misma cuenta
+	platformtest.Expect(t, z.Do("POST", "/internal/v1/ignores", body("brán")), 200, "") // the same account
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/ignores", body("Alterna")), 400, "validation")
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/ignores", body("Nadie")), 404, "not_found")
 	if n := p.Count(`select count(*) from ignores where account_id = $1`, a.ID); n != 1 {
 		t.Fatal(n)
 	}
-	// La reclamación siguiente trae la cuenta ignorada.
+	// The next claim brings the ignored account.
 	lease := ""
 	p.Scalar(&lease, `select lease_id::text from character_leases where character_id = $1`, idA)
 	platformtest.Expect(t, z.Release(idA, lease), 204, "")
@@ -266,7 +266,7 @@ func TestIgnores(t *testing.T) {
 	if len(ids) != 1 || ids[0] != idStr(b.ID) {
 		t.Fatalf("ignored_account_ids: %v", ids)
 	}
-	// Bran cambia de nombre: dejar de ignorar por el nombre escrito sigue valiendo.
+	// Bran changes name: stopping the ignore by the typed name still works.
 	p.Exec(`update characters set name = 'Brandon', name_key = 'brandon' where account_id = $1`, b.ID)
 	platformtest.Expect(t, z.Do("DELETE", "/internal/v1/ignores", body("Bran")), 204, "")
 	platformtest.Expect(t, z.Do("DELETE", "/internal/v1/ignores", body("Bran")), 204, "")
@@ -274,7 +274,7 @@ func TestIgnores(t *testing.T) {
 		t.Fatal(n)
 	}
 	_ = alt
-	// Hasta 100.
+	// Up to 100.
 	for i := 0; i < 100; i++ {
 		p.Exec(`insert into accounts (email, age_confirmed_at) values ($1, now())`, "x"+strconv.Itoa(i)+"@example.org")
 		p.Exec(`insert into ignores (account_id, ignored_account_id, ignored_name)
@@ -283,7 +283,7 @@ func TestIgnores(t *testing.T) {
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/ignores", body("Brandon")), 409, "ignore_list_full")
 }
 
-// Reportes (§9.4): con arrendamiento; 1 por objetivo cada 10 min y 10 por hora por cuenta (429).
+// Reports (§9.4): with a lease; 1 per target every 10 min and 10 per hour per account (429).
 func TestReportLimits(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -308,18 +308,18 @@ func TestReportLimits(t *testing.T) {
 	for i := 1; i < 10; i++ {
 		platformtest.Expect(t, report("Objetivo"+string(rune('a'+i))), 200, "")
 	}
-	platformtest.Expect(t, report("Objetivok"), 429, "rate_limited") // el 11.º en la hora
+	platformtest.Expect(t, report("Objetivok"), 429, "rate_limited") // the 11th within the hour
 	p.Clock.Advance(61 * time.Minute)
 	platformtest.Expect(t, report("Objetivok"), 200, "")
-	platformtest.Expect(t, report("Objetivoa"), 200, "") // pasaron los 10 min
-	// Cuerpos que no valen.
+	platformtest.Expect(t, report("Objetivoa"), 200, "") // the 10 min have passed
+	// Invalid bodies.
 	bad := map[string]any{"zone_instance_id": z.ID, "reporter_character_id": idStr(idA), "target_name": "Objetivob",
 		"category": "spam", "comment": "", "context": map[string]any{}, "evidence": []any{}}
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/reports", bad), 400, "validation")
 	bad["category"], bad["context"] = "bot", []any{}
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/reports", bad), 400, "validation")
-	// Un contexto que jsonb no admite (un NUL) o una prueba con la fecha fuera de rango: 400, no un
-	// 500 que la zona reintenta.
+	// A context that jsonb does not accept (a NUL) or evidence with an out-of-range date: 400, not a
+	// 500 that the zone retries.
 	bad["context"] = map[string]any{"nota": "a\x00b"}
 	if res := z.Do("POST", "/internal/v1/reports", bad); res.Status != 400 || res.Field("context") != "invalid" {
 		t.Fatal(res.Raw)
@@ -331,10 +331,9 @@ func TestReportLimits(t *testing.T) {
 	}
 }
 
-// Sanciones (§9.5): la plataforma autoriza. Un moderador que pide ban → 403 y fila
-// sanction_denied (el objetivo por id, sin nombres); un GM no sanciona a un admin; sin
-// arrendamiento → 403; un GM silencia (el latido y la reclamación lo dicen) y fuerza un
-// renombrado (must_rename).
+// Sanctions (§9.5): the platform authorizes. A moderator who requests a ban → 403 and a
+// sanction_denied row (the target by id, without names); a GM does not sanction an admin; without
+// a lease → 403; a GM mutes (the heartbeat and the claim report it) and forces a rename (must_rename).
 func TestSanctionAuthorization(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -358,10 +357,10 @@ func TestSanctionAuthorization(t *testing.T) {
 	}
 	platformtest.Expect(t, sanction(idMod, "Bran", "ban", 0), 403, "forbidden")
 	platformtest.Expect(t, sanction(idMod, "Bran", "mute", 8*24*60), 403, "forbidden")
-	platformtest.Expect(t, sanction(idGM, "Bran", "warning", 0), 403, "forbidden") // el GM aún no está dentro
+	platformtest.Expect(t, sanction(idGM, "Bran", "warning", 0), 403, "forbidden") // the GM is not inside yet
 	z.Join(gm, idGM)
 	platformtest.Expect(t, sanction(idGM, "Jefa", "warning", 0), 403, "forbidden")
-	platformtest.Expect(t, sanction(idGM, "Celadora", "warning", 0), 403, "forbidden") // a sí mismo
+	platformtest.Expect(t, sanction(idGM, "Celadora", "warning", 0), 403, "forbidden") // themselves
 	denied := p.Count(`select count(*) from audit_log where source = 'platform' and command = 'sanction_denied'`)
 	if denied != 5 {
 		t.Fatalf("filas sanction_denied: %d", denied)
@@ -400,7 +399,7 @@ func TestSanctionAuthorization(t *testing.T) {
 	if n := p.Count(`select count(*) from audit_log where source = 'platform' and command = 'sanction'`); n != 3 {
 		t.Fatalf("filas sanction: %d", n)
 	}
-	// La reclamación siguiente trae el silencio.
+	// The next claim brings the mute.
 	platformtest.Expect(t, z.Release(idPlayer, leasePlayer), 204, "")
 	p.Exec(`update characters set must_rename = false where character_id = $1`, idPlayer)
 	ticket, _ := p.MustEnter(player, idPlayer)
@@ -409,8 +408,8 @@ func TestSanctionAuthorization(t *testing.T) {
 	if claim.Body["account"].(map[string]any)["muted_until_unix"].(json.Number).String() != strconv.FormatInt(until, 10) {
 		t.Fatal(claim.Raw)
 	}
-	// Cuerpos que no valen: un tipo desconocido, un silencio sin duración, una expulsión con ella,
-	// un reporte que no existe.
+	// Invalid bodies: an unknown type, a mute without a duration, a ban with one, a report that does
+	// not exist.
 	platformtest.Expect(t, sanction(idGM, "Bran", "jail", 0), 400, "validation")
 	platformtest.Expect(t, sanction(idGM, "Bran", "mute", 0), 400, "validation")
 	platformtest.Expect(t, sanction(idGM, "Bran", "ban", 60), 400, "validation")

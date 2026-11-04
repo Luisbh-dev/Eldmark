@@ -1,6 +1,6 @@
 extends Node
-## Ayudante de test_net_debug_overlay: escucha F3 en _unhandled_input, como hace el HUD, y lo apunta
-## en la lista del metadato [code]seen[/code].
+## Helper for test_net_debug_overlay: listens for F3 in _unhandled_input, as the HUD does, and
+## records it in the list in the [code]seen[/code] metadata.
 
 
 func _unhandled_input(event: InputEvent) -> void:

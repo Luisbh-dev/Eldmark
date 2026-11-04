@@ -1,8 +1,8 @@
 extends TestCase
-## Pruebas de [ItemInstance] (docs/progresion.md §2.1, §2.3 y §3.4, PRG-02): ida y vuelta de 1000 instancias
-## aleatorias con semilla, en binario y en diccionario (pasando por el texto JSON, como el registro de la
-## plataforma), y null en cada caso de §2.3 sin errores del motor (el ejecutor falla la prueba si se
-## registra alguno).
+## Tests for [ItemInstance] (docs/progresion.md §2.1, §2.3 and §3.4, PRG-02): round trip of 1000 seeded random
+## instances, in binary and in dictionary form (going through the JSON text, like the platform's
+## record), and null in each §2.3 case with no engine errors (the runner fails the test if any
+## is logged).
 
 const ARMOR_FIXTURES: String = "res://tests/fixtures/items/armor"
 const RANDOM_INSTANCES: int = 1000
@@ -12,15 +12,15 @@ var _db: ItemDatabase
 
 
 func before_each() -> void:
-	# Los cuatro objetos de data/items y las armaduras de prueba, que llevan durabilidad.
+	# The four objects from data/items and the test armours, which carry durability.
 	var definitions: Array[ItemDefinition] = []
 	for dir: String in [ItemDatabase.DATA_DIR.path_join("weapon"), ItemDatabase.DATA_DIR.path_join("consumable"),
 			ARMOR_FIXTURES]:
 		for file_name: String in DirAccess.get_files_at(dir):
 			definitions.append(ResourceLoader.load(dir.path_join(file_name.trim_suffix(".remap"))) as ItemDefinition)
 	_db = ItemDatabase.build_from_definitions(definitions)
-	assert_eq(_db.errors, PackedStringArray(), "la base de la prueba vale")
-	assert_eq(_db.all_ids().size(), 7, "cuatro objetos y tres armaduras")
+	assert_eq(_db.errors, PackedStringArray(), "the test's base is valid")
+	assert_eq(_db.all_ids().size(), 7, "four objects and three armours")
 
 
 func test_round_trip_random_binary_and_dictionary() -> void:
@@ -32,7 +32,7 @@ func test_round_trip_random_binary_and_dictionary() -> void:
 	var with_affixes: int = 0
 	for i: int in range(RANDOM_INSTANCES):
 		var item: ItemInstance = _random_instance(rng, i)
-		if not assert_true(item.is_valid(_db), "la instancia %d es válida" % i):
+		if not assert_true(item.is_valid(_db), "instance %d is valid" % i):
 			return
 		items.append(item)
 		with_durability += 1 if item.durability != ItemInstance.NO_DURABILITY else 0
@@ -41,32 +41,32 @@ func test_round_trip_random_binary_and_dictionary() -> void:
 		assert_eq(bytes.size(), ItemInstance.HEADER_SIZE + 2 * item.affixes.size(), "%d: 22 + 2·n B" % i)
 		assert_eq(ItemInstance.encoded_size_at(bytes, 0), bytes.size(), "%d: encoded_size_at" % i)
 		var decoded: ItemInstance = ItemInstance.decode(bytes, 0, _db)
-		if not assert_true(item.equals(decoded), "%d: ida y vuelta en binario" % i):
+		if not assert_true(item.equals(decoded), "%d: binary round trip" % i):
 			return
 		var entry: Dictionary = item.to_dictionary(i % 2, i % 30)
 		var parsed: Variant = JSON.parse_string(JSON.stringify(entry))
-		if not assert_eq(typeof(parsed), TYPE_DICTIONARY, "%d: el JSON se vuelve a leer" % i):
+		if not assert_eq(typeof(parsed), TYPE_DICTIONARY, "%d: the JSON is read back" % i):
 			return
 		var from_json: ItemInstance = ItemInstance.from_dictionary(parsed, _db)
-		if not assert_true(item.equals(from_json), "%d: ida y vuelta por el JSON (%s)" % [i, entry]):
+		if not assert_true(item.equals(from_json), "%d: round trip through the JSON (%s)" % [i, entry]):
 			return
-		assert_true(item.equals(ItemInstance.from_dictionary(entry, _db)), "%d: y sin pasar por el texto" % i)
+		assert_true(item.equals(ItemInstance.from_dictionary(entry, _db)), "%d: and without going through the text" % i)
 		stream.append_array(bytes)
-	assert_true(with_durability > 100 and with_durability < 900, "con y sin durabilidad (%d)" % with_durability)
-	assert_true(with_affixes > 100, "con afijos (%d)" % with_affixes)
-	# Todas seguidas en un búfer, recorridas con encoded_size_at desde un offset que no es 0.
+	assert_true(with_durability > 100 and with_durability < 900, "with and without durability (%d)" % with_durability)
+	assert_true(with_affixes > 100, "with affixes (%d)" % with_affixes)
+	# All in a row in one buffer, walked with encoded_size_at from an offset that is not 0.
 	var offset: int = 3
 	for i: int in range(items.size()):
 		var size: int = ItemInstance.encoded_size_at(stream, offset)
-		if not assert_true(size >= ItemInstance.HEADER_SIZE, "tamaño de la %d en el búfer" % i):
+		if not assert_true(size >= ItemInstance.HEADER_SIZE, "size of number %d in the buffer" % i):
 			return
-		assert_true(items[i].equals(ItemInstance.decode(stream, offset, _db)), "la %d en el búfer" % i)
+		assert_true(items[i].equals(ItemInstance.decode(stream, offset, _db)), "number %d in the buffer" % i)
 		offset += size
-	assert_eq(offset, stream.size(), "el búfer se recorre entero")
-	assert_eq(ItemInstance.encoded_size_at(stream, offset), -1, "y detrás no hay nada")
+	assert_eq(offset, stream.size(), "the buffer is walked entirely")
+	assert_eq(ItemInstance.encoded_size_at(stream, offset), -1, "and there is nothing after it")
 
 
-## Los bytes de una instancia conocida, campo a campo (§2.3, little endian).
+## The bytes of a known instance, field by field (§2.3, little endian).
 func test_known_encoding() -> void:
 	var item := ItemInstance.new()
 	item.uid = 0x0001_0203_0405_0607
@@ -91,20 +91,20 @@ func test_known_encoding() -> void:
 		2,
 		1, 0, 0xFF, 0xFF,
 	])
-	assert_eq(bytes, expected, "formato 1, uid, net id, cantidad, durabilidad, rareza, flags, semilla y afijos")
-	# Sin durabilidad: 0xFFFF en el cable.
+	assert_eq(bytes, expected, "format 1, uid, net id, quantity, durability, rarity, flags, seed and affixes")
+	# Without durability: 0xFFFF on the wire.
 	var potion: ItemInstance = ItemInstance.create(42, _db.get_definition(&"potion_health"), 15)
 	var potion_bytes: PackedByteArray = potion.encode(_db)
-	assert_eq(potion_bytes.size(), 22, "sin afijos, 22 B")
-	assert_eq(potion_bytes.decode_u16(13), 0xFFFF, "sin durabilidad, 0xFFFF")
-	assert_eq(potion_bytes[16], 1, "ligada al cogerla")
-	assert_eq(potion_bytes.decode_u16(9), _db.net_id_of(&"potion_health"), "su net id")
+	assert_eq(potion_bytes.size(), 22, "without affixes, 22 B")
+	assert_eq(potion_bytes.decode_u16(13), 0xFFFF, "without durability, 0xFFFF")
+	assert_eq(potion_bytes[16], 1, "bound on pickup")
+	assert_eq(potion_bytes.decode_u16(9), _db.net_id_of(&"potion_health"), "its net id")
 
 
-## Null en cada caso de §2.3, sin registrar errores del motor.
+## Null in each §2.3 case, without logging engine errors.
 func test_decode_rejects_each_case() -> void:
 	var valid: PackedByteArray = _armor_bytes()
-	assert_not_null(ItemInstance.decode(valid, 0, _db), "la base se lee")
+	assert_not_null(ItemInstance.decode(valid, 0, _db), "the base is read")
 	var cases: Dictionary[String, PackedByteArray] = {
 		"formato 0": _patched(valid, 0, 1, 0),
 		"formato 2": _patched(valid, 0, 1, 2),
@@ -131,22 +131,22 @@ func test_decode_rejects_each_case() -> void:
 	cases["durabilidad 1000 en un objeto que no la lleva"] = _patched(potion, 13, 2, 1000)
 	for name: String in cases:
 		assert_null(ItemInstance.decode(cases[name], 0, _db), "%s → null" % name)
-	# Truncado: cada longitud por debajo de la entera, también sin los bytes de los afijos.
+	# Truncated: every length below the full one, also without the affixes' bytes.
 	for length: int in range(valid.size()):
-		assert_null(ItemInstance.decode(valid.slice(0, length), 0, _db), "truncado a %d B → null" % length)
-		assert_eq(ItemInstance.encoded_size_at(valid.slice(0, length), 0), -1, "encoded_size_at de %d B" % length)
-	assert_null(ItemInstance.decode(valid, -1, _db), "offset negativo")
-	assert_null(ItemInstance.decode(valid, 1, _db), "offset desplazado")
-	assert_null(ItemInstance.decode(valid, valid.size(), _db), "offset al final")
-	assert_null(ItemInstance.decode(valid, 1 << 40, _db), "offset enorme")
-	assert_null(ItemInstance.decode(PackedByteArray(), 0, _db), "vacío")
-	assert_eq(ItemInstance.encoded_size_at(_with_affix_count(valid, 7), 0), -1, "7 afijos no caben")
-	assert_eq(ItemInstance.encoded_size_at(_patched(valid, 0, 1, 2), 0), -1, "otro formato no se mide")
-	# Una instancia de 2^53 − 1, el mayor uid, sí vale.
-	assert_not_null(ItemInstance.decode(_patched(valid, 1, 8, ItemInstance.MAX_UID), 0, _db), "uid 2^53 − 1 vale")
+		assert_null(ItemInstance.decode(valid.slice(0, length), 0, _db), "truncated to %d B → null" % length)
+		assert_eq(ItemInstance.encoded_size_at(valid.slice(0, length), 0), -1, "encoded_size_at of %d B" % length)
+	assert_null(ItemInstance.decode(valid, -1, _db), "negative offset")
+	assert_null(ItemInstance.decode(valid, 1, _db), "shifted offset")
+	assert_null(ItemInstance.decode(valid, valid.size(), _db), "offset at the end")
+	assert_null(ItemInstance.decode(valid, 1 << 40, _db), "huge offset")
+	assert_null(ItemInstance.decode(PackedByteArray(), 0, _db), "empty")
+	assert_eq(ItemInstance.encoded_size_at(_with_affix_count(valid, 7), 0), -1, "7 affixes do not fit")
+	assert_eq(ItemInstance.encoded_size_at(_patched(valid, 0, 1, 2), 0), -1, "another format is not measured")
+	# An instance of 2^53 − 1, the largest uid, is valid.
+	assert_not_null(ItemInstance.decode(_patched(valid, 1, 8, ItemInstance.MAX_UID), 0, _db), "uid 2^53 − 1 is valid")
 
 
-## Lo que no vale no se codifica: un array vacío, sin registrar nada.
+## What is not valid is not encoded: an empty array, logging nothing.
 func test_encode_rejects_invalid_instances() -> void:
 	var cases: Dictionary[String, Dictionary] = {
 		"definición desconocida": {"def_id": &"no_existe"},
@@ -167,39 +167,39 @@ func test_encode_rejects_invalid_instances() -> void:
 		var item: ItemInstance = _armor()
 		for field: String in cases[name]:
 			item.set(field, cases[name][field])
-		assert_false(item.is_valid(_db), "%s no es válida" % name)
-		assert_eq(item.encode(_db), PackedByteArray(), "%s → vacío" % name)
+		assert_false(item.is_valid(_db), "%s is not valid" % name)
+		assert_eq(item.encode(_db), PackedByteArray(), "%s → empty" % name)
 	var potion := ItemInstance.create(9, _db.get_definition(&"potion_stamina"), 2)
 	potion.durability = 500
-	assert_eq(potion.encode(_db), PackedByteArray(), "durabilidad en un objeto que no la lleva → vacío")
+	assert_eq(potion.encode(_db), PackedByteArray(), "durability on an object that does not carry it → empty")
 
 
-## La entrada de §3.4 tal cual.
+## The §3.4 entry as is.
 func test_to_dictionary_is_section_3_4() -> void:
 	var sword: ItemInstance = ItemInstance.create(1025, _db.get_definition(&"sword_shield_vado"), 1)
 	assert_eq(sword.to_dictionary(1, 0), {"uid": "1025", "def_id": "sword_shield_vado", "container": 1, "slot": 0,
 			"count": 1, "durability": null, "rarity": 0, "bound": true, "seed": "0", "affixes": []},
-			"la espada del ejemplo de §3.4")
+			"the sword from the §3.4 example")
 	var potion: ItemInstance = ItemInstance.create(1027, _db.get_definition(&"potion_health"), 3)
 	assert_eq(JSON.stringify(potion.to_dictionary(0, 1), "", true),
 			"{\"affixes\":[],\"bound\":true,\"container\":0,\"count\":3,\"def_id\":\"potion_health\",\"durability\":null,"
-			+ "\"rarity\":0,\"seed\":\"0\",\"slot\":1,\"uid\":\"1027\"}", "la poción, en el texto JSON")
+			+ "\"rarity\":0,\"seed\":\"0\",\"slot\":1,\"uid\":\"1027\"}", "the potion, in the JSON text")
 	var keys: Array = sword.to_dictionary(0, 0).keys()
 	keys.sort()
-	assert_eq(keys, Array(ItemInstance.DICTIONARY_KEYS), "las claves de DICTIONARY_KEYS")
+	assert_eq(keys, Array(ItemInstance.DICTIONARY_KEYS), "the DICTIONARY_KEYS keys")
 	var helm: ItemInstance = _armor()
 	var entry: Dictionary = helm.to_dictionary(0, 7)
-	assert_eq(entry["durability"], 750, "durabilidad como número")
-	assert_eq(entry["uid"], "9007199254740991", "el mayor uid, exacto en la cadena")
-	assert_eq(entry["seed"], "4294967295", "la semilla u32, como cadena")
-	assert_eq(entry["affixes"], [1, 65535], "afijos como lista")
+	assert_eq(entry["durability"], 750, "durability as a number")
+	assert_eq(entry["uid"], "9007199254740991", "the largest uid, exact in the string")
+	assert_eq(entry["seed"], "4294967295", "the u32 seed, as a string")
+	assert_eq(entry["affixes"], [1, 65535], "affixes as a list")
 
 
-## null ante una clave que falta o desconocida, un tipo que no casa o un valor fuera de rango; los enteros
-## reescritos como 820.0 valen.
+## null on a missing or unknown key, a mismatched type or an out-of-range value; integers
+## rewritten as 820.0 are valid.
 func test_from_dictionary_rejects_and_accepts() -> void:
 	var base: Dictionary = _armor().to_dictionary(0, 3)
-	assert_true(_armor().equals(ItemInstance.from_dictionary(base, _db)), "la base se lee")
+	assert_true(_armor().equals(ItemInstance.from_dictionary(base, _db)), "the base is read")
 	var accepted: Dictionary[String, Dictionary] = {
 		"enteros como float": {"count": 1.0, "durability": 750.0, "rarity": 3.0, "container": 0.0, "slot": 3.0,
 				"affixes": [1.0, 65535.0]},
@@ -209,7 +209,7 @@ func test_from_dictionary_rejects_and_accepts() -> void:
 		"contenedor y ranura altos (los mira quien lee el registro)": {"container": 3, "slot": 119},
 	}
 	for name: String in accepted:
-		assert_not_null(ItemInstance.from_dictionary(_with(base, accepted[name]), _db), "%s vale" % name)
+		assert_not_null(ItemInstance.from_dictionary(_with(base, accepted[name]), _db), "%s is valid" % name)
 	var rejected: Dictionary[String, Dictionary] = {
 		"uid como número": {"uid": 9007199254740991},
 		"uid como float": {"uid": 1025.0},
@@ -255,31 +255,31 @@ func test_from_dictionary_rejects_and_accepts() -> void:
 	for key: String in ItemInstance.DICTIONARY_KEYS:
 		var missing: Dictionary = base.duplicate()
 		missing.erase(key)
-		assert_null(ItemInstance.from_dictionary(missing, _db), "sin %s → null" % key)
+		assert_null(ItemInstance.from_dictionary(missing, _db), "without %s → null" % key)
 	var extra: Dictionary = base.duplicate()
 	extra["parent_uid"] = "3"
-	assert_null(ItemInstance.from_dictionary(extra, _db), "una clave desconocida → null")
+	assert_null(ItemInstance.from_dictionary(extra, _db), "an unknown key → null")
 	var potion: Dictionary = ItemInstance.create(77, _db.get_definition(&"potion_health"), 15).to_dictionary(0, 0)
-	assert_not_null(ItemInstance.from_dictionary(potion, _db), "la poción se lee")
+	assert_not_null(ItemInstance.from_dictionary(potion, _db), "the potion is read")
 	assert_null(ItemInstance.from_dictionary(_with(potion, {"durability": 0}), _db),
-			"durabilidad en un objeto que no la lleva → null")
-	assert_null(ItemInstance.from_dictionary(_with(potion, {"count": 16}), _db), "más que la pila → null")
+			"durability on an object that does not carry it → null")
+	assert_null(ItemInstance.from_dictionary(_with(potion, {"count": 16}), _db), "more than the stack → null")
 
 
 func test_create_duplicate_and_equals() -> void:
 	var sword: ItemInstance = ItemInstance.create(7, _db.get_definition(&"sword_shield_vado"), 1)
 	assert_eq([sword.uid, sword.def_id, sword.count, sword.durability, sword.rarity, sword.bound, sword.seed],
-			[7, &"sword_shield_vado", 1, ItemInstance.NO_DURABILITY, 0, true, 0], "create: ligada al cogerla")
-	assert_eq(sword.affixes, PackedInt32Array(), "sin afijos")
+			[7, &"sword_shield_vado", 1, ItemInstance.NO_DURABILITY, 0, true, 0], "create: bound on pickup")
+	assert_eq(sword.affixes, PackedInt32Array(), "without affixes")
 	var helm: ItemInstance = ItemInstance.create(8, _db.get_definition(&"test_iron_helm"), 1)
-	assert_eq(helm.durability, ItemInstance.MAX_DURABILITY, "con durabilidad, llena")
-	assert_false(helm.bound, "ligada al equiparla: aún no")
+	assert_eq(helm.durability, ItemInstance.MAX_DURABILITY, "with durability, full")
+	assert_false(helm.bound, "bound on equip: not yet")
 	var item: ItemInstance = _armor()
 	var copy: ItemInstance = item.duplicate_instance()
-	assert_true(item.equals(copy) and copy.equals(item), "la copia es igual")
+	assert_true(item.equals(copy) and copy.equals(item), "the copy is equal")
 	copy.affixes[0] = 2
-	assert_eq(item.affixes[0], 1, "y sus afijos son independientes")
-	assert_false(item.equals(null), "no es igual a null")
+	assert_eq(item.affixes[0], 1, "and its affixes are independent")
+	assert_false(item.equals(null), "not equal to null")
 	for field: String in ["uid", "def_id", "count", "durability", "rarity", "bound", "seed", "affixes"]:
 		var changed: ItemInstance = item.duplicate_instance()
 		match field:
@@ -291,22 +291,22 @@ func test_create_duplicate_and_equals() -> void:
 				changed.affixes.append(3)
 			_:
 				changed.set(field, int(changed.get(field)) - 1)
-		assert_false(item.equals(changed), "equals mira %s" % field)
+		assert_false(item.equals(changed), "equals looks at %s" % field)
 
 
-## Sin base de datos se usa la compartida.
+## Without a database the shared one is used.
 func test_shared_database_by_default() -> void:
 	var potion: ItemInstance = ItemInstance.create(3, ItemDatabase.shared().get_definition(&"potion_stamina"), 2)
 	var bytes: PackedByteArray = potion.encode()
-	assert_eq(bytes, potion.encode(ItemDatabase.shared()), "encode() usa ItemDatabase.shared()")
-	assert_true(potion.equals(ItemInstance.decode(bytes, 0)), "decode también")
-	assert_true(potion.equals(ItemInstance.from_dictionary(potion.to_dictionary(0, 0), null)), "y from_dictionary")
+	assert_eq(bytes, potion.encode(ItemDatabase.shared()), "encode() uses ItemDatabase.shared()")
+	assert_true(potion.equals(ItemInstance.decode(bytes, 0)), "decode too")
+	assert_true(potion.equals(ItemInstance.from_dictionary(potion.to_dictionary(0, 0), null)), "and from_dictionary")
 
 
-# --- Utilidades --------------------------------------------------------------------------------
+# --- Utilities ---------------------------------------------------------------------------------
 
-# Una instancia aleatoria y válida: uid en todo su rango (con los extremos), cualquier definición, cantidad
-# hasta la pila, durabilidad si la lleva, rareza, ligado, semilla u32 y de 0 a 6 afijos.
+# A random, valid instance: uid over its whole range (with the extremes), any definition, quantity
+# up to the stack, durability if it has it, rarity, binding, u32 seed and 0 to 6 affixes.
 func _random_instance(rng: RandomNumberGenerator, index: int) -> ItemInstance:
 	var ids: Array[StringName] = _db.all_ids()
 	var definition: ItemDefinition = _db.get_definition(ids[rng.randi_range(0, ids.size() - 1)])
@@ -330,7 +330,7 @@ func _random_instance(rng: RandomNumberGenerator, index: int) -> ItemInstance:
 	return item
 
 
-# Una armadura con todos los campos lejos de 0: uid máximo, durabilidad, rareza, semilla y dos afijos.
+# An armour with all fields far from 0: maximum uid, durability, rarity, seed and two affixes.
 func _armor() -> ItemInstance:
 	var item := ItemInstance.new()
 	item.uid = ItemInstance.MAX_UID
@@ -348,7 +348,7 @@ func _armor_bytes() -> PackedByteArray:
 	return _armor().encode(_db)
 
 
-# Una copia de [param bytes] con [param value] escrito en [param size] bytes desde [param offset].
+# A copy of [param bytes] with [param value] written in [param size] bytes from [param offset].
 func _patched(bytes: PackedByteArray, offset: int, size: int, value: int) -> PackedByteArray:
 	var copy: PackedByteArray = bytes.duplicate()
 	match size:
@@ -361,7 +361,7 @@ func _patched(bytes: PackedByteArray, offset: int, size: int, value: int) -> Pac
 	return copy
 
 
-# Una copia con [param count] afijos (los bytes que hagan falta, a 0).
+# A copy with [param count] affixes (as many bytes as needed, at 0).
 func _with_affix_count(bytes: PackedByteArray, count: int) -> PackedByteArray:
 	var copy: PackedByteArray = bytes.slice(0, ItemInstance.HEADER_SIZE)
 	copy[21] = count

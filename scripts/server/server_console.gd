@@ -1,29 +1,28 @@
 class_name ServerConsole
 extends RefCounted
-## Consola de la entrada estándar del servidor (docs/combate.md, sección 6; TEC-19): lee líneas de
-## [code]stdin[/code] en un hilo aparte, para que esperar al teclado no bloquee nunca el tick, y las
-## deja en una cola protegida. El servidor las recoge una vez por tick con [method take_lines] y las
-## ejecuta en el hilo principal ([method CommandRegistry.execute_console]).
+## The server's standard input console (docs/combate.md, section 6; TEC-19): reads lines from [code]stdin[/code] in a
+## separate thread, so that waiting for the keyboard never blocks the tick, and leaves them in a protected queue. The
+## server collects them once per tick with [method take_lines] and runs them on the main thread
+## ([method CommandRegistry.execute_console]).
 ## [br][br]
-## El hilo termina solo cuando la entrada se cierra (EOF); mientras espera una línea no se puede
-## interrumpir. [b]Límite conocido[/b]: en Linux, [code]exit()[/code] de libc se queda esperando el
-## bloqueo de [code]stdin[/code] que tiene la lectura, así que con la entrada abierta el proceso no
-## termina tras cerrarse el servidor hasta que llega una línea más o se cierra la entrada (Ctrl+D);
-## en Windows no ocurre. Con la entrada ya cerrada ([code]/dev/null[/code], systemd, un contenedor sin
-## [code]-i[/code]) el hilo acaba en el acto y no hay espera. Solo se arranca con
-## [code]--console[/code]: una entrada estándar compartida con una terminal no debe leerla un proceso
-## que nadie ha pedido que la lea.
+## The thread ends by itself when the input closes (EOF); while it waits for a line it cannot be interrupted.
+## [b]Known limitation[/b]: on Linux, libc's [code]exit()[/code] keeps waiting for the [code]stdin[/code] lock held by
+## the read, so with the input open the process does not end after the server closes until one more line arrives or the
+## input is closed (Ctrl+D); on Windows this does not happen. With the input already closed ([code]/dev/null[/code],
+## systemd, a container without [code]-i[/code]) the thread ends immediately and there is no wait. It is only started with
+## [code]--console[/code]: a standard input shared with a terminal must not be read by a process nobody has asked to read
+## it.
 ## [br][br]
-## [b]Líneas y lecturas[/b]: [method OS.read_string_from_stdin] da una línea por llamada en Linux, pero
-## en Windows devuelve lo que haya llegado a la entrada (varias líneas juntas si el que escribe, o una
-## tubería, las manda de golpe), con los fines de línea ya normalizados y el último quitado. Por eso
-## el hilo no trata cada lectura como una orden: [method push_text] la parte en líneas. Una lectura
-## vacía (una línea en blanco o el final de la entrada) acaba con el hilo, en los dos sistemas.
+## [b]Lines and reads[/b]: [method OS.read_string_from_stdin] gives one line per call on Linux, but on Windows it returns
+## whatever has arrived at the input (several lines together if the writer, or a pipe, sends them at once), with line
+## endings already normalized and the last one removed. That is why the thread does not treat each read as a command:
+## [method push_text] splits it into lines. An empty read (a blank line or the end of input) ends the thread, on both
+## systems.
 ## [br][br]
-## Las pruebas no necesitan stdin: [method push_line] mete una línea como si la hubiera escrito alguien
-## y [method push_text] un texto con varias, tal como lo daría una lectura.
+## Tests do not need stdin: [method push_line] puts in a line as if someone had typed it and [method push_text] a text
+## with several, as a read would give it.
 
-## Líneas pendientes como mucho (el resto se descarta: nadie escribe tan deprisa).
+## Maximum pending lines (the rest are discarded: nobody types that fast).
 const MAX_PENDING_LINES: int = 64
 
 var _thread: Thread = null
@@ -33,8 +32,8 @@ var _running: bool = false
 var _reached_eof: bool = false
 
 
-## Arranca el hilo lector. Devuelve false si ya estaba en marcha o no hay entrada estándar
-## utilizable ([constant OS.STD_HANDLE_INVALID]).
+## Starts the reader thread. Returns false if it was already running or there is no usable standard input
+## ([constant OS.STD_HANDLE_INVALID]).
 func start() -> bool:
 	if _thread != null:
 		return false
@@ -45,18 +44,18 @@ func start() -> bool:
 	return _thread.start(_read_loop) == OK
 
 
-## true mientras el hilo lector sigue esperando líneas.
+## true while the reader thread is still waiting for lines.
 func is_running() -> bool:
 	return _thread != null and _running and not has_reached_eof()
 
 
-## true si el hilo lector está vivo, aunque se le haya pedido parar con [method stop]: sigue dentro de
-## la lectura bloqueada hasta que llegue una línea o se cierre la entrada.
+## true if the reader thread is alive, even if it was asked to stop with [method stop]: it is still inside the blocked
+## read until a line arrives or the input closes.
 func is_reading() -> bool:
 	return _thread != null and not has_reached_eof()
 
 
-## true si la entrada estándar se cerró (el hilo ya terminó).
+## true if standard input was closed (the thread has already ended).
 func has_reached_eof() -> bool:
 	_mutex.lock()
 	var reached: bool = _reached_eof
@@ -64,13 +63,13 @@ func has_reached_eof() -> bool:
 	return reached
 
 
-## Pide al lector que no entregue más líneas. No puede interrumpir una lectura en curso.
+## Asks the reader not to deliver more lines. It cannot interrupt a read in progress.
 func stop() -> void:
 	_running = false
 
 
-## Mete una línea en la cola como si se hubiera escrito en la consola (descarta las vacías y las
-## que sobran de [constant MAX_PENDING_LINES]).
+## Puts a line in the queue as if it had been typed in the console (discards empty ones and those exceeding
+## [constant MAX_PENDING_LINES]).
 func push_line(line: String) -> void:
 	var text: String = line.strip_edges()
 	if text.is_empty():
@@ -81,13 +80,13 @@ func push_line(line: String) -> void:
 	_mutex.unlock()
 
 
-## Mete en la cola cada línea de [param text] (separadas por LF o CRLF) con [method push_line].
+## Puts in the queue each line of [param text] (separated by LF or CRLF) with [method push_line].
 func push_text(text: String) -> void:
 	for line: String in text.replace("\r\n", "\n").split("\n"):
 		push_line(line)
 
 
-## Las líneas pendientes, de más antigua a más reciente, y vacía la cola.
+## The pending lines, from oldest to most recent, and empties the queue.
 func take_lines() -> PackedStringArray:
 	_mutex.lock()
 	var taken: PackedStringArray = _lines
@@ -96,7 +95,7 @@ func take_lines() -> PackedStringArray:
 	return taken
 
 
-# Hilo lector: una lectura por vuelta (puede traer varias líneas) hasta que la entrada se cierre.
+# Reader thread: one read per loop (it may bring several lines) until the input closes.
 func _read_loop() -> void:
 	while _running:
 		var text: String = OS.read_string_from_stdin()

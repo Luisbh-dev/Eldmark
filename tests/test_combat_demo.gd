@@ -1,17 +1,17 @@
 extends TestCase
-## Pruebas del guion de combate de la demo del sandbox (CMB-06): [CombatDemoScript] pulsa los botones
-## de modo que la máquina de acciones recorre de verdad el combo de tres ligeros, el fuerte cargado, el
-## bloqueo y la esquiva, y las demos ([DemoInput] del circuito de pruebas y [RouteDemoInput] del Vado
-## Gris) lo incluyen sin cambiar el resto de su recorrido.
+## Tests for the sandbox demo combat script (CMB-06): [CombatDemoScript] presses the buttons
+## so that the action machine truly goes through the three-light combo, the charged heavy attack, the
+## block and the dodge, and the demos ([DemoInput] of the test circuit and [RouteDemoInput] of Vado
+## Gris) include it without changing the rest of their route.
 
 const START_TICK: int = 1000
-## Tiempo máximo de espera a la demo como proceso (la del circuito de pruebas dura unos 14 s; la prueba, menos de 30).
+## Maximum time to wait for the demo as a process (the test circuit one lasts about 14 s; the test, less than 30).
 const PROCESS_MAX_WAIT_SECONDS: float = 25.0
 const Action = CombatState.Action
 
 
-## Recorre el guion con la máquina de acciones (sin física) y devuelve, en orden, los cambios de
-## acción como [code][acción, id del ataque, tick relativo][/code], junto con el estado final.
+## Runs the script with the action machine (no physics) and returns, in order, the action
+## changes as [code][action, attack id, relative tick][/code], together with the final state.
 func _run_script(script: CombatDemoScript) -> Array[Array]:
 	var state: CombatState = CombatState.initial(CombatCatalog.rules(), CombatCatalog.default_weapon_id())
 	var changes: Array[Array] = []
@@ -42,18 +42,18 @@ func test_script_walks_the_combo_the_heavy_the_block_and_the_dodge() -> void:
 	var weapon: WeaponTicks = CombatCatalog.weapon(CombatCatalog.default_weapon_id())
 	var combo: Array[int] = []
 	combo.assign(weapon.light_ids)
-	# Los tres primeros ligeros son el combo entero, en orden; el cuarto es la pulsación que se
-	# convierte en la carga del fuerte.
-	assert_eq(lights.slice(0, 3), combo, "el combo de tres ligeros encadena sin huecos")
-	assert_true(seen.has(Action.CHARGE), "carga el fuerte")
-	assert_true(seen.has(Action.HEAVY), "y lo lanza")
-	assert_true(seen.has(Action.BLOCK), "bloquea")
-	assert_true(seen.has(Action.DODGE), "y esquiva")
-	assert_eq(seen.count(Action.HEAVY), 1, "un solo fuerte")
-	assert_eq(seen.count(Action.DODGE), 1, "una sola esquiva")
+	# The first three light attacks are the whole combo, in order; the fourth is the press that
+	# turns into the heavy attack's charge.
+	assert_eq(lights.slice(0, 3), combo, "the three-light combo chains without gaps")
+	assert_true(seen.has(Action.CHARGE), "charges the heavy attack")
+	assert_true(seen.has(Action.HEAVY), "and releases it")
+	assert_true(seen.has(Action.BLOCK), "blocks")
+	assert_true(seen.has(Action.DODGE), "and dodges")
+	assert_eq(seen.count(Action.HEAVY), 1, "a single heavy attack")
+	assert_eq(seen.count(Action.DODGE), 1, "a single dodge")
 	assert_false(seen.has(Action.STAGGER) or seen.has(Action.STUN) or seen.has(Action.DEAD),
-			"sin controles ni muerte: nadie golpea en el sandbox")
-	# Orden: ligeros, carga, fuerte, bloqueo, esquiva.
+			"no controls or death: nobody hits in the sandbox")
+	# Order: light attacks, charge, heavy attack, block, dodge.
 	assert_true(seen.find(Action.CHARGE) < seen.find(Action.HEAVY))
 	assert_true(seen.find(Action.HEAVY) < seen.find(Action.BLOCK))
 	assert_true(seen.find(Action.BLOCK) < seen.find(Action.DODGE))
@@ -69,7 +69,7 @@ func test_the_combo_links_each_hit_at_the_exact_end_of_the_previous_recovery() -
 	assert_eq(starts.size(), 3)
 	var expected: int = 0
 	for i: int in 3:
-		assert_eq(starts[i], expected, "el golpe %d empieza en el tick %d" % [i + 1, expected])
+		assert_eq(starts[i], expected, "hit %d starts at tick %d" % [i + 1, expected])
 		expected += CombatCatalog.attack(weapon.light_ids[i]).total_ticks
 
 
@@ -86,18 +86,18 @@ func test_heavy_is_charged_beyond_the_minimum_and_released() -> void:
 		ActionMachine.step(state, input, true)
 		if state.action == Action.HEAVY and charge_ticks == 0:
 			charge_ticks = state.charge_ticks
-	assert_true(charge_ticks >= heavy.charge_min_ticks, "carga al menos el mínimo (%d >= %d)"
+	assert_true(charge_ticks >= heavy.charge_min_ticks, "charges at least the minimum (%d >= %d)"
 			% [charge_ticks, heavy.charge_min_ticks])
-	assert_true(charge_ticks < heavy.charge_max_ticks, "sin llegar a la carga máxima")
-	assert_eq(state.stamina <= 1000 and state.stamina > 0, true, "y la resistencia no se agota")
+	assert_true(charge_ticks < heavy.charge_max_ticks, "without reaching the maximum charge")
+	assert_eq(state.stamina <= 1000 and state.stamina > 0, true, "and stamina does not run out")
 
 
 func test_script_has_a_sensible_length_and_ends_idle() -> void:
 	var script := CombatDemoScript.new()
 	var length: int = script.get_length()
-	assert_true(length > 200 and length < 420, "unos 5 s de combate (%d ticks)" % length)
-	assert_eq(script.buttons_at(-1), 0, "antes del guion, nada")
-	assert_eq(script.buttons_at(length), 0, "y después tampoco")
+	assert_true(length > 200 and length < 420, "about 5 s of combat (%d ticks)" % length)
+	assert_eq(script.buttons_at(-1), 0, "before the script, nothing")
+	assert_eq(script.buttons_at(length), 0, "and afterwards neither")
 	assert_eq(script.buttons_at(length + 100), 0)
 	assert_false(script.is_finished(length - 1))
 	assert_true(script.is_finished(length))
@@ -109,25 +109,25 @@ func test_demo_input_adds_the_combat_after_the_approach_without_changing_the_rou
 	var demo := DemoInput.new()
 	var script := CombatDemoScript.new()
 	assert_eq(demo.get_length(), DemoInput.APPROACH_END + script.get_length(),
-			"el combate sustituye a la vuelta de cámara sola")
-	# El recorrido anterior no pulsa ningún botón de combate.
+			"combat replaces the camera turn on its own")
+	# The earlier route presses no combat button.
 	for tick: int in range(1, DemoInput.APPROACH_END + 1):
 		var input: PlayerInput = demo.next(tick)
 		assert_eq(input.buttons & (PlayerInput.PRIMARY | PlayerInput.BLOCK | PlayerInput.DODGE), 0,
-				"tick %d: sin combate durante el recorrido" % tick)
-	# Y en el combate pulsa lo que dice el guion.
+				"tick %d: no combat during the route" % tick)
+	# And in combat it presses what the script says.
 	var pressed: int = 0
 	for rel: int in script.get_length():
 		var input: PlayerInput = demo.next(DemoInput.COMBAT_START + 1 + rel)
 		assert_eq(input.buttons & (PlayerInput.PRIMARY | PlayerInput.BLOCK | PlayerInput.DODGE),
-				script.buttons_at(rel), "tick %d del combate" % rel)
+				script.buttons_at(rel), "combat tick %d" % rel)
 		if input.buttons != 0:
 			pressed += 1
-	assert_true(pressed > 50, "se pulsan botones durante el combate")
+	assert_true(pressed > 50, "buttons are pressed during combat")
 	var last: PlayerInput = demo.next(demo.get_length() + 10)
-	assert_eq(last.buttons, 0, "tras la demo, en reposo")
+	assert_eq(last.buttons, 0, "after the demo, at rest")
 	assert_true(demo.is_finished(demo.get_length()))
-	# La cámara sigue dando la vuelta completa mientras dura el combate.
+	# The camera keeps doing the full turn while the combat lasts.
 	var start_yaw: float = demo.look_for(DemoInput.COMBAT_START).x
 	var turned: float = 0.0
 	var previous: float = start_yaw
@@ -135,7 +135,7 @@ func test_demo_input_adds_the_combat_after_the_approach_without_changing_the_rou
 		var yaw: float = demo.look_for(tick).x
 		turned += absf(angle_difference(previous, yaw))
 		previous = yaw
-	assert_near(turned, TAU, 0.2, "una vuelta completa de cámara (%.2f rad)" % turned)
+	assert_near(turned, TAU, 0.2, "a full camera turn (%.2f rad)" % turned)
 
 
 func test_route_demo_for_the_vado_gris_has_a_combat_step() -> void:
@@ -145,11 +145,11 @@ func test_route_demo_for_the_vado_gris_has_a_combat_step() -> void:
 		for step: RouteDemoInput.Step in demo._steps:
 			if step.kind == RouteDemoInput.Kind.COMBAT:
 				combat_steps += 1
-				assert_not_null(step.combat, "el paso lleva su guion")
+				assert_not_null(step.combat, "the step carries its script")
 				assert_eq(step.ticks, step.combat.get_length())
 				if realm == &"solmarch":
-					assert_true(step.degrees < 0.0, "la vuelta de cámara se refleja en Solmarch")
-		assert_eq(combat_steps, 1, "%s: un tramo de combate al final de la ruta" % realm)
+					assert_true(step.degrees < 0.0, "the camera turn is reflected in Solmarch")
+		assert_eq(combat_steps, 1, "%s: a combat stretch at the end of the route" % realm)
 		assert_eq(demo._steps[demo._steps.size() - 1].kind, RouteDemoInput.Kind.COMBAT)
 
 
@@ -165,38 +165,38 @@ func test_route_demo_presses_the_scripted_buttons_during_the_combat_step() -> vo
 		var input: PlayerInput = demo.next(rel + 1)
 		if input.buttons != script.buttons_at(rel):
 			mismatches += 1
-	assert_eq(mismatches, 0, "cada tick pulsa lo del guion")
+	assert_eq(mismatches, 0, "each tick presses what the script says")
 	demo.next(script.get_length() + 5)
-	assert_true(demo.is_finished(script.get_length() + 5), "y acaba")
+	assert_true(demo.is_finished(script.get_length() + 5), "and finishes")
 	tree.root.remove_child(character)
 	character.free()
 
 
-# --- Demo como proceso aparte -----------------------------------------------------------------
+# --- Demo as a separate process ---------------------------------------------------------------
 
-## La demo del circuito de pruebas en un cliente sin ventana ([code]--demo --quit-after-demo[/code]) termina
-## sola con código 0 y sin errores, y el personaje recorre de verdad el combo, el fuerte cargado, el
-## bloqueo y la esquiva (la línea «acciones de combate» sale de las acciones que vio el cliente).
+## The test circuit demo in a windowless client ([code]--demo --quit-after-demo[/code]) ends
+## on its own with code 0 and no errors, and the character truly goes through the combo, the charged heavy attack, the
+## block and the dodge (the \"acciones de combate\" (combat actions) line comes from the actions the client saw).
 func test_the_headless_demo_runs_the_combat_without_errors_and_quits_by_itself() -> void:
 	var log_name: String = "test_combat_demo_process"
 	var log_path: String = NetHarness.build_path("%s.log" % log_name)
 	DirAccess.remove_absolute(log_path)
 	var pid: int = NetHarness.launch_process(PackedStringArray([
 		"--zone=test_world", "--demo", "--quit-after-demo"]), log_name)
-	if not assert_true(pid > 0, "el proceso del cliente se lanza"):
+	if not assert_true(pid > 0, "the client process launches"):
 		return
 	var deadline: int = Time.get_ticks_msec() + int(PROCESS_MAX_WAIT_SECONDS * 1000.0)
 	while OS.is_process_running(pid) and Time.get_ticks_msec() < deadline:
 		await tree.create_timer(0.1).timeout
 	if OS.is_process_running(pid):
 		OS.kill(pid)
-		fail("la demo no terminó en %d s" % int(PROCESS_MAX_WAIT_SECONDS))
+		fail("the demo did not finish in %d s" % int(PROCESS_MAX_WAIT_SECONDS))
 		return
-	assert_eq(OS.get_process_exit_code(pid), 0, "código de salida 0")
-	assert_eq(NetHarness.error_lines(log_path), PackedStringArray(), "sin errores en el registro")
+	assert_eq(OS.get_process_exit_code(pid), 0, "exit code 0")
+	assert_eq(NetHarness.error_lines(log_path), PackedStringArray(), "no errors in the log")
 	var log_text: String = FileAccess.get_file_as_string(log_path)
 	var length: int = DemoInput.new().get_length()
 	assert_true(log_text.contains("Demo terminada (tick %d)" % length),
-			"termina en el tick %d del guion" % length)
+			"ends at script tick %d" % length)
 	assert_true(log_text.contains("Demo, acciones de combate: LIGHT x4, CHARGE x1, HEAVY x1, BLOCK x1, DODGE x1"),
-			"y recorre el combo, la carga, el fuerte, el bloqueo y la esquiva")
+			"and goes through the combo, the charge, the heavy attack, the block and the dodge")

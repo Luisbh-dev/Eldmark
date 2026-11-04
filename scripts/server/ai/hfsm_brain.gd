@@ -1,98 +1,99 @@
 class_name HfsmBrain
 extends BotBrain
-## Cerebro de un PNJ de combate: máquina de estados jerárquica (docs/fuerte.md, sección 4.2; MUN-07 y MUN-08).
+## Brain of a combat NPC: a hierarchical state machine (docs/fuerte.md, section 4.2; MUN-07 and MUN-08).
 ## [br][br]
-## [b]Estados[/b] ([enum State]): [code]REPOSO[/code] (quieto en su puesto) → [code]PATRULLA[/code] (recorre los
-## marcadores de su ruta, parándose en cada uno) → [code]ALERTA[/code] (ha notado a un enemigo: lo mira y reacciona
-## unas décimas de segundo) → [code]COMBATE[/code] (lo persigue, lo rodea y ataca) → [code]REGRESO[/code] (lo ha
-## perdido o se ha alejado más de su correa: vuelve a su puesto, [b]regenerado e inmune[/b]).
+## [b]States[/b] ([enum State]): [code]REPOSO[/code] (standing still at its post) → [code]PATRULLA[/code] (walks the
+## markers of its route, pausing at each one) → [code]ALERTA[/code] (has noticed an enemy: looks at it and reacts for
+## a few tenths of a second) → [code]COMBATE[/code] (chases it, circles it and attacks) → [code]REGRESO[/code] (has
+## lost it or strayed beyond its leash: returns to its post, [b]regenerated and immune[/b]).
 ## [br][br]
-## [b]Piensa cada [constant THINK_INTERVAL_TICKS] ticks[/b] (escalonado por su net_id) con el estado de los cuerpos
-## tras el tick anterior (paso 0 del orden del tick, docs/fuerte.md 1.7), y entre medias repite su plan: movimiento,
-## rumbo y botones. Produce una [PlayerInput] por tick que entra en su [InputQueue] como la de un jugador falso, así
-## que su cuerpo es un [PlayerCharacter] simulado con las mismas reglas que los jugadores. Su única fuente de azar es
-## su [RandomNumberGenerator] con semilla: con las mismas semillas y los mismos jugadores hace siempre lo mismo
+## [b]Thinks every [constant THINK_INTERVAL_TICKS] ticks[/b] (staggered by its net_id) using the state of the bodies
+## after the previous tick (step 0 of the tick order, docs/fuerte.md 1.7), and in between it repeats its plan: movement,
+## heading and buttons. It produces one [PlayerInput] per tick that enters its [InputQueue] like a fake player's, so
+## its body is a [PlayerCharacter] simulated with the same rules as players. Its only source of randomness is its
+## seeded [RandomNumberGenerator]: with the same seeds and the same players it always does the same thing
 ## ([method get_state_log]).
 ## [br][br]
-## [b]Percepción[/b]: radio, cono y línea de visión ([method NpcWorld.line_of_sight]); dentro del radio de
-## «oído» ([member NpcDefinition.awareness_radius]) basta con la línea de visión. [b]Amenaza[/b]: el daño que le
-## ha hecho cada enemigo más su cercanía, con un empujón al objetivo actual para no cambiar a cada rato.
-## [b]Correa[/b]: más allá de [member NpcDefinition.leash_radius] de su puesto, regresa. [b]Fichas[/b]: solo ataca
-## con una ficha de [AttackTokens] (como mucho dos PNJ a la vez contra el mismo objetivo); sin ella lo rodea a 3 o
-## 4 m. [b]Alerta de grupo[/b]: al entrar en combate avisa a los de su grupo a [member NpcDefinition.alert_radius];
-## un jefe ([member NpcDefinition.shouts]) grita y, al bajar de vida, llama refuerzos una vez por vida (volver a su
-## puesto regenerado no rearma la llamada; solo [method rearm_reinforcements]).
+## [b]Perception[/b]: radius, cone and line of sight ([method NpcWorld.line_of_sight]); within the "hearing" radius
+## ([member NpcDefinition.awareness_radius]) line of sight is enough. [b]Threat[/b]: the damage each enemy has dealt
+## to it plus their proximity, with a boost for the current target so it does not switch constantly.
+## [b]Leash[/b]: beyond [member NpcDefinition.leash_radius] from its post, it returns. [b]Tokens[/b]: it only attacks
+## with an [AttackTokens] token (at most two NPCs at once against the same target); without one it circles at 3 or
+## 4 m. [b]Group alert[/b]: on entering combat it warns its group members within [member NpcDefinition.alert_radius];
+## a boss ([member NpcDefinition.shouts]) shouts and, when its health drops, calls reinforcements once per life
+## (returning to its post regenerated does not re-arm the call; only [method rearm_reinforcements] does).
 ## [br][br]
-## [b]Derribados[/b] (docs/habilidades.md, sección 4.5; H3c): los PNJ no quedan derribados, pero rematan. Un
-## jugador derribado hostil a menos de [constant DOWNED_PRIORITY_RADIUS] m es el objetivo preferido (antes que el
-## más cercano en pie, también al notarlo en reposo o patrulla) y se ataca con el ligero (PRIMARY), sin levantar el
-## escudo ni cargar; pide su ficha de [AttackTokens] como cualquier objetivo.
+## [b]Knocked down[/b] (docs/habilidades.md, section 4.5; H3c): NPCs are never knocked down, but they finish off
+## others. A hostile knocked-down player within [constant DOWNED_PRIORITY_RADIUS] m is the preferred target (ahead of
+## the nearest standing one, also when noticed while resting or patrolling) and is attacked with the light attack
+## (PRIMARY), without raising the shield or charging; it requests its [AttackTokens] token like any other target.
 ## [br][br]
-## [b]Atacado desde lejos[/b] (revisión de la fase 4): quien le golpea desde más allá de su radio de pérdida (un
-## arquero a 33 m) le sube el radio hasta él, como el aviso de un compañero, y lo persigue; si no lo alcanza, la correa
-## o el atasco lo mandan al regreso inmune. Antes se quedaba quieto sin objetivo y se curaba cada 3 s.
+## [b]Attacked from afar[/b] (phase 4 review): whoever hits it from beyond its lose radius (an archer at 33 m) raises
+## its radius up to them, like a companion's warning, and it chases them; if it cannot reach them, the leash
+## or getting stuck sends it to an immune return. Before, it would stand still without a target and heal every 3 s.
 
-## Estados de la máquina.
+## States of the machine.
 enum State { REST, PATROL, ALERT, COMBAT, RETURN }
-## Qué ataque elige el PNJ.
+## Which attack the NPC picks.
 enum Attack { LIGHT, HEAVY, SPECIAL, BLOCK }
 
-## Cada cuántos ticks piensa.
+## How many ticks between thoughts.
 const THINK_INTERVAL_TICKS: int = 6
-## Distancia (m) a la que da por llegado a un punto de patrulla o a su puesto.
+## Distance (m) at which it considers a patrol point or its post reached.
 const ARRIVE_DISTANCE: float = 1.2
-## Distancia (m) a un punto intermedio de la ruta a la que pasa al siguiente.
+## Distance (m) to an intermediate route point at which it moves on to the next one.
 const WAYPOINT_DISTANCE: float = 0.8
-## Cada cuántos ticks recalcula la ruta, y cuánto debe moverse el destino para que la recalcule antes.
+## How many ticks between route recalculations, and how far the destination must move for it to recalculate sooner.
 const REPATH_TICKS: int = 45
 const REPATH_GOAL_DISTANCE: float = 1.5
-## Por debajo de esta distancia (m) horizontal y de este desnivel va derecho al objetivo, sin ruta.
+## Below this horizontal distance (m) and this height difference it goes straight to the target, without a route.
 const DIRECT_DISTANCE: float = 4.0
 const DIRECT_MAX_HEIGHT: float = 1.2
-## Atasco: si en [constant STUCK_CHECK_TICKS] ticks avanza menos de [constant STUCK_MIN_MOVE] m queriendo moverse, se
-## recalcula la ruta; tras [constant MAX_STUCK] atascos seguidos abandona (el combate) o se teletransporta (el regreso).
+## Getting stuck: if within [constant STUCK_CHECK_TICKS] ticks it advances less than [constant STUCK_MIN_MOVE] m while
+## trying to move, the route is recalculated; after [constant MAX_STUCK] consecutive stucks it gives up (combat) or
+## teleports (return).
 const STUCK_CHECK_TICKS: int = 90
 const STUCK_MIN_MOVE: float = 0.5
 const MAX_STUCK: int = 3
-## Ticks sin ver a ningún objetivo válido tras los que da por perdido el combate (3 s).
+## Ticks without seeing any valid target after which it considers combat lost (3 s).
 const LOST_TARGET_TICKS: int = 180
-## Tope del regreso y de su inmunidad (60 s): pasado ese tiempo se teletransporta a su puesto.
+## Cap on the return and its immunity (60 s): after that time it teleports to its post.
 const RETURN_MAX_TICKS: int = 3600
-## Parada (ticks, mínimo y máximo) en un punto de la patrulla.
+## Pause (ticks, minimum and maximum) at a patrol point.
 const PATROL_REST_TICKS: Vector2i = Vector2i(180, 420)
-## Puntos que se suman a la amenaza del objetivo actual (para no cambiar a cada rato).
+## Points added to the current target's threat (so it does not switch constantly).
 const TARGET_STICKINESS: float = 60.0
-## Peso de la cercanía en la amenaza (puntos por metro que falta para el radio de visión).
+## Weight of proximity in the threat (points per meter short of the vision radius).
 const PROXIMITY_WEIGHT: float = 4.0
-## Distancia (m) por debajo de la cual pide una ficha de ataque, sobre su alcance.
+## Distance (m) beyond its reach below which it requests an attack token.
 const TOKEN_REQUEST_MARGIN: float = 3.0
-## Fracción de la carrera con la que avanza mientras reacciona en la alerta (lo justo, 0,1, para que su cuerpo gire
-## hacia el enemigo: el personaje solo gira al moverse).
+## Fraction of the run speed at which it advances while reacting during the alert (just enough, 0.1, for its body to
+## turn toward the enemy: the character only turns when moving).
 const ALERT_CREEP: float = 0.12
-## Cuánto más cerca que su alcance (m) se queda al acercarse para atacar.
+## How much closer than its reach (m) it stops when approaching to attack.
 const APPROACH_MARGIN: float = 0.5
-## Margen (m) alrededor de la distancia de círculo antes de retroceder (por dentro) o de acercarse (por fuera).
+## Margin (m) around the circling distance before backing off (inside) or closing in (outside).
 const CIRCLE_INNER_MARGIN: float = 0.4
 const CIRCLE_OUTER_MARGIN: float = 0.5
-## Cada cuántos ticks puede cambiar el sentido en que rodea (mínimo y máximo).
+## How many ticks between changes of the direction in which it circles (minimum and maximum).
 const STRAFE_FLIP_TICKS: Vector2i = Vector2i(120, 300)
-## Radio (m) de la alerta de un jefe que grita.
+## Radius (m) of the alert of a boss that shouts.
 const SHOUT_RADIUS: float = 60.0
-## Distancia (m, en horizontal) a la que un derribado hostil es el objetivo preferido (docs/habilidades.md,
-## sección 4.5).
+## Distance (m, horizontal) at which a hostile knocked-down player is the preferred target (docs/habilidades.md,
+## section 4.5).
 const DOWNED_PRIORITY_RADIUS: float = 6.0
-## Transiciones que guarda como mínimo [method get_state_log]: al llegar al doble se queda con las últimas
-## [constant STATE_LOG_MAX] (un PNJ que patrulla cambia de estado unas 10 veces por minuto y vive días).
+## Minimum transitions kept by [method get_state_log]: on reaching double, it keeps the last
+## [constant STATE_LOG_MAX] (a patrolling NPC changes state about 10 times a minute and lives for days).
 const STATE_LOG_MAX: int = 256
-## Margen (m) sobre la distancia a quien le ha golpeado desde más allá de su radio de pérdida (un arquero) con el que
-## se le sube el radio para ir a por él.
+## Margin (m) over the distance to whoever hit it from beyond its lose radius (an archer) by which its radius is
+## raised to go after them.
 const ATTACKER_RADIUS_MARGIN: float = 4.0
 
-## La definición del PNJ.
+## The NPC's definition.
 var definition: NpcDefinition = null
-## Estado actual ([enum State]).
+## Current state ([enum State]).
 var state: int = State.REST
-## Quién ha creado este cerebro (el generador al que pertenece), para el sistema de generadores.
+## Who created this brain (the spawner it belongs to), for the spawner system.
 var owner_slot: Variant = null
 
 var _world: NpcWorld = null
@@ -108,13 +109,13 @@ var _route_direction: int = 1
 var _group: StringName = &""
 var _light_reach: float = 2.4
 var _heavy_reach: float = 2.6
-# Plan que repite entre pensamientos.
+# Plan it repeats between thoughts.
 var _look_yaw: float = 0.0
 var _plan_move: Vector2 = Vector2.ZERO
 var _plan_sprint: bool = false
 var _press_buttons: int = 0
 var _press_until: int = -1
-# Tiempos.
+# Timings.
 var _last_think: int = -1
 var _phase: int = 0
 var _state_since: int = 0
@@ -122,8 +123,8 @@ var _rest_until: int = 0
 var _alert_until: int = 0
 var _target_id: int = 0
 var _target_lost_since: int = -1
-# Radio (m) más allá del cual da por perdido al objetivo: el de su definición, o el del grito si se lo han
-# avisado desde lejos.
+# Radius (m) beyond which it considers the target lost: the one from its definition, or the shout's if it was
+# alerted from afar.
 var _lose_radius: float = 28.0
 var _combat_engaged: bool = false
 var _next_attack_tick: int = 0
@@ -134,31 +135,31 @@ var _strafe_flip_tick: int = 0
 var _shouted: bool = false
 var _reinforced: bool = false
 var _token_target: int = 0
-# Ataque decidido para el siguiente turno ([enum Attack]; -1 = ninguno todavía).
+# Attack decided for the next turn ([enum Attack]; -1 = none yet).
 var _planned: int = -1
-# Ruta.
+# Route.
 var _path: PackedVector3Array = PackedVector3Array()
 var _path_index: int = 0
 var _path_goal: Vector3 = Vector3.ZERO
 var _path_tick: int = -1000
-# Atasco.
+# Getting stuck.
 var _stuck_reference: Vector3 = Vector3.ZERO
 var _stuck_tick: int = 0
 var _stuck_count: int = 0
 var _wants_to_move: bool = false
-# Último estado conocido del cuerpo.
+# Last known state of the body.
 var _position: Vector3 = Vector3.ZERO
 var _distance_to_target: float = -1.0
 var _state_log: Array[Vector2i] = []
 var _think_count: int = 0
 
 
-## [param rng_seed] fija el azar de este PNJ (reacciones, paradas, ataques).
+## [param rng_seed] sets this NPC's randomness (reactions, pauses, attacks).
 func _init(rng_seed: int = 1) -> void:
 	super(rng_seed, BotBrain.Pattern.IDLE)
 
 
-## Nombre del estado [param value] en español.
+## Name of the state [param value] in Spanish.
 static func state_name(value: int) -> String:
 	match value:
 		State.PATROL:
@@ -172,8 +173,8 @@ static func state_name(value: int) -> String:
 	return "reposo"
 
 
-## Enlaza el cerebro con su cuerpo: el mundo ([param world]), la entidad y su [Combatant], el puesto (posición
-## [param home] y rumbo [param home_yaw]), la ruta de patrulla (puede estar vacía) y el grupo de alerta.
+## Binds the brain to its body: the world ([param world]), the entity and its [Combatant], the post (position
+## [param home] and heading [param home_yaw]), the patrol route (may be empty) and the alert group.
 func bind(world: NpcWorld, entity: NetEntity, combatant: Combatant, new_definition: NpcDefinition,
 		home: Vector3, home_yaw: float, route: PackedVector3Array = PackedVector3Array(),
 		group: StringName = &"") -> void:
@@ -203,73 +204,73 @@ func bind(world: NpcWorld, entity: NetEntity, combatant: Combatant, new_definiti
 		_world.join_group(_group, self)
 
 
-## Se llama al retirar el PNJ del mundo: sale de su grupo y suelta sus fichas.
+## Called when the NPC is removed from the world: it leaves its group and releases its tokens.
 func unbind() -> void:
 	if _world != null:
 		_world.leave_group(_group, self)
 		_world.tokens.release_all(_net_id)
 
 
-## true mientras el PNJ está vivo.
+## true while the NPC is alive.
 func is_alive() -> bool:
 	return _combatant != null and _combatant.is_alive()
 
 
-## Posición del cuerpo en el último pensamiento (la actual si está enlazado).
+## Position of the body at the last thought (the current one if bound).
 func get_position() -> Vector3:
 	return _entity.get_position() if _entity != null else _position
 
 
-## net_id del PNJ.
+## net_id of the NPC.
 func get_net_id() -> int:
 	return _net_id
 
 
-## net_id del objetivo actual (0 = ninguno).
+## net_id of the current target (0 = none).
 func get_target_id() -> int:
 	return _target_id
 
 
-## Reino del PNJ (código de red).
+## Realm of the NPC (network code).
 func get_realm() -> int:
 	return _realm
 
 
-## Grupo de alerta del PNJ.
+## Alert group of the NPC.
 func get_group() -> StringName:
 	return _group
 
 
-## Lugar de su puesto.
+## Location of its post.
 func get_home() -> Vector3:
 	return _post
 
 
-## Las últimas transiciones de estado: [code]Vector2i(tick, estado)[/code] en orden. Es lo que se compara para
-## comprobar que dos ejecuciones con la misma semilla hacen lo mismo. Está acotado: guarda entre
-## [constant STATE_LOG_MAX] y el doble (las más viejas se descartan de golpe al llegar al doble; revisión de la
-## fase 4: antes crecía sin límite durante toda la vida del PNJ).
+## The latest state transitions: [code]Vector2i(tick, estado)[/code] in order. This is what gets compared to
+## verify that two runs with the same seed do the same thing. It is bounded: it keeps between
+## [constant STATE_LOG_MAX] and double that (the oldest are discarded at once on reaching double; phase 4 review:
+## it used to grow without limit over the NPC's whole life).
 func get_state_log() -> Array[Vector2i]:
 	return _state_log
 
 
-## Cuántos puntos tiene su ruta de patrulla (0 = se queda en su puesto).
+## How many points its patrol route has (0 = stays at its post).
 func get_route_size() -> int:
 	return _route.size()
 
 
-## Cuántas veces ha pensado desde que existe.
+## How many times it has thought since it came into existence.
 func get_think_count() -> int:
 	return _think_count
 
 
-## Ruta que sigue ahora (puede estar vacía).
+## Route it is following now (may be empty).
 func get_path_points() -> PackedVector3Array:
 	return _path
 
 
-## Una línea para el registro de depuración (comando [code]npc_debug[/code]): estado, objetivo, distancia, ruta, vida y
-## fichas.
+## One line for the debug log ([code]npc_debug[/code] command): state, target, distance, route, health and
+## tokens.
 func describe() -> String:
 	var health: String = "%d/%d" % [_combatant.health, _combatant.max_health] if _combatant != null else "-"
 	return "%s #%d [%s] estado=%s objetivo=%d dist=%.1f ruta=%d/%d vida=%s fichas=%s" % [
@@ -279,7 +280,7 @@ func describe() -> String:
 		"sí" if _token_target != 0 and _world.tokens.holds(_token_target, _net_id, _world.tick) else "no"]
 
 
-## La entrada del tick [param tick]. Piensa si le toca; si no, repite el plan.
+## The input for tick [param tick]. It thinks if it is its turn; otherwise it repeats the plan.
 func next_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	_position = position
 	if _combatant == null or _combatant.is_dead():
@@ -301,19 +302,19 @@ func next_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	return input
 
 
-## true si ya ha llamado a sus refuerzos en esta vida (o no le toca llamarlos hasta que se rearme).
+## true if it has already called its reinforcements in this life (or it is not due to call them until re-armed).
 func has_called_reinforcements() -> bool:
 	return _reinforced
 
 
-## Le devuelve la llamada a los refuerzos: la reaparición completa de los Huecos (docs/fuerte.md 4.3), que deja el
-## fuerte neutral como recién creado, se la rearma al Capitán que sigue vivo.
+## Gives back the reinforcement call: the full respawn of the Hollow (docs/fuerte.md 4.3), which leaves the neutral
+## fort as freshly created, re-arms it for the Ford Captain that is still alive.
 func rearm_reinforcements() -> void:
 	_reinforced = false
 
 
-## Un aviso de un compañero del grupo: hay un enemigo ([param target_id]). Solo lo atiende quien está en reposo o
-## patrullando. Devuelve true si pasa a la alerta.
+## A warning from a group companion: there is an enemy ([param target_id]). Only handled by one that is resting or
+## patrolling. Returns true if it moves to the alert state.
 func receive_alert(target_id: int, tick: int) -> bool:
 	if not is_alive() or (state != State.REST and state != State.PATROL):
 		return false
@@ -323,12 +324,12 @@ func receive_alert(target_id: int, tick: int) -> bool:
 	_target_id = target_id
 	_enter(State.ALERT, tick)
 	_alert_until = tick + _reaction_ticks()
-	# Se lo han dicho desde lejos: no lo ve, pero sabe dónde está.
+	# It was told from afar: it does not see it, but it knows where it is.
 	_lose_radius = maxf(definition.lose_radius, SHOUT_RADIUS)
 	return true
 
 
-# --- Pensamiento ------------------------------------------------------------------------------
+# --- Thinking ---------------------------------------------------------------------------------
 
 func _think(tick: int, position: Vector3, yaw: float) -> void:
 	_think_count += 1
@@ -417,7 +418,7 @@ func _think_combat(tick: int, position: Vector3, yaw: float) -> void:
 
 	var action: int = _combatant.get_character().combat.action
 	if _is_attack_action(action) or tick < _press_until:
-		# En mitad de un ataque, un bloqueo o una carga: solo apunta, y renueva su ficha.
+		# In the middle of an attack, a block or a charge: it only aims, and renews its token.
 		_plan_move = Vector2.ZERO
 		_plan_sprint = false
 		if _token_target != 0:
@@ -429,7 +430,7 @@ func _think_combat(tick: int, position: Vector3, yaw: float) -> void:
 		return
 
 	var ready: bool = tick >= _next_attack_tick
-	# A un derribado se le remata con el ligero: ni escudo ni carga.
+	# A knocked-down target is finished off with the light attack: no shield or charge.
 	var finishing: bool = target.is_downed()
 	if ready and not finishing and _planned_attack() == Attack.BLOCK:
 		_start_block(tick)
@@ -443,8 +444,8 @@ func _think_combat(tick: int, position: Vector3, yaw: float) -> void:
 		if has_token:
 			_token_target = target.get_id()
 	if has_token:
-		# El ataque gira al cuerpo hacia su rumbo en el primer tick (ver ActionMachine), así que basta con estar a
-		# su alcance.
+		# The attack turns the body toward its heading on the first tick (see ActionMachine), so being within
+		# reach is enough.
 		if distance <= reach - 0.1:
 			_start_attack(tick, heavy_next)
 			return
@@ -459,14 +460,14 @@ func _think_return(tick: int, position: Vector3, yaw: float) -> void:
 		_arrive_home(tick, yaw)
 		return
 	if tick - _state_since >= RETURN_MAX_TICKS or _stuck_count >= MAX_STUCK:
-		# No llega: vuelve de golpe.
+		# It does not arrive: it returns at once.
 		_world.teleport(_net_id, _post)
 		_arrive_home(tick, yaw)
 		return
 	_walk_to(_post, position, tick, definition.chase_speed_scale, false)
 
 
-# --- Transiciones -----------------------------------------------------------------------------
+# --- Transitions ------------------------------------------------------------------------------
 
 func _enter(new_state: int, tick: int) -> void:
 	if state == State.COMBAT and new_state != State.COMBAT:
@@ -488,15 +489,15 @@ func _enter(new_state: int, tick: int) -> void:
 	_log_state(tick, new_state)
 
 
-# Anota una transición en el registro acotado de [method get_state_log] (recorta a la mitad al llegar al doble del
-# tope, para no copiar en cada transición).
+# Records a transition in the bounded log of [method get_state_log] (trims it in half on reaching double the
+# cap, so it does not copy on every transition).
 func _log_state(tick: int, value: int) -> void:
 	_state_log.append(Vector2i(tick, value))
 	if _state_log.size() >= STATE_LOG_MAX * 2:
 		_state_log = _state_log.slice(_state_log.size() - STATE_LOG_MAX)
 
 
-# Si ve a un enemigo (o le han hecho daño) pasa a la alerta; true si ha cambiado de estado.
+# If it sees an enemy (or has been damaged) it moves to the alert state; true if it changed state.
 func _react_to_threat(tick: int, position: Vector3, yaw: float) -> bool:
 	var attacker: Combatant = _recent_attacker(tick)
 	if attacker != null:
@@ -517,7 +518,7 @@ func _react_to_threat(tick: int, position: Vector3, yaw: float) -> bool:
 	return true
 
 
-# El enemigo que le ha golpeado en el último segundo, si sigue siendo un objetivo válido.
+# The enemy that hit it in the last second, if it is still a valid target.
 func _recent_attacker(tick: int) -> Combatant:
 	if _combatant.last_enemy_id == 0 or _combatant.last_enemy_tick < 0 \
 			or tick - _combatant.last_enemy_tick > 60:
@@ -528,9 +529,9 @@ func _recent_attacker(tick: int) -> Combatant:
 	return null
 
 
-# Si quien le ha golpeado hace nada ([method _recent_attacker]) está más allá de su radio de pérdida, sube el radio
-# hasta él (con [constant ATTACKER_RADIUS_MARGIN]), como el aviso de un compañero: un arquero no le desgasta sin que
-# vaya a por él. Devuelve true si lo ha subido.
+# If whoever hit it a moment ago ([method _recent_attacker]) is beyond its lose radius, it raises the radius up to
+# them (with [constant ATTACKER_RADIUS_MARGIN]), like a companion's warning: an archer cannot wear it down without
+# it going after them. Returns true if it raised it.
 func _reach_for_attacker(tick: int, position: Vector3) -> bool:
 	var attacker: Combatant = _recent_attacker(tick)
 	if attacker == null:
@@ -558,7 +559,7 @@ func _begin_return(tick: int) -> void:
 	_enter(State.RETURN, tick)
 	_target_id = 0
 	_world.tokens.release_all(_net_id)
-	# Regreso inmune: nadie le hace daño hasta que llega (el tope es el del regreso).
+	# Immune return: nobody can damage it until it arrives (the cap is the return's).
 	_combatant.protected_until = tick + RETURN_MAX_TICKS
 
 
@@ -568,13 +569,13 @@ func _arrive_home(tick: int, yaw: float) -> void:
 	_target_id = 0
 	_rest_yaw = yaw if _route.size() >= 2 else _rest_yaw
 	_rest_until = tick + _rng.randi_range(PATROL_REST_TICKS.x, PATROL_REST_TICKS.y)
-	# La llamada a los refuerzos no se rearma: es una por vida (revisión de la fase 4). Si se rearmara aquí, cada
-	# asalto fallido que le baja la mitad de la vida sumaría dos Huecos más a la guarnición.
+	# The reinforcement call is not re-armed: it is one per life (phase 4 review). If it were re-armed here, every
+	# failed assault that takes half its health would add two more Hollow to the garrison.
 	_enter(State.REST, tick)
 
 
-# Pierde al objetivo: vuelve a su puesto si se ha desplazado, o se queda donde está. En los dos casos acaba
-# regenerado (el combate se reinicia).
+# Loses the target: returns to its post if it has moved away, or stays where it is. In both cases it ends up
+# regenerated (combat resets).
 func _lose_target(tick: int, position: Vector3, yaw: float) -> void:
 	_target_id = 0
 	if _horizontal_distance(position, _post) > ARRIVE_DISTANCE * 2.0:
@@ -593,10 +594,10 @@ func _advance_route() -> void:
 	_route_index = clampi(next_index, 0, _route.size() - 1)
 
 
-# --- Percepción y amenaza ----------------------------------------------------------------------
+# --- Perception and threat ---------------------------------------------------------------------
 
-# El enemigo más cercano que ve o nota (radio, cono y línea de visión), o null. Un derribado a menos de
-# DOWNED_PRIORITY_RADIUS m va antes que cualquiera en pie.
+# The nearest enemy it sees or notices (radius, cone and line of sight), or null. A knocked-down one within
+# DOWNED_PRIORITY_RADIUS m comes before any standing one.
 func _scan(position: Vector3, yaw: float) -> Combatant:
 	var radius: float = maxf(definition.perception_radius, definition.awareness_radius)
 	var best: Combatant = null
@@ -625,9 +626,9 @@ func _scan(position: Vector3, yaw: float) -> Combatant:
 	return best_downed if best_downed != null else best
 
 
-# El objetivo de mayor amenaza (daño recibido de cada enemigo más su cercanía) entre los que hay a menos de su
-# radio de pérdida, o null si no hay ninguno. Un derribado a menos de DOWNED_PRIORITY_RADIUS m va antes (el más
-# cercano; empate por net_id: la lista viene ordenada).
+# The highest-threat target (damage received from each enemy plus their proximity) among those within its lose
+# radius, or null if there are none. A knocked-down one within DOWNED_PRIORITY_RADIUS m comes first (the nearest;
+# ties broken by net_id: the list comes sorted).
 func _choose_target(tick: int, position: Vector3) -> Combatant:
 	var best: Combatant = null
 	var best_score: float = -INF
@@ -659,10 +660,10 @@ func _in_cone(position: Vector3, yaw: float, other: Vector3, cone_deg: float) ->
 	return forward.angle_to(to_other) <= deg_to_rad(cone_deg) * 0.5
 
 
-# --- Movimiento -------------------------------------------------------------------------------
+# --- Movement ---------------------------------------------------------------------------------
 
-# Camina hacia [param goal] por la ruta de navegación (o en línea recta si no hay malla o el destino está cerca y
-# a su altura), con la fracción [param speed_scale] de la velocidad de carrera.
+# Walks toward [param goal] along the navigation route (or in a straight line if there is no mesh or the destination
+# is near and at its height), at the fraction [param speed_scale] of run speed.
 func _walk_to(goal: Vector3, position: Vector3, tick: int, speed_scale: float, sprint: bool) -> void:
 	var direction: Vector3 = _steer(goal, position, tick)
 	_look_yaw = _yaw_toward(direction, _look_yaw)
@@ -692,7 +693,7 @@ func _steer(goal: Vector3, position: Vector3, tick: int) -> Vector3:
 	return direction
 
 
-# Se acerca al objetivo hasta el alcance de su ataque.
+# Closes in on the target up to the reach of its attack.
 func _close_in(target_position: Vector3, position: Vector3, tick: int, distance: float, reach: float) -> void:
 	if distance <= reach - APPROACH_MARGIN:
 		_plan_move = Vector2.ZERO
@@ -702,8 +703,8 @@ func _close_in(target_position: Vector3, position: Vector3, tick: int, distance:
 			definition.can_sprint and distance > 8.0)
 
 
-# Sin ficha: lo rodea a la distancia de círculo (3 a 4 m): se acerca si está lejos, retrocede si está encima y, a
-# la distancia buena, da vueltas a su alrededor.
+# Without a token: circles it at the circling distance (3 to 4 m): it closes in if far, backs off if too close and,
+# at the right distance, walks circles around it.
 func _circle(target_position: Vector3, position: Vector3, tick: int, distance: float) -> void:
 	_plan_sprint = false
 	if tick >= _strafe_flip_tick:
@@ -726,14 +727,14 @@ func _circle(target_position: Vector3, position: Vector3, tick: int, distance: f
 		_plan_move = Vector2(_strafe_sign * 0.6, 0.0)
 
 
-# --- Ataques ----------------------------------------------------------------------------------
+# --- Attacks ----------------------------------------------------------------------------------
 
 func _is_attack_action(action: int) -> bool:
 	return action == CombatState.Action.LIGHT or action == CombatState.Action.HEAVY \
 			or action == CombatState.Action.CHARGE
 
 
-# Lleva la cuenta de si está atacando: al acabar, suelta la ficha y programa la pausa hasta el siguiente.
+# Keeps track of whether it is attacking: when done, it releases the token and schedules the pause before the next one.
 func _track_attack(tick: int) -> void:
 	var attacking: bool = _is_attack_action(_combatant.get_character().combat.action)
 	if attacking:
@@ -759,10 +760,10 @@ func _reaction_ticks() -> int:
 	return roundi(_rng.randf_range(definition.reaction_s.x, definition.reaction_s.y) * 60.0)
 
 
-# El siguiente ataque que ha decidido ([enum Attack]): el especial cada [member NpcDefinition.special_every]
-# ataques; si no, una tirada entre levantar el escudo, el fuerte y el ligero con las probabilidades de su
-# definición. Se decide una sola vez y se recuerda hasta que lo hace, para que todo el acercamiento hable del
-# mismo ataque (y la tirada no se repita en cada pensamiento).
+# The next attack it has decided on ([enum Attack]): the special every [member NpcDefinition.special_every]
+# attacks; otherwise, a roll between raising the shield, the heavy and the light attack with the probabilities of its
+# definition. It is decided only once and remembered until it carries it out, so that the whole approach is about the
+# same attack (and the roll is not repeated on every thought).
 func _planned_attack() -> int:
 	if _planned < 0:
 		if definition.special_every > 0 and (_attacks_done + 1) % definition.special_every == 0:
@@ -783,8 +784,8 @@ func _start_attack(tick: int, heavy: bool) -> void:
 	_press_buttons = PlayerInput.PRIMARY
 	if heavy and weapon != null:
 		var heavy_attack: AttackTicks = CombatCatalog.attack(weapon.heavy_id)
-		# Mantener el botón convierte el ligero en la carga del fuerte; al soltarlo (o al llegar a la carga
-		# mínima) lo lanza.
+		# Holding the button turns the light attack into the heavy attack's charge; on release (or on reaching the minimum
+		# charge) it launches it.
 		_press_until = tick + heavy_attack.charge_min_ticks + 1
 	else:
 		_press_until = tick + 2
@@ -794,7 +795,7 @@ func _start_attack(tick: int, heavy: bool) -> void:
 	_plan_sprint = false
 
 
-# En lugar de atacar, levanta el escudo un rato.
+# Instead of attacking, it raises the shield for a while.
 func _start_block(tick: int) -> void:
 	var duration: int = roundi(_rng.randf_range(definition.block_s.x, definition.block_s.y) * 60.0)
 	_press_buttons = PlayerInput.BLOCK
@@ -805,8 +806,8 @@ func _start_block(tick: int) -> void:
 	_plan_sprint = false
 
 
-# Al bajar de la fracción de vida de su definición llama a los refuerzos, una sola vez por vida y solo si quedan
-# compañeros vivos en su grupo (el generador no deja que haya vivos más de los que llama: NpcSpawnerSystem).
+# When it drops below the health fraction of its definition it calls reinforcements, only once per life and only if
+# living companions remain in its group (the spawner does not allow more living than it calls: NpcSpawnerSystem).
 func _maybe_call_reinforcements(_tick: int) -> void:
 	if _reinforced or definition.reinforcement_id == &"" or definition.reinforcement_count <= 0:
 		return
@@ -818,7 +819,7 @@ func _maybe_call_reinforcements(_tick: int) -> void:
 	_world.request_reinforcements(self, definition.reinforcement_id, definition.reinforcement_count)
 
 
-# --- Atasco -----------------------------------------------------------------------------------
+# --- Getting stuck ----------------------------------------------------------------------------
 
 func _check_stuck(tick: int, position: Vector3) -> void:
 	if tick - _stuck_tick < STUCK_CHECK_TICKS:

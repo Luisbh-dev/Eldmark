@@ -1,13 +1,13 @@
 shader_type spatial;
-// Partícula con volumen y mezcla NORMAL (polvo, humo, astillas, esquirlas, gotas) para GPUParticles3D.
+// Particle with volume and NORMAL blending (dust, smoke, splinters, shards, droplets) for GPUParticles3D.
 //
-// La textura lleva la silueta en alfa y el sombreado en rojo (1 = claro): [shade_contrast] decide
-// cuánto se nota el relieve. Encima de la mezcla se suma un calor [hot_color] que se apaga con la
-// vida ([hot_decay]): las esquirlas de metal nacen incandescentes y acaban frías. Con
-// [soft_distance] > 0 el polvo se funde con el suelo en vez de cortarlo.
+// The texture carries the silhouette in alpha and the shading in red (1 = light): [shade_contrast]
+// decides how noticeable the relief is. On top of the blend, a heat [hot_color] is added that
+// fades over its life ([hot_decay]): metal shards are born incandescent and end up cold. With
+// [soft_distance] > 0 the dust blends into the ground instead of being cut off.
 //
-// Con [accent_amount] > 0 el canal verde de la textura es una máscara de un segundo tono ([accent]): las
-// tablillas de madera lo usan para la madera fresca de la rotura, clara, frente a la tabla curtida.
+// With [accent_amount] > 0 the texture's green channel is a mask for a second tone ([accent]): the
+// wooden splinters use it for the fresh, light wood of the break, against the weathered plank.
 render_mode blend_mix, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"

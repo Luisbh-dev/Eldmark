@@ -1,42 +1,42 @@
 class_name NetDebugOverlay
 extends CanvasLayer
-## Depuración de red del cliente (docs/red.md, sección 13; TEC-10).
+## Client network debugging (docs/red.md, section 13; TEC-10).
 ## [br][br]
-## [b]F3[/b] ([code]toggle_debug[/code]) muestra u oculta el panel de texto (arriba a la derecha):
+## [b]F3[/b] ([code]toggle_debug[/code]) shows or hides the text panel (top right):
 ## [codeblock]
-## RTT de ENet (sin el simulador de red) y en ticks, pérdida de ENet, KB/s de subida y de bajada
-## input_margin (último, mínimo de la ventana de TickSync) y margen objetivo
-## ajustes de TickSync y correcciones por minuto, sustituciones
-## última y máxima corrección, ticks vueltos a simular
-## retardo de interpolación, jitter, entidades visibles y bytes medios por snapshot
+## ENet RTT (without the network simulator) and in ticks, ENet loss, upload and download KB/s
+## input_margin (last, minimum of the TickSync window) and target margin
+## TickSync adjustments and corrections per minute, substitutions
+## last and max correction, ticks simulated again
+## interpolation delay, jitter, visible entities and average bytes per snapshot
 ## [/codeblock]
-## En el cliente en red, F3 alterna a la vez este panel y el panel de depuración del HUD del sandbox
-## ([method HUD.set_debug_visible]), que se ve a la izquierda: [OnlineMain] empieza con los dos
-## ocultos y los dos responden a la misma tecla. Este panel no marca el evento como gestionado.
+## On the networked client, F3 toggles at once this panel and the sandbox HUD's debug panel
+## ([method HUD.set_debug_visible]), which is seen on the left: [OnlineMain] starts with both
+## hidden and both respond to the same key. This panel does not mark the event as handled.
 ## [br][br]
-## [b]F4[/b] ([code]toggle_net_ghost[/code]) enciende o apaga la ayuda visual: un fantasma translúcido
-## en la posición del último estado propio que mandó el servidor (la diferencia con el personaje es lo
-## que va por delante la predicción) y una marca en cada muestra, sin interpolar, de los jugadores
-## remotos (de la más antigua a la más nueva; entre ellas se interpola).
+## [b]F4[/b] ([code]toggle_net_ghost[/code]) turns the visual aid on or off: a translucent ghost
+## at the position of the last own state the server sent (the difference from the character is how
+## far ahead the prediction runs) and a mark at each uninterpolated sample of the remote
+## players (from oldest to newest; they are interpolated between).
 ## [br][br]
-## Solo lee: nunca modifica la simulación. Los contadores se muestrean ([constant SAMPLE_INTERVAL])
-## aunque el panel esté oculto, para que al abrirlo ya haya historia; las tasas por minuto usan una
-## ventana de hasta [constant RATE_WINDOW_SECONDS] s y no se muestran hasta que hay
-## [constant MIN_RATE_SECONDS] s de datos.
+## Read-only: it never modifies the simulation. The counters are sampled ([constant SAMPLE_INTERVAL])
+## even if the panel is hidden, so that there is already history when it is opened; per-minute rates use a
+## window of up to [constant RATE_WINDOW_SECONDS] s and are not shown until there are
+## [constant MIN_RATE_SECONDS] s of data.
 
-## Segundos entre dos muestreos de los contadores (y refrescos del texto).
+## Seconds between two samplings of the counters (and text refreshes).
 const SAMPLE_INTERVAL: float = 0.25
-## Ventana (s) de las tasas por minuto, de los KB/s y de la media de bytes por snapshot.
+## Window (s) of the per-minute rates, of the KB/s and of the average bytes per snapshot.
 const RATE_WINDOW_SECONDS: float = 60.0
 const THROUGHPUT_WINDOW_SECONDS: float = 2.0
 const SNAPSHOT_SIZE_WINDOW_SECONDS: float = 4.0
-## Datos mínimos (s) para mostrar una tasa por minuto.
+## Minimum data (s) to show a per-minute rate.
 const MIN_RATE_SECONDS: float = 10.0
-## Cápsula del fantasma (la del personaje) y radio de las marcas (m).
+## Ghost capsule (the character's) and radius of the marks (m).
 const GHOST_RADIUS: float = 0.4
 const GHOST_HEIGHT: float = 1.8
 const MARK_RADIUS: float = 0.07
-## Altura (m) sobre los pies a la que se dibuja la marca de una muestra.
+## Height (m) above the feet at which a sample's mark is drawn.
 const MARK_HEIGHT: float = 0.9
 const GHOST_COLOR: Color = Color(0.3, 0.85, 1.0, 0.32)
 const MARK_COLOR: Color = Color(1.0, 0.85, 0.2, 1.0)
@@ -55,7 +55,7 @@ var _mark_positions: PackedVector3Array = PackedVector3Array()
 @onready var _label: Label = $Panel/Label
 
 
-## Una lectura de los contadores en un instante.
+## A reading of the counters at an instant.
 class _Sample:
 	var time: float = 0.0
 	var adjustments: int = 0
@@ -68,7 +68,7 @@ class _Sample:
 
 
 func _ready() -> void:
-	# Un panel de texto no debe moverse con la interpolación de física ni comerse el ratón.
+	# A text panel must not move with physics interpolation or swallow the mouse.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	InputBindings.ensure_defaults()
 	_panel.visible = false
@@ -78,8 +78,8 @@ func _ready() -> void:
 	refresh()
 
 
-## Conecta la depuración con el cliente de red [param client]. Se puede llamar antes o después de
-## añadir el nodo al árbol, y repetirse con otro cliente (se empieza de cero).
+## Connects the debugging to the network client [param client]. It can be called before or after
+## adding the node to the tree, and repeated with another client (it starts from scratch).
 func bind(client: NetClient) -> void:
 	_client = client
 	_samples.clear()
@@ -104,7 +104,7 @@ func _process(delta: float) -> void:
 		update_ghost()
 
 
-## Muestra u oculta el panel de texto.
+## Shows or hides the text panel.
 func set_panel_visible(visible_now: bool) -> void:
 	_panel.visible = visible_now
 	if visible_now:
@@ -115,7 +115,7 @@ func is_panel_visible() -> bool:
 	return _panel.visible
 
 
-## Enciende o apaga el fantasma y las marcas de las muestras (F4).
+## Turns the ghost and the sample marks on or off (F4).
 func set_ghost_visible(visible_now: bool) -> void:
 	_set_ghost_enabled(visible_now)
 
@@ -124,29 +124,29 @@ func is_ghost_visible() -> bool:
 	return _ghost_enabled
 
 
-## Fantasma translúcido del último estado propio del servidor.
+## Translucent ghost of the server's last own state.
 func get_ghost() -> MeshInstance3D:
 	return _ghost
 
 
-## Marcas de las muestras sin interpolar de los remotos (una instancia por muestra).
+## Marks of the remotes' uninterpolated samples (one instance per sample).
 func get_sample_marks() -> MultiMeshInstance3D:
 	return _marks
 
 
-## Posiciones (sin la altura de dibujo) de las muestras de los remotos que se marcaron en la última
-## actualización del fantasma.
+## Positions (without the drawing height) of the remotes' samples that were marked in the last
+## ghost update.
 func get_mark_positions() -> PackedVector3Array:
 	return _mark_positions
 
 
-## Texto del panel tal como se mostró en el último refresco.
+## Panel text as it was shown in the last refresh.
 func get_text() -> String:
 	return _text
 
 
-## Lee los contadores del cliente y rehace el texto. [param now_seconds] es el instante de la
-## lectura (por omisión, el reloj del sistema); solo lo cambian las pruebas.
+## Reads the client's counters and rebuilds the text. [param now_seconds] is the instant of the
+## reading (by default, the system clock); only tests change it.
 func refresh(now_seconds: float = -1.0) -> void:
 	if not is_node_ready():
 		return
@@ -161,7 +161,7 @@ func refresh(now_seconds: float = -1.0) -> void:
 	_label.text = _text
 
 
-# --- Muestreo y tasas -------------------------------------------------------------------------
+# --- Sampling and rates -----------------------------------------------------------------------
 
 func _record_sample(now_seconds: float, stats: Dictionary) -> void:
 	var sample := _Sample.new()
@@ -181,8 +181,8 @@ func _record_sample(now_seconds: float, stats: Dictionary) -> void:
 		_samples.pop_front()
 
 
-# Primera muestra de la ventana de [param seconds] s que termina en la última (o la más antigua que
-# haya si aún no hay tanta historia).
+# First sample of the window of [param seconds] s ending at the last one (or the oldest there
+# is if there is not that much history yet).
 func _window_start(seconds: float) -> _Sample:
 	var last: _Sample = _samples[_samples.size() - 1]
 	for sample: _Sample in _samples:
@@ -191,8 +191,8 @@ func _window_start(seconds: float) -> _Sample:
 	return last
 
 
-# Texto de "cantidad por minuto" de un contador, o TEXT_NO_VALUE si hay menos de MIN_RATE_SECONDS s
-# de historia.
+# "Amount per minute" text of a counter, or TEXT_NO_VALUE if there are fewer than MIN_RATE_SECONDS s
+# of history.
 func _per_minute(field: StringName) -> String:
 	if _samples.size() < 2:
 		return TEXT_NO_VALUE
@@ -204,7 +204,7 @@ func _per_minute(field: StringName) -> String:
 	return "%.1f/min" % (float(int(last.get(field)) - int(first.get(field))) * 60.0 / elapsed)
 
 
-# KB/s del contador de bytes [param field] en los últimos THROUGHPUT_WINDOW_SECONDS s.
+# KB/s of the bytes counter [param field] over the last THROUGHPUT_WINDOW_SECONDS s.
 func _kilobytes_per_second(field: StringName) -> String:
 	if _samples.size() < 2:
 		return TEXT_NO_VALUE
@@ -216,8 +216,8 @@ func _kilobytes_per_second(field: StringName) -> String:
 	return "%.1f KB/s" % (float(int(last.get(field)) - int(first.get(field))) / elapsed / 1024.0)
 
 
-# Bytes de aplicación recibidos por snapshot (incluye los pocos mensajes fiables, así que es una
-# aproximación por arriba) en los últimos SNAPSHOT_SIZE_WINDOW_SECONDS s.
+# Application bytes received per snapshot (includes the few reliable messages, so it is an
+# upper approximation) over the last SNAPSHOT_SIZE_WINDOW_SECONDS s.
 func _bytes_per_snapshot() -> String:
 	if _samples.size() < 2:
 		return TEXT_NO_VALUE
@@ -229,7 +229,7 @@ func _bytes_per_snapshot() -> String:
 	return "%d B" % roundi(float(last.app_in - first.app_in) / float(snapshots))
 
 
-# --- Texto ------------------------------------------------------------------------------------
+# --- Text -------------------------------------------------------------------------------------
 
 func _build_text(stats: Dictionary) -> String:
 	var ticks_per_second: float = float(Engine.physics_ticks_per_second)
@@ -285,7 +285,7 @@ func _centimeters(meters: float) -> String:
 	return "%.1f cm" % (meters * 100.0)
 
 
-# --- Fantasma y marcas (F4) -------------------------------------------------------------------
+# --- Ghost and marks (F4) ---------------------------------------------------------------------
 
 func _create_ghost() -> void:
 	var mesh := CapsuleMesh.new()
@@ -337,8 +337,8 @@ func _set_ghost_enabled(enabled: bool) -> void:
 		update_ghost()
 
 
-## Coloca el fantasma en el último estado propio del servidor y una marca en cada muestra de cada
-## remoto. Se rehace en cada fotograma mientras F4 está encendido.
+## Places the ghost at the server's last own state and a mark at each sample of each
+## remote. It is rebuilt every frame while F4 is on.
 func update_ghost() -> void:
 	if _client == null or not is_instance_valid(_client):
 		_ghost.visible = false

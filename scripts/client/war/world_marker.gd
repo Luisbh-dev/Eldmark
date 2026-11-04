@@ -1,22 +1,22 @@
 class_name WorldMarker
 extends RefCounted
-## Un lugar que la interfaz marca en el mundo (UI-19): el fuerte, su puerta, su círculo de captura, un
-## campamento o un paso. Es solo datos (qué, dónde, cómo se llama y de qué color); lo dibujan
-## [WorldMarkers] (icono proyectado en la pantalla) y [Compass] (en la brújula), y lo reutilizan el
-## minimapa y el mapa. Los crea [MarkerSource].
+## A place the interface marks in the world (UI-19): the fort, its gate, its capture circle, a camp or a
+## pass. It is only data (what, where, what it is called and what color); it is drawn by [WorldMarkers]
+## (icon projected onto the screen) and [Compass] (on the compass), and reused by the minimap and the map.
+## It is created by [MarkerSource].
 
-## Tipos de marcador.
+## Marker kinds.
 enum Kind { FORT, GATE, CIRCLE, CAMP, PASS }
 
-## Identificador estable (para recordar un marcador entre fotogramas).
+## Stable identifier (to remember a marker between frames).
 var id: StringName = &""
 var kind: int = Kind.FORT
-## Nombre en español.
+## Name in Spanish.
 var label: String = ""
-## Posición en el mundo.
+## Position in the world.
 var position: Vector3 = Vector3.ZERO
 var color: Color = Color.WHITE
-## Reino al que pertenece (código de red), o 0.
+## Realm it belongs to (network code), or 0.
 var realm: int = 0
 
 
@@ -32,11 +32,11 @@ static func make(p_id: StringName, p_kind: int, p_label: String, p_position: Vec
 	return marker
 
 
-## Distancia horizontal (m) desde [param origin] al marcador.
+## Horizontal distance (m) from [param origin] to the marker.
 func distance_from(origin: Vector3) -> float:
 	return Vector2(position.x - origin.x, position.z - origin.z).length()
 
 
-## Distancia en 3D (m) desde [param origin].
+## 3D distance (m) from [param origin].
 func distance_3d_from(origin: Vector3) -> float:
 	return position.distance_to(origin)

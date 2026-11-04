@@ -1,14 +1,13 @@
 class_name HintCatalog
 extends RefCounted
-## Las pistas del juego (UI-42, docs/fuerte.md sección 6): consejos cortos, en español, que [HintToasts]
-## enseña una sola vez por jugador cuando pasa lo que los motiva. Cada una tiene un identificador estable
-## (es lo que guarda [HintLog]) y su texto. Los textos son provisionales (la redacción definitiva es del
-## usuario).
+## The game's hints (UI-42, docs/fuerte.md section 6): short tips, in Spanish, that [HintToasts] shows
+## only once per player when what motivates them happens. Each has a stable identifier (what [HintLog]
+## stores) and its text. The texts are provisional (the final wording is up to the user).
 ## [br][br]
-## [b]Glifos reales.[/b] Los textos llevan marcas [code]{accion}[/code] ([code]{open_map}[/code],
-## [code]{primary_attack}[/code]...) que [method text_of] sustituye por la tecla o el botón que el jugador
-## tiene asignado ([method UIKeyGlyph.label_for_action]): si reasigna los controles, la pista lo dice bien.
-## Solo cliente.
+## [b]Real glyphs.[/b] The texts carry [code]{action}[/code] markers ([code]{open_map}[/code],
+## [code]{primary_attack}[/code]...) that [method text_of] replaces with the key or button the player has
+## assigned ([method UIKeyGlyph.label_for_action]): if they remap the controls, the hint says it correctly.
+## Client only.
 
 const COMBAT: StringName = &"combat"
 const CONTROLS: StringName = &"controls"
@@ -18,10 +17,10 @@ const GATE_CLOSED: StringName = &"gate_closed"
 const TELEGRAPH: StringName = &"telegraph"
 const RESPAWN_MAP: StringName = &"respawn_map"
 
-## Pistas en el orden en que se ofrecen si coinciden varias.
+## Hints in the order they are offered if several coincide.
 const IDS: Array[StringName] = [COMBAT, CONTROLS, FORT_NEAR, GATE_CLOSED, CAPTAIN_DOWN, TELEGRAPH, RESPAWN_MAP]
 
-## Acciones cuyas marcas se sustituyen en los textos.
+## Actions whose markers are replaced in the texts.
 const ACTIONS: Array[StringName] = [&"primary_attack", &"block", &"dodge", &"open_map", &"scoreboard",
 		&"open_settings", &"toggle_help"]
 
@@ -36,17 +35,17 @@ const TEXTS: Dictionary = {
 }
 
 
-## true si [param id] es una pista del catálogo.
+## true if [param id] is a hint in the catalog.
 static func has_hint(id: StringName) -> bool:
 	return TEXTS.has(id)
 
 
-## Texto de la pista [param id] con las teclas reales del jugador (vacío si no existe).
+## Text of hint [param id] with the player's real keys (empty if it does not exist).
 static func text_of(id: StringName) -> String:
 	return resolve(String(TEXTS.get(id, "")))
 
 
-## [param template] con cada [code]{accion}[/code] sustituida por la tecla o el botón asignado a esa acción.
+## [param template] with each [code]{action}[/code] replaced by the key or button assigned to that action.
 static func resolve(template: String) -> String:
 	var text: String = template
 	for action: StringName in ACTIONS:

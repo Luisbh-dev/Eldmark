@@ -22,8 +22,7 @@ import (
 	"eldmark/platform/legal"
 )
 
-// purges.txt: el formato de texto de COPY de backup.sh (con cualquier desfase) y RFC 3339; un error
-// nombra la línea.
+// purges.txt: backup.sh's COPY text format (with any offset) and RFC 3339; an error names the line.
 func TestParsePurges(t *testing.T) {
 	in := "account\t3\t2026-10-30 09:46:00.123456+00\n\n" +
 		"character\t17\t2026-10-30 11:16:00.5+01:30\r\n" +
@@ -59,7 +58,7 @@ func TestParsePurges(t *testing.T) {
 	}
 }
 
-// pgTool es la ruta de un binario de PostgreSQL de las pruebas.
+// pgTool is the path of a PostgreSQL binary used by the tests.
 func pgTool(t *testing.T, name string) string {
 	t.Helper()
 	if dir := testdb.BinDir(); dir != "" {
@@ -72,7 +71,7 @@ func pgTool(t *testing.T, name string) string {
 	return path
 }
 
-// dump es una copia (pg_dump -Fc) de la base del pool, como la de backup.sh.
+// dump is a backup (pg_dump -Fc) of the pool's database, like backup.sh's.
 func dump(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	file := filepath.Join(t.TempDir(), "copia.dump")
@@ -83,7 +82,7 @@ func dump(t *testing.T, pool *pgxpool.Pool) string {
 	return file
 }
 
-// restore restaura la copia en una base vacía nueva, como restore_check.sh.
+// restore restores the backup into a new empty database, like restore_check.sh.
 func restore(t *testing.T, file string) *pgxpool.Pool {
 	t.Helper()
 	pool := testdb.NewEmpty(t)
@@ -135,11 +134,11 @@ func purgedAt(t *testing.T, p *platformtest.Platform, table, column string, id i
 	return at
 }
 
-// Una copia tomada antes de purgar, restaurada y con reapply-purges (§11.2): las lápidas quedan
-// con el purged_at original (el del trabajo horario y el de purge-now, no la hora de restaurar),
-// también los personajes de la cuenta que nunca se borraron; no queda ningún arrendamiento ni
-// billete de la copia; la huella del correo y la reserva del nombre salen del purged_at; y una
-// segunda vuelta no cambia nada.
+// A backup taken before purging, restored and with reapply-purges (§11.2): the tombstones end up
+// with the original purged_at (the hourly job's and purge-now's, not the restore time), including
+// the account's characters that were never deleted; no lease or ticket from the backup remains; the
+// email fingerprint and the name reservation derive from purged_at; and a second pass changes
+// nothing.
 func TestReapplyPurgesAfterRestore(t *testing.T) {
 	p := platformtest.New(t)
 	_, adm := staff(t, p, "admin@example.org", sanctions.RoleAdmin)
@@ -152,14 +151,14 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 	bDeleted := p.NewCharacter(b, "Dairine", "vardheim")
 	platformtest.Expect(t, p.PublicDo("DELETE", "/v1/characters/"+idStr(bDeleted), b.Token,
 		map[string]any{"confirm_name": "Dairine"}), http.StatusOK, "")
-	zone.Join(a, aLive)   // arrendamiento y billete consumido en la copia
-	p.MustEnter(b, bLive) // billete sin reclamar en la copia
+	zone.Join(a, aLive)   // lease and consumed ticket in the backup
+	p.MustEnter(b, bLive) // unclaimed ticket in the backup
 	p.Exec(`insert into sanctions (account_id, kind, reason, starts_at, created_at) values ($1, 'warning', 'spam', $2, $2)`,
 		b.ID, p.Clock.Now())
 	copyFile := dump(t, p.Pool)
 
-	// Después de la copia: Brenna se borra y la purga el trabajo horario (t1); la cuenta b, con
-	// Corwin, que nunca se borró, purge-now (t2).
+	// After the backup: Brenna is deleted and the hourly job purges her (t1); account b, with Corwin,
+	// who was never deleted, gets purge-now (t2).
 	platformtest.Expect(t, p.PublicDo("DELETE", "/v1/characters/"+idStr(aGone), a.Token,
 		map[string]any{"confirm_name": "Brenna"}), http.StatusOK, "")
 	p.Clock.Advance(7*24*time.Hour + time.Minute)
@@ -173,7 +172,7 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 	}
 	t2 := p.Clock.Now().UTC()
 	entries := purgeLog(t, p)
-	// Dairine, borrada antes de la copia, cumple también sus 7 días y la purga el trabajo horario.
+	// Dairine, deleted before the backup, also reaches her 7 days and the hourly job purges her.
 	want := []admin.PurgeEntry{{admin.PurgeCharacter, aGone, t1}, {admin.PurgeCharacter, bDeleted, t1},
 		{admin.PurgeAccount, b.ID, t2}, {admin.PurgeCharacter, bLive, t2}}
 	if !reflect.DeepEqual(entries, want) {
@@ -185,7 +184,8 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 	p.Scalar(&hashUntil, `select until from sanctioned_email_hashes`)
 	corwin := nameOf(t, p, "corwin")
 
-	// La copia, restaurada en otra base, con otra plataforma (otro reloj: la hora de ahora).
+	// The backup, restored into another database, with another platform (another clock: the current
+	// time).
 	r := platformtest.Attach(t, restore(t, copyFile))
 	if n := r.Count(`select count(*) from character_leases`); n != 1 {
 		t.Fatalf("la copia trae %d arrendamientos", n)
@@ -244,7 +244,7 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 	if got := nameOf(t, r, "corwin"); !reflect.DeepEqual(got, corwin) {
 		t.Fatalf("nombre de Corwin %+v; el original %+v", got, corwin)
 	}
-	// Brenna estaba viva en la copia: su nombre queda reservado 30 días desde el purged_at.
+	// Brenna was alive in the backup: her name stays reserved for 30 days from purged_at.
 	if got := nameOf(t, r, "brenna"); got.Status != "reserved" || got.Character != nil || got.Until == nil ||
 		!got.Until.Equal(t1.Add(30*24*time.Hour)) {
 		t.Fatalf("nombre de Brenna %+v", got)
@@ -256,7 +256,7 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 		t.Fatalf("fila reapply-purges %+v", row)
 	}
 
-	// Idempotente.
+	// Idempotent.
 	res, err = r.Admin.ReapplyPurges(ctx, actor, entries)
 	if err != nil {
 		t.Fatal(err)
@@ -269,13 +269,13 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 	}
 }
 
-// noPurge es una purga de personajes que no purga nada.
+// noPurge is a character purge that purges nothing.
 type noPurge struct{}
 
 func (noPurge) ReapplyPurge(context.Context, int64, time.Time) (bool, error) { return false, nil }
 
-// reapply-purges sale con error si un id de purges.txt queda sin purgar (y lo nombra); un id que
-// la copia no tiene cuenta como purgado; sin quien purgue personajes, no hace nada.
+// reapply-purges exits with an error if a purges.txt id is left unpurged (and names it); an id that
+// the backup does not have counts as purged; without anything to purge characters, it does nothing.
 func TestReapplyPurgesReportsWhatStaysUnpurged(t *testing.T) {
 	p := platformtest.New(t)
 	_, adm := staff(t, p, "admin@example.org", sanctions.RoleAdmin)
@@ -298,7 +298,7 @@ func TestReapplyPurgesReportsWhatStaysUnpurged(t *testing.T) {
 		!strings.Contains(err.Error(), strconv.FormatInt(id, 10)) {
 		t.Fatalf("sin purgar: %v", err)
 	}
-	// Con la purga de verdad, el mismo archivo va bien (los ids que no existen no cuentan).
+	// With the real purge, the same file works (ids that do not exist do not count).
 	res, err := p.Admin.ReapplyPurges(ctx, adm, entries)
 	if err != nil || res.Characters != 1 || res.Unchanged != 2 {
 		t.Fatalf("%+v %v", res, err)

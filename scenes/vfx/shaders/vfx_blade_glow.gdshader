@@ -1,11 +1,11 @@
 shader_type spatial;
-// Brillo de la hoja cargada (ChargeAura): una franja de luz a lo largo del arma que crece con la carga.
+// Glow of the charged blade (ChargeAura): a strip of light along the weapon that grows with the charge.
 //
-// Es un quad que cuelga del arma (su eje X es la hoja: UV.x va de la empuñadura, 0, a la punta, 1) y gira
-// alrededor de ese eje para mirar a la cámara (billboard cilíndrico). Con poca carga es un filo tenue; con
-// más, el núcleo se ensancha y se calienta, corren pulsos de energía hacia la punta y la punta se
-// enciende. [charge] (de 0 a 1) es un parámetro de instancia. Mezcla premultiplicada con [cover]: tapa un
-// poco el fondo para que se lea también sobre un cielo claro.
+// It is a quad hanging from the weapon (its X axis is the blade: UV.x goes from the hilt, 0, to
+// the tip, 1) and it rotates around that axis to face the camera (cylindrical billboard). With
+// little charge it is a faint edge; with more, the core widens and heats up, energy pulses run
+// toward the tip and the tip lights up. [charge] (from 0 to 1) is an instance parameter. Premultiplied
+// blend with [cover]: it covers the background a little so it also reads against a bright sky.
 render_mode blend_premul_alpha, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
@@ -27,7 +27,7 @@ void fragment() {
 	float width = mix(0.16, 0.55, charge);
 	float profile = exp(-pow(across / width, 2.0));
 	float hot = exp(-pow(across / (width * 0.32), 2.0));
-	// Pulsos de energía que suben hacia la punta, más rápidos y marcados cuanto más carga.
+	// Energy pulses that rise toward the tip, faster and more pronounced the more charge there is.
 	float speed = flow_speed * (0.5 + charge * 1.2);
 	float flow_a = texture(noise_tex, vec2(along_pos * 2.4 - TIME * speed, across * 0.4 + 0.2)).b;
 	float flow_b = texture(noise_tex, vec2(along_pos * 4.1 - TIME * speed * 1.7 + 0.37, across * 0.6 + 0.6)).b;

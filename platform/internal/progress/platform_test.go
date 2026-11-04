@@ -13,10 +13,11 @@ import (
 	"eldmark/platform/internal/progress"
 )
 
-// La plataforma entera con el almacén de verdad (lo que monta serve): la creación valida raza, apariencia y
-// plantilla con las reglas exportadas; la reclamación trae el registro de Load; el guardado aplica S1–S8 por la
-// API interna (applied, duplicate e invalid_save con su check); la lista de personajes lee Summaries; la
-// reclamación siguiente trae lo guardado; y las rutas de operación y libro responden con los cuerpos de aquí.
+// The whole platform with the real store (what serve assembles): creation validates race,
+// appearance and template with the exported rules; the claim brings the Load record; the save
+// applies S1–S8 through the internal API (applied, duplicate and invalid_save with its check); the
+// character list reads Summaries; the next claim brings what was saved; and the operation and
+// ledger routes respond with the bodies from here.
 func TestThroughThePlatform(t *testing.T) {
 	rules := embedded(t)
 	p := platformtest.NewWithProgress(t, func(now func() time.Time) persistence.ProgressStore {

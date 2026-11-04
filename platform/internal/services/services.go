@@ -1,7 +1,8 @@
-// Package services monta en el proceso de serve los servicios de los paquetes (plataforma.md §14.1): cuentas y
-// sesiones (P1), personajes (P2), la API interna (P3, con guerra y lo social de P7a) y las retenciones (P9a),
-// con el almacén del progreso de progresion.md P7. Lo usan la orden serve y las pruebas de extremo a extremo
-// (platform/e2e, P10), que arrancan la plataforma de verdad en el proceso de la prueba.
+// Package services mounts the packages' services in the serve process (plataforma.md §14.1):
+// accounts and sessions (P1), characters (P2), the internal API (P3, with war and the social part
+// from P7a) and the retention jobs (P9a), with the progress store from progresion.md P7. It is
+// used by the serve command and the end-to-end tests (platform/e2e, P10), which start the real
+// platform inside the test's process.
 package services
 
 import (
@@ -30,14 +31,14 @@ import (
 	"eldmark/platform/legal"
 )
 
-// Cada cuánto corren las purgas de cuentas y de personajes y las retenciones (§2.5: retenciones y
-// purgas, cada hora).
+// How often the account and character purges and the retention jobs run (§2.5: retention and
+// purges, every hour).
 const purgeEvery = time.Hour
 
-// ProgressStore da el almacén del progreso y la validación de la creación (plataforma.md §7.5): los de
-// progresion.md P7 (internal/progress, sobre 0010_progress) con las reglas exportadas de
-// progression_rules.json, en todos los entornos. El falso en memoria y la validación provisional
-// quedan para las pruebas.
+// ProgressStore provides the progress store and the creation validation (plataforma.md §7.5):
+// those of progresion.md P7 (internal/progress, over 0010_progress) with the rules exported from
+// progression_rules.json, in all environments. The in-memory fake and the provisional validation
+// remain for the tests.
 func ProgressStore() (*progress.Store, *progress.Rules, error) {
 	rules, err := progress.LoadRules(gamedata.Raw())
 	if err != nil {
@@ -46,9 +47,9 @@ func ProgressStore() (*progress.Store, *progress.Rules, error) {
 	return progress.New(rules, nil), rules, nil
 }
 
-// Mount monta en el proceso los servicios de los paquetes: cuentas y sesiones (P1),
-// personajes (P2), la API interna (P3) y las retenciones (P9a). Devuelve lo que hay que cerrar al parar
-// (la cola de correo).
+// Mount mounts the packages' services in the process: accounts and sessions (P1), characters
+// (P2), the internal API (P3) and the retention jobs (P9a). It returns what must be closed on
+// shutdown (the mail queue).
 func Mount(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger) (func(), error) {
 	rules, err := gamedata.Load()
 	if err != nil {
@@ -116,15 +117,15 @@ func Mount(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger)
 	a.AddJob("characters_purge", purgeEvery, purger.PurgeExpired)
 	a.AddJob("privacy_retention", purgeEvery, retention.Job)
 	return func() {
-		svc.Wait() // las recuperaciones de contraseña en curso mandan su correo antes de cerrar la cola
+		svc.Wait() // password recoveries in progress send their email before the queue is closed
 		mail.Close(sender)
 	}, nil
 }
 
-// mountInternal monta la API interna (P3, §6): las instancias de zona y los bloques de ids, la
-// reclamación, el guardado y la liberación, operación y libro, las fortalezas y los eventos de
-// guerra, y los lotes de chat y auditoría con ignorados, reportes y sanciones; el trabajo de
-// instancias perdidas, cada min(5 s, HEARTBEAT_S), y la retención del chat (30 días), cada hora.
+// mountInternal mounts the internal API (P3, §6): zone instances and id blocks, the claim, the
+// save and the release, operation and ledger, the forts and the war events, and the chat and
+// audit batches with ignores, reports and sanctions; the lost-instances job, every min(5 s,
+// HEARTBEAT_S), and the chat retention (30 days), every hour.
 func mountInternal(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger,
 	progressRepo persistence.ProgressStore, nameRules *names.Rules, minProtocol int) error {
 	zoneSvc, err := zones.New(zones.Options{Config: cfg, Pool: pool, Log: log, MinProtocol: minProtocol})

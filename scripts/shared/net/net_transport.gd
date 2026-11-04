@@ -1,87 +1,89 @@
 class_name NetTransport
 extends Node
-## Capa fina sobre [ENetMultiplayerPeer] y [SceneMultiplayer] (ver docs/red.md, secciones 2, 3
-## y 13).
+## Thin layer over [ENetMultiplayerPeer] and [SceneMultiplayer] (see docs/red.md, sections 2, 3
+## and 13).
 ##
-## Solo hace tres cosas: conectar, autenticar ([method send_auth], [method complete_auth] y la
-## señal [signal peer_authenticating]) y mover paquetes binarios ([method send] y la señal
-## [signal packet_received]). No usa RPC, [MultiplayerSynchronizer] ni [MultiplayerSpawner]:
-## predecir, interpolar y rebobinar exigen un tick explícito en cada dato.
+## It does only three things: connect, authenticate ([method send_auth], [method complete_auth] and
+## the [signal peer_authenticating] signal) and move binary packets ([method send] and the
+## [signal packet_received] signal). It uses no RPC, [MultiplayerSynchronizer] or
+## [MultiplayerSpawner]: prediction, interpolation and rewind need an explicit tick on every piece
+## of data.
 ## [br][br]
-## Cada instancia tiene su propio [SceneMultiplayer], registrado en el árbol con
-## [method SceneTree.set_multiplayer] bajo la ruta del nodo, así que caben varias en un mismo
-## proceso (pruebas y enjambre de bots). Hay que añadirla al árbol antes de [method host] o
-## [method connect_to]. Como [member SceneTree.multiplayer_poll] queda desactivado, el dueño llama
-## a [method poll] al empezar su tick de física y a [method flush] al terminarlo: recibir,
-## simular, enviar.
+## Each instance has its own [SceneMultiplayer], registered in the tree with
+## [method SceneTree.set_multiplayer] under the node's path, so several can live in the same
+## process (tests and the bot swarm). It must be added to the tree before [method host] or
+## [method connect_to]. Since [member SceneTree.multiplayer_poll] is disabled, the owner calls
+## [method poll] at the start of its physics tick and [method flush] at the end: receive,
+## simulate, send.
 ## [br][br]
-## Reglas:
-## [br]- Todas las señales se emiten desde [method poll], nunca desde dentro del motor, así que los
-## oyentes pueden llamar a [method send], [method close] o [method host] con libertad.
-## [br]- No se envía nada a un peer hasta que se le ha entregado [signal peer_connected] (en el
-## cliente, el peer 1): antes, [method send] devuelve [constant ERR_UNAVAILABLE]. Enviar justo
-## después de [method complete_auth] daría un error del motor en el servidor, porque el aviso de
-## autenticación completada del otro lado llega en un paquete posterior.
-## [br]- Canales: [constant NetProtocol.CH_INPUT] no fiable, [constant NetProtocol.CH_SNAPSHOT] no
-## fiable y secuenciado, [constant NetProtocol.CH_RELIABLE] fiable.
-## [br]- Con [method set_net_sim_spec], el [NetSim] retrasa (y pierde o duplica, si es no fiable)
-## lo que sale y lo que entra. A la autenticación solo le añade retardo.
-## [br]- Tras [signal connection_failed] o la pérdida del servidor, el cliente puede volver a llamar
-## a [method connect_to] (o a [method close]).
-## [br]- Con DTLS ([method host] y [method connect_to] con [TLSOptions], docs/plataforma.md §10.2) el corte lo
-## empieza siempre el servidor: ver [method disconnect_after_flush].
+## Rules:
+## [br]- All signals are emitted from [method poll], never from inside the engine, so listeners
+## can freely call [method send], [method close] or [method host].
+## [br]- Nothing is sent to a peer until [signal peer_connected] has been delivered for it (on the
+## client, peer 1): before that, [method send] returns [constant ERR_UNAVAILABLE]. Sending right
+## after [method complete_auth] would cause an engine error on the server, because the other
+## side's "authentication completed" notice arrives in a later packet.
+## [br]- Channels: [constant NetProtocol.CH_INPUT] unreliable, [constant NetProtocol.CH_SNAPSHOT]
+## unreliable and sequenced, [constant NetProtocol.CH_RELIABLE] reliable.
+## [br]- With [method set_net_sim_spec], the [NetSim] delays (and drops or duplicates, if
+## unreliable) both outgoing and incoming traffic. Authentication only gets added delay.
+## [br]- After [signal connection_failed] or loss of the server, the client can call
+## [method connect_to] again (or [method close]).
+## [br]- With DTLS ([method host] and [method connect_to] with [TLSOptions], docs/plataforma.md
+## §10.2) the disconnect is always started by the server: see [method disconnect_after_flush].
 ## [br][br]
-## Compartido: no lee el reloj. El tiempo es el tick que se pasa a [method poll].
+## Shared: it does not read the clock. Time is the tick passed to [method poll].
 
-## Un peer ha conectado y empieza su autenticación: es el momento de enviar HELLO (cliente) o de
-## esperarlo (servidor). Después llegará [signal peer_connected] o, si falla,
-## [signal peer_disconnected] (servidor) o [signal connection_failed] (cliente).
+## A peer has connected and is starting authentication: this is the moment to send HELLO (client)
+## or wait for it (server). [signal peer_connected] will follow or, on failure,
+## [signal peer_disconnected] (server) or [signal connection_failed] (client).
 signal peer_authenticating(peer_id: int)
-## Mensaje de autenticación del otro lado (tras el retardo del simulador, si lo hay).
+## Authentication message from the other side (after the simulator's delay, if any).
 signal auth_received(peer_id: int, bytes: PackedByteArray)
-## Autenticación completada en ambos lados: ya se puede enviar con [method send].
+## Authentication completed on both sides: [method send] can now be used.
 signal peer_connected(peer_id: int)
-## El peer se ha ido. También se emite, en el servidor, para un peer que estaba autenticándose y
-## se pierde (tiempo agotado, corte, rechazo), para que se pueda limpiar lo creado en
-## [signal peer_authenticating]. En el cliente se emite al perder el servidor ya conectado (el
-## peer 1); si falla antes de conectar del todo se emite [signal connection_failed].
+## The peer is gone. On the server it is also emitted for a peer that was authenticating and is
+## lost (timeout, disconnect, rejection), so that whatever was created in
+## [signal peer_authenticating] can be cleaned up. On the client it is emitted when an already
+## connected server (peer 1) is lost; if it fails before fully connecting,
+## [signal connection_failed] is emitted instead.
 signal peer_disconnected(peer_id: int)
-## Paquete de aplicación del peer, con el mensaje completo y sin tocar.
+## Application packet from the peer, with the full message, untouched.
 signal packet_received(peer_id: int, bytes: PackedByteArray)
-## El cliente no ha podido conectar o autenticarse. Si antes llegó un REJECT por
-## [signal auth_received], ese es el motivo.
+## The client could not connect or authenticate. If a REJECT arrived earlier through
+## [signal auth_received], that is the reason.
 signal connection_failed()
 
-## Tiempo máximo de autenticación de [SceneMultiplayer] (segundos), en los dos lados y contado desde la
-## conexión, no desde el HELLO. 10 s desde el protocolo 7 (docs/plataforma.md §5.2): deja sitio a la
-## reclamación del billete, que la zona corta a los 7 s con un REJECT que siempre llega a tiempo.
+## Maximum [SceneMultiplayer] authentication time (seconds), on both sides and counted from the
+## connection, not from the HELLO. 10 s since protocol 7 (docs/plataforma.md §5.2): it leaves room
+## for the ticket claim, which the zone cuts off at 7 s with a REJECT that always arrives in time.
 const AUTH_TIMEOUT_SECONDS: float = 10.0
-## Ticks que se deja a [method disconnect_after_flush] antes de cortar a la fuerza.
+## Ticks given to [method disconnect_after_flush] before forcing the disconnect.
 const FORCE_DISCONNECT_TICKS: int = 60
-## Tiempos de espera de ENet tras conectar: una desconexión se detecta en 3-8 s.
+## ENet timeouts after connecting: a disconnection is detected in 3-8 s.
 const TIMEOUT_LIMIT: int = 32
 const TIMEOUT_MIN_MS: int = 3000
 const TIMEOUT_MAX_MS: int = 8000
-## Estrangulamiento de ENet desactivado (deceleración 0). ENet tira paquetes no fiables cuando el
-## RTT sube, y las entradas y los snapshots no deben perderse por eso: el ancho de banda ya lo
-## limita el servidor (presupuesto del snapshot) y la pérdida la simula [NetSim].
+## ENet throttling disabled (deceleration 0). ENet drops unreliable packets when the RTT rises, and
+## inputs and snapshots must not be lost because of that: bandwidth is already limited by the
+## server (snapshot budget) and loss is simulated by [NetSim].
 const THROTTLE_INTERVAL_MS: int = 5000
 const THROTTLE_ACCELERATION: int = 32
 const THROTTLE_DECELERATION: int = 0
-## Ticks entre dos lecturas de las estadísticas de ENet (el contador de ENet es de 32 bits).
+## Ticks between two reads of the ENet statistics (the ENet counter is 32-bit).
 const WIRE_SAMPLE_TICKS: int = 60
-## Id del servidor visto desde el cliente.
+## Id of the server as seen from the client.
 const SERVER_PEER_ID: int = 1
-## Escala de [constant ENetPacketPeer.PEER_PACKET_LOSS] (ENET_PEER_PACKET_LOSS_SCALE).
+## Scale of [constant ENetPacketPeer.PEER_PACKET_LOSS] (ENET_PEER_PACKET_LOSS_SCALE).
 const PACKET_LOSS_SCALE: float = 65536.0
 
-## Paquetes de un peer que se han descartado sin entregarlos porque no son del protocolo (ver
-## [GuardedEnetPeer]): antes del HELLO, cualquier cosa que no sea autenticación; después, cualquier
-## cosa que no sea un paquete de aplicación. Solo en el servidor. Lo normal es que el dueño sume un
-## aviso por cada uno.
+## Packets from a peer that were discarded without being delivered because they do not belong to
+## the protocol (see [GuardedEnetPeer]): before the HELLO, anything that is not authentication;
+## afterwards, anything that is not an application packet. Server only. Normally the owner adds a
+## warning for each one.
 signal packets_discarded(peer_id: int, count: int)
 
-# Tipos de evento pendientes de entregar a los oyentes.
+# Event types pending delivery to listeners.
 const _EVENT_AUTHENTICATING: int = 0
 const _EVENT_AUTH: int = 1
 const _EVENT_CONNECTED: int = 2
@@ -91,12 +93,12 @@ const _EVENT_CONNECTION_FAILED: int = 5
 const _EVENT_DISCARDED: int = 6
 
 
-# Suceso que el motor ha producido dentro de poll() y que se entrega al terminar.
+# Event the engine produced inside poll() and that is delivered when it finishes.
 class _Event:
 	var kind: int = 0
 	var peer_id: int = 0
 	var bytes: PackedByteArray = PackedByteArray()
-	## Solo en _EVENT_DISCARDED: cuántos paquetes.
+	## Only in _EVENT_DISCARDED: how many packets.
 	var count: int = 0
 
 	func _init(p_kind: int, p_peer_id: int = 0,
@@ -108,28 +110,29 @@ class _Event:
 
 var _mp: SceneMultiplayer = null
 var _enet: ENetMultiplayerPeer = null
-# Filtro de paquetes entre ENet y SceneMultiplayer (solo en el servidor; null en el cliente).
+# Packet filter between ENet and SceneMultiplayer (server only; null on the client).
 var _guard: GuardedEnetPeer = null
 var _is_server: bool = false
-# La conexión va por DTLS (host o connect_to con TLSOptions).
+# The connection goes over DTLS (host or connect_to with TLSOptions).
 var _dtls: bool = false
 var _now_tick: int = 0
-# Sube con cada close(): corta el reparto de eventos si un oyente cierra el transporte.
+# Increases on every close(): stops event delivery if a listener closes the transport.
 var _epoch: int = 0
 var _sim_spec: String = ""
 var _out_sim: NetSim = null
 var _in_sim: NetSim = null
-# Peers por id. _authenticating: en autenticación. _mp_connected: SceneMultiplayer los da por
-# conectados. _connected: además ya se les ha entregado peer_connected (solo a estos se envía).
-# _closing: con corte pendiente (peer_id -> tick límite).
+# Peers by id. _authenticating: authenticating. _mp_connected: SceneMultiplayer considers them
+# connected. _connected: additionally peer_connected has been delivered (only these are sent to).
+# _closing: with a pending disconnect (peer_id -> deadline tick).
 var _authenticating: Dictionary = {}
 var _mp_connected: Dictionary = {}
 var _connected: Dictionary = {}
 var _closing: Dictionary = {}
-# Peers a los que ya se ha llamado a complete_auth() (después ya no admiten send_auth()).
+# Peers for which complete_auth() has already been called (afterwards they no longer accept
+# send_auth()).
 var _local_auth_done: Dictionary = {}
 var _events: Array[_Event] = []
-# Desconexiones que esperan a que salgan los paquetes retrasados del peer.
+# Disconnections waiting for the peer's delayed packets to go out.
 var _parked: Array[_Event] = []
 var _client_connected: bool = false
 var _client_failed: bool = false
@@ -154,7 +157,7 @@ func _enter_tree() -> void:
 	_mp.connection_failed.connect(_on_mp_connection_failed)
 	_mp.server_disconnected.connect(_on_mp_server_disconnected)
 	var tree: SceneTree = get_tree()
-	# poll() llama a mano a SceneMultiplayer.poll(): que el árbol no lo haga además.
+	# poll() calls SceneMultiplayer.poll() by hand: the tree must not do it as well.
 	tree.multiplayer_poll = false
 	tree.set_multiplayer(_mp, get_path())
 
@@ -167,22 +170,23 @@ func _exit_tree() -> void:
 	_mp = null
 
 
-## Configura el simulador de red con el texto de [code]--net-sim[/code] (ver
-## [method NetSim.from_arg]). Vacío = sin simulador. Se aplica a la salida (semilla
-## [code]seed[/code]) y a la entrada ([code]seed + 1[/code]). Hay que llamarlo antes de
-## [method host] o [method connect_to]; si se llama después, se descarta lo que el simulador
-## tuviera en cola.
+## Configures the network simulator from the [code]--net-sim[/code] text (see
+## [method NetSim.from_arg]). Empty = no simulator. It is applied to outgoing traffic (seed
+## [code]seed[/code]) and incoming traffic ([code]seed + 1[/code]). It must be called before
+## [method host] or [method connect_to]; if called afterwards, whatever the simulator had queued is
+## discarded.
 func set_net_sim_spec(spec: String) -> void:
 	_sim_spec = spec
 	_create_sims()
 
 
-## Abre un servidor ENet en [param port] para [param max_peers] peers. El transporte debe estar en
-## el árbol. Si el puerto está ocupado devuelve un error (y el motor lo registra).
-## [br][br]Con [param dtls] ([method TLSOptions.server] con la clave y el certificado de la zona) todo el tráfico va
-## por DTLS (docs/plataforma.md §10.2): se llama a [method ENetConnection.dtls_server_setup] justo tras
-## [method ENetMultiplayerPeer.create_server] y antes de envolverlo en [GuardedEnetPeer], que filtra igual lo que ya
-## llega descifrado. Sin él, en claro, como siempre.
+## Opens an ENet server on [param port] for [param max_peers] peers. The transport must be in the
+## tree. If the port is busy it returns an error (and the engine logs it).
+## [br][br]With [param dtls] ([method TLSOptions.server] with the zone's key and certificate) all
+## traffic goes over DTLS (docs/plataforma.md §10.2): [method ENetConnection.dtls_server_setup] is
+## called right after [method ENetMultiplayerPeer.create_server] and before wrapping it in
+## [GuardedEnetPeer], which filters the already decrypted traffic the same way. Without it,
+## plaintext, as always.
 func host(port: int, max_peers: int, dtls: TLSOptions = null) -> Error:
 	if _mp == null:
 		return ERR_UNCONFIGURED
@@ -202,14 +206,16 @@ func host(port: int, max_peers: int, dtls: TLSOptions = null) -> Error:
 	return OK
 
 
-## Empieza a conectar con el servidor en [param address]:[param port]. El resultado llega por
-## [signal peer_authenticating] (peer 1) y [signal peer_connected], o por [signal connection_failed]
-## pasado como mucho el doble de [param connect_timeout_ms] (en la práctica, entre 1 y 1,5 veces: ENet
-## solo comprueba el plazo al retransmitir el CONNECT). El transporte debe estar en el árbol.
-## [br][br]Con [param dtls] (el certificado de la zona anclado con [method TLSOptions.client]) la conexión va por DTLS
-## y [param dtls_name] es el nombre (CN) que se espera del certificado (docs/plataforma.md §10.2). Sin él, como
-## siempre. El apretón de manos de DTLS retrasa la conexión (unos 0,6 s en vez de 0,2–0,3): ENet manda el CONNECT
-## cuando DTLS ya está listo, en su primera retransmisión.
+## Starts connecting to the server at [param address]:[param port]. The result arrives through
+## [signal peer_authenticating] (peer 1) and [signal peer_connected], or through
+## [signal connection_failed] after at most twice [param connect_timeout_ms] (in practice, between
+## 1 and 1.5 times: ENet only checks the deadline when retransmitting the CONNECT). The transport
+## must be in the tree.
+## [br][br]With [param dtls] (the zone's certificate pinned with [method TLSOptions.client]) the
+## connection goes over DTLS and [param dtls_name] is the name (CN) expected from the certificate
+## (docs/plataforma.md §10.2). Without it, as always. The DTLS handshake delays the connection
+## (about 0.6 s instead of 0.2–0.3): ENet sends the CONNECT once DTLS is ready, on its first
+## retransmission.
 func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls_name: String = "",
 		dtls: TLSOptions = null) -> Error:
 	if _mp == null:
@@ -225,10 +231,10 @@ func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls
 		if err != OK:
 			peer.close()
 			return err
-	# Mientras conecta se usa un tiempo corto; al conectar pasa al normal (ver
-	# _on_peer_authenticating). El mínimo y el máximo son el mismo: ENet solo mira el plazo cuando
-	# vence una retransmisión del CONNECT (a los 0,5, 1,5, 3,5 y 7,5 s), y con un máximo del doble
-	# tardaba 3,5 s en rendirse con 1000 ms y 7,5 s con 3000 ms.
+	# A short timeout is used while connecting; once connected it switches to the normal one (see
+	# _on_peer_authenticating). The minimum and the maximum are the same: ENet only looks at the
+	# deadline when a CONNECT retransmission expires (at 0.5, 1.5, 3.5 and 7.5 s), and with a maximum
+	# of twice the minimum it took 3.5 s to give up with 1000 ms and 7.5 s with 3000 ms.
 	for packet_peer: ENetPacketPeer in peer.host.get_peers():
 		packet_peer.set_timeout(TIMEOUT_LIMIT, connect_timeout_ms, connect_timeout_ms)
 	_attach(peer, false)
@@ -236,23 +242,23 @@ func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls
 	return OK
 
 
-## true si este transporte es un servidor.
+## true if this transport is a server.
 func is_server() -> bool:
 	return _is_server
 
 
-## true si la conexión (o el servidor) va por DTLS.
+## true if the connection (or the server) goes over DTLS.
 func is_dtls() -> bool:
 	return _dtls
 
 
-## Envía [param bytes] al peer por [param channel] ([constant NetProtocol.CH_INPUT],
-## [constant NetProtocol.CH_SNAPSHOT] o [constant NetProtocol.CH_RELIABLE]); el modo de
-## transferencia sale del canal ([method NetProtocol.transfer_mode]). Devuelve
-## [constant ERR_UNAVAILABLE] si el peer aún no está conectado (o ya se está cerrando). Con el
-## simulador, el paquete sale en algún [method flush] posterior; sin él, en el siguiente. Los
-## paquetes no fiables de más de [constant NetProtocol.MAX_PACKET_BYTES] se rechazan (ENet los
-## fragmentaría y perder un fragmento tiraría el paquete entero).
+## Sends [param bytes] to the peer on [param channel] ([constant NetProtocol.CH_INPUT],
+## [constant NetProtocol.CH_SNAPSHOT] or [constant NetProtocol.CH_RELIABLE]); the transfer mode
+## comes from the channel ([method NetProtocol.transfer_mode]). Returns
+## [constant ERR_UNAVAILABLE] if the peer is not connected yet (or is already closing). With the
+## simulator, the packet goes out in some later [method flush]; without it, in the next one.
+## Unreliable packets larger than [constant NetProtocol.MAX_PACKET_BYTES] are rejected (ENet would
+## fragment them and losing one fragment would drop the whole packet).
 func send(peer_id: int, channel: int, bytes: PackedByteArray) -> Error:
 	if _mp == null or _enet == null:
 		return ERR_UNCONFIGURED
@@ -272,9 +278,9 @@ func send(peer_id: int, channel: int, bytes: PackedByteArray) -> Error:
 	return err
 
 
-## Envía un mensaje de autenticación (HELLO, WELCOME, REJECT) a un peer que se está
-## autenticando. Devuelve [constant ERR_UNAVAILABLE] si el peer no está en ese estado o ya se ha
-## llamado a [method complete_auth] para él. Con el simulador solo se retrasa.
+## Sends an authentication message (HELLO, WELCOME, REJECT) to a peer that is authenticating.
+## Returns [constant ERR_UNAVAILABLE] if the peer is not in that state or [method complete_auth]
+## has already been called for it. With the simulator it is only delayed.
 func send_auth(peer_id: int, bytes: PackedByteArray) -> Error:
 	if _mp == null or _enet == null:
 		return ERR_UNCONFIGURED
@@ -293,9 +299,9 @@ func send_auth(peer_id: int, bytes: PackedByteArray) -> Error:
 	return err
 
 
-## Da por buena la autenticación del peer por este lado. Cuando los dos lados la han completado
-## llega [signal peer_connected]. Con el simulador se retrasa igual que los mensajes de
-## autenticación, y siempre después de los que ya estaban en cola.
+## Accepts the peer's authentication on this side. When both sides have completed it,
+## [signal peer_connected] arrives. With the simulator it is delayed just like authentication
+## messages, and always after those already queued.
 func complete_auth(peer_id: int) -> Error:
 	if _mp == null or _enet == null:
 		return ERR_UNCONFIGURED
@@ -304,26 +310,29 @@ func complete_auth(peer_id: int) -> Error:
 		return ERR_UNAVAILABLE
 	_local_auth_done[peer_id] = true
 	if _out_sim != null:
-		# Un paquete de autenticación vacío es la marca de "completar" (nunca se envía vacío).
+		# An empty authentication packet is the "complete" marker (it is never sent empty).
 		_out_sim.enqueue(NetSim.Packet.new(peer_id, NetSim.AUTH_CHANNEL, PackedByteArray(), true),
 				_now_tick)
 		return OK
 	return _complete_auth_now(peer_id)
 
 
-## Vacía lo que el simulador retiene para el peer (sin esperar su retardo), lo manda a ENet y pide
-## el corte con [method ENetPacketPeer.peer_disconnect_later], que deja salir antes lo encolado
-## (por ejemplo un REJECT o un NOTICE de expulsión). Como red de seguridad, si el peer sigue ahí
-## a los [constant FORCE_DISCONNECT_TICKS] ticks, lo corta a la fuerza. Desde ese momento
-## [method send] y [method send_auth] devuelven [constant ERR_UNAVAILABLE] para ese peer.
+## Flushes whatever the simulator holds for the peer (without waiting for its delay), hands it to
+## ENet and requests the disconnect with [method ENetPacketPeer.peer_disconnect_later], which lets
+## queued data go out first (for example a REJECT or a kick NOTICE). As a safety net, if the peer
+## is still there after [constant FORCE_DISCONNECT_TICKS] ticks, it is forcibly disconnected. From
+## that moment on [method send] and [method send_auth] return [constant ERR_UNAVAILABLE] for that
+## peer.
 ## [br][br]
-## [b]Con DTLS, el cliente no empieza el corte[/b] (docs/plataforma.md §19.18, P9c): vacía lo suyo y espera a que lo
-## corte el servidor, que contesta así al CLIENT_LEAVE. El servidor de DTLS de Godot olvida la sesión de un peer en
-## cuanto ENet lo da por desconectado; si el corte lo empieza el cliente, su aviso de cierre de DTLS llega una ida y
-## vuelta después, el servidor lo toma por un apretón de manos nuevo y el motor registra un error
-## ([code]TLS handshake error: -30464[/code], medido en 6 de 6 cortes así y en 0 de 6 empezados por el servidor). Si
-## el servidor no corta en [constant FORCE_DISCONNECT_TICKS] ticks, el cliente cierra la conexión entera: el
-## DISCONNECT y el cierre de DTLS salen en el mismo envío y llegan juntos (también 0 de 6).
+## [b]With DTLS, the client does not start the disconnect[/b] (docs/plataforma.md §19.18, P9c): it
+## flushes its own data and waits for the server to cut it, which is how the server answers the
+## CLIENT_LEAVE. Godot's DTLS server forgets a peer's session as soon as ENet considers it
+## disconnected; if the client starts the disconnect, its DTLS close notice arrives one round trip
+## later, the server takes it for a new handshake and the engine logs an error
+## ([code]TLS handshake error: -30464[/code], measured in 6 of 6 disconnects started that way and
+## in 0 of 6 started by the server). If the server does not cut within
+## [constant FORCE_DISCONNECT_TICKS] ticks, the client closes the whole connection: the DISCONNECT
+## and the DTLS close go out in the same send and arrive together (also 0 of 6).
 func disconnect_after_flush(peer_id: int) -> void:
 	if _enet == null or not _is_known(peer_id) or _closing.has(peer_id):
 		return
@@ -335,13 +344,13 @@ func disconnect_after_flush(peer_id: int) -> void:
 	if packet_peer != null and (_is_server or not _dtls):
 		packet_peer.peer_disconnect_later()
 	if _guard != null:
-		# Ya se le está cortando: lo que siga mandando se descarta sin contarlo.
+		# It is already being disconnected: anything it keeps sending is dropped without being counted.
 		_guard.mute_peer(peer_id)
 	_closing[peer_id] = _now_tick + FORCE_DISCONNECT_TICKS
 
 
-## Recibe lo que ha llegado, entrega las señales y avanza el simulador. Se llama una vez al
-## empezar el tick de física [param now_tick] del dueño.
+## Receives what has arrived, delivers signals and advances the simulator. Called once at the
+## start of the owner's physics tick [param now_tick].
 func poll(now_tick: int) -> void:
 	_now_tick = now_tick
 	if _mp == null or _enet == null:
@@ -357,8 +366,8 @@ func poll(now_tick: int) -> void:
 		_last_wire_sample_tick = now_tick
 
 
-## Envía los paquetes del simulador que vencen en este tick y vuelca a ENet todo lo encolado. Se
-## llama una vez al terminar el tick de física del dueño.
+## Sends the simulator packets that are due this tick and flushes everything queued to ENet.
+## Called once at the end of the owner's physics tick.
 func flush() -> void:
 	if _enet == null:
 		return
@@ -368,13 +377,13 @@ func flush() -> void:
 	_flush_host()
 
 
-## Cierra el transporte: manda lo que el simulador retenía, avisa a los peers y libera el puerto.
-## No emite señales. Después se puede volver a llamar a [method host] o [method connect_to]. Se
-## llama sola al salir del árbol.
+## Closes the transport: sends whatever the simulator was holding, notifies the peers and frees
+## the port. Emits no signals. Afterwards [method host] or [method connect_to] can be called
+## again. It is called automatically when leaving the tree.
 ## [br][br]
-## El corte es inmediato y ENet descarta en el receptor lo que aún no ha entregado. Para que un
-## último mensaje (CLIENT_LEAVE, un NOTICE de cierre) llegue seguro, hay que usar antes
-## [method disconnect_after_flush] y cerrar cuando llegue [signal peer_disconnected].
+## The disconnect is immediate and ENet discards on the receiver whatever it has not yet
+## delivered. For a last message (CLIENT_LEAVE, a closing NOTICE) to arrive reliably, use
+## [method disconnect_after_flush] first and close when [signal peer_disconnected] arrives.
 func close() -> void:
 	if _enet != null:
 		if _out_sim != null:
@@ -387,8 +396,8 @@ func close() -> void:
 		_reset_state()
 
 
-## RTT de ENet con el peer en milisegundos (no incluye el retardo del simulador), o 0 si no se
-## conoce.
+## ENet RTT to the peer in milliseconds (it does not include the simulator's delay), or 0 if
+## unknown.
 func get_rtt_ms(peer_id: int) -> float:
 	var packet_peer: ENetPacketPeer = _get_packet_peer(peer_id)
 	if packet_peer == null:
@@ -396,9 +405,9 @@ func get_rtt_ms(peer_id: int) -> float:
 	return packet_peer.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)
 
 
-## Retardo máximo (ticks) que los simuladores de este transporte añaden a un viaje de ida y vuelta
-## con el peer: el de salida más el de entrada. 0 sin simulador. Sirve para separar el RTT real del
-## simulado (ver [method get_rtt_ms], que no incluye el simulador).
+## Maximum delay (ticks) that this transport's simulators add to a round trip with the peer: the
+## outgoing one plus the incoming one. 0 without a simulator. Used to separate the real RTT from
+## the simulated one (see [method get_rtt_ms], which does not include the simulator).
 func get_sim_round_trip_ticks() -> int:
 	var ticks: int = 0
 	if _out_sim != null:
@@ -408,8 +417,8 @@ func get_sim_round_trip_ticks() -> int:
 	return ticks
 
 
-## Pérdida de paquetes fiables con el peer según ENet, como fracción de 0 a 1 (no incluye la
-## del simulador), o 0 si no se conoce.
+## Reliable packet loss with the peer according to ENet, as a fraction from 0 to 1 (it does not
+## include the simulator's), or 0 if unknown.
 func get_packet_loss(peer_id: int) -> float:
 	var packet_peer: ENetPacketPeer = _get_packet_peer(peer_id)
 	if packet_peer == null:
@@ -417,7 +426,7 @@ func get_packet_loss(peer_id: int) -> float:
 	return packet_peer.get_statistic(ENetPacketPeer.PEER_PACKET_LOSS) / PACKET_LOSS_SCALE
 
 
-## Dirección IP del peer (vacía si no se conoce). Ya sirve durante la autenticación.
+## The peer's IP address (empty if unknown). Already works during authentication.
 func get_remote_address(peer_id: int) -> String:
 	var packet_peer: ENetPacketPeer = _get_packet_peer(peer_id)
 	if packet_peer == null:
@@ -425,13 +434,13 @@ func get_remote_address(peer_id: int) -> String:
 	return packet_peer.get_remote_address()
 
 
-## Bytes acumulados desde que se creó el transporte:
+## Bytes accumulated since the transport was created:
 ## [code]{"app_in": int, "app_out": int, "wire_in": int, "wire_out": int}[/code].
-## [br]- [code]app_*[/code]: bytes de aplicación, tal como los ven [method send],
-## [method send_auth] y las señales [signal packet_received] y [signal auth_received] (lo que el
-## simulador pierde no llega, y no cuenta).
-## [br]- [code]wire_*[/code]: bytes que ENet ha recibido y enviado por el socket (con sus
-## cabeceras, sin las de UDP/IP).
+## [br]- [code]app_*[/code]: application bytes, as seen by [method send],
+## [method send_auth] and the [signal packet_received] and [signal auth_received] signals (what
+## the simulator drops does not arrive, and does not count).
+## [br]- [code]wire_*[/code]: bytes ENet has received and sent over the socket (with its headers,
+## without the UDP/IP ones).
 func get_byte_counters() -> Dictionary:
 	_sample_wire_stats()
 	return {
@@ -442,7 +451,7 @@ func get_byte_counters() -> Dictionary:
 	}
 
 
-# --- Internos ---------------------------------------------------------------------------------
+# --- Internals --------------------------------------------------------------------------------
 
 func _create_sims() -> void:
 	_out_sim = NetSim.from_arg(_sim_spec, 0)
@@ -454,17 +463,17 @@ func _create_sims() -> void:
 
 
 func _attach(peer: ENetMultiplayerPeer, as_server: bool) -> void:
-	# Medido en Godot 4.7.2: sin esta llamada ENet baja de forma intermitente el límite de
-	# estrangulamiento de los peers a 1/32 y tira entre el 20 % y el 65 % de los paquetes no
-	# fiables incluso en loopback. Con 0, 0 (sin límite de ancho de banda) llegan todos.
+	# Measured in Godot 4.7.2: without this call ENet intermittently lowers the peers' throttle limit
+	# to 1/32 and drops between 20% and 65% of unreliable packets even on loopback. With 0, 0 (no
+	# bandwidth limit) they all arrive.
 	peer.host.bandwidth_limit(0, 0)
 	_enet = peer
 	_is_server = as_server
 	_client_connected = false
 	_client_failed = false
 	if as_server:
-		# El servidor no deja que SceneMultiplayer vea nada que no sea de su protocolo: cada paquete
-		# ajeno registraría un error del motor y se saltaría los limitadores (hallazgo S1).
+		# The server does not let SceneMultiplayer see anything that is not part of its protocol: every
+		# foreign packet would log an engine error and bypass the rate limiters (finding S1).
 		_guard = GuardedEnetPeer.new()
 		_guard.attach(peer)
 		_guard.packets_discarded.connect(_on_packets_discarded)
@@ -475,14 +484,14 @@ func _attach(peer: ENetMultiplayerPeer, as_server: bool) -> void:
 		_mp.multiplayer_peer = peer
 
 
-# Cierra el peer de ENet sin avisar a los oyentes y deja el transporte listo para reutilizarse.
+# Closes the ENet peer without notifying listeners and leaves the transport ready for reuse.
 func _teardown() -> void:
 	if _enet != null:
 		_sample_wire_stats()
 		if _mp != null:
 			_mp.multiplayer_peer = null
 		if _guard != null:
-			# Cierra también el peer de ENet y suelta sus señales (si no, se quedarían referenciados).
+			# Also closes the ENet peer and releases its signals (otherwise they would stay referenced).
 			_guard.close()
 		else:
 			_enet.close()
@@ -507,8 +516,8 @@ func _reset_state() -> void:
 	_create_sims()
 
 
-# true si hay un peer de ENet en marcha. Si el cliente perdió o no logró la conexión, el peer
-# ha quedado muerto: se limpia aquí para poder volver a llamar a host() o connect_to().
+# true if an ENet peer is running. If the client lost or failed to establish the connection, the
+# peer is left dead: it is cleaned up here so that host() or connect_to() can be called again.
 func _is_active() -> bool:
 	if _enet == null:
 		return false
@@ -528,8 +537,8 @@ func _get_packet_peer(peer_id: int) -> ENetPacketPeer:
 	return _enet.get_peer(peer_id)
 
 
-# La conexión de ENet, o null si el peer no está activo (acceder a [code]host[/code] entonces
-# registra un error del motor).
+# The ENet connection, or null if the peer is not active (accessing [code]host[/code] then logs
+# an engine error).
 func _get_host() -> ENetConnection:
 	if _enet == null or _enet.get_connection_status() == MultiplayerPeer.CONNECTION_DISCONNECTED:
 		return null
@@ -542,7 +551,7 @@ func _flush_host() -> void:
 		connection.flush()
 
 
-# El contador de ENet se pone a 0 al leerlo y es de 32 bits: se acumula aquí.
+# The ENet counter is reset to 0 when read and is 32-bit: it is accumulated here.
 func _sample_wire_stats() -> void:
 	var connection: ENetConnection = _get_host()
 	if connection == null:
@@ -551,9 +560,9 @@ func _sample_wire_stats() -> void:
 	_wire_out += int(connection.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA))
 
 
-# --- Salida real (tras el simulador) ----------------------------------------------------------
+# --- Real output (after the simulator) --------------------------------------------------------
 
-# Entrega a ENet un paquete del simulador de salida cuando vence.
+# Hands ENet a packet from the outgoing simulator when it is due.
 func _send_packet_now(packet: NetSim.Packet) -> void:
 	if not packet.is_auth:
 		_send_now(packet.peer_id, packet.channel, packet.bytes)
@@ -563,8 +572,8 @@ func _send_packet_now(packet: NetSim.Packet) -> void:
 		_send_auth_now(packet.peer_id, packet.bytes)
 
 
-# Los errores se ignoran a propósito en el camino retrasado: si el peer se ha ido por el camino,
-# el paquete se descarta, como haría una red real.
+# Errors are deliberately ignored on the delayed path: if the peer left along the way, the packet
+# is dropped, as a real network would do.
 func _send_now(peer_id: int, channel: int, bytes: PackedByteArray) -> Error:
 	if _mp == null or not _connected.has(peer_id) or _closing.has(peer_id):
 		return ERR_UNAVAILABLE
@@ -583,9 +592,9 @@ func _complete_auth_now(peer_id: int) -> Error:
 	return _mp.complete_auth(peer_id)
 
 
-# --- Cortes -----------------------------------------------------------------------------------
+# --- Disconnections ---------------------------------------------------------------------------
 
-# Corta a la fuerza los peers cuyo disconnect_after_flush() no ha terminado a tiempo.
+# Forcibly disconnects peers whose disconnect_after_flush() did not finish in time.
 func _force_pending_disconnects() -> void:
 	if _closing.is_empty():
 		return
@@ -596,7 +605,7 @@ func _force_pending_disconnects() -> void:
 			_closing.erase(peer_id)
 			continue
 		if not _is_server and _dtls and _is_known(peer_id):
-			# Con DTLS, el cliente cierra la conexión entera (ver disconnect_after_flush).
+			# With DTLS, the client closes the whole connection (see disconnect_after_flush).
 			var was_mp_connected: bool = _mp_connected.has(peer_id)
 			_forget_peer(peer_id)
 			_queue_disconnect(peer_id, was_mp_connected)
@@ -613,9 +622,10 @@ func _force_pending_disconnects() -> void:
 			_closing.erase(peer_id)
 
 
-# Cierra el peer de ENet (ENetMultiplayerPeer.close: DISCONNECT y, con DTLS, el aviso de cierre en el mismo envío) sin
-# perder los eventos pendientes de entregar, que salen en este mismo poll(). Después el transporte queda como tras
-# perder la conexión: close() lo deja listo para reutilizarse.
+# Closes the ENet peer (ENetMultiplayerPeer.close: DISCONNECT and, with DTLS, the close notice in
+# the same send) without losing the events pending delivery, which go out in this same poll().
+# Afterwards the transport is left as after losing the connection: close() makes it ready for
+# reuse.
 func _close_enet_keeping_events() -> void:
 	_sample_wire_stats()
 	if _mp != null:
@@ -634,8 +644,8 @@ func _forget_peer(peer_id: int) -> void:
 		_out_sim.drain_peer(peer_id)
 
 
-# Apunta la pérdida de un peer. Con el simulador de entrada, la señal espera a que se entreguen los
-# paquetes que ese peer tenía en tránsito, para no avisar del corte antes de lo que mandó.
+# Records the loss of a peer. With the incoming simulator, the signal waits for the packets that
+# peer had in transit to be delivered, so as not to announce the disconnect before what it sent.
 func _queue_disconnect(peer_id: int, was_connected: bool) -> void:
 	if _is_server or was_connected:
 		var event := _Event.new(_EVENT_DISCONNECTED, peer_id)
@@ -647,8 +657,8 @@ func _queue_disconnect(peer_id: int, was_connected: bool) -> void:
 		_fail_client()
 
 
-# El cliente no ha llegado a conectar: se avisa una sola vez. Como las desconexiones, espera a que
-# se entregue lo que el servidor tuviera en tránsito (por ejemplo un REJECT retrasado).
+# The client never managed to connect: it is reported only once. Like disconnections, it waits
+# for whatever the server had in transit (for example a delayed REJECT) to be delivered.
 func _fail_client() -> void:
 	if _client_failed:
 		return
@@ -660,11 +670,11 @@ func _fail_client() -> void:
 		_events.append(event)
 
 
-# --- Manejadores de SceneMultiplayer (dentro de mp.poll(): solo apuntan, no avisan) --------------
+# --- SceneMultiplayer handlers (inside mp.poll(): they only record, they do not notify) --------
 
 func _on_peer_authenticating(peer_id: int) -> void:
 	_authenticating[peer_id] = true
-	# Ya hay conexión ENet: pasa del tiempo de conexión al de régimen normal.
+	# An ENet connection now exists: switches from the connection timeout to the normal steady-state one.
 	var packet_peer: ENetPacketPeer = _enet.get_peer(peer_id)
 	if packet_peer != null:
 		packet_peer.set_timeout(TIMEOUT_LIMIT, TIMEOUT_MIN_MS, TIMEOUT_MAX_MS)
@@ -702,7 +712,7 @@ func _on_mp_connection_failed() -> void:
 
 
 func _on_mp_server_disconnected() -> void:
-	# Ya se ha avisado con peer_disconnected (si estaba conectado) o con la autenticación fallida.
+	# Already reported with peer_disconnected (if it was connected) or with the failed authentication.
 	if not _is_server and not _client_connected:
 		_fail_client()
 
@@ -730,7 +740,7 @@ func _on_peer_packet(peer_id: int, bytes: PackedByteArray) -> void:
 		_events.append(_Event.new(_EVENT_PACKET, peer_id, bytes))
 
 
-# --- Reparto de eventos -----------------------------------------------------------------------
+# --- Event delivery ---------------------------------------------------------------------------
 
 func _event_from_packet(packet: NetSim.Packet) -> _Event:
 	var kind: int = _EVENT_AUTH if packet.is_auth else _EVENT_PACKET
@@ -769,7 +779,7 @@ func _emit_event(event: _Event) -> void:
 			_app_in += event.bytes.size()
 			auth_received.emit(event.peer_id, event.bytes)
 		_EVENT_CONNECTED:
-			# Desde ahora se puede enviar a este peer (si no se ha perdido entretanto).
+			# From now on this peer can be sent to (if it has not been lost in the meantime).
 			if _mp_connected.has(event.peer_id):
 				_connected[event.peer_id] = true
 			peer_connected.emit(event.peer_id)

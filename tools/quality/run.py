@@ -1,29 +1,29 @@
 #!/usr/bin/env python
-"""Banco de capturas de calidad (TEC-50): una orden por área.
+"""Quality capture bench (TEC-50): one command per area.
 
-    python tools/quality/run.py <área> [--out carpeta] [--port 24711] [opciones]
+    python tools/quality/run.py <area> [--out folder] [--port 24711] [options]
 
-Áreas: animacion, mapa, interfaz, mundo, combate, video, todo (las seis), indice (solo regenera indice.md) y listar.
-Cada área lanza lo que necesita (el sandbox, o un servidor dedicado del Vado Gris, bots y el cliente de captura
-`online_driver.gd`), guarda las capturas en la carpeta de salida (por defecto build/calidad, que Git ignora), junta las
-tiras en rejillas y regenera <salida>/indice.md. Al terminar, o si se interrumpe, cierra todos los procesos de Godot
-que lanzó (y solo esos). Necesita ventana y GPU (no sirve en headless), Pillow (`pip install pillow`) y no usa cuentas
-ni contraseñas: el servidor va con --debug-commands y el cliente entra con un personaje efímero.
+Areas: animacion, mapa, interfaz, mundo, combate, video, todo (all six), indice (only regenerates indice.md) and listar.
+Each area launches what it needs (the sandbox, or a Vado Gris dedicated server, bots and the `online_driver.gd`
+capture client), saves the captures in the output folder (by default build/calidad, which Git ignores), joins the
+strips into grids and regenerates <output>/indice.md. When it finishes, or if interrupted, it closes all the Godot processes
+it launched (and only those). It needs a window and a GPU (it does not work in headless), Pillow (`pip install pillow`) and uses no accounts
+or passwords: the server runs with --debug-commands and the client joins with an ephemeral character.
 
-Opciones principales:
-  --out <carpeta>       carpeta de salida (por defecto build/calidad)
-  --port <puerto>       puerto UDP del servidor que se lanza (por defecto 24711, o ELDMARK_QUALITY_PORT)
-  --resolution WxH      resolución de las capturas (por defecto 1920x1080)
-  --steps a,b           solo algunos pasos del área (ver `listar`)
-  --only a,b            animacion: solo las acciones con esos ids (ver `listar`)
-  --phases a,b          combate (paso pnj): solo esas fases: hueco, capitan, guardia, guardian
-  --bots N              bots de asedio por reino en mapa, interfaz y refriegas (por defecto 6; en mundo, 0)
-  --seconds N           video: duración del guion (por defecto 60)
-  --movie-resolution    video: tamaño de la ventana al grabar (por defecto 1600x900, el que el motor usa para el vídeo)
-  --mp4                 video: además convierte el AVI a MP4 con ffmpeg si está disponible
-  --sin-capsulas        mundo: las cámaras de revisión sin las cápsulas de escala
-  --clean-raw           borra los fotogramas sueltos de raw/ al acabar (deja los meta.json que usa el índice)
-  --godot <ruta>        ejecutable de Godot (o GODOT en el entorno; si no, el de winget o `godot` del PATH)
+Main options:
+  --out <folder>        output folder (by default build/calidad)
+  --port <port>         UDP port of the server that is launched (by default 24711, or ELDMARK_QUALITY_PORT)
+  --resolution WxH      capture resolution (by default 1920x1080)
+  --steps a,b           only some steps of the area (see `listar`)
+  --only a,b            animacion: only the actions with those ids (see `listar`)
+  --phases a,b          combate (npc step): only those phases: hueco, capitan, guardia, guardian
+  --bots N              siege bots per realm in mapa, interfaz and brawls (by default 6; in mundo, 0)
+  --seconds N           video: duration of the script (by default 60)
+  --movie-resolution    video: window size when recording (by default 1600x900, the one the engine uses for video)
+  --mp4                 video: additionally converts the AVI to MP4 with ffmpeg if available
+  --sin-capsulas        mundo: the review cameras without the scale capsules
+  --clean-raw           deletes the loose frames in raw/ when done (keeps the meta.json files the index uses)
+  --godot <path>        Godot executable (or GODOT in the environment; otherwise the winget one or `godot` on the PATH)
 """
 import argparse
 import atexit
@@ -64,7 +64,7 @@ _FAILED = []
 
 
 # ---------------------------------------------------------------------------------------------
-# Godot y procesos
+# Godot and processes
 # ---------------------------------------------------------------------------------------------
 def find_godot(explicit=None):
     for cand in (explicit, os.environ.get("GODOT"), os.environ.get("GODOT_BIN")):
@@ -108,7 +108,7 @@ atexit.register(_cleanup)
 
 
 class Ctx:
-    """Lo que comparten los pasos: carpeta de salida, puerto, Godot y opciones."""
+    """What the steps share: output folder, port, Godot and options."""
 
     def __init__(self, args):
         self.args = args
@@ -137,7 +137,7 @@ def spawn(ctx, name, args, cwd=ROOT):
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
-    # Nunca capturar el ratón del usuario: los clientes del banco arrancan siempre con el cursor libre.
+    # Never capture the user's mouse: the bench clients always start with the cursor free.
     env = dict(os.environ)
     env["ELDMARK_SIN_RATON"] = "1"
     proc = subprocess.Popen([ctx.godot] + [str(a) for a in args], cwd=str(cwd), stdout=log, stderr=subprocess.STDOUT,
@@ -167,7 +167,7 @@ def read_log(path):
 
 
 def wait_log(proc, needle, timeout, count=1):
-    """Espera a que el registro de [proc] tenga [count] veces [needle]. False si pasa el plazo o el proceso muere."""
+    """Waits for the log of [proc] to contain [count] occurrences of [needle]. False if the deadline passes or the process dies."""
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         if read_log(proc.log_path).count(needle) >= count:
@@ -179,10 +179,10 @@ def wait_log(proc, needle, timeout, count=1):
 
 
 # ---------------------------------------------------------------------------------------------
-# Servidor, bots y cliente de captura
+# Server, bots and capture client
 # ---------------------------------------------------------------------------------------------
 def swarms(ctx, per_realm):
-    """Dos enjambres de asedio (uno por reino) con [per_realm] bots cada uno."""
+    """Two siege swarms (one per realm) with [per_realm] bots each."""
     if per_realm <= 0:
         return []
     return [
@@ -192,7 +192,7 @@ def swarms(ctx, per_realm):
 
 
 def single_bot(realm="solmarch", brain="combat", seed=300, name="Esgrimista"):
-    """Un solo bot completo (usa el equipo entero: habilidades, bloqueo, esquiva, arco)."""
+    """A single full bot (uses the whole kit: abilities, block, dodge, bow)."""
     return [{"kind": "bot", "n": 1, "realm": realm, "seed": seed, "brain": brain, "name": name}]
 
 
@@ -237,7 +237,7 @@ def server(ctx, name, extra=(), bots=()):
 
 
 def run_godot(ctx, name, args, timeout=1800, ok_text=None):
-    """Lanza Godot (con ventana salvo que [args] diga otra cosa), espera a que acabe y devuelve True si salió bien."""
+    """Launches Godot (with a window unless [args] says otherwise), waits for it to finish and returns True if it exited successfully."""
     proc = spawn(ctx, name, args)
     start = time.monotonic()
     ok = False
@@ -257,7 +257,7 @@ def run_godot(ctx, name, args, timeout=1800, ok_text=None):
 
 def driver(ctx, scenario, tag, realm="vardheim", name="Capturador", connect=True, extra=(), godot_args=(),
            timeout=1500, resolution=None):
-    """Una ejecución de online_driver.gd con el escenario [scenario] (archivo de tools/quality)."""
+    """A run of online_driver.gd with the scenario [scenario] (a file in tools/quality)."""
     args = ["--path", ROOT, "--resolution", resolution or ctx.res, *godot_args, "-s", DRIVER, "--"]
     if connect:
         args.append("--connect=127.0.0.1:%d" % ctx.port)
@@ -287,7 +287,7 @@ def make_crops(*args, **kwargs):
 
 
 # ---------------------------------------------------------------------------------------------
-# Áreas
+# Areas
 # ---------------------------------------------------------------------------------------------
 def area_animacion(ctx):
     only = ["--only=%s" % ctx.args.only] if ctx.args.only else []
@@ -319,7 +319,7 @@ def area_interfaz(ctx):
             if ctx.want("marcador"):
                 driver(ctx, "sc_extras.gd", "extras", name="Marcador")
             if ctx.want("reino"):
-                # Sin --realm: el cliente enseña la pantalla de elección de reino.
+                # Without --realm: the client shows the realm selection screen.
                 driver(ctx, "sc_realm.gd", "realm", realm=None, name="Elector")
     if ctx.want("titulo"):
         driver(ctx, "sc_front.gd", "front", realm=None, name=None, connect=False, extra=["--front"], timeout=300)
@@ -339,7 +339,7 @@ def area_interfaz(ctx):
 def area_mundo(ctx):
     online = [s for s in ("vardheim", "solmarch") if ctx.want(s)]
     if online:
-        # Sin PNJ ni maniquíes: ninguno tapa el escenario.
+        # No NPCs or dummies: none block the scene.
         with server(ctx, "mundo", extra=("--no-npcs", "--no-dummies"), bots=swarms(ctx, ctx.bots(0))):
             if ctx.want("vardheim"):
                 driver(ctx, "sc_mundo.gd", "mundo_vardheim", realm="vardheim", name="Recorredor")
@@ -369,7 +369,7 @@ def area_combate(ctx):
             if ctx.want("refriegas_b"):
                 driver(ctx, "sc_combate.gd", "combate_b", name="Combatiente")
     if ctx.want("bot") or ctx.want("bloqueo"):
-        # Un solo bot, sin PNJ ni maniquíes: nadie más tapa al seguido.
+        # A single bot, no NPCs or dummies: nobody else blocks the followed one.
         with server(ctx, "aislado", extra=("--no-npcs", "--no-dummies"), bots=single_bot()):
             if ctx.want("bot"):
                 driver(ctx, "sc_remotos_bot.gd", "remotos_bot", name="Aprendiz", timeout=900)
@@ -394,7 +394,7 @@ def area_video(ctx):
                     godot_args=["--write-movie", ctx.posix(avi), "--fixed-fps", "60"],
                     extra=["--seconds=%d" % seconds], timeout=seconds * 20 + 300)
     log = read_log(ctx.logs / "cliente_video.log")
-    # El motor graba al tamaño de la ventana del proyecto (window_width_override), no al de --resolution.
+    # The engine records at the project window size (window_width_override), not at --resolution.
     size = re.search(r"recording movie in (\d+)\D+(\d+) @ (\d+) FPS", log)
     speed = re.search(r"\((\d+)% of real-time speed\)", log)
     info = {"segundos_de_guion": seconds, "resolucion": "%sx%s" % (size.group(1), size.group(2)) if size else ctx.args.movie_resolution,
@@ -425,7 +425,7 @@ AREA_FUNCS = {
 
 
 # ---------------------------------------------------------------------------------------------
-# Registro de la ejecución e índice
+# Run log and index
 # ---------------------------------------------------------------------------------------------
 def git_rev():
     try:

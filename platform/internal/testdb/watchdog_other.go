@@ -2,6 +2,6 @@
 
 package testdb
 
-// startWatchdog no hace nada fuera de Unix (no hay sh): si el proceso muere sin pasar por Main, el
-// clúster lo recoge la siguiente ejecución (reapStale).
+// startWatchdog does nothing outside Unix (there is no sh): if the process dies without going
+// through Main, the cluster is collected by the next run (reapStale).
 func (c *cluster) startWatchdog() error { return nil }

@@ -1,58 +1,58 @@
 extends TestCase
-## Pruebas del protocolo de chat (SOC-03, docs/social.md sección 12): CHAT_SEND (C→S) y CHAT_MESSAGE
-## (S→C) de [NetMessages], los canales ([ChatChannel]) y las constantes de [NetProtocol].
+## Tests for the chat protocol (SOC-03, docs/social.md section 12): CHAT_SEND (C→S) and CHAT_MESSAGE
+## (S→C) of [NetMessages], the channels ([ChatChannel]) and the [NetProtocol] constants.
 ## [br][br]
-## Como en test_net_messages.gd, los offsets y los tamaños son los del documento, escritos a mano a
-## propósito: si el código y el documento se separan, estas pruebas fallan. Los mensajes corruptos, los
-## truncados y el fuzz comprueban además que nada registra errores del motor (el ejecutor los cuenta
-## como fallo) y que ningún mensaje pasa de [constant NetProtocol.MAX_PACKET_BYTES].
+## As in test_net_messages.gd, the offsets and sizes are the ones in the document, written by hand on
+## purpose: if the code and the document drift apart, these tests fail. Corrupt messages, truncated
+## ones and the fuzz also check that nothing logs engine errors (the runner counts them as a failure)
+## and that no message exceeds [constant NetProtocol.MAX_PACKET_BYTES].
 
 const FUZZ_BUFFERS: int = 6000
 const FUZZ_SEED: int = 20261101
 
 
-# --- Constantes y canales ---------------------------------------------------------------------
+# --- Constants and channels -------------------------------------------------------------------
 
 func test_protocol_constants() -> void:
-	assert_true(NetProtocol.PROTOCOL_VERSION >= 5, "el chat sube el protocolo a la versión 5")
-	assert_eq(NetProtocol.MSG_CHAT_SEND, 0x40, "CHAT_SEND es el 0x40")
-	assert_eq(NetProtocol.MSG_CHAT_MESSAGE, 0x41, "CHAT_MESSAGE es el 0x41")
+	assert_true(NetProtocol.PROTOCOL_VERSION >= 5, "chat bumps the protocol to version 5")
+	assert_eq(NetProtocol.MSG_CHAT_SEND, 0x40, "CHAT_SEND is 0x40")
+	assert_eq(NetProtocol.MSG_CHAT_MESSAGE, 0x41, "CHAT_MESSAGE is 0x41")
 	for message_type: int in [NetProtocol.MSG_CHAT_SEND, NetProtocol.MSG_CHAT_MESSAGE]:
 		assert_eq(NetProtocol.channel_for_type(message_type), NetProtocol.CH_RELIABLE,
-				"0x%02X va por el canal fiable 3" % message_type)
-	assert_eq(NetProtocol.CH_RELIABLE, 3, "el canal fiable es el 3")
+				"0x%02X goes over reliable channel 3" % message_type)
+	assert_eq(NetProtocol.CH_RELIABLE, 3, "the reliable channel is 3")
 	assert_eq(NetProtocol.transfer_mode(NetProtocol.CH_RELIABLE), MultiplayerPeer.TRANSFER_MODE_RELIABLE,
-			"y es fiable")
+			"and it is reliable")
 
 
 func test_channel_ids_are_fixed() -> void:
-	# Los ids viajan por la red: no se reordenan.
-	assert_eq(ChatChannel.Id.SAY, 0, "decir")
-	assert_eq(ChatChannel.Id.ZONE, 1, "zona")
-	assert_eq(ChatChannel.Id.WHISPER, 2, "susurro")
-	assert_eq(ChatChannel.Id.PARTY, 3, "grupo")
-	assert_eq(ChatChannel.Id.RAID, 4, "banda")
-	assert_eq(ChatChannel.Id.GUILD, 5, "gremio")
-	assert_eq(ChatChannel.Id.REALM, 6, "reino")
-	assert_eq(ChatChannel.Id.SYSTEM, 7, "sistema")
+	# The ids travel over the network: they are never reordered.
+	assert_eq(ChatChannel.Id.SAY, 0, "say")
+	assert_eq(ChatChannel.Id.ZONE, 1, "zone")
+	assert_eq(ChatChannel.Id.WHISPER, 2, "whisper")
+	assert_eq(ChatChannel.Id.PARTY, 3, "party")
+	assert_eq(ChatChannel.Id.RAID, 4, "raid")
+	assert_eq(ChatChannel.Id.GUILD, 5, "guild")
+	assert_eq(ChatChannel.Id.REALM, 6, "realm")
+	assert_eq(ChatChannel.Id.SYSTEM, 7, "system")
 	assert_eq(ChatChannel.Id.GM, 8, "GM")
-	assert_eq(ChatChannel.MAX_ID, 8, "el mayor id")
-	assert_eq(ChatChannel.DISPLAY_NAMES.size(), ChatChannel.MAX_ID + 1, "un nombre por canal")
-	assert_false(ChatChannel.is_valid(-1), "-1 no existe")
-	assert_false(ChatChannel.is_valid(9), "9 no existe")
-	assert_false(ChatChannel.is_client_sendable(ChatChannel.Id.SYSTEM), "el sistema no lo envía un cliente")
+	assert_eq(ChatChannel.MAX_ID, 8, "the highest id")
+	assert_eq(ChatChannel.DISPLAY_NAMES.size(), ChatChannel.MAX_ID + 1, "one name per channel")
+	assert_false(ChatChannel.is_valid(-1), "-1 does not exist")
+	assert_false(ChatChannel.is_valid(9), "9 does not exist")
+	assert_false(ChatChannel.is_client_sendable(ChatChannel.Id.SYSTEM), "the system channel is not sent by a client")
 	for channel: int in [0, 1, 2, 3, 4, 5, 6, 8]:
-		assert_true(ChatChannel.is_client_sendable(channel), "el cliente puede enviar el canal %d" % channel)
-	assert_eq(ChatChannel.display_name(ChatChannel.Id.WHISPER), "Susurro", "nombre en español")
-	assert_eq(ChatChannel.display_name(99), "Canal", "un id desconocido tiene nombre genérico")
-	assert_true(ChatChannel.uses_public_rate(ChatChannel.Id.SAY), "decir gasta del ritmo común")
-	assert_false(ChatChannel.uses_public_rate(ChatChannel.Id.WHISPER), "el susurro tiene el suyo")
-	assert_true(ChatChannel.is_implemented(ChatChannel.Id.PARTY), "el grupo se reparte en la fase 4")
-	assert_false(ChatChannel.is_implemented(ChatChannel.Id.GUILD), "el gremio no")
+		assert_true(ChatChannel.is_client_sendable(channel), "the client can send channel %d" % channel)
+	assert_eq(ChatChannel.display_name(ChatChannel.Id.WHISPER), "Susurro", "name in Spanish")
+	assert_eq(ChatChannel.display_name(99), "Canal", "an unknown id has a generic name")
+	assert_true(ChatChannel.uses_public_rate(ChatChannel.Id.SAY), "say uses the common rate")
+	assert_false(ChatChannel.uses_public_rate(ChatChannel.Id.WHISPER), "whisper has its own")
+	assert_true(ChatChannel.is_implemented(ChatChannel.Id.PARTY), "party is handled in phase 4")
+	assert_false(ChatChannel.is_implemented(ChatChannel.Id.GUILD), "guild is not")
 
 
 func test_text_limits_are_the_documented_ones() -> void:
-	assert_eq(ChatText.MAX_CHARS, 255, "255 caracteres")
+	assert_eq(ChatText.MAX_CHARS, 255, "255 characters")
 	assert_eq(ChatText.MAX_BYTES, 768, "768 B")
 
 
@@ -63,12 +63,12 @@ func test_chat_send_layout_matches_the_document() -> void:
 	message.channel = ChatChannel.Id.ZONE
 	message.text = "Hola"
 	var bytes: PackedByteArray = message.encode()
-	assert_eq(bytes.size(), 5 + 4, "5 B de cabecera + 4 de texto")
+	assert_eq(bytes.size(), 5 + 4, "5 B of header + 4 of text")
 	assert_eq(bytes[0], 0x40, "u8 type")
 	assert_eq(bytes[1], 1, "u8 channel")
 	assert_eq(bytes[2], 0, "u8 recipient_len")
 	assert_eq(bytes.decode_u16(3), 4, "u16 text_len")
-	assert_eq(bytes.slice(5).get_string_from_utf8(), "Hola", "texto en UTF-8 al final")
+	assert_eq(bytes.slice(5).get_string_from_utf8(), "Hola", "UTF-8 text at the end")
 
 	var whisper := NetMessages.ChatSend.new()
 	whisper.channel = ChatChannel.Id.WHISPER
@@ -77,12 +77,12 @@ func test_chat_send_layout_matches_the_document() -> void:
 	var whisper_bytes: PackedByteArray = whisper.encode()
 	var recipient_size: int = "Álvaro".to_utf8_buffer().size()
 	var text_size: int = "¿Vienes?".to_utf8_buffer().size()
-	assert_eq(whisper_bytes.size(), 5 + recipient_size + text_size, "tamaño del susurro")
-	assert_eq(whisper_bytes[1], 2, "canal 2")
-	assert_eq(whisper_bytes[2], recipient_size, "longitud del destinatario en bytes")
-	assert_eq(whisper_bytes.decode_u16(3), text_size, "longitud del texto en bytes")
+	assert_eq(whisper_bytes.size(), 5 + recipient_size + text_size, "whisper size")
+	assert_eq(whisper_bytes[1], 2, "channel 2")
+	assert_eq(whisper_bytes[2], recipient_size, "recipient length in bytes")
+	assert_eq(whisper_bytes.decode_u16(3), text_size, "text length in bytes")
 	assert_eq(whisper_bytes.slice(5, 5 + recipient_size).get_string_from_utf8(), "Álvaro",
-			"el destinatario va antes del texto")
+			"the recipient comes before the text")
 
 
 func test_chat_send_round_trip() -> void:
@@ -103,42 +103,42 @@ func test_chat_send_round_trip() -> void:
 		message.recipient = sample[1]
 		message.text = sample[2]
 		var decoded: NetMessages.ChatSend = NetMessages.ChatSend.decode(message.encode())
-		if not assert_not_null(decoded, "se decodifica (%s)" % [sample]):
+		if not assert_not_null(decoded, "it decodes (%s)" % [sample]):
 			continue
-		assert_eq(decoded.channel, sample[0], "canal")
-		assert_eq(decoded.recipient, sample[1], "destinatario")
-		assert_eq(decoded.text, sample[2], "texto")
+		assert_eq(decoded.channel, sample[0], "channel")
+		assert_eq(decoded.recipient, sample[1], "recipient")
+		assert_eq(decoded.text, sample[2], "text")
 
 
 func test_chat_send_text_limits() -> void:
-	# 255 caracteres de 3 bytes: 765 B, dentro de los 768.
+	# 255 characters of 3 bytes: 765 B, within the 768.
 	var long_text: String = "€".repeat(255)
-	assert_eq(long_text.to_utf8_buffer().size(), 765, "255 caracteres de 3 bytes son 765 B")
+	assert_eq(long_text.to_utf8_buffer().size(), 765, "255 characters of 3 bytes are 765 B")
 	var message := NetMessages.ChatSend.new()
 	message.text = long_text
 	var decoded: NetMessages.ChatSend = NetMessages.ChatSend.decode(message.encode())
-	if assert_not_null(decoded, "255 caracteres caben"):
-		assert_eq(decoded.text, long_text, "íntegro")
+	if assert_not_null(decoded, "255 characters fit"):
+		assert_eq(decoded.text, long_text, "intact")
 
-	# encode recorta: 300 letras llegan como 255.
+	# encode trims: 300 letters arrive as 255.
 	message.text = "a".repeat(300)
 	var clipped: NetMessages.ChatSend = NetMessages.ChatSend.decode(message.encode())
-	if assert_not_null(clipped, "un texto largo se recorta al codificar"):
-		assert_eq(clipped.text.length(), 255, "255 caracteres")
+	if assert_not_null(clipped, "a long text is trimmed when encoding"):
+		assert_eq(clipped.text.length(), 255, "255 characters")
 
-	# Con emoji de 4 bytes manda el tope de bytes: 192 caben (768 B) y no se parte ninguno.
+	# With 4-byte emoji the byte cap rules: 192 fit (768 B) and none is split.
 	message.text = "😀".repeat(255)
 	var emoji_bytes: PackedByteArray = message.encode()
-	assert_eq(emoji_bytes.size(), 5 + 768, "el recorte por bytes deja 768 B de texto")
+	assert_eq(emoji_bytes.size(), 5 + 768, "the byte trim leaves 768 B of text")
 	var emoji: NetMessages.ChatSend = NetMessages.ChatSend.decode(emoji_bytes)
-	if assert_not_null(emoji, "el recorte por bytes no parte ningún carácter"):
+	if assert_not_null(emoji, "the byte trim does not split any character"):
 		assert_eq(emoji.text, "😀".repeat(192), "192 emoji")
 
-	# A mano: 256 caracteres, o 769 B, no se decodifican.
+	# By hand: 256 characters, or 769 B, do not decode.
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.SAY, "", "a".repeat(256))),
-			"256 caracteres")
+			"256 characters")
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.SAY, "", "😀".repeat(193))),
-			"193 emoji son 772 B")
+			"193 emoji are 772 B")
 
 
 func test_chat_send_maximum_size_fits_in_one_packet() -> void:
@@ -147,80 +147,80 @@ func test_chat_send_maximum_size_fits_in_one_packet() -> void:
 	message.recipient = "Ñ".repeat(NetProtocol.MAX_NAME_CHARS)
 	message.text = "€".repeat(ChatText.MAX_CHARS)
 	var bytes: PackedByteArray = message.encode()
-	assert_true(bytes.size() <= NetProtocol.MAX_PACKET_BYTES, "cabe en 1200 B (%d)" % bytes.size())
+	assert_true(bytes.size() <= NetProtocol.MAX_PACKET_BYTES, "fits in 1200 B (%d)" % bytes.size())
 	assert_true(bytes.size() <= 5 + NetProtocol.MAX_NAME_BYTES + ChatText.MAX_BYTES,
-			"y en el máximo documentado de 821 B")
-	assert_not_null(NetMessages.ChatSend.decode(bytes), "el máximo se decodifica")
+			"and in the documented maximum of 821 B")
+	assert_not_null(NetMessages.ChatSend.decode(bytes), "the maximum decodes")
 
 
 func test_chat_send_malformed_is_null() -> void:
 	var valid: PackedByteArray = _raw_send(ChatChannel.Id.WHISPER, "Ana", "Hola")
-	assert_not_null(NetMessages.ChatSend.decode(valid), "el de partida vale")
+	assert_not_null(NetMessages.ChatSend.decode(valid), "the baseline one is valid")
 
-	# Recortado en cualquier punto.
+	# Truncated at any point.
 	for cut: int in valid.size():
-		assert_null(NetMessages.ChatSend.decode(valid.slice(0, cut)), "recortado a %d B" % cut)
-	# Con un byte de más.
+		assert_null(NetMessages.ChatSend.decode(valid.slice(0, cut)), "truncated to %d B" % cut)
+	# With one extra byte.
 	var longer: PackedByteArray = valid.duplicate()
 	longer.append(0x61)
-	assert_null(NetMessages.ChatSend.decode(longer), "un byte de más")
-	assert_null(NetMessages.ChatSend.decode(PackedByteArray()), "vacío")
+	assert_null(NetMessages.ChatSend.decode(longer), "one extra byte")
+	assert_null(NetMessages.ChatSend.decode(PackedByteArray()), "empty")
 
-	# Tipo equivocado.
+	# Wrong type.
 	var wrong_type: PackedByteArray = valid.duplicate()
 	wrong_type[0] = NetProtocol.MSG_CHAT_MESSAGE
-	assert_null(NetMessages.ChatSend.decode(wrong_type), "tipo de CHAT_MESSAGE")
+	assert_null(NetMessages.ChatSend.decode(wrong_type), "CHAT_MESSAGE type")
 
-	# Canales que un cliente no puede usar o que no existen.
+	# Channels that a client cannot use or that do not exist.
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.SYSTEM, "", "Hola")),
-			"el canal del sistema no lo envía un cliente")
-	assert_null(NetMessages.ChatSend.decode(_raw_send(9, "", "Hola")), "canal 9")
-	assert_null(NetMessages.ChatSend.decode(_raw_send(255, "", "Hola")), "canal 255")
+			"the system channel is not sent by a client")
+	assert_null(NetMessages.ChatSend.decode(_raw_send(9, "", "Hola")), "channel 9")
+	assert_null(NetMessages.ChatSend.decode(_raw_send(255, "", "Hola")), "channel 255")
 
-	# Destinatario: obligatorio en un susurro y sobrante en los demás canales.
+	# Recipient: required in a whisper and surplus in the other channels.
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.WHISPER, "", "Hola")),
-			"un susurro sin destinatario")
+			"a whisper without a recipient")
 	var bom_recipient: PackedByteArray = _raw_send(ChatChannel.Id.WHISPER, "", "hi")
 	bom_recipient[2] = 3
 	var bom := PackedByteArray([0xEF, 0xBB, 0xBF])
 	var with_bom: PackedByteArray = bom_recipient.slice(0, 5)
 	with_bom.append_array(bom)
 	with_bom.append_array(bom_recipient.slice(5))
-	assert_null(NetMessages.ChatSend.decode(with_bom), "un susurro cuyo destinatario se lee vacío (solo un BOM)")
+	assert_null(NetMessages.ChatSend.decode(with_bom), "a whisper whose recipient reads as empty (just a BOM)")
 	var bom_text: PackedByteArray = _raw_send(ChatChannel.Id.SAY, "", "")
 	bom_text.encode_u16(3, 3)
 	bom_text.append_array(bom)
-	assert_not_null(NetMessages.ChatSend.decode(bom_text), "un texto que se lee vacío sí (lo descarta el servidor)")
+	assert_not_null(NetMessages.ChatSend.decode(bom_text), "a text that reads as empty does decode (the server discards it)")
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.SAY, "Ana", "Hola")),
-			"un «decir» con destinatario")
+			"a \"say\" with a recipient")
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.WHISPER,
-			"a".repeat(NetProtocol.MAX_NAME_CHARS + 1), "Hola")), "destinatario de 25 caracteres")
+			"a".repeat(NetProtocol.MAX_NAME_CHARS + 1), "Hola")), "recipient of 25 characters")
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.WHISPER,
-			"€".repeat(17), "Hola")), "destinatario de 51 B")
+			"€".repeat(17), "Hola")), "recipient of 51 B")
 
-	# UTF-8 inválido y bytes nulos.
+	# Invalid UTF-8 and null bytes.
 	var bad_utf8: PackedByteArray = _raw_send(ChatChannel.Id.SAY, "", "Hola")
 	bad_utf8[5] = 0xFF
-	assert_null(NetMessages.ChatSend.decode(bad_utf8), "UTF-8 inválido en el texto")
+	assert_null(NetMessages.ChatSend.decode(bad_utf8), "invalid UTF-8 in the text")
 	var truncated_char: PackedByteArray = _raw_send(ChatChannel.Id.SAY, "", "ab")
 	truncated_char[6] = 0xC3
-	assert_null(NetMessages.ChatSend.decode(truncated_char), "carácter UTF-8 partido")
+	assert_null(NetMessages.ChatSend.decode(truncated_char), "split UTF-8 character")
 	var nul: PackedByteArray = _raw_send(ChatChannel.Id.SAY, "", "Hola")
 	nul[7] = 0
-	assert_null(NetMessages.ChatSend.decode(nul), "byte nulo en el texto")
+	assert_null(NetMessages.ChatSend.decode(nul), "null byte in the text")
 	var bad_name: PackedByteArray = _raw_send(ChatChannel.Id.WHISPER, "Ana", "Hola")
 	bad_name[5] = 0xFE
-	assert_null(NetMessages.ChatSend.decode(bad_name), "UTF-8 inválido en el destinatario")
+	assert_null(NetMessages.ChatSend.decode(bad_name), "invalid UTF-8 in the recipient")
 
-	# Longitudes que no cuadran con el tamaño.
+	# Lengths that do not match the size.
 	var wrong_text_len: PackedByteArray = valid.duplicate()
 	wrong_text_len.encode_u16(3, 5)
-	assert_null(NetMessages.ChatSend.decode(wrong_text_len), "text_len mayor que lo que hay")
+	assert_null(NetMessages.ChatSend.decode(wrong_text_len), "text_len greater than what is there")
 	wrong_text_len.encode_u16(3, 3)
-	assert_null(NetMessages.ChatSend.decode(wrong_text_len), "text_len menor que lo que hay")
+	assert_null(NetMessages.ChatSend.decode(wrong_text_len), "text_len less than what is there")
 	var huge_recipient: PackedByteArray = valid.duplicate()
 	huge_recipient[2] = 200
-	assert_null(NetMessages.ChatSend.decode(huge_recipient), "recipient_len de 200")
+	assert_null(NetMessages.ChatSend.decode(huge_recipient), "recipient_len of 200")
 
 
 # --- CHAT_MESSAGE -----------------------------------------------------------------------------
@@ -233,7 +233,7 @@ func test_chat_message_layout_matches_the_document() -> void:
 	message.sender = "Ana"
 	message.text = "Hola"
 	var bytes: PackedByteArray = message.encode()
-	assert_eq(bytes.size(), 11 + 3 + 4, "11 B de cabecera + emisor + texto")
+	assert_eq(bytes.size(), 11 + 3 + 4, "11 B of header + sender + text")
 	assert_eq(bytes[0], 0x41, "u8 type")
 	assert_eq(bytes[1], 0, "u8 channel")
 	assert_eq(bytes[2], 2, "u8 sender_realm")
@@ -241,15 +241,15 @@ func test_chat_message_layout_matches_the_document() -> void:
 	assert_eq(bytes[7], 3, "u8 sender_len")
 	assert_eq(bytes[8], 0, "u8 recipient_len")
 	assert_eq(bytes.decode_u16(9), 4, "u16 text_len")
-	assert_eq(bytes.slice(11, 14).get_string_from_utf8(), "Ana", "el emisor va primero")
-	assert_eq(bytes.slice(14).get_string_from_utf8(), "Hola", "y el texto al final")
+	assert_eq(bytes.slice(11, 14).get_string_from_utf8(), "Ana", "the sender comes first")
+	assert_eq(bytes.slice(14).get_string_from_utf8(), "Hola", "and the text at the end")
 
 	message.channel = ChatChannel.Id.WHISPER
 	message.recipient = "Bruno"
 	var whisper_bytes: PackedByteArray = message.encode()
-	assert_eq(whisper_bytes.size(), 11 + 3 + 5 + 4, "el destinatario va entre el emisor y el texto")
+	assert_eq(whisper_bytes.size(), 11 + 3 + 5 + 4, "the recipient goes between the sender and the text")
 	assert_eq(whisper_bytes[8], 5, "recipient_len")
-	assert_eq(whisper_bytes.slice(14, 19).get_string_from_utf8(), "Bruno", "destinatario")
+	assert_eq(whisper_bytes.slice(14, 19).get_string_from_utf8(), "Bruno", "recipient")
 
 
 func test_chat_message_round_trip() -> void:
@@ -271,14 +271,14 @@ func test_chat_message_round_trip() -> void:
 		message.recipient = sample["recipient"]
 		message.text = sample["text"]
 		var decoded: NetMessages.ChatMessage = NetMessages.ChatMessage.decode(message.encode())
-		if not assert_not_null(decoded, "se decodifica (%s)" % [sample]):
+		if not assert_not_null(decoded, "it decodes (%s)" % [sample]):
 			continue
-		assert_eq(decoded.channel, sample["channel"], "canal")
-		assert_eq(decoded.sender_realm, sample["realm"], "reino del emisor")
+		assert_eq(decoded.channel, sample["channel"], "channel")
+		assert_eq(decoded.sender_realm, sample["realm"], "sender realm")
 		assert_eq(decoded.tick, 123456, "tick")
-		assert_eq(decoded.sender, sample["sender"], "emisor")
-		assert_eq(decoded.recipient, sample["recipient"], "destinatario")
-		assert_eq(decoded.text, sample["text"], "texto")
+		assert_eq(decoded.sender, sample["sender"], "sender")
+		assert_eq(decoded.recipient, sample["recipient"], "recipient")
+		assert_eq(decoded.text, sample["text"], "text")
 
 
 func test_chat_message_maximum_size_fits_in_one_packet() -> void:
@@ -290,69 +290,69 @@ func test_chat_message_maximum_size_fits_in_one_packet() -> void:
 	message.recipient = "Ñ".repeat(24)
 	message.text = "€".repeat(ChatText.MAX_CHARS)
 	var bytes: PackedByteArray = message.encode()
-	assert_eq(bytes.size(), 11 + 48 + 48 + 765, "el máximo documentado")
-	assert_true(bytes.size() <= NetProtocol.MAX_PACKET_BYTES, "cabe en 1200 B (%d)" % bytes.size())
+	assert_eq(bytes.size(), 11 + 48 + 48 + 765, "the documented maximum")
+	assert_true(bytes.size() <= NetProtocol.MAX_PACKET_BYTES, "fits in 1200 B (%d)" % bytes.size())
 	var decoded: NetMessages.ChatMessage = NetMessages.ChatMessage.decode(bytes)
-	if assert_not_null(decoded, "el máximo se decodifica"):
-		assert_eq(decoded.tick, 0xFFFFFFFF, "tick máximo")
-		assert_eq(decoded.text.length(), ChatText.MAX_CHARS, "texto íntegro")
+	if assert_not_null(decoded, "the maximum decodes"):
+		assert_eq(decoded.tick, 0xFFFFFFFF, "maximum tick")
+		assert_eq(decoded.text.length(), ChatText.MAX_CHARS, "intact text")
 
 
 func test_chat_message_malformed_is_null() -> void:
 	var valid: PackedByteArray = _raw_message(ChatChannel.Id.WHISPER, 1, "Ana", "Bruno", "Hola")
-	assert_not_null(NetMessages.ChatMessage.decode(valid), "el de partida vale")
+	assert_not_null(NetMessages.ChatMessage.decode(valid), "the baseline one is valid")
 	for cut: int in valid.size():
-		assert_null(NetMessages.ChatMessage.decode(valid.slice(0, cut)), "recortado a %d B" % cut)
+		assert_null(NetMessages.ChatMessage.decode(valid.slice(0, cut)), "truncated to %d B" % cut)
 	var longer: PackedByteArray = valid.duplicate()
 	longer.append(0x61)
-	assert_null(NetMessages.ChatMessage.decode(longer), "un byte de más")
-	assert_null(NetMessages.ChatMessage.decode(PackedByteArray()), "vacío")
+	assert_null(NetMessages.ChatMessage.decode(longer), "one extra byte")
+	assert_null(NetMessages.ChatMessage.decode(PackedByteArray()), "empty")
 
 	var wrong_type: PackedByteArray = valid.duplicate()
 	wrong_type[0] = NetProtocol.MSG_CHAT_SEND
-	assert_null(NetMessages.ChatMessage.decode(wrong_type), "tipo de CHAT_SEND")
-	assert_null(NetMessages.ChatMessage.decode(_raw_message(9, 1, "Ana", "", "Hola")), "canal 9")
+	assert_null(NetMessages.ChatMessage.decode(wrong_type), "CHAT_SEND type")
+	assert_null(NetMessages.ChatMessage.decode(_raw_message(9, 1, "Ana", "", "Hola")), "channel 9")
 	assert_null(NetMessages.ChatMessage.decode(_raw_message(ChatChannel.Id.SAY, 4, "Ana", "", "Hola")),
-			"reino 4")
-	# El sistema no tiene emisor ni destinatario; los demás canales sí tienen emisor.
+			"realm 4")
+	# System has no sender or recipient; the other channels do have a sender.
 	assert_null(NetMessages.ChatMessage.decode(_raw_message(ChatChannel.Id.SYSTEM, 0, "Ana", "", "Hola")),
-			"un mensaje del sistema con emisor")
+			"a system message with a sender")
 	assert_null(NetMessages.ChatMessage.decode(_raw_message(ChatChannel.Id.SAY, 1, "", "", "Hola")),
-			"un «decir» sin emisor")
+			"a \"say\" without a sender")
 	assert_null(NetMessages.ChatMessage.decode(_raw_message(ChatChannel.Id.WHISPER, 1, "Ana", "", "Hola")),
-			"un susurro sin destinatario")
+			"a whisper without a recipient")
 	var bom: String = PackedByteArray([0xEF, 0xBB, 0xBF]).get_string_from_utf8()
-	assert_eq(bom, "", "get_string_from_utf8 se salta el BOM")
+	assert_eq(bom, "", "get_string_from_utf8 skips the BOM")
 	var bom_sender: PackedByteArray = _raw_message(ChatChannel.Id.SAY, 1, "A", "", "Hola")
 	bom_sender[7] = 3
 	var bom_bytes := PackedByteArray([0xEF, 0xBB, 0xBF])
 	var say_with_bom: PackedByteArray = bom_sender.slice(0, 11)
 	say_with_bom.append_array(bom_bytes)
 	say_with_bom.append_array(bom_sender.slice(12))
-	assert_null(NetMessages.ChatMessage.decode(say_with_bom), "un «decir» cuyo emisor se lee vacío (solo un BOM)")
+	assert_null(NetMessages.ChatMessage.decode(say_with_bom), "a \"say\" whose sender reads as empty (just a BOM)")
 	var whisper_bom: PackedByteArray = _raw_message(ChatChannel.Id.WHISPER, 1, "Ana", "B", "Hola")
 	whisper_bom[8] = 3
 	var whisper_with_bom: PackedByteArray = whisper_bom.slice(0, 14)
 	whisper_with_bom.append_array(bom_bytes)
 	whisper_with_bom.append_array(whisper_bom.slice(15))
 	assert_null(NetMessages.ChatMessage.decode(whisper_with_bom),
-			"un susurro cuyo destinatario se lee vacío (solo un BOM)")
+			"a whisper whose recipient reads as empty (just a BOM)")
 	assert_null(NetMessages.ChatMessage.decode(_raw_message(ChatChannel.Id.ZONE, 1, "Ana", "Bruno", "Hola")),
-			"un mensaje de zona con destinatario")
-	# UTF-8 inválido en cada parte.
+			"a zone message with a recipient")
+	# Invalid UTF-8 in each part.
 	for offset: int in [11, 14, 19]:
 		var bad: PackedByteArray = valid.duplicate()
 		bad[offset] = 0xFF
-		assert_null(NetMessages.ChatMessage.decode(bad), "UTF-8 inválido en el byte %d" % offset)
-	# Longitudes que no cuadran.
+		assert_null(NetMessages.ChatMessage.decode(bad), "invalid UTF-8 at byte %d" % offset)
+	# Lengths that do not match.
 	var wrong_sender_len: PackedByteArray = valid.duplicate()
 	wrong_sender_len[7] = 4
-	assert_null(NetMessages.ChatMessage.decode(wrong_sender_len), "sender_len mayor")
+	assert_null(NetMessages.ChatMessage.decode(wrong_sender_len), "greater sender_len")
 	var wrong_text_len: PackedByteArray = valid.duplicate()
 	wrong_text_len.encode_u16(9, 900)
-	assert_null(NetMessages.ChatMessage.decode(wrong_text_len), "text_len de 900")
+	assert_null(NetMessages.ChatMessage.decode(wrong_text_len), "text_len of 900")
 	assert_null(NetMessages.ChatMessage.decode(_raw_message(ChatChannel.Id.SAY, 1, "Ana", "",
-			"a".repeat(256))), "256 caracteres")
+			"a".repeat(256))), "256 characters")
 
 
 # --- Fuzz -------------------------------------------------------------------------------------
@@ -392,19 +392,19 @@ func test_fuzz_random_buffers_never_error() -> void:
 		var send: NetMessages.ChatSend = NetMessages.ChatSend.decode(bytes)
 		if send != null:
 			decoded_count += 1
-			assert_true(send.text.length() <= ChatText.MAX_CHARS, "un texto decodificado cabe en 255")
-			assert_true(ChatChannel.is_client_sendable(send.channel), "canal enviable")
+			assert_true(send.text.length() <= ChatText.MAX_CHARS, "a decoded text fits in 255")
+			assert_true(ChatChannel.is_client_sendable(send.channel), "sendable channel")
 		var message: NetMessages.ChatMessage = NetMessages.ChatMessage.decode(bytes)
 		if message != null:
 			decoded_count += 1
-			assert_true(message.text.length() <= ChatText.MAX_CHARS, "un texto decodificado cabe en 255")
-			assert_true(ChatChannel.is_valid(message.channel), "canal válido")
-	assert_true(decoded_count > 50, "el fuzz llega hasta mensajes válidos (%d)" % decoded_count)
+			assert_true(message.text.length() <= ChatText.MAX_CHARS, "a decoded text fits in 255")
+			assert_true(ChatChannel.is_valid(message.channel), "valid channel")
+	assert_true(decoded_count > 50, "the fuzz reaches valid messages (%d)" % decoded_count)
 
 
-# --- Utilidades -------------------------------------------------------------------------------
+# --- Utilities --------------------------------------------------------------------------------
 
-# CHAT_SEND escrito a mano, sin pasar por encode(), para poder fabricar mensajes fuera de los límites.
+# CHAT_SEND written by hand, without going through encode(), so out-of-bounds messages can be crafted.
 func _raw_send(channel: int, recipient: String, text: String) -> PackedByteArray:
 	var recipient_bytes: PackedByteArray = recipient.to_utf8_buffer()
 	var text_bytes: PackedByteArray = text.to_utf8_buffer()
@@ -419,7 +419,7 @@ func _raw_send(channel: int, recipient: String, text: String) -> PackedByteArray
 	return bytes
 
 
-# CHAT_MESSAGE escrito a mano.
+# CHAT_MESSAGE written by hand.
 func _raw_message(channel: int, realm: int, sender: String, recipient: String,
 		text: String) -> PackedByteArray:
 	var sender_bytes: PackedByteArray = sender.to_utf8_buffer()

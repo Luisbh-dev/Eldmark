@@ -1,59 +1,58 @@
 class_name BotSwarm
 extends Node
-## Enjambre de clientes ligeros para las pruebas de carga (docs/red.md, secciones 14, 15 y 17.5;
-## TEC-11): la raíz del modo [code]--bots=N[/code].
+## Swarm of lightweight clients for load tests (docs/red.md, sections 14, 15 and 17.5; TEC-11):
+## the root of the [code]--bots=N[/code] mode.
 ## [br][br]
-## [ClientLauncher] (que monta [code]boot.gd[/code]) rellena [member config] con
-## [method ClientConfig.from_args] y cambia a
-## [code]scenes/client/bot_swarm.tscn[/code]. Crea [member ClientConfig.bot_count] [SwarmBot], uno cada
-## [constant SPAWN_INTERVAL_TICKS] ticks (para no entrar todos en el mismo tick), cada uno con su
-## [NetTransport] y su [SceneMultiplayer]. Los bots no cargan la zona ni simulan (ver [SwarmBot]), así
-## que un proceso aguanta decenas de ellos.
+## [ClientLauncher] (which [code]boot.gd[/code] mounts) fills in [member config] with
+## [method ClientConfig.from_args] and switches to
+## [code]scenes/client/bot_swarm.tscn[/code]. It creates [member ClientConfig.bot_count] [SwarmBot]s,
+## one every [constant SPAWN_INTERVAL_TICKS] ticks (so they do not all enter on the same tick),
+## each with its own [NetTransport] and [SceneMultiplayer]. The bots do not load the zone or
+## simulate (see [SwarmBot]), so a single process can sustain dozens of them.
 ## [br][br]
-## Opciones ([ClientConfig]): [code]--bots=N --connect=<host>[:<puerto>] [--realm=<reino>]
+## Options ([ClientConfig]): [code]--bots=N --connect=<host>[:<puerto>] [--realm=<reino>]
 ## [--bot-seed=N] [--bot-brain=combat] [--net-sim=…] [--quit-after-ticks=N] [--quit-at-server-tick=N]
-## [--dtls-cert=<pem> --dtls-name=<cn>] [--report=<ruta.json>][/code]. Con [code]--platform[/code] no arranca: sale
-## con código 1 y un error claro (docs/plataforma.md §5.5). Con [code]--dtls-cert[/code] (una zona con
-## [code]--dtls-cert --dtls-key[/code], §10.2) cada [SwarmBot] conecta por DTLS con ese certificado anclado y ese
-## nombre; sin [code]--dtls-name[/code] o con un certificado que no se puede leer sale con código 1 (nunca en claro).
-## El bot [i]i[/i]
-## se llama [code]NameRules.bot_name(bot_seed + i)[/code]: dos enjambres contra el mismo servidor
-## necesitan semillas distintas (los nombres no se pueden repetir en una zona). Sin [code]--realm[/code]
-## los bots se reparten entre Vardheim y Solmarch.
+## [--dtls-cert=<pem> --dtls-name=<cn>] [--report=<ruta.json>][/code]. With [code]--platform[/code]
+## it does not start: it exits with code 1 and a clear error (docs/plataforma.md §5.5). With
+## [code]--dtls-cert[/code] (a zone with [code]--dtls-cert --dtls-key[/code], §10.2) each
+## [SwarmBot] connects over DTLS with that pinned certificate and that name; without
+## [code]--dtls-name[/code] or with a certificate that cannot be read it exits with code 1 (never in
+## cleartext). Bot [i]i[/i]
+## is named [code]NameRules.bot_name(bot_seed + i)[/code]: two swarms against the same server
+## need different seeds (names cannot repeat within a zone). Without [code]--realm[/code]
+## the bots are split between Vardheim and Solmarch.
 ## [br][br]
-## Con [code]--quit-after-ticks=N[/code], tras N ticks de física locales (desde que arranca el
-## enjambre) los bots salen de la zona con CLIENT_LEAVE, se escribe el informe y se cierra con
-## código 0 si todos los bots estaban jugando, y con 1 si alguno fue rechazado, se desconectó o no
-## llegó a entrar. Con [code]--quit-at-server-tick=N[/code] hace lo mismo en cuanto alguno de sus bots recibe un
-## snapshot del tick N del servidor (o posterior): un servidor cargado va más despacio que el tiempo real, y la prueba
-## de carga necesita que los bots sigan dentro hasta un tick del servidor, no hasta un instante del reloj
-## ([code]tools/load_test.gd[/code]). Las dos pueden ir juntas: sale con la primera que se cumpla.
+## With [code]--quit-after-ticks=N[/code], after N local physics ticks (from when the swarm
+## starts) the bots leave the zone with CLIENT_LEAVE, the report is written and the process closes
+## with code 0 if all the bots were playing, and with 1 if any was rejected, disconnected or never
+## got in. With [code]--quit-at-server-tick=N[/code] it does the same as soon as any of its bots
+## receives a snapshot of server tick N (or later): a loaded server runs slower than real time, and
+## the load test needs the bots to stay in until a server tick, not until a clock instant
+## ([code]tools/load_test.gd[/code]). Both can go together: it exits with whichever is met first.
 ## [br][br]
-## [b]Informe[/b] ([method build_report]): [code]bots[/code] pedidos, creados, jugando, rechazados y
-## desconectados; [code]totals[/code] (bytes de subida y de bajada de todos, snapshots, tamaño medio de
-## snapshot, KB/s medios por cliente...) y [code]clients[/code], una ficha de [method SwarmBot.get_stats]
-## por bot (bytes de subida y de bajada, snapshots recibidos y tamaño medio).
+## [b]Report[/b] ([method build_report]): [code]bots[/code] requested, created, playing, rejected
+## and disconnected; [code]totals[/code] (upload and download bytes of all, snapshots, average
+## snapshot size, average KB/s per client...) and [code]clients[/code], a [method SwarmBot.get_stats] record per bot (upload and download bytes, snapshots received and average size).
 
-## Ticks entre la creación de un bot y la del siguiente.
+## Ticks between the creation of one bot and the next.
 const SPAWN_INTERVAL_TICKS: int = 5
-## Ticks que se espera, tras pedir la salida de los bots, a que se cierren las conexiones.
+## Ticks waited, after requesting the bots' departure, for the connections to close.
 const LEAVE_WAIT_TICKS: int = 30
-## Fotogramas por segundo máximos en headless (sección 1.3).
+## Maximum frames per second in headless mode (section 1.3).
 const MAX_FPS: int = 120
-## Error de [code]--bots[/code] con [code]--platform[/code].
+## Error for [code]--bots[/code] with [code]--platform[/code].
 const TEXT_NO_PLATFORM: String = "--bots no admite --platform: el enjambre solo va contra zonas sin plataforma (para entrar con cuenta, --bot --platform=<url> --login=<correo> --password-file=<ruta>)"
-## Error de [code]--dtls-cert[/code] sin [code]--dtls-name[/code] o con un certificado que no se puede leer.
+## Error for [code]--dtls-cert[/code] without [code]--dtls-name[/code] or with a certificate that cannot be read.
 const TEXT_BAD_DTLS: String = "DTLS: el enjambre necesita --dtls-cert=<pem> legible y --dtls-name=<cn> (el nombre del certificado de la zona); no conecta en claro"
 
-## Configuración del enjambre. La rellena [ClientLauncher]; si es null al arrancar, se lee de
-## los argumentos de usuario.
+## Swarm configuration. It is filled in by [ClientLauncher]; if it is null at startup, it is read
+## from the user arguments.
 static var config: ClientConfig
-## Solo para pruebas: si es válido, el cierre llama a este gancho con el código de salida en lugar de
-## cerrar el proceso.
+## For tests only: if valid, shutdown calls this hook with the exit code instead of closing the process.
 static var quit_hook: Callable = Callable()
 
 var _config: ClientConfig = null
-# El certificado de la zona anclado (--dtls-cert y --dtls-name), el mismo para todos los bots; null = en claro.
+# The zone's pinned certificate (--dtls-cert and --dtls-name), the same for all the bots; null = cleartext.
 var _dtls: TLSOptions = null
 var _bots: Array[SwarmBot] = []
 var _created_ticks: Array[int] = []
@@ -73,8 +72,7 @@ func _ready() -> void:
 	start(config)
 
 
-## Empieza el enjambre: crea el primer bot ya y uno más cada [constant SPAWN_INTERVAL_TICKS] ticks hasta
-## [member ClientConfig.bot_count].
+## Starts the swarm: it creates the first bot right away and one more every [constant SPAWN_INTERVAL_TICKS] ticks up to [member ClientConfig.bot_count].
 func start(p_config: ClientConfig) -> void:
 	if _running or p_config == null:
 		return
@@ -86,12 +84,12 @@ func start(p_config: ClientConfig) -> void:
 		_quit(1)
 		return
 	if not _config.platform_url.is_empty():
-		# Los bots del enjambre no tienen cuenta: solo contra zonas sin plataforma (docs/plataforma.md §5.5).
+		# The swarm's bots have no account: only against zones without a platform (docs/plataforma.md §5.5).
 		printerr("[Eldmark] %s" % TEXT_NO_PLATFORM)
 		_quit(1)
 		return
 	if _config.has_dtls():
-		# Un solo certificado anclado para todos los bots; sin él no se conecta en claro (docs/plataforma.md §10.2).
+		# A single pinned certificate for all the bots; without it, it does not connect in cleartext (docs/plataforma.md §10.2).
 		_dtls = NetClient.dtls_options(_config) if not _config.dtls_name.is_empty() else null
 		if _dtls == null:
 			printerr("[Eldmark] %s" % TEXT_BAD_DTLS)
@@ -106,22 +104,22 @@ func start(p_config: ClientConfig) -> void:
 	set_physics_process(true)
 
 
-## Bots creados hasta ahora, por orden de creación.
+## Bots created so far, in creation order.
 func get_bots() -> Array[SwarmBot]:
 	return _bots
 
 
-## Ticks de física que lleva el enjambre.
+## Physics ticks the swarm has run.
 func get_tick() -> int:
 	return _tick
 
 
-## Tick del enjambre en el que se creó el bot [param index].
+## Swarm tick at which bot [param index] was created.
 func get_created_tick(index: int) -> int:
 	return _created_ticks[index] if index >= 0 and index < _created_ticks.size() else -1
 
 
-## Bots que ya juegan (tienen personaje en el servidor).
+## Bots that are already playing (they have a character on the server).
 func count_in_world() -> int:
 	var count: int = 0
 	for bot: SwarmBot in _bots:
@@ -130,17 +128,17 @@ func count_in_world() -> int:
 	return count
 
 
-## Código con el que se cerrará (o se cerró) el proceso.
+## Code with which the process will close (or closed).
 func get_exit_code() -> int:
 	return _exit_code
 
 
-## true cuando el enjambre ha terminado (informe escrito y cierre pedido).
+## true when the swarm has finished (report written and shutdown requested).
 func is_finished() -> bool:
 	return _quitting
 
 
-## Informe del enjambre (ver la documentación de la clase).
+## Swarm report (see the class documentation).
 func build_report() -> Dictionary:
 	var clients: Array[Dictionary] = []
 	var in_world: int = 0
@@ -213,7 +211,7 @@ func build_report() -> Dictionary:
 	}
 
 
-## Escribe el informe JSON en [param path] (los directorios que falten se crean).
+## Writes the JSON report to [param path] (missing directories are created).
 func write_report(path: String) -> Error:
 	if path.is_empty():
 		return ERR_INVALID_PARAMETER
@@ -230,7 +228,7 @@ func write_report(path: String) -> Error:
 	return OK
 
 
-# --- Bucle ------------------------------------------------------------------------------------
+# --- Loop -------------------------------------------------------------------------------------
 
 func _physics_process(_delta: float) -> void:
 	if _quitting or not _running:
@@ -252,7 +250,7 @@ func _physics_process(_delta: float) -> void:
 		_begin_finish("--quit-at-server-tick")
 
 
-## El tick del servidor más reciente que ha visto en un snapshot alguno de sus bots (0 si ninguno ha recibido uno).
+## The most recent server tick that any of its bots has seen in a snapshot (0 if none has received one).
 func newest_server_tick() -> int:
 	var newest: int = 0
 	for bot: SwarmBot in _bots:
@@ -268,8 +266,8 @@ func _spawn_bot() -> void:
 	_created_ticks.append(_tick)
 
 
-# Fin normal: los bots salen de la zona y, cuando se han ido (o tras LEAVE_WAIT_TICKS), informe y cierre. [param reason]
-# es la opción que lo ha decidido.
+# Normal ending: the bots leave the zone and, once they are gone (or after LEAVE_WAIT_TICKS),
+# report and shutdown. [param reason] is the option that decided it.
 func _begin_finish(reason: String) -> void:
 	print("[Eldmark] Fin del enjambre: %d ticks locales, tick %d del servidor (%s), %d de %d bots jugando"
 			% [_tick, newest_server_tick(), reason, count_in_world(), _bots.size()])

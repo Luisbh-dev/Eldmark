@@ -13,28 +13,28 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// MemoryProgressStore es el falso de [ProgressStore] (plataforma.md §7.5): guarda el progreso en
-// memoria, sin tablas. Solo lo usan las pruebas de la plataforma (platformtest); serve y la orden
-// admin usan el almacén de verdad de progresion.md P7 (internal/progress).
+// MemoryProgressStore is the fake of [ProgressStore] (plataforma.md §7.5): it keeps the progression
+// in memory, without tables. Only the platform's tests use it (platformtest); serve and the admin
+// command use the real store of progresion.md P7 (internal/progress).
 //
-// No ve las transacciones: si la de quien llama se deshace, lo escrito aquí se queda. Al crear un
-// personaje no importa (una creación reintentada recibe otro character_id); las pruebas que lo
-// necesiten miran la base. Es seguro entre gorrutinas.
+// It does not see transactions: if the caller's is rolled back, what was written here stays. When
+// creating a character it does not matter (a retried creation gets another character_id); tests that
+// need it look at the database. It is safe across goroutines.
 type MemoryProgressStore struct {
 	mu    sync.Mutex
 	chars map[int64]*memoryCharacter
-	// applyHook, si no es nil, decide el resultado de Apply antes de guardar nada (pruebas: un
-	// *InvalidSaveError, un error de la base…).
+	// applyHook, if not nil, decides Apply's result before saving anything (tests: an
+	// *InvalidSaveError, a database error...).
 	applyHook func(key SaveKey, progress json.RawMessage) error
-	// applyTxHook, si no es nil, corre dentro de la transacción del guardado antes de guardar nada
-	// (pruebas: escribir algo que falle en el COMMIT).
+	// applyTxHook, if not nil, runs inside the save's transaction before saving anything (tests:
+	// writing something that fails on COMMIT).
 	applyTxHook func(ctx context.Context, tx pgx.Tx, key SaveKey, progress json.RawMessage) error
-	// ops son los op_id ya aplicados (para la S2 del falso) y las operaciones de Op.
+	// ops are the op_ids already applied (for the fake's S2) and Op's operations.
 	appliedOps map[int64]bool
 	ops        map[int64]memoryOp
 }
 
-// memoryOp es una operación del falso: el cuerpo que devuelve Op y sus participantes.
+// memoryOp is an operation of the fake: the body that Op returns and its participants.
 type memoryOp struct {
 	participants []int64
 	body         json.RawMessage
@@ -45,18 +45,18 @@ type memoryCharacter struct {
 	params      CreateParams
 	summary     Summary
 	saveVersion int64
-	applied     map[string]any // la última sección aplicada, sin ops; nil si ninguna
+	applied     map[string]any // the last section applied, without ops; nil if none
 	purged      bool
 }
 
-// NewMemoryProgressStore devuelve un almacén vacío.
+// NewMemoryProgressStore returns an empty store.
 func NewMemoryProgressStore() *MemoryProgressStore {
 	return &MemoryProgressStore{chars: map[int64]*memoryCharacter{}, appliedOps: map[int64]bool{},
 		ops: map[int64]memoryOp{}}
 }
 
-// SetApplyTxHook pone (o quita, con nil) la función que corre dentro de la transacción de Apply
-// antes de guardar nada; si devuelve un error, Apply lo devuelve.
+// SetApplyTxHook sets (or removes, with nil) the function that runs inside Apply's transaction
+// before saving anything; if it returns an error, Apply returns it.
 func (m *MemoryProgressStore) SetApplyTxHook(hook func(ctx context.Context, tx pgx.Tx, key SaveKey,
 	progress json.RawMessage) error) {
 	m.mu.Lock()
@@ -64,15 +64,15 @@ func (m *MemoryProgressStore) SetApplyTxHook(hook func(ctx context.Context, tx p
 	m.mu.Unlock()
 }
 
-// AddOp añade una operación que Op devolverá con body si alguno de sus participantes tiene
-// arrendamiento en la instancia que pregunta.
+// AddOp adds an operation that Op will return with body if any of its participants has a lease on
+// the instance asking.
 func (m *MemoryProgressStore) AddOp(opID int64, participants []int64, body json.RawMessage) {
 	m.mu.Lock()
 	m.ops[opID] = memoryOp{participants: append([]int64(nil), participants...), body: body}
 	m.mu.Unlock()
 }
 
-// SaveVersion devuelve el save_version del personaje (0 si no tiene progreso).
+// SaveVersion returns the character's save_version (0 if it has no progression).
 func (m *MemoryProgressStore) SaveVersion(characterID int64) int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -82,7 +82,7 @@ func (m *MemoryProgressStore) SaveVersion(characterID int64) int64 {
 	return 0
 }
 
-// Applied devuelve la última sección progress aplicada (sin ops), o nil.
+// Applied returns the last progress section applied (without ops), or nil.
 func (m *MemoryProgressStore) Applied(characterID int64) map[string]any {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -96,14 +96,14 @@ func (m *MemoryProgressStore) Applied(characterID int64) map[string]any {
 	return nil
 }
 
-// SetApplyHook pone (o quita, con nil) la función que decide el resultado de Apply.
+// SetApplyHook sets (or removes, with nil) the function that decides Apply's result.
 func (m *MemoryProgressStore) SetApplyHook(hook func(key SaveKey, progress json.RawMessage) error) {
 	m.mu.Lock()
 	m.applyHook = hook
 	m.mu.Unlock()
 }
 
-// SetSummary cambia el resumen de un personaje creado (pruebas: última zona, tiempo jugado…).
+// SetSummary changes the summary of a created character (tests: last zone, play time...).
 func (m *MemoryProgressStore) SetSummary(characterID int64, s Summary) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -112,7 +112,7 @@ func (m *MemoryProgressStore) SetSummary(characterID int64, s Summary) {
 	}
 }
 
-// Has dice si el personaje tiene progreso sin purgar.
+// Has says whether the character has unpurged progression.
 func (m *MemoryProgressStore) Has(characterID int64) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -120,7 +120,7 @@ func (m *MemoryProgressStore) Has(characterID int64) bool {
 	return ok && !c.purged
 }
 
-// Create implementa [ProgressStore].
+// Create implements [ProgressStore].
 func (m *MemoryProgressStore) Create(_ context.Context, _ pgx.Tx, worldID int16, characterID int64, p CreateParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -140,8 +140,8 @@ func (m *MemoryProgressStore) get(characterID int64) (*memoryCharacter, error) {
 	return c, nil
 }
 
-// record arma el ProgressRecord de la reclamación (progresion.md §3.4): el de un personaje nuevo
-// o lo último aplicado, con los campos de solo lectura.
+// record builds the claim's ProgressRecord (progresion.md §3.4): a new character's or the last one
+// applied, with the read-only fields.
 func (c *memoryCharacter) record() map[string]any {
 	rec := map[string]any{"progress_format": 1, "starter_granted": false, "level": 1, "xp_total": 0,
 		"realm_points": 0, "played_seconds": 0, "bag_slots": 30, "active_weapon_slot": 0, "health": nil,
@@ -155,7 +155,7 @@ func (c *memoryCharacter) record() map[string]any {
 	return rec
 }
 
-// Load implementa [ProgressStore]: [ErrNotFound] si el personaje no tiene progreso.
+// Load implements [ProgressStore]: [ErrNotFound] if the character has no progression.
 func (m *MemoryProgressStore) Load(_ context.Context, _ Querier, characterID int64) (json.RawMessage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -166,16 +166,16 @@ func (m *MemoryProgressStore) Load(_ context.Context, _ Querier, characterID int
 	return json.Marshal(c.record())
 }
 
-// Apply implementa [ProgressStore]. Solo comprueba que la sección es un objeto con
-// progress_format 1 (S1), que el personaje existe y, como S2, que ningún op_id de ops se aplicó
-// antes; guarda la sección sin ops y saca de ella el nivel, el tiempo jugado y la última zona del
-// resumen.
+// Apply implements [ProgressStore]. It only checks that the section is an object with
+// progress_format 1 (S1), that the character exists and, like S2, that no op_id in ops was applied
+// before; it stores the section without ops and extracts from it the level, the play time and the
+// last zone for the summary.
 func (m *MemoryProgressStore) Apply(ctx context.Context, tx pgx.Tx, key SaveKey, progress json.RawMessage) (int64, error) {
 	m.mu.Lock()
 	txHook := m.applyTxHook
 	m.mu.Unlock()
 	if txHook != nil {
-		// Fuera del cerrojo: la función habla con la base.
+		// Outside the lock: the function talks to the database.
 		if err := txHook(ctx, tx, key, progress); err != nil {
 			return 0, err
 		}
@@ -232,7 +232,7 @@ func (m *MemoryProgressStore) Apply(ctx context.Context, tx pgx.Tx, key SaveKey,
 	return c.saveVersion, nil
 }
 
-// sectionOps lee los op_id de la lista ops de la sección (cadenas decimales); sin ops, ninguno.
+// sectionOps reads the op_ids from the section's ops list (decimal strings); without ops, none.
 func sectionOps(v any) ([]int64, error) {
 	if v == nil {
 		return nil, nil
@@ -254,7 +254,7 @@ func sectionOps(v any) ([]int64, error) {
 	return ids, nil
 }
 
-// whole lee un número entero del JSON, también con decimales nulos (Godot escribe 7.0).
+// whole reads an integer number from the JSON, also with null decimals (Godot writes 7.0).
 func whole(v any) (int64, bool) {
 	n, ok := v.(json.Number)
 	if !ok {
@@ -267,7 +267,7 @@ func whole(v any) (int64, bool) {
 	return int64(f), true
 }
 
-// Summaries implementa [ProgressStore]: solo los que tienen progreso sin purgar.
+// Summaries implements [ProgressStore]: only those with unpurged progression.
 func (m *MemoryProgressStore) Summaries(_ context.Context, _ Querier, characterIDs []int64) (map[int64]Summary, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -280,7 +280,7 @@ func (m *MemoryProgressStore) Summaries(_ context.Context, _ Querier, characterI
 	return out, nil
 }
 
-// Purge implementa [ProgressStore]: borra el progreso (no hay libro que dejar).
+// Purge implements [ProgressStore]: it deletes the progression (there is no ledger to leave).
 func (m *MemoryProgressStore) Purge(_ context.Context, _ pgx.Tx, characterID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -290,13 +290,13 @@ func (m *MemoryProgressStore) Purge(_ context.Context, _ pgx.Tx, characterID int
 	return nil
 }
 
-// PurgeRetention implementa [ProgressStore]: el falso no tiene libro, así que no borra nada ni da
-// lápidas vacías (las borra la retención de verdad, progresion.md P7).
+// PurgeRetention implements [ProgressStore]: the fake has no ledger, so it deletes nothing nor
+// gives empty tombstones (the real retention deletes them, progresion.md P7).
 func (m *MemoryProgressStore) PurgeRetention(context.Context, pgx.Tx) (int64, []int64, error) {
 	return 0, nil, nil
 }
 
-// Export implementa [ProgressStore]: {"record": …, "ops": []}, con record null en una lápida.
+// Export implements [ProgressStore]: {"record": ..., "ops": []}, with record null in a tombstone.
 func (m *MemoryProgressStore) Export(_ context.Context, _ Querier, characterID int64) (json.RawMessage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -307,9 +307,9 @@ func (m *MemoryProgressStore) Export(_ context.Context, _ Querier, characterID i
 	return json.Marshal(map[string]any{"record": rec, "ops": []any{}})
 }
 
-// Op implementa [ProgressStore]: las operaciones de [MemoryProgressStore.AddOp], si alguno de sus
-// participantes tiene character_leases.zone_instance_id = instance (la misma consulta que hará el
-// almacén de verdad con un join de op_participants); si no, [ErrNotFound].
+// Op implements [ProgressStore]: the operations from [MemoryProgressStore.AddOp], if any of their
+// participants has character_leases.zone_instance_id = instance (the same query that the real store
+// will do with a join of op_participants); otherwise, [ErrNotFound].
 func (m *MemoryProgressStore) Op(ctx context.Context, q Querier, opID int64, instance [16]byte) (json.RawMessage, error) {
 	m.mu.Lock()
 	op, ok := m.ops[opID]
@@ -328,8 +328,8 @@ func (m *MemoryProgressStore) Op(ctx context.Context, q Querier, opID int64, ins
 	return op.body, nil
 }
 
-// Ledger implementa [ProgressStore]: un libro vacío, o [ErrNotFound] si el personaje no tiene
-// progreso.
+// Ledger implements [ProgressStore]: an empty ledger, or [ErrNotFound] if the character has no
+// progression.
 func (m *MemoryProgressStore) Ledger(_ context.Context, _ Querier, characterID int64, _ int, _ int64) (json.RawMessage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

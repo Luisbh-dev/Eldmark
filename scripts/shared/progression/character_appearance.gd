@@ -1,49 +1,50 @@
 class_name CharacterAppearance
 extends RefCounted
-## La apariencia de un personaje en 8 B (docs/progresion.md §7.2, ART-19): índices sobre
-## [AppearanceCatalog]. Viaja en el SPAWN de PLAYER, se guarda en [code]character_progress.appearance[/code]
-## y va en base64 por la API.
+## A character's appearance in 8 B (docs/progresion.md §7.2, ART-19): indices over
+## [AppearanceCatalog]. It travels in the PLAYER SPAWN, is stored in
+## [code]character_progress.appearance[/code] and goes as base64 through the API.
 ## [br][br]
 ## [codeblock]
-## byte 0  race        índice en races + 1 (0 no vale)
-## byte 1  body        índice en bodies
-## byte 2  head        índice en heads
-## byte 3  hair        0 sin pelo; si no, índice en hairs + 1
-## byte 4  beard       0 sin barba; si no, índice en beards + 1
-## byte 5  skin        índice en skin_tones
-## byte 6  hair_color  índice en hair_colors (pelo, barba y cejas)
-## byte 7  bits 0–3: eyes, índice en eye_colors; bits 4–7: marks, 0 sin marcas o índice en marks + 1
+## byte 0  race        index in races + 1 (0 is not valid)
+## byte 1  body        index in bodies
+## byte 2  head        index in heads
+## byte 3  hair        0 no hair; otherwise index in hairs + 1
+## byte 4  beard       0 no beard; otherwise index in beards + 1
+## byte 5  skin        index in skin_tones
+## byte 6  hair_color  index in hair_colors (hair, beard and eyebrows)
+## byte 7  bits 0–3: eyes, index in eye_colors; bits 4–7: marks, 0 no marks or index in marks + 1
 ## [/codeblock]
-## [method validate] es la regla entera, la misma que aplica la plataforma en Go al crear el personaje
-## (con las reglas exportadas por [ProgressionRulesExport] y los mismos casos,
-## [code]tests/fixtures/progression/appearance_cases.json[/code]). La zona, al cargarlo, sustituye una
-## apariencia que no vale por [method default_for]; el cliente hace lo mismo con la de otro jugador. No
-## entra en el [code]sim_hash[/code]: un índice desconocido ya cae a la apariencia por defecto.
-## Compartido: sin reloj; el azar de [method random] es el del generador que se le pasa.
+## [method validate] is the whole rule, the same one the Go platform applies when creating the
+## character (with the rules exported by [ProgressionRulesExport] and the same cases,
+## [code]tests/fixtures/progression/appearance_cases.json[/code]). When loading it, the zone
+## replaces an invalid appearance with [method default_for]; the client does the same with another
+## player's. It does not enter the [code]sim_hash[/code]: an unknown index already falls back to
+## the default appearance. Shared: no clock; the randomness of [method random] is that of the
+## generator passed to it.
 
-## Tamaño codificado.
+## Encoded size.
 const ENCODED_SIZE: int = 8
-## Valor de [member hair], [member beard] y [member marks] para «sin».
+## Value of [member hair], [member beard] and [member marks] for "none".
 const NONE: int = 0
 
-## Índice del pueblo + 1.
+## Index of the people + 1.
 var race: int = 0
 var body: int = 0
 var head: int = 0
-## 0 sin pelo; si no, índice + 1.
+## 0 no hair; otherwise index + 1.
 var hair: int = 0
-## 0 sin barba; si no, índice + 1.
+## 0 no beard; otherwise index + 1.
 var beard: int = 0
 var skin: int = 0
 var hair_color: int = 0
-## Índice del color de ojos (0–15).
+## Index of the eye color (0–15).
 var eyes: int = 0
-## 0 sin marcas; si no, índice + 1 (0–15).
+## 0 no marks; otherwise index + 1 (0–15).
 var marks: int = 0
 
 
-## Los 8 B. Cada campo se escribe con sus bits bajos (8, o 4 para [member eyes] y [member marks]): una
-## apariencia que pasa [method validate] cabe entera.
+## The 8 B. Each field is written with its low bits (8, or 4 for [member eyes] and
+## [member marks]): an appearance that passes [method validate] fits entirely.
 func encode() -> PackedByteArray:
 	var bytes := PackedByteArray()
 	bytes.resize(ENCODED_SIZE)
@@ -58,7 +59,8 @@ func encode() -> PackedByteArray:
 	return bytes
 
 
-## Lee 8 B; null si no son exactamente 8. No mira si valen: eso es [method validate].
+## Reads 8 B; null if they are not exactly 8. It does not check whether they are valid: that is
+## [method validate].
 static func decode(bytes: PackedByteArray) -> CharacterAppearance:
 	if bytes.size() != ENCODED_SIZE:
 		return null
@@ -75,14 +77,15 @@ static func decode(bytes: PackedByteArray) -> CharacterAppearance:
 	return appearance
 
 
-## true si vale para un personaje del reino [param realm] (código de [enum NetProtocol.Realm], el de
-## [code]claimed.realm[/code] y de [code]ValidateCreate[/code]) y del pueblo [param race_id] (§7.2):
-## [br]- [param race_id] existe, es de ese reino y el byte 0 es su índice + 1 (la raza va en los dos
-## sitios y deben coincidir);
-## [br]- cada índice está en las listas del pueblo (y existe en el catálogo);
-## [br]- cada pieza (cabeza, pelo, barba y marcas) encaja con el cuerpo;
-## [br]- un 0 de pelo o barba solo si el pueblo lo admite ([member RaceDefinition.allows_no_hair],
-## [member RaceDefinition.allows_no_beard]); sin marcas vale siempre.
+## true if valid for a character of realm [param realm] ([enum NetProtocol.Realm] code, the one in
+## [code]claimed.realm[/code] and in [code]ValidateCreate[/code]) and of people [param race_id]
+## (§7.2):
+## [br]- [param race_id] exists, belongs to that realm and byte 0 is its index + 1 (the race goes
+## in both places and they must match);
+## [br]- each index is in the people's lists (and exists in the catalog);
+## [br]- each part (head, hair, beard and marks) fits the body;
+## [br]- a 0 for hair or beard only if the people allows it ([member RaceDefinition.allows_no_hair],
+## [member RaceDefinition.allows_no_beard]); no marks is always valid.
 func validate(catalog: AppearanceCatalog, realm: int, race_id: StringName) -> bool:
 	if catalog == null:
 		return false
@@ -116,10 +119,10 @@ func validate(catalog: AppearanceCatalog, realm: int, race_id: StringName) -> bo
 			and _is_allowed(definition.eye_colors, eyes, catalog.eye_colors.size()))
 
 
-## Una apariencia válida al azar para el pueblo [param race_index] (índice en
-## [member AppearanceCatalog.races]): cada campo, uniforme entre lo que el pueblo permite y encaja con el
-## cuerpo elegido (con «sin» entre las opciones cuando se admite). Null si el índice no existe. Para el
-## botón «Aleatorio» de la creación (UI-24) y las pruebas.
+## A random valid appearance for people [param race_index] (index in
+## [member AppearanceCatalog.races]): each field uniform among what the people allows and fits the
+## chosen body (with "none" among the options when allowed). Null if the index does not exist. For
+## the "Aleatorio" (Random) button in creation (UI-24) and tests.
 static func random(catalog: AppearanceCatalog, race_index: int,
 		rng: RandomNumberGenerator) -> CharacterAppearance:
 	if catalog == null or race_index < 0 or race_index >= catalog.races.size():
@@ -137,9 +140,9 @@ static func random(catalog: AppearanceCatalog, race_index: int,
 	return appearance
 
 
-## La apariencia por defecto del pueblo [param race_index]: lo primero que permite de cada lista, con
-## pelo y barba si los hay compatibles, y sin marcas. La usa la zona en lugar de una apariencia que no
-## vale (§7.2). Null si el índice no existe.
+## The default appearance of people [param race_index]: the first allowed item of each list, with
+## hair and beard if compatible ones exist, and no marks. The zone uses it in place of an invalid
+## appearance (§7.2). Null if the index does not exist.
 static func default_for(catalog: AppearanceCatalog, race_index: int) -> CharacterAppearance:
 	if catalog == null or race_index < 0 or race_index >= catalog.races.size():
 		return null
@@ -153,14 +156,14 @@ static func default_for(catalog: AppearanceCatalog, race_index: int) -> Characte
 	appearance.body = options[&"body"]
 	for field: StringName in [&"head", &"skin", &"hair_color", &"eyes"]:
 		appearance.set(field, _first(options[field]))
-	# Con pelo y barba si hay alguno compatible (la primera opción es «sin» cuando se admite).
+	# With hair and beard if any is compatible (the first option is "none" when allowed).
 	appearance.hair = _first_present(options[&"hair"])
 	appearance.beard = _first_present(options[&"beard"])
 	appearance.marks = NONE
 	return appearance
 
 
-## true si las dos apariencias tienen los mismos 8 B.
+## true if both appearances have the same 8 B.
 func equals(other: CharacterAppearance) -> bool:
 	return other != null and encode() == other.encode()
 
@@ -169,7 +172,7 @@ func _to_string() -> String:
 	return "CharacterAppearance(%s)" % Marshalls.raw_to_base64(encode())
 
 
-# --- Utilidades ---------------------------------------------------------------------------------
+# --- Utilities ----------------------------------------------------------------------------------
 
 static func _is_allowed(allowed: PackedInt32Array, index: int, size: int) -> bool:
 	return index >= 0 and index < size and allowed.has(index)
@@ -181,7 +184,7 @@ static func _part_fits(allowed: PackedInt32Array, parts: Array[AppearancePart], 
 			and parts[index].fits_body(body_index))
 
 
-## Los índices de [param allowed] que existen en una lista de [param size] entradas.
+## The indices of [param allowed] that exist in a list of [param size] entries.
 static func _existing(allowed: PackedInt32Array, size: int) -> PackedInt32Array:
 	var result := PackedInt32Array()
 	for index: int in allowed:
@@ -190,8 +193,8 @@ static func _existing(allowed: PackedInt32Array, size: int) -> PackedInt32Array:
 	return result
 
 
-## Lo que se puede elegir en cada campo con el cuerpo [param body_index], ya en el valor de los 8 B (pelo,
-## barba y marcas con +1 y «sin» delante cuando se admite).
+## What can be chosen in each field with body [param body_index], already as the 8 B value (hair,
+## beard and marks with +1 and "none" first when allowed).
 static func _options(catalog: AppearanceCatalog, definition: RaceDefinition, body_index: int) -> Dictionary:
 	var options: Dictionary = {&"body": body_index}
 	options[&"head"] = AppearanceCatalog.fitting_indices(definition.heads, catalog.heads, body_index)
@@ -207,7 +210,7 @@ static func _options(catalog: AppearanceCatalog, definition: RaceDefinition, bod
 	return options
 
 
-## [param indices] + 1, con [constant NONE] delante si [param none_allowed].
+## [param indices] + 1, with [constant NONE] first if [param none_allowed].
 static func _with_none(indices: PackedInt32Array, none_allowed: bool) -> PackedInt32Array:
 	var result := PackedInt32Array()
 	if none_allowed:
@@ -227,7 +230,7 @@ static func _first(choices: PackedInt32Array) -> int:
 	return choices[0] if not choices.is_empty() else 0
 
 
-## La primera opción que no es «sin»; [constant NONE] si no hay ninguna.
+## The first option that is not "none"; [constant NONE] if there is none.
 static func _first_present(choices: PackedInt32Array) -> int:
 	for choice: int in choices:
 		if choice != NONE:

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Medidas objetivas de los iconos de la interfaz (ART-12), sobre los PNG ya escritos.
+"""Objective measurements of the interface icons (ART-12), on the PNGs already written.
 
-Comprueba lo que pedía la crítica del director de arte, con números en vez de a ojo:
+It checks what the art director's critique asked for, with numbers instead of by eye:
 
-  - Peso visual: cuánto del interior (112 x 112 de los 128 px) cubre cada figura. Meta: 35 a 55 %.
-  - Silueta: solape (intersección sobre unión) a 32 px entre los iconos de una misma barra de
-    habilidades. Meta: 50 % o menos (antes, golpe de escudo y muro de escudos llegaban al 74 %).
-  - Zonas seguras: cuánto de la esquina de arriba a la izquierda (rótulo de tecla) y de la de abajo a
-    la derecha (contador) tapa la figura.
-  - Fondos: valor y saturación de cada fondo por categoría (meta: valor 25 a 35 %, saturación de 0,45
-    o menos).
-  - Estados pequeños: cuánto del cuadrado llena la figura (meta: alrededor del 90 %).
+  - Visual weight: how much of the interior (112 x 112 of the 128 px) each shape covers. Goal: 35 to 55 %.
+  - Silhouette: overlap (intersection over union) at 32 px between the icons of the same ability
+    bar. Goal: 50 % or less (before, shield bash and shield wall reached 74 %).
+  - Safe zones: how much of the top-left corner (key label) and of the bottom-right one
+    (counter) the shape covers.
+  - Backgrounds: value and saturation of each background per category (goal: value 25 to 35 %, saturation
+    of 0.45 or less).
+  - Small states: how much of the square the shape fills (goal: around 90 %).
 
-Uso, desde la raíz del proyecto:
+Usage, from the project root:
 
     python3 tools/ui/icons/qa.py [--out build/iconos/metricas.txt]
 """
@@ -44,7 +44,7 @@ STATES = ["bleed", "regen", "stun", "slowed", "knockback", "downed", "rooted"]
 
 COVER_LO, COVER_HI = 0.35, 0.55
 IOU_MAX = 0.50
-TL_ZONE = (0, 0, 36, 28)      # x0, y0, x1, y1 en unidades de 128 px
+TL_ZONE = (0, 0, 36, 28)      # x0, y0, x1, y1 in units of 128 px
 BR_ZONE = (92, 96, 128, 128)
 
 

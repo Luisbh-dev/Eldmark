@@ -1,18 +1,17 @@
 shader_type spatial;
-// Bocanada de polvo o humo con volumen, luz y sombra, para GPUParticles3D (mezcla NORMAL).
+// Puff of dust or smoke with volume, light and shadow, for GPUParticles3D (NORMAL blend).
 //
-// La textura (puffs.png) no lleva color: R es la altura del relieve, G un ruido fino y B uno de remolino.
-// De la altura sale la normal en cada píxel, y la luz del sol (con su sombra: lo que cae a la sombra de
-// un árbol o una muralla se oscurece) la modela como un volumen, no como un cartel plano. El color base
-// es el tinte de instancia (el del suelo).
+// The texture (puffs.png) carries no color: R is the relief height, G a fine noise and B a swirl
+// noise. The normal at each pixel comes from the height, and the sun's light (with its shadow:
+// whatever falls in the shadow of a tree or a wall gets darker) models it as a volume, not as a
+// flat sign. The base color is the instance tint (the ground's).
 //
-// La bocanada no se apaga bajando el alfa: se DESHACE desde el borde. El umbral [erode_start] ->
-// [erode_end] sube a lo largo de la vida (a partir de [hold]) y se come primero lo más fino, con el ruido
-// como contorno; el interior aguanta hasta casi el final. Con [soft_distance] > 0 el polvo se funde con
-// el suelo en vez de cortarlo.
+// The puff does not fade out by lowering the alpha: it BREAKS APART from the edge. The threshold
+// [erode_start] -> [erode_end] rises over its life (starting from [hold]) and eats the thinnest
+// parts first, with the noise as the outline; the interior holds until almost the end. With
+// [soft_distance] > 0 the dust blends into the ground instead of being cut off.
 //
-// Datos por partícula: INSTANCE_CUSTOM.x ángulo, .y fase de vida (0 al nacer, 1 al morir), .z casilla del
-// atlas.
+// Per-particle data: INSTANCE_CUSTOM.x angle, .y life phase (0 at birth, 1 at death), .z atlas cell.
 render_mode blend_mix, depth_draw_never, cull_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
@@ -21,23 +20,23 @@ uniform sampler2D tex : filter_linear_mipmap, repeat_disable;
 uniform sampler2D depth_tex : hint_depth_texture, repeat_disable, filter_nearest;
 uniform int h_frames = 2;
 uniform int v_frames = 2;
-// Cuánto marca el relieve la normal.
+// How strongly the relief marks the normal.
 uniform float bump = 12.0;
 uniform float opacity = 0.7;
 uniform float soft_distance = 0.3;
-// Fracción de la vida que tarda en aparecer, y desde cuándo se deshace.
+// Fraction of its life it takes to appear, and from when it breaks apart.
 uniform float fade_in = 0.06;
 uniform float hold = 0.25;
 uniform float erode_start = 0.08;
 uniform float erode_end = 0.82;
-// Anchura del borde al deshacerse y opacidad relativa del borde (más transparente que el centro).
+// Width of the edge as it breaks apart and relative opacity of the edge (more transparent than the center).
 uniform float edge_soft = 0.28;
 uniform float edge_alpha = 0.3;
-// Cuánto crece (+) o encoge (-) a lo largo de su vida, además de su curva de escala.
+// How much it grows (+) or shrinks (-) over its life, in addition to its scale curve.
 uniform float grow = 0.0;
-// Luz: cuánto cuenta la luz directa (con sombra); el ambiente del entorno se suma aparte.
+// Light: how much the direct light (with shadow) counts; the environment's ambient is added separately.
 uniform float light_gain = 1.6;
-// Cuánto se oscurece el color base (la luz del sol y el ambiente lo suben otra vez).
+// How much the base color is darkened (the sunlight and the ambient raise it again).
 uniform float albedo_scale = 0.62;
 instance uniform vec4 tint : source_color = vec4(1.0);
 
@@ -60,10 +59,10 @@ void fragment() {
 	vec4 t = texture(tex, uv);
 	float hx = texture(tex, uv + vec2(texel.x, 0.0)).r - texture(tex, uv - vec2(texel.x, 0.0)).r;
 	float hy = texture(tex, uv + vec2(0.0, texel.y)).r - texture(tex, uv - vec2(0.0, texel.y)).r;
-	// Gradiente en el plano de la imagen (x a la derecha, y hacia arriba) y giro de la partícula.
+	// Gradient in the image plane (x to the right, y upward) and the particle's rotation.
 	vec2 gradient = vfx_rot(v_angle) * vec2(hx, -hy) * bump;
 	NORMAL = normalize(vec3(-gradient, 1.0));
-	// Deshacerse desde el borde: el umbral sube con la edad y se come primero lo fino.
+	// Breaking apart from the edge: the threshold rises with age and eats the thin parts first.
 	float decay = smoothstep(hold, 1.0, v_age);
 	float cut = mix(erode_start, erode_end, decay);
 	float body = t.r * (0.7 + 0.6 * t.g) + (t.b - 0.5) * 0.12 * decay;
@@ -78,8 +77,8 @@ void fragment() {
 }
 
 void light() {
-	// Una bocanada difunde la luz: poco contraste entre el lado de la luz y el otro, pero el sol entero
-	// (ATTENUATION lleva la sombra) pesa lo bastante para que a la sombra se note.
+	// A puff diffuses light: little contrast between the lit side and the other, but the full sun
+	// (ATTENUATION carries the shadow) weighs enough for the shade to be noticeable.
 	float lambert = clamp(dot(NORMAL, LIGHT) * 0.5 + 0.5, 0.0, 1.0);
 	DIFFUSE_LIGHT += ATTENUATION * LIGHT_COLOR * (0.45 + 0.55 * lambert) * light_gain / PI;
 }

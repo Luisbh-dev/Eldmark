@@ -1,51 +1,50 @@
 class_name StatusSystem
 extends RefCounted
-## Efectos de estado del servidor (docs/habilidades.md, sección 4.3; CMB-20): sangrado, curación en el
-## tiempo, ralentizar, enraizar, más daño y menos mitigación.
+## Server status effects (docs/habilidades.md, section 4.3; CMB-20): bleed, heal over time, slow, root, bonus damage and
+## reduced mitigation.
 ## [br][br]
-## Cada [Combatant] lleva hasta [constant MAX_EFFECTS] [StatusSystem.ActiveEffect] en
-## [member Combatant.effects], ordenados por id de efecto. Uno por efecto: aplicar uno que ya está lo
-## renueva según su [enum StatusEffectDefinition.Stacking]. Uno nuevo cuando ya hay
-## [constant MAX_EFFECTS] sustituye al que acaba antes.
+## Each [Combatant] carries up to [constant MAX_EFFECTS] [StatusSystem.ActiveEffect] in [member Combatant.effects],
+## sorted by effect id. One per effect: applying one that is already present renews it according to its
+## [enum StatusEffectDefinition.Stacking]. A new one when there are already [constant MAX_EFFECTS] replaces the one that
+## ends soonest.
 ## [br][br]
-## [b]Aplicar[/b] ([method apply]) en [code]s[/code]: REFRESH alarga el fin a [code]s + D[/code] (el ancla
-## no cambia); STACK suma una acumulación (hasta [member StatusTicks.max_stacks]) y alarga el fin; STRONGEST
-## se queda con el más fuerte y, si es igual (un mismo efecto siempre lo es: sus datos no cambian), con
-## el fin más tardío y el autor de ese fin. REFRESH y STACK pasan siempre al último autor. Uno nuevo
-## empieza con [code]anchor = s[/code] y una acumulación. SLOW y ROOT
-## escriben además su ranura de movimiento en [CombatState] ([method ActionMachine.impose_move_effect]),
-## que es lo que cambia la velocidad en el cliente y en el servidor. Evento STATUS 1.
+## [b]Applying[/b] ([method apply]) at [code]s[/code]: REFRESH extends the end to [code]s + D[/code] (the anchor does not
+## change); STACK adds a stack (up to [member StatusTicks.max_stacks]) and extends the end; STRONGEST keeps the strongest
+## and, if equal (the same effect always is: its data does not change), the latest end and the author of that end.
+## REFRESH and STACK always pass to the latest author. A new one starts with [code]anchor = s[/code] and one stack. SLOW
+## and ROOT also write their movement slot in [CombatState] ([method ActionMachine.impose_move_effect]), which is what
+## changes the speed on the client and on the server. STATUS event 1.
 ## [br][br]
-## [b]Pulsos exactos[/b] ([method step], paso 6 del tick): en [code]anchor + k · P[/code] para
-## [code]k = 1, 2…[/code] mientras [code]anchor + k · P ≤ until[/code]; sin renovar son [code]D / P[/code]
-## (6 en el sangrado). Primero se reúnen los pulsos de todos y después se aplican, por net_id del afectado
-## e id del efecto, saltándose a quien ya esté muerto o derribado en este tick: un pulso que mata o derriba
-## a mitad no cambia la lista que se recorre. Un pulso de daño lo aplica el [CombatDirector]
-## ([signal pulse_damage]: HIT con la fuente del efecto, puede matar y no interrumpe); uno de curación cura
-## sin pasar del máximo (HEAL). El último pulso y la caducidad caen en el mismo tick: primero el pulso.
+## [b]Exact pulses[/b] ([method step], tick step 6): at [code]anchor + k · P[/code] for [code]k = 1, 2…[/code] while
+## [code]anchor + k · P ≤ until[/code]; without renewal they are [code]D / P[/code] (6 for bleed). First the pulses of
+## everyone are gathered and then applied, by net_id of the affected one and effect id, skipping whoever is already dead
+## or knocked down in this tick: a pulse that kills or knocks down midway does not change the list being walked. A damage
+## pulse is applied by the [CombatDirector] ([signal pulse_damage]: HIT with the effect's source, it can kill and does not
+## interrupt); a heal pulse heals without exceeding the maximum (HEAL). The last pulse and the expiry fall on the same
+## tick: pulse first.
 ## [br][br]
-## [b]Caducidad[/b]: en [code]s ≥ until[/code] se quita (STATUS 2). La ranura de movimiento ya la vacía la
-## simulación en ese mismo tick (su fin es el mismo).
+## [b]Expiry[/b]: at [code]s ≥ until[/code] it is removed (STATUS 2). The movement slot is already emptied by the
+## simulation on that same tick (its end is the same).
 ## [br][br]
-## [b]Limpieza[/b] ([method clear]): al morir, al quedar derribado y al reaparecer se quitan todos sin
-## STATUS (DEATH, DOWNED y RESPAWN los borran en el cliente). Al darse de baja una entidad, sus efectos
-## sobre los demás se quitan con STATUS 2 ([method forget_author]).
+## [b]Clearing[/b] ([method clear]): on death, on being knocked down and on respawn, all are removed without STATUS
+## (DEATH, DOWNED and RESPAWN erase them on the client). When an entity is removed, its effects on others are removed
+## with STATUS 2 ([method forget_author]).
 ## [br][br]
-## No toca la red ni el reloj: avisa con [signal event_emitted] (STATUS y HEAL) y
-## [signal pulse_damage], que reenvía y aplica el [CombatDirector].
+## It touches neither the network nor the clock: it reports with [signal event_emitted] (STATUS and HEAL) and
+## [signal pulse_damage], which the [CombatDirector] forwards and applies.
 ## [br][br]
-## [b]Coste.[/b] Cada [Combatant] guarda en [member Combatant.effects_due] el primer tick en que le pasa algo
-## (un pulso o una caducidad), y el sistema el menor de todos: [method step] no recorre a nadie en un tick
-## sin sucesos y, en uno con sucesos, salta a quien no tiene nada. Cada efecto guarda su [StatusTicks] para
-## no buscarlo en el catálogo.
+## [b]Cost.[/b] Each [Combatant] stores in [member Combatant.effects_due] the first tick at which something happens to it
+## (a pulse or an expiry), and the system the lowest of all: [method step] walks nobody on a tick with no events and, on
+## one with events, skips whoever has nothing. Each effect stores its [StatusTicks] so as not to look it up in the
+## catalog.
 
-## Un evento STATUS o HEAL y los net_id implicados (el afectado y el autor).
+## A STATUS or HEAL event and the net_ids involved (the affected one and the author).
 signal event_emitted(event: NetMessages.EntityEvent, involved: PackedInt32Array)
-## Un pulso de daño en el tiempo sobre [param target] de [param author_id] (0 = sin autor):
-## [param amount] es [code]pulse_amount × stacks[/code], sin modificadores. Lo aplica el [CombatDirector].
+## A damage-over-time pulse on [param target] from [param author_id] (0 = no author): [param amount] is
+## [code]pulse_amount × stacks[/code], without modifiers. Applied by the [CombatDirector].
 signal pulse_damage(target: Combatant, author_id: int, status: StatusTicks, amount: int, tick: int)
 
-## Efectos activos por entidad como mucho.
+## Maximum active effects per entity.
 const MAX_EFFECTS: int = 8
 
 const _KIND_DOT: int = StatusEffectDefinition.Kind.DAMAGE_OVER_TIME
@@ -53,33 +52,33 @@ const _KIND_HOT: int = StatusEffectDefinition.Kind.HEAL_OVER_TIME
 const _KIND_DAMAGE_UP: int = StatusEffectDefinition.Kind.DAMAGE_UP
 const _KIND_MITIGATION_DOWN: int = StatusEffectDefinition.Kind.MITIGATION_DOWN
 
-# Primer tick en que puede pasarle algo a algún efecto (el menor effects_due; más bajo de la cuenta solo
-# cuesta un recorrido de más, que lo vuelve a calcular).
+# First tick at which something may happen to any effect (the lowest effects_due; being lower than it should be only
+# costs one extra walk, which recomputes it).
 var _next_due: int = Combatant.NO_EFFECTS_DUE
 
-## Contadores de la ejecución (para el informe del servidor).
+## Counters for the run (for the server report).
 var stats: Dictionary[StringName, int] = {
 	&"status_applied": 0, &"status_removed": 0, &"pulses": 0, &"healed": 0,
 }
 
 
-## Un efecto activo en un [Combatant].
+## An active effect on a [Combatant].
 class ActiveEffect:
-	## Id del [StatusTicks] en el catálogo.
+	## Id of the [StatusTicks] in the catalog.
 	var status_id: int = 0
-	## net_id de quien lo puso (0 = sin autor: el comando 14). El último que lo renovó (en STRONGEST, el
-	## que puso el fin más tardío).
+	## net_id of whoever applied it (0 = no author: command 14). The last one to renew it (in STRONGEST, the one who set the
+	## latest end).
 	var source_id: int = 0
-	## Tick desde el que se cuentan los pulsos (el de la primera aplicación).
+	## Tick from which pulses are counted (that of the first application).
 	var anchor_tick: int = 0
-	## Tick en que acaba (exclusivo).
+	## Tick at which it ends (exclusive).
 	var until_tick: int = 0
 	var stacks: int = 1
-	## Sus datos (no cambian mientras vive).
+	## Its data (they do not change while it lives).
 	var status: StatusTicks = null
 
 
-	## Primer tick posterior a [param after] en que le pasa algo: su siguiente pulso o su caducidad.
+	## First tick after [param after] at which something happens to it: its next pulse or its expiry.
 	func next_event_after(after: int) -> int:
 		if status != null and status.has_pulses():
 			var elapsed: int = maxi(after - anchor_tick, 0)
@@ -90,7 +89,7 @@ class ActiveEffect:
 		return maxi(until_tick, after + 1)
 
 
-# Un pulso reunido en el primer recorrido de step().
+# A pulse gathered in step()'s first walk.
 class _Pulse:
 	var target: Combatant
 	var status: StatusTicks
@@ -98,10 +97,9 @@ class _Pulse:
 	var stacks: int = 1
 
 
-## Aplica el efecto [param status_id] del catálogo a [param target] en el tick [param s], puesto por
-## [param source_id] (0 = sin autor), durante [param duration_ticks] ticks (0 = los del dato). No hace nada
-## sobre un muerto, un derribado (docs/habilidades.md, sección 4.3) ni con un efecto que no existe. Devuelve
-## si se ha aplicado.
+## Applies the catalog effect [param status_id] to [param target] at tick [param s], set by [param source_id] (0 = no
+## author), for [param duration_ticks] ticks (0 = those of the data). Does nothing on a dead target, a knocked down one
+## (docs/habilidades.md, section 4.3) or with an effect that does not exist. Returns whether it was applied.
 func apply(target: Combatant, status_id: int, source_id: int, s: int, duration_ticks: int = 0) -> bool:
 	var status: StatusTicks = CombatCatalog.status(status_id)
 	if status == null or target == null or not target.is_alive():
@@ -128,15 +126,14 @@ func apply(target: Combatant, status_id: int, source_id: int, s: int, duration_t
 				effect.stacks = mini(effect.stacks + 1, maxi(status.max_stacks, 1))
 				effect.source_id = source_id
 			StatusEffectDefinition.Stacking.STRONGEST:
-				# Un mismo efecto siempre es igual de fuerte (sus datos no cambian): el fin más tardío, y
-				# con él su autor (el que lo sostiene; si no, la baja del primero quitaría lo que renovó
-				# otro: revisión de la fase 4).
+				# The same effect is always equally strong (its data does not change): the latest end, and with it its author (the one
+				# that sustains it; otherwise, the first one's removal would take away what another renewed: phase 4 review).
 				if until > effect.until_tick:
 					effect.source_id = source_id
 			_:
 				effect.source_id = source_id
-		# El fin nunca retrocede (solo podría con la duración del comando 14): así la ranura de
-		# movimiento, que también se queda con el más tardío, acaba en el mismo tick que el efecto.
+		# The end never goes back (it only could with command 14's duration): so the movement slot, which also keeps the
+		# latest, ends on the same tick as the effect.
 		effect.until_tick = maxi(effect.until_tick, until)
 	target.effects_due = mini(target.effects_due, effect.next_event_after(s))
 	_next_due = mini(_next_due, target.effects_due)
@@ -150,8 +147,7 @@ func apply(target: Combatant, status_id: int, source_id: int, s: int, duration_t
 	return true
 
 
-## Paso 6 del tick [param s] (docs/habilidades.md, sección 4.1) sobre [param list] (por net_id): pulsos y
-## caducidades.
+## Step 6 of tick [param s] (docs/habilidades.md, section 4.1) over [param list] (by net_id): pulses and expiries.
 func step(s: int, list: Array[Combatant]) -> void:
 	if s < _next_due:
 		return
@@ -190,7 +186,7 @@ func step(s: int, list: Array[Combatant]) -> void:
 		while index < target.effects.size():
 			var effect: ActiveEffect = target.effects[index]
 			if s >= effect.until_tick:
-				# La ranura de movimiento ya la vació la simulación de este tick (acaba en el mismo).
+				# The movement slot was already emptied by this tick's simulation (it ends on the same one).
 				_remove_at(target, index, s, true, false)
 			else:
 				next_due = mini(next_due, effect.next_event_after(s))
@@ -201,8 +197,8 @@ func step(s: int, list: Array[Combatant]) -> void:
 		_next_due = mini(_next_due, target.effects_due)
 
 
-## Cura [param amount] a [param target] sin pasar del máximo (de parte de [param healer_id]; él mismo
-## si es su net_id) con la fuente [param source], y emite HEAL si ha curado algo. Devuelve lo curado.
+## Heals [param amount] to [param target] without exceeding the maximum (on behalf of [param healer_id]; itself if it is
+## its own net_id) with source [param source], and emits HEAL if it healed anything. Returns what was healed.
 func heal(target: Combatant, healer_id: int, amount: int, source: int, s: int) -> int:
 	if target == null or not target.is_alive():
 		return 0
@@ -216,9 +212,9 @@ func heal(target: Combatant, healer_id: int, amount: int, source: int, s: int) -
 	return healed
 
 
-## Quita todos los efectos de [param target] sin eventos (al morir, al quedar derribado o al reaparecer:
-## el cliente los borra con DEATH, DOWNED y RESPAWN) y vacía sus ranuras de movimiento en [CombatState].
-## No pasa el estado por encode/decode: lo hace quien llama, que acaba de imponer otra acción.
+## Removes all effects from [param target] without events (on death, on being knocked down or on respawn: the client
+## erases them with DEATH, DOWNED and RESPAWN) and empties its movement slots in [CombatState]. It does not pass the state
+## through encode/decode: the caller does, having just imposed another action.
 func clear(target: Combatant) -> void:
 	if target == null or target.effects.is_empty():
 		return
@@ -232,8 +228,8 @@ func clear(target: Combatant) -> void:
 	target.effects_due = Combatant.NO_EFFECTS_DUE
 
 
-## Al darse de baja [param author_id] en el tick [param s]: quita con STATUS 2 los efectos que puso a los
-## demás de [param list] (con sus ranuras de movimiento).
+## When [param author_id] is removed at tick [param s]: removes with STATUS 2 the effects it applied to the others in
+## [param list] (with their movement slots).
 func forget_author(author_id: int, s: int, list: Array[Combatant]) -> void:
 	if author_id <= 0:
 		return
@@ -248,7 +244,7 @@ func forget_author(author_id: int, s: int, list: Array[Combatant]) -> void:
 				index += 1
 
 
-## El efecto [param status_id] de [param target], o null.
+## The effect [param status_id] of [param target], or null.
 func find(target: Combatant, status_id: int) -> ActiveEffect:
 	for effect: ActiveEffect in target.effects:
 		if effect.status_id == status_id:
@@ -256,24 +252,23 @@ func find(target: Combatant, status_id: int) -> ActiveEffect:
 	return null
 
 
-## Multiplicador de daño de [param attacker]: [code]1 + Σ DAMAGE_UP[/code] (magnitud por acumulación).
+## Damage multiplier of [param attacker]: [code]1 + Σ DAMAGE_UP[/code] (magnitude per stack).
 func damage_scale(attacker: Combatant) -> float:
 	if attacker == null or attacker.effects.is_empty():
 		return 1.0
 	return 1.0 + _sum_magnitude(attacker, _KIND_DAMAGE_UP)
 
 
-## Lo que baja la mitigación del bloqueo de [param victim]: [code]Σ MITIGATION_DOWN[/code] (en valor
-## absoluto, por acumulación).
+## How much [param victim]'s block mitigation drops: [code]Σ MITIGATION_DOWN[/code] (in absolute value, per stack).
 func mitigation_penalty(victim: Combatant) -> float:
 	if victim == null or victim.effects.is_empty():
 		return 0.0
 	return _sum_magnitude(victim, _KIND_MITIGATION_DOWN)
 
 
-# --- Internos ---------------------------------------------------------------------------------
+# --- Internals ---------------------------------------------------------------------------------
 
-# Un pulso no se aplica a quien ya ha muerto o ha quedado derribado en este tick (sus efectos se quitaron).
+# A pulse is not applied to whoever has already died or been knocked down in this tick (their effects were removed).
 static func _takes_pulses(target: Combatant) -> bool:
 	return target.is_alive()
 
@@ -287,8 +282,8 @@ func _sum_magnitude(combatant: Combatant, kind: int) -> float:
 	return total
 
 
-# Quita el efecto [param index] de [param target]: con [param emit], STATUS 2; con [param clear_slot],
-# vacía también su ranura de movimiento (y pasa el estado por encode/decode).
+# Removes effect [param index] from [param target]: with [param emit], STATUS 2; with [param clear_slot], also empties
+# its movement slot (and passes the state through encode/decode).
 func _remove_at(target: Combatant, index: int, s: int, emit: bool, clear_slot: bool = true) -> void:
 	var effect: ActiveEffect = target.effects[index]
 	target.effects.remove_at(index)
@@ -317,7 +312,7 @@ static func _insert_sorted(target: Combatant, effect: ActiveEffect) -> void:
 	target.effects.insert(index, effect)
 
 
-# El que acaba antes (empate: el de menor id).
+# The one that ends soonest (tie: the lowest id).
 static func _earliest_index(target: Combatant) -> int:
 	var earliest: int = 0
 	for index: int in range(1, target.effects.size()):

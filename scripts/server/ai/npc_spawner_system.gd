@@ -1,58 +1,58 @@
 class_name NpcSpawnerSystem
 extends RefCounted
-## Crea y retira los PNJ de los generadores ([NpcSpawner]) de la zona (docs/fuerte.md, sección 4.3; MUN-09 a
-## MUN-12 y GUE-11) y lleva la navegación, el mundo de los cerebros y las fichas.
+## Creates and removes the NPCs of the zone's spawners ([NpcSpawner]) (docs/fuerte.md, section 4.3; MUN-09 to
+## MUN-12 and GUE-11) and runs the navigation, the brains' world and the tokens.
 ## [br][br]
-## [b]Generadores.[/b] Cada [NpcSpawner] es un puesto con una condición: siempre ([constant NpcSpawner.Condition.ALWAYS],
-## los Guardianes de la Puerta), mientras el fuerte es neutral (los Huecos y el Capitán del Vado) o mientras tiene
-## dueño (la guarnición). Si un fuerte no tiene generadores propios del dueño, su guarnición sale de los mismos puestos
-## de los Huecos y del Capitán, con la definición que cada una nombra en [member NpcDefinition.garrison_id] (guardias y
-## capitán del reino dueño) y su misma ruta de patrulla. Un puesto con reaparición propia
-## ([member NpcSpawner.respawn_s] mayor que 0) repone a su PNJ muerto en el tick exacto; uno sin ella lo repone la
-## fortaleza ([signal FortressController.garrison_due], [signal FortressController.guards_respawn_due]) o la reaparición
-## completa de los Huecos. Al pasar a inactivo, o al cambiar de dueño ([signal FortressController.defenders_retired]),
-## se retira a los vivos.
+## [b]Spawners.[/b] Each [NpcSpawner] is a post with a condition: always ([constant NpcSpawner.Condition.ALWAYS],
+## the Gate Guardians), while the fort is neutral (the Hollow and the Ford Captain) or while it has an
+## owner (the garrison). If a fort has no spawners of its own for the owner, its garrison comes out of the same posts
+## as the Hollow and the Captain, with the definition each one names in [member NpcDefinition.garrison_id] (guards and
+## captain of the owning realm) and the same patrol route. A post with its own respawn
+## ([member NpcSpawner.respawn_s] greater than 0) replenishes its dead NPC on the exact tick; one without it is
+## replenished by the fortress ([signal FortressController.garrison_due], [signal FortressController.guards_respawn_due]) or by the full respawn
+## of the Hollow. When it becomes inactive, or when the owner changes ([signal FortressController.defenders_retired]),
+## the living are removed.
 ## [br][br]
-## [b]Fortaleza.[/b] Lee el estado con [method FortressController.get_fortress_state] y se lo cuenta con
-## [method FortressController.register_captain] y [method FortressController.register_defender] (así el controlador sabe
-## cuándo cae el capitán y cuándo se ataca a un defensor) y [method FortressController.set_guards_alive]. Los PNJ
-## muertos avisan con [signal npc_died].
+## [b]Fortress.[/b] It reads the state with [method FortressController.get_fortress_state] and reports to it with
+## [method FortressController.register_captain] and [method FortressController.register_defender] (so the controller knows
+## when the captain falls and when a defender is attacked) and [method FortressController.set_guards_alive]. Dead NPCs
+## report with [signal npc_died].
 ## [br][br]
-## [b]Reaparición completa de los Huecos[/b] (MUN-10): con el fuerte neutral y faltando alguno de los Huecos o el
-## Capitán, si no hay ningún jugador a menos de [constant FULL_RESPAWN_RADIUS] m del fuerte durante
-## [constant FULL_RESPAWN_EMPTY_TICKS] ticks (2 min), vuelven todos (y el Capitán, si había caído) como al crearse:
-## se retiran los refuerzos que siguieran vivos y el Capitán que no había caído recupera su llamada.
+## [b]Full respawn of the Hollow[/b] (MUN-10): with the fort neutral and some of the Hollow or the Captain missing,
+## if no player is within [constant FULL_RESPAWN_RADIUS] m of the fort for
+## [constant FULL_RESPAWN_EMPTY_TICKS] ticks (2 min), they all return (and the Captain, if he had fallen) as at creation:
+## any reinforcements still alive are removed and the Captain who had not fallen gets his call back.
 ## [br][br]
-## [b]Refuerzos[/b] (los que llama el Capitán, [member NpcDefinition.reinforcement_id]): no salen de ningún puesto y
-## solo se van al morir, al retirarse los defensores (captura, reinicio) o con la reaparición completa. Nunca hay vivos
-## más de los que llama una vez ([member NpcDefinition.reinforcement_count]) por fortaleza.
+## [b]Reinforcements[/b] (those the Captain calls, [member NpcDefinition.reinforcement_id]): they come from no post and
+## leave only on dying, when the defenders are withdrawn (capture, reset) or with the full respawn. There are never more
+## alive than the Captain calls in one go ([member NpcDefinition.reinforcement_count]) per fortress.
 ## [br][br]
-## [b]Tick.[/b] [method begin_tick] y los cerebros (paso 0), y [method step] (después del paso 4b: altas, retirada de
-## cadáveres y depuración). Los avisos [code]TELEGRAPH[/code] de los ataques fuertes los manda el [ZoneServer]
-## para todos los PNJ.
+## [b]Tick.[/b] [method begin_tick] and the brains (step 0), and [method step] (after step 4b: additions, corpse
+## removal and debugging). The [code]TELEGRAPH[/code] warnings of heavy attacks are sent by the [ZoneServer]
+## for all NPCs.
 
-## Un PNJ ha muerto. [param spawner] es el generador del que salió (null en los refuerzos) y [param killer] el
-## net_id de quien lo mató (0 = el entorno).
+## An NPC has died. [param spawner] is the spawner it came from (null for reinforcements) and [param killer] the
+## net_id of whoever killed it (0 = the environment).
 signal npc_died(net_id: int, spawner: Node, killer: int)
-## Ha aparecido un PNJ de un generador.
+## An NPC from a spawner has appeared.
 signal npc_spawned(net_id: int, spawner: Node)
 
-## Ticks que un cadáver sigue en el mundo antes de retirarse (5 s).
+## Ticks a corpse stays in the world before being removed (5 s).
 const CORPSE_TICKS: int = 300
-## Ticks que se espera a la navegación antes de generar sin ella.
+## Ticks to wait for navigation before spawning without it.
 const NAVIGATION_WAIT_TICKS: int = 600
-## Distancia (m) al fuerte a la que un jugador impide la reaparición completa, y ticks (2 min) que debe faltar.
+## Distance (m) to the fort at which a player prevents the full respawn, and ticks (2 min) it must be absent.
 const FULL_RESPAWN_RADIUS: float = 40.0
 const FULL_RESPAWN_EMPTY_TICKS: int = 7200
-## Cada cuántos ticks se comprueba la reaparición completa.
+## How many ticks between full-respawn checks.
 const FULL_RESPAWN_CHECK_TICKS: int = 6
-## Cada cuántos ticks escribe la depuración de los PNJ, y radio (m) de los PNJ «cercanos».
+## How many ticks between NPC debug output writes, and radius (m) of the "nearby" NPCs.
 const DEBUG_INTERVAL_TICKS: int = 60
 const DEBUG_RADIUS: float = 60.0
-## Distancia (m) a la que aparecen los refuerzos alrededor de quien los llama.
+## Distance (m) around the caller at which reinforcements appear.
 const REINFORCEMENT_RADIUS: float = 3.5
 
-## Un PNJ creado por el sistema.
+## An NPC created by the system.
 class Member:
 	extends RefCounted
 
@@ -62,31 +62,31 @@ class Member:
 	var slot: Slot = null
 	var fortress_id: StringName = &""
 	var definition: NpcDefinition = null
-	## Tick de la muerte (-1 = vivo).
+	## Tick of death (-1 = alive).
 	var death_tick: int = -1
 
 
-## Un puesto: un generador y lo que ha creado.
+## A post: a spawner and what it has created.
 class Slot:
 	extends RefCounted
 
 	var index: int = 0
 	var marker: Node3D = null
 	var fortress_id: StringName = &""
-	## true: es el puesto de la guarnición del dueño, sacado del de un PNJ de los Huecos.
+	## true: it is the owner's garrison post, derived from that of a Hollow NPC.
 	var mirror: bool = false
 	var active: bool = false
 	var need_fill: bool = false
 	var last_definition: StringName = &""
 	var last_realm: int = -1
-	## El estado vivo de su fortaleza (null si no cuelga de ninguna) y la clave (dueño y fase) con la que se
-	## calculó [member wanted]: solo se vuelve a calcular cuando cambia.
+	## The live state of its fortress (null if it hangs from none) and the key (owner and phase) with which
+	## [member wanted] was computed: it is only recomputed when it changes.
 	var state: FortressState = null
 	var state_key: int = -1
 	var wanted: Dictionary = {}
 	var spawn_count: int = 0
 	var members: Array[Member] = []
-	## Ticks en los que reaparecen los que han muerto (solo con reaparición propia).
+	## Ticks at which the dead respawn (only with own respawn).
 	var due: PackedInt32Array = PackedInt32Array()
 
 	func live_count() -> int:
@@ -102,12 +102,12 @@ var _world: NpcWorld = null
 var _navigation: NpcNavigation = null
 var _fortresses: FortressController = null
 var _slots: Array[Slot] = []
-# Los que no salen de un puesto (los refuerzos del Capitán).
+# Those that do not come from a post (the Captain's reinforcements).
 var _extras: Array[Member] = []
 var _members_by_id: Dictionary[int, Member] = {}
-# Estado de la puerta que se le dijo a la navegación: id -> [dueño, rota].
+# State of the gate that navigation was told: id -> [owner, broken].
 var _gate_applied: Dictionary[StringName, Vector2i] = {}
-# Cola de lo que avisa el controlador de la fortaleza (se atiende en step()).
+# Queue of what the fortress controller reports (handled in step()).
 var _retired: Array[StringName] = []
 var _garrison_requests: Array[Dictionary] = []
 var _guard_requests: Array[StringName] = []
@@ -119,17 +119,17 @@ var _removed_total: int = 0
 var _reinforcements_total: int = 0
 var _full_respawns: int = 0
 var _debug_enabled: bool = false
-# Definiciones que sustituyen a las del catálogo en este servidor (pruebas): id -> definición.
+# Definitions that replace the catalog's on this server (tests): id -> definition.
 var _overrides: Dictionary[StringName, NpcDefinition] = {}
 var _debug_entity: NetEntity = null
-## [code](line: String) -> void[/code]: el registro del servidor, para la depuración.
+## [code](line: String) -> void[/code]: the server's log, for debugging.
 var log_sink: Callable = Callable()
 
 
-# --- Montaje ----------------------------------------------------------------------------------
+# --- Setup ------------------------------------------------------------------------------------
 
-## Lee los generadores de [param world] (la raíz de la zona, en el árbol), monta la navegación (si la zona tiene
-## malla) y se engancha al combate y a las fortalezas de [param server]. Devuelve cuántos puestos ha creado.
+## Reads the spawners of [param world] (the zone's root, in the tree), sets up navigation (if the zone has a
+## mesh) and hooks into the combat and fortresses of [param server]. Returns how many posts it created.
 func setup(server: ZoneServer, world: Node3D, zone_id: String) -> int:
 	_server = server
 	_world_node = world
@@ -152,7 +152,7 @@ func setup(server: ZoneServer, world: Node3D, zone_id: String) -> int:
 	return _slots.size()
 
 
-## Quita los PNJ, las fichas y la navegación (cierre del servidor).
+## Removes the NPCs, the tokens and the navigation (server shutdown).
 func dispose() -> void:
 	for member: Member in _members_by_id.values():
 		if member.brain != null:
@@ -167,12 +167,12 @@ func dispose() -> void:
 		_navigation = null
 
 
-# --- Consultas --------------------------------------------------------------------------------
+# --- Queries ----------------------------------------------------------------------------------
 
-## Sustituye en este servidor la definición [param id] del catálogo por [param definition] (null quita la
-## sustitución) para los PNJ que se creen desde ahora: lo usan las pruebas que necesitan PNJ más débiles sin tocar
-## [code]data/npcs/[/code] ni el catálogo, que comparte todo el proceso. [param definition] conserva el id y el número del
-## catálogo (el [code]npc_def_id[/code] del SPAWN sale de [member NpcDefinition.id]).
+## Replaces, on this server, catalog definition [param id] with [param definition] (null removes the
+## replacement) for NPCs created from now on: used by tests that need weaker NPCs without touching
+## [code]data/npcs/[/code] or the catalog, which the whole process shares. [param definition] keeps the catalog's id and
+## number (the SPAWN's [code]npc_def_id[/code] comes from [member NpcDefinition.id]).
 func set_definition_override(id: StringName, definition: NpcDefinition) -> void:
 	if definition == null:
 		_overrides.erase(id)
@@ -180,27 +180,27 @@ func set_definition_override(id: StringName, definition: NpcDefinition) -> void:
 		_overrides[id] = definition
 
 
-## La definición [param id] que usa este servidor: la sustituta, si la hay, o la del catálogo.
+## The definition [param id] this server uses: the replacement, if any, or the catalog's.
 func get_definition(id: StringName) -> NpcDefinition:
 	return _definition_of(id)
 
 
-## El mundo que ven los cerebros (fichas, grupos, navegación).
+## The world the brains see (tokens, groups, navigation).
 func get_world() -> NpcWorld:
 	return _world
 
 
-## La navegación (null si la zona no tiene malla).
+## The navigation (null if the zone has no mesh).
 func get_navigation() -> NpcNavigation:
 	return _navigation
 
 
-## Número de puestos.
+## Number of posts.
 func get_slot_count() -> int:
 	return _slots.size()
 
 
-## Los generadores (nodos) de la zona, en el orden en que se crearon los puestos.
+## The zone's spawners (nodes), in the order in which the posts were created.
 func get_spawners() -> Array[Node3D]:
 	var result: Array[Node3D] = []
 	for slot: Slot in _slots:
@@ -208,7 +208,7 @@ func get_spawners() -> Array[Node3D]:
 	return result
 
 
-## net_id de los PNJ vivos del generador [param spawner] (o de todos si es null), en el orden de aparición.
+## net_id of the living NPCs of spawner [param spawner] (or of all if null), in spawn order.
 func get_alive_ids(spawner: Node = null) -> Array[int]:
 	var ids: Array[int] = []
 	for slot: Slot in _slots:
@@ -224,7 +224,7 @@ func get_alive_ids(spawner: Node = null) -> Array[int]:
 	return ids
 
 
-## net_id de todos los PNJ del sistema (vivos y cadáveres) que cuelgan del generador [param spawner].
+## net_id of all the system's NPCs (living and corpses) that hang from spawner [param spawner].
 func get_member_ids(spawner: Node) -> Array[int]:
 	var ids: Array[int] = []
 	for slot: Slot in _slots:
@@ -234,7 +234,7 @@ func get_member_ids(spawner: Node) -> Array[int]:
 	return ids
 
 
-## El cerebro del PNJ [param net_id] (también el de un PNJ suelto que no sale de ningún generador), o null.
+## The brain of NPC [param net_id] (also that of a loose NPC that comes from no spawner), or null.
 func get_brain(net_id: int) -> HfsmBrain:
 	var member: Member = _members_by_id.get(net_id)
 	if member != null:
@@ -242,7 +242,7 @@ func get_brain(net_id: int) -> HfsmBrain:
 	return _server.get_npc_brain(net_id) as HfsmBrain if _server != null else null
 
 
-## Cuántos PNJ del sistema hay vivos.
+## How many of the system's NPCs are alive.
 func get_alive_count() -> int:
 	var total: int = 0
 	for member: Member in _members_by_id.values():
@@ -251,7 +251,7 @@ func get_alive_count() -> int:
 	return total
 
 
-## true si el puesto del generador [param spawner] está activo ahora.
+## true if the post of spawner [param spawner] is active now.
 func is_active(spawner: Node) -> bool:
 	for slot: Slot in _slots:
 		if slot.marker == spawner:
@@ -259,12 +259,12 @@ func is_active(spawner: Node) -> bool:
 	return false
 
 
-## true si la navegación está lista o la zona no tiene.
+## true if navigation is ready or the zone has none.
 func is_ready() -> bool:
 	return _navigation == null or _navigation.is_ready()
 
 
-## Resumen para el informe del servidor.
+## Summary for the server report.
 func get_report() -> Dictionary:
 	return {
 		"slots": _slots.size(), "alive": get_alive_count(), "spawned": _spawn_total, "died": _death_total,
@@ -278,16 +278,16 @@ func get_report() -> Dictionary:
 	}
 
 
-# --- El tick ----------------------------------------------------------------------------------
+# --- The tick ---------------------------------------------------------------------------------
 
-## Paso 0 del tick [param tick]: los cerebros van a pensar con el estado tras el tick anterior.
+## Step 0 of tick [param tick]: the brains will think with the state after the previous tick.
 func begin_tick(tick: int) -> void:
 	if _world != null:
 		_world.begin_tick(tick)
 
 
-## Después del paso 4b del tick [param tick]: navegación, altas y retiradas, cadáveres, avisos de ataques fuertes y
-## depuración.
+## After step 4b of tick [param tick]: navigation, additions and removals, corpses, heavy-attack warnings and
+## debugging.
 func step(tick: int) -> void:
 	if _world == null:
 		return
@@ -306,7 +306,7 @@ func step(tick: int) -> void:
 		_write_debug()
 
 
-# --- Generadores ------------------------------------------------------------------------------
+# --- Spawners ---------------------------------------------------------------------------------
 
 func _collect_slots() -> void:
 	var neutral_by_fortress: Dictionary[StringName, Array] = {}
@@ -325,7 +325,7 @@ func _collect_slots() -> void:
 			var list: Array = neutral_by_fortress.get(fortress_id, [])
 			list.append(spawner)
 			neutral_by_fortress[fortress_id] = list
-	# Sin generadores propios del dueño, su guarnición sale de los puestos de los Huecos.
+	# Without spawners of its own for the owner, its garrison comes out of the Hollow's posts.
 	for fortress_id: StringName in neutral_by_fortress:
 		if fortress_id.is_empty() or owner_spawner_fortresses.has(fortress_id):
 			continue
@@ -346,7 +346,7 @@ func _add_slot(spawner: NpcSpawner, fortress_id: StringName, mirror: bool) -> vo
 	_slots.append(slot)
 
 
-# Id de la fortaleza de la que cuelga el generador, o una cadena vacía.
+# Id of the fortress the spawner hangs from, or an empty string.
 func _fortress_id_of(spawner: NpcSpawner) -> StringName:
 	if _fortresses == null:
 		return &""
@@ -359,7 +359,7 @@ func _fortress_id_of(spawner: NpcSpawner) -> StringName:
 	return &""
 
 
-# Lo que quiere el puesto ahora: si está activo, qué definición y de qué bando.
+# What the post wants now: whether it is active, which definition and which side.
 func _desired(slot: Slot) -> Dictionary:
 	var spawner: NpcSpawner = slot.marker as NpcSpawner
 	var state: FortressState = _fortresses.get_fortress_state(slot.fortress_id) \
@@ -410,7 +410,7 @@ func _step_slot(slot: Slot, tick: int) -> void:
 	if slot.need_fill:
 		slot.need_fill = false
 		_fill_slot(slot, tick)
-	# Reaparición propia (en el tick exacto).
+	# Own respawn (on the exact tick).
 	var index: int = 0
 	while index < slot.due.size():
 		if slot.due[index] <= tick:
@@ -421,11 +421,11 @@ func _step_slot(slot: Slot, tick: int) -> void:
 			index += 1
 
 
-# Crea los PNJ que faltan hasta el máximo del puesto.
+# Creates the NPCs that are missing up to the post's maximum.
 func _fill_slot(slot: Slot, tick: int) -> void:
 	var spawner: NpcSpawner = slot.marker as NpcSpawner
-	# Con el capitán caído (un fuerte cargado de la plataforma en VULNERABLE o CAPTURING, docs/plataforma.md §8) su
-	# puesto se queda vacío: vuelve con la guarnición (garrison_due) o con la reaparición completa de los Huecos.
+	# With the captain fallen (a platform-loaded fort in VULNERABLE or CAPTURING, docs/plataforma.md §8) its
+	# post stays empty: it returns with the garrison (garrison_due) or with the full respawn of the Hollow.
 	if slot.state != null and not slot.state.captain_alive and _is_captain_slot(slot):
 		slot.due.clear()
 		return
@@ -458,7 +458,7 @@ func _spawn(slot: Slot, tick: int) -> Member:
 	return member
 
 
-# Crea el PNJ de [param definition] y lo registra. null si el servidor no puede (sin ids, parado).
+# Creates the NPC of [param definition] and registers it. null if the server cannot (no ids, stopped).
 func _create_member(definition: NpcDefinition, realm: int, position: Vector3, yaw: float,
 		fortress_id: StringName, group: StringName, route: PackedVector3Array, rng_seed: int) -> Member:
 	var brain := HfsmBrain.new(rng_seed)
@@ -485,7 +485,7 @@ func _create_member(definition: NpcDefinition, realm: int, position: Vector3, ya
 	return member
 
 
-# Retira a todos los PNJ del puesto (vivos y cadáveres).
+# Removes all of the post's NPCs (living and corpses).
 func _retire_slot(slot: Slot, _tick: int) -> void:
 	for member: Member in slot.members.duplicate():
 		_remove_member(member)
@@ -503,8 +503,8 @@ func _remove_member(member: Member) -> void:
 	_removed_total += 1
 
 
-# Dice a la fortaleza cuántos guardias de su guarnición (los que no son el capitán) hay vivos; solo tiene
-# sentido con dueño.
+# Tells the fortress how many guards of its garrison (those that are not the captain) are alive; it only makes
+# sense with an owner.
 func _update_guards(fortress_id: StringName) -> void:
 	if _fortresses == null or fortress_id.is_empty():
 		return
@@ -538,7 +538,7 @@ func _remove_corpses_of(members: Array[Member], tick: int) -> void:
 			index += 1
 
 
-# --- Lo que cuenta el combate y la fortaleza -----------------------------------------------------
+# --- What combat and the fortress report -----------------------------------------------------
 
 func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
 	if event.event != NetMessages.EntityEvent.Kind.DEATH:
@@ -571,7 +571,7 @@ func _on_guards_respawn_due(fortress_id: StringName, _tick: int) -> void:
 	_guard_requests.append(fortress_id)
 
 
-# Atiende lo que ha avisado el controlador en este tick.
+# Handles what the controller reported on this tick.
 func _process_requests(tick: int) -> void:
 	for fortress_id: StringName in _retired:
 		for slot: Slot in _slots:
@@ -595,13 +595,13 @@ func _process_requests(tick: int) -> void:
 	_guard_requests.clear()
 
 
-# true si el puesto es el del capitán (su definición es un jefe).
+# true if the post is the captain's (its definition is a boss).
 func _is_captain_slot(slot: Slot) -> bool:
 	var definition: NpcDefinition = _definition_of(_desired(slot)["definition"])
 	return definition != null and definition.is_boss
 
 
-# --- Reaparición completa de los Huecos -----------------------------------------------------------
+# --- Full respawn of the Hollow -----------------------------------------------------------------
 
 func _check_full_respawns(tick: int) -> void:
 	if _fortresses == null:
@@ -625,7 +625,7 @@ func _check_full_respawns(tick: int) -> void:
 			_full_respawn(fortress_id, state, tick)
 
 
-# true si al fuerte neutral le falta alguno de los Huecos o el Capitán.
+# true if the neutral fort is missing some of the Hollow or the Captain.
 func _neutral_garrison_incomplete(fortress_id: StringName, state: FortressState) -> bool:
 	if not state.captain_alive:
 		return true
@@ -648,8 +648,8 @@ func _player_within(center: Vector3, radius: float) -> bool:
 	return false
 
 
-## Hace volver a todos los Huecos y al Capitán del Vado de [param fortress_id] (si el fuerte es neutral). Lo hace
-## solo la regla de los 2 min sin jugadores cerca; está público para las pruebas y las órdenes de administración.
+## Brings back all the Hollow and the Ford Captain of [param fortress_id] (if the fort is neutral). Normally only
+## the 2-minute rule with no players nearby does it; it is public for tests and admin commands.
 func force_full_respawn(fortress_id: StringName, tick: int) -> bool:
 	var state: FortressState = _fortresses.get_fortress_state(fortress_id) if _fortresses != null else null
 	if state == null or state.owner != RealmCatalog.NEUTRAL_CODE:
@@ -660,20 +660,20 @@ func force_full_respawn(fortress_id: StringName, tick: int) -> bool:
 
 func _full_respawn(fortress_id: StringName, state: FortressState, tick: int) -> void:
 	_full_respawns += 1
-	# El Capitán vuelve con la fortaleza: su estado pasa de VULNERABLE a GARRISONED.
+	# The Captain returns with the fortress: its state goes from VULNERABLE to GARRISONED.
 	state.respawn_captain(tick)
 	for slot: Slot in _slots:
 		if slot.fortress_id == fortress_id and not slot.mirror and slot.active:
 			slot.need_fill = true
-			# El Capitán que sigue vivo vuelve a poder llamar a sus refuerzos, como uno recién creado.
+			# The Captain who is still alive can call his reinforcements again, like a freshly created one.
 			for member: Member in slot.members:
 				if member.death_tick < 0 and member.definition.is_boss:
 					member.brain.rearm_reinforcements()
-	# Vuelven «enteros»: sin los refuerzos que quedaran.
+	# They return "whole": without any reinforcements that remained.
 	_retire_extras(fortress_id)
 
 
-# Retira los refuerzos de [param fortress_id] (vivos y cadáveres).
+# Removes the reinforcements of [param fortress_id] (living and corpses).
 func _retire_extras(fortress_id: StringName) -> void:
 	for member: Member in _extras.duplicate():
 		if member.fortress_id == fortress_id:
@@ -681,7 +681,7 @@ func _retire_extras(fortress_id: StringName) -> void:
 			_remove_member(member)
 
 
-# Refuerzos vivos de [param fortress_id].
+# Living reinforcements of [param fortress_id].
 func _alive_extras_of(fortress_id: StringName) -> int:
 	var total: int = 0
 	for member: Member in _extras:
@@ -690,11 +690,11 @@ func _alive_extras_of(fortress_id: StringName) -> int:
 	return total
 
 
-# --- Refuerzos y avisos ----------------------------------------------------------------------------
+# --- Reinforcements and warnings ----------------------------------------------------------------
 
-# Crea [param count] PNJ de [param definition_id] alrededor de [param caller], ya en alerta con su objetivo, menos los
-# refuerzos de su fortaleza que sigan vivos (nunca hay más de [param count] a la vez: los de un Capitán anterior
-# cuentan). Devuelve cuántos ha creado.
+# Creates [param count] NPCs of [param definition_id] around [param caller], already alerted with their target, minus
+# the reinforcements of its fortress that are still alive (there are never more than [param count] at once: those of
+# a previous Captain count). Returns how many it created.
 func _spawn_reinforcements(caller: HfsmBrain, definition_id: StringName, count: int) -> int:
 	var definition: NpcDefinition = _definition_of(definition_id)
 	if definition == null:
@@ -728,7 +728,7 @@ func _member_fortress(brain: HfsmBrain) -> StringName:
 	return member.fortress_id if member != null else &""
 
 
-# --- Navegación -------------------------------------------------------------------------------
+# --- Navigation -------------------------------------------------------------------------------
 
 func _setup_navigation(zone_id: String) -> void:
 	var path: String = NetZones.navmesh_path(zone_id)
@@ -750,7 +750,7 @@ func _setup_navigation(zone_id: String) -> void:
 			_navigation.add_gate_link_at(fortress_id, gate.global_transform)
 
 
-# Pone en la navegación el dueño y la rotura de cada puerta (solo cuando cambian).
+# Sets the owner and breakage of each gate in navigation (only when they change).
 func _sync_gates() -> void:
 	if _navigation == null or _fortresses == null:
 		return
@@ -762,9 +762,9 @@ func _sync_gates() -> void:
 			_navigation.set_gate_state(fortress_id, state.owner, state.is_gate_broken())
 
 
-# --- Depuración ---------------------------------------------------------------------------------
+# --- Debugging ----------------------------------------------------------------------------------
 
-## Registra los comandos de los PNJ en [param commands]: [code]npc_debug[/code] (id fijo 12).
+## Registers the NPC commands in [param commands]: [code]npc_debug[/code] (fixed id 12).
 func register_commands(commands: CommandRegistry) -> void:
 	commands.register(&"npc_debug", "npc_debug [on|off]", _console_debug, _net_debug)
 
@@ -792,12 +792,12 @@ func _console_debug(ctx: CommandRegistry.Context) -> String:
 	return "Depuración de PNJ %s" % ("activada" if _debug_enabled else "apagada")
 
 
-## true si la depuración de los PNJ está encendida.
+## true if NPC debugging is on.
 func is_debug_enabled() -> bool:
 	return _debug_enabled
 
 
-# Una línea por PNJ con cerebro de combate (los cercanos a quien lo pidió, o todos) con su estado, objetivo y ruta.
+# One line per NPC with a combat brain (those near whoever requested it, or all) with its state, target and route.
 func _write_debug() -> void:
 	if not log_sink.is_valid():
 		return

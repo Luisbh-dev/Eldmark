@@ -1,66 +1,66 @@
 class_name RespawnPointList
 extends RefCounted
-## Lista de puntos de reaparición que ofrece la pantalla de muerte y el mapa (docs/combate.md, sección
-## 5; docs/fuerte.md, sección 5; UI-14, UI-21).
+## List of respawn points offered by the death screen and the map (docs/combate.md, section 5;
+## docs/fuerte.md, section 5; UI-14, UI-21).
 ## [br][br]
-## [b]Opciones válidas (fase 4).[/b] El índice de un punto es su posición en la lista de [i]todos[/i] los
-## marcadores del grupo de reaparición de la zona, en el orden de la escena, y es el que viaja en el
-## RESPAWN_REQUEST. El cliente calcula qué puntos valen con la misma regla que el servidor
-## ([method RespawnRules.points_for]: el campamento del reino, o el interior de un fuerte propio en
-## reposo y sin ataques) y [method options] los agrupa para el jugador: los marcadores contiguos del
-## mismo sitio (los cuatro puntos de un campamento, los del patio de un fuerte) son [b]una sola
-## opción[/b], cuyo índice se reparte entre sus puntos según el jugador ([method Option.index_for]) para
-## que no reaparezcan todos encima. Si la zona no tiene marcadores de reaparición se usan los de
-## aparición del reino, como el servidor.
+## [b]Valid options (phase 4).[/b] A point's index is its position in the list of [i]all[/i] the markers
+## of the zone's respawn group, in scene order, and it is the one that travels in the RESPAWN_REQUEST.
+## The client computes which points are valid with the same rule as the server
+## ([method RespawnRules.points_for]: the realm's camp, or the interior of an owned fort that is idle
+## and not under attack) and [method options] groups them for the player: contiguous markers at the same
+## place (the four points of a camp, those of a fort's courtyard) are [b]a single option[/b], whose index
+## is spread among its points according to the player ([method Option.index_for]) so that they do not all
+## respawn on top of one another. If the zone has no respawn markers, the realm's spawn markers are used,
+## as the server does.
 ## [br][br]
-## [b]Lista antigua.[/b] [method list] y [method labels] siguen dando la lista filtrada por reino de la fase
-## 3 (la usan el servidor mientras no adopte [RespawnRules] y las zonas sin fortalezas).
+## [b]Old list.[/b] [method list] and [method labels] still give the realm-filtered list from phase 3
+## (used by the server until it adopts [RespawnRules] and by zones without fortresses).
 
-## Grupo de los puntos de reaparición de una zona (opcional: sin él valen los de aparición).
+## Group of a zone's respawn points (optional: without it, the spawn points are used).
 const GROUP: StringName = NetZones.RESPAWN_GROUP
-## Metadato con el reino de un punto.
+## Metadata with a point's realm.
 const REALM_META: StringName = &"realm"
-## Metadato opcional con el nombre que se enseña en la lista.
+## Optional metadata with the name shown in the list.
 const TITLE_META: StringName = &"title"
-## Metadato con el id de la fortaleza de un punto del interior de un fuerte.
+## Metadata with the id of the fortress of a point inside a fort.
 const FORTRESS_META: StringName = &"fortress"
-## Metros máximos entre dos puntos para que cuenten como el mismo sitio.
+## Maximum meters between two points for them to count as the same place.
 const SAME_PLACE_METERS: float = 20.0
 const TEXT_CAMP: String = "Campamento de %s"
 const TEXT_FORTRESS: String = "%s"
 
 
-## Un sitio donde se puede reaparecer: uno o varios marcadores contiguos.
+## A place where one can respawn: one or several contiguous markers.
 class Option extends RefCounted:
-	## Índices (en la lista de todos los marcadores de la zona) de sus marcadores, en orden.
+	## Indices (in the list of all the zone's markers) of its markers, in order.
 	var members: PackedInt32Array = PackedInt32Array()
 	var label: String = ""
-	## Centro de sus marcadores.
+	## Center of its markers.
 	var position: Vector3 = Vector3.ZERO
-	## true si el jugador puede reaparecer aquí ahora.
+	## true if the player can respawn here now.
 	var valid: bool = false
-	## Reino del campamento (código de red) o 0; y fortaleza si es el interior de un fuerte.
+	## Realm of the camp (network code) or 0; and the fortress if it is the interior of a fort.
 	var realm: int = 0
 	var fortress_id: StringName = &""
 
 
-	## Índice que se envía al servidor: uno de [member members], repartido según [param seed] (el id de
-	## red del jugador) para que quienes reaparecen juntos no se apilen.
+	## Index sent to the server: one of [member members], spread according to [param seed] (the player's
+	## network id) so that those who respawn together do not stack up.
 	func index_for(spread_seed: int) -> int:
 		if members.is_empty():
 			return 0
 		return members[posmod(spread_seed, members.size())]
 
 
-	## true si el marcador [param point_index] es uno de los de esta opción.
+	## true if marker [param point_index] is one of this option's.
 	func has_member(point_index: int) -> bool:
 		return members.has(point_index)
 
 
-## Puntos del reino [param realm_code] (un [enum NetProtocol.Realm]) en [param world] (en el árbol).
-## Es exactamente la lista del servidor ([method NetZones.get_respawn_points]), para que el índice
-## del RESPAWN_REQUEST signifique lo mismo en los dos lados. Si está vacía, el servidor usa su
-## punto de aparición del reino, y la pantalla ofrece una sola opción.
+## Points of realm [param realm_code] (an [enum NetProtocol.Realm]) in [param world] (in the tree).
+## It is exactly the server's list ([method NetZones.get_respawn_points]), so that the index in the
+## RESPAWN_REQUEST means the same on both sides. If empty, the server uses its realm spawn point, and the
+## screen offers a single option.
 static func list(world: Node, realm_code: int) -> Array[Node3D]:
 	if world == null or not world.is_inside_tree():
 		var empty: Array[Node3D] = []
@@ -68,9 +68,8 @@ static func list(world: Node, realm_code: int) -> Array[Node3D]:
 	return NetZones.get_respawn_points(world, realm_code)
 
 
-## Nombre de [param point] para la lista: su metadato [constant TITLE_META] o, si no tiene, el
-## nombre del nodo con los guiones bajos como espacios (y las mayúsculas de «CampamentoVardheim»
-## separadas).
+## Name of [param point] for the list: its [constant TITLE_META] metadata or, if it has none, the node's
+## name with underscores as spaces (and the capital letters of "CampamentoVardheim" separated).
 static func label_of(point: Node) -> String:
 	var title: String = String(point.get_meta(TITLE_META, ""))
 	if not title.is_empty():
@@ -78,7 +77,7 @@ static func label_of(point: Node) -> String:
 	return _label_from_name(String(point.name))
 
 
-## Nombres de [param points], en el mismo orden.
+## Names of [param points], in the same order.
 static func labels(points: Array[Node3D]) -> PackedStringArray:
 	var result := PackedStringArray()
 	for point: Node3D in points:
@@ -86,8 +85,8 @@ static func labels(points: Array[Node3D]) -> PackedStringArray:
 	return result
 
 
-## Todos los marcadores de reaparición de [param world] (en el árbol), en el orden de la escena: el
-## índice de cada uno es su índice de reaparición.
+## All the respawn markers of [param world] (in the tree), in scene order: each one's index is its
+## respawn index.
 static func all_points(world: Node) -> Array[Node3D]:
 	var points: Array[Node3D] = []
 	if world == null or not world.is_inside_tree():
@@ -99,17 +98,17 @@ static func all_points(world: Node) -> Array[Node3D]:
 	return points
 
 
-## Opciones de reaparición del reino [param realm_code] en el tick [param tick] del servidor, válidas o
-## no (el mapa enseña las demás apagadas), en el orden de la escena. [param fortresses] asocia el id de
-## cada fortaleza con su [FortressState] ([method FortressView.get_states_by_definition]) y
-## [param fortress_names] su nombre para la interfaz (vacío = el del nodo). Sin marcadores de
-## reaparición se ofrecen los de aparición del reino, todos válidos.
+## Respawn options of realm [param realm_code] at server tick [param tick], valid or not (the map shows
+## the invalid ones greyed out), in scene order. [param fortresses] maps each fortress's id to its
+## [FortressState] ([method FortressView.get_states_by_definition]) and [param fortress_names] its
+## interface name (empty = the node's). Without respawn markers the realm's spawn markers are offered, all
+## valid.
 static func options(world: Node, realm_code: int, fortresses: Dictionary, tick: int,
 		fortress_names: Dictionary = {}) -> Array[Option]:
 	var result: Array[Option] = []
 	var points: Array[Node3D] = all_points(world)
 	if points.is_empty():
-		# Sin grupo propio: los puntos de aparición del reino, un índice cada uno, todos válidos.
+		# No group of its own: the realm's spawn points, one index each, all valid.
 		var fallback: Array[Node3D] = list(world, realm_code)
 		for index: int in fallback.size():
 			var option := Option.new()
@@ -148,7 +147,7 @@ static func options(world: Node, realm_code: int, fortresses: Dictionary, tick: 
 	return result
 
 
-## Solo las opciones válidas de [method options].
+## Only the valid options from [method options].
 static func valid_options(world: Node, realm_code: int, fortresses: Dictionary, tick: int,
 		fortress_names: Dictionary = {}) -> Array[Option]:
 	var found: Array[Option] = []
@@ -158,7 +157,7 @@ static func valid_options(world: Node, realm_code: int, fortresses: Dictionary, 
 	return found
 
 
-## Nombres de [param options_list] para la lista de la pantalla de muerte, en el mismo orden.
+## Names of [param options_list] for the death screen's list, in the same order.
 static func option_labels(options_list: Array[Option]) -> PackedStringArray:
 	var result := PackedStringArray()
 	for option: Option in options_list:
@@ -166,7 +165,7 @@ static func option_labels(options_list: Array[Option]) -> PackedStringArray:
 	return result
 
 
-## Índices que se envían al servidor por cada opción de [param options_list], para el jugador de red
+## Indices sent to the server for each option in [param options_list], for network player
 ## [param spread_seed].
 static func option_indices(options_list: Array[Option], spread_seed: int) -> PackedInt32Array:
 	var result := PackedInt32Array()
@@ -179,7 +178,7 @@ static func _position_of(point: Node3D) -> Vector3:
 	return point.global_position if point.is_inside_tree() else point.position
 
 
-# Marcadores contiguos del mismo sitio: mismo reino o fortaleza y mismo nombre sin el número final.
+# Contiguous markers at the same place: same realm or fortress and same name without the trailing number.
 static func _group_key(point: Node3D) -> String:
 	var stem: String = String(point.name).rstrip("0123456789 _")
 	return "%s|%s|%s" % [String(point.get_meta(REALM_META, &"")), String(point.get_meta(FORTRESS_META, &"")), stem]
@@ -200,7 +199,7 @@ static func _option_label(point: Node3D, fortress_names: Dictionary) -> String:
 	return _label_from_name(stem if not stem.is_empty() else String(point.name))
 
 
-# «Campamento_Norte» -> «Campamento Norte»; «FuerteVadoGris» -> «Fuerte Vado Gris».
+# "Campamento_Norte" -> "Campamento Norte"; "FuerteVadoGris" -> "Fuerte Vado Gris".
 static func _label_from_name(node_name: String) -> String:
 	if node_name.contains("_"):
 		return node_name.replace("_", " ")

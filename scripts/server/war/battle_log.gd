@@ -1,10 +1,10 @@
 class_name BattleLog
 extends RefCounted
-## Telemetría de la batalla (GUE-17; docs/fuerte.md, sección 7): los eventos de guerra y las muertes en
-## un archivo JSON Lines ([code]--battle-log=<ruta>[/code]), una línea por evento, que resume
-## [code]tools/war/summarize_battle.gd[/code] ([BattleSummary]).
+## Battle telemetry (GUE-17; docs/fuerte.md, section 7): war events and deaths in a JSON Lines file
+## ([code]--battle-log=<path>[/code]), one line per event, summarized by [code]tools/war/summarize_battle.gd[/code]
+## ([BattleSummary]).
 ## [br][br]
-## Cada línea es un objeto con [code]tick[/code] y [code]event[/code]:
+## Each line is an object with [code]tick[/code] and [code]event[/code]:
 ## [codeblock]
 ## {"tick":0,"event":"battle_start","zone":"vado_gris","fortresses":[{"id":"vado_gris_fort",
 ##    "position":[0,10.2,0],"gate":[-20,10.2,0],"circle":[-8.5,10.25,0],"radius":5}]}
@@ -14,13 +14,13 @@ extends RefCounted
 ## {"tick":901,"event":"death","victim":4,"victim_name":"Ana","victim_realm":2,"victim_kind":"player","killer":3,
 ##    "killer_name":"Bo","killer_realm":1,"attack":2,"position":[-30,7.1,12]}
 ## [/codeblock]
-## [code]war[/code] es la clave interna de [WarEvents] ([method WarEvents.key_of]); [code]realm[/code], el
-## código de red del reino que acompaña al aviso. Un [code]killer[/code] 0 es el entorno.
+## [code]war[/code] is the internal key of [WarEvents] ([method WarEvents.key_of]); [code]realm[/code], the network code of
+## the realm that accompanies the notice. A [code]killer[/code] of 0 is the environment.
 
 var _file: FileAccess = null
 
 
-## Abre (y vacía) el archivo [param path], creando las carpetas que falten. null si no se puede.
+## Opens (and empties) the file [param path], creating any missing folders. null if it cannot.
 static func open(path: String) -> BattleLog:
 	if path.is_empty():
 		return null
@@ -37,14 +37,14 @@ static func open(path: String) -> BattleLog:
 	return battle_log
 
 
-## true mientras el archivo está abierto.
+## true while the file is open.
 func is_open() -> bool:
 	return _file != null
 
 
-## Primera línea: la zona y, de cada fortaleza, su id, su posición, la de su puerta y su círculo.
-## [param fortresses] son diccionarios con [code]id[/code], [code]position[/code], [code]gate[/code],
-## [code]circle[/code] y [code]radius[/code].
+## First line: the zone and, for each fortress, its id, its position, that of its gate and its circle.
+## [param fortresses] are dictionaries with [code]id[/code], [code]position[/code], [code]gate[/code], [code]circle[/code]
+## and [code]radius[/code].
 func log_start(zone_id: String, fortresses: Array[Dictionary]) -> void:
 	var entries: Array = []
 	for fortress: Dictionary in fortresses:
@@ -58,22 +58,22 @@ func log_start(zone_id: String, fortresses: Array[Dictionary]) -> void:
 	_write(0, "battle_start", {"zone": zone_id, "fortresses": entries})
 
 
-## Un aviso de guerra ([param war_event]: id de [WarEvents]) de [param fortress_id], con el reino que lo
-## acompaña y la posición de la fortaleza.
+## A war notice ([param war_event]: [WarEvents] id) for [param fortress_id], with the realm that accompanies it and the
+## fortress's position.
 func log_war(tick: int, war_event: int, realm: int, fortress_id: StringName,
 		position: Vector3) -> void:
 	_write(tick, "war", {"war": String(WarEvents.key_of(war_event)), "realm": realm,
 			"fortress": String(fortress_id), "position": _vec(position)})
 
 
-## La primera vez que se daña la puerta entera de [param fortress_id].
+## The first time the whole gate of [param fortress_id] is damaged.
 func log_gate_damage_started(tick: int, fortress_id: StringName, position: Vector3) -> void:
 	_write(tick, "gate_damage_started", {"fortress": String(fortress_id),
 			"position": _vec(position)})
 
 
-## Una muerte: [param victim] y, si lo hay, [param killer] (null = el entorno), con el ataque y el
-## lugar donde cayó el muerto.
+## A death: [param victim] and, if there is one, [param killer] (null = the environment), with the attack and the place
+## where the dead one fell.
 func log_death(tick: int, victim: NetEntity, killer: NetEntity, attack_id: int,
 		position: Vector3) -> void:
 	_write(tick, "death", {
@@ -90,13 +90,13 @@ func log_death(tick: int, victim: NetEntity, killer: NetEntity, attack_id: int,
 	})
 
 
-## Vuelca lo escrito a disco.
+## Flushes what was written to disk.
 func flush() -> void:
 	if _file != null:
 		_file.flush()
 
 
-## Cierra el archivo.
+## Closes the file.
 func close() -> void:
 	if _file != null:
 		_file.close()

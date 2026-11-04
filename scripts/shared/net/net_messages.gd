@@ -1,96 +1,96 @@
 class_name NetMessages
 extends RefCounted
-## Mensajes del protocolo de red de la fase 2 y su serialización (docs/red.md, sección 5).
+## Phase 2 network protocol messages and their serialization (docs/red.md, section 5).
 ## [br][br]
-## Cada clase interna tiene [code]encode() -> PackedByteArray[/code] y
-## [code]static decode(bytes) -> <Clase>[/code], que devuelve null si el mensaje está malformado:
-## tamaño, tipo, contadores o longitudes que no cuadran, bytes de sobra o texto que no es UTF-8
-## válido. Los [code]decode[/code] comprueban los tamaños antes de leer, así que nunca registran
-## errores del motor, ni siquiera con bytes aleatorios (el servidor decodifica lo que envían
-## clientes que no son de fiar).
+## Each inner class has [code]encode() -> PackedByteArray[/code] and
+## [code]static decode(bytes) -> <Class>[/code], which returns null if the message is malformed:
+## mismatched size, type, counters or lengths, extra bytes or text that is not valid
+## UTF-8. The [code]decode[/code] functions check sizes before reading, so they never log
+## engine errors, not even with random bytes (the server decodes what untrusted
+## clients send).
 ## [br][br]
-## Todo es little-endian. Los tres primeros (HELLO, WELCOME y REJECT) son mensajes de
-## autenticación: empiezan con el magic [constant NetProtocol.MAGIC]. El resto empieza con su
-## tipo ([code]NetProtocol.MSG_*[/code]) y viaja por [code]send_bytes[/code].
+## Everything is little-endian. The first three (HELLO, WELCOME and REJECT) are authentication
+## messages: they start with the magic [constant NetProtocol.MAGIC]. The rest start with their
+## type ([code]NetProtocol.MSG_*[/code]) and travel through [code]send_bytes[/code].
 
-## Tamaño de la cabecera de un SNAPSHOT sin estado propio, con el byte de
-## [code]section_count[/code].
+## Size of the header of a SNAPSHOT without own state, including the
+## [code]section_count[/code] byte.
 const SNAPSHOT_HEADER_SIZE: int = 14
-## Tamaño del bloque extra propio de un SNAPSHOT (vida, vida máxima, estado y tick de
-## reaparición), que va tras el estado propio.
+## Size of the extra own block of a SNAPSHOT (health, max health, status and respawn
+## tick), which goes after the own state.
 const SNAPSHOT_EXTRA_SIZE: int = 9
-## Tamaño de la cabecera de un SNAPSHOT con estado propio, con el estado, el bloque extra (que
-## siempre acompaña al estado) y el byte de [code]section_count[/code].
+## Size of the header of a SNAPSHOT with own state, including the state, the extra block (which
+## always accompanies the state) and the [code]section_count[/code] byte.
 const SNAPSHOT_HEADER_SIZE_WITH_STATE: int = \
 		SNAPSHOT_HEADER_SIZE + PlayerState.ENCODED_SIZE + SNAPSHOT_EXTRA_SIZE
-## Máximo de registros por sección (el contador es un u8).
+## Maximum records per section (the counter is a u8).
 const MAX_SECTION_RECORDS: int = 255
-## Máximo de bytes del texto de un NOTICE.
+## Maximum bytes of a NOTICE's text.
 const MAX_NOTICE_BYTES: int = 200
-## Máximo de bytes del texto de un REJECT (el contador es un u8).
+## Maximum bytes of a REJECT's text (the counter is a u8).
 const MAX_REJECT_TEXT_BYTES: int = 255
-## Máximo de bytes de datos de un DEBUG_COMMAND.
+## Maximum bytes of data of a DEBUG_COMMAND.
 const MAX_DEBUG_PAYLOAD_BYTES: int = 64
-## Máximo de campos de un OBJECT_STATE o del ENTITY_SPAWN de una estructura (el contador es un u8,
-## pero la fase 4 no pasa de 17).
+## Maximum fields of an OBJECT_STATE or of a structure's ENTITY_SPAWN (the counter is a u8,
+## but phase 4 does not exceed 17).
 const MAX_OBJECT_FIELDS: int = 32
-## Cabecera de un OBJECT_STATE: [code]u8 type, u16 net_id, u32 tick, u8 field_count[/code].
+## Header of an OBJECT_STATE: [code]u8 type, u16 net_id, u32 tick, u8 field_count[/code].
 const OBJECT_STATE_HEADER_SIZE: int = 8
-## Bytes que añade al ENTITY_SPAWN de un PNJ su [code]u16 npc_def_id[/code].
+## Bytes that its [code]u16 npc_def_id[/code] adds to an NPC's ENTITY_SPAWN.
 const NPC_SPAWN_TAIL_SIZE: int = 2
-## Bytes que añade al ENTITY_SPAWN de un jugador tras el nombre (protocolo 7, docs/progresion.md §7.3): el
-## [code]u8 level[/code] y los 8 B de [CharacterAppearance].
+## Bytes added to a player's ENTITY_SPAWN after the name (protocol 7, docs/progresion.md §7.3): the
+## [code]u8 level[/code] and the 8 B of [CharacterAppearance].
 const PLAYER_SPAWN_TAIL_SIZE: int = 1 + CharacterAppearance.ENCODED_SIZE
-## Bytes del recuento por reino al final del WELCOME ([code]u8 × 3[/code]).
+## Bytes of the per-realm count at the end of the WELCOME ([code]u8 × 3[/code]).
 const WELCOME_REALM_COUNTS_SIZE: int = 3
 
-## Bits de [code]status[/code] del bloque extra propio de un SNAPSHOT (y del estado compacto de un
+## [code]status[/code] bits of the own extra block of a SNAPSHOT (and of the compact state of a
 ## PARTY_STATUS).
 const STATUS_IN_COMBAT: int = 1 << 0
 const STATUS_PROTECTED: int = 1 << 1
 const STATUS_DEAD: int = 1 << 2
-## Derribado (protocolo 6; docs/habilidades.md, sección 5.2). Nunca va con [constant STATUS_DEAD]: un
-## derribado no está muerto. Con él, la vida del bloque extra es la vida de derribado y la máxima, la de
-## derribado de las reglas.
+## Knocked down (protocol 6; docs/habilidades.md, section 5.2). Never together with [constant STATUS_DEAD]: a
+## knocked down character is not dead. With it, the extra block's health is the downed health and the maximum, the
+## rules' downed maximum.
 const STATUS_DOWNED: int = 1 << 3
 
-## Bit 0 de los flags de un SNAPSHOT: trae el estado propio.
+## Bit 0 of a SNAPSHOT's flags: it carries the own state.
 const FLAG_OWN_STATE: int = 1 << 0
-## Bit 3 de los flags de un SNAPSHOT: trae el bloque extra propio. Va si y solo si va el estado
-## propio (bit 0).
+## Bit 3 of a SNAPSHOT's flags: it carries the own extra block. It is present if and only if the own
+## state is present (bit 0).
 const FLAG_OWN_EXTRA: int = 1 << 3
-## Desplazamiento y máscara del contador de teletransporte en los flags (2 bits).
+## Shift and mask of the teleport counter in the flags (2 bits).
 const TELEPORT_SHIFT: int = 1
 const TELEPORT_MASK: int = 0b11
-## Cabecera de un INPUT_BATCH y tamaño de cada uno de sus registros.
+## Header of an INPUT_BATCH and size of each of its records.
 const INPUT_BATCH_HEADER_SIZE: int = 11
 const INPUT_RECORD_SIZE: int = 10
-## Cabecera de un ENTITY_SPAWN, antes de los datos de la entidad.
+## Header of an ENTITY_SPAWN, before the entity's data.
 const SPAWN_HEADER_SIZE: int = 10
-## Bit 3 del [code]flags[/code] de la cabecera de un ENTITY_SPAWN (protocolo 7, docs/plataforma.md §5.4): el
-## personaje es del personal del juego (moderador o más), para la etiqueta (SOC-14). No es el bit 3 de los
-## [code]flags[/code] del registro del snapshot (la ranura 2 activa, de docs/habilidades.md).
+## Bit 3 of the [code]flags[/code] of an ENTITY_SPAWN header (protocol 7, docs/plataforma.md §5.4): the
+## character belongs to the game staff (moderator or higher), for the tag (SOC-14). It is not bit 3 of the
+## snapshot record's [code]flags[/code] (slot 2 active, from docs/habilidades.md).
 const SPAWN_FLAG_STAFF: int = 1 << 3
-## Máximo de [code]view_offset_q[/code] (u16).
+## Maximum of [code]view_offset_q[/code] (u16).
 const MAX_VIEW_OFFSET_Q: int = 0xFFFF
 
 
-## Tipo de un mensaje (su byte 0), o -1 si [param bytes] está vacío.
+## Type of a message (its byte 0), or -1 if [param bytes] is empty.
 static func peek_type(bytes: PackedByteArray) -> int:
 	return bytes[0] if bytes.size() > 0 else -1
 
 
-## Resultado de un mensaje de autenticación: -1 si no empieza con el magic, 0 si es un WELCOME
-## y un valor mayor que 0 ([enum NetProtocol.Result]) si es un REJECT.
+## Result of an authentication message: -1 if it does not start with the magic, 0 if it is a WELCOME
+## and a value greater than 0 ([enum NetProtocol.Result]) if it is a REJECT.
 static func peek_auth_result(bytes: PackedByteArray) -> int:
 	if bytes.size() < 5 or bytes.decode_u32(0) != NetProtocol.MAGIC:
 		return -1
 	return bytes[4]
 
 
-## true si los [param length] bytes desde [param offset] son UTF-8 válido y no contienen ningún
-## byte nulo. [method String.get_string_from_utf8] registra un error con los bytes inválidos, así
-## que los textos de la red se comprueban con esto antes de convertirlos.
+## true if the [param length] bytes from [param offset] are valid UTF-8 and contain no null
+## byte. [method String.get_string_from_utf8] logs an error with invalid bytes, so
+## network texts are checked with this before converting them.
 static func is_valid_utf8(bytes: PackedByteArray, offset: int, length: int) -> bool:
 	var end: int = offset + length
 	if offset < 0 or length < 0 or end > bytes.size():
@@ -139,8 +139,8 @@ static func is_valid_utf8(bytes: PackedByteArray, offset: int, length: int) -> b
 	return true
 
 
-## true si todos los caracteres de [param text] son ASCII imprimible (0x20-0x7E). Hay que comprobarlo
-## antes de [method String.to_ascii_buffer], que registra un error del motor con otros caracteres.
+## true if all characters of [param text] are printable ASCII (0x20-0x7E). It must be checked
+## before [method String.to_ascii_buffer], which logs an engine error with other characters.
 static func is_printable_ascii_text(text: String) -> bool:
 	for i: int in text.length():
 		var code: int = text.unicode_at(i)
@@ -149,7 +149,7 @@ static func is_printable_ascii_text(text: String) -> bool:
 	return true
 
 
-## [param text] en UTF-8, recortado a [param max_bytes] sin partir ningún carácter.
+## [param text] in UTF-8, trimmed to [param max_bytes] without splitting any character.
 static func utf8_limited(text: String, max_bytes: int) -> PackedByteArray:
 	var bytes: PackedByteArray = text.to_utf8_buffer()
 	if bytes.size() <= max_bytes:
@@ -160,18 +160,18 @@ static func utf8_limited(text: String, max_bytes: int) -> PackedByteArray:
 	return bytes.slice(0, cut)
 
 
-## Texto UTF-8 de [param length] bytes desde [param offset]. Hay que haberlo validado antes con
-## [method is_valid_utf8]. Ojo: [method PackedByteArray.get_string_from_utf8] se salta un BOM (EF BB BF) al
-## principio, así que unos bytes no vacíos pueden leerse como una cadena vacía; quien exige un nombre lo
-## comprueba después de leerlo.
+## UTF-8 text of [param length] bytes from [param offset]. It must have been validated beforehand with
+## [method is_valid_utf8]. Note: [method PackedByteArray.get_string_from_utf8] skips a BOM (EF BB BF) at the
+## start, so some non-empty bytes can be read as an empty string; whoever requires a name checks it
+## after reading it.
 static func read_text(bytes: PackedByteArray, offset: int, length: int) -> String:
 	if length <= 0:
 		return ""
 	return bytes.slice(offset, offset + length).get_string_from_utf8()
 
 
-## true si los [param length] bytes desde [param offset] son ASCII imprimible (0x20-0x7E), como
-## los ids de zona.
+## true if the [param length] bytes from [param offset] are printable ASCII (0x20-0x7E), like
+## zone ids.
 static func is_printable_ascii(bytes: PackedByteArray, offset: int, length: int) -> bool:
 	for i: int in range(offset, offset + length):
 		var value: int = bytes[i]
@@ -180,8 +180,8 @@ static func is_printable_ascii(bytes: PackedByteArray, offset: int, length: int)
 	return true
 
 
-## true si [param fields] se puede escribir en un OBJECT_STATE o en un ENTITY_SPAWN de estructura:
-## de 1 a [constant MAX_OBJECT_FIELDS] campos, con tipo de valor conocido y sin ningún id repetido.
+## true if [param fields] can be written into an OBJECT_STATE or a structure's ENTITY_SPAWN:
+## 1 to [constant MAX_OBJECT_FIELDS] fields, with a known value type and no repeated id.
 static func are_fields_encodable(fields: Array[ObjectField]) -> bool:
 	if fields.size() < 1 or fields.size() > MAX_OBJECT_FIELDS:
 		return false
@@ -194,7 +194,7 @@ static func are_fields_encodable(fields: Array[ObjectField]) -> bool:
 	return true
 
 
-## Bytes que ocupan [param fields] ([code]2 + tamaño del valor[/code] cada uno).
+## Bytes taken by [param fields] ([code]2 + value size[/code] each).
 static func fields_size(fields: Array[ObjectField]) -> int:
 	var total: int = 0
 	for field: ObjectField in fields:
@@ -202,8 +202,8 @@ static func fields_size(fields: Array[ObjectField]) -> int:
 	return total
 
 
-## Escribe [param fields] en [param bytes] desde [param offset] (el búfer ya tiene el tamaño
-## suficiente) y devuelve el offset siguiente.
+## Writes [param fields] into [param bytes] from [param offset] (the buffer is already large
+## enough) and returns the next offset.
 static func write_fields(bytes: PackedByteArray, offset: int, fields: Array[ObjectField]) -> int:
 	var cursor: int = offset
 	for field: ObjectField in fields:
@@ -211,10 +211,10 @@ static func write_fields(bytes: PackedByteArray, offset: int, fields: Array[Obje
 	return cursor
 
 
-## Lee [param count] campos de [param bytes] desde [param offset] y los añade a [param out].
-## Devuelve el offset siguiente, o -1 si un campo no cabe, tiene un tipo de valor desconocido o
-## repite el id de otro. Un [code]field_id[/code] desconocido para quien lo lea se conserva (es
-## quien lo interpreta quien lo salta). Nunca registra errores del motor.
+## Reads [param count] fields from [param bytes] from [param offset] and appends them to [param out].
+## Returns the next offset, or -1 if a field does not fit, has an unknown value type or
+## repeats another's id. A [code]field_id[/code] unknown to whoever reads it is kept (whoever
+## interprets it is the one who skips it). Never logs engine errors.
 static func read_fields(bytes: PackedByteArray, offset: int, count: int,
 		out: Array[ObjectField]) -> int:
 	var cursor: int = offset
@@ -229,14 +229,14 @@ static func read_fields(bytes: PackedByteArray, offset: int, count: int,
 	return cursor
 
 
-## Un campo de un OBJECT_STATE o del ENTITY_SPAWN de una estructura: [code]u8 field_id, u8
-## value_type[/code] y el valor (docs/fuerte.md, sección 2). Los ids de campo los define quien
-## replica el objeto ([FortressFields] para las fortalezas); aquí solo viajan.
+## A field of an OBJECT_STATE or of a structure's ENTITY_SPAWN: [code]u8 field_id, u8
+## value_type[/code] and the value (docs/fuerte.md, section 2). Field ids are defined by whoever
+## replicates the object ([FortressFields] for fortresses); here they only travel.
 class ObjectField:
-	## Tipo del valor en el mensaje.
+	## Type of the value in the message.
 	enum ValueType { U8 = 1, U16 = 2, U32 = 3, S32 = 4 }
 
-	## Cabecera de un campo: [code]u8 field_id, u8 value_type[/code].
+	## Header of a field: [code]u8 field_id, u8 value_type[/code].
 	const HEADER_SIZE: int = 2
 
 	var field_id: int = 0
@@ -253,7 +253,7 @@ class ObjectField:
 		return field
 
 
-	## Bytes del valor de un tipo ([param type]), o 0 si el tipo no existe.
+	## Bytes of the value of a type ([param type]), or 0 if the type does not exist.
 	static func size_of_type(type: int) -> int:
 		match type:
 			ValueType.U8:
@@ -265,12 +265,12 @@ class ObjectField:
 		return 0
 
 
-	## Bytes que ocupa el campo entero.
+	## Bytes taken by the whole field.
 	func encoded_size() -> int:
 		return HEADER_SIZE + size_of_type(value_type)
 
 
-	## true si el tipo es conocido, el id cabe en un u8 y el valor cabe en el tipo.
+	## true if the type is known, the id fits in a u8 and the value fits in the type.
 	func is_valid() -> bool:
 		if field_id < 0 or field_id > 0xFF:
 			return false
@@ -286,8 +286,8 @@ class ObjectField:
 		return false
 
 
-	## Escribe el campo en [param bytes] desde [param offset] (con sitio de sobra) y devuelve el
-	## offset siguiente. Un valor que no cabe en su tipo se satura.
+	## Writes the field into [param bytes] from [param offset] (with room to spare) and returns the
+	## next offset. A value that does not fit in its type is saturated.
 	func write_to(bytes: PackedByteArray, offset: int) -> int:
 		bytes.encode_u8(offset, field_id & 0xFF)
 		bytes.encode_u8(offset + 1, value_type)
@@ -303,7 +303,7 @@ class ObjectField:
 		return offset + encoded_size()
 
 
-	## El campo que empieza en [param offset], o null si no cabe o su tipo de valor es desconocido.
+	## The field starting at [param offset], or null if it does not fit or its value type is unknown.
 	static func read_from(bytes: PackedByteArray, offset: int) -> ObjectField:
 		if offset < 0 or offset + HEADER_SIZE > bytes.size():
 			return null
@@ -326,9 +326,9 @@ class ObjectField:
 		return field
 
 
-## HELLO (C→S, autenticación): 23 B + nombre + billete.
+## HELLO (C→S, authentication): 23 B + name + ticket.
 class Hello:
-	## Bit 0 de [member flags]: el cliente es un bot.
+	## Bit 0 of [member flags]: the client is a bot.
 	const FLAG_BOT: int = 1 << 0
 	const MIN_SIZE: int = 23
 
@@ -391,15 +391,15 @@ class Hello:
 		return hello
 
 
-## WELCOME (S→C, autenticación): 18 B + id de zona + 3 B con el recuento por reino.
+## WELCOME (S→C, authentication): 18 B + zone id + 3 B with the per-realm count.
 ## [br][br]
-## Tras el id de zona van tres [code]u8[/code] con los jugadores de Vardheim, Solmarch y Askarra en
-## la zona ([member realm_counts]), para que la selección de reino ofrezca el más corto (docs/fuerte.md,
-## sección 7).
+## After the zone id come three [code]u8[/code] with the players of Vardheim, Solmarch and Askarra in
+## the zone ([member realm_counts]), so that realm selection offers the emptiest one (docs/fuerte.md,
+## section 7).
 class Welcome:
-	## Bytes sin el id de zona: la cabecera de 18 B y el recuento por reino.
+	## Bytes without the zone id: the 18 B header and the per-realm count.
 	const MIN_SIZE: int = 18 + WELCOME_REALM_COUNTS_SIZE
-	## Offset del id de zona.
+	## Offset of the zone id.
 	const ZONE_OFFSET: int = 18
 
 	var protocol_version: int = NetProtocol.PROTOCOL_VERSION
@@ -411,13 +411,13 @@ class Welcome:
 	var realm: int = NetProtocol.Realm.NONE
 	var channel: int = 0
 	var zone_id: String = ""
-	## Jugadores por reino en la zona: posición 0 = Vardheim, 1 = Solmarch, 2 = Askarra (un u8
-	## cada una; saturan a 255).
+	## Players per realm in the zone: position 0 = Vardheim, 1 = Solmarch, 2 = Askarra (one u8
+	## each; they saturate at 255).
 	var realm_counts: PackedInt32Array = PackedInt32Array([0, 0, 0])
 
 
-	## Jugadores del reino [param realm_code] ([enum NetProtocol.Realm], 1 a 3); 0 si el código no es
-	## de un reino jugable.
+	## Players of realm [param realm_code] ([enum NetProtocol.Realm], 1 to 3); 0 if the code does not belong to
+	## a playable realm.
 	func get_realm_count(realm_code: int) -> int:
 		var index: int = realm_code - 1
 		if index < 0 or index >= realm_counts.size() or index >= WELCOME_REALM_COUNTS_SIZE:
@@ -478,11 +478,11 @@ class Welcome:
 		return welcome
 
 
-## REJECT (S→C, autenticación): 6 B + texto.
+## REJECT (S→C, authentication): 6 B + text.
 class Reject:
 	const MIN_SIZE: int = 6
 
-	## Motivo ([enum NetProtocol.Result]); no puede ser OK.
+	## Reason ([enum NetProtocol.Result]); it cannot be OK.
 	var result: int = NetProtocol.Result.MALFORMED
 	var text: String = ""
 
@@ -516,21 +516,21 @@ class Reject:
 		return reject
 
 
-## INPUT_BATCH (C→S, canal 1): 11 + 10·n B (n de 1 a 8).
+## INPUT_BATCH (C→S, channel 1): 11 + 10·n B (n from 1 to 8).
 ## [br][br]
-## Los ticks de los registros no viajan: el registro [i]i[/i] es del tick
-## [code]newest_tick - count + 1 + i[/code], así que un lote con huecos ni siquiera se puede
-## escribir. [method encode] devuelve un búfer vacío si [member inputs] no cumple eso.
+## The ticks of the records do not travel: record [i]i[/i] belongs to tick
+## [code]newest_tick - count + 1 + i[/code], so a batch with gaps cannot even be
+## written. [method encode] returns an empty buffer if [member inputs] does not satisfy that.
 class InputBatch:
-	## `server_tick` del snapshot más nuevo recibido (0 = ninguno).
+	## `server_tick` of the newest snapshot received (0 = none).
 	var ack_snapshot_tick: int = 0
-	## Retardo de interpolación actual × 8, en ticks.
+	## Current interpolation delay × 8, in ticks.
 	var interp_delay_q: int = 0
-	## Tick de la entrada más nueva.
+	## Tick of the newest input.
 	var newest_tick: int = 0
-	## De la más antigua a la más nueva, con ticks seguidos que acaban en [member newest_tick].
+	## From oldest to newest, with consecutive ticks ending at [member newest_tick].
 	var inputs: Array[PlayerInput] = []
-	## Mismo tamaño que [member inputs]: (tick - render_tick visto) × 16, entre 0 y 65535.
+	## Same size as [member inputs]: (tick - render_tick seen) × 16, between 0 and 65535.
 	var view_offsets_q: PackedInt32Array = PackedInt32Array()
 
 
@@ -551,17 +551,17 @@ class InputBatch:
 		bytes.encode_u8(10, count)
 		for i: int in count:
 			var offset: int = INPUT_BATCH_HEADER_SIZE + INPUT_RECORD_SIZE * i
-			# Los bytes 4-11 de PlayerInput.encode() (move, look_yaw, look_pitch y buttons) son
-			# los 8 primeros del registro.
+			# Bytes 4-11 of PlayerInput.encode() (move, look_yaw, look_pitch and buttons) are
+			# the first 8 of the record.
 			bytes.encode_u64(offset, inputs[i].encode().decode_u64(4))
 			var view_offset: int = view_offsets_q[i] if i < view_offsets_q.size() else 0
 			bytes.encode_u16(offset + 8, clampi(view_offset, 0, MAX_VIEW_OFFSET_Q))
 		return bytes
 
 
-	## Las entradas salen de [method PlayerInput.decode] (que normaliza los valores fuera de
-	## rango) con los botones limitados a [constant NetProtocol.VALID_BUTTONS]. Exige
-	## [code]count[/code] de 1 a 8, un tamaño exacto de [code]11 + 10 · count[/code] y
+	## Inputs come from [method PlayerInput.decode] (which normalizes out-of-range values)
+	## with buttons limited to [constant NetProtocol.VALID_BUTTONS]. It requires
+	## [code]count[/code] from 1 to 8, an exact size of [code]11 + 10 · count[/code] and
 	## [code]newest_tick >= count[/code].
 	static func decode(bytes: PackedByteArray) -> InputBatch:
 		var size: int = bytes.size()
@@ -582,7 +582,7 @@ class InputBatch:
 		batch.interp_delay_q = bytes.decode_u8(5)
 		batch.newest_tick = newest
 		batch.view_offsets_q.resize(count)
-		# Los 12 B de PlayerInput.decode: el tick delante y los 8 primeros bytes del registro.
+		# The 12 B of PlayerInput.decode: the tick first and then the first 8 bytes of the record.
 		var scratch := PackedByteArray()
 		scratch.resize(PlayerInput.ENCODED_SIZE)
 		for i: int in count:
@@ -596,9 +596,9 @@ class InputBatch:
 		return batch
 
 
-## CLIENT_READY (C→S, canal 3): 2 B.
+## CLIENT_READY (C→S, channel 3): 2 B.
 class ClientReady:
-	## Reservado (0).
+	## Reserved (0).
 	var flags: int = 0
 
 
@@ -614,12 +614,12 @@ class ClientReady:
 		return ready
 
 
-## CLIENT_LEAVE (C→S, canal 3): 2 B.
+## CLIENT_LEAVE (C→S, channel 3): 2 B.
 class ClientLeave:
 	const REASON_QUIT: int = 0
 	const REASON_ERROR: int = 1
 
-	## 0 salir, 1 error.
+	## 0 quit, 1 error.
 	var reason: int = REASON_QUIT
 
 
@@ -635,44 +635,44 @@ class ClientLeave:
 		return leave
 
 
-## DEBUG_COMMAND (C→S, canal 3): 2 B + datos. El servidor solo lo acepta con
+## DEBUG_COMMAND (C→S, channel 3): 2 B + data. The server only accepts it with
 ## [code]--debug-commands[/code].
 ## [br][br]
-## [method decode] valida los datos de los comandos con formato fijo: 1 [code]teleport[/code] exige
-## 12 B; 7 [code]unstuck[/code], 8 [code]fort_reset[/code] y 10 [code]fort_kill_captain[/code], 0 B;
-## 9 [code]fort_owner[/code], 1 B con el reino (0 a 3); 11 [code]fort_capture_speed[/code], 1 B con el
-## factor (1 a 255); 12 [code]npc_debug[/code], 1 B (0 o 1). Desde el protocolo 6 (docs/habilidades.md,
-## sección 5.1): 13 [code]cooldowns_off[/code], 1 B (0 o 1); 14 [code]apply_status[/code], 3 B
-## ([code]u8 status_id[/code] de 1 a 255 y [code]u16[/code] ticks, 0 = los del dato); 15 [code]down[/code]
-## y 16 [code]refill[/code], 0 B. Desde el protocolo 7 (docs/progresion.md §10), los de GM de la progresión:
-## 40 [code]item_give[/code], 4 B ([code]u16[/code] net id de objeto desde 1 y [code]u16[/code] cantidad de 1 a
-## 999); 41 [code]currency_add[/code], 5 B ([code]u8[/code] moneda, 1 o 2, y [code]s32[/code] cantidad distinta de
-## 0); 42 [code]level_set[/code], 1 B (de 1 a [constant ProgressMessages.MAX_LEVEL]); y 43 [code]xp_add[/code], 4
-## B ([code]u32[/code] de 1 a 10 000 000). Que el net id exista lo mira el servidor. Los comandos 2 a 6 los
-## valida el servidor (hasta [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES]).
+## [method decode] validates the data of fixed-format commands: 1 [code]teleport[/code] requires
+## 12 B; 7 [code]unstuck[/code], 8 [code]fort_reset[/code] and 10 [code]fort_kill_captain[/code], 0 B;
+## 9 [code]fort_owner[/code], 1 B with the realm (0 to 3); 11 [code]fort_capture_speed[/code], 1 B with the
+## factor (1 to 255); 12 [code]npc_debug[/code], 1 B (0 or 1). Since protocol 6 (docs/habilidades.md,
+## section 5.1): 13 [code]cooldowns_off[/code], 1 B (0 or 1); 14 [code]apply_status[/code], 3 B
+## ([code]u8 status_id[/code] from 1 to 255 and [code]u16[/code] ticks, 0 = those from the data); 15 [code]down[/code]
+## and 16 [code]refill[/code], 0 B. Since protocol 7 (docs/progresion.md §10), the progression GM ones:
+## 40 [code]item_give[/code], 4 B ([code]u16[/code] object net id from 1 and [code]u16[/code] quantity from 1 to
+## 999); 41 [code]currency_add[/code], 5 B ([code]u8[/code] currency, 1 or 2, and [code]s32[/code] nonzero
+## amount); 42 [code]level_set[/code], 1 B (from 1 to [constant ProgressMessages.MAX_LEVEL]); and 43 [code]xp_add[/code], 4
+## B ([code]u32[/code] from 1 to 10,000,000). Whether the net id exists is checked by the server. Commands 2 to 6 are
+## validated by the server (up to [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES]).
 class DebugCommand:
-	## Bytes de datos de un teletransporte (3 × f32).
+	## Bytes of data of a teleport (3 × f32).
 	const TELEPORT_PAYLOAD_SIZE: int = 12
-	## Bytes de datos de [constant NetProtocol.DEBUG_ITEM_GIVE]: [code]u16 def, u16 count[/code].
+	## Bytes of data of [constant NetProtocol.DEBUG_ITEM_GIVE]: [code]u16 def, u16 count[/code].
 	const ITEM_GIVE_PAYLOAD_SIZE: int = 4
-	## Bytes de datos de [constant NetProtocol.DEBUG_CURRENCY_ADD]: [code]u8 currency, s32 amount[/code].
+	## Bytes of data of [constant NetProtocol.DEBUG_CURRENCY_ADD]: [code]u8 currency, s32 amount[/code].
 	const CURRENCY_ADD_PAYLOAD_SIZE: int = 5
-	## Bytes de datos de [constant NetProtocol.DEBUG_XP_ADD]: [code]u32 amount[/code].
+	## Bytes of data of [constant NetProtocol.DEBUG_XP_ADD]: [code]u32 amount[/code].
 	const XP_ADD_PAYLOAD_SIZE: int = 4
-	## Cantidad máxima de [constant NetProtocol.DEBUG_ITEM_GIVE] (la pila más grande, docs/progresion.md §2.1).
+	## Maximum quantity of [constant NetProtocol.DEBUG_ITEM_GIVE] (the largest stack, docs/progresion.md §2.1).
 	const MAX_ITEM_GIVE_COUNT: int = 999
-	## XP máxima de [constant NetProtocol.DEBUG_XP_ADD].
+	## Maximum XP of [constant NetProtocol.DEBUG_XP_ADD].
 	const MAX_XP_ADD: int = 10_000_000
-	## Bytes de datos de [constant NetProtocol.DEBUG_APPLY_STATUS]: [code]u8 status_id, u16 ticks[/code].
+	## Bytes of data of [constant NetProtocol.DEBUG_APPLY_STATUS]: [code]u8 status_id, u16 ticks[/code].
 	const APPLY_STATUS_PAYLOAD_SIZE: int = 3
-	## Reino más alto que admite [constant NetProtocol.DEBUG_FORT_OWNER].
+	## Highest realm accepted by [constant NetProtocol.DEBUG_FORT_OWNER].
 	const MAX_FORT_OWNER_REALM: int = 3
 
 	var command: int = 0
 	var payload: PackedByteArray = PackedByteArray()
 
 
-	## Comando de teletransporte a [param position] (14 B).
+	## Teleport command to [param position] (14 B).
 	static func teleport(position: Vector3) -> DebugCommand:
 		var debug_command := DebugCommand.new()
 		debug_command.command = NetProtocol.DEBUG_TELEPORT
@@ -683,46 +683,46 @@ class DebugCommand:
 		return debug_command
 
 
-	## Comando sin datos ([constant NetProtocol.DEBUG_UNSTUCK], [constant NetProtocol.DEBUG_FORT_RESET]
-	## o [constant NetProtocol.DEBUG_FORT_KILL_CAPTAIN]; sirve para cualquier id).
+	## Command with no data ([constant NetProtocol.DEBUG_UNSTUCK], [constant NetProtocol.DEBUG_FORT_RESET]
+	## or [constant NetProtocol.DEBUG_FORT_KILL_CAPTAIN]; works for any id).
 	static func simple(command_id: int) -> DebugCommand:
 		var debug_command := DebugCommand.new()
 		debug_command.command = command_id
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_FORT_OWNER]: dar la fortaleza al reino [param realm_code].
+	## Command [constant NetProtocol.DEBUG_FORT_OWNER]: give the fortress to realm [param realm_code].
 	static func fort_owner(realm_code: int) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_FORT_OWNER)
 		debug_command.payload = PackedByteArray([realm_code & 0xFF])
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_FORT_CAPTURE_SPEED]: multiplicar la captura por
-	## [param factor] (de 1 a 255).
+	## Command [constant NetProtocol.DEBUG_FORT_CAPTURE_SPEED]: multiply capture by
+	## [param factor] (from 1 to 255).
 	static func fort_capture_speed(factor: int) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_FORT_CAPTURE_SPEED)
 		debug_command.payload = PackedByteArray([factor & 0xFF])
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_NPC_DEBUG]: activar o apagar el registro de los PNJ.
+	## Command [constant NetProtocol.DEBUG_NPC_DEBUG]: turn NPC logging on or off.
 	static func npc_debug(enabled: bool) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_NPC_DEBUG)
 		debug_command.payload = PackedByteArray([1 if enabled else 0])
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_COOLDOWNS_OFF]: habilidades sin reutilización (o con ella otra
-	## vez).
+	## Command [constant NetProtocol.DEBUG_COOLDOWNS_OFF]: abilities with no cooldown (or with it
+	## again).
 	static func cooldowns_off(enabled: bool) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_COOLDOWNS_OFF)
 		debug_command.payload = PackedByteArray([1 if enabled else 0])
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_APPLY_STATUS]: aplicarse el efecto [param status_id] del catálogo
-	## durante [param ticks] ticks (0 = la duración del dato; se satura a u16).
+	## Command [constant NetProtocol.DEBUG_APPLY_STATUS]: apply the catalog effect [param status_id] to oneself
+	## for [param ticks] ticks (0 = the duration from the data; saturates to u16).
 	static func apply_status(status_id: int, ticks: int = 0) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_APPLY_STATUS)
 		debug_command.payload.resize(APPLY_STATUS_PAYLOAD_SIZE)
@@ -731,7 +731,7 @@ class DebugCommand:
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_ITEM_GIVE]: darse [param count] (1 a 999) del objeto con net id
+	## Command [constant NetProtocol.DEBUG_ITEM_GIVE]: give oneself [param count] (1 to 999) of the object with net id
 	## [param item_net_id] ([method ItemDatabase.net_id_of]).
 	static func item_give(item_net_id: int, count: int) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_ITEM_GIVE)
@@ -741,8 +741,8 @@ class DebugCommand:
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_CURRENCY_ADD]: sumar [param amount] (distinto de 0; negativo resta) de
-	## la moneda [param currency] ([enum Currency.Code]). Se satura a s32.
+	## Command [constant NetProtocol.DEBUG_CURRENCY_ADD]: add [param amount] (nonzero; negative subtracts) of
+	## currency [param currency] ([enum Currency.Code]). Saturates to s32.
 	static func currency_add(currency: int, amount: int) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_CURRENCY_ADD)
 		debug_command.payload.resize(CURRENCY_ADD_PAYLOAD_SIZE)
@@ -751,14 +751,14 @@ class DebugCommand:
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_LEVEL_SET]: fijar el nivel [param level].
+	## Command [constant NetProtocol.DEBUG_LEVEL_SET]: set the level to [param level].
 	static func level_set(level: int) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_LEVEL_SET)
 		debug_command.payload = PackedByteArray([level & 0xFF])
 		return debug_command
 
 
-	## Comando [constant NetProtocol.DEBUG_XP_ADD]: sumar [param amount] de XP (1 a 10 000 000).
+	## Command [constant NetProtocol.DEBUG_XP_ADD]: add [param amount] of XP (1 to 10,000,000).
 	static func xp_add(amount: int) -> DebugCommand:
 		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_XP_ADD)
 		debug_command.payload.resize(XP_ADD_PAYLOAD_SIZE)
@@ -766,49 +766,49 @@ class DebugCommand:
 		return debug_command
 
 
-	## Net id del objeto de un [constant NetProtocol.DEBUG_ITEM_GIVE] (0 si no es uno con sus datos).
+	## Object net id of a [constant NetProtocol.DEBUG_ITEM_GIVE] (0 if it is not one with its data).
 	func get_item_net_id() -> int:
 		return payload.decode_u16(0) if _has_payload(NetProtocol.DEBUG_ITEM_GIVE, ITEM_GIVE_PAYLOAD_SIZE) else 0
 
 
-	## Cantidad de un [constant NetProtocol.DEBUG_ITEM_GIVE] (0 si no es uno con sus datos).
+	## Quantity of a [constant NetProtocol.DEBUG_ITEM_GIVE] (0 if it is not one with its data).
 	func get_item_count() -> int:
 		return payload.decode_u16(2) if _has_payload(NetProtocol.DEBUG_ITEM_GIVE, ITEM_GIVE_PAYLOAD_SIZE) else 0
 
 
-	## Moneda de un [constant NetProtocol.DEBUG_CURRENCY_ADD] (0 si no es uno con sus datos).
+	## Currency of a [constant NetProtocol.DEBUG_CURRENCY_ADD] (0 if it is not one with its data).
 	func get_currency() -> int:
 		return payload.decode_u8(0) \
 				if _has_payload(NetProtocol.DEBUG_CURRENCY_ADD, CURRENCY_ADD_PAYLOAD_SIZE) else 0
 
 
-	## Cantidad (con signo) de un [constant NetProtocol.DEBUG_CURRENCY_ADD] (0 si no es uno con sus datos).
+	## Quantity (signed) of a [constant NetProtocol.DEBUG_CURRENCY_ADD] (0 if it is not one with its data).
 	func get_currency_amount() -> int:
 		return payload.decode_s32(1) \
 				if _has_payload(NetProtocol.DEBUG_CURRENCY_ADD, CURRENCY_ADD_PAYLOAD_SIZE) else 0
 
 
-	## Nivel de un [constant NetProtocol.DEBUG_LEVEL_SET] (0 si no es uno con sus datos).
+	## Level of a [constant NetProtocol.DEBUG_LEVEL_SET] (0 if it is not one with its data).
 	func get_level() -> int:
 		return payload.decode_u8(0) if _has_payload(NetProtocol.DEBUG_LEVEL_SET, 1) else 0
 
 
-	## XP de un [constant NetProtocol.DEBUG_XP_ADD] (0 si no es uno con sus datos).
+	## XP of a [constant NetProtocol.DEBUG_XP_ADD] (0 if it is not one with its data).
 	func get_xp_amount() -> int:
 		return payload.decode_u32(0) if _has_payload(NetProtocol.DEBUG_XP_ADD, XP_ADD_PAYLOAD_SIZE) else 0
 
 
-	## Id del efecto de un [constant NetProtocol.DEBUG_APPLY_STATUS] (0 si no trae sus datos).
+	## Effect id of a [constant NetProtocol.DEBUG_APPLY_STATUS] (0 if it carries no data).
 	func get_status_id() -> int:
 		return payload.decode_u8(0) if payload.size() == APPLY_STATUS_PAYLOAD_SIZE else 0
 
 
-	## Ticks de un [constant NetProtocol.DEBUG_APPLY_STATUS] (0 = los del dato, o sin sus datos).
+	## Ticks of a [constant NetProtocol.DEBUG_APPLY_STATUS] (0 = those from the data, or without its data).
 	func get_status_ticks() -> int:
 		return payload.decode_u16(1) if payload.size() == APPLY_STATUS_PAYLOAD_SIZE else 0
 
 
-	## Posición de un comando de teletransporte ([constant NetProtocol.DEBUG_TELEPORT]).
+	## Position of a teleport command ([constant NetProtocol.DEBUG_TELEPORT]).
 	func get_teleport_position() -> Vector3:
 		if payload.size() < TELEPORT_PAYLOAD_SIZE:
 			return Vector3.ZERO
@@ -826,9 +826,9 @@ class DebugCommand:
 		return bytes
 
 
-	## Un teletransporte exige exactamente [constant TELEPORT_PAYLOAD_SIZE] bytes de datos y los
-	## comandos 7 a 16 y 40 a 43 los de su formato (ver la descripción de la clase); los demás comandos
-	## admiten hasta [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES].
+	## A teleport requires exactly [constant TELEPORT_PAYLOAD_SIZE] bytes of data and
+	## commands 7 to 16 and 40 to 43 those of their format (see the class description); the other commands
+	## accept up to [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES].
 	static func decode(bytes: PackedByteArray) -> DebugCommand:
 		var size: int = bytes.size()
 		if size < 2 or bytes[0] != NetProtocol.MSG_DEBUG_COMMAND:
@@ -844,8 +844,8 @@ class DebugCommand:
 		return debug_command
 
 
-	# Los comandos con formato fijo exigen sus datos; el resto de ids pasa tal cual (los valida quien
-	# los ejecuta o los cuenta como desconocidos).
+	# Fixed-format commands require their data; the remaining ids pass as is (they are validated by whoever
+	# runs them or counted as unknown).
 	static func _payload_is_valid(command_id: int, data: PackedByteArray) -> bool:
 		match command_id:
 			NetProtocol.DEBUG_TELEPORT:
@@ -879,79 +879,79 @@ class DebugCommand:
 		return true
 
 
-	# true si es el comando [param command_id] con exactamente [param size] B de datos.
+	# true if it is command [param command_id] with exactly [param size] B of data.
 	func _has_payload(command_id: int, size: int) -> bool:
 		return command == command_id and payload.size() == size
 
 
-## SNAPSHOT (S→C, canal 2): cabecera de 14 B sin estado propio o, con él, de
-## [constant SNAPSHOT_HEADER_SIZE_WITH_STATE] B (en los dos casos, con el byte de
-## [code]section_count[/code]) y secciones de registros de [constant EntityRecord.SIZE] B.
+## SNAPSHOT (S→C, channel 2): 14 B header without own state or, with it, of
+## [constant SNAPSHOT_HEADER_SIZE_WITH_STATE] B (in both cases, including the
+## [code]section_count[/code] byte) and sections of [constant EntityRecord.SIZE] B records.
 ## [br][br]
-## Cabecera: [code]u8 type, u32 server_tick, u32 input_ack_tick, s8 input_margin,
-## u16 substitutions, u8 flags[/code] (bit 0 = estado propio; bits 1-2 = contador de
-## teletransporte propio; bit 3 = bloque extra propio) y, si bit 0, el [PlayerState] sin
-## cuantizar ([constant PlayerState.ENCODED_SIZE] B) y el bloque extra propio de
+## Header: [code]u8 type, u32 server_tick, u32 input_ack_tick, s8 input_margin,
+## u16 substitutions, u8 flags[/code] (bit 0 = own state; bits 1-2 = own teleport
+## counter; bit 3 = own extra block) and, if bit 0, the unquantized [PlayerState]
+## ([constant PlayerState.ENCODED_SIZE] B) and the own extra block of
 ## [constant SNAPSHOT_EXTRA_SIZE] B: [code]u16 health, u16 max_health, u8 status, u32
-## respawn_tick[/code]. El bit 3 va si y solo si va el bit 0: [method decode] rechaza uno sin el
-## otro. Después, [code]u8 section_count[/code] y, por sección, [code]u8 kind, u8 count[/code] y
-## los registros. Solo hay registros de jugador ([constant NetProtocol.EntityKind.PLAYER]) y de
-## PNJ ([constant NetProtocol.EntityKind.NPC]).
+## respawn_tick[/code]. Bit 3 is present if and only if bit 0 is: [method decode] rejects one without the
+## other. Then, [code]u8 section_count[/code] and, per section, [code]u8 kind, u8 count[/code] and
+## the records. There are only player records ([constant NetProtocol.EntityKind.PLAYER]) and
+## NPC records ([constant NetProtocol.EntityKind.NPC]).
 class Snapshot:
 	var server_tick: int = 0
 	var input_ack_tick: int = 0
-	## Antelación mínima de las entradas desde el snapshot anterior, en [-127, 127]; -128 si no
-	## hay datos.
+	## Minimum lead time of the inputs since the previous snapshot, in [-127, 127]; -128 if there is
+	## no data.
 	var input_margin: int = NetProtocol.NO_MARGIN
-	## Entradas sustituidas, acumuladas (mod 65536).
+	## Substituted inputs, accumulated (mod 65536).
 	var substitutions: int = 0
-	## Contador de teletransporte del jugador propio (mod 4).
+	## Teleport counter of the own player (mod 4).
 	var own_teleport: int = 0
-	## Estado propio del jugador, o null si el snapshot no lo trae.
+	## Own state of the player, or null if the snapshot does not carry it.
 	var own_state: PlayerState = null
-	## Bloque extra propio (solo con [member own_state]): vida del jugador propio.
+	## Own extra block (only with [member own_state]): health of the own player.
 	var health: int = 0
-	## Bloque extra propio: vida máxima.
+	## Own extra block: maximum health.
 	var max_health: int = 0
-	## Bloque extra propio: bits [constant NetMessages.STATUS_IN_COMBAT],
-	## [constant NetMessages.STATUS_PROTECTED], [constant NetMessages.STATUS_DEAD] y
+	## Own extra block: bits [constant NetMessages.STATUS_IN_COMBAT],
+	## [constant NetMessages.STATUS_PROTECTED], [constant NetMessages.STATUS_DEAD] and
 	## [constant NetMessages.STATUS_DOWNED].
 	var status: int = 0
-	## Bloque extra propio: tick en el que se puede pedir la reaparición (0 si está vivo).
+	## Own extra block: tick at which respawning can be requested (0 if alive).
 	var respawn_tick: int = 0
-	## Registros de las demás entidades, agrupados por sección en el orden del mensaje.
+	## Records of the other entities, grouped by section in the message's order.
 	var records: Array[EntityRecord] = []
 
 
-	## true si el jugador propio está en combate (bit del bloque extra).
+	## true if the own player is in combat (extra block bit).
 	func is_in_combat() -> bool:
 		return (status & NetMessages.STATUS_IN_COMBAT) != 0
 
 
-	## true si el jugador propio tiene la protección de reaparición.
+	## true if the own player has respawn protection.
 	func is_protected() -> bool:
 		return (status & NetMessages.STATUS_PROTECTED) != 0
 
 
-	## true si el jugador propio está muerto.
+	## true if the own player is dead.
 	func is_dead() -> bool:
 		return (status & NetMessages.STATUS_DEAD) != 0
 
 
-	## true si el jugador propio está derribado: [member health] y [member max_health] son entonces la vida
-	## de derribado y su máximo.
+	## true if the own player is knocked down: [member health] and [member max_health] are then the downed
+	## health and its maximum.
 	func is_downed() -> bool:
 		return (status & NetMessages.STATUS_DOWNED) != 0
 
 
-	## Escribe la cabecera en [param bytes] sin crear ningún objeto y devuelve el offset donde
-	## empieza [code]section_count[/code] (13 sin estado propio; con él, 13 más el estado y el
-	## bloque extra). Amplía el búfer si es más corto que la cabecera y deja
-	## [code]section_count[/code] a 0: quien construye el snapshot lo rellena después.
-	## [param own_state_bytes] es [code]PlayerState.encode()[/code]
-	## ([constant PlayerState.ENCODED_SIZE] B) o un búfer vacío si no hay estado propio. Con
-	## estado propio se escribe también el bloque extra con [param health], [param max_health],
-	## [param status] y [param respawn_tick]; sin él, esos cuatro se ignoran.
+	## Writes the header into [param bytes] without creating any object and returns the offset where
+	## [code]section_count[/code] starts (13 without own state; with it, 13 plus the state and the
+	## extra block). Grows the buffer if it is shorter than the header and leaves
+	## [code]section_count[/code] at 0: whoever builds the snapshot fills it in afterwards.
+	## [param own_state_bytes] is [code]PlayerState.encode()[/code]
+	## ([constant PlayerState.ENCODED_SIZE] B) or an empty buffer if there is no own state. With
+	## own state the extra block is also written with [param health], [param max_health],
+	## [param status] and [param respawn_tick]; without it, those four are ignored.
 	static func write_header(bytes: PackedByteArray, server_tick: int, input_ack_tick: int,
 			input_margin: int, substitutions: int, own_teleport: int,
 			own_state_bytes: PackedByteArray, health: int = 0, max_health: int = 0,
@@ -982,8 +982,8 @@ class Snapshot:
 		return section_offset
 
 
-	## Agrupa [member records] por [code]kind[/code] (en orden de aparición) en secciones de 255
-	## registros como mucho. No limita el tamaño: quien lo construye respeta
+	## Groups [member records] by [code]kind[/code] (in order of appearance) into sections of at most 255
+	## records. It does not limit the size: whoever builds it respects
 	## [constant NetProtocol.MAX_PACKET_BYTES].
 	func encode() -> PackedByteArray:
 		var own_state_bytes: PackedByteArray = PackedByteArray()
@@ -1024,8 +1024,8 @@ class Snapshot:
 		return bytes
 
 
-	## Devuelve null si el tamaño no cuadra, si el bit 3 de los flags (bloque extra) no coincide
-	## con el bit 0 (estado propio) o si la vida es mayor que la máxima.
+	## Returns null if the size does not match, if bit 3 of the flags (extra block) does not match
+	## bit 0 (own state) or if the health is greater than the maximum.
 	static func decode(bytes: PackedByteArray) -> Snapshot:
 		var size: int = bytes.size()
 		if size < SNAPSHOT_HEADER_SIZE or bytes[0] != NetProtocol.MSG_SNAPSHOT:
@@ -1075,80 +1075,80 @@ class Snapshot:
 		return snapshot
 
 
-## ENTITY_SPAWN (S→C, canal 3): 10 B + datos según el tipo de entidad ([member kind]):
-## [br]- [code]PLAYER[/code]: su [PlayerState] ([constant PlayerState.ENCODED_SIZE] B, el estado tras
-## [member spawn_tick]), un `u8` con la longitud del nombre, el nombre (hasta 48 B) y, desde el protocolo 7
-## (docs/progresion.md §7.3), [constant NetMessages.PLAYER_SPAWN_TAIL_SIZE] B: el [code]u8 level[/code]
-## ([member level]: 0 si quien lo recibe no es de su reino) y los 8 B de [CharacterAppearance]
-## ([member appearance]). [method decode] solo mira su tamaño y que el nivel no pase del tope; la validez de la
-## apariencia la mira quien la dibuja (una que no vale se sustituye por la de por defecto de la raza).
-## [br]- [code]NPC[/code]: lo mismo que un jugador sin el nivel ni la apariencia y, tras el nombre, un
+## ENTITY_SPAWN (S→C, channel 3): 10 B + data depending on the entity type ([member kind]):
+## [br]- [code]PLAYER[/code]: its [PlayerState] ([constant PlayerState.ENCODED_SIZE] B, the state after
+## [member spawn_tick]), a `u8` with the name length, the name (up to 48 B) and, since protocol 7
+## (docs/progresion.md §7.3), [constant NetMessages.PLAYER_SPAWN_TAIL_SIZE] B: the [code]u8 level[/code]
+## ([member level]: 0 if the receiver is not of its realm) and the 8 B of [CharacterAppearance]
+## ([member appearance]). [method decode] only checks its size and that the level does not exceed the cap; the validity of the
+## appearance is checked by whoever draws it (an invalid one is replaced by the race's default).
+## [br]- [code]NPC[/code]: the same as a player without the level or appearance and, after the name, a
 ## [code]u16 npc_def_id[/code] ([member npc_def_id]).
-## [br]- [code]STRUCTURE[/code]: [code]u8 def_len[/code], el id de la definición en ASCII
-## ([member definition_id]), [code]u8 field_count[/code] y los campos completos ([member fields]); no
-## lleva estado de jugador ni nombre. Sin repetir type, net_id ni tick: son los de la cabecera.
-## [br]- [code]PROJECTILE[/code] (protocolo 6; docs/habilidades.md, sección 5.3): 22 B tras la cabecera,
-## [constant PROJECTILE_SIZE] en total: [code]u16 owner, u16 projectile_def_id, u16 source, u8
-## volley_index, u8 proj_flags, u64 position, s16 × 3 velocity[/code]. [member net_id] es el del
-## proyectil, [member realm] el del tirador y [member spawn_tick] el tick del disparo. Los flags de la
-## cabecera van a 0: [member is_yours] nunca (una flecha es «tuya» si [member owner_id] es tu
-## [code]net_id[/code]) y sin contador de teletransporte (un proyectil no se teletransporta). La posición
-## ([member origin]) va empaquetada como en el registro de entidad (1 cm) y la velocidad
-## ([member velocity]) en cm/s: lo mismo que [method Ballistics.quantize].
+## [br]- [code]STRUCTURE[/code]: [code]u8 def_len[/code], the definition id in ASCII
+## ([member definition_id]), [code]u8 field_count[/code] and the complete fields ([member fields]); it
+## carries no player state or name. Without repeating type, net_id or tick: they are those of the header.
+## [br]- [code]PROJECTILE[/code] (protocol 6; docs/habilidades.md, section 5.3): 22 B after the header,
+## [constant PROJECTILE_SIZE] in total: [code]u16 owner, u16 projectile_def_id, u16 source, u8
+## volley_index, u8 proj_flags, u64 position, s16 × 3 velocity[/code]. [member net_id] is the
+## projectile's, [member realm] the shooter's and [member spawn_tick] the tick of the shot. The header
+## flags go to 0: [member is_yours] never (an arrow is "yours" if [member owner_id] is your
+## [code]net_id[/code]) and no teleport counter (a projectile does not teleport). The position
+## ([member origin]) is packed as in the entity record (1 cm) and the velocity
+## ([member velocity]) in cm/s: the same as [method Ballistics.quantize].
 class EntitySpawn:
-	## Bytes de un ENTITY_SPAWN de proyectil: la cabecera y sus 22 B.
+	## Bytes of a projectile ENTITY_SPAWN: the header and its 22 B.
 	const PROJECTILE_SIZE: int = SPAWN_HEADER_SIZE + 22
-	## Bit 0 de [member projectile_flags]: la flecha es inofensiva (vuela y choca con el mundo, pero no
-	## prueba personajes). El resto de bits van a 0.
+	## Bit 0 of [member projectile_flags]: the arrow is harmless (it flies and collides with the world, but does not
+	## test characters). The remaining bits go to 0.
 	const PROJECTILE_FLAG_HARMLESS: int = 1 << 0
-	## Bits de [member projectile_flags] que existen.
+	## Bits of [member projectile_flags] that exist.
 	const PROJECTILE_FLAGS_VALID: int = PROJECTILE_FLAG_HARMLESS
 
 	var net_id: int = 0
 	var kind: int = NetProtocol.EntityKind.PLAYER
 	var spawn_tick: int = 0
 	var realm: int = NetProtocol.Realm.NONE
-	## Bit 0 de los flags: es el personaje del propio cliente.
+	## Bit 0 of the flags: it is the client's own character.
 	var is_yours: bool = false
-	## Contador de teletransporte (mod 4).
+	## Teleport counter (mod 4).
 	var teleport_counter: int = 0
-	## Bit 3 de los flags ([constant NetMessages.SPAWN_FLAG_STAFF], protocolo 7): personal del juego. Solo en
-	## jugadores y PNJ.
+	## Bit 3 of the flags ([constant NetMessages.SPAWN_FLAG_STAFF], protocol 7): game staff. Only on
+	## players and NPCs.
 	var is_staff: bool = false
 	var state: PlayerState = null
 	var display_name: String = ""
-	## NPC: id de su definición en el catálogo de PNJ ([code]NpcCatalog[/code], ids 1..n por orden
-	## alfabético; 0 = sin definición). Va tras el nombre.
+	## NPC: id of its definition in the NPC catalog ([code]NpcCatalog[/code], ids 1..n in alphabetical
+	## order; 0 = no definition). Comes after the name.
 	var npc_def_id: int = 0
-	## PLAYER (protocolo 7): nivel del personaje, de 1 a [constant ProgressMessages.MAX_LEVEL]; 0 si quien lo
-	## recibe no es de su reino (el nivel del enemigo no cruza) o no se conoce. Se satura al tope al codificar.
+	## PLAYER (protocol 7): character level, from 1 to [constant ProgressMessages.MAX_LEVEL]; 0 if the
+	## receiver is not of its realm (the enemy's level does not cross over) or it is not known. Saturates to the cap when encoding.
 	var level: int = 0
-	## PLAYER (protocolo 7): los 8 B de [CharacterAppearance], sin validar. Otro tamaño se codifica como 8 B a 0
-	## (sin apariencia: el cliente usa la de por defecto de la raza de su reino).
+	## PLAYER (protocol 7): the 8 B of [CharacterAppearance], unvalidated. Any other size is encoded as 8 B at 0
+	## (no appearance: the client uses the default one for its realm's race).
 	var appearance: PackedByteArray = PackedByteArray()
-	## STRUCTURE: id ASCII de la definición (por ejemplo [code]vado_gris_fort[/code]), de 1 a
-	## [constant NetProtocol.MAX_DEFINITION_ID_BYTES] caracteres.
+	## STRUCTURE: ASCII id of the definition (for example [code]vado_gris_fort[/code]), from 1 to
+	## [constant NetProtocol.MAX_DEFINITION_ID_BYTES] characters.
 	var definition_id: String = ""
-	## STRUCTURE: los campos completos del objeto (de 1 a [constant NetMessages.MAX_OBJECT_FIELDS]).
+	## STRUCTURE: the object's complete fields (from 1 to [constant NetMessages.MAX_OBJECT_FIELDS]).
 	var fields: Array[ObjectField] = []
-	## PROJECTILE: [code]net_id[/code] del tirador.
+	## PROJECTILE: [code]net_id[/code] of the shooter.
 	var owner_id: int = 0
-	## PROJECTILE: id de su [ProjectileDefinition] en el catálogo de combate.
+	## PROJECTILE: id of its [ProjectileDefinition] in the combat catalog.
 	var projectile_def_id: int = 0
-	## PROJECTILE: fuente del ataque o la habilidad que la disparó ([CombatSource]).
+	## PROJECTILE: source of the attack or ability that fired it ([CombatSource]).
 	var source: int = 0
-	## PROJECTILE: posición dentro del disparo (0 a n − 1; el abanico lanza varias a la vez).
+	## PROJECTILE: position within the shot (0 to n − 1; the fan releases several at once).
 	var volley_index: int = 0
-	## PROJECTILE: combinación de los [code]PROJECTILE_FLAG_*[/code].
+	## PROJECTILE: combination of the [code]PROJECTILE_FLAG_*[/code].
 	var projectile_flags: int = 0
-	## PROJECTILE: origen del vuelo ([code]p0[/code] de [method Ballistics.position]); se cuantiza a 1 cm.
+	## PROJECTILE: origin of the flight ([code]p0[/code] of [method Ballistics.position]); quantized to 1 cm.
 	var origin: Vector3 = Vector3.ZERO
-	## PROJECTILE: velocidad de salida ([code]v0[/code], m/s); se cuantiza a 1 cm/s.
+	## PROJECTILE: launch velocity ([code]v0[/code], m/s); quantized to 1 cm/s.
 	var velocity: Vector3 = Vector3.ZERO
 
 
-	## SPAWN de la fortaleza [param net_id] con [param state] completo: tipo STRUCTURE, reino 0 (manda
-	## el campo [code]owner[/code]) y todos los campos de [FortressFields].
+	## SPAWN of the fortress [param net_id] with the full [param state]: type STRUCTURE, realm 0 (the
+	## [code]owner[/code] field decides) and all the fields of [FortressFields].
 	static func for_fortress(net_id: int, spawn_tick: int, definition_id: String,
 			state: FortressState) -> EntitySpawn:
 		var spawn := EntitySpawn.new()
@@ -1160,10 +1160,10 @@ class EntitySpawn:
 		return spawn
 
 
-	## SPAWN del proyectil [param net_id] disparado en [param spawn_tick] por [param shooter_id] (del reino
-	## [param shooter_realm]) desde [param p0] con velocidad [param v0]. [param p0] y [param v0] deberían
-	## venir ya de [method Ballistics.quantize] (el servidor vuela con lo que viaja), aunque el mensaje los
-	## cuantiza igual.
+	## SPAWN of the projectile [param net_id] fired at [param spawn_tick] by [param shooter_id] (of realm
+	## [param shooter_realm]) from [param p0] with velocity [param v0]. [param p0] and [param v0] should
+	## already come from [method Ballistics.quantize] (the server flies with what travels), although the message
+	## quantizes them anyway.
 	static func for_projectile(net_id: int, spawn_tick: int, shooter_realm: int, shooter_id: int,
 			definition: int, source_of_shot: int, index_in_volley: int, harmless: bool, p0: Vector3,
 			v0: Vector3) -> EntitySpawn:
@@ -1182,13 +1182,13 @@ class EntitySpawn:
 		return spawn
 
 
-	## true si es un proyectil inofensivo (bit [constant PROJECTILE_FLAG_HARMLESS]).
+	## true if it is a harmless projectile (bit [constant PROJECTILE_FLAG_HARMLESS]).
 	func is_harmless() -> bool:
 		return (projectile_flags & PROJECTILE_FLAG_HARMLESS) != 0
 
 
-	## Los campos de un SPAWN de estructura como un [ObjectState] del tick de alta, para aplicarlos
-	## igual que los de un OBJECT_STATE.
+	## The fields of a structure SPAWN as an [ObjectState] of the spawn tick, to apply them
+	## the same way as those of an OBJECT_STATE.
 	func to_object_state() -> ObjectState:
 		var object_state := ObjectState.new()
 		object_state.net_id = net_id
@@ -1197,8 +1197,8 @@ class EntitySpawn:
 		return object_state
 
 
-	## Un búfer vacío si [member kind] no es jugador, PNJ, proyectil ni estructura, o si una estructura no
-	## tiene un id de definición válido o campos que se puedan escribir.
+	## An empty buffer if [member kind] is not player, NPC, projectile or structure, or if a structure does not
+	## have a valid definition id or writable fields.
 	func encode() -> PackedByteArray:
 		if kind == NetProtocol.EntityKind.STRUCTURE:
 			return _encode_structure()
@@ -1240,13 +1240,13 @@ class EntitySpawn:
 		return bytes
 
 
-	## Devuelve null si el tipo no tiene formato, si el tamaño no cuadra con el que dicen las
-	## longitudes, si un texto no es válido, si un jugador trae un nivel por encima del tope o, en una
-	## estructura, si el id de la definición no es
-	## ASCII de 1 a 32 B, el contador de campos no está entre 1 y 32, un campo tiene un tipo de valor
-	## desconocido o se repite un id. Un proyectil, si no ocupa exactamente [constant PROJECTILE_SIZE] B,
-	## trae algún flag en la cabecera (el bit [code]is_yours[/code] o un contador de teletransporte) o un bit
-	## de [code]proj_flags[/code] que no existe.
+	## Returns null if the type has no format, if the size does not match the one the
+	## lengths state, if a text is not valid, if a player carries a level above the cap or, in a
+	## structure, if the definition id is not
+	## ASCII of 1 to 32 B, the field counter is not between 1 and 32, a field has an unknown
+	## value type or an id is repeated. A projectile, if it does not take exactly [constant PROJECTILE_SIZE] B,
+	## carries any flag in the header (the [code]is_yours[/code] bit or a teleport counter) or a bit
+	## of [code]proj_flags[/code] that does not exist.
 	static func decode(bytes: PackedByteArray) -> EntitySpawn:
 		var size: int = bytes.size()
 		var name_offset: int = SPAWN_HEADER_SIZE + PlayerState.ENCODED_SIZE
@@ -1290,15 +1290,15 @@ class EntitySpawn:
 		return spawn
 
 
-	# Bytes que van tras el nombre: el id de definición de un PNJ y, desde el protocolo 7, el nivel y la
-	# apariencia de un jugador.
+	# Bytes after the name: an NPC's definition id and, since protocol 7, a player's level and
+	# appearance.
 	static func _tail_size(entity_kind: int) -> int:
 		if entity_kind == NetProtocol.EntityKind.NPC:
 			return NetMessages.NPC_SPAWN_TAIL_SIZE
 		return NetMessages.PLAYER_SPAWN_TAIL_SIZE
 
 
-	# STRUCTURE: u8 def_len, id ASCII, u8 field_count y los campos, tras la cabecera.
+	# STRUCTURE: u8 def_len, ASCII id, u8 field_count and the fields, after the header.
 	func _encode_structure() -> PackedByteArray:
 		if definition_id.is_empty() or definition_id.length() > NetProtocol.MAX_DEFINITION_ID_BYTES \
 				or not NetMessages.is_printable_ascii_text(definition_id) \
@@ -1325,7 +1325,7 @@ class EntitySpawn:
 		return bytes
 
 
-	# PROJECTILE: 22 B tras la cabecera; los flags de la cabecera, a 0 (ni is_yours ni teletransporte).
+	# PROJECTILE: 22 B after the header; the header flags at 0 (neither is_yours nor teleport).
 	func _encode_projectile() -> PackedByteArray:
 		var bytes := PackedByteArray()
 		bytes.resize(PROJECTILE_SIZE)
@@ -1400,12 +1400,12 @@ class EntitySpawn:
 		return spawn
 
 
-## ENTITY_DESPAWN (S→C, canal 3): 8 B.
+## ENTITY_DESPAWN (S→C, channel 3): 8 B.
 class EntityDespawn:
 	const SIZE: int = 8
 
 	var net_id: int = 0
-	## El cliente quita la entidad cuando su `render_tick` llega a este tick.
+	## The client removes the entity when its `render_tick` reaches this tick.
 	var despawn_tick: int = 0
 	## [enum NetProtocol.DespawnReason].
 	var reason: int = NetProtocol.DespawnReason.OUT_OF_INTEREST
@@ -1431,7 +1431,7 @@ class EntityDespawn:
 		return despawn
 
 
-## NOTICE (S→C, canal 3): 3 B + texto (hasta 200 B).
+## NOTICE (S→C, channel 3): 3 B + text (up to 200 B).
 class Notice:
 	const MIN_SIZE: int = 3
 
@@ -1467,30 +1467,30 @@ class Notice:
 		return notice
 
 
-## CHAT_SEND (C→S, canal 3, protocolo 5): 5 B + destinatario + texto (docs/social.md, sección 12).
-## El jugador quiere decir algo por un canal.
+## CHAT_SEND (C→S, channel 3, protocol 5): 5 B + recipient + text (docs/social.md, section 12).
+## The player wants to say something on a channel.
 ## [br][br]
-## [code]u8 type, u8 channel, u8 recipient_len, u16 text_len[/code], el destinatario (UTF-8, solo en un
-## susurro: el nombre del personaje tal como lo escribió el jugador) y el texto (UTF-8). El texto lleva
-## como mucho [constant ChatText.MAX_CHARS] caracteres y [constant ChatText.MAX_BYTES] B; el servidor lo
-## sanea ([ChatText]) antes de repartirlo. Un mensaje, con todo, ocupa 821 B como mucho.
+## [code]u8 type, u8 channel, u8 recipient_len, u16 text_len[/code], the recipient (UTF-8, only in a
+## whisper: the character's name as the player typed it) and the text (UTF-8). The text carries
+## at most [constant ChatText.MAX_CHARS] characters and [constant ChatText.MAX_BYTES] B; the server
+## sanitizes it ([ChatText]) before distributing it. A message, all told, takes at most 821 B.
 ## [br][br]
-## [method decode] devuelve null si el tamaño no cuadra, el canal no existe o es el del sistema (que solo
-## envía el servidor), un susurro no lleva destinatario o cualquier otro canal lo lleva, algún texto no es
-## UTF-8 válido, el destinatario pasa de [constant NetProtocol.MAX_NAME_CHARS] caracteres o el texto de
-## [constant ChatText.MAX_CHARS]. Un texto vacío sí se decodifica: es el servidor quien decide qué hacer.
+## [method decode] returns null if the size does not match, the channel does not exist or is the system one (which only the server
+## sends), a whisper has no recipient or any other channel has one, any text is not
+## valid UTF-8, the recipient exceeds [constant NetProtocol.MAX_NAME_CHARS] characters or the text exceeds
+## [constant ChatText.MAX_CHARS]. An empty text does decode: it is the server that decides what to do.
 class ChatSend:
-	## Bytes de la cabecera, antes del destinatario y el texto.
+	## Bytes of the header, before the recipient and the text.
 	const HEADER_SIZE: int = 5
 
 	## [enum ChatChannel.Id].
 	var channel: int = ChatChannel.Id.SAY
-	## Nombre del destinatario (solo en un susurro; vacío en los demás canales).
+	## Name of the recipient (only in a whisper; empty on other channels).
 	var recipient: String = ""
 	var text: String = ""
 
 
-	## Los textos se recortan a sus límites sin partir ningún carácter.
+	## Texts are trimmed to their limits without splitting any character.
 	func encode() -> PackedByteArray:
 		var recipient_bytes: PackedByteArray = NetMessages.utf8_limited(
 				recipient.substr(0, NetProtocol.MAX_NAME_CHARS), NetProtocol.MAX_NAME_BYTES)
@@ -1534,37 +1534,37 @@ class ChatSend:
 		if message.recipient.length() > NetProtocol.MAX_NAME_CHARS \
 				or message.text.length() > ChatText.MAX_CHARS:
 			return null
-		# Un nombre que se lee vacío (solo un BOM UTF-8, que get_string_from_utf8 se salta) no es un nombre.
+		# A name that reads as empty (only a UTF-8 BOM, which get_string_from_utf8 skips) is not a name.
 		if channel_id == ChatChannel.Id.WHISPER and message.recipient.is_empty():
 			return null
 		return message
 
 
-## CHAT_MESSAGE (S→C, canal 3, protocolo 5): 11 B + emisor + destinatario + texto (docs/social.md,
-## sección 12). Un mensaje de chat ya saneado y repartido por el servidor, solo a quien debe verlo.
+## CHAT_MESSAGE (S→C, channel 3, protocol 5): 11 B + sender + recipient + text (docs/social.md,
+## section 12). A chat message already sanitized and distributed by the server, only to whoever should see it.
 ## [br][br]
 ## [code]u8 type, u8 channel, u8 sender_realm, u32 tick, u8 sender_len, u8 recipient_len, u16
-## text_len[/code], el emisor (UTF-8), el destinatario (UTF-8, solo en un susurro) y el texto (UTF-8).
-## [member tick] es el tick del servidor al repartirlo. En un susurro lo reciben los dos: el destinatario
-## lo lee como un susurro de [member sender] y el emisor como la copia del que ha enviado. El del canal del
-## sistema no lleva emisor. Con todo, ocupa 875 B como mucho.
+## text_len[/code], the sender (UTF-8), the recipient (UTF-8, only in a whisper) and the text (UTF-8).
+## [member tick] is the server tick when distributing it. In a whisper both receive it: the recipient
+## reads it as a whisper from [member sender] and the sender as the copy of what they sent. The one on the
+## system channel carries no sender. All told, it takes at most 875 B.
 ## [br][br]
-## [method decode] devuelve null si el tamaño no cuadra, el canal o el reino no existen, un mensaje del
-## sistema lleva emisor o destinatario, otro canal no lleva emisor, solo un susurro lleva destinatario, el
-## texto no es UTF-8 válido o pasa de [constant ChatText.MAX_CHARS] caracteres.
+## [method decode] returns null if the size does not match, the channel or realm does not exist, a
+## system message carries a sender or recipient, another channel carries no sender, only a whisper carries a recipient, the
+## text is not valid UTF-8 or exceeds [constant ChatText.MAX_CHARS] characters.
 class ChatMessage:
-	## Bytes de la cabecera, antes de los nombres y el texto.
+	## Bytes of the header, before the names and the text.
 	const HEADER_SIZE: int = 11
 
 	## [enum ChatChannel.Id].
 	var channel: int = ChatChannel.Id.SAY
-	## Reino del emisor ([enum NetProtocol.Realm]); 0 en los mensajes del sistema.
+	## Realm of the sender ([enum NetProtocol.Realm]); 0 in system messages.
 	var sender_realm: int = NetProtocol.Realm.NONE
-	## Tick del servidor al repartirlo.
+	## Server tick when distributing it.
 	var tick: int = 0
-	## Nombre del emisor (vacío en el canal del sistema).
+	## Name of the sender (empty on the system channel).
 	var sender: String = ""
-	## Nombre del destinatario (solo en un susurro).
+	## Name of the recipient (only in a whisper).
 	var recipient: String = ""
 	var text: String = ""
 
@@ -1632,20 +1632,20 @@ class ChatMessage:
 		return message
 
 
-## PARTY_INVITE, PARTY_KICK y PARTY_LEADER (C→S, canal 3, protocolo 5): 2 B + nombre. Piden al servidor
-## invitar a un jugador de tu reino, expulsar a un miembro del grupo o cederle el liderazgo
-## (docs/social.md, sección 12.4).
+## PARTY_INVITE, PARTY_KICK and PARTY_LEADER (C→S, channel 3, protocol 5): 2 B + name. They ask the server to
+## invite a player of your realm, kick a party member or hand them the leadership
+## (docs/social.md, section 12.4).
 ## [br][br]
-## [code]u8 type, u8 name_len[/code] y el nombre del jugador (UTF-8, de 1 a [constant NetProtocol.MAX_NAME_BYTES]
-## B y [constant NetProtocol.MAX_NAME_CHARS] caracteres), tal como lo escribió quien manda: el servidor lo
-## busca sin distinguir mayúsculas ni tildes. [member type] es el tipo de mensaje.
+## [code]u8 type, u8 name_len[/code] and the player's name (UTF-8, from 1 to [constant NetProtocol.MAX_NAME_BYTES]
+## B and [constant NetProtocol.MAX_NAME_CHARS] characters), as typed by the sender: the server
+## looks it up ignoring case and accents. [member type] is the message type.
 ## [br][br]
-## [method decode] devuelve null si el tipo no es uno de los tres, el tamaño no cuadra, el nombre está vacío
-## o es demasiado largo, o no es UTF-8 válido.
+## [method decode] returns null if the type is not one of the three, the size does not match, the name is empty
+## or too long, or is not valid UTF-8.
 class PartyTargetRequest:
 	const HEADER_SIZE: int = 2
 
-	## [constant NetProtocol.MSG_PARTY_INVITE], [constant NetProtocol.MSG_PARTY_KICK] o
+	## [constant NetProtocol.MSG_PARTY_INVITE], [constant NetProtocol.MSG_PARTY_KICK] or
 	## [constant NetProtocol.MSG_PARTY_LEADER].
 	var type: int = NetProtocol.MSG_PARTY_INVITE
 	var target: String = ""
@@ -1692,12 +1692,12 @@ class PartyTargetRequest:
 		return request
 
 
-## PARTY_RESPONSE (C→S, canal 3, protocolo 5): 3 B + nombre. Acepta o rechaza la invitación de [member
-## inviter] (docs/social.md, sección 12.4).
+## PARTY_RESPONSE (C→S, channel 3, protocol 5): 3 B + name. Accepts or declines the invitation from [member
+## inviter] (docs/social.md, section 12.4).
 ## [br][br]
-## [code]u8 type, u8 accept, u8 name_len[/code] y el nombre de quien invitó. [member accept] es 1 (aceptar) o 0
-## (rechazar). [method decode] devuelve null si el tamaño no cuadra, [code]accept[/code] no es 0 ni 1, el nombre
-## está vacío o es demasiado largo, o no es UTF-8 válido.
+## [code]u8 type, u8 accept, u8 name_len[/code] and the name of whoever invited. [member accept] is 1 (accept) or 0
+## (decline). [method decode] returns null if the size does not match, [code]accept[/code] is neither 0 nor 1, the name
+## is empty or too long, or is not valid UTF-8.
 class PartyResponse:
 	const HEADER_SIZE: int = 3
 
@@ -1735,7 +1735,7 @@ class PartyResponse:
 		return response
 
 
-## PARTY_LEAVE (C→S, canal 3, protocolo 5): 1 B. El jugador sale de su grupo.
+## PARTY_LEAVE (C→S, channel 3, protocol 5): 1 B. The player leaves their party.
 class PartyLeave:
 	const SIZE: int = 1
 
@@ -1750,25 +1750,25 @@ class PartyLeave:
 		return PartyLeave.new()
 
 
-## PARTY_INVITATION (S→C, canal 3, protocolo 5): 7 B + nombre. Una invitación al grupo de [member inviter]:
-## recién recibida, caducada o cancelada (docs/social.md, sección 12.4).
+## PARTY_INVITATION (S→C, channel 3, protocol 5): 7 B + name. An invitation to [member inviter]'s party:
+## newly received, expired or canceled (docs/social.md, section 12.4).
 ## [br][br]
-## [code]u8 type, u8 state, u32 tick, u8 name_len[/code] y el nombre canónico de quien invitó. Con
-## [constant State.OFFERED], [member tick] es el tick del servidor en el que caduca; con los demás estados,
-## en el que dejó de valer. El cliente enseña el aviso con aceptar y rechazar mientras vale y lo quita con
-## [constant State.EXPIRED] o [constant State.CANCELLED].
+## [code]u8 type, u8 state, u32 tick, u8 name_len[/code] and the canonical name of whoever invited. With
+## [constant State.OFFERED], [member tick] is the server tick at which it expires; with the other states,
+## the one at which it stopped being valid. The client shows the notice with accept and decline while it is valid and removes it with
+## [constant State.EXPIRED] or [constant State.CANCELLED].
 ## [br][br]
-## [method decode] devuelve null si el tamaño no cuadra, el estado no existe o el nombre está vacío, es demasiado
-## largo o no es UTF-8 válido.
+## [method decode] returns null if the size does not match, the state does not exist or the name is empty, too
+## long or not valid UTF-8.
 class PartyInvitation:
 	const HEADER_SIZE: int = 7
 
 	enum State {
-		## Invitación nueva: el aviso se enseña hasta [member tick].
+		## New invitation: the notice is shown until [member tick].
 		OFFERED = 0,
-		## Ha caducado (60 s sin responder).
+		## It has expired (60 s without a response).
 		EXPIRED = 1,
-		## Ya no vale: se ha respondido, o quien invitó ha salido o se ha ido.
+		## It is no longer valid: it was answered, or whoever invited left or disconnected.
 		CANCELLED = 2,
 	}
 
@@ -1808,23 +1808,23 @@ class PartyInvitation:
 		return invitation
 
 
-## PARTY_ROSTER (S→C, canal 3, protocolo 5): 3 B + 3 B y nombre por miembro (≤ 258 B). La lista de miembros del
-## grupo del jugador, en el orden en que se unieron, con quién lleva el mando; el servidor la manda cada vez
-## que cambia (entra o sale alguien, cambia el líder) y, con [member members] vacío, cuando el jugador deja de
-## estar en un grupo (docs/social.md, sección 12.4).
+## PARTY_ROSTER (S→C, channel 3, protocol 5): 3 B + 3 B and name per member (≤ 258 B). The list of members of the
+## player's party, in the order they joined, with who holds the lead; the server sends it every time
+## it changes (someone joins or leaves, the leader changes) and, with [member members] empty, when the player is no longer
+## in a party (docs/social.md, section 12.4).
 ## [br][br]
-## [code]u8 type, u8 count, u8 leader_index[/code] (de 0 a [constant NetProtocol.PARTY_MAX_SIZE]) y, por
-## miembro, [code]u16 net_id, u8 name_len[/code] y el nombre (UTF-8). [member leader_index] es la posición del
-## líder en la lista (0 si no hay grupo).
+## [code]u8 type, u8 count, u8 leader_index[/code] (from 0 to [constant NetProtocol.PARTY_MAX_SIZE]) and, per
+## member, [code]u16 net_id, u8 name_len[/code] and the name (UTF-8). [member leader_index] is the position of the
+## leader in the list (0 if there is no party).
 ## [br][br]
-## [method decode] devuelve null si el tamaño no cuadra, hay más de [constant NetProtocol.PARTY_MAX_SIZE]
-## miembros, el líder no es uno de ellos, un nombre está vacío o es demasiado largo o no es UTF-8 válido, o un
-## net_id se repite.
+## [method decode] returns null if the size does not match, there are more than [constant NetProtocol.PARTY_MAX_SIZE]
+## members, the leader is not one of them, a name is empty or too long or not valid UTF-8, or a
+## net_id is repeated.
 class PartyRoster:
 	const HEADER_SIZE: int = 3
 	const MEMBER_HEADER_SIZE: int = 3
 
-	## Un miembro: su id de red y su nombre.
+	## A member: their network id and name.
 	class Member:
 		var net_id: int = 0
 		var display_name: String = ""
@@ -1843,7 +1843,7 @@ class PartyRoster:
 		return members.is_empty()
 
 
-	## net_id del líder (0 si no hay grupo).
+	## net_id of the leader (0 if there is no party).
 	func get_leader_id() -> int:
 		if leader_index < 0 or leader_index >= members.size():
 			return 0
@@ -1904,25 +1904,25 @@ class PartyRoster:
 		return roster
 
 
-## PARTY_STATUS (S→C, canal 3, protocolo 5): 2 B + 17 B por miembro (≤ 87 B). El estado compacto de los
-## miembros del grupo, que el servidor manda a 2 Hz a todos los miembros aunque estén fuera del radio de
-## interés de los demás (docs/social.md, sección 12.4; docs/red.md, sección 9).
+## PARTY_STATUS (S→C, channel 3, protocol 5): 2 B + 17 B per member (≤ 87 B). The compact state of the
+## party members, which the server sends at 2 Hz to all members even if they are outside the others' radius of
+## interest (docs/social.md, section 12.4; docs/red.md, section 9).
 ## [br][br]
-## [code]u8 type, u8 count[/code] y, por miembro, [code]u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x,
-## f32 y, f32 z[/code]. [member MemberStatus.health_q] es la vida cuantizada del registro del snapshot
-## ([method EntityRecord.quantize_health]: 0 muerto, de 1 a 255 vivo), [member MemberStatus.stamina_q] la
-## resistencia en 255 pasos y [member MemberStatus.status] los bits [constant STATUS_IN_COMBAT],
-## [constant STATUS_PROTECTED], [constant STATUS_DEAD] y (protocolo 6) [constant STATUS_DOWNED].
+## [code]u8 type, u8 count[/code] and, per member, [code]u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x,
+## f32 y, f32 z[/code]. [member MemberStatus.health_q] is the quantized health of the snapshot record
+## ([method EntityRecord.quantize_health]: 0 dead, 1 to 255 alive), [member MemberStatus.stamina_q] the
+## stamina in 255 steps and [member MemberStatus.status] the bits [constant STATUS_IN_COMBAT],
+## [constant STATUS_PROTECTED], [constant STATUS_DEAD] and (protocol 6) [constant STATUS_DOWNED].
 ## [br][br]
-## [method decode] devuelve null si el tamaño no cuadra, hay más de [constant NetProtocol.PARTY_MAX_SIZE]
-## miembros, un bit de estado es desconocido, una posición no es finita o un net_id se repite.
+## [method decode] returns null if the size does not match, there are more than [constant NetProtocol.PARTY_MAX_SIZE]
+## members, a status bit is unknown, a position is not finite or a net_id is repeated.
 class PartyStatus:
 	const HEADER_SIZE: int = 2
 	const MEMBER_SIZE: int = 17
-	## Bits de estado válidos.
+	## Valid status bits.
 	const VALID_STATUS: int = STATUS_IN_COMBAT | STATUS_PROTECTED | STATUS_DEAD | STATUS_DOWNED
 
-	## El estado de un miembro.
+	## The state of a member.
 	class MemberStatus:
 		var net_id: int = 0
 		var health_q: int = 0
@@ -1995,32 +1995,32 @@ class PartyStatus:
 		return status
 
 
-## OBJECT_STATE (S→C, canal 3): 8 B + campos (docs/fuerte.md, sección 2). El estado replicado de un
-## objeto que no es un jugador ni un PNJ, hoy el de una fortaleza.
+## OBJECT_STATE (S→C, channel 3): 8 B + fields (docs/fuerte.md, section 2). The replicated state of an
+## object that is not a player or an NPC, today that of a fortress.
 ## [br][br]
-## [code]u8 type, u16 net_id, u32 tick, u8 field_count[/code] (de 1 a 32) y, por campo, [code]u8
-## field_id, u8 value_type[/code] (1 u8, 2 u16, 3 u32, 4 s32) y el valor ([ObjectField]). [member tick]
-## es el tick del servidor tras el que vale el estado. Un mensaje trae solo los campos que han
-## cambiado; el estado completo viaja en el ENTITY_SPAWN de la estructura.
+## [code]u8 type, u16 net_id, u32 tick, u8 field_count[/code] (from 1 to 32) and, per field, [code]u8
+## field_id, u8 value_type[/code] (1 u8, 2 u16, 3 u32, 4 s32) and the value ([ObjectField]). [member tick]
+## is the server tick after which the state holds. A message carries only the fields that have
+## changed; the full state travels in the structure's ENTITY_SPAWN.
 ## [br][br]
-## [method decode] devuelve null si el tamaño no cuadra, un [code]value_type[/code] es desconocido, el
-## contador está fuera de 1 a 32 o se repite un campo. Un [code]field_id[/code] desconocido con un tipo
-## válido se conserva: quien interpreta el objeto ([method apply_to_fortress]) lo salta, así que un
-## servidor más nuevo puede añadir campos sin romper al cliente.
+## [method decode] returns null if the size does not match, a [code]value_type[/code] is unknown, the
+## counter is outside 1 to 32 or a field is repeated. An unknown [code]field_id[/code] with a valid
+## type is kept: whoever interprets the object ([method apply_to_fortress]) skips it, so a
+## newer server can add fields without breaking the client.
 class ObjectState:
-	## Id de red de la estructura.
+	## Network id of the structure.
 	var net_id: int = 0
-	## Tick del servidor tras el que vale el estado.
+	## Server tick after which the state holds.
 	var tick: int = 0
 	var fields: Array[ObjectField] = []
 
 
-	## Estado de la fortaleza [param state] con todos sus campos ([FortressFields.all_ids]).
+	## State of the fortress [param state] with all its fields ([FortressFields.all_ids]).
 	static func from_fortress(object_id: int, state_tick: int, state: FortressState) -> ObjectState:
 		return from_fortress_fields(object_id, state_tick, state, FortressFields.all_ids())
 
 
-	## Estado de la fortaleza [param state] con solo los campos [param field_ids].
+	## State of the fortress [param state] with only the fields [param field_ids].
 	static func from_fortress_fields(object_id: int, state_tick: int, state: FortressState,
 			field_ids: PackedInt32Array) -> ObjectState:
 		var object_state := ObjectState.new()
@@ -2034,9 +2034,9 @@ class ObjectState:
 		return object_state
 
 
-	## Los campos de [param state] que han cambiado respecto a [param previous]
-	## ([method FortressState.changed_fields_since]). Sin cambios, [member fields] queda vacío y
-	## [method encode] devuelve un búfer vacío: no hay nada que mandar.
+	## The fields of [param state] that have changed relative to [param previous]
+	## ([method FortressState.changed_fields_since]). With no changes, [member fields] stays empty and
+	## [method encode] returns an empty buffer: there is nothing to send.
 	static func from_fortress_changes(object_id: int, state_tick: int, state: FortressState,
 			previous: FortressState) -> ObjectState:
 		return from_fortress_fields(object_id, state_tick, state,
@@ -2047,7 +2047,7 @@ class ObjectState:
 		fields.append(ObjectField.make(field_id, type, field_value))
 
 
-	## El campo [param field_id], o null si el mensaje no lo trae.
+	## The field [param field_id], or null if the message does not carry it.
 	func get_field(field_id: int) -> ObjectField:
 		for field: ObjectField in fields:
 			if field.field_id == field_id:
@@ -2059,15 +2059,15 @@ class ObjectState:
 		return get_field(field_id) != null
 
 
-	## Valor del campo [param field_id], o [param default] si el mensaje no lo trae.
+	## Value of the field [param field_id], or [param default] if the message does not carry it.
 	func get_value(field_id: int, default: int = 0) -> int:
 		var field: ObjectField = get_field(field_id)
 		return field.value if field != null else default
 
 
-	## Aplica los campos de [FortressFields] que trae el mensaje a [param state] y devuelve cuántos
-	## ha aplicado. Salta los ids desconocidos (compatibilidad hacia delante) y los que traen otro
-	## tipo de valor que el del campo.
+	## Applies the [FortressFields] fields that the message carries to [param state] and returns how many
+	## it applied. Skips unknown ids (forward compatibility) and those that carry a different
+	## value type than the field's.
 	func apply_to_fortress(state: FortressState) -> int:
 		var applied: int = 0
 		for field: ObjectField in fields:
@@ -2078,8 +2078,8 @@ class ObjectState:
 		return applied
 
 
-	## true si todos los campos conocidos de [FortressFields] traen el tipo de valor que les
-	## corresponde (los desconocidos no cuentan).
+	## true if all the known [FortressFields] fields carry the value type that
+	## corresponds to them (unknown ones do not count).
 	func is_valid_for_fortress() -> bool:
 		for field: ObjectField in fields:
 			if FortressFields.is_known(field.field_id) \
@@ -2088,13 +2088,13 @@ class ObjectState:
 		return true
 
 
-	## Bytes que ocupa el mensaje.
+	## Bytes taken by the message.
 	func encoded_size() -> int:
 		return OBJECT_STATE_HEADER_SIZE + NetMessages.fields_size(fields)
 
 
-	## Un búfer vacío si [member fields] no se puede escribir: sin campos, más de 32, con un tipo de
-	## valor desconocido o con un id repetido.
+	## An empty buffer if [member fields] cannot be written: no fields, more than 32, with an unknown
+	## value type or with a repeated id.
 	func encode() -> PackedByteArray:
 		if not NetMessages.are_fields_encodable(fields):
 			return PackedByteArray()
@@ -2126,64 +2126,64 @@ class ObjectState:
 		return object_state
 
 
-## ENTITY_EVENT (S→C, canal 3): 9 B + datos según el evento (docs/combate.md, sección 6).
+## ENTITY_EVENT (S→C, channel 3): 9 B + data depending on the event (docs/combate.md, section 6).
 ## [br][br]
-## [code]u8 type, u16 net_id, u32 tick, u8 event, u8 len[/code] y [code]len[/code] bytes de
-## datos. [member net_id] es la entidad a la que se ata el evento: la víctima en HIT, DEATH y
-## KILL, y la entidad que reaparece en RESPAWN. [member tick] es el tick del servidor en que
-## ocurrió.
+## [code]u8 type, u16 net_id, u32 tick, u8 event, u8 len[/code] and [code]len[/code] bytes of
+## data. [member net_id] is the entity the event is attached to: the victim in HIT, DEATH and
+## KILL, and the entity that respawns in RESPAWN. [member tick] is the server tick at which it
+## happened.
 ## [br]- [code]HIT[/code] (17 B): [code]u16 attacker, u16 amount, u8 damage_type, u8 flags,
-## u16 attack_id[/code]. Los flags son los [code]HIT_FLAG_*[/code].
-## [br]- [code]DEATH[/code] (13 B): [code]u16 killer, u16 attack_id[/code] (killer 0 = el
-## entorno).
-## [br]- [code]KILL[/code] (14 + 2n B): [code]u16 killer, u16 attack_id, u8 n[/code] y
-## [code]n × u16[/code] asistentes.
+## u16 attack_id[/code]. The flags are the [code]HIT_FLAG_*[/code].
+## [br]- [code]DEATH[/code] (13 B): [code]u16 killer, u16 attack_id[/code] (killer 0 = the
+## environment).
+## [br]- [code]KILL[/code] (14 + 2n B): [code]u16 killer, u16 attack_id, u8 n[/code] and
+## [code]n × u16[/code] assistants.
 ## [br]- [code]RESPAWN[/code] (10 B): [code]u8 point[/code].
-## [br]- [code]WAR[/code] (11 B, docs/fuerte.md sección 5): [code]u8 war_event, u8 realm[/code].
-## [member net_id] es la fortaleza; [member war_event] es un id de [WarEvents] y [member war_realm]
-## el reino que lo acompaña ([method FortressState.event_realm]). Va a toda la zona y se aplica en el
-## tick de dibujo.
+## [br]- [code]WAR[/code] (11 B, docs/fuerte.md section 5): [code]u8 war_event, u8 realm[/code].
+## [member net_id] is the fortress; [member war_event] is an id from [WarEvents] and [member war_realm]
+## the realm that accompanies it ([method FortressState.event_realm]). It goes to the whole zone and is applied on the
+## draw tick.
 ## [br]- [code]TELEGRAPH[/code] (26 B): [code]u16 attack_id, u8 shape, u64 position, u16 yaw, u16
-## radius_cm, u16 impact_in_ticks[/code]. [member net_id] es el PNJ que prepara el ataque, [member
-## shape] 0 círculo o 1 sector, [member position] el origen (empaquetado como en el registro de
-## entidad) y [member impact_in_ticks] los ticks que faltan para el golpe. Es un aviso: se aplica al
-## llegar.
+## radius_cm, u16 impact_in_ticks[/code]. [member net_id] is the NPC preparing the attack, [member
+## shape] 0 circle or 1 sector, [member position] the origin (packed as in the entity
+## record) and [member impact_in_ticks] the ticks remaining until the hit. It is a warning: it is applied on
+## arrival.
 ## [br][br]
-## Desde el protocolo 6 (docs/habilidades.md, sección 5.4) el [code]attack_id[/code] de HIT, DEATH, KILL y
-## TELEGRAPH es una [b]fuente[/b] ([CombatSource]: clase en los bits 14-15, id en 0-13; los ataques de la
-## fase 3 conservan su número), y hay cinco eventos más:
+## Since protocol 6 (docs/habilidades.md, section 5.4) the [code]attack_id[/code] of HIT, DEATH, KILL and
+## TELEGRAPH is a [b]source[/b] ([CombatSource]: kind in bits 14-15, id in 0-13; phase 3
+## attacks keep their number), and there are five more events:
 ## [br]- [code]STATUS[/code] (18 B): [code]u16 source_entity, u8 op, u8 status_id, u8 stacks, u32
-## until_tick[/code]. [member net_id] es el afectado, [member source_entity] quien lo puso (0 = sin autor),
-## [member op] 1 aplicado o renovado y 2 quitado ([enum StatusOp]) y [member until_tick] el fin (exclusivo).
-## [br]- [code]HEAL[/code] (15 B): [code]u16 healer, u16 amount, u16 source[/code]. [member net_id] es el
-## curado, [member healer] quien cura (0 = él mismo) y la fuente va en [member attack_id].
+## until_tick[/code]. [member net_id] is the affected one, [member source_entity] whoever applied it (0 = no author),
+## [member op] 1 applied or renewed and 2 removed ([enum StatusOp]) and [member until_tick] the end (exclusive).
+## [br]- [code]HEAL[/code] (15 B): [code]u16 healer, u16 amount, u16 source[/code]. [member net_id] is the
+## healed one, [member healer] whoever heals (0 = themselves) and the source goes in [member attack_id].
 ## [br]- [code]LOADOUT[/code] (15 B): [code]u8 template_id, u16 weapon_1, u16 weapon_2, u8 charges[/code].
-## [member net_id] es el jugador; las armas, en orden de ranura (0 = ninguna); [member charges], las de las
-## dos pociones (bits 0-3 y 4-7; 0 para quien no es el dueño).
-## [br]- [code]DOWNED[/code] (13 B): [code]u16 attacker, u16 source[/code]. [member net_id] es el derribado;
-## la fuente va en [member attack_id].
-## [br]- [code]INTERACT[/code] (16 B): [code]u16 actor, u8 op, u32 end_tick[/code]. [member net_id] es el
-## derribado, [member actor] quien lo levanta o lo remata, [member op] uno de [enum InteractOp] y
-## [member end_tick] el tick en que acabaría.
+## [member net_id] is the player; the weapons, in slot order (0 = none); [member charges], those of the
+## two potions (bits 0-3 and 4-7; 0 for whoever is not the owner).
+## [br]- [code]DOWNED[/code] (13 B): [code]u16 attacker, u16 source[/code]. [member net_id] is the knocked down one;
+## the source goes in [member attack_id].
+## [br]- [code]INTERACT[/code] (16 B): [code]u16 actor, u8 op, u32 end_tick[/code]. [member net_id] is the
+## knocked down one, [member actor] whoever revives or executes them, [member op] one of [enum InteractOp] and
+## [member end_tick] the tick at which it would end.
 ## [br][br]
-## Desde el protocolo 7 (docs/progresion.md §6.3): [code]LEVEL_UP[/code] (16; 10 B), [code]u8 level[/code] de 1
-## a [constant ProgressMessages.MAX_LEVEL]. [member net_id] es quien sube; va al dueño y a los de su reino que lo
-## tienen relevante, para el efecto visual (al enemigo no le llega). El 16 deja hueco a los eventos de la fase 4.
+## Since protocol 7 (docs/progresion.md §6.3): [code]LEVEL_UP[/code] (16; 10 B), [code]u8 level[/code] from 1
+## to [constant ProgressMessages.MAX_LEVEL]. [member net_id] is whoever levels up; it goes to the owner and to those of their realm who
+## find it relevant, for the visual effect (it does not reach the enemy). 16 leaves a gap for the phase 4 events.
 ## [br][br]
-## Con [method hit], [method death], [method kill], [method respawn], [method war], [method telegraph],
-## [method status], [method heal], [method loadout], [method downed], [method interact] y [method level_up] se
-## crean ya rellenos.
+## With [method hit], [method death], [method kill], [method respawn], [method war], [method telegraph],
+## [method status], [method heal], [method loadout], [method downed], [method interact] and [method level_up] they are
+## created already filled in.
 class EntityEvent:
-	## Evento ([member event]).
+	## Event ([member event]).
 	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4, WAR = 5, TELEGRAPH = 6, STATUS = 7, HEAL = 8,
 			LOADOUT = 9, DOWNED = 10, INTERACT = 11, LEVEL_UP = 16 }
-	## [member op] de un STATUS.
+	## [member op] of a STATUS.
 	enum StatusOp { APPLIED = 1, REMOVED = 2 }
-	## [member op] de un INTERACT: empieza a levantar, levantar cortado, levantado, empieza a rematar y
-	## rematar cortado.
+	## [member op] of an INTERACT: starts reviving, revive cut off, revived, starts executing and
+	## execute cut off.
 	enum InteractOp { REVIVE = 1, REVIVE_CUT = 2, REVIVED = 3, EXECUTE = 4, EXECUTE_CUT = 5 }
 
-	## Bytes de la cabecera, antes de los datos.
+	## Bytes of the header, before the data.
 	const HEADER_SIZE: int = 9
 	const HIT_DATA_SIZE: int = 8
 	const DEATH_DATA_SIZE: int = 4
@@ -2197,89 +2197,89 @@ class EntityEvent:
 	const DOWNED_DATA_SIZE: int = 4
 	const INTERACT_DATA_SIZE: int = 7
 	const LEVEL_UP_DATA_SIZE: int = 1
-	## Forma de un TELEGRAPH ([member shape]).
+	## Shape of a TELEGRAPH ([member shape]).
 	const SHAPE_CIRCLE: int = 0
 	const SHAPE_SECTOR: int = 1
-	## Reino más alto que acompaña a un WAR (los códigos de [enum NetProtocol.Realm]).
+	## Highest realm that accompanies a WAR (the codes of [enum NetProtocol.Realm]).
 	const MAX_WAR_REALM: int = 3
-	## Máximo de asistentes de un KILL (cada uno hizo al menos el 10 % del daño, así que nunca
-	## son más de 10).
+	## Maximum assistants of a KILL (each did at least 10% of the damage, so there are never
+	## more than 10).
 	const MAX_ASSISTANTS: int = 16
 
-	## Bits de [member hit_flags] de un HIT.
+	## Bits of [member hit_flags] of a HIT.
 	const HIT_FLAG_CRITICAL: int = 1 << 0
 	const HIT_FLAG_BLOCKED: int = 1 << 1
 	const HIT_FLAG_PARRIED: int = 1 << 2
 	const HIT_FLAG_GUARD_BREAK: int = 1 << 3
 	const HIT_FLAG_LETHAL: int = 1 << 4
-	## El golpe ha interrumpido a la víctima: beber, un lanzamiento marcado, levantar o rematar (protocolo
+	## The hit interrupted the victim: drinking, a marked cast, reviving or executing (protocol
 	## 6).
 	const HIT_FLAG_INTERRUPTED: int = 1 << 5
-	## El golpe ha derribado a la víctima (protocolo 6).
+	## The hit knocked the victim down (protocol 6).
 	const HIT_FLAG_DOWNED: int = 1 << 6
 
-	## Entidad a la que se ata el evento (la víctima, o quien reaparece).
+	## Entity the event is attached to (the victim, or whoever respawns).
 	var net_id: int = 0
-	## Tick del servidor en que ocurrió.
+	## Server tick at which it happened.
 	var tick: int = 0
 	## [enum Kind].
 	var event: int = Kind.HIT
-	## HIT y DOWNED: net_id del atacante.
+	## HIT and DOWNED: net_id of the attacker.
 	var attacker: int = 0
-	## HIT: daño que llegó a la vida (ya con bloqueo y armadura). HEAL: vida curada.
+	## HIT: damage that reached health (with block and armor already applied). HEAL: health healed.
 	var amount: int = 0
 	## HIT: [enum DamageFormula.DamageType].
 	var damage_type: int = 0
-	## HIT: combinación de los [code]HIT_FLAG_*[/code].
+	## HIT: combination of the [code]HIT_FLAG_*[/code].
 	var hit_flags: int = 0
-	## HIT, DEATH, KILL, TELEGRAPH, HEAL y DOWNED: la fuente ([CombatSource]); en un ataque, su id del
-	## catálogo (el nombre es el de la fase 3, cuando solo había ataques).
+	## HIT, DEATH, KILL, TELEGRAPH, HEAL and DOWNED: the source ([CombatSource]); for an attack, its catalog
+	## id (the name is from phase 3, when there were only attacks).
 	var attack_id: int = 0
-	## DEATH y KILL: net_id de quien dio el golpe de gracia (0 = el entorno).
+	## DEATH and KILL: net_id of whoever dealt the killing blow (0 = the environment).
 	var killer: int = 0
-	## KILL: net_id de los asistentes.
+	## KILL: net_id of the assistants.
 	var assistants: PackedInt32Array = PackedInt32Array()
-	## RESPAWN: índice del punto de reaparición.
+	## RESPAWN: index of the respawn point.
 	var point: int = 0
-	## WAR: id de [WarEvents] ([constant WarEvents.FIRST] a [constant WarEvents.LAST]).
+	## WAR: id from [WarEvents] ([constant WarEvents.FIRST] to [constant WarEvents.LAST]).
 	var war_event: int = 0
-	## WAR: código de reino que acompaña al aviso (0 = los Huecos / ninguno).
+	## WAR: realm code that accompanies the notice (0 = the Hollow / none).
 	var war_realm: int = 0
-	## TELEGRAPH: [constant SHAPE_CIRCLE] o [constant SHAPE_SECTOR]. El id del ataque va en
+	## TELEGRAPH: [constant SHAPE_CIRCLE] or [constant SHAPE_SECTOR]. The attack id goes in
 	## [member attack_id].
 	var shape: int = SHAPE_CIRCLE
-	## TELEGRAPH: origen de la zona de peligro (cuantizado a 1 cm al codificar).
+	## TELEGRAPH: origin of the danger zone (quantized to 1 cm when encoding).
 	var position: Vector3 = Vector3.ZERO
-	## TELEGRAPH: giro de la zona, en radianes (se cuantiza a 16 bits).
+	## TELEGRAPH: rotation of the zone, in radians (quantized to 16 bits).
 	var yaw: float = 0.0
-	## TELEGRAPH: radio (alcance) de la zona, en centímetros.
+	## TELEGRAPH: radius (reach) of the zone, in centimeters.
 	var radius_cm: int = 0
-	## TELEGRAPH: ticks que faltan hasta el impacto.
+	## TELEGRAPH: ticks remaining until impact.
 	var impact_in_ticks: int = 0
-	## STATUS: net_id de quien puso el efecto (0 = sin autor).
+	## STATUS: net_id of whoever applied the effect (0 = no author).
 	var source_entity: int = 0
-	## STATUS ([enum StatusOp]) e INTERACT ([enum InteractOp]).
+	## STATUS ([enum StatusOp]) and INTERACT ([enum InteractOp]).
 	var op: int = 0
-	## STATUS: id del efecto en el catálogo de combate (1 a 255).
+	## STATUS: id of the effect in the combat catalog (1 to 255).
 	var status_id: int = 0
-	## STATUS: acumulaciones (al menos 1 si se aplica; 0 al quitarlo).
+	## STATUS: stacks (at least 1 if applied; 0 when removed).
 	var stacks: int = 0
-	## STATUS: tick en que acaba (exclusivo).
+	## STATUS: tick at which it ends (exclusive).
 	var until_tick: int = 0
-	## HEAL: net_id de quien cura (0 = el propio curado).
+	## HEAL: net_id of whoever heals (0 = the healed one themselves).
 	var healer: int = 0
-	## LOADOUT: id de la plantilla de equipo.
+	## LOADOUT: id of the equipment template.
 	var template_id: int = 0
-	## LOADOUT: armas en orden de ranura (0 = ninguna).
+	## LOADOUT: weapons in slot order (0 = none).
 	var weapon_1: int = 0
 	var weapon_2: int = 0
-	## LOADOUT: cargas de las dos pociones (bits 0-3 y 4-7); 0 si no es el dueño quien lo recibe.
+	## LOADOUT: charges of the two potions (bits 0-3 and 4-7); 0 if the receiver is not the owner.
 	var charges: int = 0
-	## INTERACT: net_id de quien levanta o remata.
+	## INTERACT: net_id of whoever revives or executes.
 	var actor: int = 0
-	## INTERACT: tick en que acabaría levantar o rematar.
+	## INTERACT: tick at which the revive or execute would end.
 	var end_tick: int = 0
-	## LEVEL_UP (protocolo 7): el nivel al que se sube (1 a [constant ProgressMessages.MAX_LEVEL]).
+	## LEVEL_UP (protocol 7): the level reached (1 to [constant ProgressMessages.MAX_LEVEL]).
 	var level: int = 0
 
 
@@ -2329,8 +2329,8 @@ class EntityEvent:
 		return created
 
 
-	## Aviso de guerra de la fortaleza [param fortress_id]: [param war_event_id] es un id de
-	## [WarEvents] y [param realm_code] el reino que lo acompaña.
+	## War notice of the fortress [param fortress_id]: [param war_event_id] is an id from
+	## [WarEvents] and [param realm_code] the realm that accompanies it.
 	static func war(fortress_id: int, event_tick: int, war_event_id: int,
 			realm_code: int) -> EntityEvent:
 		var created := EntityEvent.new()
@@ -2342,7 +2342,7 @@ class EntityEvent:
 		return created
 
 
-	## Aviso del ataque [param id_of_attack] que prepara el PNJ [param npc_id].
+	## Telegraph of the attack [param id_of_attack] being prepared by the NPC [param npc_id].
 	static func telegraph(npc_id: int, event_tick: int, id_of_attack: int, area_shape: int,
 			origin: Vector3, area_yaw: float, area_radius_cm: int,
 			ticks_to_impact: int) -> EntityEvent:
@@ -2359,8 +2359,8 @@ class EntityEvent:
 		return created
 
 
-	## Efecto [param id_of_status] aplicado o renovado ([constant StatusOp.APPLIED]) o quitado
-	## ([constant StatusOp.REMOVED]) en [param target_id] por [param author_id] (0 = sin autor).
+	## Effect [param id_of_status] applied or renewed ([constant StatusOp.APPLIED]) or removed
+	## ([constant StatusOp.REMOVED]) on [param target_id] by [param author_id] (0 = no author).
 	static func status(target_id: int, event_tick: int, author_id: int, operation: int,
 			id_of_status: int, stack_count: int, ends_at: int) -> EntityEvent:
 		var created := EntityEvent.new()
@@ -2375,8 +2375,8 @@ class EntityEvent:
 		return created
 
 
-	## [param healed_amount] de vida curada a [param target_id] por [param healer_id] (0 = sí mismo) con la
-	## fuente [param source].
+	## [param healed_amount] of health healed on [param target_id] by [param healer_id] (0 = self) with the
+	## source [param source].
 	static func heal(target_id: int, event_tick: int, healer_id: int, healed_amount: int,
 			source: int) -> EntityEvent:
 		var created := EntityEvent.new()
@@ -2389,8 +2389,8 @@ class EntityEvent:
 		return created
 
 
-	## Equipo de [param player_id]: la plantilla, sus armas en orden de ranura y las cargas de las pociones
-	## (0 para quien no es el dueño).
+	## Loadout of [param player_id]: the template, its weapons in slot order and the potion charges
+	## (0 for whoever is not the owner).
 	static func loadout(player_id: int, event_tick: int, id_of_template: int, first_weapon: int,
 			second_weapon: int, consumable_charges: int) -> EntityEvent:
 		var created := EntityEvent.new()
@@ -2404,7 +2404,7 @@ class EntityEvent:
 		return created
 
 
-	## [param victim_id] queda derribado por [param attacker_id] con la fuente [param source].
+	## [param victim_id] is knocked down by [param attacker_id] with the source [param source].
 	static func downed(victim_id: int, event_tick: int, attacker_id: int, source: int) -> EntityEvent:
 		var created := EntityEvent.new()
 		created.event = Kind.DOWNED
@@ -2415,8 +2415,8 @@ class EntityEvent:
 		return created
 
 
-	## [param actor_id] empieza a levantar o a rematar al derribado [param downed_id], se le corta o acaba
-	## ([param operation], de [enum InteractOp]); [param ends_at] es el tick en que acabaría.
+	## [param actor_id] starts reviving or executing the knocked down [param downed_id], it is cut off or finishes
+	## ([param operation], from [enum InteractOp]); [param ends_at] is the tick at which it would end.
 	static func interact(downed_id: int, event_tick: int, actor_id: int, operation: int,
 			ends_at: int) -> EntityEvent:
 		var created := EntityEvent.new()
@@ -2429,7 +2429,7 @@ class EntityEvent:
 		return created
 
 
-	## [param player_id] sube al nivel [param new_level] (protocolo 7). Se satura a 1 … tope al codificar.
+	## [param player_id] levels up to [param new_level] (protocol 7). Saturates to 1 … cap when encoding.
 	static func level_up(player_id: int, event_tick: int, new_level: int) -> EntityEvent:
 		var created := EntityEvent.new()
 		created.event = Kind.LEVEL_UP
@@ -2439,8 +2439,8 @@ class EntityEvent:
 		return created
 
 
-	## La fuente del evento ([CombatSource]): el [member attack_id] de un HIT, DEATH, KILL, TELEGRAPH, HEAL o
-	## DOWNED; 0 en los demás.
+	## The event's source ([CombatSource]): the [member attack_id] of a HIT, DEATH, KILL, TELEGRAPH, HEAL or
+	## DOWNED; 0 in the others.
 	func get_source() -> int:
 		match event:
 			Kind.HIT, Kind.DEATH, Kind.KILL, Kind.TELEGRAPH, Kind.HEAL, Kind.DOWNED:
@@ -2448,17 +2448,17 @@ class EntityEvent:
 		return CombatSource.NONE
 
 
-	## Radio de un TELEGRAPH en metros.
+	## Radius of a TELEGRAPH in meters.
 	func get_radius() -> float:
 		return radius_cm / 100.0
 
 
-	## true si [member hit_flags] tiene el bit [param flag] (un [code]HIT_FLAG_*[/code]).
+	## true if [member hit_flags] has the bit [param flag] (a [code]HIT_FLAG_*[/code]).
 	func has_hit_flag(flag: int) -> bool:
 		return (hit_flags & flag) != 0
 
 
-	## Bytes de datos que ocupa el evento, o -1 si [member event] no es un [enum Kind].
+	## Bytes of data the event takes, or -1 if [member event] is not a [enum Kind].
 	func data_size() -> int:
 		match event:
 			Kind.HIT:
@@ -2488,8 +2488,8 @@ class EntityEvent:
 		return -1
 
 
-	## Un búfer vacío si [member event] no es un [enum Kind]. Un KILL con más de
-	## [constant MAX_ASSISTANTS] asistentes se recorta.
+	## An empty buffer if [member event] is not a [enum Kind]. A KILL with more than
+	## [constant MAX_ASSISTANTS] assistants is trimmed.
 	func encode() -> PackedByteArray:
 		var size_of_data: int = data_size()
 		if size_of_data < 0:
@@ -2557,12 +2557,12 @@ class EntityEvent:
 		return bytes
 
 
-	## Devuelve null si el tipo, el evento, la longitud declarada o el tamaño total no cuadran
-	## (HIT 8 B de datos, DEATH 4, RESPAWN 1, WAR 2, TELEGRAPH 17, KILL 5 + 2n con el n declarado y n
-	## a lo sumo [constant MAX_ASSISTANTS], STATUS 9, HEAL 6, LOADOUT 6, DOWNED 4, INTERACT 7 y LEVEL_UP 1), si un
-	## WAR trae un aviso que no es de [WarEvents] o un reino mayor que 3, si un TELEGRAPH trae una forma que no
-	## es 0 ni 1, si un STATUS o un INTERACT traen un [member op] que no existe, si un STATUS aplicado
-	## trae 0 acumulaciones o si un LEVEL_UP trae un nivel fuera de 1 … tope.
+	## Returns null if the type, the event, the declared length or the total size do not match
+	## (HIT 8 B of data, DEATH 4, RESPAWN 1, WAR 2, TELEGRAPH 17, KILL 5 + 2n with the declared n and n
+	## at most [constant MAX_ASSISTANTS], STATUS 9, HEAL 6, LOADOUT 6, DOWNED 4, INTERACT 7 and LEVEL_UP 1), if a
+	## WAR carries a notice that is not from [WarEvents] or a realm greater than 3, if a TELEGRAPH carries a shape that
+	## is neither 0 nor 1, if a STATUS or an INTERACT carries an [member op] that does not exist, if an applied STATUS
+	## carries 0 stacks or if a LEVEL_UP carries a level outside 1 … cap.
 	static func decode(bytes: PackedByteArray) -> EntityEvent:
 		var size: int = bytes.size()
 		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_ENTITY_EVENT:
@@ -2670,9 +2670,9 @@ class EntityEvent:
 		return parsed
 
 
-## RESPAWN_REQUEST (C→S, canal 3): 2 B. El jugador muerto pide reaparecer en el punto
-## [member point_index] de la lista de puntos de su reino (docs/combate.md, sección 5). Fuera de
-## plazo o con un índice inválido el servidor cuenta un aviso.
+## RESPAWN_REQUEST (C→S, channel 3): 2 B. The dead player asks to respawn at point
+## [member point_index] of their realm's list of points (docs/combate.md, section 5). Out of
+## time or with an invalid index the server counts a warning.
 class RespawnRequest:
 	const SIZE: int = 2
 
@@ -2691,9 +2691,9 @@ class RespawnRequest:
 		return request
 
 
-## UNSTUCK_REQUEST (C→S, canal 3): 1 B. El jugador pide /atascado (docs/fuerte.md, sección 5): es un
-## mensaje propio y vale sin [code]--debug-commands[/code]. El servidor decide si procede (fuera de
-## combate, 5 min de reutilización...).
+## UNSTUCK_REQUEST (C→S, channel 3): 1 B. The player requests /atascado (docs/fuerte.md, section 5): it is its own
+## message and is valid without [code]--debug-commands[/code]. The server decides whether it proceeds (out of
+## combat, 5 min cooldown...).
 class UnstuckRequest:
 	const SIZE: int = 1
 
@@ -2708,11 +2708,11 @@ class UnstuckRequest:
 		return UnstuckRequest.new()
 
 
-## LOADOUT_SELECT (C→S, canal 3, protocolo 6): 2 B, [code]u8 type, u8 template_id[/code]. La plantilla de
-## equipo que el jugador quiere para su siguiente aparición (docs/habilidades.md, secciones 4.6 y 5.1). Vale
-## desde el WELCOME, también antes de CLIENT_READY. [member template_id] es un id del catálogo de combate
-## ([method CombatCatalog.template_id]) o 0, la de por defecto; el servidor cuenta un aviso si no existe o
-## no se puede elegir. [method decode] solo comprueba el tamaño y el tipo.
+## LOADOUT_SELECT (C→S, channel 3, protocol 6): 2 B, [code]u8 type, u8 template_id[/code]. The equipment
+## template the player wants for their next spawn (docs/habilidades.md, sections 4.6 and 5.1). Valid
+## from the WELCOME, also before CLIENT_READY. [member template_id] is a combat catalog id
+## ([method CombatCatalog.template_id]) or 0, the default one; the server counts a warning if it does not exist or
+## cannot be chosen. [method decode] only checks the size and the type.
 class LoadoutSelect:
 	const SIZE: int = 2
 
@@ -2735,24 +2735,24 @@ class LoadoutSelect:
 		return LoadoutSelect.make(bytes[1])
 
 
-## Una fila del marcador: lo que cuenta de un jugador (docs/fuerte.md, sección 6), 18 B.
+## A scoreboard row: what counts for a player (docs/fuerte.md, section 6), 18 B.
 ## [code]u16 net_id, u16 kills, u16 deaths, u16 assists, u32 gate_damage, u16 circle_seconds, u32
-## merits[/code]. Los contadores saturan a su máximo al codificar.
+## merits[/code]. Counters saturate at their maximum when encoding.
 class ScoreRow:
 	const SIZE: int = 18
 
 	var net_id: int = 0
-	## Bajas.
+	## Kills.
 	var kills: int = 0
-	## Muertes.
+	## Deaths.
 	var deaths: int = 0
-	## Asistencias.
+	## Assists.
 	var assists: int = 0
-	## Daño hecho a la puerta de la fortaleza.
+	## Damage dealt to the fortress gate.
 	var gate_damage: int = 0
-	## Segundos pasados dentro del círculo de captura.
+	## Seconds spent inside the capture circle.
 	var circle_seconds: int = 0
-	## Méritos.
+	## Merits.
 	var merits: int = 0
 
 
@@ -2791,31 +2791,31 @@ class ScoreRow:
 		return row
 
 
-## SCOREBOARD (S→C, canal 3): 4 B + 18 B por fila (docs/fuerte.md, sección 6). El marcador de la zona,
-## cada 2 s a todos los jugadores.
+## SCOREBOARD (S→C, channel 3): 4 B + 18 B per row (docs/fuerte.md, section 6). The zone's scoreboard,
+## every 2 s to all players.
 ## [br][br]
-## [code]u8 type, u8 page_index, u8 page_count, u8 row_count[/code] y [code]row_count[/code] filas
-## ([ScoreRow]). Una página no pasa de [constant MAX_ROWS] filas (el mensaje cabe en
-## [constant NetProtocol.MAX_PACKET_BYTES]); con más jugadores el marcador se parte en varias páginas
-## ([method split]), que el cliente junta por [member page_index] de [member page_count].
+## [code]u8 type, u8 page_index, u8 page_count, u8 row_count[/code] and [code]row_count[/code] rows
+## ([ScoreRow]). A page does not exceed [constant MAX_ROWS] rows (the message fits in
+## [constant NetProtocol.MAX_PACKET_BYTES]); with more players the scoreboard is split into several pages
+## ([method split]), which the client joins by [member page_index] out of [member page_count].
 class Scoreboard:
-	## Cabecera: type, página, total de páginas y filas.
+	## Header: type, page, total pages and rows.
 	const HEADER_SIZE: int = 4
-	## Filas por página: ⌊(1200 − 4) / 18⌋ = 66, un mensaje de 1192 B.
+	## Rows per page: ⌊(1200 − 4) / 18⌋ = 66, a message of 1192 B.
 	const MAX_ROWS: int = 66
-	## Máximo de páginas (el total es un u8).
+	## Maximum pages (the total is a u8).
 	const MAX_PAGES: int = 255
 
-	## Índice de esta página, desde 0.
+	## Index of this page, starting at 0.
 	var page_index: int = 0
-	## Total de páginas del marcador (de 1 a 255).
+	## Total pages of the scoreboard (from 1 to 255).
 	var page_count: int = 1
 	var rows: Array[ScoreRow] = []
 
 
-	## Parte [param all_rows] en páginas de hasta [constant MAX_ROWS] filas, en orden. Con ninguna
-	## fila devuelve una sola página vacía (el cliente vacía el marcador). Lo que pase de
-	## [constant MAX_PAGES] páginas se descarta.
+	## Splits [param all_rows] into pages of up to [constant MAX_ROWS] rows, in order. With no
+	## rows it returns a single empty page (the client empties the scoreboard). Anything beyond
+	## [constant MAX_PAGES] pages is discarded.
 	static func split(all_rows: Array[ScoreRow]) -> Array[Scoreboard]:
 		var pages: Array[Scoreboard] = []
 		var total: int = clampi(ceili(all_rows.size() / float(MAX_ROWS)), 1, MAX_PAGES)
@@ -2830,13 +2830,13 @@ class Scoreboard:
 		return pages
 
 
-	## Bytes que ocupa el mensaje.
+	## Bytes taken by the message.
 	func encoded_size() -> int:
 		return HEADER_SIZE + ScoreRow.SIZE * rows.size()
 
 
-	## Un búfer vacío si hay más de [constant MAX_ROWS] filas o la página no es válida (el total fuera
-	## de 1 a 255 o [member page_index] no menor que él): quien manda usa [method split].
+	## An empty buffer if there are more than [constant MAX_ROWS] rows or the page is not valid (total outside
+	## 1 to 255 or [member page_index] not less than it): whoever sends uses [method split].
 	func encode() -> PackedByteArray:
 		if rows.size() > MAX_ROWS or page_count < 1 or page_count > MAX_PAGES \
 				or page_index < 0 or page_index >= page_count:
@@ -2852,9 +2852,9 @@ class Scoreboard:
 		return bytes
 
 
-	## Devuelve null si el tamaño no es exactamente el de la cabecera más [code]row_count[/code]
-	## filas, si hay más de [constant MAX_ROWS], si el total de páginas es 0 o si el índice no es
-	## menor que el total.
+	## Returns null if the size is not exactly that of the header plus [code]row_count[/code]
+	## rows, if there are more than [constant MAX_ROWS], if the total pages is 0 or if the index is not
+	## less than the total.
 	static func decode(bytes: PackedByteArray) -> Scoreboard:
 		var size: int = bytes.size()
 		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_SCOREBOARD:

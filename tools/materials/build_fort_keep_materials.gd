@@ -1,27 +1,27 @@
 extends SceneTree
-## Genera los materiales de reino del torreón del fuerte (ART-57): una carpeta por reino en
-## assets/models/environment/custom/fort_keep/materials/<reino>/<material>.tres, con los mismos
-## nombres que los materiales del GLB (keep_stone, keep_trim...), para que el juego sustituya los
-## del glTF por estos y el torreón tome la paleta de cada reino.
+## Generates the realm materials of the fort keep (ART-57): one folder per realm in
+## assets/models/environment/custom/fort_keep/materials/<realm>/<material>.tres, with the same
+## names as the GLB materials (keep_stone, keep_trim...), so that the game replaces the
+## glTF ones with these and the keep takes on each realm's palette.
 ##
-## Piedra, paño, madera, tejado y tierra usan assets/materials/shaders/fort_keep_surface.gdshader
-## (recolorea la textura hacia el color de docs/mundo.md, "Paleta por material", y lee el color de
-## vértice del modelo: valor de cada sillar, oclusión de las juntas, suciedad y máscara de desgaste).
-## Las telas usan fort_keep_cloth.gdshader (atlas de emblemas, color de bando, captura y viento por
-## instancia). Las texturas son las propias de tools/blender/make_fort_keep_textures.py.
+## Stone, cloth, wood, roof and earth use assets/materials/shaders/fort_keep_surface.gdshader
+## (it recolours the texture towards the colour in docs/mundo.md, "Palette per material", and reads the model's
+## vertex colour: value of each ashlar block, joint occlusion, dirt and wear mask).
+## The fabrics use fort_keep_cloth.gdshader (emblem atlas, faction colour, capture and wind per
+## instance). The textures are the project's own from tools/blender/make_fort_keep_textures.py.
 ##
-## Uso, después de generar las texturas y de importar el GLB:
+## Usage, after generating the textures and importing the GLB:
 ## [codeblock]
 ## godot --headless --path . -s res://tools/materials/build_fort_keep_materials.gd
 ## [/codeblock]
-## Es determinista; para ajustar un color se cambia la tabla de aquí, no el .tres.
+## It is deterministic; to adjust a colour, change the table here, not the .tres.
 
 const SURFACE_SHADER: String = "res://assets/materials/shaders/fort_keep_surface.gdshader"
 const CLOTH_SHADER: String = "res://assets/materials/shaders/fort_keep_cloth.gdshader"
 const OUT_DIR: String = "res://assets/models/environment/custom/fort_keep/materials"
 const OWN: String = "res://assets/models/environment/custom/fort_keep/textures/"
 
-## Texturas base: [albedo, normal o ""].
+## Base textures: [albedo, normal or ""].
 const TEXTURES: Dictionary = {
 	"stone": [OWN + "keep_stone_albedo.png", OWN + "keep_stone_normal.png"],
 	"trim": [OWN + "keep_trim_albedo.png", OWN + "keep_trim_normal.png"],
@@ -31,7 +31,7 @@ const TEXTURES: Dictionary = {
 	"flat": ["", ""],
 }
 
-## Capa en las caras que miran arriba: [color, cantidad, umbral] (nieve, musgo, polvo, ceniza).
+## Layer on upward-facing surfaces: [colour, amount, threshold] (snow, moss, dust, ash).
 const LAYERS: Dictionary = {
 	"vardheim": [Color("#e6edf1"), 0.75, 0.55],
 	"solmarch": [Color("#6b7350"), 0.22, 0.78],
@@ -39,8 +39,8 @@ const LAYERS: Dictionary = {
 	"eldrun": [Color("#8f8a82"), 0.32, 0.60],
 }
 
-## Desgaste del color de vértice (zona baja y churretes): [color, cantidad]. Musgo y hiedra en Solmarch,
-## liquen frío en Vardheim, polvo en Askarra, ceniza en Eldrun.
+## Vertex colour weathering (lower area and streaks): [colour, amount]. Moss and ivy in Solmarch,
+## cold lichen in Vardheim, dust in Askarra, ash in Eldrun.
 const WEATHER: Dictionary = {
 	"vardheim": [Color("#6f7a66"), 0.38],
 	"solmarch": [Color("#667a40"), 0.78],
@@ -48,17 +48,17 @@ const WEATHER: Dictionary = {
 	"eldrun": [Color("#7d7a73"), 0.50],
 }
 
-## Brasas emisivas en las grietas (solo Eldrun): [color, energía].
+## Emissive embers in the cracks (Eldrun only): [colour, energy].
 const EMBERS: Dictionary = {
 	"eldrun": [Color("#ff8a2a"), 4.0],
 }
 
-## Trozos de tejado que faltan (ruina de Eldrun, docs/arte.md: "piezas que faltan").
+## Missing pieces of roof (Eldrun ruin, docs/arte.md: "missing pieces").
 const ROOF_HOLES: Dictionary = {
 	"eldrun": 0.27,
 }
 
-## Falda de tierra: multiplicador del color de vértice por reino.
+## Earth skirt: multiplier of the vertex colour per realm.
 const EARTH_TINT: Dictionary = {
 	"vardheim": Color("#eef3f6"),
 	"solmarch": Color("#ffffff"),
@@ -66,9 +66,9 @@ const EARTH_TINT: Dictionary = {
 	"eldrun": Color("#f6f6f2"),
 }
 
-## material -> [textura, color objetivo, colorear, extras]. Extras: detail, gain, layer (factor sobre
-## la capa del reino), weather (factor sobre el desgaste), metal, rough, ember (0/1), holes (0/1),
-## normal (fuerza del mapa de normales).
+## material -> [texture, target colour, tint, extras]. Extras: detail, gain, layer (factor on
+## the realm's layer), weather (factor on the weathering), metal, rough, ember (0/1), holes (0/1),
+## normal (normal map strength).
 const REALMS: Dictionary = {
 	"vardheim": {
 		"keep_stone": ["stone", Color("#737a80"), 1.0, {"detail": 0.95}],
@@ -116,7 +116,7 @@ const REALMS: Dictionary = {
 	},
 }
 
-## Telas: material -> [atlas, casillas (columnas, filas), eje de captura, amplitud del viento].
+## Fabrics: material -> [atlas, cells (columns, rows), capture axis, wind amplitude].
 const CLOTHS: Dictionary = {
 	"keep_cloth": [OWN + "keep_pennant_atlas.png", Vector2(1.0, 4.0), Vector2(1.0, 0.0), 0.36],
 	"keep_pendant": [OWN + "keep_pendant_atlas.png", Vector2(4.0, 1.0), Vector2(0.0, 1.0), 0.14],
@@ -196,8 +196,8 @@ func _build_cloth(shader: Shader, spec: Array) -> ShaderMaterial:
 	return material
 
 
-## Luminancia media de la textura (sobre una versión pequeña), para que "colorear" conserve el
-## brillo medio del color objetivo. El alfa no cuenta: en la piedra es la máscara de grietas.
+## Mean luminance of the texture (over a small version), so that "tint" keeps the
+## mean brightness of the target colour. Alpha does not count: in stone it is the crack mask.
 func _mean_luminance(path: String) -> float:
 	if _luminance_cache.has(path):
 		return _luminance_cache[path]
@@ -210,7 +210,7 @@ func _mean_luminance(path: String) -> float:
 	var total: float = 0.0
 	for y: int in 64:
 		for x: int in 64:
-			# Luminancia en espacio lineal, como la ve el shader (source_color).
+			# Luminance in linear space, as the shader sees it (source_color).
 			var linear: Color = image.get_pixel(x, y).srgb_to_linear()
 			total += linear.r * 0.299 + linear.g * 0.587 + linear.b * 0.114
 	var mean: float = clampf(total / 4096.0, 0.05, 1.0)

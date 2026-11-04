@@ -1,31 +1,31 @@
 class_name AimRay
 extends RefCounted
-## Puntería canónica de los proyectiles (docs/habilidades.md, sección 4.4): el rayo de la cámara que
-## sale de [code]look_yaw[/code], [code]look_pitch[/code] y el bit de hombro
-## ([constant PlayerInput.AIM_LEFT]), el punto apuntado con la convergencia a la profundidad del
-## hostil más cercano a la mira, la boca de salida (el pecho) y la inversa para bots y PNJ.
+## Canonical aiming for projectiles (docs/habilidades.md, section 4.4): the camera ray that
+## comes out of [code]look_yaw[/code], [code]look_pitch[/code] and the shoulder bit
+## ([constant PlayerInput.AIM_LEFT]), the aimed point with convergence to the depth of the hostile
+## closest to the crosshair, the muzzle (the chest) and the inverse for bots and NPCs.
 ## [br][br]
-## Es la misma línea que [code]CameraRig.get_aim_ray()[/code] sin colisión de la cámara: el pivote de
-## la cámara está en los pies + [member CombatRules.aim_pivot_height] (el [code]CameraTarget[/code]
-## del personaje) y la cámara se desplaza en su propio plano con [code]h_offset[/code] (el hombro,
-## [member CombatRules.aim_shoulder_offset]) y [code]v_offset[/code]
-## ([member CombatRules.aim_camera_v_offset]), que mueven el origen sin girar el rayo; el brazo y el
-## zoom lo mueven a lo largo del rayo y no cambian la línea. El origen canónico es el del plano del
-## pivote: lo que hay detrás del personaje no cuenta.
+## It is the same line as [code]CameraRig.get_aim_ray()[/code] without camera collision: the camera pivot
+## is at the feet + [member CombatRules.aim_pivot_height] (the character's [code]CameraTarget[/code])
+## and the camera is offset in its own plane with [code]h_offset[/code] (the shoulder,
+## [member CombatRules.aim_shoulder_offset]) and [code]v_offset[/code]
+## ([member CombatRules.aim_camera_v_offset]), which move the origin without rotating the ray; the arm and
+## zoom move it along the ray and do not change the line. The canonical origin is that of the pivot's
+## plane: what is behind the character does not count.
 ## [br][br]
-## Compartido y determinista: lo usan el servidor (al disparar), la predicción del cliente (la flecha
-## propia) y los bots.
+## Shared and deterministic: used by the server (when firing), client prediction (the player's own
+## arrow) and the bots.
 
-## Altura (m) sobre los pies del centro de un hostil al que converge la mira (el mismo que la línea
-## de visión de los golpes).
+## Height (m) above the feet of the center of a hostile that the crosshair converges to (the same as the
+## line of sight of hits).
 const TARGET_CENTER_HEIGHT: float = HitShapes.LINE_OF_SIGHT_TO_HEIGHT
 
 
-## Rayo canónico de la cámara de un personaje con los pies en [param feet]: base
-## [code]B = Basis(UP, look_yaw) · Basis(RIGHT, look_pitch)[/code], dirección
-## [code]D = B · FORWARD[/code] y origen
+## Canonical camera ray of a character with feet at [param feet]: basis
+## [code]B = Basis(UP, look_yaw) · Basis(RIGHT, look_pitch)[/code], direction
+## [code]D = B · FORWARD[/code] and origin
 ## [code]C = feet + (0, aim_pivot_height, 0) + B · (±aim_shoulder_offset, aim_camera_v_offset, 0)[/code]
-## (hombro derecho +, izquierdo −). Devuelve [code][C, D][/code] con [code]D[/code] unitaria.
+## (right shoulder +, left −). Returns [code][C, D][/code] with [code]D[/code] a unit vector.
 static func canonical(feet: Vector3, look_yaw: float, look_pitch: float,
 		left_shoulder: bool) -> Array:
 	var rules: CombatRules = CombatCatalog.rules()
@@ -36,16 +36,16 @@ static func canonical(feet: Vector3, look_yaw: float, look_pitch: float,
 	return [origin, look * Vector3.FORWARD]
 
 
-## Punto apuntado ([code]P = C + D · t[/code]) desde [param origin] en la dirección unitaria
-## [param direction]. [code]t_m[/code] es la distancia al primer choque con el mundo
-## ([constant HitShapes.LINE_OF_SIGHT_MASK]) o [member CombatRules.aim_range_m]. Si el rayo toca antes
-## de [code]t_m[/code] la cápsula de un hostil (pies en [param capsule_feet]), [code]t[/code] es ese
-## choque; si no, el hostil cuyo centro (pies + [constant TARGET_CENTER_HEIGHT]) queda a menos de
-## [member CombatRules.aim_converge_deg] de [code]D[/code], delante y antes de [code]t_m[/code], y con
-## el menor ángulo (empate: el primero de la lista, que va por net_id), da su profundidad
-## [code](H − C) · D[/code]; sin ninguno, [code]t = t_m[/code]. Así la flecha cruza la mira a la
-## profundidad del blanco aunque la mira apunte al aire por delante de él. [param space] null = sin
-## mundo.
+## Aimed point ([code]P = C + D · t[/code]) from [param origin] in the unit direction
+## [param direction]. [code]t_m[/code] is the distance to the first collision with the world
+## ([constant HitShapes.LINE_OF_SIGHT_MASK]) or [member CombatRules.aim_range_m]. If the ray hits a hostile's
+## capsule (feet at [param capsule_feet]) before
+## [code]t_m[/code], [code]t[/code] is that collision; otherwise, the hostile whose center (feet + [constant TARGET_CENTER_HEIGHT]) is within
+## [member CombatRules.aim_converge_deg] of [code]D[/code], ahead and before [code]t_m[/code], and with
+## the smallest angle (tie: the first in the list, which goes by net_id), gives its depth
+## [code](H − C) · D[/code]; with none, [code]t = t_m[/code]. This way the arrow crosses the crosshair at the
+## target's depth even if the crosshair points at the air in front of it. [param space] null = no
+## world.
 static func aim_point(space: PhysicsDirectSpaceState3D, origin: Vector3, direction: Vector3,
 		capsule_feet: PackedVector3Array) -> Vector3:
 	var rules: CombatRules = CombatCatalog.rules()
@@ -56,7 +56,7 @@ static func aim_point(space: PhysicsDirectSpaceState3D, origin: Vector3, directi
 		var hit: Dictionary = space.intersect_ray(query)
 		if not hit.is_empty():
 			reach = maxf(((hit["position"] as Vector3) - origin).dot(direction), 0.0)
-	# Choque directo con una cápsula antes del mundo.
+	# Direct hit on a capsule before the world.
 	var end: Vector3 = origin + direction * reach
 	var nearest: float = INF
 	for feet: Vector3 in capsule_feet:
@@ -66,7 +66,7 @@ static func aim_point(space: PhysicsDirectSpaceState3D, origin: Vector3, directi
 			nearest = minf(nearest, fraction * reach)
 	if nearest < INF:
 		return origin + direction * nearest
-	# Convergencia: el hostil más cercano a la mira dentro del cono.
+	# Convergence: the hostile closest to the crosshair within the cone.
 	var limit: float = cos(deg_to_rad(rules.aim_converge_deg))
 	var best_cos: float = -INF
 	var best_depth: float = reach
@@ -82,17 +82,17 @@ static func aim_point(space: PhysicsDirectSpaceState3D, origin: Vector3, directi
 	return origin + direction * best_depth
 
 
-## Boca de salida de los proyectiles: el pecho, [code]feet + (0, muzzle_height, 0)[/code].
+## Projectile muzzle: the chest, [code]feet + (0, muzzle_height, 0)[/code].
 static func muzzle(feet: Vector3) -> Vector3:
 	return feet + Vector3(0.0, CombatCatalog.rules().muzzle_height, 0.0)
 
 
-## Inversa de [method canonical] para bots y PNJ: el [code](yaw, pitch)[/code] cuyo rayo canónico
-## (con los pies en [param feet] y el hombro [param left_shoulder]) pasa por [param point]. Solución
-## cerrada: en la base de la cámara el punto está en [code](±s, v, −t)[/code] desde el pivote, con
-## [code]t² = |Q|² − s² − v²[/code]; el pitch sale de la altura y el yaw del ángulo en planta. Si el
-## punto está dentro del desplazamiento de la cámara (a menos de [code]√(s² + v²)[/code] del pivote) no
-## hay solución exacta y apunta desde el pivote. El yaw queda en [code][−PI, PI][/code].
+## Inverse of [method canonical] for bots and NPCs: the [code](yaw, pitch)[/code] whose canonical ray
+## (with feet at [param feet] and shoulder [param left_shoulder]) passes through [param point]. Closed-form
+## solution: in the camera basis the point is at [code](±s, v, −t)[/code] from the pivot, with
+## [code]t² = |Q|² − s² − v²[/code]; the pitch comes from the height and the yaw from the angle in the ground plane. If the
+## point is within the camera offset (less than [code]√(s² + v²)[/code] from the pivot) there is
+## no exact solution and it aims from the pivot. The yaw ends up in [code][−PI, PI][/code].
 static func look_for(feet: Vector3, point: Vector3, left_shoulder: bool) -> Vector2:
 	var rules: CombatRules = CombatCatalog.rules()
 	var side: float = -rules.aim_shoulder_offset if left_shoulder else rules.aim_shoulder_offset
@@ -103,11 +103,11 @@ static func look_for(feet: Vector3, point: Vector3, left_shoulder: bool) -> Vect
 		var flat: float = Vector2(target.x, target.z).length()
 		return Vector2(atan2(-target.x, -target.z), atan2(target.y, flat))
 	var depth: float = sqrt(depth_squared)
-	# Altura: lift · cos(p) + depth · sin(p) = target.y.
+	# Height: lift · cos(p) + depth · sin(p) = target.y.
 	var radius: float = sqrt(lift * lift + depth * depth)
 	var pitch: float = asin(clampf(target.y / radius, -1.0, 1.0)) - atan2(lift, depth)
-	# Planta: el vector local (side, ·, lift · sin(p) − depth · cos(p)) girado por el yaw debe apuntar
-	# a (target.x, target.z); el giro suma el yaw al ángulo atan2(x, z).
+	# Ground plane: the local vector (side, ·, lift · sin(p) − depth · cos(p)) rotated by the yaw must point
+	# at (target.x, target.z); the rotation adds the yaw to the angle atan2(x, z).
 	var local_z: float = lift * sin(pitch) - depth * cos(pitch)
 	var yaw: float = atan2(target.x, target.z) - atan2(side, local_z)
 	return Vector2(wrapf(yaw, -PI, PI), pitch)

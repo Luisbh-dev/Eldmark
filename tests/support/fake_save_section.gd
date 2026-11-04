@@ -1,22 +1,22 @@
 class_name FakeSaveSection
 extends RefCounted
-## Una sección de guardado de pruebas para [CharacterSaver] (docs/plataforma.md §15 P5: «se prueba con una sección
-## falsa»). Construye los seis totales de [code]pvp[/code] de cada cuerpo, así que [FakeZonePlatform] la devuelve en
-## la reclamación siguiente como lo último aplicado. Sucia desde que cambia hasta que se confirma el
-## [code]seq[/code] que llevaba el cambio; apunta cada llamada de [CharacterSaver] (con el tick de
-## [member tick_source]) para que las pruebas vean cuándo y para quién se construye, se confirma o se pregunta.
+## A test save section for [CharacterSaver] (docs/plataforma.md §15 P5: "tested with a fake
+## section"). It builds the six [code]pvp[/code] totals of each body, so [FakeZonePlatform] returns it on
+## the next claim as the last thing applied. It is dirty from when it changes until the
+## [code]seq[/code] that carried the change is confirmed; it records every [CharacterSaver] call (with the tick of
+## [member tick_source]) so tests can see when and for whom it is built, confirmed or queried.
 
-## Nombre de la sección (la clave del cuerpo).
+## Name of the section (the body's key).
 var name: StringName = &"pvp"
-## Si es válido, [code]() -> int[/code]: el tick que se apunta en cada llamada.
+## If valid, [code]() -> int[/code]: the tick recorded in each call.
 var tick_source: Callable = Callable()
-## net_id -> true: [method build] devuelve [code]{}[/code] (no se puede construir ahora).
+## net_id -> true: [method build] returns [code]{}[/code] (it cannot be built right now).
 var unbuildable: Dictionary[int, bool] = {}
-## Llamadas a [method build]: [code][net_id, seq, tick, construido][/code].
+## Calls to [method build]: [code][net_id, seq, tick, built][/code].
 var builds: Array[Array] = []
-## Llamadas a [method acknowledge]: [code][net_id, seq][/code].
+## Calls to [method acknowledge]: [code][net_id, seq][/code].
 var acknowledged: Array[Array] = []
-## net_id de cada llamada a [method is_dirty].
+## net_id of each call to [method is_dirty].
 var dirty_checks: Array[int] = []
 
 var _kills: Dictionary[int, int] = {}
@@ -25,18 +25,18 @@ var _confirmed: Dictionary[int, int] = {}
 var _built: Dictionary[String, int] = {}
 
 
-## Registra la sección en [param saver].
+## Registers the section in [param saver].
 func attach(saver: CharacterSaver) -> void:
 	saver.register_section(name, build, acknowledge, is_dirty)
 
 
-## Cambia los totales de [param net_id] (las bajas): queda sucia.
+## Changes the totals of [param net_id] (the kills): it becomes dirty.
 func set_kills(net_id: int, kills: int) -> void:
 	_kills[net_id] = kills
 	_version[net_id] = _version.get(net_id, 0) + 1
 
 
-## Los totales que construiría ahora para [param net_id].
+## The totals it would build now for [param net_id].
 func totals(net_id: int) -> Dictionary:
 	return {"kills": _kills.get(net_id, 0), "deaths": 0, "assists": 0, "captures": 0, "gate_damage": 0,
 			"defend_s": 0}
@@ -61,7 +61,7 @@ func is_dirty(net_id: int) -> bool:
 	return _version.get(net_id, 0) > _confirmed.get(net_id, 0)
 
 
-## Los ticks en que se construyó (con éxito) un cuerpo para [param net_id].
+## The ticks at which a body was (successfully) built for [param net_id].
 func build_ticks(net_id: int) -> Array[int]:
 	var ticks: Array[int] = []
 	for call: Array in builds:
@@ -70,7 +70,7 @@ func build_ticks(net_id: int) -> Array[int]:
 	return ticks
 
 
-## Cuántas llamadas (de cualquier tipo) ha recibido para [param net_id].
+## How many calls (of any kind) it has received for [param net_id].
 func calls_for(net_id: int) -> int:
 	var count: int = dirty_checks.count(net_id)
 	for call: Array in builds:

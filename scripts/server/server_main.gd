@@ -1,134 +1,128 @@
 class_name ServerMain
 extends Node
-## Raíz del servidor dedicado de una zona (docs/red.md, secciones 1.2 a 1.4).
+## Root of a zone's dedicated server (docs/red.md, sections 1.2 to 1.4).
 ## [br][br]
-## [code]boot.gd[/code] rellena [member config] con [method ServerConfig.from_args] cuando se
-## arranca con [code]--server[/code] y cambia a [code]scenes/server/server_main.tscn[/code]. Aquí:
-## [br]- Se aplican los ajustes de la sección 1.3: [code]Engine.max_fps = 120[/code] (en headless, el
-## bucle principal duerme entre iteraciones y la hora de cada tick variaba unos 10 ms; con 120 fps
-## baja a ~0,5 ms), sin interpolación de física (no se dibuja) y sin sondeo automático del
-## multijugador ([method NetTransport.poll] se llama a mano en cada tick).
-## [br]- Se carga la escena de la zona ([method NetZones.scene_path]); si su raíz es un
-## [ZoneRoot] se le quita lo visual ([method ZoneRoot.strip_for_server]) y el [code]Terrain3D[/code]
-## queda con la colisión completa y sin proceso propio, como fija
-## [code]tests/test_terrain3d_headless.gd[/code].
-## [br]- Se crea el [NetTransport] (con [member ServerConfig.net_sim_spec]) y el [ZoneServer], que
-## abre el puerto, y los jugadores falsos de [code]--fake-players=N[/code]. Con
-## [code]--fake-layout=cluster[/code] se agrupan todos en un mismo punto (a menos de 60 m unos de otros) y
-## con [code]--fake-layout=spread[/code] se reparten por la zona; con [code]--fake-churn=<ticks>[/code]
-## sale el más antiguo y entra uno nuevo cada tantos ticks (altas y bajas continuas).
-## [br]- Con [code]--fake-brain=combat[/code] los jugadores falsos pelean ([constant BotBrain.Pattern.COMBAT]):
-## buscan al enemigo más cercano, atacan, bloquean y esquivan. En cada marcador [code]dummy_points[/code]
-## de la zona se coloca un maniquí de entrenamiento (salvo con [code]--no-dummies[/code]) y con
-## [code]--console[/code] el servidor lee comandos de la entrada estándar ([CommandRegistry]); la cuenta
-## atrás de [code]shutdown <s>[/code] cierra el proceso como [code]--quit-after-ticks[/code].
-## [br]- Con [code]--fake-brain=siege[/code] (GUE-15) los falsos asedian y defienden el fuerte de la zona
-## ([constant BotBrain.Pattern.SIEGE]): salen de su campamento, siguen la ruta de su reino hasta la puerta, la
-## rompen, capturan el círculo y lo defienden; el reparto de reinos es el de siempre (por turnos). Con
-## [code]--run-at=<tick>:<orden>[/code] el servidor ejecuta órdenes de la consola en un tick dado (por ejemplo
-## [code]fort_kill_captain[/code], que abre el círculo mientras no hay capitán de verdad).
-## [br]- Con [code]--max-realm-diff=N[/code] (N > 0, GUE-42) los falsos de reino automático (todos salvo los de
-## [code]--fake-layout=cluster[/code] sin cerebro de combate, que van al primer reino) son de relleno
-## ([FillerKeeper]): se reparten en el reino con menos total, se retiran cuando entran personas en el bando largo
-## y vuelven cuando salen, y no ocupan plazas de personas: con el servidor lleno solo por ellos, una persona entra y
-## un falso le cede su plaza (GUE-43). La regla exacta está en [FillerKeeper] y [RealmBalance]; las altas y bajas
-## de personas se las cuenta [ZoneServer] ([method ZoneServer.set_filler_keeper]).
-## [br]- Con [code]--dev-lock[/code] se escribe [code]user://dev_server.json[/code] (o la ruta de
-## [code]--dev-lock-path[/code]; [code]{pid, port}[/code]) para que [code]--local[/code] reutilice este servidor, y se borra al
-## cerrar.
-## [br]- Se cierra con [code]--quit-after-ticks[/code], [code]--idle-quit[/code] o la aparición del
-## archivo de [code]--stop-file[/code] (se mira cada segundo): NOTICE de cierre a los clientes,
-## [method ZoneServer.stop], informe si hay [code]--report[/code] y salida.
-## [br]- [b]SIGTERM y SIGINT no cierran de forma ordenada[/b]: GDScript no puede atraparlas y el
-## proceso muere al instante (sin NOTICE, sin informe final, con el bloqueo de [code]--dev-lock[/code]
-## sin borrar). Por eso existe [code]--stop-file[/code] y, con [code]--report[/code], el informe se
-## reescribe cada [constant ZoneServer.METRICS_LOG_TICKS] ticks (10 s): si matan al servidor, queda
-## el de la última marca (con [code]"closed": false[/code]).
-## [br]- [b]Con [code]--platform=<url interna>[/code][/b] (docs/plataforma.md §5.5 y §8): lee los secretos de la
-## zona ([method ZonePlatform.read_secrets]), arranca la [ZonePlatform] (registro, [code]env[/code], fortalezas y
-## primer bloque de ids) y espera [signal ZonePlatform.startup_finished] antes de abrir el puerto; los clientes
-## entran con [TicketAuthProvider] y, ya con el puerto abierto, [method ZonePlatform.go_live]. Con un
-## [code]env[/code] de staging o production, las opciones de desarrollo hacen salir a la zona con código 1, y
-## [code]--max-realm-diff[/code] no se aplica (el reino sale del personaje). Todo cierre ordenado (los cinco
-## disparadores: [code]--stop-file[/code], [code]--quit-after-ticks[/code], [code]--idle-quit[/code], el
-## [code]shutdown[/code] de la consola y el mantenimiento que anuncia el latido) pasa por [method _shutdown] →
-## [method ZoneServer.stop], que manda el guardado final de cada personaje y espera a que la plataforma lo conteste
-## (docs/plataforma.md §7.2); después sale lo pendiente y la baja de la instancia. Si la plataforma cierra la
-## instancia ([signal ZoneServer.instance_closed]), el cierre de §6.1 ([method ZoneServer.close_instance]: los
-## finales antes de echar a nadie) y el proceso sale con código 3 para que el orquestador arranque otra.
-## [br]- [b]Con [code]--dtls-cert=<pem> --dtls-key=<pem>[/code][/b] (docs/plataforma.md §10.2, con o sin plataforma):
-## carga el certificado y la clave ([ZoneDtls], en [member ServerConfig.dtls]) antes de cargar la zona, abre el puerto
-## por DTLS y, con la plataforma, manda el certificado y su CN en el registro. Si falta uno de los dos, no se pueden
-## leer, el certificado no tiene CN o la clave no es la suya, sale con código 1.
+## [code]boot.gd[/code] fills [member config] with [method ServerConfig.from_args] when started with [code]--server[/code]
+## and switches to [code]scenes/server/server_main.tscn[/code]. Here:
+## [br]- The section 1.3 settings are applied: [code]Engine.max_fps = 120[/code] (in headless, the main loop sleeps
+## between iterations and each tick's time varied by about 10 ms; with 120 fps it drops to ~0.5 ms), no physics
+## interpolation (nothing is drawn) and no automatic multiplayer polling ([method NetTransport.poll] is called by hand on
+## every tick).
+## [br]- The zone scene is loaded ([method NetZones.scene_path]); if its root is a [ZoneRoot] its visual parts are
+## stripped ([method ZoneRoot.strip_for_server]) and the [code]Terrain3D[/code] is left with full collision and without
+## its own processing, as fixed by [code]tests/test_terrain3d_headless.gd[/code].
+## [br]- The [NetTransport] is created (with [member ServerConfig.net_sim_spec]) and the [ZoneServer], which opens the
+## port, and the fake players of [code]--fake-players=N[/code]. With [code]--fake-layout=cluster[/code] they are all
+## grouped at the same point (within 60 m of each other) and with [code]--fake-layout=spread[/code] they are spread
+## across the zone; with [code]--fake-churn=<ticks>[/code] the oldest leaves and a new one enters every that many ticks
+## (continuous joins and leaves).
+## [br]- With [code]--fake-brain=combat[/code] the fake players fight ([constant BotBrain.Pattern.COMBAT]): they look for
+## the nearest enemy, attack, block and dodge. A training dummy is placed at each [code]dummy_points[/code] marker of the
+## zone (except with [code]--no-dummies[/code]) and with [code]--console[/code] the server reads commands from standard
+## input ([CommandRegistry]); the [code]shutdown <s>[/code] countdown closes the process like
+## [code]--quit-after-ticks[/code].
+## [br]- With [code]--fake-brain=siege[/code] (GUE-15) the fakes besiege and defend the zone's fort
+## ([constant BotBrain.Pattern.SIEGE]): they leave their camp, follow their realm's route to the gate, break it, capture
+## the circle and defend it; the realm distribution is the usual one (in turns). With [code]--run-at=<tick>:<command>[/code]
+## the server runs console commands at a given tick (for example [code]fort_kill_captain[/code], which opens the circle
+## while there is no real captain).
+## [br]- With [code]--max-realm-diff=N[/code] (N > 0, GUE-42) the auto-realm fakes (all except those of
+## [code]--fake-layout=cluster[/code] without a combat brain, which go to the first realm) are fillers
+## ([FillerKeeper]): they are distributed to the realm with the lowest total, withdrawn when people join the larger
+## side and return when they leave, and they take no people's seats: with the server full only because of them, a person
+## enters and a fake gives up their seat (GUE-43). The exact rule is in [FillerKeeper] and [RealmBalance]; the joins and
+## leaves of people are reported to it by [ZoneServer] ([method ZoneServer.set_filler_keeper]).
+## [br]- With [code]--dev-lock[/code], [code]user://dev_server.json[/code] is written (or the path of
+## [code]--dev-lock-path[/code]; [code]{pid, port}[/code]) so that [code]--local[/code] reuses this server, and it is
+## deleted on shutdown.
+## [br]- It shuts down with [code]--quit-after-ticks[/code], [code]--idle-quit[/code] or the appearance of the
+## [code]--stop-file[/code] file (checked every second): shutdown NOTICE to clients, [method ZoneServer.stop], a report
+## if there is [code]--report[/code] and exit.
+## [br]- [b]SIGTERM and SIGINT do not shut down in an orderly way[/b]: GDScript cannot catch them and the process dies
+## instantly (no NOTICE, no final report, with the [code]--dev-lock[/code] lock left undeleted). That is why
+## [code]--stop-file[/code] exists and, with [code]--report[/code], the report is rewritten every
+## [constant ZoneServer.METRICS_LOG_TICKS] ticks (10 s): if the server is killed, the last mark's report remains (with
+## [code]"closed": false[/code]).
+## [br]- [b]With [code]--platform=<internal url>[/code][/b] (docs/plataforma.md §5.5 and §8): reads the zone's secrets
+## ([method ZonePlatform.read_secrets]), starts the [ZonePlatform] (registration, [code]env[/code], fortresses and first
+## block of ids) and waits for [signal ZonePlatform.startup_finished] before opening the port; clients enter with
+## [TicketAuthProvider] and, once the port is open, [method ZonePlatform.go_live]. With a staging or production
+## [code]env[/code], the development options make the zone exit with code 1, and [code]--max-realm-diff[/code] does not
+## apply (the realm comes from the character). Every orderly shutdown (the five triggers: [code]--stop-file[/code],
+## [code]--quit-after-ticks[/code], [code]--idle-quit[/code], the console's [code]shutdown[/code] and the maintenance
+## announced by the heartbeat) goes through [method _shutdown] → [method ZoneServer.stop], which sends each character's
+## final save and waits for the platform to answer it (docs/plataforma.md §7.2); then pending items go out and the
+## instance deregisters. If the platform closes the instance ([signal ZoneServer.instance_closed]), the §6.1 shutdown
+## ([method ZoneServer.close_instance]: the finals before kicking anyone) and the process exits with code 3 so that the
+## orchestrator starts another.
+## [br]- [b]With [code]--dtls-cert=<pem> --dtls-key=<pem>[/code][/b] (docs/plataforma.md §10.2, with or without a
+## platform): loads the certificate and key ([ZoneDtls], in [member ServerConfig.dtls]) before loading the zone, opens
+## the port over DTLS and, with the platform, sends the certificate and its CN in the registration. If one of the two is
+## missing, they cannot be read, the certificate has no CN or the key is not its own, it exits with code 1.
 ## [br][br]
-## El código de salida es 0 en un cierre normal, 1 si no puede arrancar (zona desconocida, puerto
-## ocupado, certificado DTLS que no vale, plataforma que no responde o que no admite la zona...) y 3 si la
-## plataforma cerró la instancia.
+## The exit code is 0 on a normal shutdown, 1 if it cannot start (unknown zone, port in use, invalid DTLS certificate,
+## platform that does not answer or does not admit the zone...) and 3 if the platform closed the instance.
 
-## Archivo de bloqueo de [code]--dev-lock[/code] si no se da [code]--dev-lock-path[/code].
+## Lock file of [code]--dev-lock[/code] if [code]--dev-lock-path[/code] is not given.
 const DEV_LOCK_PATH: String = "user://dev_server.json"
-## Fotogramas por segundo máximos del servidor (sección 1.3).
+## Maximum frames per second of the server (section 1.3).
 const MAX_FPS: int = 120
-## Pasos de física que se esperan tras cargar la zona antes de abrir el puerto y crear a los
-## jugadores falsos: los cuerpos de colisión (el Terrain3D, sobre todo) entran en el espacio de
-## física en los primeros pasos.
+## Physics steps waited after loading the zone before opening the port and creating the fake players: collision bodies
+## (the Terrain3D, above all) enter the physics space in the first steps.
 const WARMUP_PHYSICS_FRAMES: int = 3
-## Pasos de física como mucho que se espera, al cerrar, a que los clientes se vayan y la plataforma conteste los
-## guardados finales (el [constant ZoneServer.SAVE_DRAIN_TICKS] de 10 s y la espera de los peers), y después, cada
-## vez, a que salga lo pendiente y la baja.
+## Maximum physics steps waited, on shutdown, for clients to leave and the platform to answer the final saves (the 10 s
+## [constant ZoneServer.SAVE_DRAIN_TICKS] and the peers' wait), and afterwards, each time, for pending items and the
+## deregistration to go out.
 const SHUTDOWN_MAX_FRAMES: int = 720
-## Código de salida cuando la plataforma cierra la instancia (docs/plataforma.md §6.1).
+## Exit code when the platform closes the instance (docs/plataforma.md §6.1).
 const EXIT_INSTANCE_CLOSED: int = 3
-## Semilla del primer jugador falso; cada uno suma su índice.
+## Seed of the first fake player; each one adds its index.
 const FAKE_SEED_BASE: int = 7000
-## Radio (m) por el que pasea cada jugador falso alrededor de su punto de aparición. Con
-## [code]--fake-layout=cluster[/code] todos pasean alrededor del mismo punto, así que ninguno está a
-## más de 2 × FAKE_RADIUS = 50 m de otro.
+## Radius (m) within which each fake player wanders around its spawn point. With [code]--fake-layout=cluster[/code] all
+## wander around the same point, so none is more than 2 × FAKE_RADIUS = 50 m from another.
 const FAKE_RADIUS: float = 25.0
-## Con [code]--fake-brain=combat --fake-layout=cluster[/code]: radio (m) del corro en el que aparecen.
+## With [code]--fake-brain=combat --fake-layout=cluster[/code]: radius (m) of the ring in which they appear.
 const FAKE_COMBAT_RING_RADIUS: float = 3.0
-## Cuánto crece (m por raíz del índice) el radio del corro de los falsos de combate: 128 caben en unos 9 m.
+## How much (m per square root of the index) the combat fakes' ring radius grows: 128 fit in about 9 m.
 const FAKE_COMBAT_RING_GROWTH: float = 0.5
-## Con [code]--fake-layout=spread[/code]: mitad del lado (m) del cuadrado, centrado en el origen, por
-## el que se reparten los jugadores falsos; altura desde la que se busca el suelo; y semilla.
+## With [code]--fake-layout=spread[/code]: half the side (m) of the square, centered on the origin, across which the
+## fake players are spread; height from which the ground is searched; and seed.
 const FAKE_SPREAD_HALF_EXTENT: float = 900.0
 const FAKE_SPREAD_PROBE_HEIGHT: float = 400.0
 const FAKE_SPREAD_SEED: int = 4242
-## Con [code]--fake-archers[/code]: radianes que suben la puntería los arqueros que disparan al cielo (unos 45°
-## por encima del tiro bueno: las flechas viven sus 2 s).
+## With [code]--fake-archers[/code]: radians by which the archers that fire at the sky raise their aim (about 45° above
+## the good shot: the arrows live their 2 s).
 const FAKE_SKY_AIM_RAISE: float = 0.8
-## Patrones de los jugadores falsos, repartidos en rueda.
+## Patterns of the fake players, distributed round-robin.
 const FAKE_PATTERNS: Array[BotBrain.Pattern] = [
 	BotBrain.Pattern.WANDER, BotBrain.Pattern.WANDER, BotBrain.Pattern.JUMPY,
 	BotBrain.Pattern.CIRCLE,
 ]
-## Texto del NOTICE de cierre.
+## Text of the shutdown NOTICE.
 const SHUTDOWN_TEXT: String = "El servidor se está cerrando"
-## Cada cuántos ticks se mira si existe el archivo de [code]--stop-file[/code] (1 s).
+## Every how many ticks the existence of the [code]--stop-file[/code] file is checked (1 s).
 const STOP_FILE_CHECK_TICKS: int = 60
 
-## Configuración del servidor. La rellena [code]boot.gd[/code]; si es null al arrancar, se lee de
-## los argumentos de usuario.
+## Server configuration. Filled by [code]boot.gd[/code]; if null on startup, it is read from the user arguments.
 static var config: ServerConfig
 
 var _world: Node3D
 var _transport: NetTransport
 var _zone_server: ZoneServer
-## La plataforma (null sin --platform).
+## The platform (null without --platform).
 var _platform: ZonePlatform = null
 var _idle_ticks: int = 0
-# Jugadores falsos vivos, del más antiguo al más nuevo (para las bajas de --fake-churn), cuántos se han
-# creado en total (fija la semilla de cada cerebro), reinos de la zona con campamento y el azar del
-# reparto --fake-layout=spread.
+# Live fake players, from oldest to newest (for the --fake-churn leaves), how many have been created in total (sets
+# each brain's seed), realms of the zone with a camp and the randomness of the --fake-layout=spread distribution.
 var _fake_ids: Array[int] = []
 var _fake_created: int = 0
-# Arqueros puros creados con --fake-archers (para repartir los que disparan al cielo).
+# Pure archers created with --fake-archers (to distribute those that fire at the sky).
 var _fake_archers: int = 0
 var _fake_realms: Array[int] = []
 var _spread_rng: RandomNumberGenerator = RandomNumberGenerator.new()
-# Los falsos de relleno de --max-realm-diff (null sin equilibrio).
+# The --max-realm-diff filler fakes (null without balancing).
 var _fillers: FillerKeeper = null
-# Órdenes de --run-at que ya se han ejecutado (mismo orden que config.scheduled_commands).
+# --run-at commands that have already been run (same order as config.scheduled_commands).
 var _scheduled_done: Array[bool] = []
 var _shutting_down: bool = false
 var _lock_written: bool = false
@@ -166,7 +160,7 @@ func _ready() -> void:
 		print("[Eldmark] Zona '%s' cargada (%s)" % [config.zone_id, scene_path])
 	_prepare_terrain(_world)
 
-	# Los cuerpos de colisión entran en el espacio de física en los primeros pasos.
+	# Collision bodies enter the physics space in the first steps.
 	for _i: int in WARMUP_PHYSICS_FRAMES:
 		await get_tree().physics_frame
 
@@ -247,8 +241,8 @@ func _notification(what: int) -> void:
 
 # --- DTLS (docs/plataforma.md §10.2) ------------------------------------------------------------
 
-# Con --dtls-cert o --dtls-key, carga los dos en config.dtls (ZoneDtls). Devuelve false si la zona no puede arrancar:
-# falta uno, no se pueden leer, el certificado no tiene CN o la clave no es la suya (el motivo, en el registro).
+# With --dtls-cert or --dtls-key, loads both into config.dtls (ZoneDtls). Returns false if the zone cannot start: one is
+# missing, they cannot be read, the certificate has no CN or the key is not its own (the reason, in the log).
 func _load_dtls() -> bool:
 	if config.dtls != null or (config.dtls_cert_path.is_empty() and config.dtls_key_path.is_empty()):
 		return true
@@ -261,10 +255,10 @@ func _load_dtls() -> bool:
 	return true
 
 
-# --- Plataforma (docs/plataforma.md §8) ---------------------------------------------------------
+# --- Platform (docs/plataforma.md §8) ---------------------------------------------------------
 
-# Lee los secretos y arranca la plataforma: registro, env, fortalezas y primer bloque. Devuelve las claves del
-# billete, o null si la zona no puede arrancar (el motivo ya está en el registro).
+# Reads the secrets and starts the platform: registration, env, fortresses and first block. Returns the ticket keys, or
+# null if the zone cannot start (the reason is already in the log).
 func _start_platform() -> Variant:
 	var secrets: Dictionary = ZonePlatform.read_secrets()
 	var errors: PackedStringArray = secrets["errors"]
@@ -287,7 +281,7 @@ func _start_platform() -> Variant:
 	return secrets["ticket_keys"]
 
 
-# Espera, como mucho SHUTDOWN_MAX_FRAMES pasos, a que la plataforma no tenga nada en cola ni en vuelo.
+# Waits, for at most SHUTDOWN_MAX_FRAMES steps, until the platform has nothing queued or in flight.
 func _drain_platform() -> void:
 	if _platform == null:
 		return
@@ -307,10 +301,10 @@ func _on_platform_fatal(error: String) -> void:
 	_shutdown(error, 1)
 
 
-# --- Lock de desarrollo -----------------------------------------------------------------------
+# --- Development lock -----------------------------------------------------------------------
 
-## Escribe en [param path] el archivo de bloqueo [code]{"pid": …, "port": …}[/code] que lee
-## [code]--local[/code] para reutilizar un servidor ya en marcha.
+## Writes to [param path] the lock file [code]{"pid": …, "port": …}[/code] that [code]--local[/code] reads to reuse a
+## server that is already running.
 static func write_dev_lock(path: String, pid: int, port: int) -> Error:
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
@@ -320,8 +314,8 @@ static func write_dev_lock(path: String, pid: int, port: int) -> Error:
 	return OK
 
 
-## Borra el archivo de bloqueo de [param path] si es de [param pid] (no el de otro servidor).
-## Devuelve true si lo ha borrado.
+## Deletes the lock file at [param path] if it belongs to [param pid] (not another server's). Returns true if it deleted
+## it.
 static func remove_dev_lock(path: String, pid: int) -> bool:
 	if not FileAccess.file_exists(path):
 		return false
@@ -341,9 +335,9 @@ func _remove_lock() -> void:
 		print("[Eldmark] Archivo de bloqueo borrado: %s" % _lock_path)
 
 
-# --- Arranque ---------------------------------------------------------------------------------
+# --- Startup ---------------------------------------------------------------------------------
 
-# Ajustes de la sección 1.3.
+# Settings of section 1.3.
 func _apply_headless_settings() -> void:
 	Engine.max_fps = MAX_FPS
 	var tree: SceneTree = get_tree()
@@ -351,10 +345,9 @@ func _apply_headless_settings() -> void:
 	tree.multiplayer_poll = false
 
 
-# Terrain3D como fija tests/test_terrain3d_headless.gd: colisión completa (la misma que usa el
-# cliente, por el determinismo) y sin proceso propio, porque sin cámara su primer
-# _physics_process registra un error. Se accede por nombre para no depender de la extensión al
-# cargar el script.
+# Terrain3D as fixed by tests/test_terrain3d_headless.gd: full collision (the same the client uses, for determinism)
+# and without its own processing, because without a camera its first _physics_process logs an error. It is accessed by
+# name so as not to depend on the extension when loading the script.
 func _prepare_terrain(root: Node) -> void:
 	if not ClassDB.class_exists(&"Terrain3D"):
 		return
@@ -367,10 +360,10 @@ func _prepare_terrain(root: Node) -> void:
 			node.set(&"collision_mode", full_game)
 
 
-# Jugadores falsos de --fake-players=N. Por defecto: reinos con puntos de aparición en la zona, en
-# rueda; patrones en rueda; semillas distintas; cada uno pasea alrededor del primer punto de su reino.
-# Con --fake-layout=cluster todos son del primer reino y pasean alrededor del mismo punto; con
-# --fake-layout=spread cada uno pasea alrededor de un punto al azar del cuadrado de la zona.
+# Fake players from --fake-players=N. By default: realms with spawn points in the zone, round-robin; patterns
+# round-robin; different seeds; each one wanders around the first point of its realm. With --fake-layout=cluster all
+# belong to the first realm and wander around the same point; with --fake-layout=spread each one wanders around a random
+# point of the zone's square.
 func _spawn_fake_players() -> void:
 	if config.fake_players <= 0:
 		return
@@ -387,9 +380,9 @@ func _spawn_fake_players() -> void:
 			" (%s)" % config.fake_layout if not config.fake_layout.is_empty() else ""])
 
 
-# Crea el siguiente jugador falso según --fake-layout. Con [param forced_realm] (un código de reino) es de ese
-# reino; si no, el reino lo decide el servidor: por turnos o, con el equilibrio de reinos, el de menos total.
-# Devuelve su net_id, o -1 si no cabe.
+# Creates the next fake player according to --fake-layout. With [param forced_realm] (a realm code) it belongs to that
+# realm; otherwise, the server decides the realm: in turns or, with realm balancing, the one with the lowest total.
+# Returns its net_id, or -1 if it does not fit.
 func _add_fake_player(forced_realm: int = 0) -> int:
 	var index: int = _fake_created
 	var combat: bool = config.fake_brain == ServerConfig.FAKE_BRAIN_COMBAT
@@ -402,14 +395,13 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 		if balanced > 0:
 			realm = balanced
 	var home: Vector3 = Vector3.ZERO
-	# Dónde se coloca al aparecer (null = en su punto de aparición).
+	# Where it is placed on appearing (null = at its spawn point).
 	var placed_at: Variant = null
 	match config.fake_layout:
 		ServerConfig.LAYOUT_CLUSTER:
 			if combat:
-				# Los de combate se reparten entre los reinos y se juntan en un corro alrededor del
-				# punto del primero (o de --fake-center, fuera de las zonas seguras), para que se
-				# encuentren enseguida. El corro crece con el número de falsos para que no se apilen.
+				# Combat ones are distributed among the realms and gather in a ring around the first one's point (or --fake-center,
+				# outside safe zones), so that they meet right away. The ring grows with the number of fakes so that they do not pile up.
 				home = _home_of(_fake_realms[0])
 				if config.has_fake_center():
 					home = _ground_point(config.fake_center.x, config.fake_center.y, home)
@@ -417,7 +409,7 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 				placed_at = home + Vector3(cos(float(index) * 2.4), 0.0,
 						sin(float(index) * 2.4)) * ring
 			elif siege:
-				# Los de asedio salen cada uno de su campamento: agruparlos en un solo punto no tendría sentido.
+				# Siege ones each leave from their own camp: grouping them at a single point would make no sense.
 				home = _home_of(realm)
 			else:
 				realm = _fake_realms[0]
@@ -431,13 +423,12 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 	if combat:
 		pattern = BotBrain.Pattern.COMBAT
 	elif siege:
-		# ZoneServer.add_fake_player le da el fuerte, las rutas y el buscador de enemigos.
+		# ZoneServer.add_fake_player gives it the fort, the routes and the enemy finder.
 		pattern = BotBrain.Pattern.SIEGE
 	var brain := BotBrain.new(FAKE_SEED_BASE + index, pattern, home, FAKE_RADIUS)
-	# --fake-loadout: la plantilla de equipo (docs/habilidades.md, sección 4.6).
+	# --fake-loadout: the equipment template (docs/habilidades.md, section 4.6).
 	var template_id: int = config.fake_template_for(index)
-	# --fake-archers (pruebas de carga, H5): los que llevan el arco en la mano son arqueros puros y una parte dispara
-	# al cielo.
+	# --fake-archers (load tests, H5): those who carry the bow in hand are pure archers and some fire at the sky.
 	var weapons: PackedInt32Array = CombatCatalog.template_weapons(template_id) if template_id > 0 \
 			else PackedInt32Array()
 	if config.fake_archers_sky_percent >= 0 and not weapons.is_empty() and BotBrain.is_ranged_weapon(weapons[0]):
@@ -457,19 +448,17 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 	return net_id
 
 
-# Punto del suelo, al azar, del cuadrado de la zona. Si el rayo no encuentra suelo, devuelve
-# [param fallback] (un punto de aparición).
+# Random ground point of the zone's square. If the ray finds no ground, returns [param fallback] (a spawn point).
 func _spread_point(fallback: Vector3) -> Vector3:
 	var x: float = _spread_rng.randf_range(-FAKE_SPREAD_HALF_EXTENT, FAKE_SPREAD_HALF_EXTENT)
 	var z: float = _spread_rng.randf_range(-FAKE_SPREAD_HALF_EXTENT, FAKE_SPREAD_HALF_EXTENT)
 	return _ground_point(x, z, fallback)
 
 
-# Punto del suelo bajo (x, z), un poco por encima. Si el rayo no encuentra suelo, devuelve
-# [param fallback].
+# Ground point under (x, z), slightly above. If the ray finds no ground, returns [param fallback].
 func _ground_point(x: float, z: float, fallback: Vector3) -> Vector3:
 	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
-	# Rayo ligeramente inclinado: los verticales pueden fallar contra HeightMapShape3D.
+	# Slightly tilted ray: vertical ones can miss against HeightMapShape3D.
 	var from := Vector3(x, FAKE_SPREAD_PROBE_HEIGHT, z)
 	var query := PhysicsRayQueryParameters3D.create(from,
 			from + Vector3(0.001, -2.0 * FAKE_SPREAD_PROBE_HEIGHT, 0.0),
@@ -480,8 +469,8 @@ func _ground_point(x: float, z: float, fallback: Vector3) -> Vector3:
 	return (hit["position"] as Vector3) + Vector3(0.0, 0.3, 0.0)
 
 
-# Reinos de la zona (los admitidos) que tienen algún punto de aparición; si ninguno lo tiene,
-# Vardheim (el SpawnPicker usa entonces cualquier punto).
+# Realms of the zone (the admitted ones) that have some spawn point; if none has one, Vardheim (the SpawnPicker then
+# uses any point).
 func _fake_player_realms() -> Array[int]:
 	var allowed: PackedInt32Array = NetZones.allowed_realms(config.zone_id)
 	var realms: Array[int] = []
@@ -492,8 +481,8 @@ func _fake_player_realms() -> Array[int]:
 			realms.append(realm)
 	if realms.is_empty():
 		realms.append(NetProtocol.Realm.VARDHEIM)
-	# Para pelear hacen falta dos bandos hostiles: si la zona no reparte puntos por reino, los de
-	# combate se reparten entre los dos primeros reinos que admite.
+	# Fighting needs two hostile sides: if the zone does not assign points per realm, combat fakes are distributed among
+	# the first two realms it admits.
 	if config.fake_brain == ServerConfig.FAKE_BRAIN_COMBAT and realms.size() < 2:
 		realms.clear()
 		for realm: int in RealmCatalog.realm_codes():
@@ -504,22 +493,22 @@ func _fake_player_realms() -> Array[int]:
 	return realms
 
 
-# Posición del primer punto de aparición del reino (o del primero de la zona, o el origen).
+# Position of the realm's first spawn point (or the zone's first, or the origin).
 func _home_of(realm: int) -> Vector3:
 	var point: Node3D = NetZones.find_spawn_point(_world, realm)
 	return point.global_position if point != null else Vector3.ZERO
 
 
-# --- Equilibrio de reinos (GUE-42) -----------------------------------------------------------------
+# --- Realm balance (GUE-42) -----------------------------------------------------------------
 
-# true si todos los falsos van al primer reino (--fake-layout=cluster con el cerebro de paseo): su reino no es
-# automático, así que no son de relleno.
+# true if all fakes go to the first realm (--fake-layout=cluster with the wandering brain): their realm is not
+# automatic, so they are not fillers.
 func _forces_first_realm() -> bool:
 	return config.fake_layout == ServerConfig.LAYOUT_CLUSTER and config.fake_brain.is_empty()
 
 
-# Con --max-realm-diff y falsos de reino automático, prepara a los de relleno y se los da al ZoneServer, que les
-# cuenta las altas y bajas de personas y les pide plaza cuando llega una persona con el servidor lleno (GUE-43).
+# With --max-realm-diff and auto-realm fakes, prepares the fillers and hands them to the ZoneServer, which counts the
+# joins and leaves of people for them and asks them for a seat when a person arrives with the server full (GUE-43).
 func _setup_fillers() -> void:
 	if config.max_realm_diff <= 0 or config.fake_players <= 0 or _forces_first_realm():
 		return
@@ -535,7 +524,7 @@ func _setup_fillers() -> void:
 			% config.max_realm_diff)
 
 
-# --- Cierre -----------------------------------------------------------------------------------
+# --- Shutdown ---------------------------------------------------------------------------------
 
 func _on_tick_finished(tick: int) -> void:
 	if _shutting_down:
@@ -547,7 +536,7 @@ func _on_tick_finished(tick: int) -> void:
 		_shutdown("apareció el archivo de parada %s (--stop-file)" % config.stop_file_path)
 		return
 	if not config.report_path.is_empty() and tick % ZoneServer.METRICS_LOG_TICKS == 0:
-		# Si matan al servidor (SIGTERM, SIGINT) no hay informe final: queda este.
+		# If the server is killed (SIGTERM, SIGINT) there is no final report: this one remains.
 		_zone_server.write_report(config.report_path)
 	_run_scheduled_commands(tick)
 	_churn_fake_players(tick)
@@ -564,8 +553,8 @@ func _stop_file_exists() -> bool:
 	return not config.stop_file_path.is_empty() and FileAccess.file_exists(config.stop_file_path)
 
 
-# Un archivo de parada que ya existe al arrancar es de una parada anterior: se borra, o el servidor
-# nuevo se cerraría en el primer segundo.
+# A stop file that already exists at startup is from a previous stop: it is deleted, or the new server would shut down
+# in the first second.
 func _clear_stale_stop_file() -> void:
 	if not _stop_file_exists():
 		return
@@ -573,7 +562,7 @@ func _clear_stale_stop_file() -> void:
 	print("[Eldmark] Borrado el archivo de parada anterior: %s" % config.stop_file_path)
 
 
-# --run-at=<tick>:<orden>: ejecuta con la consola del servidor cada orden cuyo tick ya ha llegado (una vez).
+# --run-at=<tick>:<command>: runs with the server console each command whose tick has arrived (once).
 func _run_scheduled_commands(tick: int) -> void:
 	if config.scheduled_commands.is_empty():
 		return
@@ -588,8 +577,8 @@ func _run_scheduled_commands(tick: int) -> void:
 		print("[Eldmark] --run-at (tick %d): %s -> %s" % [tick, entry["line"], answer])
 
 
-# --fake-churn=<ticks>: en cada múltiplo sale el jugador falso más antiguo y, en el tick siguiente
-# (cuando su baja ya se ha procesado y hay sitio), entra uno nuevo.
+# --fake-churn=<ticks>: at each multiple the oldest fake player leaves and, on the following tick (when its departure
+# has been processed and there is room), a new one enters.
 func _churn_fake_players(tick: int) -> void:
 	if config.fake_churn_ticks <= 0 or _fake_realms.is_empty():
 		return
@@ -602,9 +591,9 @@ func _churn_fake_players(tick: int) -> void:
 		_add_fake_player()
 
 
-# NOTICE de cierre, guardados finales y corte ordenado de los clientes (ZoneServer.stop; con
-# [param closed_code], el cierre de la instancia de §6.1, ZoneServer.close_instance), informe, y salida con
-# [param exit_code]. Con la plataforma, antes de salir sale lo pendiente (guardados y liberaciones) y la baja.
+# Shutdown NOTICE, final saves and orderly cutoff of the clients (ZoneServer.stop; with [param closed_code], the
+# instance shutdown of §6.1, ZoneServer.close_instance), report, and exit with [param exit_code]. With the platform,
+# before exiting the pending items go out (saves and releases) and the instance deregisters.
 func _shutdown(reason: String, exit_code: int = 0, closed_code: String = "") -> void:
 	if _shutting_down:
 		return
@@ -635,8 +624,8 @@ func _shutdown(reason: String, exit_code: int = 0, closed_code: String = "") -> 
 	print("[Eldmark] Servidor cerrado")
 	var console: ServerConsole = _zone_server.get_console()
 	if console != null and console.is_reading():
-		# El hilo de la consola sigue esperando una línea de la entrada estándar y, en Linux, libc no
-		# deja salir al proceso mientras la lectura tenga cogido el bloqueo de stdin.
+		# The console thread is still waiting for a line from standard input and, on Linux, libc does not let the process exit
+		# while the read holds the stdin lock.
 		print("[Eldmark] La consola sigue leyendo la entrada estándar: el proceso termina al cerrarla "
 				+ "(Ctrl+D) o al pulsar Intro")
 	get_tree().quit(exit_code)

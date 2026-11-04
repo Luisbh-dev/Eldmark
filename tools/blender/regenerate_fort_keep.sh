@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Regenera de cero el torreón del fuerte (ART-57): texturas, modelo, importación, ajustes de
-# importación de las texturas y materiales de reino. Desde la raíz del repo, con Git Bash:
+# Regenerates the fort keep from scratch (ART-57): textures, model, import, texture import
+# settings and realm materials. From the repo root, with Git Bash:
 #
 #     bash tools/blender/regenerate_fort_keep.sh
 #
-# Variables opcionales: BLENDER (por defecto la de C:/Users/MrPortainer/Tools) y GODOT (el ejecutable
-# de consola de Godot; por defecto el de winget). Es determinista: dos pasadas dan los mismos archivos
-# (salvo los .import y .ctex de la caché de Godot).
+# Optional variables: BLENDER (by default the one in C:/Users/MrPortainer/Tools) and GODOT (Godot's console
+# executable; by default the winget one). It is deterministic: two passes give the same files
+# (except the .import files and the .ctex files in Godot's cache).
 set -euo pipefail
 
 BLENDER="${BLENDER:-C:/Users/MrPortainer/Tools/blender-5.2.3-windows-x64/blender.exe}"

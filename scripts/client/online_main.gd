@@ -1,111 +1,111 @@
 class_name OnlineMain
 extends Node
-## Raíz del cliente en red (docs/red.md, secciones 1.2, 3 y 17.5). El sandbox sin red sigue siendo
-## [ClientMain]; esta escena es la de [code]--connect[/code] y [code]--bot[/code].
+## Root of the networked client (docs/red.md, sections 1.2, 3 and 17.5). The offline sandbox is still
+## [ClientMain]; this scene is the one for [code]--connect[/code] and [code]--bot[/code].
 ## [br][br]
-## [ClientLauncher] (que monta [code]boot.gd[/code]) rellena [member config] con
-## [method ClientConfig.from_args] y cambia a
-## [code]scenes/client/online_main.tscn[/code]. El flujo:
+## [ClientLauncher] (which [code]boot.gd[/code] mounts) fills in [member config] with
+## [method ClientConfig.from_args] and switches to
+## [code]scenes/client/online_main.tscn[/code]. The flow:
 ## [codeblock]
-## NetTransport + LocalPlayerController + NetClient.start()    "Conectando…"
-## welcomed          carga la zona del WELCOME en un hilo (ResourceLoader.load_threaded_request),
-##                   con la pantalla «Cargando…»; al terminar, la añade, espera unos pasos de
-##                   física a que sus colisiones estén en el espacio de física (como el servidor)
-##                   y llama a NetClient.notify_zone_ready()
-## local_spawned     cámara, HUD y visual animado (en modo BOT, solo controller.set_bot())
-## rejected /        aviso en español (en modo BOT: informe y salida con código 1)
+## NetTransport + LocalPlayerController + NetClient.start()    "Conectando…" (Connecting)
+## welcomed          loads the WELCOME's zone in a thread (ResourceLoader.load_threaded_request),
+##                   with the "Cargando…" (Loading) screen; when done, it adds it, waits a few
+##                   physics steps for its collisions to be in the physics space (like the server)
+##                   and calls NetClient.notify_zone_ready()
+## local_spawned     camera, HUD and animated visual (in BOT mode, only controller.set_bot())
+## rejected /        notice in Spanish (in BOT mode: report and exit with code 1)
 ## disconnected
 ## [/codeblock]
-## [br][b]Ajustes.[/b] [code]multiplayer_poll = false[/code] (cada tick lo sondea [NetClient]) y, en
-## headless, [code]Engine.max_fps = 120[/code] (sección 1.3).
+## [br][b]Settings.[/b] [code]multiplayer_poll = false[/code] (every tick it is polled by [NetClient]) and, in
+## headless, [code]Engine.max_fps = 120[/code] (section 1.3).
 ## [br][br]
-## [b]Modo BOT[/b]: sin cámara ni HUD. La entrada sale de un [BotBrain] ([ClientBotBrains]: paseo, o
-## combate con [code]--bot-brain=combat[/code], semilla [member ClientConfig.bot_seed], alrededor de su
-## punto de aparición) y, en headless, la zona se
-## carga sin lo visual ([method ZoneRoot.strip_for_server]), igual que en el servidor. Con
-## [code]--quit-after-ticks=N[/code], tras N ticks de física locales (desde que arranca la sesión:
-## cuentan la conexión y la carga) escribe el informe ([code]--report[/code]), sale de la zona con
-## CLIENT_LEAVE y cierra con código 0; con 1 si fue rechazado o se desconectó antes. Los últimos
-## [constant IDLE_TAIL_TICKS] ticks (un cuarto como mucho) el bot se queda quieto, para que las
-## pruebas de convergencia comparen estados estacionarios. Muerto, el bot pide reaparecer (RESPAWN_REQUEST, en el
-## primer punto de la lista) en cuanto el servidor lo permite, como quien pulsa el botón de la pantalla de muerte o un
-## [code]SwarmBot[/code]: así reaparece en la oleada que le toca y no a los 30 s de la automática.
+## [b]BOT mode[/b]: no camera or HUD. Input comes from a [BotBrain] ([ClientBotBrains]: stroll, or
+## combat with [code]--bot-brain=combat[/code], seed [member ClientConfig.bot_seed], around its
+## spawn point) and, in headless, the zone is
+## loaded without visuals ([method ZoneRoot.strip_for_server]), just like on the server. With
+## [code]--quit-after-ticks=N[/code], after N local physics ticks (counted from when the session starts:
+## connection and loading count) it writes the report ([code]--report[/code]), leaves the zone with
+## CLIENT_LEAVE and exits with code 0; with 1 if it was rejected or disconnected before. During the last
+## [constant IDLE_TAIL_TICKS] ticks (a quarter at most) the bot stands still, so that
+## convergence tests compare steady states. When dead, the bot asks to respawn (RESPAWN_REQUEST, on the
+## first point of the list) as soon as the server allows it, like someone pressing the death screen's button or a
+## [code]SwarmBot[/code]: that way it respawns in the wave it is due for and not at the 30 s of the automatic one.
 ## [br][br]
-## [b]Escenario[/b] ([code]--bot-scenario=progress[/code], [BotProgressScenario], docs/progresion.md §15 P8): al
-## aparecer, el bot se queda quieto y corre el escenario; al acabar cada paso reescribe el informe (con la clave
-## [code]scenario[/code], para quien lo mira desde fuera mientras juega). Al terminarlo sale con código 0 si no hay
-## [code]--quit-after-ticks[/code] (con él, sigue hasta esos ticks); si falla, informe y código 1.
+## [b]Scenario[/b] ([code]--bot-scenario=progress[/code], [BotProgressScenario], docs/progresion.md §15 P8): on
+## spawning, the bot stands still and runs the scenario; after each step it rewrites the report (with the key
+## [code]scenario[/code], for whoever watches from outside while it plays). On finishing it exits with code 0 if there is no
+## [code]--quit-after-ticks[/code] (with it, it continues until those ticks); if it fails, report and code 1.
 ## [br][br]
-## [b]Elección de reino.[/b] Si un cliente con ventana arranca sin [code]--realm[/code] se muestra
-## [RealmSelect] (reino, dirección y nombre, validados antes de conectar). También se vuelve a ella,
-## con el motivo como aviso, tras un rechazo, un fallo de conexión o una desconexión: la zona, la
-## cámara, el HUD y la sesión de red se quitan y «Entrar» empieza una sesión nueva. Un bot o un
-## cliente sin pantalla (headless) no tiene a quién preguntar: entra como Vardheim con un aviso, y en
-## un fallo escribe el informe y cierra con código 1.
+## [b]Realm choice.[/b] If a client with a window starts without [code]--realm[/code],
+## [RealmSelect] is shown (realm, address and name, validated before connecting). It also returns to it,
+## with the reason as a notice, after a rejection, a connection failure or a disconnection: the zone,
+## camera, HUD and network session are removed and "Entrar" (Enter) starts a new session. A bot or a
+## client without a screen (headless) has nobody to ask: it enters as Vardheim with a notice, and on
+## a failure writes the report and exits with code 1.
 ## [br][br]
-## [b]Con cuenta[/b] (docs/plataforma.md §5.5 y §13). Con billete ([method ClientConfig.has_ticket]) el reino y el
-## nombre son los del personaje y no hay elección de reino. Si la sesión sale de [FrontMain]
-## ([member ClientConfig.from_front]), un rechazo o una desconexión vuelven a la selección de personaje con el motivo
-## (la sesión de la cuenta sigue). Un bot con [code]--platform[/code] hace antes el camino de la cuenta con
-## [AccountFlow]: inicia sesión con [code]--login[/code] y la contraseña de [code]--password-file[/code], crea el
-## personaje si falta ([code]--character[/code] o [method NameRules.bot_name] de la semilla), pide [code]enter[/code]
-## y conecta con el billete. Un fallo de ese camino (credenciales, [code]character_busy[/code] tras 30 s,
-## [code]zone_unavailable[/code]…) sale con código 1 y el [code]code[/code] en el informe ([code]platform[/code]).
+## [b]With an account[/b] (docs/plataforma.md §5.5 and §13). With a ticket ([method ClientConfig.has_ticket]) the realm and
+## name are the character's and there is no realm choice. If the session comes from [FrontMain]
+## ([member ClientConfig.from_front]), a rejection or a disconnection returns to character selection with the reason
+## (the account session continues). A bot with [code]--platform[/code] first goes through the account path with
+## [AccountFlow]: logs in with [code]--login[/code] and the password from [code]--password-file[/code], creates the
+## character if missing ([code]--character[/code] or [method NameRules.bot_name] of the seed), asks for [code]enter[/code]
+## and connects with the ticket. A failure on that path (credentials, [code]character_busy[/code] after 30 s,
+## [code]zone_unavailable[/code]…) exits with code 1 and the [code]code[/code] in the report ([code]platform[/code]).
 ## [br][br]
-## [b]Modo LOCAL[/b] ([code]--local[/code], sección 1.4): antes de conectar, si
-## [code]user://dev_server.json[/code] describe un servidor vivo se usa su puerto; si no, se lanza uno
-## ([LocalServerLauncher]) y se reintenta conectar durante [constant LocalServerLauncher.CONNECT_RETRY_MS]
-## ms con un tiempo de espera corto de ENet (cada intento es una sesión nueva: [NetClient],
-## transporte y controlador). Si el servidor que se creía vivo no contesta, se lanza uno entonces. El
-## cliente nunca cierra el servidor: se apaga solo tras [constant LocalServerLauncher.IDLE_QUIT_SECONDS]
-## s sin jugadores.
+## [b]LOCAL mode[/b] ([code]--local[/code], section 1.4): before connecting, if
+## [code]user://dev_server.json[/code] describes a live server its port is used; if not, one is launched
+## ([LocalServerLauncher]) and connecting is retried for [constant LocalServerLauncher.CONNECT_RETRY_MS]
+## ms with a short ENet timeout (each attempt is a new session: [NetClient],
+## transport and controller). If the server believed to be alive does not answer, one is launched then. The
+## client never shuts the server down: it turns itself off after [constant LocalServerLauncher.IDLE_QUIT_SECONDS]
+## s without players.
 
 const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
 const HUD_SCENE_PATH: String = "res://scenes/ui/hud.tscn"
 const NET_DEBUG_SCENE_PATH: String = "res://scenes/ui/net_debug_overlay.tscn"
 const WINDOW_TITLE: String = "Eldmark"
-## Fotogramas por segundo máximos en headless (sección 1.3).
+## Maximum frames per second in headless (section 1.3).
 const MAX_FPS: int = 120
-## Pasos de física que se esperan tras añadir la zona antes de avisar de que está lista: los
-## cuerpos de colisión (el Terrain3D, sobre todo) entran en el espacio de física en los primeros
-## pasos, y el servidor espera lo mismo antes de aceptar jugadores.
+## Physics steps to wait after adding the zone before reporting that it is ready: the
+## collision bodies (Terrain3D, above all) enter the physics space during the first
+## steps, and the server waits the same before accepting players.
 const WARMUP_PHYSICS_FRAMES: int = 3
-## Reino por defecto mientras no hay RealmSelect.
+## Default realm while there is no RealmSelect.
 const DEFAULT_REALM: int = NetProtocol.Realm.VARDHEIM
-## Ticks como mucho que un bot se queda quieto antes de salir.
+## Maximum ticks a bot stands still before exiting.
 const IDLE_TAIL_TICKS: int = 90
-## Radio (m) por el que pasea un bot alrededor de su punto de aparición.
+## Radius (m) a bot strolls around its spawn point.
 const BOT_RADIUS: float = 30.0
-## Ticks que se espera, tras salir de la zona, a que se cierre la conexión antes de cerrar.
+## Ticks to wait, after leaving the zone, for the connection to close before closing.
 const LEAVE_WAIT_TICKS: int = 30
-## Cada cuántos ticks locales repite un bot muerto su RESPAWN_REQUEST mientras siga muerto (1 s: pasado medio
-## RTT el snapshot ya lo da por vivo, y una petición de más tras reaparecer sería un aviso del servidor).
+## How many local ticks a dead bot repeats its RESPAWN_REQUEST while it remains dead (1 s: after half an
+## RTT the snapshot already shows it alive, and an extra request after respawning would be a server warning).
 const BOT_RESPAWN_RETRY_TICKS: int = 60
-## Ancho (píxeles de la ventana base) de la columna de texto de la pantalla de carga.
+## Width (base window pixels) of the text column of the loading screen.
 const OVERLAY_WIDTH: float = 900.0
 const REALM_SELECT_SCENE_PATH: String = "res://scenes/ui/realm_select.tscn"
-## Escena del título y la selección de personaje (vuelta de una sesión con [member ClientConfig.from_front]).
+## Scene of the title screen and character selection (return from a session with [member ClientConfig.from_front]).
 const FRONT_MAIN_SCENE_PATH: String = "res://scenes/client/front_main.tscn"
-## Capas de la pantalla de elección de reino (por debajo de la de carga, que es la 100).
+## Layers of the realm choice screen (below the loading one, which is 100).
 const REALM_SELECT_LAYER: int = 90
 
-## Configuración del cliente. La rellena [ClientLauncher]; si es null al arrancar, se lee de los
-## argumentos de usuario.
+## Client configuration. Filled in by [ClientLauncher]; if it is null on start-up, it is read from the
+## user arguments.
 static var config: ClientConfig
-## Solo para pruebas: si es válido, el cierre llama a este gancho con el código de salida en lugar de
-## cerrar el proceso.
+## Tests only: if valid, closing calls this hook with the exit code instead of
+## closing the process.
 static var quit_hook: Callable = Callable()
-## Solo para pruebas: archivo de bloqueo del servidor local que se consulta en modo LOCAL (así una
-## prueba no toca el [constant LocalServerLauncher.LOCK_PATH] real).
+## Tests only: lock file of the local server that is checked in LOCAL mode (so a
+## test does not touch the real [constant LocalServerLauncher.LOCK_PATH]).
 static var lock_path: String = LocalServerLauncher.LOCK_PATH
-## Solo para pruebas: el cliente se comporta como uno con ventana aunque sea headless: muestra
-## [RealmSelect] si falta el reino y vuelve a ella tras un fallo (en headless, sin esto, entra como
-## Vardheim y un fallo cierra el proceso con código 1).
+## Tests only: the client behaves like one with a window even if headless: it shows
+## [RealmSelect] if the realm is missing and returns to it after a failure (in headless, without this, it enters as
+## Vardheim and a failure closes the process with code 1).
 static var force_interactive: bool = false
-## Solo para pruebas: si es válido, la vuelta a [FrontMain] llama a este gancho con el motivo en lugar de cambiar de
-## escena.
+## Tests only: if valid, returning to [FrontMain] calls this hook with the reason instead of changing
+## scene.
 static var front_hook: Callable = Callable()
-## Solo para pruebas: gancho de [member PlatformApi.request_hook] para el camino de la cuenta del bot.
+## Tests only: [member PlatformApi.request_hook] hook for the bot's account path.
 static var account_request_hook: Callable = Callable()
 
 var _transport: NetTransport = null
@@ -128,22 +128,22 @@ var _overlay_button: Button = null
 var _realm_layer: CanvasLayer = null
 var _realm_select: RealmSelect = null
 var _returning_to_menu: bool = false
-# Recuento por reino del último WELCOME (vacío antes de la primera conexión) y reino que el servidor rechazó
-# por desequilibrio en el último intento (REJECT 9): lo enseña RealmSelect al volver (GUE-42).
+# Per-realm count from the last WELCOME (empty before the first connection) and the realm the server rejected
+# for imbalance on the last attempt (REJECT 9): RealmSelect shows it on returning (GUE-42).
 var _last_realm_counts: PackedInt32Array = PackedInt32Array()
 var _imbalanced_realm: int = NetProtocol.Realm.NONE
 var _idle_set: bool = false
-# Tick local de la última petición de reaparición del bot.
+# Local tick of the bot's last respawn request.
 var _bot_respawn_request_tick: int = -BOT_RESPAWN_RETRY_TICKS
 var _finishing: bool = false
 var _leave_wait_ticks: int = 0
 var _quitting: bool = false
 var _report_written: bool = false
 var _exit_code: int = 0
-# Camino de la cuenta del bot con --platform: la API y lo que va al informe (clave «platform»).
+# The bot's account path with --platform: the API and what goes into the report ("platform" key).
 var _api: PlatformApi = null
 var _account_report: Dictionary = {}
-# El escenario del bot (--bot-scenario), desde que aparece.
+# The bot's scenario (--bot-scenario), from when it spawns.
 var _scenario: BotProgressScenario = null
 
 
@@ -171,63 +171,63 @@ func _ready() -> void:
 	_begin_session()
 
 
-## Cliente de red.
+## Network client.
 func get_client() -> NetClient:
 	return _client
 
 
-## Zona cargada (null hasta que termina la carga).
+## Loaded zone (null until loading finishes).
 func get_world() -> Node3D:
 	return _world
 
 
-## Cámara de acción (null en modo bot o antes de aparecer).
+## Action camera (null in bot mode or before spawning).
 func get_camera_rig() -> CameraRig:
 	return _camera_rig
 
 
-## HUD (null en modo bot o antes de aparecer).
+## HUD (null in bot mode or before spawning).
 func get_hud() -> HUD:
 	return _hud
 
 
-## Depuración de red, F3 y F4 (null en modo bot o antes de aparecer).
+## Network debugging, F3 and F4 (null in bot mode or before spawning).
 func get_net_debug() -> NetDebugOverlay:
 	return _net_debug
 
 
-## Pantalla de elección de reino (null si nunca se ha mostrado).
+## Realm choice screen (null if it has never been shown).
 func get_realm_select() -> RealmSelect:
 	return _realm_select
 
 
-## Cerebro del bot (null si no es un bot o aún no ha aparecido).
+## The bot's brain (null if it is not a bot or has not spawned yet).
 func get_bot_brain() -> BotBrain:
 	return _brain
 
 
-## Código con el que se cerrará (o se cerró) el proceso.
+## Code with which the process will close (or closed).
 func get_exit_code() -> int:
 	return _exit_code
 
 
-## La API de la plataforma del bot con cuenta (null si no la usa).
+## The platform API of the bot with an account (null if it does not use it).
 func get_platform_api() -> PlatformApi:
 	return _api
 
 
-## El escenario del bot ([code]--bot-scenario[/code]; null sin él o antes de aparecer).
+## The bot's scenario ([code]--bot-scenario[/code]; null without it or before spawning).
 func get_bot_scenario() -> BotProgressScenario:
 	return _scenario
 
 
-## Lo que va al informe bajo [code]platform[/code] (vacío sin cuenta): [code]code[/code] (vacío si entró),
-## [code]status[/code], [code]message[/code], [code]character_id[/code] y [code]created[/code].
+## What goes into the report under [code]platform[/code] (empty without an account): [code]code[/code] (empty if it got in),
+## [code]status[/code], [code]message[/code], [code]character_id[/code] and [code]created[/code].
 func get_account_report() -> Dictionary:
 	return _account_report
 
 
-# Carga de la zona en un hilo: se sondea el estado en cada fotograma.
+# Zone loading in a thread: the status is polled every frame.
 func _process(_delta: float) -> void:
 	if _loading_path.is_empty():
 		return
@@ -280,10 +280,10 @@ func _physics_process(_delta: float) -> void:
 		_finish_session()
 
 
-# Un bot muerto pide reaparecer en cuanto el servidor lo permite (el tick estimado del servidor, que va medio RTT
-# por detrás, ha llegado a su tick de reaparición: la petición llega a tiempo, nunca antes) y lo repite cada
-# BOT_RESPAWN_RETRY_TICKS mientras siga muerto. El punto 0: si no vale para su reino, el servidor usa el primer
-# campamento válido.
+# A dead bot asks to respawn as soon as the server allows it (the estimated server tick, which runs half an RTT
+# behind, has reached its respawn tick: the request arrives on time, never before) and repeats it every
+# BOT_RESPAWN_RETRY_TICKS while it remains dead. Point 0: if it is not valid for its realm, the server uses the first
+# valid camp.
 func _request_bot_respawn(local_tick: int) -> void:
 	if _client.get_state() != NetClient.State.IN_WORLD or not _client.is_dead():
 		return
@@ -296,7 +296,7 @@ func _request_bot_respawn(local_tick: int) -> void:
 	_client.send_respawn_request(0)
 
 
-# --- Arranque ---------------------------------------------------------------------------------
+# --- Start-up ---------------------------------------------------------------------------------
 
 func _apply_settings() -> void:
 	get_window().title = WINDOW_TITLE
@@ -314,14 +314,14 @@ func _is_local() -> bool:
 	return config.mode == ClientConfig.Mode.LOCAL
 
 
-# Un bot con --platform que aún no tiene billete: primero el camino de la cuenta.
+# A bot with --platform that does not yet have a ticket: the account path first.
 func _uses_account() -> bool:
 	return _is_bot() and not config.platform_url.is_empty() and not config.has_ticket()
 
 
-# --- Bot con cuenta (docs/plataforma.md §5.5 y §13.3) ---------------------------------------------
+# --- Bot with an account (docs/plataforma.md §5.5 and §13.3) --------------------------------------
 
-# Inicia sesión, asegura el personaje, pide enter y conecta con el billete. Cualquier fallo cierra con código 1.
+# Logs in, ensures the character, asks for enter and connects with the ticket. Any failure closes with code 1.
 func _enter_with_account() -> void:
 	if config.login.is_empty() or config.password_file.is_empty():
 		_fail_account("missing_login", 0,
@@ -354,7 +354,7 @@ func _enter_with_account() -> void:
 		character_name = NameRules.bot_name(config.bot_seed)
 	var realm_id: StringName = RealmCatalog.id_of_code(config.realm) \
 			if RealmCatalog.is_realm_code(config.realm) else &""
-	# --loadout es la plantilla de inicio del personaje si hay que crearlo (docs/progresion.md §2.5).
+	# --loadout is the character's starting template if it has to be created (docs/progresion.md §2.5).
 	var ensured: ApiResult = await flow.ensure_character(config.world_id, character_name, realm_id,
 			StringName(config.loadout))
 	if _quitting:
@@ -378,7 +378,7 @@ func _enter_with_account() -> void:
 	_begin_session()
 
 
-## La contraseña del archivo [param path] (la primera línea, sin el salto final); vacío si no se puede leer.
+## The password from file [param path] (the first line, without the trailing newline); empty if it cannot be read.
 static func read_password_file(path: String) -> String:
 	if path.is_empty() or not FileAccess.file_exists(path):
 		return ""
@@ -402,10 +402,10 @@ func _fail_account(code: String, status: int, text: String) -> void:
 	_fail("Cuenta: %s (%s)" % [text, code])
 
 
-# --- Sesión -----------------------------------------------------------------------------------
+# --- Session ----------------------------------------------------------------------------------
 
-# Empieza una sesión: transporte, controlador, nodo de entidades y cliente de red, y la conexión. En
-# modo LOCAL, antes se reutiliza o se lanza el servidor local.
+# Starts a session: transport, controller, entities node and network client, and the connection. In
+# LOCAL mode, the local server is reused or launched first.
 func _begin_session() -> void:
 	_was_welcomed = false
 	if _is_local():
@@ -447,8 +447,8 @@ func _start_client() -> void:
 		_fail("No se pudo iniciar la conexión (%s)" % error_string(error))
 
 
-# Quita los nodos de la sesión (el cliente cierra el transporte al salir del árbol). No se llama
-# desde una señal del propio cliente: hay que diferirlo.
+# Removes the session's nodes (the client closes the transport on leaving the tree). It is not called
+# from a signal of the client itself: it must be deferred.
 func _free_session_nodes() -> void:
 	for node: Node in [_client, _transport, _controller, _entities]:
 		if is_instance_valid(node):
@@ -461,10 +461,10 @@ func _free_session_nodes() -> void:
 	_entities = null
 
 
-# --- Servidor local ---------------------------------------------------------------------------
+# --- Local server -----------------------------------------------------------------------------
 
-# Modo LOCAL: reutiliza el servidor que describe el archivo de bloqueo si su proceso sigue vivo y, si
-# no, lanza uno.
+# LOCAL mode: reuses the server described by the lock file if its process is still alive and, if
+# not, launches one.
 func _prepare_local_server() -> void:
 	var running_port: int = LocalServerLauncher.get_running_port(_effective_lock_path())
 	if running_port > 0:
@@ -475,13 +475,13 @@ func _prepare_local_server() -> void:
 	_launch_local_server()
 
 
-# Archivo de bloqueo del servidor local: el de --dev-lock-path y, si no se dio, [member lock_path].
+# Lock file of the local server: that of --dev-lock-path and, if not given, [member lock_path].
 func _effective_lock_path() -> String:
 	return config.dev_lock_path if not config.dev_lock_path.is_empty() else lock_path
 
 
-# Lanza el servidor local y abre la ventana de reintentos de conexión. Devuelve false si no pudo
-# lanzarlo.
+# Launches the local server and opens the connection retry window. Returns false if it could not
+# launch it.
 func _launch_local_server() -> bool:
 	_launcher = LocalServerLauncher.new()
 	var pid: int = _launcher.launch(config.port,
@@ -495,8 +495,8 @@ func _launch_local_server() -> bool:
 	return true
 
 
-# true si una conexión fallida en modo LOCAL se debe reintentar: aún no hubo respuesta del servidor y
-# queda tiempo (o hay que lanzar el servidor porque el del archivo de bloqueo no contestó).
+# true if a failed connection in LOCAL mode should be retried: there has been no response from the server yet and
+# there is time left (or the server must be launched because the one in the lock file did not answer).
 func _should_retry_local() -> bool:
 	if not _is_local() or _was_welcomed:
 		return false
@@ -505,7 +505,7 @@ func _should_retry_local() -> bool:
 	return _launcher.is_server_alive() and Time.get_ticks_msec() < _local_deadline_msec
 
 
-# Nueva sesión tras un intento fallido de conectar con el servidor local.
+# New session after a failed attempt to connect to the local server.
 func _retry_local_connection() -> void:
 	if _quitting or not is_instance_valid(_client):
 		return
@@ -517,7 +517,7 @@ func _retry_local_connection() -> void:
 	_start_client()
 
 
-# --- Conexión y carga -------------------------------------------------------------------------
+# --- Connection and loading -------------------------------------------------------------------
 
 func _on_welcomed(welcome: NetMessages.Welcome) -> void:
 	_was_welcomed = true
@@ -541,7 +541,7 @@ func _on_welcomed(welcome: NetMessages.Welcome) -> void:
 	set_process(true)
 
 
-# La zona ya está cargada: se añade, se espera a que sus colisiones estén listas y se avisa.
+# The zone is already loaded: it is added, we wait for its collisions to be ready and a notice is sent.
 func _enter_zone(path: String) -> void:
 	var packed: PackedScene = ResourceLoader.load_threaded_get(path) as PackedScene
 	_world = packed.instantiate() as Node3D if packed != null else null
@@ -550,7 +550,7 @@ func _enter_zone(path: String) -> void:
 		_client.leave()
 		return
 	add_child(_world)
-	# Las fortalezas de la escena (estandartes y puerta) las encuentra FortressView en esta zona.
+	# The scene's fortresses (banners and gate) are found by FortressView in this zone.
 	_client.get_fortress_view().set_zone(_world)
 	_force_full_terrain_collision(_world)
 	if _is_bot() and DisplayServer.get_name() == "headless":
@@ -566,9 +566,9 @@ func _enter_zone(path: String) -> void:
 	_client.notify_zone_ready(_entities)
 
 
-# Terrain3D con la colisión completa, la misma que fija el servidor (docs/red.md, 1.3 y 19): el
-# modo dinámico depende de la cámara y podría cambiar el último bit de las consultas de Jolt. Se
-# accede por nombre para no depender de la extensión al cargar el script.
+# Terrain3D with full collision, the same one the server fixes (docs/red.md, 1.3 and 19): the
+# dynamic mode depends on the camera and could change the last bit of Jolt's queries. It is
+# accessed by name so as not to depend on the extension when loading the script.
 func _force_full_terrain_collision(root: Node) -> void:
 	if not ClassDB.class_exists(&"Terrain3D"):
 		return
@@ -582,10 +582,10 @@ func _force_full_terrain_collision(root: Node) -> void:
 
 func _on_rejected(result: int, text: String) -> void:
 	_was_welcomed = true
-	# Sin texto del servidor, el que este cliente conoce para el motivo (también el de REJECT 9).
+	# Without text from the server, the one this client knows for the reason (also that of REJECT 9).
 	if text.is_empty():
 		text = NetProtocol.result_text(result)
-	# Un reino rechazado por desequilibrio se recuerda para ofrecer otro al volver a la elección.
+	# A realm rejected for imbalance is remembered so as to offer another when returning to the choice.
 	_imbalanced_realm = config.realm if result == NetProtocol.Result.IMBALANCE else NetProtocol.Realm.NONE
 	push_warning("[Eldmark] Conexión rechazada (%d): %s" % [result, text])
 	_fail("Conexión rechazada: %s" % text)
@@ -616,7 +616,7 @@ func _on_notice(code: int, text: String) -> void:
 	print("[Eldmark] Aviso del servidor (%d): %s" % [code, text])
 
 
-# --- El personaje local aparece ---------------------------------------------------------------
+# --- The local character spawns ---------------------------------------------------------------
 
 func _on_local_spawned(character: PlayerCharacter) -> void:
 	_hide_overlay()
@@ -628,7 +628,7 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 		_brain = ClientBotBrains.make(_client, config, character.global_position, BOT_RADIUS)
 		_controller.set_bot(_brain)
 		if config.bot_scenario == ClientConfig.BOT_SCENARIO_PROGRESS and _scenario == null:
-			# El escenario no anda: el bot se queda quieto (equipar pide estar sin acción y fuera de combate).
+			# The scenario does not walk: the bot stands still (equipping requires no action and being out of combat).
 			_brain.set_idle_from(_client.get_prediction().get_predicted_tick() + 1)
 			_idle_set = true
 			_scenario = BotProgressScenario.new(_client)
@@ -636,15 +636,15 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 			print("[Eldmark] Escenario %s: empieza" % BotProgressScenario.NAME)
 		return
 
-	# Aspecto visual: el humanoide animado sustituye a la cápsula provisional, con la apariencia del SPAWN propio (la
-	# de por defecto de su pueblo si no vale o la zona no tiene progreso; docs/progresion.md §7.3).
+	# Visual look: the animated humanoid replaces the provisional capsule, with the appearance from the own SPAWN (that
+	# of its people by default if invalid or the zone has no progress; docs/progresion.md §7.3).
 	var visual: HumanoidVisual = HumanoidVisual.install_replacing_placeholder(character)
 	if visual == null:
 		push_warning("[Eldmark] Sin visual del humanoide: se usa la cápsula provisional")
 	else:
 		AppearanceApplier.apply_bytes(visual, _client.get_own_appearance(), config.realm)
 
-	# Cámara de acción por encima del hombro, mirando hacia donde mira el personaje.
+	# Over-the-shoulder action camera, facing where the character faces.
 	_camera_rig = _instantiate_scene(CAMERA_RIG_SCENE_PATH, CameraRig) as CameraRig
 	if _camera_rig != null:
 		add_child(_camera_rig)
@@ -658,25 +658,25 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 		add_child(_hud)
 		_hud.bind(character, _camera_rig)
 		_hud.bind_net(_client, _world)
-		# En red, el panel de depuración del HUD empieza oculto: F3 lo alterna junto con el de red.
+		# On the network, the HUD's debug panel starts hidden: F3 toggles it together with the network one.
 		_hud.set_debug_visible(false)
 
-	# Depuración de red (F3 y F4). No marca F3 como gestionado: el HUD lo recibe también.
+	# Network debugging (F3 and F4). It does not mark F3 as handled: the HUD receives it too.
 	_net_debug = _instantiate_scene(NET_DEBUG_SCENE_PATH, NetDebugOverlay) as NetDebugOverlay
 	if _net_debug != null:
 		add_child(_net_debug)
 		_net_debug.bind(_client)
 
 
-# --- Elección de reino ------------------------------------------------------------------------
+# --- Realm choice -----------------------------------------------------------------------------
 
-# true si hay alguien delante que pueda elegir: no es un bot y hay pantalla (o es una prueba).
+# true if someone is there who can choose: it is not a bot and there is a screen (or it is a test).
 func _is_interactive() -> bool:
 	return not _is_bot() and (force_interactive or DisplayServer.get_name() != "headless")
 
 
-# Muestra RealmSelect con el aviso [param notice] (vacío = ninguno). Sin sesión de red: antes se
-# quita lo que hubiera.
+# Shows RealmSelect with the notice [param notice] (empty = none). Without a network session: whatever there was
+# is removed first.
 func _show_realm_select(notice: String) -> void:
 	_hide_overlay()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -694,8 +694,8 @@ func _show_realm_select(notice: String) -> void:
 		_realm_layer.add_child(_realm_select)
 		_realm_select.realm_chosen.connect(_on_realm_chosen)
 		_realm_select.quit_requested.connect(_on_quit_requested)
-	# El reino que se puede elegir depende de la zona; antes de conectar solo se conoce la que se
-	# pide con --zone o, si no, la de por defecto (el servidor rechaza lo que no admita).
+	# The realm that can be chosen depends on the zone; before connecting only the one requested with --zone
+	# is known or, failing that, the default one (the server rejects whatever it does not admit).
 	var zone_id: String = NetZones.parse_zone_arg(OS.get_cmdline_user_args())
 	if zone_id.is_empty():
 		zone_id = NetZones.default_zone_id()
@@ -707,14 +707,14 @@ func _show_realm_select(notice: String) -> void:
 	if _imbalanced_realm == NetProtocol.Realm.NONE:
 		_realm_select.select_realm(config.realm)
 	else:
-		# Rechazado por desequilibrio: se ofrece el reino con menos jugadores (si se conoce).
+		# Rejected for imbalance: the realm with the fewest players is offered (if known).
 		_realm_select.select_realm(_realm_select.get_recommended_realm())
 	_realm_select.set_notice(notice)
 	_realm_layer.visible = true
 	_returning_to_menu = false
 
 
-# Dirección de config como se escribe en el campo: «host» o «host:puerto» (IPv6 entre corchetes).
+# Address from config as it is typed in the field: "host" or "host:port" (IPv6 in brackets).
 func _address_text() -> String:
 	var host: String = "[%s]" % config.address if config.address.contains(":") else config.address
 	return host if config.port == NetProtocol.DEFAULT_PORT else "%s:%d" % [host, config.port]
@@ -730,11 +730,11 @@ func _on_realm_chosen(realm: int, address: String, display_name: String) -> void
 		config.port = int(parsed["port"]) if int(parsed["port"]) > 0 else NetProtocol.DEFAULT_PORT
 	config.realm = realm
 	config.display_name = display_name
-	# Elegir reino es entrar sin cuenta: nunca con un billete viejo.
+	# Choosing a realm means entering without an account: never with an old ticket.
 	config.ticket = PackedByteArray()
 	config.character_id = 0
-	# La plantilla elegida sale en un LOADOUT_SELECT nada más llegar el WELCOME (NetClient); la de por
-	# defecto no hace falta pedirla.
+	# The chosen template goes out in a LOADOUT_SELECT as soon as the WELCOME arrives (NetClient); the default
+	# one does not need to be requested.
 	var template_id: int = _realm_select.get_selected_template()
 	var template: EquipmentTemplate = CombatCatalog.template(template_id)
 	config.loadout = String(template.id) \
@@ -750,7 +750,7 @@ func _on_quit_requested() -> void:
 	get_tree().quit(0)
 
 
-# Vuelve a la elección de reino tras un fallo: quita la zona, la cámara, el HUD y la sesión de red.
+# Returns to the realm choice after a failure: removes the zone, the camera, the HUD and the network session.
 func _return_to_realm_select(notice: String) -> void:
 	if _quitting:
 		return
@@ -774,14 +774,14 @@ func _return_to_realm_select(notice: String) -> void:
 	_show_realm_select(notice)
 
 
-# --- Cierre -----------------------------------------------------------------------------------
+# --- Shutdown ---------------------------------------------------------------------------------
 
-# Fin normal de un cliente con --quit-after-ticks: informe, salida de la zona y cierre.
+# Normal end of a client with --quit-after-ticks: report, leaving the zone and shutdown.
 func _finish_session() -> void:
 	print("[Eldmark] Fin de la sesión: %d ticks locales (--quit-after-ticks)"
 			% _client.get_local_tick())
 	if _client.get_state() != NetClient.State.IN_WORLD:
-		# Se acabó el tiempo sin llegar a entrar en la zona: eso es un fallo, no un cierre normal.
+		# Time ran out without entering the zone: that is a failure, not a normal shutdown.
 		_fail("No se llegó a entrar en la zona (estado: %s)"
 				% NetClient.State.keys()[_client.get_state()])
 		return
@@ -791,8 +791,8 @@ func _finish_session() -> void:
 	_client.leave()
 
 
-# Fallo de conexión o carga. En modo bot (o sin pantalla) se escribe el informe y se cierra con
-# código 1; con pantalla se vuelve a la elección de reino con el motivo como aviso.
+# Connection or loading failure. In bot mode (or without a screen) the report is written and it closes with
+# code 1; with a screen it returns to the realm choice with the reason as a notice.
 func _fail(text: String) -> void:
 	printerr("[Eldmark] %s" % text)
 	if not _is_interactive():
@@ -804,14 +804,14 @@ func _fail(text: String) -> void:
 		return
 	_returning_to_menu = true
 	if config.from_front:
-		# La sesión salió de la selección de personaje: se vuelve a ella con el motivo (la cuenta sigue).
+		# The session came from character selection: it returns there with the reason (the account continues).
 		_return_to_front.call_deferred(text)
 		return
-	# Casi siempre se llama desde una señal del cliente, que no se puede liberar en ese momento.
+	# It is almost always called from a client signal, which cannot be freed at that moment.
 	_return_to_realm_select.call_deferred(text)
 
 
-# Vuelve a FrontMain (selección de personaje) con [param notice] como aviso.
+# Returns to FrontMain (character selection) with [param notice] as a notice.
 func _return_to_front(notice: String) -> void:
 	if _quitting:
 		return
@@ -837,8 +837,8 @@ func _quit(code: int) -> void:
 	get_tree().quit(code)
 
 
-# Un paso del escenario acabado: al registro y al informe (reescrito entero, sin darlo por escrito: el final sale
-# igual al salir).
+# A scenario step finished: to the log and the report (rewritten whole, without waiting for it to be written out: the final one comes out
+# the same on exit).
 func _on_scenario_phase(phase: String) -> void:
 	print("[Eldmark] Escenario %s: %s" % [BotProgressScenario.NAME, phase])
 	if config.report_path.is_empty() or _client == null or _report_written:
@@ -855,7 +855,7 @@ func _write_report() -> void:
 	if _scenario != null and _client != null:
 		_client.report_extra["scenario"] = _scenario.to_report()
 	if _client == null:
-		# El bot con cuenta que no llegó a conectar: solo lo de la cuenta.
+		# The bot with an account that never got to connect: only the account part.
 		if not _account_report.is_empty():
 			_report_written = true
 			_write_account_report()
@@ -869,7 +869,7 @@ func _write_report() -> void:
 				% [config.report_path, error])
 
 
-# Informe de un bot con cuenta que no llegó a conectar con la zona.
+# Report of a bot with an account that never got to connect to the zone.
 func _write_account_report() -> void:
 	var report: Dictionary = {
 		"version": 1, "name": config.character_name, "mode": ClientConfig.Mode.keys()[config.mode],
@@ -887,7 +887,7 @@ func _write_account_report() -> void:
 	print("[Eldmark] Informe escrito en %s" % config.report_path)
 
 
-# --- Pantalla de carga y avisos ---------------------------------------------------------------
+# --- Loading screen and notices ---------------------------------------------------------------
 
 func _create_overlay() -> void:
 	_overlay_layer = CanvasLayer.new()
@@ -944,8 +944,8 @@ func _hide_overlay() -> void:
 		_overlay_layer.visible = false
 
 
-## Carga e instancia una escena. Si [param expected] no es null, la raíz debe ser de ese tipo; si
-## no lo es, se libera. Devuelve null (y registra el error) si falla.
+## Loads and instantiates a scene. If [param expected] is not null, the root must be of that type; if
+## it is not, it is freed. Returns null (and logs the error) on failure.
 func _instantiate_scene(path: String, expected: Script = null) -> Node:
 	var scene: PackedScene = load(path) as PackedScene
 	if scene == null:

@@ -1,46 +1,46 @@
 extends SceneTree
-## Hornea la malla de navegación de los PNJ del Vado Gris (docs/fuerte.md, sección 4.1, MUN-06) y
-## la guarda en texto en [code]scenes/world/zones/vado_gris/vado_gris_navmesh.tres[/code].
+## Bakes the NPC navigation mesh of the Vado Gris (docs/fuerte.md, section 4.1, MUN-06) and
+## saves it as text in [code]scenes/world/zones/vado_gris/vado_gris_navmesh.tres[/code].
 ##
-## Uso (desde la raíz del proyecto, sin ventana; unos segundos):
+## Usage (from the project root, no window; a few seconds):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/bake_navmesh.gd
 ## godot --headless --path . -s res://tools/bake_navmesh.gd -- --cell=0.3
 ## [/codeblock]
-## Qué se hornea (todo lo demás da igual, y el resultado cuenta para el servidor, que no tiene
-## mallas):
-## [br]- La geometría de [Terrain3D] con [code]generate_nav_mesh_source_geometry(aabb, false)[/code]:
-## con [code]true[/code] (el valor por defecto) devuelve 0 caras porque no hay navegación pintada.
-## [br]- Las colisiones estáticas de las capas 1 (mundo), 3 (bloqueos invisibles del jugador: con
-## solo la 1 hay ruta por el lecho profundo del río) y 4 (estructuras: el cuerpo de vista de la
-## puerta del fuerte, que la deja [b]cerrada[/b]). Las capas de reino 5 a 7 de la puerta no se
-## hornean: el paso por la puerta lo da un enlace que crea el servidor y no está aquí.
-## [br]- Celda de 0,25 m y radio de agente de 0,4 m (con celda de 0,5 m el radio se redondea a 0,5 y
-## la pasarela de 2 m deja solo 1 m útil). Si el archivo sale de más de 20 MB hay que subir la
-## celda a 0,3 con [code]--cell=0.3[/code].
+## What gets baked (nothing else matters, and the result counts for the server, which has no
+## meshes):
+## [br]- The [Terrain3D] geometry with [code]generate_nav_mesh_source_geometry(aabb, false)[/code]:
+## with [code]true[/code] (the default value) it returns 0 faces because there is no painted navigation.
+## [br]- The static collisions of layers 1 (world), 3 (the player's invisible blockers: with
+## only 1 there is a route through the deep riverbed) and 4 (structures: the fort gate's
+## sight body, which leaves it [b]closed[/b]). The gate's realm layers 5 to 7 are not
+## baked: passage through the gate is provided by a link the server creates and is not here.
+## [br]- A 0.25 m cell and a 0.4 m agent radius (with a 0.5 m cell the radius is rounded up to 0.5 and
+## the 2 m walkway leaves only 1 m usable). If the file comes out over 20 MB the cell
+## has to be raised to 0.3 with [code]--cell=0.3[/code].
 ## [br][br]
-## Es determinista (misma escena, mismo resultado). Hay que repetirlo si cambia la geometría de la
-## zona (rampas, pasarela, puentes, murallas, bloqueos); lo comprueba tests/test_navmesh.gd.
+## It is deterministic (same scene, same result). It has to be repeated if the zone's geometry changes
+## (ramps, walkway, bridges, walls, blockers); tests/test_navmesh.gd checks it.
 
 const ZONE_SCENE_PATH: String = "res://scenes/world/zones/vado_gris/vado_gris.tscn"
 const OUTPUT_PATH: String = "res://scenes/world/zones/vado_gris/vado_gris_navmesh.tres"
-## Lado de la celda y su altura (m).
+## Cell side and height (m).
 const DEFAULT_CELL_SIZE: float = 0.25
 const CELL_HEIGHT: float = 0.25
-## Cápsula del agente: la del personaje (radio 0,4 m, altura 1,8 m).
+## Agent capsule: the character's (radius 0.4 m, height 1.8 m).
 const AGENT_RADIUS: float = 0.4
 const AGENT_HEIGHT: float = 1.8
-## Escalón máximo y pendiente máxima caminables. El personaje sube hasta 46° (floor_max_angle) y
-## salva 0,35 m con el ajuste al suelo; la malla se queda un poco por debajo para no meter a los
-## PNJ por laderas límite.
+## Maximum walkable step and slope. The character climbs up to 46° (floor_max_angle) and
+## clears 0.35 m with floor snapping; the mesh stays a bit below so as not to send
+## NPCs up borderline slopes.
 const AGENT_MAX_CLIMB: float = 0.4
 const AGENT_MAX_SLOPE_DEG: float = 44.0
-## Zona que se hornea: el área jugable (300 x 300 m) y alturas de -6 a 64 m.
+## Zone that gets baked: the playable area (300 x 300 m) and heights from -6 to 64 m.
 const BAKE_AABB: AABB = AABB(Vector3(-150.0, -6.0, -150.0), Vector3(300.0, 70.0, 300.0))
-## Capas 1 | 3 | 4.
+## Layers 1 | 3 | 4.
 const COLLISION_MASK: int = PlayerCharacter.WORLD_COLLISION_LAYER \
 		| PlayerCharacter.PLAYER_BLOCKER_LAYER | PlayerCharacter.STRUCTURE_LAYER
-## Tamaño a partir del cual se avisa de que hay que subir la celda.
+## Size above which a warning says the cell has to be raised.
 const MAX_FILE_BYTES: int = 20 * 1024 * 1024
 
 var _cell_size: float = DEFAULT_CELL_SIZE

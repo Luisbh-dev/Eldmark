@@ -33,7 +33,7 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(testdb.Main(m)) }
 
-// syncBuffer es un registro que se puede leer mientras se escribe.
+// syncBuffer is a log that can be read while it is being written.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -51,7 +51,7 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-// router monta las rutas en un ServeMux (en serve es *app.App).
+// router mounts the routes on a ServeMux (in serve it is *app.App).
 type router struct{ *http.ServeMux }
 
 func (r router) HandlePublic(pattern string, h http.Handler) { r.Handle(pattern, h) }
@@ -96,8 +96,8 @@ func newHarness(t *testing.T, opts ...option) *harness {
 	return h
 }
 
-// build (re)monta el servicio sobre la misma base, con otros textos (nil: los del binario) o
-// configuración.
+// build (re)mounts the service on the same database, with other texts (nil: the binary's) or
+// configuration.
 func (h *harness) build(texts fs.FS, cfg *config.Config) {
 	h.t.Helper()
 	if texts == nil {
@@ -119,13 +119,13 @@ func (h *harness) build(texts fs.FS, cfg *config.Config) {
 	h.svc, h.api, h.cfg = svc, accounts.NewAPI(svc), cfg
 	mux := router{http.NewServeMux()}
 	h.api.Mount(mux)
-	// Una ruta de juego como la de entrar al mundo (P2), montada como lo hará P2.
+	// A gameplay route like the enter-the-world one (P2), mounted the way P2 will mount it.
 	mux.HandlePublic("POST /v1/characters/{id}/enter", httpx.RequireProtocol(7, h.api.RequireSession(false,
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))))
 	h.h = httpx.Middleware(log, mux)
 }
 
-// nextIP da una IP de documentación distinta cada vez (los límites van por IP).
+// nextIP gives a different documentation IP each time (the limits are per IP).
 func (h *harness) nextIP() string { return h.nextIPAddr().String() }
 
 func (h *harness) nextIPAddr() netip.Addr {
@@ -165,11 +165,11 @@ func (r *response) str(key string) string {
 
 type call struct {
 	method, path string
-	body         any    // se manda como JSON
-	form         string // se manda como formulario (sin cabeceras de /v1)
+	body         any    // sent as JSON
+	form         string // sent as a form (without /v1 headers)
 	token        string
-	ip           string // X-Real-IP (desde 127.0.0.1, de confianza)
-	remote       string // RemoteAddr; por defecto 127.0.0.1:40000
+	ip           string // X-Real-IP (from 127.0.0.1, trusted)
+	remote       string // RemoteAddr; 127.0.0.1:40000 by default
 	headers      map[string]string
 	noProtocol   bool
 }
@@ -213,7 +213,7 @@ func (h *harness) do(c call) *response {
 	}
 	rec := httptest.NewRecorder()
 	h.h.ServeHTTP(rec, r)
-	h.svc.Wait() // la recuperación de contraseña sigue en segundo plano
+	h.svc.Wait() // the password recovery continues in the background
 	res := &response{status: rec.Code, header: rec.Header(), raw: rec.Body.String()}
 	if strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") && rec.Body.Len() > 0 {
 		if err := json.Unmarshal(rec.Body.Bytes(), &res.body); err != nil {
@@ -238,7 +238,7 @@ func registerBody(email, pw string) map[string]any {
 		"consents": map[string]any{"crash_reports": false, "analytics": false}}
 }
 
-// register crea una cuenta desde una IP nueva y devuelve su id.
+// register creates an account from a new IP and returns its id.
 func (h *harness) register(email string) int64 {
 	h.t.Helper()
 	res := h.do(call{method: "POST", path: "/v1/accounts", body: registerBody(email, password), ip: h.nextIP()})
@@ -267,7 +267,7 @@ func (h *harness) loginFrom(email, pw, ip string) *response {
 	return h.do(call{method: "POST", path: "/v1/sessions", body: map[string]any{"email": email, "password": pw}, ip: ip})
 }
 
-// login inicia sesión (desde una IP nueva) y exige que vaya bien.
+// login logs in (from a new IP) and requires it to succeed.
 func (h *harness) login(email, pw string) session {
 	h.t.Helper()
 	res := h.loginFrom(email, pw, h.nextIP())
@@ -279,7 +279,7 @@ func (h *harness) login(email, pw string) session {
 
 var tokenInBody = regexp.MustCompile(`token=([A-Za-z0-9_-]{43})`)
 
-// mailTo devuelve el último correo de una plantilla a una dirección y su token (si lleva enlace).
+// mailTo returns the last email of a template to an address and its token (if it carries a link).
 func (h *harness) mailTo(email, template string) (body, token string) {
 	h.t.Helper()
 	err := h.pool.QueryRow(context.Background(), `select body from outbound_mail where to_email = $1 and template = $2

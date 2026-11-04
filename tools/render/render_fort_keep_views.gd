@@ -1,31 +1,31 @@
 extends SceneTree
-## Herramienta de revisión del fuerte: carga una escena (por defecto la vista previa del torreón
-## nuevo) y guarda las vistas a altura de jugador que rodean al fuerte, con la cámara real del
-## juego ([CameraRig], por encima del hombro) sobre un objetivo a 1,6 m de los pies, como en
-## el recorrido del banco de calidad (build/calidad/mundo/jugador_*). No hay personaje en la
-## imagen: solo la cámara.
+## Fort review tool: loads a scene (by default the preview of the new keep) and
+## saves the player-height views around the fort, with the game's real camera
+## ([CameraRig], over the shoulder) on a target 1.6 m above the feet, as in
+## the quality bench walkthrough (build/calidad/mundo/jugador_*). There is no character in the
+## image: only the camera.
 ##
-## Necesita ventana (no headless). Uso desde la raíz del proyecto:
+## Needs a window (not headless). Usage from the project root:
 ## [codeblock]
 ## godot --path . --resolution 1920x1080 -s res://tools/render/render_fort_keep_views.gd -- \
 ##     --out=C:/ruta/build/torreon/despues
 ## [/codeblock]
-## Opciones: [code]--scene=res://...tscn[/code] (por defecto la vista previa; con
-## [code]res://scenes/world/zones/vado_gris/vado_gris.tscn[/code] salen las vistas "antes"),
-## [code]--realm=eldrun|vardheim|solmarch[/code] (paleta del torreón),
-## [code]--only=<prefijo>[/code] (una sola vista, por el prefijo de su nombre),
-## [code]--shadow-quality=N[/code] (filtro de sombras suaves de la luz direccional, 0 a 5; por defecto el del proyecto).
-## Posiciones y ángulos: los de las vistas de Vardheim del banco de calidad.
+## Options: [code]--scene=res://...tscn[/code] (by default the preview; with
+## [code]res://scenes/world/zones/vado_gris/vado_gris.tscn[/code] the "before" views come out),
+## [code]--realm=eldrun|vardheim|solmarch[/code] (keep palette),
+## [code]--only=<prefix>[/code] (a single view, by the prefix of its name),
+## [code]--shadow-quality=N[/code] (soft shadow filter of the directional light, 0 to 5; by default the project's).
+## Positions and angles: those of the Vardheim views of the quality bench.
 
 const DEFAULT_SCENE: String = "res://scenes/tests/fort_keep_preview.tscn"
 const CAMERA_RIG_SCENE: PackedScene = preload("res://scenes/client/camera_rig.tscn")
-## Altura del objetivo de la cámara sobre los pies (CameraTarget de PlayerCharacter).
+## Height of the camera target above the feet (CameraTarget of PlayerCharacter).
 const HEAD_HEIGHT: float = 1.6
-## Fotogramas de espera tras colocar la cámara (sombras, LOD y el clipmap del terreno).
+## Frames to wait after positioning the camera (shadows, LOD and the terrain clipmap).
 const SETTLE_FRAMES: int = 30
 
-## [nombre, x, y (pies), z, yaw en grados, pitch en grados]. El índice del banco de calidad
-## da la posición real del jugador y el yaw con el que miraba.
+## [name, x, y (feet), z, yaw in degrees, pitch in degrees]. The quality bench index
+## gives the player's real position and the yaw they were looking with.
 const VIEWS: Array = [
 	["01_campamento_spawn", 0.0, 6.2, -138.0, 180.0, 0.0],
 	["06_camino_hacia_el_puente", 0.0, 5.6, -105.0, 180.0, -2.0],

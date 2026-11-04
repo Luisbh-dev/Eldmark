@@ -1,51 +1,52 @@
 class_name ModerationService
 extends RefCounted
-## La moderación en el servidor de zona (docs/plataforma.md §9, P7b; SOC-14 a SOC-18).
+## Moderation on the zone server (docs/plataforma.md §9, P7b; SOC-14 to SOC-18).
 ## [br][br]
-## [b]Comandos del chat.[/b] El canal GM del CHAT_SEND lleva los comandos que atiende el servidor (lo que sigue a la
-## barra, ya saneado): [code]gm …[/code], [code]ignorar[/code], [code]designorar[/code] y [code]reportar[/code]
-## ([method handle_command], el [member ChatRouter.command_sink]). Cualquier otro, o [code]/gm[/code] sin plataforma
-## o sin rol, contesta «Comando desconocido. Escribe /ayuda.», sin revelar qué existe.
-## [br]- [code]/gm comando …[/code] pasa por [method CommandRegistry.execute_chat] con el rol de la reclamación: cada
-## comando declara su [code]min_role[/code] (§9.1). Los de moderación los registra este servicio: [code]aviso[/code],
-## [code]silenciar[/code] y [code]expulsar[/code] (moderator); [code]suspender[/code], [code]renombrar[/code],
-## [code]invisible[/code] y [code]visible[/code] (gm); [code]banear[/code] (admin). Los demás (los de la consola y los
-## del fuerte, con [code]gm[/code] por defecto; [code]anuncio[/code] y [code]apagar[/code] de admin) los registra la
-## zona.
-## [br]- Las sanciones van a [code]POST /internal/v1/sanctions[/code] y las autoriza la plataforma (§9.5): la zona
-## solo exige el rol mínimo del comando. Con el 200, a quien está en esta zona: el silencio se aplica ya (y el latido
-## lo confirma), el aviso le llega en un NOTICE, el renombrado lo expulsa con guardado final para que elija otro
-## nombre y una suspensión o expulsión pide un latido en el acto (su [code]revoked[/code] lo echa).
-## [br]- [code]/ignorar nombre[/code] y [code]/designorar nombre[/code] van a [code]/internal/v1/ignores[/code]
-## (§9.3); con la respuesta, la cuenta ignorada entra o sale de [member ChatPeerState.ignored_accounts] y el filtro de
-## [ChatRouter] y [PartyManager] la aplica en el acto.
-## [br]- [code]/reportar nombre categoría [comentario][/code] (§9.4) adjunta los últimos
-## [constant MAX_EVIDENCE] mensajes de ese personaje que recibió quien reporta en 10 min (su anillo), la zona, la
-## posición y el tick. La zona ya frena 1 por objetivo cada 10 min y 10 por hora (la plataforma lo vuelve a mirar y
-## contesta 429).
+## [b]Chat commands.[/b] The CHAT_SEND GM channel carries the commands the server handles (what follows the slash,
+## already sanitized): [code]gm …[/code], [code]ignorar[/code], [code]designorar[/code] and [code]reportar[/code]
+## ([method handle_command], the [member ChatRouter.command_sink]). Any other, or [code]/gm[/code] without a platform or
+## without a role, answers "Comando desconocido. Escribe /ayuda." (unknown command, type /ayuda), without revealing what
+## exists.
+## [br]- [code]/gm command …[/code] goes through [method CommandRegistry.execute_chat] with the claim's role: each
+## command declares its [code]min_role[/code] (§9.1). The moderation ones are registered by this service:
+## [code]aviso[/code] (warning), [code]silenciar[/code] (mute) and [code]expulsar[/code] (kick) (moderator);
+## [code]suspender[/code] (suspend), [code]renombrar[/code] (rename), [code]invisible[/code] and [code]visible[/code]
+## (gm); [code]banear[/code] (ban) (admin). The others (the console's and the fort's, with [code]gm[/code] by default;
+## [code]anuncio[/code] and [code]apagar[/code] as admin) are registered by the zone.
+## [br]- Sanctions go to [code]POST /internal/v1/sanctions[/code] and are authorized by the platform (§9.5): the zone
+## only requires the command's minimum role. With the 200, for whoever is in this zone: the mute applies right away (and
+## the heartbeat confirms it), the warning reaches them in a NOTICE, the rename kicks them with a final save so that they
+## choose another name, and a suspension or kick requests a heartbeat at once (its [code]revoked[/code] throws them
+## out).
+## [br]- [code]/ignorar name[/code] and [code]/designorar name[/code] go to [code]/internal/v1/ignores[/code] (§9.3); with
+## the response, the ignored account enters or leaves [member ChatPeerState.ignored_accounts] and the filter of
+## [ChatRouter] and [PartyManager] applies it right away.
+## [br]- [code]/reportar name category [comment][/code] (§9.4) attaches the last [constant MAX_EVIDENCE] messages from
+## that character that the reporter received in 10 min (their ring), the zone, the position and the tick. The zone
+## already throttles 1 per target every 10 min and 10 per hour (the platform checks again and answers 429).
 ## [br][br]
-## [b]Silencios y avisos.[/b] Los [code]mutes[/code] de cada latido ([method on_heartbeat]) ponen el silencio de las
-## cuentas por las que se latió (los demás quedan sin silencio), salvo que una sanción de esta zona lo cambiara
-## después de que saliera ese latido. Al entrar, cada aviso de la reclamación sale en un NOTICE ([method on_arrival]).
+## [b]Mutes and warnings.[/b] The [code]mutes[/code] of each heartbeat ([method on_heartbeat]) set the mute of the
+## accounts the heartbeat was for (the rest are left unmuted), unless a sanction from this zone changed it after that
+## heartbeat went out. On arrival, each warning in the claim goes out in a NOTICE ([method on_arrival]).
 ## [br][br]
-## [b]Auditoría y lote de chat.[/b] Con plataforma, cada comando de GM, de consola o de depuración que se ejecuta va al
-## lote [code]audit[/code] ([code]{actor_account_id, actor_character_id, command, target_character_id,
-## target_account_id, args, at_unix, source}[/code]; la [code]key[/code] la pone [ZonePlatform]): [code]source[/code]
-## [code]console[/code] sin actor desde la consola y [code]zone[/code] con la cuenta y el personaje del GM en lo demás;
-## el objetivo por id y [code]args[/code] sin nombres ni correos (§9.1). Cada mensaje repartido va al lote
-## [code]chat[/code] (§9.2).
+## [b]Audit and chat batch.[/b] With a platform, every GM, console or debug command that is run goes to the
+## [code]audit[/code] batch ([code]{actor_account_id, actor_character_id, command, target_character_id,
+## target_account_id, args, at_unix, source}[/code]; the [code]key[/code] is set by [ZonePlatform]): [code]source[/code]
+## [code]console[/code] without an actor from the console and [code]zone[/code] with the GM's account and character in
+## the rest; the target by id and [code]args[/code] without names or emails (§9.1). Each delivered message goes to the
+## [code]chat[/code] batch (§9.2).
 
-## Los comandos del canal GM (sin la barra).
+## The GM channel commands (without the slash).
 const COMMAND_GM: String = "gm"
 const COMMAND_IGNORE: String = "ignorar"
 const COMMAND_UNIGNORE: String = "designorar"
 const COMMAND_REPORT: String = "reportar"
-## Categorías de un reporte: la palabra del comando (sin tildes) -> la de la plataforma (§9.4).
+## Categories of a report: the command's word (without accents) -> the platform's (§9.4).
 const REPORT_CATEGORIES: Dictionary[String, String] = {
 	"lenguaje": "language", "acoso": "harassment", "trampas": "cheating", "bot": "bot", "nombre": "offensive_name",
 	"otro": "other",
 }
-## Tipos de sanción (§9.5) y cómo se llaman en los textos.
+## Sanction types (§9.5) and what they are called in the texts.
 const KIND_WARNING: String = "warning"
 const KIND_MUTE: String = "mute"
 const KIND_SUSPENSION: String = "suspension"
@@ -55,14 +56,14 @@ const KIND_NAMES: Dictionary[String, String] = {
 	KIND_WARNING: "aviso", KIND_MUTE: "silencio", KIND_SUSPENSION: "suspensión", KIND_BAN: "expulsión permanente",
 	KIND_RENAME: "renombrado forzado",
 }
-## 1 reporte por objetivo cada 10 min y 10 por hora (§9.4), en ticks.
+## 1 report per target every 10 min and 10 per hour (§9.4), in ticks.
 const REPORT_TARGET_WINDOW_TICKS: int = 36000
 const REPORT_HOUR_TICKS: int = 216000
 const REPORTS_PER_HOUR: int = 10
-## La prueba de un reporte: los últimos 20 mensajes del reportado que recibió quien reporta en 10 min.
+## The evidence of a report: the last 20 messages from the reported player that the reporter received in 10 min.
 const MAX_EVIDENCE: int = 20
 const EVIDENCE_WINDOW_TICKS: int = 36000
-## Topes de la plataforma: comentario de un reporte y motivo de una sanción (caracteres) y duración de una sanción.
+## Platform caps: a report's comment and a sanction's reason (characters) and a sanction's duration.
 const MAX_COMMENT_CHARS: int = 500
 const MAX_REASON_CHARS: int = 500
 const MAX_SANCTION_MINUTES: int = 10 * 365 * 24 * 60
@@ -98,7 +99,7 @@ const TEXT_NOT_HERE: String = "«%s» no está en esta zona."
 const TEXT_INVISIBLE: String = "Ahora eres invisible: nadie te ve, no haces ni recibes daño y no cobras nada."
 const TEXT_VISIBLE: String = "Vuelves a ser visible. No cobras recompensas hasta reaparecer."
 
-## Recibe cada línea del registro de la zona.
+## Receives each line of the zone log.
 var log_sink: Callable = Callable()
 
 var _zone: ZoneServer = null
@@ -112,9 +113,9 @@ var _stats: Dictionary[StringName, int] = {
 }
 
 
-## Monta el servicio en [param zone]: registra los comandos de moderación en [param commands], atiende el canal GM
-## del chat de [param social] y, con [param platform], manda la auditoría y el chat a sus lotes y guarda el anillo de
-## lo recibido para los reportes.
+## Mounts the service on [param zone]: registers the moderation commands in [param commands], handles the GM channel of
+## the chat of [param social] and, with [param platform], sends the audit and the chat to their batches and keeps the
+## ring of received messages for reports.
 func setup(zone: ZoneServer, platform: ZonePlatform, commands: CommandRegistry, social: SocialService) -> void:
 	_zone = zone
 	_platform = platform
@@ -130,12 +131,12 @@ func setup(zone: ZoneServer, platform: ZonePlatform, commands: CommandRegistry, 
 		commands.audit_entry_sink = _audit_entry
 
 
-## La hora Unix: la de la plataforma (corregida) o, sin ella, la del sistema.
+## Unix time: the platform's (corrected) or, without it, the system's.
 func now_unix() -> int:
 	return _platform.now_unix() if _platform != null else int(Time.get_unix_time_from_system())
 
 
-## Atiende la línea de comando [param line] del canal GM que manda [param peer] en el tick [param now_tick].
+## Handles the command line [param line] of the GM channel sent by [param peer] at tick [param now_tick].
 func handle_command(peer: ServerPeer, line: String, now_tick: int) -> void:
 	_stats[&"commands"] += 1
 	var text: String = line.strip_edges()
@@ -160,8 +161,8 @@ func handle_command(peer: ServerPeer, line: String, now_tick: int) -> void:
 			_reply(peer, TEXT_UNKNOWN, now_tick)
 
 
-## La respuesta de una petición de moderación ([code]ignore[/code], [code]report[/code] o [code]sanction[/code]).
-## Devuelve true si era suya.
+## The response to a moderation request ([code]ignore[/code], [code]report[/code] or [code]sanction[/code]). Returns
+## true if it was its own.
 func on_platform_event(event: PlatformEvent) -> bool:
 	var context: Dictionary = event.context if event.context is Dictionary else {}
 	match event.kind:
@@ -177,8 +178,8 @@ func on_platform_event(event: PlatformEvent) -> bool:
 	return true
 
 
-## Los [code]mutes[/code] de un latido aceptado (§6, §9.5): el silencio de cada cuenta por la que se latió es el que
-## dice la respuesta (sin él, ninguno), salvo que una sanción de esta zona lo cambiara después de salir el latido.
+## The [code]mutes[/code] of an accepted heartbeat (§6, §9.5): the mute of each account the heartbeat was for is the one
+## the response says (without it, none), unless a sanction from this zone changed it after the heartbeat went out.
 func on_heartbeat(event: PlatformEvent) -> void:
 	_stats[&"heartbeats"] += 1
 	var context: Dictionary = event.context if event.context is Dictionary else {}
@@ -205,8 +206,8 @@ func on_heartbeat(event: PlatformEvent) -> void:
 			peer.chat.muted_until_unix = until
 
 
-## [param peer] acaba de entrar en el mundo: un NOTICE con cada aviso de la moderación que su cuenta no ha visto (los
-## da por vistos el primer guardado del arrendamiento, §9.5).
+## [param peer] has just entered the world: a NOTICE with each moderation warning its account has not seen (the first
+## save of the lease marks them as seen, §9.5).
 func on_arrival(peer: ServerPeer) -> void:
 	if peer.claimed == null:
 		return
@@ -215,7 +216,7 @@ func on_arrival(peer: ServerPeer) -> void:
 		_zone.send_notice(peer, String(warning.get("text", "")))
 
 
-## Estadísticas para el informe.
+## Statistics for the report.
 func get_stats() -> Dictionary:
 	var stats: Dictionary = {}
 	for key: StringName in _stats:
@@ -223,8 +224,8 @@ func get_stats() -> Dictionary:
 	return stats
 
 
-## Minutos de una duración escrita en un comando: [code]30[/code] o [code]30m[/code] (minutos), [code]2h[/code],
-## [code]7d[/code]; -1 si no vale o pasa de [constant MAX_SANCTION_MINUTES].
+## Minutes of a duration written in a command: [code]30[/code] or [code]30m[/code] (minutes), [code]2h[/code],
+## [code]7d[/code]; -1 if invalid or exceeds [constant MAX_SANCTION_MINUTES].
 static func parse_minutes(text: String) -> int:
 	var lowered: String = text.strip_edges().to_lower()
 	var factor: int = 1
@@ -239,13 +240,13 @@ static func parse_minutes(text: String) -> int:
 	return minutes if minutes >= 1 and minutes <= MAX_SANCTION_MINUTES else -1
 
 
-## La fecha de [param unix] para un texto: [code]3/11/2026 18:00 UTC[/code].
+## The date of [param unix] for a text: [code]3/11/2026 18:00 UTC[/code].
 static func date_text(unix: int) -> String:
 	var date: Dictionary = Time.get_datetime_dict_from_unix_time(unix)
 	return "%d/%d/%d %02d:%02d UTC" % [date["day"], date["month"], date["year"], date["hour"], date["minute"]]
 
 
-# --- Comandos de /gm ---------------------------------------------------------------------------
+# --- /gm commands ---------------------------------------------------------------------------
 
 func _register_commands() -> void:
 	var moderator: StringName = CommandRegistry.ROLE_MODERATOR
@@ -282,8 +283,8 @@ func _cmd_ban(ctx: CommandRegistry.Context) -> String:
 	return _sanction(ctx, KIND_BAN, false)
 
 
-# Una sanción de /gm: el objetivo por nombre (en el mundo de la instancia: puede no estar en esta zona), la duración
-# si la lleva y el motivo. La pide a la plataforma, que la autoriza; la respuesta llega a _on_sanction.
+# A /gm sanction: the target by name (in the instance's world: may not be in this zone), the duration if it has one and
+# the reason. It requests it from the platform, which authorizes it; the response arrives at _on_sanction.
 func _sanction(ctx: CommandRegistry.Context, kind: String, timed: bool) -> String:
 	var usage: String = "Uso: /gm " + _commands.get_usage(StringName(_command_of(kind)))
 	if ctx.origin != CommandRegistry.Origin.CHAT or ctx.peer == null or ctx.peer.claimed == null \
@@ -321,7 +322,7 @@ func _sanction(ctx: CommandRegistry.Context, kind: String, timed: bool) -> Strin
 	return ""
 
 
-# expulsar <jugador> [motivo]: lo echa de la zona con guardado final. Por /gm, solo a quien tiene un rol menor.
+# expulsar <player> [reason]: throws them out of the zone with a final save. Through /gm, only whoever has a lower role.
 func _cmd_kick(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.is_empty():
 		return "Uso: /gm " + _commands.get_usage(&"expulsar")
@@ -347,8 +348,8 @@ func _cmd_visible(ctx: CommandRegistry.Context) -> String:
 	return _set_invisible(ctx, false)
 
 
-# /gm invisible y /gm visible actúan sobre quien los escribe; desde la consola, sobre el jugador que se nombra.
-# Hacerse visible marca al personaje (gm_forced) con plataforma: no cobra hasta reaparecer (progresion.md §6.2).
+# /gm invisible and /gm visible act on whoever types them; from the console, on the named player. Becoming visible
+# marks the character (gm_forced) with a platform: it does not collect until respawn (progresion.md §6.2).
 func _set_invisible(ctx: CommandRegistry.Context, invisible: bool) -> String:
 	var target: ServerPeer = null
 	if ctx.origin == CommandRegistry.Origin.CHAT:
@@ -370,7 +371,7 @@ func _set_invisible(ctx: CommandRegistry.Context, invisible: bool) -> String:
 	return TEXT_INVISIBLE if invisible else TEXT_VISIBLE
 
 
-# --- Ignorados y reportes ----------------------------------------------------------------------
+# --- Ignores and reports ----------------------------------------------------------------------
 
 func _ignore(peer: ServerPeer, rest: String, add: bool, now_tick: int) -> void:
 	if _platform == null or peer.claimed == null:
@@ -501,7 +502,7 @@ func _on_report(event: PlatformEvent, context: Dictionary) -> void:
 		var wait_s: int = PlatformJson.int_in(event.error_dict(), "retry_after_s", 1, 86400, 60)
 		_reply_later(peer, TEXT_REPORT_LIMITED % ceili(float(wait_s) / 60.0))
 		return
-	# No llegó a la cola: no cuenta para los límites de la zona.
+	# It did not make it into the queue: it does not count towards the zone's limits.
 	if peer != null:
 		var key: String = NameRules.normalize_key(target_name)
 		if peer.chat.reported_at.get(key, -1) == int(context.get("tick", -2)):
@@ -512,8 +513,8 @@ func _on_report(event: PlatformEvent, context: Dictionary) -> void:
 	_reply_later(peer, _failure_text(event, shown, TEXT_REPORT_SELF, {}))
 
 
-# La respuesta de una sanción: el texto a quien la pidió (si sigue aquí) y, con el 200, lo que toca a quien la recibe
-# si está en esta zona.
+# The response to a sanction: the text to whoever requested it (if still here) and, with the 200, what applies to the
+# recipient if they are in this zone.
 func _on_sanction(event: PlatformEvent, context: Dictionary) -> void:
 	var peer: ServerPeer = _requester(context)
 	var target_name: String = String(context.get("target_name", ""))
@@ -547,17 +548,17 @@ func _on_sanction(event: PlatformEvent, context: Dictionary) -> void:
 			if target != null:
 				_zone.kick_peer(target, "renombrado forzado", TEXT_RENAME_KICK)
 		KIND_SUSPENSION, KIND_BAN:
-			# El latido trae el revoked con el texto de la plataforma: que salga ya.
+			# The heartbeat brings the revoked with the platform's text: let it go out now.
 			_platform.send_heartbeat_now()
 
 
-# --- Auditoría y chat --------------------------------------------------------------------------
+# --- Audit and chat --------------------------------------------------------------------------
 
-# La entrada del lote de auditoría de un comando ejecutado (CommandRegistry.audit_entry_sink, §9.1).
+# The audit batch entry of an executed command (CommandRegistry.audit_entry_sink, §9.1).
 func _audit_entry(ctx: CommandRegistry.Context, command_name: StringName, _result: String) -> void:
 	if ctx.audit_deferred:
 		return
-	# Un comando que crea una operación fija la hora: la de su detail.at_unix, la misma que la fila del guardado (S8).
+	# A command that creates an operation fixes the time: that of its detail.at_unix, the same as the save's row (S8).
 	var at_unix: int = ctx.audit_at_unix if ctx.audit_at_unix > 0 else now_unix()
 	var entry: Dictionary = {"command": String(command_name), "at_unix": at_unix, "actor_account_id": null,
 			"actor_character_id": null, "target_character_id": null, "target_account_id": null}
@@ -570,7 +571,7 @@ func _audit_entry(ctx: CommandRegistry.Context, command_name: StringName, _resul
 		entry["source"] = "zone"
 		entry["actor_account_id"] = str(ctx.peer.claimed.account_id)
 		entry["actor_character_id"] = str(ctx.peer.claimed.character_id)
-		# Un DEBUG_COMMAND actúa sobre quien lo manda.
+		# A DEBUG_COMMAND acts on whoever sends it.
 		if target == null and ctx.origin == CommandRegistry.Origin.NETWORK:
 			target = ctx.peer.entity
 	if target != null:
@@ -584,7 +585,7 @@ func _audit_entry(ctx: CommandRegistry.Context, command_name: StringName, _resul
 			if not ctx.payload.is_empty():
 				args["payload"] = ctx.payload.hex_encode()
 		else:
-			# Solo los números: el resto puede ser un nombre o texto libre, que la auditoría no guarda (§9.1).
+			# Only the numbers: the rest may be a name or free text, which the audit does not store (§9.1).
 			var values: Array = []
 			for arg: String in ctx.args:
 				if arg.is_valid_float():
@@ -603,15 +604,15 @@ func _log_chat(entry: Dictionary) -> void:
 	_platform.enqueue_batch(&"chat", entry)
 
 
-# --- Auxiliares --------------------------------------------------------------------------------
+# --- Helpers --------------------------------------------------------------------------------
 
-# El nombre del comando de /gm de un tipo de sanción.
+# The /gm command name for a sanction type.
 static func _command_of(kind: String) -> String:
 	return {KIND_WARNING: "aviso", KIND_MUTE: "silenciar", KIND_SUSPENSION: "suspender", KIND_RENAME: "renombrar",
 			KIND_BAN: "banear"}.get(kind, "")
 
 
-# El contexto de una petición: quién la pide (por personaje y arrendamiento, que sobreviven a un net_id reutilizado).
+# The context of a request: who requests it (by character and lease, which survive a reused net_id).
 func _request_context(peer: ServerPeer, extra: Dictionary) -> Dictionary:
 	var context: Dictionary = {"peer_id": peer.peer_id, "character_id": peer.claimed.character_id,
 			"lease_id": peer.claimed.lease_id}
@@ -619,7 +620,7 @@ func _request_context(peer: ServerPeer, extra: Dictionary) -> Dictionary:
 	return context
 
 
-# Quien pidió lo de [param context], si sigue en el mundo con el mismo personaje; si no, null.
+# Whoever requested what is in [param context], if still in the world with the same character; otherwise, null.
 func _requester(context: Dictionary) -> ServerPeer:
 	var peer: ServerPeer = _zone.get_peer(int(context.get("peer_id", 0)))
 	if peer == null or peer.claimed == null or peer.state != ServerPeer.State.IN_WORLD \
@@ -628,8 +629,8 @@ func _requester(context: Dictionary) -> ServerPeer:
 	return peer
 
 
-# El texto de una respuesta fallida de ignorar, reportar o sancionar: el nombre que no existe, la propia cuenta, los
-# códigos de [param by_code] o la plataforma que no responde.
+# The text of a failed response to ignore, report or sanction: the name that does not exist, one's own account, the
+# codes in [param by_code] or the platform not responding.
 func _failure_text(event: PlatformEvent, shown: String, self_text: String, by_code: Dictionary) -> String:
 	if by_code.has(event.error_code):
 		return by_code[event.error_code]

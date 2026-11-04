@@ -1,36 +1,36 @@
 class_name RemoteWorld
 extends Node3D
-## Mundo de los jugadores remotos (docs/red.md, sección 7): crea una [RemotePlayerView] por entidad
-## remota y la mantiene al día con los mensajes del servidor.
+## World of the remote players (docs/red.md, section 7): creates one [RemotePlayerView] per remote
+## entity and keeps it up to date with the server's messages.
 ## [br][br]
-## [NetClient] le pasa los ENTITY_SPAWN ajenos ([method on_spawn]), los ENTITY_DESPAWN
-## ([method on_despawn]) y todos los snapshots ([method on_snapshot], también los desordenados: solo
-## alimentan a los interpoladores). Los registros de un [code]net_id[/code] que todavía no se
-## conoce se ignoran, igual que los anteriores al alta o posteriores a la baja programada: los
-## canales fiable y de snapshots no están ordenados entre sí.
+## [NetClient] passes it other entities' ENTITY_SPAWN ([method on_spawn]), the ENTITY_DESPAWN
+## ([method on_despawn]) and all the snapshots ([method on_snapshot], including out-of-order ones: they
+## only feed the interpolators). Records of a [code]net_id[/code] that is not yet known are ignored, as
+## are those earlier than the spawn or later than the scheduled despawn: the reliable and snapshot
+## channels are not ordered relative to each other.
 ## [br][br]
-## [b]Dibujo.[/b] En cada fotograma ([method _process]) los remotos se dibujan en el instante
-## [code]render_tick + Engine.get_physics_interpolation_fraction()[/code] del
-## [InterpolationClock], así que cada fotograma usa su tiempo exacto, sin el sesgo de medio tick
-## que tendría aplicarlos en el tick de física. El instante usado se guarda
-## ([method get_last_drawn_render_tick]) porque es lo que el jugador estaba viendo: [NetClient] lo
-## manda al servidor con cada entrada.
+## [b]Drawing.[/b] On every frame ([method _process]) the remotes are drawn at the instant
+## [code]render_tick + Engine.get_physics_interpolation_fraction()[/code] of the
+## [InterpolationClock], so each frame uses its exact time, without the half-tick bias that applying
+## them at the physics tick would have. The instant used is stored
+## ([method get_last_drawn_render_tick]) because it is what the player was seeing: [NetClient] sends it
+## to the server with every input.
 ## [br][br]
-## Si un mismo [code]net_id[/code] vuelve a aparecer mientras la vista anterior sigue en pantalla
-## (sale de interés y vuelve a entrar), la vista vieja se queda hasta su tick de baja y la nueva
-## aparece en el suyo, cada una con sus propios registros.
+## If the same [code]net_id[/code] appears again while the previous view is still on screen (it leaves
+## interest and comes back in), the old view stays until its despawn tick and the new one appears at its
+## own, each with its own records.
 
 const PLAYER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 
-## true: a cada remoto se le instala el visual animado ([HumanoidVisual]). Por defecto, solo si hay
-## pantalla; en un cliente headless (bots) bastan las cápsulas provisionales.
+## true: each remote gets the animated visual installed ([HumanoidVisual]). By default, only if there is
+## a display; on a headless client (bots) the placeholder capsules are enough.
 var install_visuals: bool = DisplayServer.get_name() != "headless"
 
 var _clock: InterpolationClock = null
 var _player_scene: PackedScene = null
-## net_id -> vista vigente (la más reciente de ese id).
+## net_id -> current view (the most recent one for that id).
 var _views: Dictionary[int, RemotePlayerView] = {}
-## Vistas que ya tienen programada la baja y han sido sustituidas por otra del mismo net_id.
+## Views that already have their despawn scheduled and have been replaced by another with the same net_id.
 var _retiring: Array[RemotePlayerView] = []
 var _last_drawn_render_tick: float = 0.0
 var _spawn_count: int = 0
@@ -40,21 +40,20 @@ var _ignored_records: int = 0
 
 func _init() -> void:
 	name = "RemoteWorld"
-	# Antes que el animador (prioridad -1): el estado de este fotograma ya está escrito cuando
-	# el animador lo lee.
+	# Before the animator (priority -1): this frame's state is already written when the animator reads it.
 	process_priority = -10
-	# Cada remoto se coloca en el mundo con global_position; el propio nodo no se mueve.
+	# Each remote is placed in the world with global_position; the node itself does not move.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 
 
-## Reloj que dice qué instante se dibuja ([NetClient] lo avanza en cada tick de física).
+## Clock that says which instant is drawn ([NetClient] advances it on every physics tick).
 func setup(clock: InterpolationClock) -> void:
 	_clock = clock
 
 
-## ENTITY_SPAWN de otra entidad: crea su vista con la primera muestra del mensaje. Ignora el SPAWN
-## propio ([code]is_yours[/code]), los repetidos y los que no son personajes (los proyectiles, kind 3,
-## los dibuja otro; las estructuras no traen estado).
+## ENTITY_SPAWN of another entity: creates its view with the message's first sample. Ignores the player's
+## own SPAWN ([code]is_yours[/code]), repeated ones and those that are not characters (projectiles,
+## kind 3, are drawn by something else; structures carry no state).
 func on_spawn(msg: NetMessages.EntitySpawn) -> void:
 	if msg == null or msg.is_yours or msg.state == null \
 			or msg.kind == NetProtocol.EntityKind.PROJECTILE:
@@ -63,7 +62,7 @@ func on_spawn(msg: NetMessages.EntitySpawn) -> void:
 	if existing != null:
 		if existing.get_spawn_tick() == msg.spawn_tick:
 			return
-		# Un alta nueva con el mismo id: la vista vieja se queda hasta el tick del alta nueva.
+		# A new spawn with the same id: the old view stays until the new spawn's tick.
 		if not existing.is_despawn_scheduled():
 			existing.schedule_despawn(msg.spawn_tick)
 		_retiring.append(existing)
@@ -79,21 +78,21 @@ func on_spawn(msg: NetMessages.EntitySpawn) -> void:
 	view.name = "View%d" % msg.net_id
 	add_child(view)
 	view.setup(body, msg)
-	# El animador de combate del remoto lee el byte action de su registro dibujado.
+	# The remote's combat animator reads the action byte of its drawn record.
 	var visual: HumanoidVisual = body.get_node_or_null(^"Visual/HumanoidVisual") as HumanoidVisual
 	if visual != null:
-		# Sin colisión entre personajes, un remoto pegado a la cámara se difumina (ART-53).
+		# With no collision between characters, a remote glued to the camera fades out (ART-53).
 		visual.camera_fade = true
 		visual.get_animator().set_remote_source(Callable(view, "get_drawn_action"),
 				Callable(view, "get_active_weapon_id"))
-		# Su apariencia (protocolo 7): la del SPAWN si vale para su reino y, si no, la de por defecto de su pueblo.
+		# Its appearance (protocol 7): the SPAWN's if it is valid for its realm and, if not, the default of its people.
 		if msg.kind == NetProtocol.EntityKind.PLAYER:
 			AppearanceApplier.apply_bytes(visual, msg.appearance, msg.realm)
 	_views[msg.net_id] = view
 	_spawn_count += 1
 
 
-## ENTITY_DESPAWN: programa la baja de la vista vigente de esa entidad. Ignora ids desconocidos.
+## ENTITY_DESPAWN: schedules the despawn of that entity's current view. Ignores unknown ids.
 func on_despawn(msg: NetMessages.EntityDespawn) -> void:
 	if msg == null:
 		return
@@ -104,8 +103,8 @@ func on_despawn(msg: NetMessages.EntityDespawn) -> void:
 	_despawn_count += 1
 
 
-## LOADOUT de un remoto (ya en su tick de dibujo): su nueva pareja de armas (docs/habilidades.md, sección
-## 5.4). Ignora ids desconocidos.
+## LOADOUT of a remote (already at its draw tick): its new pair of weapons (docs/habilidades.md, section
+## 5.4). Ignores unknown ids.
 func on_loadout(event: NetMessages.EntityEvent) -> void:
 	if event == null or event.event != NetMessages.EntityEvent.Kind.LOADOUT:
 		return
@@ -114,8 +113,8 @@ func on_loadout(event: NetMessages.EntityEvent) -> void:
 		view.set_weapons(event.weapon_1, event.weapon_2)
 
 
-## LEVEL_UP de un remoto (ya en su tick de dibujo; solo llega de los de tu reino): su nivel nuevo, para su placa.
-## Ignora ids desconocidos.
+## LEVEL_UP of a remote (already at its draw tick; only arrives for those of your realm): its new level,
+## for its nameplate. Ignores unknown ids.
 func on_level_up(event: NetMessages.EntityEvent) -> void:
 	if event == null or event.event != NetMessages.EntityEvent.Kind.LEVEL_UP:
 		return
@@ -124,8 +123,8 @@ func on_level_up(event: NetMessages.EntityEvent) -> void:
 		view.set_level(event.level)
 
 
-## Reparte los registros de un SNAPSHOT entre las vistas. Ignora los de ids que no conoce y los
-## que caen fuera de [code][spawn_tick, despawn_tick)[/code] de la vista.
+## Distributes the records of a SNAPSHOT among the views. Ignores those of ids it does not know and those
+## that fall outside the view's [code][spawn_tick, despawn_tick)[/code].
 func on_snapshot(snapshot: NetMessages.Snapshot) -> void:
 	if snapshot == null:
 		return
@@ -144,17 +143,17 @@ func on_snapshot(snapshot: NetMessages.Snapshot) -> void:
 			_ignored_records += 1
 
 
-## Vista vigente de la entidad [param net_id], o null.
+## Current view of entity [param net_id], or null.
 func get_view(net_id: int) -> RemotePlayerView:
 	return _views.get(net_id)
 
 
-## Vistas vigentes (no cuenta las que ya tienen la baja programada y han sido sustituidas).
+## Current views (does not count those that already have their despawn scheduled and have been replaced).
 func get_view_count() -> int:
 	return _views.size()
 
 
-## Todas las vistas vivas, también las que se están retirando.
+## All the live views, including those being retired.
 func get_views() -> Array[RemotePlayerView]:
 	var views: Array[RemotePlayerView] = []
 	views.assign(_views.values())
@@ -162,12 +161,12 @@ func get_views() -> Array[RemotePlayerView]:
 	return views
 
 
-## [code]render_tick + fracción[/code] usado en el último dibujo.
+## [code]render_tick + fraction[/code] used in the last draw.
 func get_last_drawn_render_tick() -> float:
 	return _last_drawn_render_tick
 
 
-## Remotos que se han creado, bajas programadas y registros ignorados desde que existe.
+## Remotes created, despawns scheduled and records ignored since it was created.
 func get_stats() -> Dictionary:
 	return {
 		"spawned": _spawn_count,
@@ -178,16 +177,16 @@ func get_stats() -> Dictionary:
 
 
 func _process(delta: float) -> void:
-	# Hasta que llega el primer snapshot el reloj no ha arrancado (tick de dibujo 0): no hay nada
-	# que dibujar ni un instante que recordar.
+	# Until the first snapshot arrives the clock has not started (draw tick 0): there is nothing to draw nor
+	# an instant to remember.
 	if _clock == null or _clock.get_render_tick() <= 0.0:
 		return
 	draw(_clock.get_render_tick() + Engine.get_physics_interpolation_fraction(), delta)
 
 
-## Dibuja a todos los remotos en [param render_time] (ticks con fracción) y quita los que ya han
-## alcanzado su tick de baja. [method _process] lo llama con el instante del reloj; las pruebas,
-## con instantes exactos.
+## Draws all the remotes at [param render_time] (ticks with fraction) and removes those that have already
+## reached their despawn tick. [method _process] calls it with the clock's instant; the tests, with exact
+## instants.
 func draw(render_time: float, real_delta: float) -> void:
 	_last_drawn_render_tick = render_time
 	for view: RemotePlayerView in _views.values():

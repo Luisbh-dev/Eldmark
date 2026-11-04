@@ -1,8 +1,8 @@
 shader_type spatial;
-// Distorsión de calor (ChargeAura a carga casi completa): desplaza un poco la imagen que hay detrás con
-// un ruido que sube, como el aire sobre una hoja al rojo. No pinta color: lee la pantalla (hint_screen_texture)
-// y la vuelve a escribir desplazada, con la máscara a cero en el borde para que no se vea el quad.
-// [charge] (instancia, de 0 a 1) la enciende a partir de [start_charge].
+// Heat distortion (ChargeAura at nearly full charge): shifts the image behind it slightly with a
+// rising noise, like the air over a red-hot blade. It paints no color: it reads the screen
+// (hint_screen_texture) and writes it back shifted, with the mask at zero at the edge so the quad
+// is not visible. [charge] (instance, from 0 to 1) turns it on from [start_charge].
 render_mode blend_mix, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"

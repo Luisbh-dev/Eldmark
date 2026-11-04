@@ -1,18 +1,18 @@
 class_name HitShape
 extends Resource
-## Forma de un golpe cuerpo a cuerpo: un sector anular con altura delante del atacante
-## (docs/combate.md, sección 2). La geometría que la prueba contra una cápsula vive en
-## [code]hit_shapes.gd[/code]; aquí solo están los datos.
+## Shape of a melee hit: an annular sector with height in front of the attacker
+## (docs/combate.md, section 2). The geometry that tests it against a capsule lives in
+## [code]hit_shapes.gd[/code]; only the data is here.
 ## [br][br]
-## Es un dato solo del servidor: no entra en [method CombatCatalog.prediction_hash].
+## It is server-only data: it is not part of [method CombatCatalog.prediction_hash].
 
-## Alcance máximo desde el eje del atacante (m).
+## Maximum reach from the attacker's axis (m).
 @export var range_m: float = 2.6
-## Alcance mínimo (m); 0 = sector entero, sin hueco central.
+## Minimum reach (m); 0 = whole sector, no central hole.
 @export var inner_m: float = 0.0
-## Ángulo total del sector (grados), centrado en el yaw del atacante.
+## Total angle of the sector (degrees), centered on the attacker's yaw.
 @export var angle_deg: float = 100.0
-## Altura mínima del golpe sobre los pies del atacante (m).
+## Minimum height of the hit above the attacker's feet (m).
 @export var height_min: float = 0.2
-## Altura máxima del golpe sobre los pies del atacante (m).
+## Maximum height of the hit above the attacker's feet (m).
 @export var height_max: float = 2.0

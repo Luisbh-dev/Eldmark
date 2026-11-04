@@ -1,10 +1,10 @@
 class_name ToneFixture
 extends RefCounted
-## Sonidos sintéticos para las pruebas de audio: como todavía no hay sonidos reales
-## ([code]assets/audio/[/code] está vacío), un tono corto generado a mano hace de sonido.
+## Synthetic sounds for the audio tests: since there are no real sounds yet
+## ([code]assets/audio/[/code] is empty), a short hand-generated tone stands in for a sound.
 
 
-## Un tono senoidal de [param frequency] Hz y [param seconds] s, mono, de 16 bits a 22050 Hz.
+## A sine tone of [param frequency] Hz and [param seconds] s, mono, 16-bit at 22050 Hz.
 static func make_tone(frequency: float = 440.0, seconds: float = 0.5) -> AudioStreamWAV:
 	var mix_rate: int = 22050
 	var wav: AudioStreamWAV = AudioStreamWAV.new()

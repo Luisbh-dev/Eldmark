@@ -1,27 +1,27 @@
 class_name WeaponDefinition
 extends Resource
-## Un arma equipable (docs/combate.md, sección 2): sus ataques, su bloqueo, su esquiva y sus
-## habilidades (docs/habilidades.md, sección 2.1).
+## An equippable weapon (docs/combate.md, section 2): its attacks, block, dodge and
+## abilities (docs/habilidades.md, section 2.1).
 
-## Identificador único del arma (el catálogo le asigna un ID u16 por orden alfabético).
+## Unique weapon identifier (the catalog assigns it a u16 ID in alphabetical order).
 @export var id: StringName
-## Combo de golpes ligeros, en orden (de 1 a 3 golpes).
+## Light attack combo, in order (1 to 3 hits).
 @export var light_combo: Array[AttackDefinition] = []
-## Golpe fuerte (se carga manteniendo el botón de ataque).
+## Heavy attack (charged by holding the attack button).
 @export var heavy_attack: AttackDefinition
-## Cono frontal total del bloqueo (grados; solo servidor).
+## Total frontal cone of the block (degrees; server only).
 @export var block_angle_deg: float = 120.0
-## Fracción del daño físico frontal que para el bloqueo (1,0 = todo; solo servidor).
+## Fraction of frontal physical damage that the block stops (1.0 = all; server only).
 @export var block_mitigation: float = 1.0
-## Fracción de la velocidad de carrera permitida al bloquear.
+## Fraction of the run speed allowed while blocking.
 @export var block_move_scale: float = 0.5
-## Giro hacia la cámara (rad/s) al bloquear.
+## Turn toward the camera (rad/s) while blocking.
 @export var block_turn_rate: float = 8.0
-## Resistencia que cuesta cada punto de daño absorbido (solo servidor).
+## Stamina that each point of absorbed damage costs (server only).
 @export var block_stamina_per_damage: float = 1.0
-## Esquiva del arma.
+## The weapon's dodge.
 @export var dodge: DodgeDefinition
-## Habilidades (0-3); la posición es la ranura (ABILITY_1-3).
+## Abilities (0-3); the position is the slot (ABILITY_1-3).
 @export var abilities: Array[AbilityDefinition] = []
-## false: el arma no bloquea (el arco); BLOCK no hace nada.
+## false: the weapon does not block (the bow); BLOCK does nothing.
 @export var can_block: bool = true

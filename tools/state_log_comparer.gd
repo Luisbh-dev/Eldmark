@@ -1,41 +1,41 @@
 class_name StateLogComparer
 extends RefCounted
-## Cruza el registro de estados del servidor con el de un bot (docs/red.md, sección 13). La lógica de
-## [code]tools/compare_state_logs.gd[/code], separada para poder probarla y para que las pruebas de
-## varios procesos la usen sin lanzar otro proceso.
+## Cross-checks the server's state log with a bot's (docs/red.md, section 13). The logic of
+## [code]tools/compare_state_logs.gd[/code], separated so that it can be tested and so that the tests of
+## several processes can use it without launching another process.
 ## [br][br]
-## Los dos registros son texto, una línea por registro, con los estados en hexadecimal
+## Both logs are text, one line per record, with the states in hexadecimal
 ## ([method PlayerState.encode]):
 ## [codeblock]
-## servidor (--state-log del servidor)   tick,net_id,sustituida,estado        un jugador por línea y tick
-## bot      (--state-log del bot)        server_tick,predicho,servidor        una línea por snapshot
+## server (the server's --state-log)   tick,net_id,substituted,state        one player per line and tick
+## bot    (the bot's --state-log)      server_tick,predicted,server         one line per snapshot
 ## [/codeblock]
-## El estado «servidor» del bot es el estado propio de su snapshot, que debe ser idéntico al del
-## registro del servidor en ese tick. Cada línea del bot cae en una categoría:
-## [br]- [b]coincide[/b]: el estado que predijo el bot es el del servidor, bit a bit;
-## [br]- [b]explicada[/b]: no coincide, pero el servidor sustituyó alguna entrada del jugador en los
-## ticks que van desde el snapshot anterior del bot (excluido) hasta este (incluido), así que el bot no
-## podía saberlo. La reconciliación lo corrige y el siguiente snapshot vuelve a coincidir;
-## [br]- [b]sin explicar[/b]: no coincide y no hubo ninguna sustitución. Es un fallo de determinismo (o
-## un teletransporte, que el registro del servidor no marca);
-## [br]- [b]sin predicción[/b]: el bot no tenía estado predicho para ese tick (reinicio duro de la
-## predicción); no se puede comparar y se cuenta aparte.
-## [br]Además se cuentan los snapshots cuyo estado propio no es el del registro del servidor en ese tick
-## ([member Result.server_mismatches]), los ticks que faltan en el registro del servidor
-## ([member Result.missing_ticks]) y las líneas mal formadas ([member Result.malformed_lines]); las tres
-## cosas son errores.
+## The bot's "server" state is the own state from its snapshot, which must be identical to the one in the
+## server's log at that tick. Each line of the bot falls into a category:
+## [br]- [b]matches[/b]: the state the bot predicted is the server's, bit for bit;
+## [br]- [b]explained[/b]: it does not match, but the server substituted some of the player's inputs in the
+## ticks from the bot's previous snapshot (excluded) up to this one (included), so the bot
+## could not have known. Reconciliation corrects it and the next snapshot matches again;
+## [br]- [b]unexplained[/b]: it does not match and there was no substitution. It is a determinism failure (or
+## a teleport, which the server log does not flag);
+## [br]- [b]no prediction[/b]: the bot had no predicted state for that tick (hard reset of the
+## prediction); it cannot be compared and is counted separately.
+## [br]In addition, the following are counted: snapshots whose own state is not the one in the server's log at that tick
+## ([member Result.server_mismatches]), ticks missing from the server's log
+## ([member Result.missing_ticks]) and malformed lines ([member Result.malformed_lines]); all three
+## are errors.
 
-## Ticks que se guardan, como mucho, en cada lista de [class Result].
+## Ticks kept, at most, in each list of [class Result].
 const MAX_LISTED_TICKS: int = 20
 
 
-## Resultado de una comparación.
+## Result of a comparison.
 class Result:
 	extends RefCounted
 
-	## Jugador del servidor con el que se ha comparado el bot.
+	## Server player the bot was compared with.
 	var net_id: int = 0
-	## Motivo por el que no se pudo comparar ("" si se pudo).
+	## Reason why the comparison could not be made ("" if it could).
 	var error: String = ""
 	var bot_lines: int = 0
 	var matches: int = 0
@@ -48,13 +48,13 @@ class Result:
 	var explained_ticks: Array[int] = []
 	var unexplained_ticks: Array[int] = []
 	var unpredicted_ticks: Array[int] = []
-	## true si se pudo comparar y no hay ninguna diferencia sin explicar ni ningún error.
+	## true if the comparison could be made and there is no unexplained difference or any error.
 	func is_ok() -> bool:
 		return error.is_empty() and unexplained == 0 and server_mismatches == 0 \
 				and missing_ticks == 0 and malformed_lines == 0
 
 
-	## Texto del resumen, en español, para la salida de la herramienta.
+	## Summary text, in Spanish, for the tool's output.
 	func summary() -> String:
 		var lines := PackedStringArray()
 		if not error.is_empty():
@@ -86,9 +86,9 @@ class Result:
 		return "  (ticks %s%s)" % [", ".join(texts), more]
 
 
-## Compara los registros de dos archivos. [param net_id] es el jugador del servidor que era ese bot
-## (0 = lo deduce: el único jugador cuyo estado en el primer tick del bot es el estado propio de su
-## primer snapshot).
+## Compares the logs of two files. [param net_id] is the server player that was that bot
+## (0 = deduce it: the only player whose state at the bot's first tick is the own state of its
+## first snapshot).
 static func compare_files(server_path: String, bot_path: String, net_id: int = 0) -> Result:
 	var result := Result.new()
 	for path: String in [server_path, bot_path]:
@@ -100,7 +100,7 @@ static func compare_files(server_path: String, bot_path: String, net_id: int = 0
 	return compare(server_lines, bot_lines, net_id)
 
 
-## Compara las líneas de los dos registros (ver la documentación de la clase).
+## Compares the lines of the two logs (see the class documentation).
 static func compare(server_lines: PackedStringArray, bot_lines: PackedStringArray,
 		net_id: int = 0) -> Result:
 	var result := Result.new()
@@ -126,7 +126,7 @@ static func compare(server_lines: PackedStringArray, bot_lines: PackedStringArra
 			return result
 	result.net_id = chosen
 
-	# Estado y marca de sustitución del jugador por tick.
+	# State and substitution flag of the player per tick.
 	var server_hex: Dictionary[int, String] = {}
 	var substituted: Dictionary[int, bool] = {}
 	var first_tick: int = -1
@@ -174,8 +174,8 @@ static func compare(server_lines: PackedStringArray, bot_lines: PackedStringArra
 	return result
 
 
-# Jugador del servidor que tiene, en el tick de la primera línea del bot, el estado que le llegó en
-# ese snapshot. Si no hay uno solo, deja el motivo en result.error y devuelve 0.
+# Server player that has, at the tick of the bot's first line, the state that reached it in
+# that snapshot. If there is not exactly one, leaves the reason in result.error and returns 0.
 static func _detect_net_id(server_lines: PackedStringArray, first_bot_line: PackedStringArray,
 		result: Result) -> int:
 	var tick: int = first_bot_line[0].to_int()
@@ -198,7 +198,7 @@ static func _detect_net_id(server_lines: PackedStringArray, first_bot_line: Pack
 	return 0
 
 
-# true si el servidor sustituyó alguna entrada del jugador en [from_tick, to_tick].
+# true if the server substituted any of the player's inputs in [from_tick, to_tick].
 static func _any_substitution(substituted: Dictionary[int, bool], from_tick: int,
 		to_tick: int) -> bool:
 	for tick: int in range(from_tick, to_tick + 1):

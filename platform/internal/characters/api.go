@@ -10,22 +10,22 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// Router es donde se montan las rutas: *app.App.
+// Router is where the routes are mounted: *app.App.
 type Router interface {
 	HandlePublic(pattern string, h http.Handler)
 }
 
-// API son las rutas de personajes de la API pública (§4.4 y §4.5).
+// API is the characters routes of the public API (§4.4 and §4.5).
 type API struct {
 	s *Service
 }
 
-// NewAPI prepara las rutas del servicio.
+// NewAPI prepares the service's routes.
 func NewAPI(s *Service) *API { return &API{s: s} }
 
-// Mount monta las rutas, todas con la regla del 426 y la sesión de juego de auth
-// (accounts.API.RequireSession sin la sesión de privacidad: una cuenta sancionada recibe 403 con
-// el motivo, también en enter).
+// Mount mounts the routes, all with the 426 rule and auth's gameplay session
+// (accounts.API.RequireSession without the privacy session: a sanctioned account gets 403 with the
+// reason, in enter too).
 func (a *API) Mount(r Router, auth *accounts.API) {
 	game := func(pattern string, h http.HandlerFunc) {
 		r.HandlePublic(pattern, httpx.RequireProtocol(a.s.minProtocol, auth.RequireSession(false, h)))
@@ -41,7 +41,7 @@ func (a *API) Mount(r Router, auth *accounts.API) {
 
 func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) { httpx.Fail(w, r, a.s.log, err) }
 
-// world lee el {w} de la ruta: un mundo que no se entiende es 404, como uno que no existe.
+// world reads the route's {w}: a world that is not understood is 404, like one that does not exist.
 func world(r *http.Request) (int16, bool) {
 	n, err := strconv.ParseInt(r.PathValue("w"), 10, 16)
 	if err != nil || n < 1 {
@@ -50,7 +50,7 @@ func world(r *http.Request) (int16, bool) {
 	return int16(n), true
 }
 
-// character lee el {id} de la ruta y lo deja en el registro de la petición.
+// character reads the route's {id} and leaves it in the request log.
 func character(r *http.Request) (int64, bool) {
 	id, err := jsonx.ParseID(r.PathValue("id"))
 	if err != nil || id < 1 {
@@ -65,7 +65,7 @@ func (a *API) meta(r *http.Request) accounts.ClientMeta {
 		Protocol: httpx.ClientProtocol(r)}
 }
 
-// decode lee el cuerpo JSON (16 KB, estricto); si falla, escribe el error y devuelve false.
+// decode reads the JSON body (16 KB, strict); if it fails, it writes the error and returns false.
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	if e := httpx.DecodeJSON(w, r, httpx.PublicBodyLimit, v); e != nil {
 		httpx.WriteError(w, e)

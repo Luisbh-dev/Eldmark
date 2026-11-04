@@ -1,49 +1,50 @@
 extends Node3D
-## Vista previa de los efectos de golpe (ART-09; herramienta de desarrollo, solo cliente).
+## Hit effects preview (ART-09; development tool, client only).
 ##
-## Un [PlayerCharacter] con el humanoide animado, la espada y el escudo provisionales y un muñeco enfrente
-## (otro humanoide quieto). El jugador repite en bucle el guion de combate de la demo ([CombatDemoScript],
-## por la simulación de verdad): tres ligeros, un fuerte cargado, un bloqueo y una esquiva. Cada acción
-## dispara su efecto como lo haría el combate cuando se conecte (los efectos NO están conectados al
-## combate: aquí lo hace esta escena mirando el estado):
-## [br]- [b]Estela[/b] de la espada ([WeaponTrail]) mientras dura la ventana activa del golpe.
-## [br]- [b]Ligero 1[/b]: chispa de metal en la espada del muñeco. [b]Ligero 2[/b]: impacto en carne (en tela
-## en los bucles impares del vídeo). [b]Ligero 3[/b]: impacto bloqueado en su escudo de madera. [b]Fuerte[/b]:
-## carne y metal a la vez.
-## [br]- [b]Carga del fuerte[/b]: aura en la espada ([ChargeAura]) que crece con la carga, pulso al
-## completarla y estallido al soltar.
-## [br]- [b]Bloqueo[/b]: parada perfecta entre los dos. [b]Esquiva[/b]: polvo hacia atrás y, al caer, el polvo
-## del aterrizaje.
+## A [PlayerCharacter] with the animated humanoid, the placeholder sword and shield and a dummy in front
+## (another humanoid standing still). The player loops the demo's combat script ([CombatDemoScript],
+## through the real simulation): three light attacks, a charged heavy attack, a block and a dodge. Each
+## action triggers its effect as combat would once connected (the effects are NOT connected to combat:
+## here this scene does it by watching the state):
+## [br]- [b]Trail[/b] of the sword ([WeaponTrail]) while the hit's active window lasts.
+## [br]- [b]Light 1[/b]: metal spark on the dummy's sword. [b]Light 2[/b]: impact on flesh (on cloth on
+## the odd loops of the video). [b]Light 3[/b]: blocked impact on its wooden shield. [b]Heavy[/b]: flesh
+## and metal at once.
+## [br]- [b]Heavy attack charge[/b]: aura on the sword ([ChargeAura]) that grows with the charge, a pulse
+## on completing it and a burst on release.
+## [br]- [b]Block[/b]: perfect parry between the two. [b]Dodge[/b]: dust backward and, on landing, the
+## landing dust.
 ## [br][br]
-## [b]Dos escenarios y dos cámaras.[/b] Por defecto, un suelo liso gris y una cámara de demostración (campo
-## de visión de 40 grados a unos 4,4 m: sirve para ver el detalle de cerca). Con [code]--field[/code] los
-## personajes combaten en el campamento de Vardheim del Vado Gris, sobre su terreno, con su sol, sus
-## sombras y su niebla; con [code]--camera=game[/code] la cámara es la [CameraRig] del juego (campo de visión
-## de 72 grados, por encima del hombro, a la distancia de juego), que es lo que ve el jugador de verdad.
+## [b]Two stages and two cameras.[/b] By default, a plain gray floor and a demo camera (40 degree field
+## of view at about 4.4 m: good for seeing detail up close). With [code]--field[/code] the characters
+## fight in Vardheim's camp in Vado Gris, on its terrain, with its sun, its shadows and its fog; with
+## [code]--camera=game[/code] the camera is the game's [CameraRig] (72 degree field of view, over the
+## shoulder, at the game distance), which is what the real player sees.
 ## [br][br]
-## Uso (ventana; [code]--fixed-fps 60[/code] hace la ejecución determinista, un tick por fotograma):
+## Usage (window; [code]--fixed-fps 60[/code] makes execution deterministic, one tick per frame):
 ## [codeblock]
 ## godot --path . res://scenes/tests/vfx_preview.tscn --fixed-fps 60 -- \
 ##     [--strip=metal|metal_side|flesh|cloth|block|parry|dust|dust_soft|dodge|trail|aura|showcase|melee] \
 ##     [--realm=0..4] [--ground=dirt|stone|sand|...] [--field] [--camera=demo|game] [--shade] \
-##     [--out=build/vfx/strips] [--folder=<nombre>] [--no-quit] [--reel=60] [--bench]
+##     [--out=build/vfx/strips] [--folder=<name>] [--no-quit] [--reel=60] [--bench]
 ## [/codeblock]
-## [br]- Sin [code]--strip[/code]: bucle de demostración, sin cerrarse.
-## [br]- [code]--strip=<efecto>[/code]: graba doce fotogramas recortados alrededor del efecto en
-## [code]<out>/<efecto>/frame_NN.png[/code] y un [code]meta.json[/code] con sus tiempos
-## ([code]tools/vfx/compose_strips.py[/code] los une en una hoja). [code]showcase[/code] dispara todos a la
-## vez y guarda cuatro pantallas completas; [code]melee[/code] dispara diez efectos a la vez.
-## [br]- [code]--shade[/code]: el escenario es la sombra de un techo (que solo proyecta sombra): prueba de que
-## el polvo y las bocanadas se oscurecen a la sombra.
-## [br]- [code]--reel=<segundos>[/code]: el bucle de demostración con los cuatro reinos, un tramo a la sombra y
-## una refriega, y se cierra a los [code]<segundos>[/code] (para grabarlo con [code]--write-movie[/code]).
-## [br]- [code]--bench[/code]: mide el coste de una refriega de diez efectos (llamadas de dibujo, objetos,
-## primitivas, GPU y CPU) frente al mismo escenario sin efectos y lo escribe en [code]<out>/bench.json[/code].
-## [br]- [code]--realm=<n>[/code]: reino del color de la estela y el aura (1 Vardheim, 2 Solmarch, 3 Askarra, 4
-## Eldrun, 0 neutro). [code]--ground=<material>[/code]: el suelo del polvo cuando no se lee del terreno.
-## [br]- [code]--folder=<nombre>[/code]: subcarpeta de la grabación (por defecto, el nombre del efecto).
-## [br]- [code]--out=<carpeta>[/code]: carpeta de salida (por defecto [code]build/vfx/strips[/code], relativa a la raíz
-## del proyecto).
+## [br]- Without [code]--strip[/code]: demo loop, without closing.
+## [br]- [code]--strip=<effect>[/code]: records twelve frames cropped around the effect in
+## [code]<out>/<effect>/frame_NN.png[/code] and a [code]meta.json[/code] with their timings
+## ([code]tools/vfx/compose_strips.py[/code] joins them into a sheet). [code]showcase[/code] fires them
+## all at once and saves four full screens; [code]melee[/code] fires ten effects at once.
+## [br]- [code]--shade[/code]: the stage is the shadow of a roof (which only casts shadow): a test that
+## dust and puffs darken in the shade.
+## [br]- [code]--reel=<seconds>[/code]: the demo loop with the four realms, a stretch in the shade and a
+## melee, and it closes after [code]<seconds>[/code] (to record it with [code]--write-movie[/code]).
+## [br]- [code]--bench[/code]: measures the cost of a ten-effect melee (draw calls, objects, primitives,
+## GPU and CPU) against the same scenario without effects and writes it to [code]<out>/bench.json[/code].
+## [br]- [code]--realm=<n>[/code]: realm for the color of the trail and the aura (1 Vardheim, 2 Solmarch,
+## 3 Askarra, 4 Eldrun, 0 neutral). [code]--ground=<material>[/code]: the ground for the dust when it is
+## not read from the terrain.
+## [br]- [code]--folder=<name>[/code]: subfolder of the recording (by default, the effect's name).
+## [br]- [code]--out=<folder>[/code]: output folder (by default [code]build/vfx/strips[/code], relative to
+## the project root).
 
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
 const CAMERA_RIG_SCENE: PackedScene = preload("res://scenes/client/camera_rig.tscn")
@@ -58,49 +59,49 @@ const AURA_SCENE: PackedScene = preload("res://scenes/vfx/charge_aura.tscn")
 const ZONE_SCENE_PATH: String = "res://scenes/world/zones/vado_gris/vado_gris.tscn"
 const TERRAIN_ASSETS_PATH: String = "res://scenes/world/zones/vado_gris/vado_gris_terrain_assets.tres"
 
-## Campamento de Vardheim del Vado Gris: un claro llano (la altura se lee del terreno).
+## Vardheim's camp in Vado Gris: a flat clearing (the height is read from the terrain).
 const FIELD_CENTER: Vector3 = Vector3(0.0, 6.2, -128.0)
-## Dónde cae el escenario a la sombra respecto al soleado (el techo que da la sombra no se ve).
+## Where the shaded stage lies relative to the sunlit one (the roof that casts the shadow is not visible).
 const SHADE_OFFSET: Vector3 = Vector3(12.0, 0.0, 0.0)
 const ROOF_HEIGHT: float = 3.4
 const ROOF_SIZE: float = 12.0
-## Inclinación de la cámara del juego respecto a la horizontal (rad; negativo mira hacia abajo).
+## Pitch of the game camera relative to the horizontal (rad; negative looks downward).
 const GAME_PITCH: float = -0.12
-## Fotogramas de espera en el terreno antes de dejar caer a los personajes (su colisión se construye al empezar).
+## Frames to wait on the terrain before dropping the characters (its collision is built at startup).
 const FIELD_SETTLE_FRAMES: int = 30
 
-## Dónde está el muñeco respecto al jugador (mira hacia +Z, el jugador hacia -Z desde el origen).
+## Where the dummy is relative to the player (it faces +Z, the player faces -Z from the origin).
 const DUMMY_POSITION: Vector3 = Vector3(0.0, 0.0, -1.9)
-## Posición de la cámara de demostración y punto al que mira.
+## Position of the demo camera and the point it looks at.
 const DEMO_CAMERA: Vector3 = Vector3(4.3, 1.55, 0.35)
 const DEMO_TARGET: Vector3 = Vector3(0.0, 1.05, -0.95)
-## Ticks de espera al principio del guion y antes de repetirlo.
+## Ticks to wait at the start of the script and before repeating it.
 const START_IDLE_TICKS: int = 30
 const LOOP_GAP_TICKS: int = 50
-## Retraso (s) entre el inicio del golpe activo y el efecto de impacto.
+## Delay (s) between the start of the active hit and the impact effect.
 const IMPACT_DELAY: float = 0.07
-## Margen (ticks) de la ventana de la estela respecto a la ventana activa del golpe.
+## Margin (ticks) of the trail window relative to the hit's active window.
 const TRAIL_LEAD_TICKS: int = 4
 const TRAIL_TAIL_TICKS: int = 2
-## Fotogramas en reposo antes de disparar un efecto en los modos de grabación.
+## Idle frames before firing an effect in the recording modes.
 const STRIP_WARMUP_FRAMES: int = 40
 const STRIP_FRAMES: int = 12
-## Tamaño de la ventana de grabación.
+## Size of the recording window.
 const CAPTURE_WINDOW: Vector2i = Vector2i(1920, 1080)
-## Tamaño de cada recorte guardado según la cámara.
+## Size of each saved crop depending on the camera.
 const CROP_DEMO: Vector2i = Vector2i(640, 480)
 const CROP_GAME: Vector2i = Vector2i(640, 360)
 const CROP_GAME_WIDE: Vector2i = Vector2i(960, 540)
-## Fotogramas por segundo del modo determinista.
+## Frames per second of deterministic mode.
 const FPS: float = 60.0
-## Dirección del tajo cuando no hay un golpe real que la dé (las grabaciones sueltas): de derecha a izquierda
-## y hacia abajo, como el primer ligero.
+## Direction of the slash when there is no real hit to provide it (standalone recordings): right to left
+## and downward, like the first light attack.
 const DEFAULT_BLOW: Vector3 = Vector3(-0.8, -0.45, -0.35)
 
-## Configuración de cada grabación: [code]times[/code] (segundos tras el disparo, o [code]step[/code] en
-## fotogramas para los que siguen al combate), [code]distance[/code] y [code]height[/code] de la cámara de
-## demostración, [code]side[/code] (lado desde el que se mira) y [code]wide[/code] (recorte grande en la cámara
-## del juego).
+## Configuration of each recording: [code]times[/code] (seconds after the trigger, or [code]step[/code] in
+## frames for those that follow combat), [code]distance[/code] and [code]height[/code] of the demo
+## camera, [code]side[/code] (side from which it is viewed) and [code]wide[/code] (large crop on the game
+## camera).
 const STRIPS: Dictionary = {
 	"metal": {"times": [0.017, 0.033, 0.05, 0.067, 0.1, 0.133, 0.18, 0.25, 0.35, 0.5, 0.7, 0.85],
 			"distance": 4.6, "side": -1.0},
@@ -122,9 +123,9 @@ const STRIPS: Dictionary = {
 	"melee": {"times": [0.033, 0.083, 0.133, 0.2, 0.267, 0.35, 0.45, 0.55, 0.7, 0.85, 1.0, 1.2],
 			"distance": 5.0, "wide": true},
 }
-## Pantallas completas del modo [code]showcase[/code] (segundos tras el disparo).
+## Full screens of [code]showcase[/code] mode (seconds after the trigger).
 const SHOWCASE_TIMES: Array[float] = [0.05, 0.1, 0.2, 0.4]
-## Fotogramas de la medición ([code]--bench[/code]): de calentamiento, de línea base y con la refriega.
+## Frames of the measurement ([code]--bench[/code]): warm-up, baseline and with the melee.
 const BENCH_WARMUP: int = 90
 const BENCH_BASELINE: int = 90
 const BENCH_BURST: int = 60
@@ -145,7 +146,7 @@ var _script: CombatDemoScript = CombatDemoScript.new()
 var _realm: int = 0
 var _ground_kind: StringName = &"dirt"
 
-# Escenario.
+# Stage.
 var _field: bool = false
 var _game_camera: bool = false
 var _shade: bool = false
@@ -171,7 +172,7 @@ var _tip_velocity: Vector3 = Vector3.ZERO
 var _last_tip: Vector3 = Vector3.ZERO
 var _has_tip: bool = false
 
-# Grabación.
+# Recording.
 var _strip: String = ""
 var _out_dir: String = "build/vfx/strips"
 var _folder: String = ""
@@ -185,7 +186,7 @@ var _times_log: Array[float] = []
 var _combat_driven: bool = false
 var _impacts_enabled: bool = true
 
-# Vídeo, refriega y medición.
+# Video, melee and measurement.
 var _reel_length: float = 0.0
 var _reel_time: float = 0.0
 var _reel_stage: int = 0
@@ -240,13 +241,13 @@ func _ready() -> void:
 	_build_effects()
 	_setup_camera()
 	_combat_driven = _strip.is_empty() or _strip == "trail" or _strip == "aura" or _strip == "showcase"
-	# En las grabaciones de la estela y del aura no suenan los demás efectos (no hay impactos que tapen).
+	# In the trail and aura recordings the other effects do not play (so no impacts cover them).
 	_impacts_enabled = _strip.is_empty() or _strip == "showcase"
 	if _bench:
 		_combat_driven = false
 		_impacts_enabled = false
 	if _field:
-		# La colisión del terreno se construye al empezar: hasta entonces nadie cae.
+		# The terrain collision is built at startup: until then nobody falls.
 		set_physics_process(false)
 	if not _strip.is_empty():
 		get_window().size = CAPTURE_WINDOW
@@ -297,14 +298,14 @@ func _process(delta: float) -> void:
 		_run_bench()
 
 
-# --- Montaje ----------------------------------------------------------------------------------------
+# --- Setup ------------------------------------------------------------------------------------------
 
-# Posición de mundo de un punto del escenario (el escenario se puede mover: soleado o a la sombra).
+# World position of a point on the stage (the stage can move: sunlit or shaded).
 func _w(local: Vector3) -> Vector3:
 	return _origin + local
 
 
-# Carga el Vado Gris (terreno, sol, sombras, niebla) en lugar del suelo liso y fija el centro del escenario.
+# Loads Vado Gris (terrain, sun, shadows, fog) instead of the plain floor and sets the stage's center.
 func _build_field() -> void:
 	for node_name: String in ["Floor", "Sun", "WorldEnvironment"]:
 		var node: Node = get_node_or_null(NodePath(node_name))
@@ -328,8 +329,8 @@ func _build_field() -> void:
 		_origin = _sun_origin + SHADE_OFFSET
 
 
-# Un techo que solo proyecta sombra (no se ve) sobre el escenario de la sombra: la sombra del sol cae
-# justo encima de donde se combate, como la de una muralla o un árbol grande.
+# A roof that only casts shadow (not visible) over the shaded stage: the sun's shadow falls right where
+# the fight happens, like that of a wall or a large tree.
 func _add_shade_roof() -> void:
 	var to_sun: Vector3 = Vector3(-0.6, 0.6, 0.5).normalized()
 	if _sun != null:
@@ -392,7 +393,7 @@ func _make_pool(pool_name: String, scene: PackedScene, size: int) -> VfxPool:
 	return pool
 
 
-# La cámara: la de demostración (la de la escena) o el [CameraRig] del juego, que sigue al jugador.
+# The camera: the demo one (the scene's) or the game's [CameraRig], which follows the player.
 func _setup_camera() -> void:
 	var demo_camera: Camera3D = $Camera3D
 	if _game_camera:
@@ -412,7 +413,7 @@ func _setup_camera() -> void:
 		_camera.look_at(DEMO_TARGET + _origin, Vector3.UP)
 
 
-# Vuelve a colocar a los dos personajes en el escenario soleado o en el de la sombra.
+# Places the two characters again on the sunlit stage or the shaded one.
 func _move_stage(shade: bool) -> void:
 	_in_shade = shade
 	_origin = _sun_origin + (SHADE_OFFSET if shade else Vector3.ZERO)
@@ -428,7 +429,7 @@ func _move_stage(shade: bool) -> void:
 	_restart_script()
 
 
-# --- Combate de la demo -----------------------------------------------------------------------------
+# --- Demo combat ------------------------------------------------------------------------------------
 
 func _restart_script() -> void:
 	_loop_start_tick = _tick
@@ -441,7 +442,7 @@ func _restart_script() -> void:
 	_trail.clear()
 	_aura.reset()
 	if _reel_length > 0.0:
-		# Cada vuelta del vídeo, otro reino (estela y aura).
+		# Each loop of the video, another realm (trail and aura).
 		_realm = 1 + (_loop_index % 4)
 		_trail.set_realm(_realm)
 		_aura.set_realm(_realm)
@@ -452,7 +453,7 @@ func _restart_script() -> void:
 	_character.reset_physics_interpolation()
 
 
-# Velocidad de la punta de la espada: da la dirección del tajo a los efectos de impacto.
+# Velocity of the sword's tip: gives the slash direction to the impact effects.
 func _track_tip(delta: float) -> void:
 	if _sword == null or delta <= 0.0:
 		return
@@ -463,14 +464,14 @@ func _track_tip(delta: float) -> void:
 	_has_tip = true
 
 
-# La dirección del golpe: la de la punta de la espada si va rápida, la de [constant DEFAULT_BLOW] si no.
+# The blow's direction: the sword tip's if it is moving fast, [constant DEFAULT_BLOW]'s if not.
 func _blow_direction() -> Vector3:
 	if _tip_velocity.length() > 2.0:
 		return _tip_velocity.normalized()
 	return DEFAULT_BLOW.normalized()
 
 
-# Mira el estado de combate del jugador y lanza lo que toca, como lo haría CombatFeedback.
+# Looks at the player's combat state and launches what is due, as CombatFeedback would.
 func _observe_combat() -> void:
 	var combat: CombatState = _character.combat
 	var active: bool = ActionMachine.is_attack_active(combat, _character.last_input_tick)
@@ -487,11 +488,11 @@ func _observe_combat() -> void:
 		_last_action = combat.action
 
 
-# La ventana de la estela: la ventana activa del golpe con un margen. La animación de ataque llega a su barrido
-# rápido unos ticks ANTES de que se abra la ventana de la simulación (los clips no están ajustados a los ticks,
-# docs/calidad.md, sección 1), así que se abre [constant TRAIL_LEAD_TICKS] antes y se cierra
-# [constant TRAIL_TAIL_TICKS] después; fuera de ella (anticipación y recuperación) no hay estela. Cuando los
-# clips lleven una marca de barrido, esa marca sustituye al margen.
+# The trail window: the hit's active window with a margin. The attack animation reaches its fast sweep a
+# few ticks BEFORE the simulation's window opens (the clips are not tuned to the ticks, docs/calidad.md,
+# section 1), so it opens [constant TRAIL_LEAD_TICKS] earlier and closes [constant TRAIL_TAIL_TICKS]
+# later; outside of it (anticipation and recovery) there is no trail. When the clips carry a sweep
+# marker, that marker replaces the margin.
 func _trail_window_open(combat: CombatState) -> bool:
 	if combat.action != CombatState.Action.LIGHT and combat.action != CombatState.Action.HEAVY:
 		return false
@@ -521,7 +522,7 @@ func _on_swing_started() -> void:
 		1:
 			_queue(&"metal", IMPACT_DELAY)
 		2:
-			# En el vídeo, los bucles impares golpean tela.
+			# In the video, the odd loops hit cloth.
 			_queue(&"cloth" if (_reel_length > 0.0 and _loop_index % 2 == 1) else &"flesh", IMPACT_DELAY)
 		3:
 			_queue(&"block", IMPACT_DELAY)
@@ -577,8 +578,8 @@ func _run_pending(delta: float) -> void:
 			index += 1
 
 
-# Dispara un efecto en su sitio (el del muñeco, el de los pies del jugador...). [param jitter] desplaza el
-# punto de impacto (la refriega reparte los efectos por el cuerpo del muñeco).
+# Fires an effect in its place (the dummy's, the player's feet's...). [param jitter] offsets the impact
+# point (the melee spreads the effects over the dummy's body).
 func _fire(effect: StringName, jitter: Vector3 = Vector3.ZERO) -> void:
 	var toward_player: Vector3 = Vector3(0.0, 0.12, 1.0).normalized()
 	var blow: Vector3 = _blow_direction()
@@ -612,7 +613,7 @@ func _fire_dust(dodge: bool, strength: float, jitter: Vector3) -> void:
 	var feet: Vector3 = _character.global_position + jitter
 	kick.set_ground_color(VfxGround.color_at(_terrain, feet, _ground_kind, _terrain_assets))
 	if dodge:
-		# La esquiva del guion es hacia atrás (+Z): el polvo sale hacia el muñeco.
+		# The script's dodge is backward (+Z): the dust goes toward the dummy.
 		kick.play_dodge(feet, Vector3(0.0, 0.0, 1.0), strength)
 	else:
 		kick.play_landing(feet, strength)
@@ -625,7 +626,7 @@ func _dummy_point(attachment: StringName, local_offset: Vector3, fallback: Vecto
 	return node.global_transform * local_offset
 
 
-# Diez efectos a la vez repartidos por el muñeco y los pies del jugador: la refriega del listón.
+# Ten effects at once spread over the dummy and the player's feet: the budget's melee.
 func _fire_melee() -> void:
 	var spread: Array[Vector3] = [
 		Vector3(0.3, 0.1, 0.0), Vector3(-0.3, -0.1, 0.05), Vector3(0.0, 0.25, -0.05), Vector3(0.25, -0.3, 0.0),
@@ -642,7 +643,7 @@ func _fire_melee() -> void:
 	_fire(&"dust")
 
 
-# --- Cámara y rótulo --------------------------------------------------------------------------------
+# --- Camera and label -------------------------------------------------------------------------------
 
 func _update_camera() -> void:
 	if _game_camera or _strip.is_empty() or _strip == "showcase":
@@ -650,14 +651,14 @@ func _update_camera() -> void:
 	var config: Dictionary = STRIPS.get(_strip, {})
 	var distance: float = float(config.get("distance", 3.2))
 	var focus: Vector3 = _capture_focus
-	# Cámara al costado del punto de interés (lado +X), algo elevada y adelantada hacia el jugador.
+	# Camera at the side of the point of interest (+X side), slightly raised and forward toward the player.
 	if _strip == "trail" or _strip == "aura":
-		# Sigue al jugador (los ataques lo adelantan) y el recorte también.
+		# Follows the player (attacks move them forward) and so does the crop.
 		focus = _character.global_position + Vector3(0.0, 1.1, 0.0)
 		_capture_focus = focus
 		_camera.global_position = _character.global_position + Vector3(distance * 0.75, 1.55, -distance * 0.7)
 	else:
-		# Tres cuartos desde el lado indicado (+1 el del escudo del muñeco, -1 el de su espada), o de perfil.
+		# Three-quarter view from the indicated side (+1 the dummy's shield side, -1 its sword side), or in profile.
 		var side: float = float(config.get("side", 1.0))
 		if bool(config.get("profile", false)):
 			_camera.global_position = focus + Vector3(side * distance, 0.1, 0.0)
@@ -675,7 +676,7 @@ func _update_label() -> void:
 	_label.text = text
 
 
-# --- Grabación --------------------------------------------------------------------------------------
+# --- Recording --------------------------------------------------------------------------------------
 
 func _prepare_strip() -> void:
 	_label.visible = false
@@ -705,8 +706,8 @@ func _prepare_strip() -> void:
 			push_warning("[VfxPreview] Grabación desconocida: %s" % _strip)
 			get_tree().quit(1)
 			return
-	# La cámara de demostración de la estela y del aura mira al jugador desde delante: el muñeco se
-	# interpondría. La del juego lo ve por detrás: el muñeco está delante y no estorba.
+	# The demo camera for the trail and the aura looks at the player from the front: the dummy would get in
+	# the way. The game camera sees it from behind: the dummy is in front and does not obstruct.
 	if (_strip == "trail" or _strip == "aura") and not _game_camera:
 		_dummy.visible = false
 	var warmup: int = STRIP_WARMUP_FRAMES + (FIELD_SETTLE_FRAMES if _field else 0)
@@ -720,8 +721,8 @@ func _prepare_strip() -> void:
 			_capture_frames.append(_fire_frame + roundi(time * FPS))
 
 
-# El modo "trail" y el "aura" siguen al combate: los fotogramas salen del primer golpe activo o de la
-# primera carga.
+# The "trail" and "aura" modes follow combat: the frames come from the first active hit or the first
+# charge.
 func _schedule_frames_from_combat() -> void:
 	var config: Dictionary = STRIPS[_strip]
 	var step: int = int(config["step"])
@@ -762,8 +763,8 @@ func _capture_shot(index: int) -> void:
 	_pending_shots -= 1
 
 
-# Recorte alrededor del punto de interés: [constant CROP_DEMO] con la cámara de demostración, [constant
-# CROP_GAME] (o el grande, en la estela, el aura y la refriega) con la del juego.
+# Crop around the point of interest: [constant CROP_DEMO] with the demo camera, [constant
+# CROP_GAME] (or the large one, for the trail, the aura and the melee) with the game's.
 func _crop_around_focus(image: Image) -> Image:
 	var focus_world: Vector3 = _capture_focus
 	if (_strip == "trail" or _strip == "aura") and _sword != null:
@@ -794,10 +795,10 @@ func _finish_capture() -> void:
 		get_tree().quit()
 
 
-# --- Vídeo ------------------------------------------------------------------------------------------
+# --- Video ------------------------------------------------------------------------------------------
 
-# El vídeo de demostración: el bucle de combate con un reino distinto en cada vuelta, un tramo a la sombra y una
-# refriega al final. Se cierra solo a los [code]--reel[/code] segundos.
+# The demo video: the combat loop with a different realm on each lap, a stretch in the shade and a
+# melee at the end. It closes on its own after [code]--reel[/code] seconds.
 func _run_reel(delta: float) -> void:
 	if _frame < FIELD_SETTLE_FRAMES:
 		return
@@ -822,10 +823,10 @@ func _run_reel(delta: float) -> void:
 		get_tree().quit()
 
 
-# --- Medición ---------------------------------------------------------------------------------------
+# --- Measurement ------------------------------------------------------------------------------------
 
-# Mide una refriega: calentamiento, línea base sin efectos y diez efectos a la vez (más la estela y el aura
-# al máximo de carga en la espada).
+# Measures a melee: warm-up, baseline without effects and ten effects at once (plus the trail and the
+# aura at maximum charge on the sword).
 func _run_bench() -> void:
 	_bench_frames += 1
 	var viewport: RID = get_viewport().get_viewport_rid()
@@ -848,7 +849,7 @@ func _run_bench() -> void:
 				_aura.set_charge(1.0)
 		2:
 			_bench_samples.append(_bench_sample(viewport))
-			# La estela necesita que la espada se mueva para pintar algo: se le da el barrido del primer ligero.
+			# The trail needs the sword to move to paint anything: it is given the first light attack's sweep.
 			if _bench_frames >= BENCH_BURST:
 				_bench_results["melee"] = _bench_summary(_bench_samples)
 				_bench_phase = 3

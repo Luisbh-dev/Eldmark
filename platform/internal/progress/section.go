@@ -13,18 +13,19 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// La sección progress de un guardado (progresion.md §9.3): el ProgressRecord de §3.4 sin los campos de solo
-// lectura y con el diario (ops). parseSection la lee con las reglas de S1; las demás comprobaciones miran
-// estos tipos ya leídos.
+// The progress section of a save (progresion.md §9.3): the ProgressRecord from §3.4 without the
+// read-only fields and with the journal (ops). parseSection reads it with the rules of S1; the
+// other checks look at these already parsed types.
 
-// FormatVersion es el progress_format que se admite (ProgressRecord.FORMAT, el record_format de la zona).
+// FormatVersion is the progress_format that is accepted (ProgressRecord.FORMAT, the zone's record_format).
 const FormatVersion = 1
 
-// maxChannel es el mayor canal (last_channel smallint).
+// maxChannel is the largest channel (last_channel smallint).
 const maxChannel = math.MaxInt16
 
-// Claves de la sección y de sus partes, como las escribe la zona (ProgressRecord.SAVE_KEYS, LOCATION_KEYS,
-// EconomyOp.DICTIONARY_KEYS, LedgerEntry.DICTIONARY_KEYS, ItemEvent.DICTIONARY_KEYS e ItemInstance).
+// Keys of the section and its parts, as the zone writes them (ProgressRecord.SAVE_KEYS,
+// LOCATION_KEYS, EconomyOp.DICTIONARY_KEYS, LedgerEntry.DICTIONARY_KEYS,
+// ItemEvent.DICTIONARY_KEYS and ItemInstance).
 var (
 	sectionKeys = []string{"active_weapon_slot", "bag_slots", "health", "items", "level", "location", "ops",
 		"played_seconds", "progress_format", "realm_points", "starter_granted", "timers", "wallets", "xp_total"}
@@ -36,12 +37,12 @@ var (
 	opKeys    = []string{"actor_account_id", "detail", "items", "kind", "ledger", "note", "op_id", "ref_op_id"}
 	entryKeys = []string{"balance_after", "currency", "delta", "reason", "ref_id", "ref_kind"}
 	eventKeys = []string{"count_delta", "def_id", "reason", "uid"}
-	// Solo en la reclamación (progresion.md §3.4): en un guardado son un error de S1.
+	// Only in the claim (progresion.md §3.4): in a save they are an S1 error.
 	readOnlyKeys         = map[string]bool{"race_id": true, "appearance": true, "starter_template_id": true}
 	readOnlyLocationKeys = map[string]bool{"saved_at_unix": true}
 )
 
-// section es la sección progress de un guardado, ya leída.
+// section is the progress section of a save, already parsed.
 type section struct {
 	level            int64
 	xpTotal          int64
@@ -67,7 +68,7 @@ type location struct {
 
 type wallet struct{ currency, balance int64 }
 
-// item es un objeto vivo de la foto (la entrada de §3.4).
+// item is a live object in the snapshot (the entry from §3.4).
 type item struct {
 	uid, count      int64
 	defID           string
@@ -83,14 +84,14 @@ type timer struct {
 	endsAt int64
 }
 
-// op es una operación del diario (la entrada de ops de §9.3).
+// op is an operation in the journal (the ops entry from §9.3).
 type op struct {
 	opID   int64
 	kind   int64
 	actor  *int64
 	refOp  *int64
 	note   *string
-	detail json.RawMessage // un objeto JSON que cabe en jsonb
+	detail json.RawMessage // a JSON object that fits in jsonb
 	ledger []entry
 	items  []event
 }
@@ -104,19 +105,19 @@ type event struct {
 	reason     int64
 }
 
-// s1 es un error de S1 en path.
+// s1 is an S1 error at path.
 func s1(path, format string, args ...any) error {
 	return &persistence.InvalidSaveError{Check: "S1", Detail: path + ": " + fmt.Sprintf(format, args...)}
 }
 
-// object es un objeto JSON con sus claves ya comprobadas.
+// object is a JSON object whose keys have already been checked.
 type object struct {
 	path   string
 	fields map[string]json.RawMessage
 }
 
-// readObject lee raw como un objeto con exactamente las claves keys: una que falta, una que no conoce o una de
-// readOnly (de solo lectura) son errores de S1.
+// readObject reads raw as an object with exactly the keys keys: a missing one, an unknown one or
+// one from readOnly (read-only) is an S1 error.
 func readObject(raw json.RawMessage, path string, keys []string, readOnly map[string]bool) (object, error) {
 	o := object{path: path}
 	trimmed := bytes.TrimSpace(raw)
@@ -158,7 +159,7 @@ func containsString(list []string, v string) bool {
 
 func isNull(raw json.RawMessage) bool { return string(bytes.TrimSpace(raw)) == "null" }
 
-// int lee un entero exacto (admite 820.0, como escribe Godot).
+// int reads an exact integer (it accepts 820.0, as Godot writes it).
 func (o object) int(key string) (int64, error) {
 	var v jsonx.Int
 	if err := json.Unmarshal(o.fields[key], &v); err != nil {
@@ -167,7 +168,7 @@ func (o object) int(key string) (int64, error) {
 	return int64(v), nil
 }
 
-// nullableInt lee un entero exacto o null.
+// nullableInt reads an exact integer or null.
 func (o object) nullableInt(key string) (*int64, error) {
 	if isNull(o.fields[key]) {
 		return nil, nil
@@ -176,7 +177,7 @@ func (o object) nullableInt(key string) (*int64, error) {
 	return &v, err
 }
 
-// id lee un id: una cadena decimal de min a 2^53 − 1 (S1).
+// id reads an id: a decimal string from min to 2^53 − 1 (S1).
 func (o object) id(key string, min int64) (int64, error) {
 	var v jsonx.ID
 	if err := json.Unmarshal(o.fields[key], &v); err != nil || int64(v) < min || int64(v) > jsonx.MaxSafeInt {
@@ -185,7 +186,7 @@ func (o object) id(key string, min int64) (int64, error) {
 	return int64(v), nil
 }
 
-// nullableID lee un id desde 1 o null.
+// nullableID reads an id from 1 or null.
 func (o object) nullableID(key string) (*int64, error) {
 	if isNull(o.fields[key]) {
 		return nil, nil
@@ -210,7 +211,7 @@ func (o object) string(key string) (string, error) {
 	return v, nil
 }
 
-// real lee un número que cabe en una columna real.
+// real reads a number that fits in a real column.
 func (o object) real(key string) (float64, error) {
 	var v float64
 	if isNull(o.fields[key]) || json.Unmarshal(o.fields[key], &v) != nil || math.Abs(v) > math.MaxFloat32 {
@@ -219,7 +220,7 @@ func (o object) real(key string) (float64, error) {
 	return v, nil
 }
 
-// list lee una lista JSON (no null).
+// list reads a JSON list (not null).
 func (o object) list(key string) ([]json.RawMessage, error) {
 	var v []json.RawMessage
 	if isNull(o.fields[key]) || json.Unmarshal(o.fields[key], &v) != nil {
@@ -228,11 +229,11 @@ func (o object) list(key string) ([]json.RawMessage, error) {
 	return v, nil
 }
 
-// parseSection es S1 (progresion.md §13.3): progress_format 1, claves conocidas y ninguna de solo lectura, ids
-// en cadena de 1 a 2^53 − 1 (seed y ref_id desde 0), los demás enteros exactos y location.zone_id igual a
-// zoneID (la de la instancia que reclamó). Los rangos de cada campo los miran S2–S7; aquí solo lo que no tiene
-// otra comprobación (el canal y las coordenadas, que la base no admitiría) y que detail sea un objeto que
-// cabe en jsonb.
+// parseSection is S1 (progresion.md §13.3): progress_format 1, known keys and none read-only, ids
+// as strings from 1 to 2^53 − 1 (seed and ref_id from 0), all other integers exact and
+// location.zone_id equal to zoneID (that of the instance that claimed). The ranges of each field
+// are checked by S2–S7; here only what has no other check (the channel and the coordinates, which
+// the database would not accept) and that detail is an object that fits in jsonb.
 func parseSection(raw json.RawMessage, zoneID string) (*section, error) {
 	o, err := readObject(raw, "progress", sectionKeys, readOnlyKeys)
 	if err != nil {
@@ -282,7 +283,7 @@ func parseSection(raw json.RawMessage, zoneID string) (*section, error) {
 	return sec, nil
 }
 
-// parseList lee la lista key de o con parse, elemento a elemento.
+// parseList reads list key of o with parse, element by element.
 func parseList[T any](o object, key string, parse func(json.RawMessage, string) (T, error)) ([]T, error) {
 	raws, err := o.list(key)
 	if err != nil {

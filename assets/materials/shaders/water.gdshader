@@ -1,22 +1,22 @@
-// Agua estilizada para ríos y vados. Solo visual: no tiene colisión y se pisa el lecho del
-// terreno que hay debajo.
+// Stylized water for rivers and fords. Visual only: it has no collision and the terrain bed below
+// is walked on.
 //
-// - Color por profundidad (distancia entre la superficie y el fondo, leída del búfer de
-//   profundidad): orillas y vado claros, centro del cauce oscuro.
-// - Espuma en el contacto con la orilla, las piedras y los pilares, rota con ruido.
-// - Dos capas de ruido que se desplazan a lo largo del río (UV.x = metros a lo largo del cauce)
-//   dan las ondas del reflejo; flow_speed regula la corriente.
-// - TIME vuelve a cero cada cierto tiempo (docs/mundo.md, precisión numérica): el desplazamiento
-//   usa fract() para que el salto no se note.
+// - Color by depth (distance between the surface and the bottom, read from the depth buffer):
+//   light banks and ford, dark center of the channel.
+// - Foam where it meets the bank, stones and piers, broken up with noise.
+// - Two noise layers that scroll along the river (UV.x = meters along the channel) give the
+//   reflection ripples; flow_speed controls the current.
+// - TIME returns to zero every so often (docs/mundo.md, numerical precision): the scrolling uses
+//   fract() so the jump goes unnoticed.
 shader_type spatial;
 render_mode blend_mix, cull_back, depth_draw_opaque, diffuse_burley, specular_schlick_ggx;
 
 uniform vec4 shallow_color : source_color = vec4(0.47, 0.6, 0.62, 1.0);
 uniform vec4 deep_color : source_color = vec4(0.22, 0.31, 0.36, 1.0);
 uniform vec4 foam_color : source_color = vec4(0.86, 0.9, 0.9, 1.0);
-// Profundidad (m) a la que el agua alcanza el color profundo.
+// Depth (m) at which the water reaches the deep color.
 uniform float depth_fade : hint_range(0.05, 6.0) = 1.4;
-// Profundidad (m) por debajo de la cual aparece espuma.
+// Depth (m) below which foam appears.
 uniform float foam_depth : hint_range(0.0, 1.0) = 0.22;
 uniform float foam_amount : hint_range(0.0, 1.0) = 0.8;
 uniform float min_alpha : hint_range(0.0, 1.0) = 0.45;
@@ -36,7 +36,7 @@ void vertex() {
 }
 
 void fragment() {
-	// Profundidad del agua en este píxel.
+	// Water depth at this pixel.
 	float raw_depth = texture(depth_texture, SCREEN_UV).r;
 	vec4 view_pos = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, raw_depth, 1.0);
 	view_pos.xyz /= view_pos.w;

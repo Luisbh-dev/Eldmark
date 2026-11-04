@@ -1,14 +1,14 @@
-// Package mail compone y envía los correos de la plataforma (plataforma.md §4.2 y §4.3).
+// Package mail composes and sends the platform's emails (plataforma.md §4.2 and §4.3).
 //
-// Con ELDMARK_MAIL=log ([LogSender]) el correo se guarda en la tabla outbound_mail y va al
-// registro con el enlace entero, así las pruebas y el desarrollo sacan el token sin servidor de
-// correo; en staging y production no arranca. Con ELDMARK_MAIL=smtp ([SMTPSender]) sale por SMTP
-// desde una cola en segundo plano: el tiempo de respuesta de la API no depende del servidor de
-// correo (el registro tarda lo mismo con un correo nuevo, uno con cuenta o uno sancionado).
+// With ELDMARK_MAIL=log ([LogSender]) the email is stored in the outbound_mail table and goes to
+// the log with the whole link, so tests and development get the token without a mail server; in
+// staging and production it does not start. With ELDMARK_MAIL=smtp ([SMTPSender]) it goes out over
+// SMTP from a background queue: the API's response time does not depend on the mail server
+// (registration takes the same with a new email, one with an account or a sanctioned one).
 //
-// Los correos son texto plano en UTF-8. Las cabeceras van codificadas ([mime.QEncoding]) y el
-// destinatario, ya validado (solo ASCII imprimible sin espacios), va en RCPT TO y en un To:
-// escrito por [net/mail.Address]: no hay inyección de cabeceras.
+// Emails are plain text in UTF-8. Headers are encoded ([mime.QEncoding]) and the recipient, already
+// validated (printable ASCII only without spaces), goes in RCPT TO and in a To: written by
+// [net/mail.Address]: there is no header injection.
 package mail
 
 import (
@@ -25,46 +25,46 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// Template es el nombre de una plantilla, el que se guarda en outbound_mail.template.
+// Template is a template's name, the one stored in outbound_mail.template.
 type Template string
 
-// Plantillas.
+// Templates.
 const (
-	VerifyEmail      Template = "verify_email"      // al crear la cuenta o al pedir otro enlace
-	RegisterExisting Template = "register_existing" // registro (o cambio de correo) hacia un correo con cuenta
-	RegisterBlocked  Template = "register_blocked"  // registro con un correo sancionado (§11.2)
-	ResetPassword    Template = "reset_password"    // recuperar la contraseña
-	ChangeEmail      Template = "change_email"      // al correo nuevo, para confirmarlo
-	EmailChanged     Template = "email_changed"     // al correo viejo, con el enlace revert_email
-	EmailReverted    Template = "email_reverted"    // al correo recuperado, con el enlace para elegir contraseña
-	LoginFailures    Template = "login_failures"    // al dueño, al 5.º fallo seguido
+	VerifyEmail      Template = "verify_email"      // when creating the account or requesting another link
+	RegisterExisting Template = "register_existing" // registration (or email change) to an email with an account
+	RegisterBlocked  Template = "register_blocked"  // registration with a sanctioned email (§11.2)
+	ResetPassword    Template = "reset_password"    // recovering the password
+	ChangeEmail      Template = "change_email"      // to the new email, to confirm it
+	EmailChanged     Template = "email_changed"     // to the old email, with the revert_email link
+	EmailReverted    Template = "email_reverted"    // to the recovered email, with the link to choose a password
+	LoginFailures    Template = "login_failures"    // to the owner, on the 5th consecutive failure
 )
 
-// Data son los datos de una plantilla.
+// Data is a template's data.
 type Data struct {
-	Link     string    // enlace con el token
-	Until    time.Time // register_blocked: hasta cuándo
-	NewEmail string    // email_changed: el correo nuevo, ya enmascarado
+	Link     string    // link with the token
+	Until    time.Time // register_blocked: until when
+	NewEmail string    // email_changed: the new email, already masked
 }
 
-// Message es un correo compuesto.
+// Message is a composed email.
 type Message struct {
 	To       string
 	Template Template
 	Subject  string
-	Body     string // texto plano, con saltos \n
-	Link     string // el enlace del cuerpo, si lo hay (para el registro del modo log)
+	Body     string // plain text, with \n line breaks
+	Link     string // the body's link, if there is one (for the log-mode record)
 }
 
 const signature = "\n\n— Eldmark\n\nEste correo se ha enviado automáticamente; no lo respondas.\n"
 
-// FormatDate escribe una fecha para los textos: «3/11/2026 18:00 UTC».
+// FormatDate writes a date for the texts: "3/11/2026 18:00 UTC".
 func FormatDate(t time.Time) string {
 	t = t.UTC()
 	return fmt.Sprintf("%d/%d/%d %02d:%02d UTC", t.Day(), int(t.Month()), t.Year(), t.Hour(), t.Minute())
 }
 
-// Compose compone el correo de una plantilla.
+// Compose composes a template's email.
 func Compose(t Template, to string, d Data) (Message, error) {
 	m := Message{To: to, Template: t, Link: d.Link}
 	needsLink := true
@@ -125,24 +125,24 @@ func Compose(t Template, to string, d Data) (Message, error) {
 	return m, nil
 }
 
-// Sender envía un correo.
+// Sender sends an email.
 type Sender interface {
 	Send(ctx context.Context, m Message) error
 }
 
-// Execer es lo que ejecuta un insert: *pgxpool.Pool, pgx.Tx.
+// Execer is what runs an insert: *pgxpool.Pool, pgx.Tx.
 type Execer interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-// LogSender guarda el correo en outbound_mail y lo escribe en el registro con el enlace entero
-// (ELDMARK_MAIL=log: solo dev y test).
+// LogSender stores the email in outbound_mail and writes it to the log with the whole link
+// (ELDMARK_MAIL=log: dev and test only).
 type LogSender struct {
 	DB  Execer
 	Log *slog.Logger
 }
 
-// Send guarda el correo.
+// Send stores the email.
 func (s *LogSender) Send(ctx context.Context, m Message) error {
 	if _, err := s.DB.Exec(ctx, `insert into outbound_mail (to_email, template, body) values ($1, $2, $3)`,
 		m.To, string(m.Template), m.Subject+"\n\n"+m.Body); err != nil {
@@ -156,15 +156,15 @@ func (s *LogSender) Send(ctx context.Context, m Message) error {
 	return nil
 }
 
-// Recorder guarda los correos en memoria (pruebas).
+// Recorder keeps the emails in memory (tests).
 type Recorder struct {
 	mu       sync.Mutex
 	messages []Message
-	// Err, si no es nil, es lo que devuelve Send (sin guardar).
+	// Err, if not nil, is what Send returns (without storing).
 	Err error
 }
 
-// Send guarda el correo.
+// Send stores the email.
 func (r *Recorder) Send(_ context.Context, m Message) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -175,14 +175,14 @@ func (r *Recorder) Send(_ context.Context, m Message) error {
 	return nil
 }
 
-// Messages devuelve una copia de los correos enviados.
+// Messages returns a copy of the emails sent.
 func (r *Recorder) Messages() []Message {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]Message(nil), r.messages...)
 }
 
-// To devuelve los correos enviados a una dirección.
+// To returns the emails sent to an address.
 func (r *Recorder) To(addr string) []Message {
 	var out []Message
 	for _, m := range r.Messages() {

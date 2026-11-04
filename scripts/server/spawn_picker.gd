@@ -1,31 +1,28 @@
 class_name SpawnPicker
 extends RefCounted
-## Elige dónde aparece cada jugador que entra en la zona (docs/red.md, sección 1.5).
+## Chooses where each player entering the zone appears (docs/red.md, section 1.5).
 ## [br][br]
-## Los puntos son los nodos del grupo [method NetZones.spawn_group] de la escena de la zona; los que
-## llevan el metadato de reino son de ese reino ([method NetZones.get_spawn_points]: [NetZones] es el
-## único contacto de la red con [Zones]). [method pick] reparte los
-## puntos de cada reino en rueda, para que los jugadores que llegan juntos no aparezcan apilados.
-## Si el reino no tiene puntos se usa cualquiera de la zona y, si la zona no tiene ninguno, el
-## origen; en los dos casos con un aviso (una sola vez por reino).
+## The points are the nodes of the [method NetZones.spawn_group] group in the zone scene; those with the realm metadata
+## belong to that realm ([method NetZones.get_spawn_points]: [NetZones] is the network's only contact with [Zones]).
+## [method pick] distributes each realm's points round-robin, so that players who arrive together do not appear stacked.
+## If the realm has no points, any of the zone's is used and, if the zone has none, the origin; in both cases with a
+## warning (once per realm).
 
 var _world: Node
-# Siguiente índice de la rueda de cada reino (código de reino -> índice). Un reino sin puntos
-# propios rueda por todos los de la zona con su propio índice.
+# Next index of each realm's rotation (realm code -> index). A realm without points of its own rotates through all of
+# the zone's with its own index.
 var _cursors: Dictionary[int, int] = {}
-# Avisos ya emitidos, para no llenar el registro con cada jugador que entra.
+# Warnings already emitted, so as not to fill the log with every player that enters.
 var _warned: Dictionary[String, bool] = {}
 
 
-## [param world] es la raíz de la escena de la zona, que debe estar en el árbol cuando se llame a
-## [method pick].
+## [param world] is the root of the zone scene, which must be in the tree when [method pick] is called.
 func _init(world: Node) -> void:
 	_world = world
 
 
-## Punto de aparición para un jugador de [param realm] (un código de [enum NetProtocol.Realm]):
-## el siguiente de la rueda de ese reino. La posición es la del punto y la base solo tiene su
-## yaw (hacia donde mira el punto).
+## Spawn point for a player of [param realm] (a code of [enum NetProtocol.Realm]): the next one in that realm's
+## rotation. The position is the point's and the basis only has its yaw (where the point faces).
 func pick(realm: int) -> Transform3D:
 	var points: Array[Node3D] = []
 	if not NetZones.realm_name(realm).is_empty():
@@ -46,7 +43,7 @@ func pick(realm: int) -> Transform3D:
 	return _transform_of(points[index])
 
 
-# Posición del punto y base con su yaw (la misma fórmula que ClientMain._yaw_from_basis).
+# Position of the point and basis with its yaw (the same formula as ClientMain._yaw_from_basis).
 static func _transform_of(point: Node3D) -> Transform3D:
 	var forward: Vector3 = -point.global_transform.basis.z
 	var yaw: float = atan2(-forward.x, -forward.z)

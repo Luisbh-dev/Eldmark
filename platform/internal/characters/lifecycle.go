@@ -13,8 +13,8 @@ import (
 	"eldmark/platform/internal/names"
 )
 
-// ownCharacter bloquea (for no key update, como la purga, §11.2) la fila de un personaje de la
-// cuenta sin purgar; 404 si no existe, es de otra cuenta o es una lápida.
+// ownCharacter locks (for no key update, like the purge, §11.2) the row of an unpurged character of
+// the account; 404 if it does not exist, belongs to another account or is a tombstone.
 func ownCharacter(ctx context.Context, tx pgx.Tx, accountID, characterID int64) (*characterRow, error) {
 	c, err := scanCharacter(tx.QueryRow(ctx, `select `+characterColumns+` from characters
 		where character_id = $1 and account_id = $2 and purged_at is null for no key update`, characterID, accountID))
@@ -24,7 +24,7 @@ func ownCharacter(ctx context.Context, tx pgx.Tx, accountID, characterID int64) 
 	return c, err
 }
 
-// leaseIsAlive dice si el personaje tiene un arrendamiento vivo a la hora now.
+// leaseIsAlive says whether the character has a live lease at time now.
 func leaseIsAlive(ctx context.Context, tx pgx.Tx, characterID int64, now time.Time) (bool, error) {
 	var alive bool
 	err := tx.QueryRow(ctx, `select exists (select 1 from character_leases l where l.character_id = $1 and `+
@@ -32,14 +32,13 @@ func leaseIsAlive(ctx context.Context, tx pgx.Tx, characterID int64, now time.Ti
 	return alive, err
 }
 
-// Delete borra un personaje (§4.4) con plazo para restaurarlo y devuelve hasta cuándo. Bloquea
-// primero la fila de la cuenta, el orden de la reclamación (§5.3): el borrado y la reclamación de
-// ese personaje van en serie, y queda borrado y sin arrendamiento o vivo y con él. confirmName
-// tiene que dar la misma clave de NameRules que el nombre (400 validation). Con arrendamiento vivo,
-// 409 character_busy; con 5 borrados en 24 h, 429. El nombre queda reservado hasta
-// restore_until + 30 días, o solo hasta restore_until si el personaje tiene menos de 24 h de vida y
-// menos de 1 h jugada. Si era el último vivo de la cuenta en el mundo, el reino se libera a los 30
-// días.
+// Delete deletes a character (§4.4) with a window to restore it and returns until when. It locks
+// the account's row first, the claim's order (§5.3): that character's deletion and claim run in
+// series, and it ends up deleted and without a lease or alive and with one. confirmName has to give
+// the same NameRules key as the name (400 validation). With a live lease, 409 character_busy; with
+// 5 deletions in 24 h, 429. The name stays reserved until restore_until + 30 days, or only until
+// restore_until if the character has less than 24 h of life and less than 1 h played. If it was the
+// account's last living character in the world, the realm is freed after 30 days.
 func (s *Service) Delete(ctx context.Context, sess *accounts.Session, characterID int64, confirmName *string,
 	meta accounts.ClientMeta) (time.Time, error) {
 	if confirmName == nil {
@@ -106,11 +105,11 @@ func (s *Service) Delete(ctx context.Context, sess *accounts.Session, characterI
 	return restoreUntil, nil
 }
 
-// Restore restaura un personaje borrado en plazo (§4.4): bloquea la cuenta y después la fila del
-// personaje (como la purga) y vuelve a mirar restore_until y purged_at, así que una restauración
-// en el límite y la purga horaria no se cruzan. Su nombre vuelve a estar activo (si alguien lo
-// tuviera, 409 name_taken) y el reino de la cuenta deja de estar por liberarse. Fuera de plazo, 404;
-// un personaje que no está borrado se devuelve tal cual.
+// Restore restores a character deleted within the window (§4.4): it locks the account and then the
+// character's row (like the purge) and checks restore_until and purged_at again, so a restoration at
+// the limit and the hourly purge do not cross. Its name becomes active again (if someone had it, 409
+// name_taken) and the account's realm is no longer about to be freed. Outside the window, 404; a
+// character that is not deleted is returned as is.
 func (s *Service) Restore(ctx context.Context, sess *accounts.Session, characterID int64) (*CharacterView, error) {
 	now := s.clock.Now()
 	var view *CharacterView
@@ -177,10 +176,10 @@ func (s *Service) Restore(ctx context.Context, sess *accounts.Session, character
 	return view, nil
 }
 
-// Rename cambia el nombre de un personaje con el renombrado forzado (must_rename, §9.5): sin él,
-// 409 rename_not_required. El nombre nuevo pasa las mismas comprobaciones que al crear (también
-// el mismo nombre con otras mayúsculas o tildes, que es el mismo: name_taken) y el viejo queda
-// reservado 30 días. Con el personaje en el mundo, 409 character_busy.
+// Rename changes a character's name with the forced rename (must_rename, §9.5): without it, 409
+// rename_not_required. The new name passes the same checks as on creation (also the same name with
+// other capitalization or accents, which is the same: name_taken) and the old one stays reserved 30
+// days. With the character in the world, 409 character_busy.
 func (s *Service) Rename(ctx context.Context, sess *accounts.Session, characterID int64, name *string) (*CharacterView, error) {
 	if name == nil {
 		return nil, errValidation(map[string]string{"name": "required"})

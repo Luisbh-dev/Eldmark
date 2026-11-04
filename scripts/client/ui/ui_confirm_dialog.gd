@@ -1,22 +1,21 @@
 class_name UIConfirmDialog
 extends Control
-## Diálogo de confirmación modal (UI-09): un título, un mensaje y dos botones («Aceptar» y
-## «Cancelar» por defecto) sobre un velo que atenúa y bloquea el resto de la pantalla. Emite
-## [signal confirmed] o [signal canceled] y se cierra antes de emitir.
+## Modal confirmation dialog (UI-09): a title, a message and two buttons ("Aceptar" (Accept) and
+## "Cancelar" (Cancel) by default) over a veil that dims and blocks the rest of the screen. It emits
+## [signal confirmed] or [signal canceled] and closes before emitting.
 ## [br][br]
-## Esc cancela; los botones son enfocables y se recorren con izquierda y derecha ([UIFocus]); el foco
-## no sale del diálogo. Para acciones destructivas ([param danger]) el botón de confirmar usa el estilo
-## de peligro y el foco empieza en «Cancelar» (por defecto: un Intro de más no destruye nada).
-## Suena por [UISounds] al abrirse, al confirmar y al cancelar.
+## Esc cancels; the buttons are focusable and are traversed with left and right ([UIFocus]); focus does
+## not leave the dialog. For destructive actions ([param danger]) the confirm button uses the danger style
+## and focus starts on "Cancelar" (by default: an extra Enter destroys nothing). It sounds through
+## [UISounds] on opening, on confirming and on canceling.
 ## [br][br]
-## Como las ventanas ([UIWindow]), libera el cursor mientras está abierto si se la enlaza con
-## [method bind_camera].
+## Like the windows ([UIWindow]), it frees the cursor while open if bound with [method bind_camera].
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## El jugador confirmó.
+## The player confirmed.
 signal confirmed
-## El jugador canceló (botón, Esc o [method cancel]).
+## The player canceled (button, Esc or [method cancel]).
 signal canceled
 
 const DEFAULT_CONFIRM_TEXT: String = "Aceptar"
@@ -72,7 +71,7 @@ func _init() -> void:
 	_confirm_button.focus_mode = Control.FOCUS_ALL
 	_confirm_button.pressed.connect(confirm)
 	buttons.add_child(_confirm_button)
-	# El foco se queda dentro: izquierda y derecha cambian de botón y arriba y abajo no salen.
+	# Focus stays inside: left and right switch buttons and up and down do not leave.
 	var pair: Array[Control] = [_cancel_button, _confirm_button]
 	UIFocus.chain_horizontal(pair)
 	for button: Button in [_cancel_button, _confirm_button]:
@@ -91,9 +90,9 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Abre el diálogo con [param title] y [param message]. [param danger] pone el botón de confirmar
-## en el estilo de peligro y, con [param focus_cancel] (o siempre que sea peligroso), el foco empieza
-## en «Cancelar».
+## Opens the dialog with [param title] and [param message]. [param danger] puts the confirm button in the
+## danger style and, with [param focus_cancel] (or whenever it is dangerous), focus starts on "Cancelar"
+## (Cancel).
 func open(title: String, message: String, confirm_text: String = DEFAULT_CONFIRM_TEXT,
 		cancel_text: String = DEFAULT_CANCEL_TEXT, danger: bool = false,
 		focus_cancel: bool = true) -> void:
@@ -115,7 +114,7 @@ func open(title: String, message: String, confirm_text: String = DEFAULT_CONFIRM
 		(_cancel_button if _focus_cancel else _confirm_button).grab_focus()
 
 
-## Enlaza el diálogo con la cámara: mientras está abierto el cursor queda libre.
+## Binds the dialog to the camera: while it is open the cursor stays free.
 func bind_camera(rig: CameraRig) -> void:
 	if _open and is_instance_valid(_camera_rig) and _camera_rig != rig:
 		_camera_rig.set_ui_cursor_release(false, self)
@@ -128,7 +127,7 @@ func is_open() -> bool:
 	return _open
 
 
-## El jugador confirma: cierra y emite [signal confirmed].
+## The player confirms: closes and emits [signal confirmed].
 func confirm() -> void:
 	if not _open:
 		return
@@ -137,7 +136,7 @@ func confirm() -> void:
 	confirmed.emit()
 
 
-## El jugador cancela: cierra y emite [signal canceled].
+## The player cancels: closes and emits [signal canceled].
 func cancel() -> void:
 	if not _open:
 		return

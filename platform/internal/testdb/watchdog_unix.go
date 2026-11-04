@@ -8,19 +8,20 @@ import (
 	"syscall"
 )
 
-// watchdogScript es el vigilante: espera una línea en la entrada; con «done» (Main terminó bien y
-// ya limpió) sale sin tocar nada; con el fin de la tubería (el proceso de pruebas murió: un pánico,
-// el plazo de go test, una señal, un kill -9) para el servidor y borra la carpeta.
+// watchdogScript is the watchdog: it waits for a line on its input; with "done" (Main finished
+// cleanly and already cleaned up) it exits without touching anything; with the end of the pipe
+// (the test process died: a panic, the go test deadline, a signal, a kill -9) it stops the server
+// and deletes the folder.
 const watchdogScript = `dir=$1; shift
 read -r line
 [ "$line" = done ] && exit 0
 "$@" >/dev/null 2>&1
 rm -rf "$dir"`
 
-// startWatchdog lanza el vigilante del clúster: un sh en su propio grupo de procesos (un Ctrl-C a
-// go test no le llega) con la entrada en una tubería cuyo extremo de escritura solo tiene este
-// proceso. Al morir este, el sistema cierra la tubería y el sh limpia; Main, al acabar, le escribe
-// «done» ([cluster.stopWatchdog]).
+// startWatchdog launches the cluster's watchdog: an sh in its own process group (a Ctrl-C to go
+// test does not reach it) with its input on a pipe whose write end only this process holds. When
+// this one dies, the system closes the pipe and the sh cleans up; Main, when done, writes "done"
+// to it ([cluster.stopWatchdog]).
 func (c *cluster) startWatchdog() error {
 	r, w, err := os.Pipe()
 	if err != nil {

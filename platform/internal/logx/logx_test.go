@@ -48,7 +48,7 @@ func TestRequestFieldsInTheJSONLog(t *testing.T) {
 			t.Errorf("falta el campo %s en %s", key, buf.String())
 		}
 	}
-	// Sin contexto de petición no pasa nada.
+	// Without a request context nothing happens.
 	SetAccount(context.Background(), 1)
 	if RequestID(context.Background()) != "" {
 		t.Fatal("sin petición no hay id")

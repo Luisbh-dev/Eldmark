@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Hoja de contactos de las texturas de efectos (revisión visual, no entra en el juego).
+"""Contact sheet of the effect textures (visual review, does not go into the game).
 
-    python tools/vfx/contact_sheet.py [carpeta_de_salida]
+    python tools/vfx/contact_sheet.py [output_folder]
 
-Pinta cada textura como la lee su sombreador: las máscaras de luz en gris, las de forma sobre un fondo
-oscuro, y las que llevan datos en los canales (bocanadas, chorros de sangre, tablillas) ya interpretadas,
-con un color de prueba. Por defecto escribe build/vfx/tex_sheet.png.
+Paints each texture the way its shader reads it: light masks in grey, shape masks on a dark
+background, and those that carry data in the channels (puffs, blood jets, wood planks) already interpreted,
+with a test colour. By default it writes build/vfx/tex_sheet.png.
 """
 
 import os
@@ -22,7 +22,7 @@ BACKGROUND = (52, 58, 70)
 
 
 def over_background(rgba_array):
-	"""Compone un array float (h, w, 4) sobre el fondo de la hoja."""
+	"""Composes a float array (h, w, 4) over the sheet background."""
 	background = np.zeros(rgba_array.shape[:2] + (3,)) + np.array(BACKGROUND) / 255.0
 	alpha = rgba_array[..., 3:4]
 	rgb = rgba_array[..., :3] * alpha + background * (1.0 - alpha)
@@ -37,7 +37,7 @@ def preview(name, image):
 	if name == "noise":
 		return image.convert("RGB")
 	if name == "puffs":
-		# Interpretación aproximada: relieve con luz de arriba a la izquierda, borde erosionado al 25 %.
+		# Approximate interpretation: relief lit from the top left, edge eroded at 25 %.
 		height = data[..., 0]
 		detail = data[..., 1]
 		body = height * (0.7 + 0.6 * (detail - 0.5) * 1.0 + 0.0)

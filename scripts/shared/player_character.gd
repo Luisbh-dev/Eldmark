@@ -1,120 +1,121 @@
 class_name PlayerCharacter
 extends CharacterBody3D
-## Personaje jugable con movimiento determinista.
+## Playable character with deterministic movement.
 ##
-## Toda la simulación ocurre en [method simulate], que es una función determinista de
-## (estado, entrada, delta). Quien controla el personaje la llama exactamente una vez por tick
-## de física: ahora el controlador local; en la fase 2 también el servidor y la predicción y
-## repetición del cliente. Este script no lee Input, ni el tiempo, ni números aleatorios, para
-## que el servidor dedicado pueda cargarlo sin depender de nada del cliente.
+## All simulation happens in [method simulate], which is a deterministic function of
+## (state, input, delta). Whoever controls the character calls it exactly once per physics tick:
+## for now the local controller; in phase 2 also the server and the client's prediction and
+## replay. This script reads no Input, no time and no random numbers, so that the dedicated server
+## can load it without depending on anything from the client.
 ## [br][br]
-## El origen del nodo está en los pies. Capa de colisión 2 (personajes); máscara 1 (mundo) y 3
-## (bloqueos invisibles), más la capa de su reino (5 a 7) si la simulación llama a
-## [method set_realm_collision]: es lo que hace que la puerta cerrada de un fuerte pare a los
-## enemigos de su dueño y no a los suyos.
+## The node's origin is at the feet. Collision layer 2 (characters); mask 1 (world) and 3 (invisible
+## blockers), plus its realm's layer (5 to 7) if the simulation calls [method set_realm_collision]:
+## this is what makes a fort's closed gate stop its owner's enemies and not its own.
 
-## Se emite en el tick en el que el personaje salta (para animación y sonido futuros).
+## Emitted on the tick in which the character jumps (for future animation and sound).
 signal jumped
-## Se emite en el tick en el que el personaje vuelve a tocar el suelo.
+## Emitted on the tick in which the character touches the ground again.
 signal landed
 
-## Capa de física de la geometría estática del mundo (capa 1).
+## Physics layer of the world's static geometry (layer 1).
 const WORLD_COLLISION_LAYER: int = 1 << 0
-## Capa de física de los personajes (capa 2).
+## Physics layer of characters (layer 2).
 const CHARACTER_COLLISION_LAYER: int = 1 << 1
-## Capa de los bloqueos invisibles que solo paran a los personajes (capa 3): límites del área
-## jugable, orillas profundas, pretiles de los puentes. La cámara y los disparos no la miran.
+## Layer of invisible blockers that only stop characters (layer 3): playable area limits, deep
+## shores, bridge parapets. The camera and shots do not look at it.
 const PLAYER_BLOCKER_LAYER: int = 1 << 2
-## Capa de las estructuras (capa 4): el cuerpo de vista de la puerta del fuerte. Entra en la línea
-## de visión de los golpes ([constant HitShapes.LINE_OF_SIGHT_MASK]), en la máscara del brazo de la
-## cámara y en el horneado de la navegación, pero no en la máscara del personaje: parar el
-## movimiento es cosa de las capas de reino (docs/fuerte.md, sección 3.1).
+## Layer of structures (layer 4): the visible body of the fort gate. It is part of the line of
+## sight of hits ([constant HitShapes.LINE_OF_SIGHT_MASK]), of the camera arm's mask and of the
+## navigation bake, but not of the character's mask: stopping movement is the job of the realm
+## layers (docs/fuerte.md, section 3.1).
 const STRUCTURE_LAYER: int = 1 << 3
-## Posición del bit de la capa del primer reino (docs/fuerte.md, sección 3.1): la capa 5 es la de
-## Vardheim (código de reino 1), la 6 la de Solmarch y la 7 la de Askarra.
-## Véase [method realm_layer].
+## Bit position of the first realm's layer (docs/fuerte.md, section 3.1): layer 5 is Vardheim's
+## (realm code 1), 6 is Solmarch's and 7 is Askarra's.
+## See [method realm_layer].
 const REALM_LAYER_BASE: int = 4
-## Longitud mínima del deseo de movimiento para girar el personaje hacia la cámara.
+## Minimum length of the movement wish for turning the character toward the camera.
 const FACING_MIN_WISH: float = 0.1
-## Velocidad del sondeo hacia arriba con el que se reinicia el estado de suelo tras set_state().
+## Speed of the upward probe used to reset the floor state after set_state().
 const _FLOOR_PROBE_SPEED: float = 0.01
-## Por debajo de esta longitud el deseo de movimiento no tiene dirección.
+## Below this length the movement wish has no direction.
 const _MIN_WISH_DIRECTION: float = 0.001
 
-## Velocidad al correr (m/s).
+## Running speed (m/s).
 @export var run_speed: float = 5.0
-## Velocidad al esprintar (m/s). Solo hacia delante; se empieza a esprintar en el suelo.
+## Sprinting speed (m/s). Forward only; sprinting starts on the ground.
 @export var sprint_speed: float = 7.5
-## Multiplicador de velocidad al moverse hacia atrás.
+## Speed multiplier when moving backward.
 @export var backward_multiplier: float = 0.65
-## Multiplicador de velocidad cuando el movimiento es sobre todo lateral.
+## Speed multiplier when movement is mostly sideways.
 @export var strafe_multiplier: float = 0.9
-## Aceleración horizontal en el suelo al ganar velocidad (m/s²).
+## Horizontal acceleration on the ground when gaining speed (m/s²).
 @export var ground_acceleration: float = 45.0
-## Deceleración horizontal en el suelo al perder velocidad o frenar (m/s²).
+## Horizontal deceleration on the ground when losing speed or braking (m/s²).
 @export var ground_deceleration: float = 60.0
-## Aceleración horizontal en el aire (m/s²). En el aire el impulso se conserva: este control
-## sirve para girar y ganar velocidad, y para frenar solo sin entrada o en sentido contrario.
+## Horizontal acceleration in the air (m/s²). In the air momentum is preserved: this control is
+## for turning and gaining speed, and for braking only with no input or in the opposite direction.
 @export var air_acceleration: float = 6.0
-## Gravedad (m/s²).
+## Gravity (m/s²).
 @export var gravity: float = 22.0
-## Velocidad vertical inicial del salto (m/s).
+## Initial vertical speed of the jump (m/s).
 @export var jump_velocity: float = 8.0
-## Velocidad de giro del personaje hacia la dirección de la cámara (rad/s).
+## Turning speed of the character toward the camera direction (rad/s).
 @export var turn_speed: float = 14.0
-## Velocidad máxima de caída (m/s).
+## Maximum fall speed (m/s).
 @export var terminal_velocity: float = 50.0
-## Ticks (contando el de la pulsación) durante los que una pulsación de salto sigue valiendo si
-## llega un poco antes de tocar el suelo (búfer de salto). 1 = sin búfer. Como mucho
-## [constant PlayerState.MAX_JUMP_BUFFER_TICKS], porque viaja en el estado de red.
+## Ticks (counting the press tick) during which a jump press remains valid if it arrives a little
+## before touching the ground (jump buffer). 1 = no buffer. At most
+## [constant PlayerState.MAX_JUMP_BUFFER_TICKS], because it travels in the network state.
 @export_range(1, 15) var jump_buffer_window: int = 6
-## Ticks en el aire, tras dejar el suelo sin saltar (al caer por un borde), en los que todavía
-## se puede saltar ("coyote time"). 0 = desactivado. Como mucho
-## [constant PlayerState.MAX_COYOTE_TICKS], porque viaja en el estado de red.
+## Ticks in the air, after leaving the ground without jumping (when falling off an edge), during
+## which jumping is still possible ("coyote time"). 0 = disabled. At most
+## [constant PlayerState.MAX_COYOTE_TICKS], because it travels in the network state.
 @export_range(0, 7) var coyote_window: int = 6
 
-## Orientación del personaje en radianes (misma convención que [member Node3D.rotation].y; 0 mira
-## hacia -Z). Asignarla también gira el nodo.
+## Orientation of the character in radians (same convention as [member Node3D.rotation].y; 0 faces
+## -Z). Assigning it also rotates the node.
 ## [br][br]
-## Se redondea a float de 32 bits ([method PlayerState.to_f32]), la precisión con la que viaja en
-## [method PlayerState.encode]. Sin el redondeo, el resultado de [code]atan2[/code] no sobreviviría
-## a la ida y vuelta por la red y ninguna comparación exacta del estado pasaría.
+## It is rounded to a 32-bit float ([method PlayerState.to_f32]), the precision with which it
+## travels in [method PlayerState.encode]. Without the rounding, the result of [code]atan2[/code]
+## would not survive the round trip over the network and no exact state comparison would pass.
 ## [br][br]
-## La base del nodo se escribe directamente a partir del yaw. No se usa [member Node3D.rotation]
-## porque Godot recalcula entonces la escala a partir de la base anterior y el redondeo la va
-## alejando de 1 con cada giro; esa escala oculta cambia la cápsula de colisión y rompe la
-## repetición determinista (reconciliación de la fase 2).
+## The node's basis is written directly from the yaw. [member Node3D.rotation] is not used because
+## Godot then recomputes the scale from the previous basis and the rounding drifts it away from 1
+## with every turn; that hidden scale changes the collision capsule and breaks the deterministic
+## replay (phase 2 reconciliation).
 var yaw: float = 0.0:
 	set(value):
 		yaw = PlayerState.to_f32(value)
 		basis = Basis(Vector3.UP, yaw)
-## Si es false, [method simulate] no emite [signal jumped] ni [signal landed]. Se desactiva durante
-## las repeticiones de la reconciliación y el avance neutro de la predicción del cliente, para no
-## duplicar sonidos ni animaciones. No altera la simulación.
+## If false, [method simulate] does not emit [signal jumped] or [signal landed]. It is disabled
+## during reconciliation replays and the client prediction's neutral advance, to avoid duplicating
+## sounds and animations. It does not alter the simulation.
 var events_enabled: bool = true
-## Si el personaje estaba en el suelo al terminar el último tick. [method simulate] usa este valor
-## (y no is_on_floor()) al empezar cada tick, para que un estado restaurado se comporte igual.
+## Whether the character was on the ground when the last tick ended. [method simulate] uses this
+## value (and not is_on_floor()) at the start of each tick, so that a restored state behaves the
+## same.
 var grounded: bool = false
-## Botones de la última entrada aplicada (para detectar flancos de subida).
+## Buttons of the last applied input (to detect rising edges).
 var prev_buttons: int = 0
-## Tick de la última entrada aplicada.
+## Tick of the last applied input.
 var last_input_tick: int = 0
-## Ticks en el aire que quedan para poder saltar tras dejar el suelo sin saltar (coyote time).
+## Ticks in the air remaining to be able to jump after leaving the ground without jumping (coyote
+## time).
 var coyote_ticks: int = 0
-## Ticks que le quedan a una pulsación de salto guardada en el búfer (0 = ninguna pendiente).
+## Ticks remaining for a jump press stored in the buffer (0 = none pending).
 var jump_buffer_ticks: int = 0
-## Estado de combate (docs/combate.md, sección 3): acción en curso, resistencia, controles...
-## Entra en [method get_state] y [method set_state], y [method simulate] lo avanza con
-## [method ActionMachine.step] al principio de cada tick.
+## Combat state (docs/combate.md, section 3): current action, stamina, crowd controls...
+## It is part of [method get_state] and [method set_state], and [method simulate] advances it with
+## [method ActionMachine.step] at the start of each tick.
 var combat: CombatState = CombatState.initial(
 		CombatCatalog.rules(), CombatCatalog.default_weapon_id())
-## Velocidad de aterrizaje (m/s, positiva hacia abajo) medida justo antes de move_and_slide() en
-## el tick en que [member grounded] pasa a true; 0 en los demás ticks. El servidor la usa para el
-## daño por caída. No viaja en el estado: es una salida de [method simulate].
+## Landing speed (m/s, positive downward) measured right before move_and_slide() on the tick in
+## which [member grounded] becomes true; 0 on other ticks. The server uses it for fall damage. It
+## does not travel in the state: it is an output of [method simulate].
 var last_landing_speed: float = 0.0
 
-# Tras set_state(), el estado interno de CharacterBody3D (suelo, normal del suelo) puede
-# corresponder a otro tick; se recalcula al principio de la siguiente simulación.
+# After set_state(), CharacterBody3D's internal state (floor, floor normal) may correspond to
+# another tick; it is recomputed at the start of the next simulation.
 var _floor_contact_dirty: bool = false
 var _warned_tick_context: bool = false
 
@@ -126,58 +127,59 @@ func _ready() -> void:
 	floor_stop_on_slope = true
 	collision_layer = CHARACTER_COLLISION_LAYER
 	collision_mask = WORLD_COLLISION_LAYER | PLAYER_BLOCKER_LAYER
-	# Respeta una rotación asignada antes de entrar en el árbol (por ejemplo, la del punto de
-	# aparición) y deja la base del nodo limpia (solo yaw, escala 1).
+	# Respects a rotation assigned before entering the tree (for example, the spawn point's) and
+	# leaves the node's basis clean (yaw only, scale 1).
 	yaw = rotation.y
 
 
-## Máscara de la capa de movimiento del reino [param realm_code] (código de red de
-## [RealmCatalog]: 1 Vardheim, 2 Solmarch, 3 Askarra): [code]1 << (REALM_LAYER_BASE + código - 1)[/code].
-## 0 para el bando neutral (código 0, los Huecos) y para cualquier código que no sea un reino.
+## Mask of the movement layer of realm [param realm_code] ([RealmCatalog] network code: 1 Vardheim,
+## 2 Solmarch, 3 Askarra): [code]1 << (REALM_LAYER_BASE + code - 1)[/code]. 0 for the neutral side
+## (code 0, the Hollow) and for any code that is not a realm.
 static func realm_layer(realm_code: int) -> int:
 	if realm_code < 1 or realm_code > 3:
 		return 0
 	return 1 << (REALM_LAYER_BASE + realm_code - 1)
 
 
-## Avanza la simulación un tick con la entrada dada. Determinista: no lee Input, tiempo,
-## aleatoriedad ni estado global, solo los miembros de estado ([member yaw],
-## [member grounded], [member prev_buttons], [member last_input_tick], [member coyote_ticks],
-## [member jump_buffer_ticks], [member combat], la posición y [member CharacterBody3D.velocity]).
+## Advances the simulation one tick with the given input. Deterministic: it reads no Input, time,
+## randomness or global state, only the state members ([member yaw], [member grounded],
+## [member prev_buttons], [member last_input_tick], [member coyote_ticks],
+## [member jump_buffer_ticks], [member combat], the position and
+## [member CharacterBody3D.velocity]).
 ## [br][br]
-## Al principio de cada tick avanza la máquina de acciones ([method ActionMachine.step]), que
-## decide cuánto puede moverse, girar, saltar y esprintar el personaje durante un ataque, un
-## bloqueo, una esquiva, una habilidad, un cambio de arma o un control; sin acción, el movimiento es
-## el de siempre. Los efectos de movimiento (ralentizar, enraizar) escalan la velocidad objetivo no
-## impuesta con [member ActionMachine.Output.speed_factor] en todas las acciones; enraizado no se
-## salta ni se conserva el impulso en el aire ([member ActionMachine.Output.rooted]).
+## At the start of each tick it advances the action machine ([method ActionMachine.step]), which
+## decides how much the character can move, turn, jump and sprint during an attack, a block, a
+## dodge, an ability, a weapon swap or a crowd control; with no action, movement is the usual.
+## Movement effects (slow, root) scale the non-imposed target speed with
+## [member ActionMachine.Output.speed_factor] in all actions; while rooted the character neither
+## jumps nor keeps air momentum ([member ActionMachine.Output.rooted]).
 ## [br][br]
-## [b]Importante:[/b] move_and_slide() usa internamente el delta del tick de física, así que
-## [param delta] debe ser exactamente [code]1.0 / Engine.physics_ticks_per_second[/code] y la
-## llamada debe hacerse dentro del tick de física (desde _physics_process o tras
-## [code]await get_tree().physics_frame[/code]). Fuera de él, move_and_slide() usaría el delta
-## de _process y el resultado dejaría de ser determinista.
+## [b]Important:[/b] move_and_slide() internally uses the physics tick's delta, so [param delta]
+## must be exactly [code]1.0 / Engine.physics_ticks_per_second[/code] and the call must be made
+## inside the physics tick (from _physics_process or after
+## [code]await get_tree().physics_frame[/code]). Outside it, move_and_slide() would use the delta
+## of _process and the result would no longer be deterministic.
 func simulate(input: PlayerInput, delta: float) -> void:
 	_check_tick_context(delta)
 	if _floor_contact_dirty:
 		_resync_floor_contact()
 	var was_grounded: bool = grounded
 
-	# Máquina de acciones: ataques, bloqueo, esquiva, resistencia y controles. Decide cuánto puede
-	# moverse el personaje este tick (sin acción, el movimiento es el de siempre).
+	# Action machine: attacks, block, dodge, stamina and crowd controls. It decides how much the
+	# character can move this tick (with no action, movement is the usual).
 	var action: ActionMachine.Output = ActionMachine.step(combat, input, was_grounded)
 
-	# Dirección deseada en el plano horizontal, relativa al yaw de la cámara.
+	# Desired direction on the horizontal plane, relative to the camera's yaw.
 	var look_basis := Basis(Vector3.UP, input.look_yaw)
 	var forward: Vector3 = look_basis * Vector3.FORWARD
 	var right: Vector3 = look_basis * Vector3.RIGHT
 	var wish: Vector3 = (right * input.move.x + forward * input.move.y).limit_length(1.0)
 	var wish_length: float = wish.length()
 
-	# Orientación: al moverse, el personaje gira hacia donde mira la cámara; durante una acción
-	# lo decide ella (gira aunque esté quieto, salta a la cámara en el primer tick o no gira). El
-	# yaw se asigna siempre (también parado) para que su setter reescriba la base del nodo por si
-	# algo externo tocó la rotación o la escala.
+	# Orientation: when moving, the character turns toward where the camera looks; during an action
+	# the action decides (it turns even when standing still, snaps to the camera on the first tick or
+	# does not turn). The yaw is always assigned (also when stopped) so that its setter rewrites the
+	# node's basis in case something external touched the rotation or scale.
 	var new_yaw: float = yaw
 	if action.snap_yaw:
 		new_yaw = wrapf(input.look_yaw, -PI, PI)
@@ -189,16 +191,16 @@ func simulate(input: PlayerInput, delta: float) -> void:
 
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	if action.forced_velocity:
-		# Esquiva o empuje: la velocidad horizontal la impone la acción, sin aceleración.
+		# Dodge or push: horizontal speed is imposed by the action, without acceleration.
 		velocity.x = action.velocity.x
 		velocity.z = action.velocity.z
 	else:
-		# Velocidad objetivo. El esprint solo empieza en el suelo; en el aire se conserva el
-		# impulso que se traía (ver más abajo).
+		# Target speed. Sprinting only starts on the ground; in the air the momentum carried in is
+		# preserved (see below).
 		var target_velocity: Vector3
 		if action.scaled_movement:
-			# Dentro de una acción: carrera reducida más el avance del ataque hacia donde mira el
-			# personaje (ya girado este tick).
+			# Inside an action: reduced run plus the attack's advance toward where the character faces
+			# (already turned this tick).
 			target_velocity = wish * run_speed * action.move_scale
 			if action.lunge_speed != 0.0:
 				target_velocity += (Basis(Vector3.UP, yaw) * Vector3.FORWARD) * action.lunge_speed
@@ -212,25 +214,24 @@ func simulate(input: PlayerInput, delta: float) -> void:
 			if absf(input.move.x) > absf(input.move.y):
 				speed *= strafe_multiplier
 			target_velocity = wish * speed
-		# Efectos de movimiento (ralentizar, enraizar; docs/habilidades.md, sección 3.4): escalan la
-		# velocidad objetivo, también el avance de los ataques y el esprint. La esquiva, el avance de
-		# una habilidad y el empuje (velocidad impuesta) no.
+		# Movement effects (slow, root; docs/habilidades.md, section 3.4): scale the target speed, also
+		# the attacks' advance and the sprint. The dodge, an ability's advance and the push (imposed
+		# speed) do not.
 		target_velocity *= action.speed_factor
 
-		# Aceleración horizontal. En el suelo se usa la deceleración cuando el objetivo reduce la
-		# velocidad en la dirección actual (frenar, soltar el esprint, girar o invertir el
-		# sentido).
+		# Horizontal acceleration. On the ground, deceleration is used when the target reduces speed in
+		# the current direction (braking, releasing the sprint, turning or reversing direction).
 		var rate: float = air_acceleration
 		if grounded:
 			var slowing_down: bool = horizontal.dot(target_velocity) < horizontal.length_squared()
 			rate = ground_deceleration if slowing_down else ground_acceleration
 		elif wish_length > _MIN_WISH_DIRECTION and not action.rooted \
 				and not (action.scaled_movement and action.move_scale <= 0.0):
-			# En el aire no se frena en la dirección deseada: un salto o una caída esprintando
-			# mantienen su velocidad mientras se siga empujando hacia delante. El control aéreo
-			# solo gira el movimiento o añade velocidad hasta el objetivo. No vale para una
-			# acción que no deja moverse (muerto, aturdido o tambaleado sin empuje, con
-			# move_scale 0) ni con un efecto que enraíza: esos frenan, y el stick no los dirige.
+			# In the air there is no braking in the wished direction: a jump or a fall while sprinting keeps
+			# its speed as long as the player keeps pushing forward. Air control only turns the movement or
+			# adds speed up to the target. This does not apply to an action that does not allow movement
+			# (dead, stunned or staggered with no push, with move_scale 0) nor to a rooting effect: those
+			# brake, and the stick does not steer them.
 			var wish_direction: Vector3 = wish / wish_length
 			var carried_speed: float = horizontal.dot(wish_direction)
 			if carried_speed > target_velocity.length():
@@ -239,14 +240,14 @@ func simulate(input: PlayerInput, delta: float) -> void:
 		velocity.x = horizontal.x
 		velocity.z = horizontal.z
 
-	# Gravedad, con velocidad de caída limitada.
+	# Gravity, with limited fall speed.
 	if not grounded:
 		velocity.y = maxf(velocity.y - gravity * delta, -terminal_velocity)
 
-	# Salto: el flanco de subida del botón entra en el búfer y se salta si hay suelo o aún queda
-	# coyote time. Así no se pierde un salto pulsado justo antes de aterrizar ni justo después
-	# de caer por un borde, y mantener el botón no repite el salto. Las acciones que lo impiden
-	# (ataque, esquiva, controles) lo dejan en el búfer.
+	# Jump: the button's rising edge enters the buffer and the character jumps if there is ground or
+	# coyote time remains. This way a jump pressed right before landing or right after falling off an
+	# edge is not lost, and holding the button does not repeat the jump. Actions that prevent it
+	# (attack, dodge, crowd controls) leave it in the buffer.
 	var just_pressed: int = input.buttons & ~prev_buttons
 	jump_buffer_ticks = maxi(jump_buffer_ticks - 1, 0)
 	if (just_pressed & PlayerInput.JUMP) != 0:
@@ -259,7 +260,7 @@ func simulate(input: PlayerInput, delta: float) -> void:
 		if events_enabled:
 			jumped.emit()
 
-	# Velocidad de caída justo antes de que move_and_slide() la anule al aterrizar.
+	# Fall speed right before move_and_slide() zeroes it on landing.
 	var fall_speed: float = maxf(-velocity.y, 0.0)
 	move_and_slide()
 
@@ -267,34 +268,34 @@ func simulate(input: PlayerInput, delta: float) -> void:
 	last_landing_speed = fall_speed if grounded and not was_grounded else 0.0
 	if grounded and not was_grounded and events_enabled:
 		landed.emit()
-	# El coyote time se recarga mientras se pisa suelo (también en el tick en el que se deja) y
-	# se consume en el aire. Saltar lo agota para que no haya un segundo salto en el aire.
+	# Coyote time is refilled while standing on the ground (also on the tick it is left) and consumed
+	# in the air. Jumping exhausts it so there is no second jump in the air.
 	if jumped_now:
 		coyote_ticks = 0
 	elif grounded or was_grounded:
 		coyote_ticks = clampi(coyote_window, 0, PlayerState.MAX_COYOTE_TICKS)
 	else:
 		coyote_ticks = maxi(coyote_ticks - 1, 0)
-	# El bit de entrada sustituida no es un botón: no se guarda, para que el estado no dependa de
-	# si la entrada llegó o se repitió.
+	# The substituted-input bit is not a button: it is not stored, so the state does not depend on
+	# whether the input arrived or was repeated.
 	prev_buttons = input.buttons & ~PlayerInput.SUBSTITUTED
 	last_input_tick = input.tick
 
 
-## Añade a la máscara de colisión la capa de movimiento del reino [param realm_code] (código de
-## red; 1 Vardheim, 2 Solmarch, 3 Askarra), para que lo paren las puertas cerradas de los fuertes
-## de otros reinos ([method FortGate.layers_for]). Con 0 (los Huecos) o un código que no es un
-## reino, la máscara queda sin capa de reino. Sustituye a la llamada anterior, no se acumula.
+## Adds to the collision mask the movement layer of realm [param realm_code] (network code; 1
+## Vardheim, 2 Solmarch, 3 Askarra), so that the closed gates of other realms' forts stop it
+## ([method FortGate.layers_for]). With 0 (the Hollow) or a code that is not a realm, the mask is
+## left with no realm layer. It replaces the previous call, it does not accumulate.
 ## [br][br]
-## [b]Hay que llamarla después de que el personaje entre en el árbol[/b]: [method _ready]
-## reescribe la máscara. La llaman, al crear a cada personaje que simula, el servidor (al dar de
-## alta) y el cliente (con el personaje local); los remotos no colisionan. Debe ser el mismo
-## reino en los dos lados para que la predicción coincida.
+## [b]It must be called after the character enters the tree[/b]: [method _ready] rewrites the
+## mask. It is called, when creating each character that simulates, by the server (when
+## registering) and the client (with the local character); remote ones do not collide. It must be
+## the same realm on both sides for prediction to match.
 func set_realm_collision(realm_code: int) -> void:
 	collision_mask = WORLD_COLLISION_LAYER | PLAYER_BLOCKER_LAYER | realm_layer(realm_code)
 
 
-## Devuelve una copia del estado de simulación actual.
+## Returns a copy of the current simulation state.
 func get_state() -> PlayerState:
 	var state := PlayerState.new()
 	state.position = global_position if is_inside_tree() else position
@@ -309,9 +310,9 @@ func get_state() -> PlayerState:
 	return state
 
 
-## Restaura un estado de simulación (posición global, velocidad, yaw y rotación, grounded,
-## prev_buttons, last_input_tick, los contadores de salto y el estado de combate). No llama a
-## reset_physics_interpolation(): decide quien llama.
+## Restores a simulation state (global position, velocity, yaw and rotation, grounded,
+## prev_buttons, last_input_tick, the jump counters and the combat state). It does not call
+## reset_physics_interpolation(): that is up to the caller.
 func set_state(state: PlayerState) -> void:
 	yaw = state.yaw
 	if is_inside_tree():
@@ -328,21 +329,21 @@ func set_state(state: PlayerState) -> void:
 	_floor_contact_dirty = true
 
 
-## Velocidad en el plano horizontal (m/s).
+## Speed on the horizontal plane (m/s).
 func get_horizontal_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
 
 
-## Punto que sigue la cámara (a la altura de la cabeza).
+## Point the camera follows (at head height).
 func get_camera_target() -> Node3D:
 	return $CameraTarget as Node3D
 
 
-# move_and_slide() depende del estado de suelo que dejó la llamada anterior (para el snap al suelo
-# y para no trepar paredes). Tras set_state() ese estado puede ser de otro tick, así que se rehace
-# a partir de la posición y de "grounded" restauradas: un desplazamiento minúsculo hacia arriba
-# (sin snap) reinicia el estado y, si el personaje estaba en el suelo, apply_floor_snap() recupera
-# el contacto y la normal del suelo. La posición y la velocidad se dejan exactamente como estaban.
+# move_and_slide() depends on the floor state left by the previous call (for floor snap and for
+# not climbing walls). After set_state() that state may belong to another tick, so it is rebuilt
+# from the restored position and "grounded": a tiny upward displacement (without snap) resets the
+# state and, if the character was on the ground, apply_floor_snap() recovers the floor contact and
+# normal. Position and velocity are left exactly as they were.
 func _resync_floor_contact() -> void:
 	if not is_inside_tree():
 		return
@@ -358,9 +359,9 @@ func _resync_floor_contact() -> void:
 	velocity = saved_velocity
 
 
-# Diagnóstico: avisa una vez si simulate() se usa fuera del tick de física o con un delta
-# distinto del de la física, porque entonces move_and_slide() no avanza lo mismo que el resto
-# del paso. No afecta al resultado de la simulación.
+# Diagnostic: warns once if simulate() is used outside the physics tick or with a delta different
+# from the physics one, because then move_and_slide() does not advance the same as the rest of
+# the step. It does not affect the simulation result.
 func _check_tick_context(delta: float) -> void:
 	if _warned_tick_context:
 		return

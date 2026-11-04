@@ -1,44 +1,44 @@
 class_name CorrectionSmoother
 extends RefCounted
-## Suaviza las correcciones de la reconciliación (docs/red.md, sección 6.6).
+## Smooths reconciliation corrections (docs/red.md, section 6.6).
 ##
-## El cuerpo del personaje se corrige de golpe, porque manda la colisión del servidor. Lo que ve
-## el jugador no: el error (posición vieja menos posición nueva, en coordenadas del mundo) se
-## guarda aquí como desfase y se aplica a los nodos locales que dibujan al personaje
-## ([code]Visual[/code] y [code]CameraTarget[/code], nunca [code]Collision[/code]). Como el desfase
-## está en el mundo y esos nodos cuelgan del personaje, cada tick se recalcula en espacio local,
-## porque el yaw cambia:
+## The character's body is corrected at once, because the server's collision rules. What the player
+## sees is not: the error (old position minus new position, in world coordinates) is
+## stored here as an offset and applied to the local nodes that draw the character
+## ([code]Visual[/code] and [code]CameraTarget[/code], never [code]Collision[/code]). Since the offset
+## is in the world and those nodes hang from the character, every tick it is recomputed in local space,
+## because the yaw changes:
 ## [code]target.position = base_position + character.basis.inverse() * offset[/code].
 ## [br][br]
-## El desfase decae en cada tick de física con una semivida de [constant HALF_LIFE_TICKS] ticks y se
-## anula por debajo de [constant MIN_OFFSET]. Se escribe dentro del tick de física, así que la
-## interpolación de física lo interpola como todo lo demás y no hace falta
-## [code]reset_physics_interpolation()[/code].
+## The offset decays on every physics tick with a half-life of [constant HALF_LIFE_TICKS] ticks and is
+## zeroed below [constant MIN_OFFSET]. It is written inside the physics tick, so physics
+## interpolation interpolates it like everything else and
+## [code]reset_physics_interpolation()[/code] is not needed.
 ## [br][br]
-## [b]Orden dentro del tick.[/b] El desfase que añade [method add_offset] (la corrección de este
-## tick) no decae hasta el siguiente [method physics_step]: en el tick de la corrección el cuerpo
-## salta del punto viejo al nuevo y el desfase pasa de 0 a «viejo menos nuevo», así que la posición
-## visible no salta; después converge sin tirones.
+## [b]Order within the tick.[/b] The offset added by [method add_offset] (this tick's correction)
+## does not decay until the next [method physics_step]: on the correction tick the body
+## jumps from the old point to the new one and the offset goes from 0 to "old minus new", so the visible
+## position does not jump; afterwards it converges without stutter.
 
-## Semivida del desfase (ticks).
+## Half-life of the offset (ticks).
 const HALF_LIFE_TICKS: float = 6.0
-## Por debajo de esta longitud (m) el desfase se anula.
+## Below this length (m) the offset is zeroed.
 const MIN_OFFSET: float = 0.001
 
 var _character: PlayerCharacter = null
 var _targets: Array[Node3D] = []
 var _bases: PackedVector3Array = PackedVector3Array()
-## Desfase (mundo) que ya se ha aplicado en algún [method physics_step].
+## Offset (world) that has already been applied in some [method physics_step].
 var _offset: Vector3 = Vector3.ZERO
-## Correcciones añadidas desde el último [method physics_step]: todavía no decaen.
+## Corrections added since the last [method physics_step]: they do not decay yet.
 var _pending: Vector3 = Vector3.ZERO
-## true si los nodos están desplazados de su posición base.
+## true if the nodes are displaced from their base position.
 var _applied: bool = false
 var _decay_per_tick: float = pow(0.5, 1.0 / HALF_LIFE_TICKS)
 
 
-## Guarda la posición local base de cada destino (por ejemplo, [code]Visual[/code] y
-## [code]CameraTarget[/code]) y anula cualquier desfase.
+## Stores the base local position of each target (for example, [code]Visual[/code] and
+## [code]CameraTarget[/code]) and zeroes any offset.
 func setup(character: PlayerCharacter, targets: Array[Node3D]) -> void:
 	_character = character
 	_targets.assign(targets)
@@ -50,21 +50,21 @@ func setup(character: PlayerCharacter, targets: Array[Node3D]) -> void:
 	_applied = false
 
 
-## Suma [param world_offset] (error en coordenadas del mundo: posición vieja menos posición nueva)
-## al desfase actual.
+## Adds [param world_offset] (error in world coordinates: old position minus new position)
+## to the current offset.
 func add_offset(world_offset: Vector3) -> void:
 	_pending += world_offset
 
 
-## Anula el desfase y devuelve los nodos a su posición base (teletransporte, error de más de 3 m).
+## Zeroes the offset and returns the nodes to their base position (teleport, error of more than 3 m).
 func clear() -> void:
 	_offset = Vector3.ZERO
 	_pending = Vector3.ZERO
 	_apply()
 
 
-## Dentro del tick de física: decae el desfase ya aplicado, le suma las correcciones nuevas y lo
-## aplica a los destinos como [code]base + basis.inverse() * offset[/code].
+## Inside the physics tick: decays the already-applied offset, adds the new corrections to it and
+## applies it to the targets as [code]base + basis.inverse() * offset[/code].
 func physics_step() -> void:
 	_offset = _offset * _decay_per_tick + _pending
 	_pending = Vector3.ZERO
@@ -73,7 +73,7 @@ func physics_step() -> void:
 	_apply()
 
 
-## Desfase actual en coordenadas del mundo, incluidas las correcciones aún no aplicadas.
+## Current offset in world coordinates, including corrections not yet applied.
 func get_offset() -> Vector3:
 	return _offset + _pending
 

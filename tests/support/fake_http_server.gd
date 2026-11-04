@@ -1,31 +1,31 @@
 class_name FakeHttpServer
 extends Node
-## Un servidor HTTP/1.1 mínimo en el mismo proceso de las pruebas ([TCPServer] en 127.0.0.1), con respuestas y
-## retrasos guionizados: así [PlatformClient] y [ZonePlatform] se prueban con [HTTPRequest] de verdad
+## A minimal HTTP/1.1 server inside the test process ([TCPServer] on 127.0.0.1), with scripted responses and
+## delays: this way [PlatformClient] and [ZonePlatform] are tested with a real [HTTPRequest]
 ## (docs/plataforma.md §15 P4, [code]test_platform_client.gd[/code]).
 ## [br][br]
-## Cada petición se guarda ([member received]) y se contesta con la primera respuesta guionizada que casa
-## ([method script]: método y principio de la ruta, una vez o [code]times[/code] veces) o, si ninguna casa, con
-## [member handler] ([code](request: Received) -> Array[/code]: [code][status, body, delay_s][/code]); sin él, 404.
-## El cuerpo puede ser un diccionario o una lista (se manda como JSON), un texto o unos bytes (tal cual) o null
-## (vacío). Un retraso mayor que el plazo del cliente hace que este corte la conexión: la respuesta se descarta
-## sin escribir en un socket cerrado. Contesta con [code]Connection: close[/code] y cierra.
+## Each request is stored ([member received]) and answered with the first matching scripted response
+## ([method script]: method and path prefix, once or [code]times[/code] times) or, if none matches, with
+## [member handler] ([code](request: Received) -> Array[/code]: [code][status, body, delay_s][/code]); without it, 404.
+## The body can be a dictionary or a list (sent as JSON), a string or bytes (as is) or null
+## (empty). A delay longer than the client's deadline makes the client drop the connection: the response is discarded
+## without writing to a closed socket. It replies with [code]Connection: close[/code] and closes.
 
-## Una petición recibida.
+## A received request.
 class Received:
 	extends RefCounted
 	var method: String = ""
-	## Ruta sin la consulta.
+	## Path without the query.
 	var path: String = ""
-	## Consulta (sin el «?»), tal cual.
+	## Query (without the "?"), as is.
 	var query: String = ""
-	## Cabeceras, con el nombre en minúsculas.
+	## Headers, with the name in lowercase.
 	var headers: Dictionary = {}
 	var body: PackedByteArray = PackedByteArray()
-	## Instante de llegada (ms de Time.get_ticks_msec()).
+	## Arrival time (ms of Time.get_ticks_msec()).
 	var at_msec: int = 0
 
-	## El cuerpo leído como JSON (null si está vacío o no es JSON).
+	## The body read as JSON (null if it is empty or not JSON).
 	func json() -> Variant:
 		if body.is_empty():
 			return null
@@ -35,7 +35,7 @@ class Received:
 		return parser.data
 
 
-## Una respuesta guionizada.
+## A scripted response.
 class Scripted:
 	extends RefCounted
 	var method: String = ""
@@ -43,11 +43,11 @@ class Scripted:
 	var status: int = 200
 	var body: Variant = null
 	var delay_s: float = 0.0
-	## Veces que queda (-1 = siempre).
+	## Times left (-1 = always).
 	var times: int = 1
 
 
-# Una conexión abierta: lo leído y, cuando ya hay petición, la respuesta y cuándo sale.
+# An open connection: what has been read and, once there is a request, the response and when it goes out.
 class _Connection:
 	extends RefCounted
 	var peer: StreamPeerTCP
@@ -57,9 +57,9 @@ class _Connection:
 	var done: bool = false
 
 
-## Peticiones recibidas, en orden de llegada.
+## Requests received, in arrival order.
 var received: Array[Received] = []
-## Respuesta de lo que no está guionizado: [code](Received) -> [status, body, delay_s][/code].
+## Response for anything not scripted: [code](Received) -> [status, body, delay_s][/code].
 var handler: Callable = Callable()
 
 var _server: TCPServer = null
@@ -67,7 +67,7 @@ var _connections: Array[_Connection] = []
 var _scripts: Array[Scripted] = []
 
 
-## Escucha en 127.0.0.1, en un puerto libre que da el sistema. Devuelve el puerto, o -1.
+## Listens on 127.0.0.1, on a free port given by the system. Returns the port, or -1.
 func listen() -> int:
 	_server = TCPServer.new()
 	if _server.listen(0, "127.0.0.1") != OK:
@@ -76,13 +76,13 @@ func listen() -> int:
 	return _server.get_local_port()
 
 
-## La URL base ([code]http://127.0.0.1:<puerto>[/code]).
+## The base URL ([code]http://127.0.0.1:<port>[/code]).
 func base_url() -> String:
 	return "http://127.0.0.1:%d" % (_server.get_local_port() if _server != null else 0)
 
 
-## Guioniza la respuesta de las próximas [param times] peticiones con [param method] cuya ruta empieza por
-## [param path_prefix] (-1 = todas).
+## Scripts the response of the next [param times] requests with [param method] whose path starts with
+## [param path_prefix] (-1 = all).
 func script(method: String, path_prefix: String, status: int, body: Variant = null, delay_s: float = 0.0,
 		times: int = 1) -> void:
 	var scripted := Scripted.new()
@@ -95,7 +95,7 @@ func script(method: String, path_prefix: String, status: int, body: Variant = nu
 	_scripts.append(scripted)
 
 
-## Las peticiones recibidas con [param method] (vacío = cualquiera) cuya ruta empieza por [param path_prefix].
+## The requests received with [param method] (empty = any) whose path starts with [param path_prefix].
 func requests_to(method: String, path_prefix: String) -> Array[Received]:
 	var found: Array[Received] = []
 	for request: Received in received:
@@ -104,7 +104,7 @@ func requests_to(method: String, path_prefix: String) -> Array[Received]:
 	return found
 
 
-## Cierra todo.
+## Closes everything.
 func stop() -> void:
 	for connection: _Connection in _connections:
 		connection.peer.disconnect_from_host()
@@ -146,7 +146,7 @@ func _process(_delta: float) -> void:
 	_connections = _connections.filter(func(c: _Connection) -> bool: return not c.done)
 
 
-# Si el búfer ya tiene una petición entera, la guarda y prepara su respuesta.
+# If the buffer already holds a whole request, stores it and prepares its response.
 func _try_parse(connection: _Connection, now: int) -> void:
 	var text_end: int = _find(connection.buffer, "\r\n\r\n".to_ascii_buffer())
 	if text_end < 0:

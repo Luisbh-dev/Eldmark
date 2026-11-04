@@ -1,30 +1,31 @@
 class_name SocialTarget
 extends RefCounted
-## Quién está bajo el punto de mira para las acciones sociales (SOC-07, docs/social.md, sección 12.6). Como no
-## hay selección de objetivo, las acciones sociales (invitar, susurrar...) salen del jugador al que apunta la
-## retícula: un rayo contra la cápsula de cada jugador remoto que se está dibujando, como el que usan las
-## placas de nombre ([Nameplates]), hasta [constant MAX_RANGE] m del jugador local. Gana el más cercano a lo
-## largo del rayo.
+## Who is under the crosshair for social actions (SOC-07, docs/social.md, section 12.6). Since there is
+## no target selection, social actions (invite, whisper...) apply to the player the reticle points at: a
+## ray against the capsule of each remote player being drawn, like the one used by the nameplates
+## ([Nameplates]), up to [constant MAX_RANGE] m from the local player. The closest along the ray wins.
 ## [br][br]
-## [b]Solo cuentan los aliados que se ven[/b] ([method is_social_target] y la oclusión de [method find]): un
-## jugador del propio reino, vivo, con nombre de persona y sin una pared entre la cámara y su cabeza (la misma
-## prueba que oculta su placa, [method Nameplates.is_head_hidden]). Un enemigo, un muerto o alguien tapado dan lo
-## mismo que no apuntar a nadie: así pulsar la tecla contra una pared no dice si hay un enemigo detrás.
+## [b]Only allies that can be seen count[/b] ([method is_social_target] and the occlusion in
+## [method find]): a player of the same realm, alive, with a person's name and no wall between the camera
+## and their head (the same test that hides their nameplate, [method Nameplates.is_head_hidden]). An
+## enemy, a dead player or someone occluded is the same as aiming at nobody: this way, pressing the key
+## against a wall does not reveal whether there is an enemy behind it.
 ## [br][br]
-## [b]Jugadores falsos.[/b] Los cuerpos de jugador que crea el servidor sin conexión (pruebas de carga y relleno
-## de bandos, [code]ZoneServer.add_fake_player[/code]) no pueden recibir invitaciones ni susurros: el servidor
-## contesta «no está conectado». No llevan ninguna marca en el ENTITY_SPAWN, pero su nombre («Bot-01», con
-## guion y cifras) no cumple [NameRules], y el de una persona siempre la cumple porque [code]ServerAuth[/code]
-## la exige en el HELLO; por eso un nombre que no la cumple no es objetivo.
+## [b]Fake players.[/b] Player bodies that the server creates without a connection (load tests and
+## faction filling, [code]ZoneServer.add_fake_player[/code]) cannot receive invitations or whispers: the
+## server replies "no está conectado" (not connected). They carry no mark in the ENTITY_SPAWN, but their
+## name ("Bot-01", with a hyphen and digits) does not satisfy [NameRules], and a person's always does
+## because [code]ServerAuth[/code] requires it in the HELLO; that is why a name that does not satisfy it
+## is not a target.
 ## [br][br]
-## Las opciones que ofrece cada objetivo salen de [method options_for], una función pura: un aliado ofrece
-## invitar (si no está ya en el grupo y el grupo no está completo) y susurrar; un enemigo, ninguna, porque
-## ni los grupos ni los susurros cruzan la frontera entre reinos (docs/social.md, sección 1) y el menú no
-## enseña lo que no aplica.
+## The options each target offers come from [method options_for], a pure function: an ally offers
+## invite (if not already in the party and the party is not full) and whisper; an enemy, none, because
+## neither parties nor whispers cross the border between realms (docs/social.md, section 1) and the menu
+## does not show what does not apply.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Distancia máxima (m) del jugador local al objetivo.
+## Maximum distance (m) from the local player to the target.
 const MAX_RANGE: float = 20.0
 
 const OPTION_INVITE: StringName = &"invite"
@@ -33,19 +34,19 @@ const TEXT_INVITE: String = "Invitar al grupo"
 const TEXT_WHISPER: String = "Susurrar"
 
 
-## El aliado al que apunta el rayo [param aim] ([code]{"origin", "direction"}[/code], el de
-## [method CameraRig.get_aim_ray], cuyo origen es la cámara) a [param max_range] m o menos de
-## [param own_position], para quien es de [param own_realm]; null si no apunta a ninguno. Solo cuentan los que
-## admiten acciones sociales ([method is_social_target]) y se están dibujando, y se descarta a quien tapa el
-## mundo visto desde la cámara ([method Nameplates.is_head_hidden] en el espacio de física [param space]; con
-## null no se comprueba, como en las placas fuera del árbol).
+## The ally pointed at by ray [param aim] ([code]{"origin", "direction"}[/code], that of
+## [method CameraRig.get_aim_ray], whose origin is the camera) at [param max_range] m or less from
+## [param own_position], for someone of [param own_realm]; null if it points at none. Only those that
+## support social actions ([method is_social_target]) and are being drawn count, and anyone the world
+## hides as seen from the camera is discarded ([method Nameplates.is_head_hidden] in the physics space
+## [param space]; with null it is not checked, as with nameplates outside the tree).
 static func find(world: RemoteWorld, aim: Dictionary, own_position: Vector3, own_realm: int,
 		space: PhysicsDirectSpaceState3D, max_range: float = MAX_RANGE) -> RemotePlayerView:
 	if world == null or not is_instance_valid(world):
 		return null
 	var origin: Vector3 = aim["origin"]
 	var direction: Vector3 = aim["direction"]
-	# La cámara va detrás del jugador: el rayo se alarga lo que ella se aleja para que alcance a los 20 m del jugador.
+	# The camera sits behind the player: the ray is lengthened by how far it is from them so that it reaches 20 m from the player.
 	var reach: float = max_range + origin.distance_to(own_position)
 	var best: RemotePlayerView = null
 	var best_along: float = INF
@@ -69,9 +70,9 @@ static func find(world: RemoteWorld, aim: Dictionary, own_position: Vector3, own
 	return best
 
 
-## true si [param view] admite acciones sociales de quien es de [param own_realm]: un jugador (no un PNJ) del
-## mismo reino, vivo y con un nombre que cumple [NameRules] (no un jugador falso del servidor). No mira la
-## distancia ni la oclusión ([method find] lo hace).
+## true if [param view] supports social actions from someone of [param own_realm]: a player (not an NPC)
+## of the same realm, alive and with a name that satisfies [NameRules] (not a server fake player). It
+## does not check distance or occlusion ([method find] does).
 static func is_social_target(view: RemotePlayerView, own_realm: int) -> bool:
 	if view == null or own_realm == NetProtocol.Realm.NONE:
 		return false
@@ -82,9 +83,10 @@ static func is_social_target(view: RemotePlayerView, own_realm: int) -> bool:
 	return NameRules.is_valid(view.get_display_name())
 
 
-## Las acciones sociales que ofrece un jugador de reino [param target_realm] y id [param target_id] a quien es de
-## [param own_realm], con su [param party] (puede ser null). Cada opción es [code]{"id": StringName, "text":
-## String}[/code] ([constant OPTION_INVITE], [constant OPTION_WHISPER]); vacío si no hay ninguna (un enemigo).
+## The social actions offered by a player of realm [param target_realm] and id [param target_id] to
+## someone of [param own_realm], with their [param party] (may be null). Each option is
+## [code]{"id": StringName, "text": String}[/code] ([constant OPTION_INVITE], [constant OPTION_WHISPER]);
+## empty if there is none (an enemy).
 static func options_for(own_realm: int, target_realm: int, target_id: int, party: PartyState) -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
 	if own_realm == NetProtocol.Realm.NONE or target_realm != own_realm:

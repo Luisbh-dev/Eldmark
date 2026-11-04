@@ -1,34 +1,35 @@
 class_name AppearanceCatalog
 extends Resource
-## Catálogo de la apariencia (docs/progresion.md §7.2, ART-19), en
-## [code]data/characters/appearance_catalog.tres[/code]: los pueblos ([RaceDefinition]), las piezas
-## ([AppearancePart]) y los colores ([AppearanceColor]) que indexan los 8 B de [CharacterAppearance].
+## Appearance catalog (docs/progresion.md §7.2, ART-19), in
+## [code]data/characters/appearance_catalog.tres[/code]: the peoples ([RaceDefinition]), parts
+## ([AppearancePart]) and colors ([AppearanceColor]) that index the 8 B of [CharacterAppearance].
 ## [br][br]
-## Todas las listas son [b]solo de añadir[/b]: [code]data/characters/appearance_ids.txt[/code] congela el
-## orden («categoría índice id» por línea) y la prueba exige que el catálogo empiece por esa lista. Nada
-## se reordena ni se borra (una pieza se retira quitándola de las razas), así los 8 B guardados en la base
-## de datos siguen valiendo tras cualquier parche. En la fase 5 solo lista piezas que existen en el repo
-## (§16). Lo exporta [ProgressionRulesExport] (secciones [code]races[/code] y [code]appearance[/code]) para
-## que la plataforma aplique la misma regla al crear el personaje. Compartido: sin reloj ni azar.
+## All lists are [b]append-only[/b]: [code]data/characters/appearance_ids.txt[/code] freezes the
+## order ("category index id" per line) and the test requires the catalog to start with that list.
+## Nothing is reordered or deleted (a part is retired by removing it from the races), so the 8 B
+## stored in the database remain valid after any patch. In phase 5 it only lists parts that exist
+## in the repo (§16). [ProgressionRulesExport] exports it ([code]races[/code] and
+## [code]appearance[/code] sections) so that the platform applies the same rule when creating the
+## character. Shared: no clock, no randomness.
 
-## Ruta del catálogo.
+## Path of the catalog.
 const PATH: String = "res://data/characters/appearance_catalog.tres"
-## Orden congelado de las listas.
+## Frozen order of the lists.
 const IDS_PATH: String = "res://data/characters/appearance_ids.txt"
-## Listas de piezas, en el orden de los 8 B.
+## Part lists, in the order of the 8 B.
 const PART_CATEGORIES: Array[StringName] = [&"bodies", &"heads", &"hairs", &"beards", &"marks"]
-## Listas de colores, en el orden de los 8 B.
+## Color lists, in the order of the 8 B.
 const COLOR_CATEGORIES: Array[StringName] = [&"skin_tones", &"hair_colors", &"eye_colors"]
-## Todas las listas, en el orden de [code]appearance_ids.txt[/code].
+## All lists, in the order of [code]appearance_ids.txt[/code].
 const CATEGORIES: Array[StringName] = [&"races", &"bodies", &"heads", &"hairs", &"beards", &"marks",
 		&"skin_tones", &"hair_colors", &"eye_colors"]
-## Tamaño máximo de cada lista para que su índice quepa en los 8 B: el byte 0 y el pelo y la barba van
-## con +1; los ojos y las marcas comparten el byte 7 (4 bits cada uno, las marcas con +1).
+## Maximum size of each list so that its index fits in the 8 B: byte 0 and hair and beard go with
+## +1; eyes and marks share byte 7 (4 bits each, marks with +1).
 const MAX_SIZES: Dictionary[StringName, int] = {
 	&"races": 255, &"bodies": 256, &"heads": 256, &"hairs": 255, &"beards": 255, &"marks": 15,
 	&"skin_tones": 256, &"hair_colors": 256, &"eye_colors": 16,
 }
-## Formato de los ids.
+## Format of the ids.
 const ID_PATTERN: String = "^[a-z0-9_]{1,32}$"
 
 @export var races: Array[RaceDefinition] = []
@@ -44,8 +45,8 @@ const ID_PATTERN: String = "^[a-z0-9_]{1,32}$"
 static var _shared: AppearanceCatalog = null
 
 
-## El catálogo de [constant PATH], cargado una vez. Si no se puede cargar, registra el error y devuelve
-## uno vacío (ninguna apariencia vale).
+## The catalog at [constant PATH], loaded once. If it cannot be loaded, it logs the error and
+## returns an empty one (no appearance is valid).
 static func shared() -> AppearanceCatalog:
 	if _shared == null:
 		_shared = ResourceLoader.load(PATH) as AppearanceCatalog
@@ -58,7 +59,7 @@ static func shared() -> AppearanceCatalog:
 	return _shared
 
 
-## Índice (desde 0) del pueblo [param race_id] en [member races]; −1 si no existe.
+## Index (from 0) of people [param race_id] in [member races]; −1 if it does not exist.
 func race_index(race_id: StringName) -> int:
 	for i: int in range(races.size()):
 		if races[i] != null and races[i].id == race_id:
@@ -66,8 +67,8 @@ func race_index(race_id: StringName) -> int:
 	return -1
 
 
-## El pueblo de [param realm_id] (id de [RealmCatalog]) con el índice más bajo, o null. En la fase 5 hay
-## uno por reino.
+## The people of [param realm_id] ([RealmCatalog] id) with the lowest index, or null. In phase 5
+## there is one per realm.
 func race_for_realm(realm_id: StringName) -> RaceDefinition:
 	for race: RaceDefinition in races:
 		if race != null and race.realm == realm_id:
@@ -75,7 +76,7 @@ func race_for_realm(realm_id: StringName) -> RaceDefinition:
 	return null
 
 
-## La lista [param category] (una de [constant CATEGORIES]); vacía si no existe.
+## The list [param category] (one of [constant CATEGORIES]); empty if it does not exist.
 func entries(category: StringName) -> Array:
 	match category:
 		&"races":
@@ -99,7 +100,7 @@ func entries(category: StringName) -> Array:
 	return []
 
 
-## Los ids de la lista [param category], en orden (un hueco nulo da una cadena vacía).
+## The ids of the list [param category], in order (a null gap yields an empty string).
 func ids_of(category: StringName) -> PackedStringArray:
 	var result := PackedStringArray()
 	for entry: Resource in entries(category):
@@ -107,11 +108,11 @@ func ids_of(category: StringName) -> PackedStringArray:
 	return result
 
 
-## Errores de los datos (vacío si el catálogo vale): ids con formato y sin repetir en cada lista, tamaños
-## que caben en los 8 B, al menos un cuerpo, una cabeza y un color de cada tipo, piezas con cuerpos que
-## existen y, por pueblo, un reino jugable, índices que existen y sin repetir, listas sin las que no hay
-## apariencia válida, [code]allows_no_*[/code] cuando no hay pelo o barba compatibles y ninguna
-## estadística.
+## Data errors (empty if the catalog is valid): ids with the right format and unique in each list,
+## sizes that fit in the 8 B, at least one body, one head and one color of each kind, parts with
+## bodies that exist and, per people, a playable realm, indices that exist and are unique, lists
+## without which no valid appearance exists, [code]allows_no_*[/code] when there is no compatible
+## hair or beard, and no stats.
 func get_errors() -> PackedStringArray:
 	var errors := PackedStringArray()
 	var id_regex := RegEx.new()
@@ -183,7 +184,7 @@ func _race_errors(race: RaceDefinition) -> PackedStringArray:
 	return errors
 
 
-## Índices de [param allowed] que existen en [param parts] y encajan con [param body].
+## Indices of [param allowed] that exist in [param parts] and fit with [param body].
 static func fitting_indices(allowed: PackedInt32Array, parts: Array[AppearancePart], body: int) -> PackedInt32Array:
 	var result := PackedInt32Array()
 	for index: int in allowed:

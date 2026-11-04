@@ -1,10 +1,11 @@
-// Package names es NameRules en Go (plataforma.md §4.4, SOC-13): las reglas de los nombres de
-// personaje de scripts/shared/name_rules.gd, leídas de la sección names de progression_rules.json
-// (internal/gamedata). La plataforma las aplica al crear y renombrar personajes, en name-check y al
-// confirmar un borrado.
+// Package names is NameRules in Go (plataforma.md §4.4, SOC-13): the character name rules of
+// scripts/shared/name_rules.gd, read from the names section of progression_rules.json
+// (internal/gamedata). The platform applies them when creating and renaming characters, in
+// name-check and when confirming a deletion.
 //
-// Las dos implementaciones dan lo mismo con los mismos datos: los casos de
-// tests/fixtures/names/name_rules_cases.json los leen test_name_rules.gd y las pruebas de este paquete.
+// The two implementations give the same results with the same data: the cases in
+// tests/fixtures/names/name_rules_cases.json are read by test_name_rules.gd and this package's
+// tests.
 package names
 
 import (
@@ -17,11 +18,11 @@ import (
 	"eldmark/platform/internal/gamedata"
 )
 
-// Reason es el motivo por el que un nombre no vale, con los valores de NameRules.Reason. [OK] (0)
-// es un nombre válido. [Taken] no lo devuelve [Rules.Validate]: lo decide quien mira la base.
+// Reason is the reason a name is not valid, with the values of NameRules.Reason. [OK] (0) is a valid
+// name. [Taken] is not returned by [Rules.Validate]: whoever looks at the database decides it.
 type Reason int
 
-// Motivos, en el orden de NameRules.Reason.
+// Reasons, in the order of NameRules.Reason.
 const (
 	OK Reason = iota
 	TooShort
@@ -34,12 +35,12 @@ const (
 	Taken
 )
 
-// Códigos de la API (el reason del 422 name_invalid y de name-check, §4.1), los de
+// API codes (the reason of the 422 name_invalid and of name-check, §4.1), those of
 // NameRules.REASON_CODES.
 var codes = [...]string{"ok", "too_short", "too_long", "has_space", "has_digit", "invalid_character",
 	"not_capitalized", "reserved", "taken"}
 
-// String devuelve el código del motivo en la API («too_short»).
+// String returns the reason's API code ("too_short").
 func (r Reason) String() string {
 	if r >= 0 && int(r) < len(codes) {
 		return codes[r]
@@ -47,7 +48,7 @@ func (r Reason) String() string {
 	return "reason(" + strconv.Itoa(int(r)) + ")"
 }
 
-// ParseReason lee el código de un motivo.
+// ParseReason reads a reason's code.
 func ParseReason(code string) (Reason, bool) {
 	for i, c := range codes {
 		if c == code {
@@ -57,15 +58,15 @@ func ParseReason(code string) (Reason, bool) {
 	return 0, false
 }
 
-// Rules son las reglas de los nombres. Son de solo lectura: valen entre gorrutinas.
+// Rules are the name rules. They are read-only: safe across goroutines.
 type Rules struct {
 	minLength, maxLength int
-	upper, letters       map[rune]bool // mayúsculas; todas las letras admitidas
+	upper, letters       map[rune]bool // uppercase; all the admitted letters
 	folded               map[rune]rune
-	reserved             map[string]bool // claves normalizadas
+	reserved             map[string]bool // normalized keys
 }
 
-// New prepara las reglas de la sección names.
+// New prepares the rules from the names section.
 func New(sec gamedata.Names) (*Rules, error) {
 	upper, lower := []rune(sec.UpperLetters), []rune(sec.LowerLetters)
 	if sec.MinLength < 1 || sec.MaxLength < sec.MinLength || len(upper) == 0 || len(upper) != len(lower) {
@@ -97,8 +98,8 @@ var (
 	defaultRules *Rules
 )
 
-// Default devuelve las reglas de progression_rules.json incrustado en el binario. Entra en pánico
-// si no valen: es un error del repositorio, que las pruebas detectan.
+// Default returns the rules from the progression_rules.json embedded in the binary. It panics if
+// they are not valid: it is a repository error, which the tests catch.
 func Default() *Rules {
 	defaultOnce.Do(func() {
 		r, err := New(gamedata.MustLoad().Names)
@@ -110,15 +111,15 @@ func Default() *Rules {
 	return defaultRules
 }
 
-// MinLength devuelve las letras mínimas de un nombre.
+// MinLength returns the minimum letters of a name.
 func (r *Rules) MinLength() int { return r.minLength }
 
-// MaxLength devuelve las letras máximas de un nombre.
+// MaxLength returns the maximum letters of a name.
 func (r *Rules) MaxLength() int { return r.maxLength }
 
-// Validate comprueba un nombre como NameRules.validate: devuelve [OK] o el primer motivo por el
-// que no vale, en este orden: longitud (en caracteres), caracteres (en el orden en que aparecen:
-// espacio, dígito ASCII u otro), mayúscula inicial y reservados.
+// Validate checks a name like NameRules.validate: it returns [OK] or the first reason it is not
+// valid, in this order: length (in characters), characters (in the order they appear: space, ASCII
+// digit or other), initial capital and reserved.
 func (r *Rules) Validate(name string) Reason {
 	runes := []rune(name)
 	switch {
@@ -148,9 +149,9 @@ func (r *Rules) Validate(name string) Reason {
 	return OK
 }
 
-// NormalizeKey es la clave con la que se comparan los nombres (NameRules.normalize_key): cada
-// carácter en minúscula y sin tilde, diéresis ni eñe. Dos nombres son el mismo si tienen la misma
-// clave. Con un texto que no es un nombre no falla: pasa a minúsculas lo que puede.
+// NormalizeKey is the key names are compared by (NameRules.normalize_key): each character
+// lowercased and without accent, diaeresis or tilde on the n. Two names are the same if they have
+// the same key. With text that is not a name it does not fail: it lowercases what it can.
 func (r *Rules) NormalizeKey(name string) string {
 	var b strings.Builder
 	b.Grow(len(name))
@@ -164,11 +165,11 @@ func (r *Rules) NormalizeKey(name string) string {
 	return b.String()
 }
 
-// IsReserved dice si el nombre, normalizado, es uno de los reservados.
+// IsReserved says whether the name, normalized, is one of the reserved ones.
 func (r *Rules) IsReserved(name string) bool { return r.reserved[r.NormalizeKey(name)] }
 
-// ReasonText es el texto en español del motivo (NameRules.reason_text; el de [Taken] es el de la
-// plataforma, §4.1).
+// ReasonText is the reason's text in Spanish (NameRules.reason_text; [Taken]'s is the platform's,
+// §4.1).
 func (r *Rules) ReasonText(reason Reason) string {
 	switch reason {
 	case OK:
@@ -193,8 +194,8 @@ func (r *Rules) ReasonText(reason Reason) string {
 	return "Nombre no válido"
 }
 
-// Validate es [Rules.Validate] con las reglas por defecto ([Default]).
+// Validate is [Rules.Validate] with the default rules ([Default]).
 func Validate(name string) Reason { return Default().Validate(name) }
 
-// NormalizeKey es [Rules.NormalizeKey] con las reglas por defecto ([Default]).
+// NormalizeKey is [Rules.NormalizeKey] with the default rules ([Default]).
 func NormalizeKey(name string) string { return Default().NormalizeKey(name) }

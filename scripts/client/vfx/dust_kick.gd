@@ -1,26 +1,26 @@
 class_name DustKick
 extends VfxEffect
-## Polvo del suelo al aterrizar o esquivar (ART-09, solo cliente).
+## Ground dust on landing or dodging (ART-09, client only).
 ## [br][br]
-## El eje +Z del efecto es el suelo hacia arriba. Un [b]aterrizaje[/b] ([method play_landing]) abre un
-## anillo de bocanadas bajas alrededor de los pies y, solo en una caída fuerte, un anillo de polvo bajo
-## de 1,2 m o menos que se deshace por el borde. Una [b]esquiva[/b] ([method play_dodge]) es otra cosa: una
-## media luna de polvo pegada al suelo por detrás del cuerpo y una rociada de bocanadas hacia atrás, sin
-## anillo. Las bocanadas tienen volumen y luz: lo que cae a la sombra se oscurece.
+## The effect's +Z axis is the ground upward. A [b]landing[/b] ([method play_landing]) opens a ring of low
+## puffs around the feet and, only on a hard fall, a low dust ring 1.2 m high or less that breaks up at the
+## edge. A [b]dodge[/b] ([method play_dodge]) is something else: a crescent of dust hugging the ground
+## behind the body and a spray of puffs backward, without a ring. The puffs have volume and light: whatever
+## falls in shade darkens.
 ## [br][br]
-## El color es el del [b]suelo[/b], no el del reino: [method set_ground] por material
-## ([VfxPalette.ground]) o [method set_ground_color] (el que da [VfxGround] mirando el terreno).
+## The color is the [b]ground's[/b], not the realm's: [method set_ground] by material
+## ([VfxPalette.ground]) or [method set_ground_color] (the one [VfxGround] gives by looking at the terrain).
 
-## Aviso del aterrizaje: las bocanadas en anillo y el anillo bajo de las caídas fuertes.
+## Landing cue: the ring of puffs and the low ring for hard falls.
 const CUE_LANDING: StringName = &"landing"
-## Aviso de la esquiva: la media luna y la rociada hacia atrás.
+## Dodge cue: the crescent and the backward spray.
 const CUE_DODGE: StringName = &"dodge"
-## Fuerza (0 a 1) a partir de la cual el aterrizaje levanta además el anillo bajo.
+## Strength (0 to 1) from which the landing also raises the low ring.
 const RING_MIN_STRENGTH: float = 0.7
 
 
-## Aterrizaje en [param position] (el suelo): bocanadas en anillo. [param strength] de 0 a 1 según la altura
-## de la caída: con poca fuerza salen menos bocanadas y no hay anillo.
+## Landing at [param position] (the ground): ring of puffs. [param strength] from 0 to 1 according to the
+## fall height: with low strength fewer puffs appear and there is no ring.
 func play_landing(position: Vector3, strength: float = 1.0) -> void:
 	_apply_strength(strength)
 	set_part_enabled(&"Ring", strength >= RING_MIN_STRENGTH)
@@ -28,26 +28,26 @@ func play_landing(position: Vector3, strength: float = 1.0) -> void:
 	trigger(CUE_LANDING)
 
 
-## Esquiva desde [param position] (el suelo) con el cuerpo yendo hacia [param move_direction]: una media
-## luna de polvo y una rociada hacia atrás.
+## Dodge from [param position] (the ground) with the body moving toward [param move_direction]: a crescent
+## of dust and a backward spray.
 func play_dodge(position: Vector3, move_direction: Vector3, strength: float = 1.0) -> void:
 	_apply_strength(strength)
 	var back: Vector3 = -Vector3(move_direction.x, 0.0, move_direction.z)
 	if back.length_squared() < 0.0001:
 		back = Vector3.BACK
-	# El eje +Z queda hacia arriba y el +Y hacia atrás: la media luna y la rociada salen por +Y.
+	# The +Z axis points up and +Y backward: the crescent and the spray come out along +Y.
 	var facing: Basis = Basis.looking_at(Vector3.DOWN, back.normalized())
 	global_transform = Transform3D(facing, position)
 	play()
 	trigger(CUE_DODGE)
 
 
-## Color del polvo por material del suelo ([constant VfxPalette.GROUND_KINDS]).
+## Dust color by ground material ([constant VfxPalette.GROUND_KINDS]).
 func set_ground(kind: StringName) -> void:
 	tint = VfxPalette.ground(kind)
 
 
-## Color del polvo a mano (el del material pintado bajo los pies, ver [VfxGround]).
+## Dust color set by hand (that of the material painted under the feet, see [VfxGround]).
 func set_ground_color(color: Color) -> void:
 	tint = color
 

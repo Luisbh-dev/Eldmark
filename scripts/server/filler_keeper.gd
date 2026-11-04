@@ -1,75 +1,75 @@
 class_name FillerKeeper
 extends RefCounted
-## Los jugadores falsos de relleno de una zona con [code]--max-realm-diff[/code] (GUE-42; docs/fuerte.md,
-## sección 7): los falsos de reino automático que rellenan el bando corto y se retiran cuando entran
-## personas. Lleva la cuenta de cuáles son y aplica las reglas de [RealmBalance]; no sabe crear ni quitar
-## jugadores, eso lo hacen [member creator] y [member remover] ([ServerMain] los conecta con [ZoneServer]).
+## The filler fake players of a zone with [code]--max-realm-diff[/code] (GUE-42; docs/fuerte.md,
+## section 7): the automatic-realm fakes that fill in the short side and withdraw when
+## real people join. It keeps track of which ones they are and applies the [RealmBalance] rules; it does not know how to create or remove
+## players, that is done by [member creator] and [member remover] ([ServerMain] wires them to [ZoneServer]).
 ## [br][br]
-## [b]La regla exacta[/b] (con [param budget] = [code]--fake-players[/code]):
-## [br]1. Al arrancar, [ServerMain] crea el cupo entero repartiendo cada falso en el reino con menos total
-## (personas más relleno); a igualdad, el de código más bajo. Sin personas es el reparto por turnos de siempre.
-## [br]2. Entra una persona en el reino [i]r[/i]: si el total de [i]r[/i] (con ella) pasa a ser mayor que el
-## menor de los otros reinos de la zona y [i]r[/i] tiene falsos de relleno, se retira el más antiguo de [i]r[/i]:
-## uno por cada persona que entra en el bando largo. Si [i]r[/i] era el corto (o iba empatado), la persona
-## ocupa un hueco y no se retira a nadie.
-## [br]3. Sale una persona de [i]r[/i]: si el total de [i]r[/i] queda por debajo del mayor de los otros y el
-## relleno vivo no llega al cupo, entra un falso nuevo en [i]r[/i].
-## [br]4. Llega el HELLO de una persona de [i]r[/i] con el servidor lleno solo por el relleno (GUE-43; lo decide
-## [ZoneServer], que solo cuenta como plazas ocupadas las personas y los falsos que no son de relleno): un falso le
-## [b]aparta[/b] su plaza ([method reserve_seat]), pero no se va todavía: se va cuando esa persona entra en el mundo
-## ([method on_person_joined]), y entonces es el más antiguo del reino que da [method RealmBalance.realm_to_yield_seat]
-## con lo que hay en ese momento. Cuenta como el que retira la regla 2 (uno por persona). Si se va sin haber entrado
-## (corta la conexión o no termina de cargar), la plaza apartada se libera ([method release_seat]) y el relleno no se
-## ha movido: ni altas ni bajas para nadie. Mientras alguien carga en una plaza apartada, el servidor tiene un jugador
-## de más (ella y el falso que se la cede; [method reserved_count] dice cuántas hay), y solo el relleno que no ha apartado
-## su plaza puede cedérsela a otro HELLO.
-## [br]5. Nada más retira ni añade falsos. El relleno no cuenta para rechazar a nadie ([RealmBalance.exceeds]), ni
-## para llenar el servidor.
-## [br]6. [b]A quién se retira[/b] (revisión de la integración de las habilidades): el más antiguo del reino que esté
-## [b]tranquilo[/b] ([member calm_check]: ni derribado ni levantando o rematando a nadie; muerto esperando a reaparecer,
-## también). Si ninguno lo está, el más antiguo. La baja del relleno que se retira nunca es una muerte: [member remover]
-## lo da de baja sin DEATH ni KILL aunque esté derribado ([method ZoneServer.retire_filler]). Que entre una persona no
-## suma una muerte a un bando y una baja al otro, ni corta un levantar o un rematar si hay a quién retirar sin hacerlo.
+## [b]The exact rule[/b] (with [param budget] = [code]--fake-players[/code]):
+## [br]1. On startup, [ServerMain] creates the whole quota, placing each fake in the realm with the lowest total
+## (people plus filler); on a tie, the one with the lowest code. Without people it is the usual round-robin split.
+## [br]2. A person joins realm [i]r[/i]: if the total of [i]r[/i] (with them) becomes greater than the
+## smallest of the zone's other realms and [i]r[/i] has filler fakes, the oldest one of [i]r[/i] is withdrawn:
+## one for each person who joins the long side. If [i]r[/i] was the short side (or tied), the person
+## takes a slot and nobody is withdrawn.
+## [br]3. A person leaves [i]r[/i]: if the total of [i]r[/i] falls below the largest of the others and the
+## live filler does not reach the quota, a new fake joins [i]r[/i].
+## [br]4. The HELLO of a person of [i]r[/i] arrives with the server full only because of filler (GUE-43; decided by
+## [ZoneServer], which only counts as occupied slots the people and the fakes that are not filler): a fake
+## [b]sets aside[/b] its slot for them ([method reserve_seat]), but does not leave yet: it leaves when that person enters the world
+## ([method on_person_joined]), and then it is the oldest one of the realm that [method RealmBalance.realm_to_yield_seat] gives
+## with what exists at that moment. It counts as the one rule 2 withdraws (one per person). If the person leaves without having entered
+## (drops the connection or never finishes loading), the reserved slot is released ([method release_seat]) and the filler has not
+## moved: no additions or removals for anyone. While someone is loading into a reserved slot, the server has one player
+## too many (them and the fake that cedes the slot; [method reserved_count] says how many there are), and only filler that has not reserved
+## its slot can cede it to another HELLO.
+## [br]5. Nothing else removes or adds fakes. Filler does not count toward rejecting anyone ([RealmBalance.exceeds]), nor
+## toward filling the server.
+## [br]6. [b]Whom to withdraw[/b] (review of the abilities integration): the oldest one of the realm that is
+## [b]calm[/b] ([member calm_check]: neither knocked down nor lifting or finishing off anyone; dead and waiting to respawn
+## also counts). If none is, the oldest. The removal of the filler being withdrawn is never a death: [member remover]
+## removes it without DEATH or KILL even if it is knocked down ([method ZoneServer.retire_filler]). A person joining does not
+## add a death to one side and a removal to the other, nor cut off a lift or an execution if there is someone to withdraw without doing so.
 ## [br][br]
-## [ZoneServer] llama a [method on_person_joined], [method on_person_left], [method reserve_seat] y
-## [method release_seat] ([method ZoneServer.set_filler_keeper]) y le avisa de cada falso que se da de baja
+## [ZoneServer] calls [method on_person_joined], [method on_person_left], [method reserve_seat] and
+## [method release_seat] ([method ZoneServer.set_filler_keeper]) and notifies it of each fake that is removed
 ## ([method forget]).
 ## [br][br]
-## Solo servidor.
+## Server only.
 
-## [code](realm: int) -> int[/code]: crea un jugador falso en el reino y devuelve su id de red (o -1).
+## [code](realm: int) -> int[/code]: creates a fake player in the realm and returns its network id (or -1).
 var creator: Callable = Callable()
-## [code](net_id: int) -> void[/code]: da de baja al jugador falso (sin muerte aunque esté derribado: regla 6).
+## [code](net_id: int) -> void[/code]: removes the fake player (without a death even if knocked down: rule 6).
 var remover: Callable = Callable()
-## [code](net_id: int) -> bool[/code]: true si retirar ya al falso no corta nada (regla 6: ni derribado ni levantando o
-## rematando). Sin él, todos lo están.
+## [code](net_id: int) -> bool[/code]: true if withdrawing the fake now cuts nothing off (rule 6: neither knocked down nor lifting or
+## finishing off). Without it, all of them are.
 var calm_check: Callable = Callable()
 
 var _allowed: PackedInt32Array = PackedInt32Array()
 var _budget: int = 0
-# () -> PackedInt32Array: las personas que hay en cada reino ahora mismo.
+# () -> PackedInt32Array: the people in each realm right now.
 var _persons_source: Callable = Callable()
-# Relleno vivo, del más antiguo al más nuevo, y el reino de cada uno.
+# Live filler, oldest to newest, and the realm of each.
 var _ids: Array[int] = []
 var _realm_of: Dictionary[int, int] = {}
-# Personas (peer_id) a las que el relleno ha apartado una plaza y que aún no están en el mundo, con su reino.
+# People (peer_id) for whom the filler has set aside a slot and who are not in the world yet, with their realm.
 var _seated: Dictionary[int, int] = {}
 
 
-## [param allowed] son los reinos de la zona (vacío = los tres), [param budget] el cupo de relleno y
-## [param persons_source] un [Callable] sin argumentos con el recuento de personas por reino.
+## [param allowed] are the zone's realms (empty = all three), [param budget] the filler quota and
+## [param persons_source] an argument-less [Callable] with the count of people per realm.
 func _init(allowed: PackedInt32Array, budget: int, persons_source: Callable) -> void:
 	_allowed = allowed
 	_budget = maxi(budget, 0)
 	_persons_source = persons_source
 
 
-## El reino en el que tiene que entrar el siguiente falso de relleno (0 si no compite ninguno).
+## The realm the next filler fake has to join (0 if none competes).
 func next_realm() -> int:
 	return RealmBalance.realm_for_new_filler(_persons(), filler_counts(), _allowed)
 
 
-## Anota que el falso [param net_id] del reino [param realm] es de relleno.
+## Records that fake [param net_id] of realm [param realm] is filler.
 func track(net_id: int, realm: int) -> void:
 	if net_id <= 0 or _realm_of.has(net_id):
 		return
@@ -77,23 +77,23 @@ func track(net_id: int, realm: int) -> void:
 	_realm_of[net_id] = realm
 
 
-## Deja de contar a [param net_id] como relleno (se ha dado de baja por otra razón).
+## Stops counting [param net_id] as filler (it was removed for another reason).
 func forget(net_id: int) -> void:
 	_ids.erase(net_id)
 	_realm_of.erase(net_id)
 
 
-## true si [param net_id] es de relleno.
+## true if [param net_id] is filler.
 func is_filler(net_id: int) -> bool:
 	return _realm_of.has(net_id)
 
 
-## Falsos de relleno vivos.
+## Live filler fakes.
 func filler_count() -> int:
 	return _ids.size()
 
 
-## Falsos de relleno de cada reino (Vardheim, Solmarch, Askarra).
+## Filler fakes of each realm (Vardheim, Solmarch, Askarra).
 func filler_counts() -> PackedInt32Array:
 	var counts: PackedInt32Array = RealmBalance.empty_counts()
 	for realm: int in _realm_of.values():
@@ -102,13 +102,13 @@ func filler_counts() -> PackedInt32Array:
 	return counts
 
 
-## Ha entrado una persona en [param realm] (el recuento de personas ya la incluye): retira un falso de relleno si toca.
-## Devuelve true si lo ha retirado. Si el relleno le había apartado una plaza al llegar su HELLO ([method reserve_seat]
-## con el mismo [param peer_id]), se retira ahora el falso que la cede: el más antiguo del reino que da
-## [method RealmBalance.realm_to_yield_seat] (contándola a ella), aunque no sea de su reino. Si no, la regla 2.
+## A person has joined [param realm] (the people count already includes them): withdraws a filler fake if due.
+## Returns true if it withdrew one. If the filler had set aside a slot when their HELLO arrived ([method reserve_seat]
+## with the same [param peer_id]), the fake that cedes it is withdrawn now: the oldest one of the realm that gives
+## [method RealmBalance.realm_to_yield_seat] (counting them), even if it is not of their realm. Otherwise, rule 2.
 func on_person_joined(realm: int, peer_id: int = 0) -> bool:
 	if _seated.erase(peer_id):
-		# Sin contarla a ella (realm_to_yield_seat la suma), y en una copia: la fuente puede dar su propio array.
+		# Without counting them (realm_to_yield_seat adds them), and on a copy: the source may hand out its own array.
 		var persons: PackedInt32Array = _persons().duplicate()
 		if realm >= 1 and realm <= persons.size():
 			persons[realm - 1] = maxi(persons[realm - 1] - 1, 0)
@@ -119,10 +119,10 @@ func on_person_joined(realm: int, peer_id: int = 0) -> bool:
 	return _retire_oldest_of(realm)
 
 
-## Llega el HELLO de la persona [param peer_id] de [param realm] con el servidor lleno: el relleno le aparta una plaza
-## (GUE-43). No retira a nadie todavía: el falso que la cede se va cuando ella entra en el mundo
-## ([method on_person_joined]); si se va antes, [method release_seat]. Devuelve false si no queda relleno sin apartar
-## o si ya tenía una.
+## The HELLO of person [param peer_id] of [param realm] arrives with the server full: the filler sets aside a slot for them
+## (GUE-43). It does not withdraw anyone yet: the fake that cedes it leaves when they enter the world
+## ([method on_person_joined]); if they leave before, [method release_seat]. Returns false if no unreserved filler remains
+## or if they already had one.
 func reserve_seat(peer_id: int, realm: int) -> bool:
 	if peer_id <= 0 or _seated.has(peer_id) or _seated.size() >= _ids.size():
 		return false
@@ -130,24 +130,24 @@ func reserve_seat(peer_id: int, realm: int) -> bool:
 	return true
 
 
-## true si el relleno ha apartado una plaza a [param peer_id] y aún no ha entrado en el mundo.
+## true if the filler has set aside a slot for [param peer_id] and they have not entered the world yet.
 func has_reserved_seat(peer_id: int) -> bool:
 	return _seated.has(peer_id)
 
 
-## La persona [param peer_id] se ha ido sin entrar en el mundo: libera la plaza que el relleno le había apartado
-## ([method reserve_seat]). Ningún falso se había ido, así que no vuelve ninguno. Devuelve true si tenía una.
+## Person [param peer_id] has left without entering the world: releases the slot the filler had set aside for them
+## ([method reserve_seat]). No fake had left, so none comes back. Returns true if they had one.
 func release_seat(peer_id: int) -> bool:
 	return _seated.erase(peer_id)
 
 
-## Plazas que el relleno tiene apartadas para personas que aún cargan la zona ([method reserve_seat]).
+## Slots the filler has set aside for people who are still loading the zone ([method reserve_seat]).
 func reserved_count() -> int:
 	return _seated.size()
 
 
-## Ha salido una persona de [param realm] (el recuento ya no la incluye): añade un falso de relleno en ese reino
-## si toca. Devuelve true si lo ha creado.
+## A person has left [param realm] (the count no longer includes them): adds a filler fake in that realm
+## if due. Returns true if it created one.
 func on_person_left(realm: int) -> bool:
 	if not RealmBalance.should_add_on_leave(_persons(), filler_counts(), _allowed, realm,
 			_ids.size(), _budget):
@@ -161,8 +161,8 @@ func on_person_left(realm: int) -> bool:
 	return true
 
 
-# Retira el falso de relleno más antiguo de [param realm] que esté tranquilo (calm_check) o, si ninguno lo está, el más
-# antiguo (regla 6). false si ese reino no tiene.
+# Withdraws the oldest filler fake of [param realm] that is calm (calm_check) or, if none is, the
+# oldest (rule 6). false if that realm has none.
 func _retire_oldest_of(realm: int) -> bool:
 	var chosen: int = -1
 	for net_id: int in _ids:

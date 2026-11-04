@@ -1,24 +1,24 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área combate: tiras de un bot remoto AISLADO.
+## Quality capture bench (TEC-50), combat area: strips of an ISOLATED remote bot.
 ##
-## El servidor va sin PNJ ni maniquíes ([code]--no-npcs --no-dummies[/code]) y con un solo bot del reino enemigo (un
-## cliente [code]--bot --bot-brain=combat[/code] completo, que usa el equipo entero: habilidades, bloqueo, esquiva), así
-## que nadie más tapa ni rodea al seguido. El cliente de captura se coloca fuera de la zona segura del campamento
-## enemigo y hace de compañero de entrenamiento ([code]spar.gd[/code]): pelea, se pone a cubierto, retrocede, suelta
-## fuertes y se aparta a mirar, para que el bot ataque, corra, bloquee, esquive, tambalee, caiga derribado y muera.
-## Cada tira sale del anillo de [code]strip_recorder.gd[/code] con el principio de la acción, y su
-## [code]meta.json[/code] guarda por fotograma el clip que reproduce la capa de animación del remoto.
+## The server runs without NPCs or dummies ([code]--no-npcs --no-dummies[/code]) and with a single bot from the enemy realm (a full
+## [code]--bot --bot-brain=combat[/code] client, which uses the whole kit: abilities, block, dodge), so
+## nobody else blocks or surrounds the followed one. The capture client positions itself outside the safe zone of the enemy
+## camp and acts as a sparring partner ([code]spar.gd[/code]): it fights, takes cover, backs off, throws
+## heavy attacks and steps aside to watch, so that the bot attacks, runs, blocks, dodges, staggers, is knocked down and dies.
+## Each strip comes out of the [code]strip_recorder.gd[/code] ring with the start of the action, and its
+## [code]meta.json[/code] stores per frame the clip played by the remote's animation layer.
 
 const Recorder = preload("res://tools/quality/strip_recorder.gd")
 const Spar = preload("res://tools/quality/spar.gd")
 const Specs = preload("res://tools/quality/strip_specs.gd")
 
-## Punto de encuentro (el más despejado de [code]Spar.MEET_CANDIDATES[/code]): fuera de la zona segura del campamento enemigo y a
-## la vista del bot. Se mira hacia el campamento (z creciente, yaw 180).
+## Meeting point (the most open of [code]Spar.MEET_CANDIDATES[/code]): outside the safe zone of the enemy camp and in
+## view of the bot. It faces the camp (increasing z, yaw 180).
 const MEET_YAW: float = 180.0
 const TIMEOUT_MS: int = 360000
 const SWORD: String = "sword_shield"
-## Modos de sparring en rueda: modo y duración (ms).
+## Rotating sparring modes: mode and duration (ms).
 const MODES: Array = [["fight", 7000], ["tank", 4500], ["kite", 3500], ["heavy", 6500], ["observe", 3000], ["fight", 16000]]
 
 var d: Variant
@@ -86,7 +86,7 @@ func _spar_with(view: Object, t_end: int) -> void:
 func _choose_mode(now: int) -> void:
 	var action: String = String(rec.last_meta().get("action", "NONE"))
 	if action == "DOWNED" or action == "DEAD":
-		# Un derribado se deja desangrar a distancia (se ve el derribado entero y luego la muerte).
+		# A knocked-down player is left to bleed out at a distance (the whole knockdown is seen, then the death).
 		spar.set_mode("observe")
 		_mode_end_ms = now + 1500
 		return

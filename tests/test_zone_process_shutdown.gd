@@ -1,23 +1,23 @@
 extends TestCase
-## El cierre ordenado del servidor de zona de verdad (otro proceso, [code]--platform[/code] contra [FakeHttpServer],
-## que contesta las liberaciones a los 2 s) con cada uno de los cinco disparadores de docs/plataforma.md §7.2:
-## [code]--stop-file[/code], [code]--quit-after-ticks[/code], [code]--idle-quit[/code], el [code]shutdown[/code] de
-## la consola (con [code]--run-at[/code]) y el [code]maintenance[/code] del latido. Con un jugador en el mundo, uno en
-## LOADING y uno en VERIFYING, el proceso no se da de baja (DELETE) hasta que la plataforma ha contestado lo que
-## le queda de cada uno, y sale con código 0 sin errores. Desde progresion.md P5a la zona tiene la sección
-## [code]progress[/code]: quien está en el mundo guarda su kit al entrar y se libera con su final
-## ([code]release_lease[/code]); los de LOADING y VERIFYING, con la liberación. La plataforma falsa contesta los
-## guardados y las liberaciones con el mismo retraso.
+## The orderly shutdown of the real zone server (another process, [code]--platform[/code] against
+## [FakeHttpServer], which answers the releases after 2 s) with each of the five triggers in
+## docs/plataforma.md §7.2: [code]--stop-file[/code], [code]--quit-after-ticks[/code],
+## [code]--idle-quit[/code], the console's [code]shutdown[/code] (with [code]--run-at[/code]) and the
+## heartbeat's [code]maintenance[/code]. With one player in the world, one in LOADING and one in
+## VERIFYING, the process does not deregister (DELETE) until the platform has answered what is left
+## for each of them, and exits with code 0 and no errors. Since progresion.md P5a the zone has the
+## [code]progress[/code] section: whoever is in the world saves their kit on entry and is released with
+## their final save ([code]release_lease[/code]); those in LOADING and VERIFYING, with the release. The
+## fake platform answers saves and releases with the same delay.
 
 const INSTANCE_ID: String = "1f6a1c1e-5b9e-4c1a-9a51-6d2f0e3b7c44"
 const KEY_HEX: String = "02b7825be38fdd5396a4a058286884eaf93a9df85b874f78b4010a76103fb858"
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
 const ZONE_ID: String = "test_world"
 const NAMES: Dictionary[int, String] = {1: "Aneira", 2: "Brais", 3: "Carmela"}
-## Lo que tarda la plataforma falsa en contestar una liberación o un guardado (menos que el plazo de 3 s del
-## cliente).
+## How long the fake platform takes to answer a release or a save (less than the client's 3 s deadline).
 const RELEASE_DELAY_S: float = 2.0
-## Lo que tarda en contestar la reclamación del tercero, que espera en VERIFYING (también menos de 3 s).
+## How long it takes to answer the third player's claim, who waits in VERIFYING (also under 3 s).
 const VERIFYING_CLAIM_DELAY_S: float = 2.5
 
 var _http: FakeHttpServer = null
@@ -28,10 +28,10 @@ var _pid: int = -1
 var _port: int = 0
 var _log_name: String = ""
 var _lease_counter: int = 0
-## character_id -> lease_id que dio la reclamación.
+## character_id -> lease_id given by the claim.
 var _leases: Dictionary[int, String] = {}
 var _release_delay_s: float = RELEASE_DELAY_S
-## El maintenance de los latidos (null o {at_unix, message}).
+## The heartbeats' maintenance (null or {at_unix, message}).
 var _maintenance: Variant = null
 var _client_tick: int = 0
 var _sim_hash: int = -1
@@ -64,9 +64,9 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
-## Lo que contesta la plataforma falsa.
+## What the fake platform answers.
 func _answer(request: FakeHttpServer.Received) -> Array:
 	var path: String = request.path
 	var now: int = int(Time.get_unix_time_from_system())
@@ -104,7 +104,7 @@ func _answer(request: FakeHttpServer.Received) -> Array:
 	return [404, {"error": {"code": "not_found", "message": "No existe"}}, 0.0]
 
 
-## Arranca la plataforma falsa y el proceso de zona con [param extra_args], y espera a que esté viva.
+## Starts the fake platform and the zone process with [param extra_args], and waits for it to be alive.
 func _launch(extra_args: PackedStringArray, log_name: String) -> bool:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
@@ -115,7 +115,7 @@ func _launch(extra_args: PackedStringArray, log_name: String) -> bool:
 	_http = FakeHttpServer.new()
 	_http.name = "FakeHttpServer"
 	tree.root.add_child(_http)
-	if not assert_true(_http.listen() > 0, "el servidor HTTP falso escucha"):
+	if not assert_true(_http.listen() > 0, "the fake HTTP server listens"):
 		return false
 	_http.handler = _answer
 	OS.set_environment("ELDMARK_ZONE_TOKEN", "token-de-proceso")
@@ -128,11 +128,11 @@ func _launch(extra_args: PackedStringArray, log_name: String) -> bool:
 	_pid = NetHarness.launch_process(args, _log_name)
 	OS.unset_environment("ELDMARK_ZONE_TOKEN")
 	OS.unset_environment("ELDMARK_TICKET_KEYS")
-	if not assert_true(_pid > 0, "el proceso arranca"):
+	if not assert_true(_pid > 0, "the process starts"):
 		return false
 	var live: bool = await _run_until(func() -> bool:
 		return _http.requests_to("POST", "/internal/v1/zone-instances/%s/live" % INSTANCE_ID).size() == 1, 20000)
-	return assert_true(live, "la zona se registra y se da por viva")
+	return assert_true(live, "the zone registers and considers itself alive")
 
 
 func _ticket(character_id: int) -> PackedByteArray:
@@ -169,7 +169,7 @@ func _connect(character_id: int, auto_ready: bool = true) -> RawTicketClient:
 	var client := RawTicketClient.new(transport, hello.encode())
 	client.auto_ready = auto_ready
 	_clients.append(client)
-	assert_eq(transport.connect_to("127.0.0.1", _port, 4000), OK, "el cliente %d conecta" % character_id)
+	assert_eq(transport.connect_to("127.0.0.1", _port, 4000), OK, "client %d connects" % character_id)
 	return client
 
 
@@ -193,16 +193,16 @@ func _run_until(condition: Callable, max_ms: int = 5000) -> bool:
 	return condition.call()
 
 
-## Uno en el mundo (1), uno en LOADING (2) y uno en VERIFYING (3, con su reclamación a 2,5 s).
+## One in the world (1), one in LOADING (2) and one in VERIFYING (3, with its claim at 2.5 s).
 func _put_players_in_every_state() -> Array[RawTicketClient]:
 	var in_world: RawTicketClient = _connect(1)
 	var loading: RawTicketClient = _connect(2, false)
 	var ready: bool = await _run_until(func() -> bool: return in_world.own_spawn != null and loading.connected, 8000)
-	if not assert_true(ready, "uno entra en el mundo y otro carga la zona"):
+	if not assert_true(ready, "one enters the world and another loads the zone"):
 		return []
 	var verifying: RawTicketClient = _connect(3)
 	var claimed: bool = await _run_until(func() -> bool: return _claims_of(3) == 1, 4000)
-	if not assert_true(claimed, "el tercero espera su reclamación en VERIFYING"):
+	if not assert_true(claimed, "the third waits for its claim in VERIFYING"):
 		return []
 	return [in_world, loading, verifying]
 
@@ -216,7 +216,7 @@ func _claims_of(character_id: int) -> int:
 	return count
 
 
-## Las liberaciones y los guardados que liberan (los finales, con release_lease), en orden de llegada.
+## The releases and the saves that release (the final ones, with release_lease), in order of arrival.
 func _releases() -> Array[FakeHttpServer.Received]:
 	var found: Array[FakeHttpServer.Received] = []
 	for request: FakeHttpServer.Received in _http.received:
@@ -228,18 +228,18 @@ func _releases() -> Array[FakeHttpServer.Received]:
 	return found
 
 
-## Espera la salida del proceso y comprueba el cierre ordenado: código 0, cada arrendamiento de [param characters]
-## liberado una vez (con la liberación o con el final), la baja (DELETE) después de que la plataforma contestara
-## cada guardado y cada liberación, y sin errores.
+## Waits for the process to exit and checks the orderly shutdown: code 0, each lease of
+## [param characters] released once (with the release or with the final save), the deregistration
+## (DELETE) after the platform answered every save and every release, and no errors.
 func _expect_orderly_exit(characters: Array[int]) -> void:
 	var exited: bool = await _run_until(func() -> bool: return not OS.is_process_running(_pid), 25000)
-	if not assert_true(exited, "el proceso termina"):
+	if not assert_true(exited, "the process ends"):
 		OS.kill(_pid)
 		return
-	assert_eq(OS.get_process_exit_code(_pid), 0, "con código 0")
+	assert_eq(OS.get_process_exit_code(_pid), 0, "with code 0")
 	var deletes: Array[FakeHttpServer.Received] = _http.requests_to("DELETE",
 			"/internal/v1/zone-instances/%s" % INSTANCE_ID)
-	if not assert_eq(deletes.size(), 1, "se da de baja"):
+	if not assert_eq(deletes.size(), 1, "it deregisters"):
 		return
 	var released: Dictionary[String, int] = {}
 	var last_answer_msec: int = 0
@@ -251,14 +251,14 @@ func _expect_orderly_exit(characters: Array[int]) -> void:
 			last_answer_msec = maxi(last_answer_msec, request.at_msec + int(_release_delay_s * 1000.0))
 	for character_id: int in characters:
 		assert_eq(released.get(_leases.get(character_id, "?"), 0), 1,
-				"el arrendamiento del personaje %d se libera una vez" % character_id)
+				"character %d's lease is released once" % character_id)
 	assert_true(deletes[0].at_msec >= last_answer_msec - 50,
-			"la baja espera a la última respuesta (%d ms después)" % (deletes[0].at_msec - last_answer_msec))
+			"the deregistration waits for the last response (%d ms later)" % (deletes[0].at_msec - last_answer_msec))
 	assert_eq(NetHarness.error_lines(NetHarness.build_path("%s.log" % _log_name)), PackedStringArray(),
-			"sin errores en su registro")
+			"no errors in its log")
 
 
-# --- Pruebas ----------------------------------------------------------------------------------
+# --- Tests ------------------------------------------------------------------------------------
 
 func test_stop_file_waits_for_the_platform() -> void:
 	var stop_file: String = NetHarness.build_path("shutdown_saves.stop")
@@ -270,7 +270,7 @@ func test_stop_file_waits_for_the_platform() -> void:
 		return
 	FileAccess.open(stop_file, FileAccess.WRITE).store_string("parar")
 	await _expect_orderly_exit([1, 2, 3])
-	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "NOTICE de cierre al del mundo")
+	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "shutdown NOTICE to the one in the world")
 
 
 func test_quit_after_ticks_waits_for_the_platform() -> void:
@@ -280,7 +280,7 @@ func test_quit_after_ticks_waits_for_the_platform() -> void:
 	if players.is_empty():
 		return
 	await _expect_orderly_exit([1, 2, 3])
-	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "NOTICE de cierre al del mundo")
+	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "shutdown NOTICE to the one in the world")
 
 
 func test_console_shutdown_waits_for_the_platform() -> void:
@@ -290,7 +290,7 @@ func test_console_shutdown_waits_for_the_platform() -> void:
 	if players.is_empty():
 		return
 	await _expect_orderly_exit([1, 2, 3])
-	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "NOTICE de cierre al del mundo")
+	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "shutdown NOTICE to the one in the world")
 
 
 func test_maintenance_waits_for_the_platform() -> void:
@@ -303,19 +303,19 @@ func test_maintenance_waits_for_the_platform() -> void:
 	await _expect_orderly_exit([1, 2, 3])
 	var texts: PackedStringArray = players[0].notice_texts(NetProtocol.NoticeCode.INFO)
 	assert_true(texts.size() == 1 and texts[0].begins_with("El servidor se cerrará por mantenimiento en ")
-			and texts[0].ends_with(": versión nueva"), "un aviso del mantenimiento (%s)" % ", ".join(texts))
-	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "y el NOTICE de cierre")
+			and texts[0].ends_with(": versión nueva"), "a maintenance warning (%s)" % ", ".join(texts))
+	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "and the shutdown NOTICE")
 
 
-## --idle-quit solo cuenta sin nadie dentro: el jugador sale y su final (detrás del guardado del kit) sigue pendiente
-## al cerrar.
+## --idle-quit only counts with nobody inside: the player leaves and their final save (behind the kit save) is still
+## pending at shutdown.
 func test_idle_quit_waits_for_the_platform() -> void:
 	_release_delay_s = 2.8
 	if not await _launch(PackedStringArray(["--idle-quit=1"]), "shutdown_idle"):
 		return
 	var client: RawTicketClient = _connect(1)
 	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null, 8000)
-	if not assert_true(joined, "entra en el mundo"):
+	if not assert_true(joined, "enters the world"):
 		return
 	client.leave()
 	await _expect_orderly_exit([1])

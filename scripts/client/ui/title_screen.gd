@@ -1,22 +1,24 @@
 class_name TitleScreen
 extends FrontScreen
-## Pantalla de título (UI-22, docs/plataforma.md §13.2): «Eldmark», el estado del servicio y las noticias de
-## [code]GET /v1/status[/code], y el inicio de sesión: correo, contraseña, «Recordar correo» (solo el correo, en
-## [code]user://settings.cfg[/code]; nunca la contraseña), Entrar, Crear cuenta, ¿Has olvidado la contraseña?,
-## Ajustes y Salir. El panel de recuperar la contraseña pide el correo y responde siempre lo mismo (§4.3).
+## Title screen (UI-22, docs/plataforma.md §13.2): "Eldmark", the service status and the news from
+## [code]GET /v1/status[/code], and login: email, password, "Recordar correo" (Remember email) (only the
+## email, in [code]user://settings.cfg[/code]; never the password), Enter, Create account, Forgot your
+## password?, Settings and Quit. The password recovery panel asks for the email and always responds with
+## the same thing (§4.3).
 ## [br][br]
-## Teclado: Intro entra (o envía el panel abierto), Tab recorre los campos y Esc cierra el panel. «Entrar» solo se
-## activa con correo y contraseña. Fondo provisional (la captura fija del Vado Gris es de ART-21). Solo cliente.
+## Keyboard: Enter logs in (or submits the open panel), Tab walks through the fields and Esc closes the
+## panel. "Entrar" (Enter) is only enabled with email and password. Placeholder background (the fixed
+## Vado Gris capture belongs to ART-21). Client only.
 
-## Pulsó «Entrar» con todo escrito. [param remember]: guardar el correo.
+## Pressed "Entrar" (Enter) with everything filled in. [param remember]: save the email.
 signal login_requested(email: String, password: String, remember: bool)
-## Pulsó «Crear cuenta».
+## Pressed "Crear cuenta" (Create account).
 signal register_requested
-## Envió el panel de recuperar la contraseña con [param email].
+## Submitted the password recovery panel with [param email].
 signal forgot_requested(email: String)
-## Pulsó «Ajustes».
+## Pressed "Ajustes" (Settings).
 signal settings_requested
-## Pulsó «Salir».
+## Pressed "Salir" (Quit).
 signal quit_requested
 
 const TEXT_TITLE: String = "Eldmark"
@@ -140,7 +142,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Pone el foco en el primer campo vacío (el correo, o la contraseña si el correo está recordado).
+## Puts focus on the first empty field (the email, or the password if the email is remembered).
 func focus_first() -> void:
 	if not is_inside_tree():
 		return
@@ -150,7 +152,7 @@ func focus_first() -> void:
 		_password_edit.grab_focus()
 
 
-## El estado del servicio de [code]GET /v1/status[/code] ([param status]); vacío = sin conexión.
+## The service status from [code]GET /v1/status[/code] ([param status]); empty = offline.
 func set_status(status: Dictionary) -> void:
 	for child: Node in _news.get_children():
 		child.queue_free()
@@ -168,7 +170,8 @@ func set_status(status: Dictionary) -> void:
 				_news.add_child(item)
 
 
-## El texto de estado de [param status]: «En línea · Eld», «En mantenimiento hasta las 18:00»…
+## The status text for [param status]: "En línea · Eld" (Online · Eld), "En mantenimiento hasta las 18:00"
+## (Under maintenance until 18:00)...
 static func status_text(status: Dictionary) -> String:
 	if str(status.get("status", "")) == "maintenance":
 		var until: Variant = status.get("maintenance_at")
@@ -186,21 +189,21 @@ func get_status_text() -> String:
 	return _status_label.text
 
 
-## Rellena el correo recordado (y marca «Recordar correo»).
+## Fills in the remembered email (and checks "Recordar correo" (Remember email)).
 func set_remembered_email(email: String) -> void:
 	_email_edit.text = email
 	_remember_check.button_pressed = not email.is_empty()
 	_refresh_state()
 
 
-## Vacía la contraseña (tras un fallo o al volver al título).
+## Clears the password (after a failure or when returning to the title).
 func clear_password() -> void:
 	_password_edit.text = ""
 	_refresh_state()
 
 
-## Emite [signal login_requested] si hay correo y contraseña (lo que hacen «Entrar» e Intro). Devuelve true si lo
-## emitió.
+## Emits [signal login_requested] if there is an email and password (what "Entrar" (Enter) and Enter do).
+## Returns true if it emitted it.
 func try_login() -> bool:
 	if _busy or not _can_login():
 		return false
@@ -208,7 +211,7 @@ func try_login() -> bool:
 	return true
 
 
-## Abre el panel de recuperar la contraseña (con el correo escrito).
+## Opens the password recovery panel (with the typed email).
 func open_forgot() -> void:
 	_forgot_email.text = _email_edit.text.strip_edges()
 	_login_box.visible = false
@@ -228,7 +231,7 @@ func is_forgot_open() -> bool:
 	return _forgot_box.visible
 
 
-## Emite [signal forgot_requested] si hay un correo escrito. Devuelve true si lo emitió.
+## Emits [signal forgot_requested] if an email has been typed. Returns true if it emitted it.
 func try_forgot() -> bool:
 	var email: String = _forgot_email.text.strip_edges()
 	if _busy or email.is_empty():
@@ -237,7 +240,7 @@ func try_forgot() -> bool:
 	return true
 
 
-## La plataforma ya ha recibido la petición de recuperar: el mensaje de siempre y de vuelta al inicio de sesión.
+## The platform has received the recovery request: the usual message and back to the login.
 func show_forgot_sent() -> void:
 	close_forgot()
 	set_notice(TEXT_FORGOT_SENT, false)
@@ -281,7 +284,7 @@ func _on_text_changed(_text: String) -> void:
 	_refresh_state()
 
 
-# Intro en el correo: a la contraseña si falta; si no, entra.
+# Enter in the email field: moves to the password if it is empty; otherwise, logs in.
 func _on_email_submitted(_text: String) -> void:
 	if _password_edit.text.is_empty() and is_inside_tree():
 		_password_edit.grab_focus()

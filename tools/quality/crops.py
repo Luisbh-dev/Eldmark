@@ -1,18 +1,18 @@
 #!/usr/bin/env python
-"""Recortes de elementos de la interfaz a partir de las capturas completas del área interfaz.
+"""Crops of interface elements from the full captures of the interfaz area.
 
-Son las mismas regiones de píxeles (a 1920 x 1080) con las que se hizo la auditoría de calidad, para poder comparar un antes
-y un después sobre el mismo encuadre aunque el HUD cambie de sitio: si un elemento se mueve, el recorte lo enseña fuera de su
-sitio y eso es justo lo que se quiere ver.
+They are the same pixel regions (at 1920 x 1080) used for the quality audit, so that a before
+and an after can be compared on the same framing even if the HUD moves: if an element moves, the crop shows it out of
+place and that is exactly what is wanted.
 
-Uso: python crops.py <salida>   (lee <salida>/interfaz/*.png y escribe <salida>/interfaz/recorte_*.png)
+Usage: python crops.py <output>   (reads <output>/interfaz/*.png and writes <output>/interfaz/recorte_*.png)
 """
 import os
 import sys
 
 from PIL import Image
 
-# (archivo de salida, captura de origen, (x, y, ancho, alto), aumento)
+# (output file, source capture, (x, y, width, height), zoom)
 CROPS = [
     ("recorte_barra_de_habilidades_y_vida.png", "hud_en_pelea_05.png", (640, 830, 640, 180), 2),
     ("recorte_numeros_de_dano.png", "hud_en_pelea_02.png", (700, 380, 360, 120), 3),
@@ -25,7 +25,7 @@ CROPS = [
 
 
 def make_crops(base):
-    """Escribe los recortes cuyas capturas de origen existen. Devuelve los nombres escritos."""
+    """Writes the crops whose source captures exist. Returns the names written."""
     folder = os.path.join(base, "interfaz")
     written = []
     for out_name, src_name, (x, y, w, h), scale in CROPS:

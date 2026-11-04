@@ -9,22 +9,21 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// Router es donde se montan las rutas: *app.App.
+// Router is where the routes are mounted: *app.App.
 type Router interface {
 	HandlePublic(pattern string, h http.Handler)
 }
 
-// API son las rutas de cuentas y sesiones de la API pública (§4.2, §4.3) y las páginas de los
-// enlaces de los correos.
+// API is the accounts and sessions routes of the public API (§4.2, §4.3) and the pages for the
+// email links.
 type API struct {
 	s *Service
 }
 
-// NewAPI prepara las rutas del servicio.
+// NewAPI prepares the service's routes.
 func NewAPI(s *Service) *API { return &API{s: s} }
 
-// Mount monta las rutas. Las de /v1 exigen X-Eldmark-Protocol (426); las páginas de los enlaces
-// no.
+// Mount mounts the routes. The /v1 ones require X-Eldmark-Protocol (426); the link pages do not.
 func (a *API) Mount(r Router) {
 	v1 := func(pattern string, h http.HandlerFunc) {
 		r.HandlePublic(pattern, httpx.RequireProtocol(a.s.minProtocol, h))
@@ -48,7 +47,7 @@ func (a *API) Mount(r Router) {
 	v1("POST /v1/account/email/confirm", a.emailConfirm)
 	v1("POST /v1/account/email/revert", a.emailRevert)
 
-	// La sesión de privacidad de una cuenta sancionada solo admite estas (§4.2).
+	// A sanctioned account's privacy session only allows these (§4.2).
 	privacy("DELETE /v1/sessions/current", a.logout)
 	privacy("GET /v1/account", a.account)
 	privacy("POST /v1/account/deletion", a.requestDeletion)
@@ -64,12 +63,12 @@ func (a *API) Mount(r Router) {
 	a.mountPages(r)
 }
 
-// RequireSession exige un token de acceso vivo (si no, 401 unauthorized) y deja la sesión en el
-// contexto ([SessionFrom]). Con allowPrivacy false, la ruta no admite la sesión de privacidad ni
-// una cuenta con una suspensión o expulsión vigente: 403 account_suspended o account_banned con
-// until y reason (§4.2). Si la sanción de una sesión de privacidad ya terminó, 401: al volver a
-// iniciar sesión recibe una de juego. Los paquetes siguientes (personajes, enter) montan sus rutas
-// con RequireSession(false, …).
+// RequireSession requires a live access token (otherwise, 401 unauthorized) and leaves the session
+// in the context ([SessionFrom]). With allowPrivacy false, the route does not allow the privacy
+// session or an account with a current suspension or ban: 403 account_suspended or account_banned
+// with until and reason (§4.2). If the sanction of a privacy session has already ended, 401: on
+// logging in again it gets a gameplay one. The following packages (characters, enter) mount their
+// routes with RequireSession(false, ...).
 func (a *API) RequireSession(allowPrivacy bool, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearer(r)
@@ -122,7 +121,7 @@ func (a *API) meta(r *http.Request) ClientMeta {
 		Protocol: httpx.ClientProtocol(r)}
 }
 
-// decode lee el cuerpo JSON (16 KB, estricto); si falla, escribe el error y devuelve false.
+// decode reads the JSON body (16 KB, strict); if it fails, it writes the error and returns false.
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	if e := httpx.DecodeJSON(w, r, httpx.PublicBodyLimit, v); e != nil {
 		httpx.WriteError(w, e)

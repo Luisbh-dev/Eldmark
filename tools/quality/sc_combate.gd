@@ -1,15 +1,15 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área combate: refriegas en el fuerte del Vado Gris.
+## Quality capture bench (TEC-50), combat area: brawls at the Vado Gris fort.
 ##
-## Con los bots de los dos reinos ([code]--bot-brain=siege[/code]), los Huecos y el capitán peleando alrededor, el cliente
-## se teletransporta al punto más concurrido del fuerte (o a la puerta si no hay nadie) y combate con
-## [code]Input.action_press[/code] (acercarse, ligeros, habilidades, esquiva, bloqueo). Cada ~0,9 s guarda una captura con HUD
-## ([code]combate/pelea_NN.png[/code]) y al final una secuencia con el escudo arriba mientras le atacan
-## ([code]combate/bloqueo_recibiendo_NN.png[/code]). Con la etiqueta [code]*_b[/code] ([code]--tag=combate_b[/code]) restablece el
-## fuerte cada dos rondas para que vuelvan los Huecos y el capitán, y los archivos llevan [code]_b[/code].
+## With the bots of both realms ([code]--bot-brain=siege[/code]), the Hollow and the captain fighting around, the client
+## teleports to the busiest point of the fort (or to the gate if nobody is there) and fights with
+## [code]Input.action_press[/code] (approach, light attacks, abilities, dodge, block). Every ~0.9 s it saves a capture with HUD
+## ([code]combate/pelea_NN.png[/code]) and at the end a sequence with the shield up while being attacked
+## ([code]combate/bloqueo_recibiendo_NN.png[/code]). With the tag [code]*_b[/code] ([code]--tag=combate_b[/code]) it resets the
+## fort every two rounds so that the Hollow and the captain come back, and the files carry [code]_b[/code].
 ## [br][br]
-## Las tiras de animación de los personajes vistos desde este cliente ya no salen de aquí (otros combatientes los tapaban):
-## están en [code]sc_remotos_bot.gd[/code], [code]sc_remotos_pnj.gd[/code] y [code]sc_bloqueo.gd[/code].
+## The animation strips of the characters seen from this client no longer come from here (other combatants blocked them):
+## they are in [code]sc_remotos_bot.gd[/code], [code]sc_remotos_pnj.gd[/code] and [code]sc_bloqueo.gd[/code].
 
 const Spar = preload("res://tools/quality/spar.gd")
 
@@ -37,7 +37,7 @@ func run(drv: Variant) -> void:
 	_spar = Spar.new(d, _rng.seed)
 	_spar.look_offset_deg = 0.0
 	await d.wait(1.0)
-	# Rondas de pelea en el punto más concurrido del fuerte (o a la puerta si no hay nadie).
+	# Fight rounds at the busiest point of the fort (or at the gate if nobody is there).
 	var t_end: int = Time.get_ticks_msec() + TIMEOUT_MS
 	while Time.get_ticks_msec() < t_end and shot_n < SHOTS:
 		round_n += 1
@@ -92,7 +92,7 @@ func _fight(seconds: float, shot_gap: float) -> void:
 
 
 func _block_sequence() -> void:
-	# Bloqueo recibiendo golpes: junto a un Hueco, con el escudo arriba.
+	# Blocking while taking hits: next to a Hollow, with the shield up.
 	await d.tp(-26.0, 0.0, -90.0, 6.0, NAN, 0.8)
 	_spar.set_mode("tank")
 	var end: int = Time.get_ticks_msec() + 24000

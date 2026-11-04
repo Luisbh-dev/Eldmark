@@ -1,17 +1,17 @@
 #!/usr/bin/env python
-"""Une los fotogramas sueltos de las tiras (anim_strips.gd y strip_recorder.gd) en rejillas de 4 x 3 con rótulos.
+"""Joins the loose frames of the strips (anim_strips.gd and strip_recorder.gd) into 4 x 3 grids with labels.
 
-Entrada: <raw>/<accion>/<ventana>/{game,side,front}_NN.png y meta.json.
-Salida:  <out>/animacion/<vista>/<accion>[__<ventana>].png con vista en
-         camara_juego, lado y frente (sandbox y tiras del jugador local) y remoto y remoto_lado (tiras `rem_*`,
-         vistas desde otro cliente de verdad: cámara del juego y cámara lateral propia).
+Input:  <raw>/<accion>/<ventana>/{game,side,front}_NN.png and meta.json.
+Output: <out>/animacion/<vista>/<accion>[__<ventana>].png with the view being one of
+        camara_juego, lado and frente (sandbox and local player strips) and remoto and remoto_lado (`rem_*` strips,
+        views from another real client: the game camera and the own side camera).
 
-Cada celda lleva su rótulo: nº de fotograma, tiempo (s), acción de combate de la simulación y, en la segunda línea,
-el clip de combate que enseña la capa de animación con su instante y su velocidad (o la velocidad del personaje, o la
-fase de aire). Una tira vista desde otro cliente marca los fotogramas con otro cuerpo delante (TAPADO) y los golpes
-que el cliente vio en ese intervalo (BLOQUEADO, PARADA, GOLPE...).
+Each cell carries its label: frame number, time (s), the simulation's combat action and, on the second line,
+the combat clip the animation layer is showing with its time and its speed (or the character's speed, or the
+air phase). A strip seen from another client marks the frames with another body in front (TAPADO, "occluded") and the hits
+the client saw in that interval (BLOQUEADO "blocked", PARADA "parried", GOLPE "hit"...).
 
-Uso: python compose_strips.py <raw> <out> [--only=a,b] [--prefix=npc_]
+Usage: python compose_strips.py <raw> <out> [--only=a,b] [--prefix=npc_]
 """
 import json
 import os
@@ -19,13 +19,13 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-# clave del fotograma, carpeta de salida, nombre de la vista en el subtítulo
+# frame key, output folder, view name in the subtitle
 VIEWS = [
     ("game", "camara_juego", "cámara del juego"),
     ("side", "lado", "de lado"),
     ("front", "frente", "de frente"),
 ]
-# Las tiras de otro cliente (rem_*) van a sus propias carpetas.
+# The strips from another client (rem_*) go to their own folders.
 REMOTE_VIEWS = [
     ("game", "remoto", "cámara del juego siguiendo al remoto"),
     ("side", "remoto_lado", "cámara lateral propia sobre el remoto"),
@@ -55,7 +55,7 @@ def views_for(act_id):
 
 
 def _cell_lines(fr):
-    """Las dos líneas de rótulo de un fotograma."""
+    """The two label lines of a frame."""
     first = "%d  t=%.2fs  %s" % (fr["k"] + 1, fr["t"], fr["action"])
     clip = fr.get("clip") or ""
     if clip:
@@ -128,7 +128,7 @@ def compose(raw_dir, out_dir, act_id, win_name):
 
 
 def compose_all(raw_dir, out_dir, only=None, prefix=None):
-    """Compone todas las tiras de [raw_dir] (o solo las de [only] / con [prefix]). Devuelve las rutas escritas."""
+    """Composes all the strips in [raw_dir] (or only those in [only] / with [prefix]). Returns the paths written."""
     written = []
     if not os.path.isdir(raw_dir):
         return written

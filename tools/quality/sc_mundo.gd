@@ -1,11 +1,11 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área mundo (escenario de online_driver.gd).
+## Quality capture bench (TEC-50), mundo area (scenario of online_driver.gd).
 ##
-## Recorrido por el Vado Gris a altura de jugador con la cámara real del juego (sin HUD).
-## Las posiciones están escritas para Vardheim (norte); con Solmarch se reflejan (z -> -z, yaw -> 180 - yaw),
-## así que cada reino ve su campamento y su muralla y los dos ven el mismo valle desde su lado.
+## Walkthrough of Vado Gris at player height with the real game camera (no HUD).
+## The positions are written for Vardheim (north); with Solmarch they are mirrored (z -> -z, yaw -> 180 - yaw),
+## so each realm sees its camp and its wall and both see the same valley from their side.
 
-# [nombre, x, z, yaw_grados, pitch_grados, descripción]
+# [name, x, z, yaw_degrees, pitch_degrees, description]
 const VIEWS: Array = [
 	["campamento_spawn", 0.0, -138.0, 180.0, 0.0, "campamento del reino, en el punto de aparición, mirando hacia el fuerte"],
 	["campamento_tiendas", -12.0, -134.0, 90.0, 5.0, "campamento: tiendas, cajas y hoguera"],
@@ -61,7 +61,7 @@ func run(d: Variant) -> void:
 		var z: float = float(v[2])
 		var yaw: float = float(v[3])
 		var pitch: float = float(v[4])
-		# La orientación -1 significa "mirar al centro del fuerte (0, 0)".
+		# The orientation -1 means "look at the centre of the fort (0, 0)".
 		if yaw == -1.0:
 			yaw = d.yaw_to(x, z, 0.0, 0.0)
 		if mirror:

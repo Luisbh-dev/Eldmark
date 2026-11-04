@@ -1,43 +1,43 @@
 class_name ClaimedCharacter
 extends RefCounted
-## Lo que trae el 200 de la reclamación del billete (docs/plataforma.md §5.3 y §6): la cuenta, el personaje, el
-## arrendamiento y sus secciones guardadas. La zona usa el reino y el nombre de aquí, nunca los del HELLO.
+## What the 200 of the ticket claim brings (docs/plataforma.md §5.3 and §6): the account, the character, the
+## lease and its saved sections. The zone uses the realm and name from here, never those of the HELLO.
 ## [br][br]
-## [method from_claim] lee el cuerpo estricto, como Go: ids en cadena ([method String.to_int], hasta 2^63 − 1) y
-## enteros con [code]int()[/code] (admite [code]4.0[/code]). La sección [code]progress[/code] llega tal cual a
-## [code]ProgressRecord.from_dictionary[/code] (docs/progresion.md §3.4), que hace lo mismo con lo suyo.
+## [method from_claim] reads the body strictly, like Go: string ids ([method String.to_int], up to 2^63 − 1) and
+## integers with [code]int()[/code] (accepts [code]4.0[/code]). The [code]progress[/code] section arrives as-is at
+## [code]ProgressRecord.from_dictionary[/code] (docs/progresion.md §3.4), which does the same with its own.
 
-## Roles de las cuentas, de menor a mayor (§9.1).
+## Account roles, lowest to highest (§9.1).
 const ROLES: Array[StringName] = [&"player", &"moderator", &"gm", &"admin"]
-## Los seis totales de la sección pvp (§8).
+## The six totals of the pvp section (§8).
 const PVP_KEYS: Array[String] = ["kills", "deaths", "assists", "captures", "gate_damage", "defend_s"]
-## Tope de un [code]lease_id[/code] (un UUID ocupa 36).
+## Cap on a [code]lease_id[/code] (a UUID takes 36).
 const MAX_LEASE_ID_LENGTH: int = 64
 
 var character_id: int = 0
 var account_id: int = 0
 var world_id: int = 0
-## Código de [enum NetProtocol.Realm].
+## Code of [enum NetProtocol.Realm].
 var realm: int = 0
 var display_name: String = ""
-## Uno de [constant ROLES].
+## One of [constant ROLES].
 var role: StringName = &"player"
 var lease_id: String = ""
-## Fin del silencio de la cuenta (0 sin silencio; 253402300799 en uno sin fin).
+## End of the account's mute (0 without a mute; 253402300799 for an open-ended one).
 var muted_until_unix: int = 0
 var ignored_accounts: PackedInt64Array = PackedInt64Array()
-## La sección progress tal cual llega; la lee [code]ProgressRecord.from_dictionary[/code] (progresion.md §14.2).
+## The progress section as it arrives; read by [code]ProgressRecord.from_dictionary[/code] (progresion.md §14.2).
 var progress: Dictionary = {}
-## [code]{kills, deaths, assists, captures, gate_damage, defend_s}[/code], ya con [code]int()[/code].
+## [code]{kills, deaths, assists, captures, gate_damage, defend_s}[/code], already with [code]int()[/code].
 var pvp: Dictionary = {}
-## El [code]instance_status[/code] de la respuesta.
+## The response's [code]instance_status[/code].
 var instance_status: String = ""
-## Avisos de la moderación que la cuenta no ha visto ([code]account.warnings[/code], plataforma.md §19.5):
-## [code]{sanction_id: int, text: String, at_unix: int}[/code]. Los manda la zona en un NOTICE al entrar (P7b).
+## Moderation warnings the account has not seen ([code]account.warnings[/code], plataforma.md §19.5):
+## [code]{sanction_id: int, text: String, at_unix: int}[/code]. The zone sends them in a NOTICE on entry (P7b).
 var warnings: Array[Dictionary] = []
 
 
-## Lo que trae [param body], o null si falta algo o algo no tiene la forma de §6.
+## What [param body] brings, or null if something is missing or something does not have the shape of §6.
 static func from_claim(body: Dictionary) -> ClaimedCharacter:
 	var account: Dictionary = PlatformJson.dict_in(body, "account")
 	var character: Dictionary = PlatformJson.dict_in(body, "character")
@@ -100,6 +100,6 @@ static func from_claim(body: Dictionary) -> ClaimedCharacter:
 	return claimed
 
 
-## true si es del personal del juego (moderador o más): su SPAWN lleva el bit de la etiqueta (SOC-14).
+## true if it is game staff (moderator or higher): its SPAWN carries the nameplate tag bit (SOC-14).
 func is_staff() -> bool:
 	return ROLES.find(role) >= 1

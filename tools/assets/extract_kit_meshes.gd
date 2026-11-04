@@ -1,21 +1,21 @@
 extends SceneTree
-## Guarda como recursos de texto (.tres) las mallas de las piezas de kit que usan las escenas de
-## props (malla + colisión + material de reino) y los MultiMesh de las murallas.
+## Saves as text resources (.tres) the meshes of the kit pieces used by the prop scenes (mesh +
+## collision + realm material) and the MultiMeshes of the walls.
 ##
-## Uso, después de copy_vado_gris_assets.gd y de [code]godot --headless --path . --import[/code]:
+## Usage, after copy_vado_gris_assets.gd and [code]godot --headless --path . --import[/code]:
 ## [codeblock]
 ## godot --headless --path . -s res://tools/assets/extract_kit_meshes.gd
 ## [/codeblock]
-## Así las escenas referencian una malla concreta (y no un glTF entero con 116 piezas, como el
-## Castle Wall Kit) y todo sigue en texto, como pide CLAUDE.md. Los materiales del glTF se
-## sustituyen por uno gris sin texturas ([constant PLACEHOLDER_MATERIAL]): las escenas ponen
-## siempre los de reino, y si se quedaran los del glTF sus texturas (rugosidad, ORM, colormap de
-## Kenney) se cargarían en VRAM sin verse nunca. No se dejan vacíos porque un parámetro de
-## instancia (faction_color) sobre una malla con una superficie sin material registra errores.
+## This way the scenes reference a specific mesh (and not an entire glTF with 116 pieces, like the
+## Castle Wall Kit) and everything stays as text, as CLAUDE.md requires. The glTF materials are
+## replaced by a gray untextured one ([constant PLACEHOLDER_MATERIAL]): the scenes always set
+## the realm ones, and if the glTF's were kept their textures (roughness, ORM, Kenney's colormap)
+## would be loaded into VRAM without ever being seen. They are not left empty because an instance
+## parameter (faction_color) on a mesh with a surface that has no material logs errors.
 
 const CASTLE_WALL_SCENE: String = "res://assets/models/environment/castle_wall/castle_walls_kit.gltf"
 const CASTLE_WALL_MESHES_DIR: String = "res://assets/models/environment/castle_wall/meshes"
-## Solo las piezas que usan las escenas (el kit trae 116).
+## Only the pieces the scenes use (the kit has 116).
 const CASTLE_WALL_NODES: PackedStringArray = [
 	"Courtine_Wall", "Courtine_Door_Arch", "Courtine_Slits",
 	"Wall_Wall", "Wall_Window_Arch", "Wall_Slits", "Wall_Floor", "Wall_Battlements",
@@ -23,7 +23,7 @@ const CASTLE_WALL_NODES: PackedStringArray = [
 	"DoorSticker_Gate_Arch", "DoorSticker_Door", "DoorSticker_Portcullis",
 ]
 const VILLAGE_DIR: String = "res://assets/models/environment/village"
-## Material por defecto de las mallas extraídas (gris, sin texturas).
+## Default material of the extracted meshes (gray, untextured).
 const PLACEHOLDER_MATERIAL: String = "res://assets/materials/kit_placeholder.tres"
 const KENNEY_DIR: String = "res://assets/models/blockout/kenney_castle"
 
@@ -45,7 +45,7 @@ func _initialize() -> void:
 	quit(1 if _failed else 0)
 
 
-## Cada glTF/GLB de la carpeta tiene una sola malla: se guarda con el nombre del archivo.
+## Each glTF/GLB in the folder has a single mesh: it is saved under the file's name.
 func _extract_folder(dir: String, extension: String) -> void:
 	var out_dir: String = dir.path_join("meshes")
 	for file_name: String in DirAccess.get_files_at(dir):

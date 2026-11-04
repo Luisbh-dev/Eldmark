@@ -104,7 +104,7 @@ func TestMemoryProgressStore(t *testing.T) {
 	if err != nil || v != 1 {
 		t.Fatalf("Apply: %d, %v", v, err)
 	}
-	// Como S2: un op_id ya guardado no vuelve a valer; uno nuevo, sí.
+	// Like S2: an op_id already stored is no longer valid; a new one is.
 	var invalidS2 *persistence.InvalidSaveError
 	if _, err := m.Apply(ctx, nil, key, json.RawMessage(body)); !errors.As(err, &invalidS2) || invalidS2.Check != "S2" {
 		t.Errorf("op_id repetido: %v", err)

@@ -13,27 +13,29 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// ProgressExporter es lo que la exportación usa del almacén del progreso: ProgressStore.Export
-// (progresion.md §3.5), {"record": …, "ops": […]} con record null en una lápida y sin datos del personal.
+// ProgressExporter is what the export uses from the progression store: ProgressStore.Export
+// (progresion.md §3.5), {"record": ..., "ops": [...]} with record null in a tombstone and without
+// staff data.
 type ProgressExporter interface {
 	Export(ctx context.Context, q persistence.Querier, characterID int64) (json.RawMessage, error)
 }
 
-// exportFormat versiona el archivo de la exportación.
+// exportFormat versions the export file.
 const exportFormat = 1
 
-// Retención de las sesiones y los accesos que se exportan (§11.1: 30 días).
+// Retention of the sessions and logins that are exported (§11.1: 30 days).
 const accessRetention = 30 * 24 * time.Hour
 
-// Export devuelve los datos de la cuenta en JSON (§11.2, con la contraseña y una vez al día;
-// también con la sesión de privacidad) y el nombre del archivo, eldmark-datos-<fecha>.json.
+// Export returns the account's data in JSON (§11.2, with the password and once a day; also with the
+// privacy session) and the file name, eldmark-datos-<date>.json.
 //
-// Lleva la cuenta (sin el hash), las aceptaciones, los consentimientos, las sesiones y los accesos
-// de 30 días, los derechos, los reinos, los personajes (con sus estadísticas y su progreso), los
-// ignorados (por nombre), las sanciones propias (sin autor), los reportes hechos y el chat enviado en
-// plazo. El progreso es characters[i].progress, de ProgressStore.Export (P9a): el registro y lo propio
-// del libro de cada personaje no purgado y, de cada lápida de la cuenta, lo que queda de su libro (sin
-// registro; null si ya no le queda nada). Todo sale de la misma foto de la base.
+// It includes the account (without the hash), the acceptances, the consents, the 30-day sessions
+// and logins, the entitlements, the realms, the characters (with their stats and progression), the
+// ignored players (by name), the account's own sanctions (without author), the reports made and the
+// chat sent within the retention period. The progression is characters[i].progress, from
+// ProgressStore.Export (P9a): the record and the ledger's own data for each unpurged character and,
+// for each tombstone of the account, what remains of its ledger (without record; null if nothing
+// remains). Everything comes from the same snapshot of the database.
 func (s *Service) Export(ctx context.Context, sess *Session, password string, meta ClientMeta) ([]byte, string, error) {
 	if password == "" || len(password) > maxPasswordBytes {
 		return nil, "", errValidation(map[string]string{"password": "required"})
@@ -116,9 +118,10 @@ func (s *Service) Export(ctx context.Context, sess *Session, password string, me
 	return body, "eldmark-datos-" + now.UTC().Format("2006-01-02") + ".json", nil
 }
 
-// exportProgress pone characters[i].progress (§11.2) con ProgressStore.Export, en la transacción de la
-// exportación: el de un personaje sin purgar, entero; el de una lápida, solo si le queda libro (la
-// retención de un año lo vacía y después borra la lápida). Sin almacén no hace nada.
+// exportProgress sets characters[i].progress (§11.2) with ProgressStore.Export, in the export's
+// transaction: an unpurged character's, in full; a tombstone's, only if it still has a ledger (the
+// one-year retention empties it and afterwards deletes the tombstone). Without a store it does
+// nothing.
 func (s *Service) exportProgress(ctx context.Context, tx pgx.Tx, chars []map[string]any) error {
 	if s.progress == nil {
 		return nil
@@ -150,7 +153,7 @@ func (s *Service) exportProgress(ctx context.Context, tx pgx.Tx, chars []map[str
 	return nil
 }
 
-// collectExport lee las filas como mapas, con las fechas en RFC 3339 y UTC.
+// collectExport reads the rows as maps, with dates in RFC 3339 and UTC.
 func collectExport(rows pgx.Rows) ([]map[string]any, error) {
 	list, err := pgx.CollectRows(rows, pgx.RowToMap)
 	if err != nil {

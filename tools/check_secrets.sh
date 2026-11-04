@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Comprobación de secretos de la CI (docs/plataforma.md §10.3). Falla si el índice de git lleva
-# algún *.env, algo bajo un directorio secrets/ o un *.pem o *.key fuera de tests/, o si un
-# platform/deploy/*.example trae el valor de un secreto (ELDMARK_TICKET_KEYS=…, ELDMARK_ZONE_TOKENS=…,
-# ELDMARK_ZONE_TOKEN=…, ELDMARK_SMTP_URL=…, ELDMARK_DATABASE_URL=… o ELDMARK_EMAIL_HMAC_KEY=…; las
-# variables *_FILE con la ruta del secreto sí valen).
+# CI secrets check (docs/plataforma.md §10.3). Fails if the git index contains any *.env, anything under a
+# secrets/ directory or a *.pem or *.key outside tests/, or if a platform/deploy/*.example has the value of a
+# secret (ELDMARK_TICKET_KEYS=…, ELDMARK_ZONE_TOKENS=…, ELDMARK_ZONE_TOKEN=…, ELDMARK_SMTP_URL=…,
+# ELDMARK_DATABASE_URL=… or ELDMARK_EMAIL_HMAC_KEY=…; the *_FILE variables holding the path to the secret are fine).
 #
-# Uso: tools/check_secrets.sh [raíz del repositorio]   (por defecto, la del repositorio actual)
+# Usage: tools/check_secrets.sh [repository root]   (by default, the current repository's)
 set -euo pipefail
 
 root="${1:-$(git rev-parse --show-toplevel)}"

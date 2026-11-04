@@ -70,7 +70,7 @@ Las fechas, en UTC: 2026-11-01, 2026-11-01T18:00 o RFC 3339. Las duraciones: 30m
 La configuración es la de serve (variables ELDMARK_*, docs/plataforma.md §2.3).
 `
 
-// errAdminUsage es un error de uso de la orden admin (código 2).
+// errAdminUsage is a usage error of the admin command (code 2).
 type errAdminUsage struct{ msg string }
 
 func (e *errAdminUsage) Error() string { return e.msg }
@@ -79,17 +79,17 @@ func usageErr(format string, args ...any) error {
 	return &errAdminUsage{msg: fmt.Sprintf(format, args...)}
 }
 
-// adminEnv es lo que necesita una orden admin al correr.
+// adminEnv is what an admin command needs when it runs.
 type adminEnv struct {
 	svc   *admin.Service
 	actor *admin.Actor
 	out   io.Writer
 }
 
-// adminOrder es una orden admin ya leída: el rol que pide y lo que hace.
+// adminOrder is an admin command already parsed: the role it requires and what it does.
 type adminOrder struct {
 	name string
-	need string // sanctions.RoleModerator (lectura) o RoleAdmin; "" en bootstrap (sin --actor)
+	need string // sanctions.RoleModerator (read) or RoleAdmin; "" in bootstrap (no --actor)
 	run  func(ctx context.Context, e *adminEnv) error
 }
 
@@ -149,7 +149,7 @@ func adminCmd(ctx context.Context, args []string, lookup config.Lookup, stdout, 
 	return exitOK
 }
 
-// adminFail escribe el error de una orden y devuelve su código: 2 si el --actor no vale, 1 si no.
+// adminFail writes a command's error and returns its code: 2 if the --actor is not valid, 1 otherwise.
 func adminFail(stderr io.Writer, name string, err error) int {
 	var actorErr *admin.ActorError
 	if errors.As(err, &actorErr) {
@@ -160,8 +160,8 @@ func adminFail(stderr io.Writer, name string, err error) int {
 	return exitError
 }
 
-// adminServices monta lo que usan las órdenes admin con la configuración de serve: cuentas (con la
-// purga de personajes sobre el almacén del progreso de progresion.md P7) y el servicio admin.
+// adminServices wires up what the admin commands use, from the serve configuration: accounts (with
+// the character purge over the progression store of progresion.md P7) and the admin service.
 func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger,
 	lookup config.Lookup) (*adminEnv, error) {
 	runner, err := migrate.New(pool, migrate.FS())
@@ -207,8 +207,8 @@ func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, 
 	return env, err
 }
 
-// parseAdmin lee la orden y sus argumentos (sin tocar la base: un error de uso sale con 2 antes de
-// conectar).
+// parseAdmin parses the command and its arguments (without touching the database: a usage error
+// exits with 2 before connecting).
 func parseAdmin(args []string) (*adminOrder, error) {
 	name, rest := args[0], args[1:]
 	switch name {
@@ -615,8 +615,8 @@ func parseSanction(args []string) (*adminOrder, error) {
 	return nil, usageErr("sanction add|revoke|list")
 }
 
-// parseFlags lee los argumentos con las opciones mezcladas entre los posicionales (el paquete flag
-// para en el primero que no es una opción). define declara las opciones de la orden.
+// parseFlags parses the arguments with the options mixed in among the positionals (the flag package
+// stops at the first non-option). define declares the command's options.
 func parseFlags(name string, args []string, define func(*flag.FlagSet)) ([]string, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -637,7 +637,7 @@ func parseFlags(name string, args []string, define func(*flag.FlagSet)) ([]strin
 	}
 }
 
-// idList es una opción repetible de ids (--report 1 --report 2, o --report 1,2).
+// idList is a repeatable option of ids (--report 1 --report 2, or --report 1,2).
 type idList []int64
 
 func (l *idList) String() string { return fmt.Sprint([]int64(*l)) }
@@ -668,7 +668,7 @@ func parseWorld(w int) (int16, error) {
 	return int16(w), nil
 }
 
-// parseWhen lee una fecha en UTC: 2026-11-01, 2026-11-01T18:00, 2026-11-01 18:00 o RFC 3339.
+// parseWhen parses a date in UTC: 2026-11-01, 2026-11-01T18:00, 2026-11-01 18:00 or RFC 3339.
 func parseWhen(s string) (time.Time, error) {
 	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04",
 		"2006-01-02"} {
@@ -679,7 +679,7 @@ func parseWhen(s string) (time.Time, error) {
 	return time.Time{}, usageErr("%q no es una fecha (2026-11-01, 2026-11-01T18:00 o RFC 3339)", s)
 }
 
-// parseSpan lee una duración: las de Go (30m, 24h) o días (7d).
+// parseSpan parses a duration: Go's (30m, 24h) or days (7d).
 func parseSpan(s string) (time.Duration, error) {
 	if days, ok := strings.CutSuffix(s, "d"); ok {
 		n, err := strconv.Atoi(days)
@@ -695,7 +695,7 @@ func parseSpan(s string) (time.Duration, error) {
 	return d, nil
 }
 
-// readPurges lee purges.txt (admin.ParsePurges).
+// readPurges reads purges.txt (admin.ParsePurges).
 func readPurges(path string) ([]admin.PurgeEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -705,7 +705,7 @@ func readPurges(path string) ([]admin.PurgeEntry, error) {
 	return admin.ParsePurges(f)
 }
 
-// readPassword lee la contraseña de un archivo (sin el salto de línea final).
+// readPassword reads the password from a file (without the trailing newline).
 func readPassword(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -759,7 +759,7 @@ func optInt16(v *int16) string {
 	return strconv.Itoa(int(*v))
 }
 
-// characterRef es «Nombre (#id)», o «#id» sin nombre (purgado).
+// characterRef is "Name (#id)", or "#id" without a name (purged).
 func characterRef(name *string, id *int64) string {
 	switch {
 	case id == nil:
@@ -770,7 +770,7 @@ func characterRef(name *string, id *int64) string {
 	return *name + " (#" + strconv.FormatInt(*id, 10) + ")"
 }
 
-// who es el actor o el objetivo de una fila: el personaje si hay, si no la cuenta.
+// who is the actor or the target of a row: the character if there is one, otherwise the account.
 func who(account, character *int64, name *string) string {
 	if character != nil {
 		return characterRef(name, character)
@@ -781,7 +781,7 @@ func who(account, character *int64, name *string) string {
 	return "—"
 }
 
-// oneLine quita los saltos de línea y corta a max caracteres.
+// oneLine strips line breaks and truncates to max characters.
 func oneLine(s string, max int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > max {

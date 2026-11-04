@@ -1,70 +1,70 @@
 class_name CombatCatalog
 extends RefCounted
-## Catálogo de combate (docs/combate.md, sección 2; docs/habilidades.md, sección 2.2): lee los
-## recursos de [code]data/combat/[/code] una sola vez (carga perezosa), asigna IDs estables,
-## convierte las duraciones a ticks y hornea las curvas de la esquiva y de los avances.
+## Combat catalog (docs/combate.md, section 2; docs/habilidades.md, section 2.2): reads the
+## resources in [code]data/combat/[/code] only once (lazy loading), assigns stable IDs,
+## converts durations to ticks and bakes the dodge and advance curves.
 ## [br][br]
-## [b]IDs.[/b] Ataques, armas, habilidades (y consumibles), efectos, proyectiles y plantillas tienen
-## espacios de IDs separados: 1..n por orden alfabético de su [code]id[/code] y 0 = ninguno. Un
-## [code]id[/code] repetido es un error. Efectos y plantillas caben en u8. Nadie escribe un ID a mano:
-## se piden por nombre ([method attack_id], [method ability_id]...), porque los datos de otros paquetes
-## (las armas [code]npc_*[/code] de los PNJ) desplazan los números.
+## [b]IDs.[/b] Attacks, weapons, abilities (and consumables), effects, projectiles and templates have
+## separate ID spaces: 1..n in alphabetical order of their [code]id[/code] and 0 = none. A repeated
+## [code]id[/code] is an error. Effects and templates fit in u8. Nobody writes an ID by hand:
+## they are requested by name ([method attack_id], [method ability_id]...), because data from other packages
+## (the [code]npc_*[/code] weapons of NPCs) shift the numbers.
 ## [br][br]
-## [b]Ticks.[/b] Las duraciones de los [code].tres[/code] están en segundos y se convierten con
-## [code]roundi(s * 60)[/code] ([method seconds_to_ticks]). Cada ventana es un intervalo
-## [code][desde, hasta)[/code] de ticks contado desde el [code]action_tick[/code].
+## [b]Ticks.[/b] Durations in the [code].tres[/code] files are in seconds and are converted with
+## [code]roundi(s * 60)[/code] ([method seconds_to_ticks]). Each window is a
+## [code][from, to)[/code] interval of ticks counted from the [code]action_tick[/code].
 ## [br][br]
-## [b]Curvas.[/b] La de la esquiva y la del avance de una habilidad se hornean en una tabla de
-## velocidades por tick (f32, como viajan las demás magnitudes de la simulación) normalizada para
-## que la distancia total sea la del dato.
+## [b]Curves.[/b] The dodge's and an ability advance's are baked into a table of
+## per-tick speeds (f32, like the other simulation quantities) normalized so
+## that the total distance is that of the data.
 ## [br][br]
-## [b]Habilidades.[/b] Cada [AbilityTicks] sabe en qué arma y ranura está (o qué consumible es) y
-## lleva un [AttackTicks] sintetizado con sus ventanas y sus campos de solo servidor
+## [b]Abilities.[/b] Each [AbilityTicks] knows which weapon and slot it is in (or which consumable it is) and
+## carries a synthesized [AttackTicks] with its windows and its server-only fields
 ## ([member AbilityTicks.hit]).
 ## [br][br]
-## [b]Huella.[/b] [method prediction_hash] resume todo lo que cambia lo que simulan cliente y
-## servidor: todo campo marcado como predicho en docs/habilidades.md, sección 2.1 (fases, movimiento,
-## costes, curvas horneadas, cancelaciones, bloqueo, habilidades, el id, el tipo y la escala de
-## velocidad de los efectos, los proyectiles y los campos predichos de [CombatRules]); entra en
-## [method NetProtocol.compute_sim_hash]. Daño, mitigación, críticos, controles, formas, pulsos, vida,
-## derribado, interacción, muros, reaparición y plantillas no entran.
+## [b]Fingerprint.[/b] [method prediction_hash] summarizes everything that changes what client and
+## server simulate: every field marked as predicted in docs/habilidades.md, section 2.1 (phases, movement,
+## costs, baked curves, cancels, block, abilities, the id, the type and the speed scale of
+## effects, projectiles and the predicted fields of [CombatRules]); it goes into
+## [method NetProtocol.compute_sim_hash]. Damage, mitigation, crits, controls, shapes, pulses, health,
+## knocked down, interaction, walls, respawn and templates are not included.
 
-## Ticks de simulación por segundo en los que se expresan los datos.
+## Simulation ticks per second in which the data is expressed.
 const TICK_RATE: int = 60
-## Carpeta de los datos de combate.
+## Folder of the combat data.
 const DATA_DIR: String = "res://data/combat"
-## Arma con la que aparece un personaje.
+## Weapon a character spawns with.
 const DEFAULT_WEAPON: StringName = &"sword_shield"
-## Prefijo de las armas de PNJ (una plantilla elegible no puede llevarlas).
+## Prefix of NPC weapons (an eligible template cannot carry them).
 const NPC_PREFIX: String = "npc_"
-## Versión del formato de la huella (sube si cambia lo que entra en ella).
+## Version of the fingerprint format (bumped if what goes into it changes).
 const _HASH_FORMAT: int = 2
 const _MAX_STAMINA: int = 0xFFFF
 const _MAX_BUFFER_TICKS: int = 15
 const _MAX_CHARGE_TICKS: int = 255
 const _MAX_DAMAGE_TYPE: int = 3
-## IDs de 8 bits (efectos y plantillas).
+## 8-bit IDs (effects and templates).
 const _MAX_U8_IDS: int = 255
-## IDs de 16 bits (armas y proyectiles).
+## 16-bit IDs (weapons and projectiles).
 const _MAX_U16_IDS: int = 0xFFFF
-## Máximo de habilidades por arma y de golpes del combo ligero.
+## Maximum abilities per weapon and hits in the light combo.
 const _MAX_ABILITIES: int = 3
 const _MAX_LIGHT_COMBO: int = 3
-## Máximo de proyectiles de un disparo.
+## Maximum projectiles in a shot.
 const _MAX_PROJECTILE_COUNT: int = 5
-## Velocidad máxima (m/s) de un proyectil: su velocidad viaja en s16 de cm/s.
+## Maximum speed (m/s) of a projectile: its speed travels as s16 in cm/s.
 const _MAX_PROJECTILE_SPEED: float = 327.67
-## Dueño de una habilidad que no lleva ningún arma ni es un consumible.
+## Owner of an ability that no weapon carries and that is not a consumable.
 const _NO_OWNER: Vector2i = Vector2i(0, -100)
 
-# Tablas cargadas (null hasta el primer uso).
+# Loaded tables (null until first use).
 static var _tables: CombatTables = null
-# Búfer de 4 bytes para redondear a f32 sin reservar memoria en cada llamada.
+# 4-byte buffer to round to f32 without allocating memory on every call.
 static var _f32_scratch: PackedByteArray = PackedByteArray([0, 0, 0, 0])
 
 
-## Las tablas del catálogo de [constant DATA_DIR], cargadas la primera vez que se piden. Los
-## problemas que encuentre se registran con [code]push_error[/code] una sola vez.
+## The catalog tables from [constant DATA_DIR], loaded the first time they are requested. Any
+## problems found are logged with [code]push_error[/code] only once.
 static func tables() -> CombatTables:
 	if _tables == null:
 		_tables = build_from_directory(DATA_DIR)
@@ -73,118 +73,118 @@ static func tables() -> CombatTables:
 	return _tables
 
 
-## Descarta las tablas cargadas; la siguiente consulta las lee de nuevo.
+## Discards the loaded tables; the next query reads them again.
 static func reload() -> void:
 	_tables = null
 
 
-## El ataque con ID [param id], o null.
+## The attack with ID [param id], or null.
 static func attack(id: int) -> AttackTicks:
 	return tables().attack(id)
 
 
-## El arma con ID [param id], o null.
+## The weapon with ID [param id], or null.
 static func weapon(id: int) -> WeaponTicks:
 	return tables().weapon(id)
 
 
-## La habilidad (o el consumible) con ID [param id], o null.
+## The ability (or consumable) with ID [param id], or null.
 static func ability(id: int) -> AbilityTicks:
 	return tables().ability(id)
 
 
-## El efecto de estado con ID [param id], o null.
+## The status effect with ID [param id], or null.
 static func status(id: int) -> StatusTicks:
 	return tables().status(id)
 
 
-## El proyectil con ID [param id], o null.
+## The projectile with ID [param id], or null.
 static func projectile(id: int) -> ProjectileTicks:
 	return tables().projectile(id)
 
 
-## La plantilla de equipo con ID [param id], o null.
+## The equipment template with ID [param id], or null.
 static func template(id: int) -> EquipmentTemplate:
 	return tables().template(id)
 
 
-## Las reglas generales del combate.
+## The general combat rules.
 static func rules() -> CombatRules:
 	return tables().rules
 
 
-## ID del ataque llamado [param name], o 0 si no existe.
+## ID of the attack named [param name], or 0 if it does not exist.
 static func attack_id(name: StringName) -> int:
 	return tables().attack_ids.get(name, 0)
 
 
-## ID del arma llamada [param name], o 0 si no existe.
+## ID of the weapon named [param name], or 0 if it does not exist.
 static func weapon_id(name: StringName) -> int:
 	return tables().weapon_ids.get(name, 0)
 
 
-## ID de la habilidad (o del consumible) llamada [param name], o 0 si no existe.
+## ID of the ability (or consumable) named [param name], or 0 if it does not exist.
 static func ability_id(name: StringName) -> int:
 	return tables().ability_ids.get(name, 0)
 
 
-## ID del efecto de estado llamado [param name], o 0 si no existe.
+## ID of the status effect named [param name], or 0 if it does not exist.
 static func status_id(name: StringName) -> int:
 	return tables().status_ids.get(name, 0)
 
 
-## ID del proyectil llamado [param name], o 0 si no existe.
+## ID of the projectile named [param name], or 0 if it does not exist.
 static func projectile_id(name: StringName) -> int:
 	return tables().projectile_ids.get(name, 0)
 
 
-## ID de la plantilla llamada [param name], o 0 si no existe.
+## ID of the template named [param name], or 0 if it does not exist.
 static func template_id(name: StringName) -> int:
 	return tables().template_ids.get(name, 0)
 
 
-## Número de plantillas (los IDs van de 1 a este número).
+## Number of templates (IDs go from 1 to this number).
 static func template_count() -> int:
 	return tables().templates.size()
 
 
-## IDs de las armas de la plantilla [param id] en orden de ranura (vacío si no existe).
+## IDs of the weapons of template [param id] in slot order (empty if it does not exist).
 static func template_weapons(id: int) -> PackedInt32Array:
 	return tables().template_weapons(id)
 
 
-## Cargas de la plantilla [param id] empaquetadas como [member CombatState.consumable_charges].
+## Charges of template [param id] packed as [member CombatState.consumable_charges].
 static func template_charges(id: int) -> int:
 	return tables().template_charges_of(id)
 
 
-## ID de la plantilla con la que aparece quien no ha elegido ([member CombatRules.default_template]).
+## ID of the template a player who has not chosen spawns with ([member CombatRules.default_template]).
 static func default_template_id() -> int:
 	return tables().default_template_id
 
 
-## IDs de los dos consumibles en orden de botón (CONSUMABLE_1 y CONSUMABLE_2; 0 si no hay).
+## IDs of the two consumables in button order (CONSUMABLE_1 and CONSUMABLE_2; 0 if there is none).
 static func consumable_ids() -> PackedInt32Array:
 	return tables().consumable_ids
 
 
-## ID del arma con la que aparece un personaje ([constant DEFAULT_WEAPON]).
+## ID of the weapon a character spawns with ([constant DEFAULT_WEAPON]).
 static func default_weapon_id() -> int:
 	return weapon_id(DEFAULT_WEAPON)
 
 
-## Huella (u32) de todo lo predicho. Entra en [method NetProtocol.compute_sim_hash].
+## Fingerprint (u32) of everything predicted. It goes into [method NetProtocol.compute_sim_hash].
 static func prediction_hash() -> int:
 	return tables().prediction_hash
 
 
-## Convierte segundos a ticks de simulación con el redondeo fijo del catálogo.
+## Converts seconds to simulation ticks with the catalog's fixed rounding.
 static func seconds_to_ticks(seconds: float) -> int:
 	return roundi(seconds * TICK_RATE)
 
 
-## Lee todos los [code].tres[/code] de [param dir_path] (sin entrar en subcarpetas) y construye las
-## tablas. Un recurso que no se puede cargar cuenta como error.
+## Reads all the [code].tres[/code] files in [param dir_path] (without entering subfolders) and builds the
+## tables. A resource that cannot be loaded counts as an error.
 static func build_from_directory(dir_path: String) -> CombatTables:
 	var load_errors := PackedStringArray()
 	var resources: Array[Resource] = []
@@ -192,7 +192,7 @@ static func build_from_directory(dir_path: String) -> CombatTables:
 	files.sort()
 	var seen: Dictionary[String, bool] = {}
 	for file_name: String in files:
-		# En proyectos exportados los recursos aparecen como .tres.remap.
+		# In exported projects the resources appear as .tres.remap.
 		var plain: String = file_name.trim_suffix(".remap")
 		if not (plain.ends_with(".tres") or plain.ends_with(".res")) or seen.has(plain):
 			continue
@@ -211,11 +211,11 @@ static func build_from_directory(dir_path: String) -> CombatTables:
 	return result
 
 
-## Construye las tablas a partir de recursos ya cargados: las [CombatRules], las
-## [WeaponDefinition], los [AttackDefinition], las [AbilityDefinition], los
-## [StatusEffectDefinition], los [ProjectileDefinition] y las [EquipmentTemplate] (sueltos o
-## enlazados desde otro recurso; el mismo objeto nunca cuenta dos veces). Los demás recursos se
-## ignoran. No registra errores en el motor: los deja en [member CombatTables.errors].
+## Builds the tables from already loaded resources: the [CombatRules], the
+## [WeaponDefinition]s, the [AttackDefinition]s, the [AbilityDefinition]s, the
+## [StatusEffectDefinition]s, the [ProjectileDefinition]s and the [EquipmentTemplate]s (standalone or
+## linked from another resource; the same object never counts twice). Other resources are
+## ignored. It does not log errors in the engine: it leaves them in [member CombatTables.errors].
 static func build_from_resources(resources: Array[Resource]) -> CombatTables:
 	var tables_out := CombatTables.new()
 	var errors := PackedStringArray()
@@ -242,7 +242,7 @@ static func build_from_resources(resources: Array[Resource]) -> CombatTables:
 		elif resource is EquipmentTemplate:
 			_add_unique(template_defs, resource)
 
-	# Reglas.
+	# Rules.
 	if rules_list.is_empty():
 		errors.append("falta un recurso CombatRules en %s" % DATA_DIR)
 		tables_out.rules = CombatRules.new()
@@ -259,7 +259,7 @@ static func build_from_resources(resources: Array[Resource]) -> CombatTables:
 	tables_out.downed_ticks = seconds_to_ticks(rules_value.downed_s)
 	_validate_rules(rules_value, errors)
 
-	# Recursos enlazados: plantillas -> armas -> ataques y habilidades -> efectos y proyectiles.
+	# Linked resources: templates -> weapons -> attacks and abilities -> effects and projectiles.
 	for consumable: AbilityDefinition in rules_value.consumables:
 		if consumable != null:
 			_add_unique(ability_defs, consumable)
@@ -289,8 +289,8 @@ static func build_from_resources(resources: Array[Resource]) -> CombatTables:
 		_add_if_set(projectile_defs, attack_def.projectile)
 		_add_if_set(status_defs, attack_def.on_hit_status)
 
-	# IDs: 1..n por orden alfabético en cada espacio; un id repetido es un error y el repetido se
-	# descarta.
+	# IDs: 1..n in alphabetical order in each space; a repeated id is an error and the duplicate is
+	# discarded.
 	var named_statuses: Array[Resource] = _sorted_unique(status_defs, "efecto", "un efecto", errors)
 	var named_projectiles: Array[Resource] = _sorted_unique(projectile_defs, "proyectil",
 			"un proyectil", errors)
@@ -317,7 +317,7 @@ static func build_from_resources(resources: Array[Resource]) -> CombatTables:
 	var _template_by_def: Dictionary[Resource, int] = _ids_by_def(named_templates,
 			tables_out.template_ids)
 
-	# Conversión a ticks.
+	# Conversion to ticks.
 	for i: int in named_statuses.size():
 		tables_out.statuses.append(_convert_status(named_statuses[i] as StatusEffectDefinition,
 				i + 1, errors))
@@ -328,7 +328,7 @@ static func build_from_resources(resources: Array[Resource]) -> CombatTables:
 		tables_out.attacks.append(_convert_attack(named_attacks[i] as AttackDefinition, i + 1,
 				status_by_def, projectile_by_def, errors))
 
-	# Dueños de las habilidades: un arma y una ranura, o un consumible; nunca dos.
+	# Owners of abilities: a weapon and a slot, or a consumable; never two.
 	var owners: Dictionary[Resource, Vector2i] = {}
 	for weapon_index: int in named_weapons.size():
 		var weapon_def: WeaponDefinition = named_weapons[weapon_index] as WeaponDefinition
@@ -346,7 +346,7 @@ static func build_from_resources(resources: Array[Resource]) -> CombatTables:
 		_claim_ability(owners, consumable, Vector2i(0, -1 - index), errors)
 	for i: int in named_abilities.size():
 		var ability_def: AbilityDefinition = named_abilities[i] as AbilityDefinition
-		# Sin dueño (suelta en la carpeta): ni ranura ni consumible.
+		# No owner (loose in the folder): neither slot nor consumable.
 		tables_out.abilities.append(_convert_ability(ability_def, i + 1,
 				owners.get(ability_def, _NO_OWNER), tables_out, status_by_def,
 				projectile_by_def, errors))
@@ -370,7 +370,7 @@ static func build_from_resources(resources: Array[Resource]) -> CombatTables:
 	return tables_out
 
 
-# --- Reglas y validación ----------------------------------------------------------------------
+# --- Rules and validation ---------------------------------------------------------------------
 
 static func _validate_rules(rules_value: CombatRules, errors: PackedStringArray) -> void:
 	if rules_value.stamina_max < 1 or rules_value.stamina_max > _MAX_STAMINA:
@@ -397,7 +397,7 @@ static func _validate_rules(rules_value: CombatRules, errors: PackedStringArray)
 			or rules_value.structure_blunt_multiplier < 0.0 \
 			or rules_value.structure_elemental_multiplier < 0.0:
 		errors.append("los multiplicadores contra estructuras no pueden ser negativos")
-	# Fase 4 (docs/habilidades.md, sección 2.1).
+	# Phase 4 (docs/habilidades.md, section 2.1).
 	if seconds_to_ticks(rules_value.swap_s) < 1:
 		errors.append("swap_s debe durar al menos un tick")
 	if seconds_to_ticks(rules_value.revive_s) < 1 or seconds_to_ticks(rules_value.execute_s) < 1:
@@ -433,7 +433,7 @@ static func _validate_rules(rules_value: CombatRules, errors: PackedStringArray)
 		errors.append("topes de proyectiles fuera de rango (1 <= por tirador <= por zona)")
 
 
-# Añade [param item] a [param list] si no estaba ya (el mismo objeto).
+# Adds [param item] to [param list] if it was not already there (the same object).
 static func _add_unique(list: Array[Resource], item: Resource) -> void:
 	if not list.has(item):
 		list.append(item)
@@ -444,9 +444,9 @@ static func _add_if_set(list: Array[Resource], item: Resource) -> void:
 		_add_unique(list, item)
 
 
-# Recursos con id (un StringName en la propiedad «id»), ordenados por id; si dos objetos distintos
-# comparten id, se avisa y se queda el primero. [param kind] y [param article] dan nombre a los
-# errores («id de ataque repetido», «un ataque no tiene id»).
+# Resources with an id (a StringName in the "id" property), sorted by id; if two different objects
+# share an id, a warning is issued and the first one is kept. [param kind] and [param article] name
+# the errors ("repeated attack id", "an attack has no id").
 static func _sorted_unique(definitions: Array[Resource], kind: String, article: String,
 		errors: PackedStringArray) -> Array[Resource]:
 	var sorted: Array[Resource] = []
@@ -467,7 +467,7 @@ static func _sorted_unique(definitions: Array[Resource], kind: String, article: 
 	return unique
 
 
-# Asigna los IDs (1..n) de [param named] en [param ids_by_name] y devuelve el ID de cada objeto.
+# Assigns the IDs (1..n) of [param named] in [param ids_by_name] and returns each object's ID.
 static func _ids_by_def(named: Array[Resource],
 		ids_by_name: Dictionary[StringName, int]) -> Dictionary[Resource, int]:
 	var by_def: Dictionary[Resource, int] = {}
@@ -477,7 +477,7 @@ static func _ids_by_def(named: Array[Resource],
 	return by_def
 
 
-# ID de [param resource] en [param by_def], o 0 si es null o no está.
+# ID of [param resource] in [param by_def], or 0 if it is null or not there.
 static func _id_of(by_def: Dictionary[Resource, int], resource: Resource) -> int:
 	if resource == null:
 		return 0
@@ -489,8 +489,8 @@ static func _check_count(count: int, maximum: int, what: String, errors: PackedS
 		errors.append("hay %d %s y caben %d" % [count, what, maximum])
 
 
-# Anota el dueño de una habilidad: (ID del arma, ranura) o (0, -1 - índice del consumible). Una
-# habilidad solo puede estar en un arma y una ranura, o en los consumibles.
+# Records the owner of an ability: (weapon ID, slot) or (0, -1 - consumable index). An
+# ability can only be in one weapon and one slot, or in the consumables.
 static func _claim_ability(owners: Dictionary[Resource, Vector2i], ability_def: AbilityDefinition,
 		owner: Vector2i, errors: PackedStringArray) -> void:
 	if owners.has(ability_def):
@@ -500,7 +500,7 @@ static func _claim_ability(owners: Dictionary[Resource, Vector2i], ability_def: 
 	owners[ability_def] = owner
 
 
-# --- Conversión a ticks -----------------------------------------------------------------------
+# --- Conversion to ticks ----------------------------------------------------------------------
 
 static func _convert_attack(definition: AttackDefinition, id: int,
 		status_by_def: Dictionary[Resource, int], projectile_by_def: Dictionary[Resource, int],
@@ -655,8 +655,8 @@ static func _convert_weapon(definition: WeaponDefinition, id: int,
 	return ticks
 
 
-# Convierte la esquiva a ticks y hornea su curva: la velocidad de cada tick sale de la curva
-# muestreada en el centro del tick y se escala para que la suma de v / 60 sea distance_m.
+# Converts the dodge to ticks and bakes its curve: each tick's speed comes from the curve
+# sampled at the center of the tick and is scaled so that the sum of v / 60 is distance_m.
 static func _bake_dodge(definition: DodgeDefinition, label: String, rules_value: CombatRules,
 		errors: PackedStringArray) -> DodgeTicks:
 	var ticks := DodgeTicks.new()
@@ -692,8 +692,8 @@ static func _bake_dodge(definition: DodgeDefinition, label: String, rules_value:
 	return ticks
 
 
-# Hornea [param curve] (null = plana) en [param count] velocidades (f32) cuya suma de v / 60 es
-# [param distance]: cada tick muestrea la curva en su centro.
+# Bakes [param curve] (null = flat) into [param count] speeds (f32) whose sum of v / 60 is
+# [param distance]: each tick samples the curve at its center.
 static func _bake_curve(curve: Curve, count: int, distance: float) -> PackedFloat32Array:
 	var speeds := PackedFloat32Array()
 	speeds.resize(count)
@@ -770,8 +770,8 @@ static func _convert_ability(definition: AbilityDefinition, id: int, owner: Vect
 		ticks.dash_speeds = _bake_curve(definition.dash_curve,
 				maxi(ticks.dash_to_ticks - ticks.dash_from_ticks, 0), definition.dash_distance_m)
 
-	# Golpe sintetizado: las ventanas de la habilidad (anticipación = lanzamiento) y sus campos de
-	# solo servidor; su id es la fuente de la habilidad.
+	# Synthesized hit: the ability's windows (windup = cast) and its server-only fields; its id is the
+	# ability's source.
 	var hit := AttackTicks.new()
 	hit.id = CombatSource.make(CombatSource.Kind.ABILITY, id)
 	hit.name = definition.id
@@ -796,7 +796,7 @@ static func _convert_ability(definition: AbilityDefinition, id: int, owner: Vect
 	hit.on_hit_status_id = _id_of(status_by_def, definition.target_status)
 	ticks.hit = hit
 
-	# Validación (docs/habilidades.md, sección 2.2).
+	# Validation (docs/habilidades.md, section 2.2).
 	if definition.cast_s < 0.0 or definition.active_s < 0.0 or definition.recovery_s < 0.0 \
 			or definition.cooldown_s < 0.0:
 		errors.append("%s: las duraciones no pueden ser negativas" % label)
@@ -813,7 +813,7 @@ static func _convert_ability(definition: AbilityDefinition, id: int, owner: Vect
 		if not definition.interrupt_on_damage:
 			errors.append("%s: un consumible lleva interrupt_on_damage" % label)
 	elif ticks.cooldown_ticks < ticks.total_ticks + AbilityTicks.REARM_TICKS:
-		# Así dos usos seguidos de la misma ranura (o dos consumibles) dejan REARM_TICKS en NONE entre medias.
+		# This way two consecutive uses of the same slot (or two consumables) leave REARM_TICKS in NONE in between.
 		errors.append("%s: la reutilización debe ser al menos la duración + %d ticks"
 				% [label, AbilityTicks.REARM_TICKS])
 	if ticks.cancel_to_dodge_from_ticks < 0 or ticks.cancel_to_dodge_from_ticks > ticks.total_ticks \
@@ -917,7 +917,7 @@ static func _convert_projectile(definition: ProjectileDefinition, id: int,
 	return ticks
 
 
-# IDs de las armas de una plantilla, en orden de ranura.
+# IDs of a template's weapons, in slot order.
 static func _convert_template(definition: EquipmentTemplate,
 		weapon_by_def: Dictionary[Resource, int], errors: PackedStringArray) -> PackedInt32Array:
 	var label: String = "plantilla %s" % definition.id
@@ -936,7 +936,7 @@ static func _convert_template(definition: EquipmentTemplate,
 	return weapons
 
 
-# Cargas de una plantilla empaquetadas como CombatState.consumable_charges.
+# Charges of a template packed as CombatState.consumable_charges.
 static func _template_charges(definition: EquipmentTemplate, errors: PackedStringArray) -> int:
 	var charges: PackedInt32Array = definition.consumable_charges
 	if charges.size() != CombatState.CONSUMABLE_SLOTS:
@@ -953,18 +953,18 @@ static func _template_charges(definition: EquipmentTemplate, errors: PackedStrin
 	return CombatState.pack_charges(first, second)
 
 
-# Redondea a float de 32 bits, la precisión con la que viajan las magnitudes de la simulación
-# (igual que PlayerState.to_f32, sin depender de él).
+# Rounds to a 32-bit float, the precision with which simulation quantities travel
+# (same as PlayerState.to_f32, without depending on it).
 static func _to_f32(value: float) -> float:
 	_f32_scratch.encode_float(0, value)
 	return _f32_scratch.decode_float(0)
 
 
-# --- Huella -----------------------------------------------------------------------------------
+# --- Fingerprint ------------------------------------------------------------------------------
 
-# SHA-256 de todo lo que cambia la simulación de cliente y servidor, en un orden fijo: los 4
-# primeros bytes como u32 (como NetProtocol.compute_sim_hash). Los valores solo del servidor
-# (daño, formas, mitigación, controles, pulsos, derribado, muros...) y las plantillas no entran.
+# SHA-256 of everything that changes the client and server simulation, in a fixed order: the first 4
+# bytes as a u32 (like NetProtocol.compute_sim_hash). Server-only values
+# (damage, shapes, mitigation, controls, pulses, knocked down, walls...) and templates are not included.
 static func _compute_hash(tables_in: CombatTables) -> int:
 	var rules_value: CombatRules = tables_in.rules
 	var parts: Array = [

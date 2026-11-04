@@ -1,8 +1,8 @@
 extends TestCase
-## Pruebas de las pistas del juego (UI-42, docs/fuerte.md sección 6): el catálogo ([HintCatalog]), el
-## registro de las que ya vio el jugador en user:// ([HintLog]) y su aparición ([HintToasts]: una sola vez
-## por jugador, cola, tiempos, ajuste para desactivarlas y qué las dispara). Sin servidor: un cliente falso
-## da el personaje y los avisos son sintéticos.
+## Tests for the game hints (UI-42, docs/fuerte.md section 6): the catalogue ([HintCatalog]), the
+## log of the ones the player has already seen in user:// ([HintLog]) and their appearance ([HintToasts]: only once
+## per player, queue, timings, a setting to turn them off and what triggers them). No server: a fake client
+## provides the character and the alerts are synthetic.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -13,7 +13,7 @@ const NET_ID: int = 900
 const TEST_FILE: String = "user://test_hints_%d.cfg"
 
 
-## Cliente de red que no conecta con nada: da el personaje y el reino.
+## Network client that connects to nothing: provides the character and the realm.
 class FakeClient extends NetClient:
 	var fake_character: PlayerCharacter = null
 	var fake_config: ClientConfig = ClientConfig.new()
@@ -25,7 +25,7 @@ class FakeClient extends NetClient:
 		return fake_config
 
 
-## Un panel de captura que se ve o no a voluntad.
+## A capture panel that is shown or not at will.
 class FakePanel extends CapturePanel:
 	var fake_shown: bool = false
 
@@ -97,7 +97,7 @@ func _make_toasts(client: FakeClient, hint_log: HintLog, settings: ClientSetting
 	return toasts
 
 
-## Un registro en el que las dos pistas de bienvenida ya se han visto (para probar las demás sin ellas).
+## A log in which the two welcome hints have already been seen (to test the others without them).
 func _log_after_the_intro() -> HintLog:
 	var hint_log: HintLog = HintLog.in_memory()
 	hint_log.mark_shown(HintCatalog.COMBAT)
@@ -109,19 +109,19 @@ func _war(war_event: int) -> NetMessages.EntityEvent:
 	return NetMessages.EntityEvent.war(NET_ID, 100, war_event, VARDHEIM)
 
 
-# --- Catálogo y registro ----------------------------------------------------------------------
+# --- Catalogue and log ------------------------------------------------------------------------
 
 func test_every_hint_has_a_spanish_text_and_an_order() -> void:
-	assert_eq(HintCatalog.IDS.size(), HintCatalog.TEXTS.size(), "el orden cubre todo el catálogo")
+	assert_eq(HintCatalog.IDS.size(), HintCatalog.TEXTS.size(), "the order covers the whole catalogue")
 	var seen: Dictionary = {}
 	for id: StringName in HintCatalog.IDS:
-		assert_false(seen.has(id), "id repetido %s" % id)
+		assert_false(seen.has(id), "repeated id %s" % id)
 		seen[id] = true
 		assert_true(HintCatalog.has_hint(id))
 		var text: String = HintCatalog.text_of(id)
-		assert_true(text.length() > 20 and text.length() < 160, "%s: texto corto y útil (%d)" % [id, text.length()])
-		assert_true(text.ends_with("."), "%s acaba en punto" % id)
-		assert_false(text.contains("{") or text.contains("}"), "%s no deja marcas sin sustituir: %s" % [id, text])
+		assert_true(text.length() > 20 and text.length() < 160, "%s: short, useful text (%d)" % [id, text.length()])
+		assert_true(text.ends_with("."), "%s ends with a full stop" % id)
+		assert_false(text.contains("{") or text.contains("}"), "%s leaves no placeholders unreplaced: %s" % [id, text])
 	assert_false(HintCatalog.has_hint(&"inventada"))
 	assert_eq(HintCatalog.text_of(&"inventada"), "")
 
@@ -130,8 +130,8 @@ func test_the_texts_name_the_keys_the_player_really_has() -> void:
 	InputBindings.ensure_defaults()
 	assert_eq(HintCatalog.text_of(HintCatalog.CONTROLS),
 			"Pulsa M para abrir el mapa, mantén Tab para ver el marcador y F10 para los ajustes. F1 muestra u oculta la línea de controles.")
-	assert_true(HintCatalog.text_of(HintCatalog.COMBAT).contains("Ctrl esquiva"), "con la esquiva en Ctrl")
-	# Si el jugador reasigna el mapa, la pista lo dice.
+	assert_true(HintCatalog.text_of(HintCatalog.COMBAT).contains("Ctrl esquiva"), "with dodge on Ctrl")
+	# If the player remaps the map, the hint says so.
 	var saved: Array[InputEvent] = InputMap.action_get_events(&"open_map")
 	InputMap.action_erase_events(&"open_map")
 	var event := InputEventKey.new()
@@ -142,23 +142,23 @@ func test_the_texts_name_the_keys_the_player_really_has() -> void:
 	for old: InputEvent in saved:
 		InputMap.action_add_event(&"open_map", old)
 	assert_true(text.begins_with("Pulsa N ") or text.begins_with("Pulsa " + UIKeyGlyph.label_for_event(event) + " "),
-			"la tecla nueva sale en el texto (%s)" % text)
+			"the new key shows in the text (%s)" % text)
 	assert_eq(HintCatalog.resolve("sin marcas"), "sin marcas")
 
 
 func test_the_log_remembers_what_was_shown_in_a_file_and_ignores_garbage() -> void:
 	var path: String = _temp_file()
 	var hint_log: HintLog = HintLog.load_from(path)
-	assert_eq(hint_log.get_shown_count(), 0, "sin archivo, nada visto")
-	assert_true(hint_log.mark_shown(HintCatalog.CONTROLS), "la primera vez se anota")
-	assert_false(hint_log.mark_shown(HintCatalog.CONTROLS), "la segunda ya no")
+	assert_eq(hint_log.get_shown_count(), 0, "without a file, nothing seen")
+	assert_true(hint_log.mark_shown(HintCatalog.CONTROLS), "the first time it is recorded")
+	assert_false(hint_log.mark_shown(HintCatalog.CONTROLS), "the second time it is not")
 	assert_true(hint_log.mark_shown(HintCatalog.TELEGRAPH))
 	var again: HintLog = HintLog.load_from(path)
-	assert_true(again.has_shown(HintCatalog.CONTROLS), "otra sesión lo ve como visto")
+	assert_true(again.has_shown(HintCatalog.CONTROLS), "another session sees it as seen")
 	assert_true(again.has_shown(HintCatalog.TELEGRAPH))
 	assert_false(again.has_shown(HintCatalog.GATE_CLOSED))
 	assert_eq(again.get_shown_count(), 2)
-	# Un archivo con basura: lo desconocido y lo que no es «true» se ignora.
+	# A file with garbage: unknown things and anything that is not "true" are ignored.
 	var config := ConfigFile.new()
 	config.set_value(HintLog.SECTION, "controls", true)
 	config.set_value(HintLog.SECTION, "gate_closed", "sí")
@@ -166,14 +166,14 @@ func test_the_log_remembers_what_was_shown_in_a_file_and_ignores_garbage() -> vo
 	config.save(path)
 	var dirty: HintLog = HintLog.load_from(path)
 	assert_true(dirty.has_shown(HintCatalog.CONTROLS))
-	assert_false(dirty.has_shown(HintCatalog.GATE_CLOSED), "un valor que no es true no cuenta")
-	assert_false(dirty.has_shown(&"no_existe"), "ni una pista desconocida")
+	assert_false(dirty.has_shown(HintCatalog.GATE_CLOSED), "a value that is not true does not count")
+	assert_false(dirty.has_shown(&"no_existe"), "nor an unknown hint")
 	dirty.reset()
-	assert_eq(HintLog.load_from(path).get_shown_count(), 0, "restablecer vacía también el archivo")
+	assert_eq(HintLog.load_from(path).get_shown_count(), 0, "resetting also empties the file")
 	var garbage: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	garbage.store_string("esto no es un archivo de configuración [[[")
 	garbage.close()
-	assert_eq(HintLog.load_from(path).get_shown_count(), 0, "un archivo roto no rompe nada")
+	assert_eq(HintLog.load_from(path).get_shown_count(), 0, "a broken file breaks nothing")
 
 
 func test_an_in_memory_log_never_touches_the_disk() -> void:
@@ -182,48 +182,48 @@ func test_an_in_memory_log_never_touches_the_disk() -> void:
 	assert_eq(memory.path, "")
 	assert_eq(memory.save_file(), OK)
 	assert_true(memory.has_shown(HintCatalog.CONTROLS))
-	assert_eq(memory.load_file(), OK, "y leerlo tampoco falla (queda vacío)")
+	assert_eq(memory.load_file(), OK, "and reading it does not fail either (it ends up empty)")
 	assert_eq(memory.get_shown_count(), 0)
 
 
 func test_without_a_screen_the_players_log_is_only_in_memory() -> void:
 	HintLog.set_current(null)
 	var current: HintLog = HintLog.current()
-	assert_eq(DisplayServer.get_name(), "headless", "las pruebas van sin pantalla")
-	assert_eq(current.path, "", "y el registro del jugador no tiene archivo: no deja nada en user://")
+	assert_eq(DisplayServer.get_name(), "headless", "the tests run without a screen")
+	assert_eq(current.path, "", "and the player's log has no file: it leaves nothing in user://")
 	assert_true(current.mark_shown(HintCatalog.COMBAT))
-	assert_eq(HintLog.current(), current, "es siempre el mismo")
+	assert_eq(HintLog.current(), current, "it is always the same")
 	HintLog.set_current(HintLog.in_memory())
 
 
 func test_the_setting_exists_on_by_default_and_in_the_interface_tab() -> void:
 	var spec: Dictionary = ClientSettings.get_spec(ClientSettings.HINTS)
-	assert_false(spec.is_empty(), "el ajuste existe")
-	assert_eq(spec["default"], true, "activado por defecto")
+	assert_false(spec.is_empty(), "the setting exists")
+	assert_eq(spec["default"], true, "enabled by default")
 	assert_eq(spec["tab"], ClientSettings.TAB_INTERFACE)
 	assert_eq(spec["label"], "Pistas del juego")
 	assert_eq(int(spec["kind"]), ClientSettings.Kind.BOOL)
 
 
-# --- Una sola vez por jugador -----------------------------------------------------------------
+# --- Only once per player ---------------------------------------------------------------------
 
 func test_a_hint_shows_once_per_player_even_across_sessions() -> void:
 	var path: String = _temp_file()
 	var first: HintToasts = _make_toasts(_make_client(), HintLog.load_from(path))
-	assert_true(first.request(HintCatalog.TELEGRAPH), "la primera vez se pone en cola y sale")
+	assert_true(first.request(HintCatalog.TELEGRAPH), "the first time it is queued and shown")
 	assert_eq(first.get_current_id(), HintCatalog.TELEGRAPH)
 	assert_true(first.is_showing())
 	assert_eq(first.get_current_text(), HintCatalog.text_of(HintCatalog.TELEGRAPH))
-	assert_false(first.request(HintCatalog.TELEGRAPH), "no se repite mientras está en pantalla")
+	assert_false(first.request(HintCatalog.TELEGRAPH), "it is not repeated while on screen")
 	first.dismiss()
 	assert_false(first.is_showing())
-	assert_false(first.request(HintCatalog.TELEGRAPH), "ni después")
+	assert_false(first.request(HintCatalog.TELEGRAPH), "nor afterwards")
 	assert_eq(first.get_shown_total(), 1)
 	var second: HintToasts = _make_toasts(_make_client(), HintLog.load_from(path))
-	assert_false(second.request(HintCatalog.TELEGRAPH), "ni en otra sesión del mismo jugador (user://)")
+	assert_false(second.request(HintCatalog.TELEGRAPH), "nor in another session of the same player (user://)")
 	assert_eq(second.get_shown_total(), 0)
-	assert_true(second.request(HintCatalog.GATE_CLOSED), "pero las demás sí")
-	assert_false(second.request(&"inventada"), "una pista que no existe, no")
+	assert_true(second.request(HintCatalog.GATE_CLOSED), "but the others are")
+	assert_false(second.request(&"inventada"), "a hint that does not exist, no")
 
 
 func test_hints_queue_one_at_a_time_with_a_pause_and_a_fade() -> void:
@@ -231,42 +231,42 @@ func test_hints_queue_one_at_a_time_with_a_pause_and_a_fade() -> void:
 	toasts.request(HintCatalog.CONTROLS)
 	toasts.request(HintCatalog.FORT_NEAR)
 	toasts.request(HintCatalog.TELEGRAPH)
-	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "sale la primera")
+	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "the first one is shown")
 	assert_eq(toasts.get_queued_ids(), [HintCatalog.FORT_NEAR, HintCatalog.TELEGRAPH] as Array[StringName],
-			"las otras esperan en el orden en que se pidieron")
+			"the others wait in the order they were requested")
 	assert_near(toasts.get_seconds_left(), HintToasts.SHOW_SECONDS, 1e-6)
 	toasts.advance(HintToasts.SHOW_SECONDS - HintToasts.FADE_SECONDS * 0.5)
-	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "en el fundido final aún se ve")
+	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "in the final fade it is still visible")
 	toasts.advance(HintToasts.FADE_SECONDS)
-	assert_eq(toasts.get_current_id(), &"", "se acaba")
+	assert_eq(toasts.get_current_id(), &"", "it ends")
 	assert_false(toasts.is_showing())
 	toasts.advance(HintToasts.GAP_SECONDS * 0.5)
-	assert_eq(toasts.get_current_id(), &"", "y deja una pausa antes de la siguiente")
+	assert_eq(toasts.get_current_id(), &"", "and leaves a pause before the next one")
 	toasts.advance(HintToasts.GAP_SECONDS * 0.6)
-	assert_eq(toasts.get_current_id(), HintCatalog.FORT_NEAR, "luego sale la siguiente")
+	assert_eq(toasts.get_current_id(), HintCatalog.FORT_NEAR, "then the next one is shown")
 	assert_eq(toasts.get_shown_total(), 2)
-	# Una pedida durante la pausa espera a que acabe.
+	# One requested during the pause waits for it to finish.
 	toasts.dismiss()
 	assert_true(toasts.request(HintCatalog.CAPTAIN_DOWN))
-	assert_eq(toasts.get_current_id(), &"", "durante la pausa no sale al momento")
+	assert_eq(toasts.get_current_id(), &"", "during the pause it is not shown at once")
 	toasts.advance(HintToasts.GAP_SECONDS + 0.1)
-	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "la que ya esperaba va antes")
+	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "the one that was already waiting goes first")
 
 
-# --- El ajuste para desactivarlas -------------------------------------------------------------
+# --- The setting to turn them off -------------------------------------------------------------
 
 func test_with_the_setting_off_nothing_shows_and_nothing_is_noted() -> void:
 	var hint_log: HintLog = HintLog.in_memory()
 	var settings: ClientSettings = _settings(false)
 	var toasts: HintToasts = _make_toasts(_make_client(), hint_log, settings)
 	assert_false(toasts.is_enabled())
-	assert_false(toasts.request(HintCatalog.CONTROLS), "desactivadas, no se piden")
+	assert_false(toasts.request(HintCatalog.CONTROLS), "disabled, they are not requested")
 	toasts.poll()
 	assert_false(toasts.is_showing())
-	assert_eq(hint_log.get_shown_count(), 0, "y no se anota ninguna como vista")
+	assert_eq(hint_log.get_shown_count(), 0, "and none is recorded as seen")
 	settings.set_value(ClientSettings.HINTS, true)
 	assert_true(toasts.is_enabled())
-	assert_true(toasts.request(HintCatalog.CONTROLS), "al volver a activarlas, salen")
+	assert_true(toasts.request(HintCatalog.CONTROLS), "when re-enabled, they are shown")
 
 
 func test_turning_the_setting_off_drops_the_queue_and_hides_the_current_one() -> void:
@@ -277,30 +277,30 @@ func test_turning_the_setting_off_drops_the_queue_and_hides_the_current_one() ->
 	toasts.request(HintCatalog.TELEGRAPH)
 	assert_true(toasts.is_showing())
 	settings.set_value(ClientSettings.HINTS, false)
-	assert_false(toasts.is_showing(), "se quita la que se ve")
-	assert_true(toasts.get_queued_ids().is_empty(), "y se vacía la cola")
-	assert_true(hint_log.has_shown(HintCatalog.CONTROLS), "la que ya salió, vista")
-	assert_false(hint_log.has_shown(HintCatalog.TELEGRAPH), "la que esperaba, sin anotar")
+	assert_false(toasts.is_showing(), "the visible one is removed")
+	assert_true(toasts.get_queued_ids().is_empty(), "and the queue is emptied")
+	assert_true(hint_log.has_shown(HintCatalog.CONTROLS), "the one that was already shown, seen")
+	assert_false(hint_log.has_shown(HintCatalog.TELEGRAPH), "the one that was waiting, not recorded")
 	settings.set_value(ClientSettings.HINTS, true)
-	assert_true(toasts.request(HintCatalog.TELEGRAPH), "y todavía puede salir")
+	assert_true(toasts.request(HintCatalog.TELEGRAPH), "and it can still be shown")
 
 
-# --- Qué las dispara --------------------------------------------------------------------------
+# --- What triggers them -----------------------------------------------------------------------
 
 func test_the_captain_falling_and_a_telegraph_trigger_their_hints() -> void:
 	var client: FakeClient = _make_client()
 	var toasts: HintToasts = _make_toasts(client, HintLog.in_memory())
 	client.war_event.emit(_war(WarEvents.UNDER_ATTACK))
-	assert_false(toasts.is_showing(), "otros avisos de guerra no")
+	assert_false(toasts.is_showing(), "other war alerts do not")
 	client.war_event.emit(_war(WarEvents.CAPTAIN_DOWN))
-	assert_eq(toasts.get_current_id(), HintCatalog.CAPTAIN_DOWN, "el capitán caído sí")
+	assert_eq(toasts.get_current_id(), HintCatalog.CAPTAIN_DOWN, "the fallen captain does")
 	toasts.dismiss()
 	toasts.advance(HintToasts.GAP_SECONDS + 0.1)
 	client.telegraph_received.emit(NetMessages.EntityEvent.telegraph(31, 100, 7, 0, Vector3.ZERO, 0.0, 300, 30))
-	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "y un TELEGRAPH")
+	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "and a TELEGRAPH")
 	toasts.bind(null, null)
 	client.war_event.emit(_war(WarEvents.CAPTAIN_DOWN))
-	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "sin cliente no escucha")
+	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "without a client it does not listen")
 
 
 func test_polling_offers_the_controls_hint_once_in_the_world_and_the_fort_hint_near_the_fort() -> void:
@@ -309,17 +309,17 @@ func test_polling_offers_the_controls_hint_once_in_the_world_and_the_fort_hint_n
 	var toasts: HintToasts = _make_toasts(client, HintLog.in_memory(), null, null, panel)
 	client.fake_character = null
 	toasts.poll()
-	assert_false(toasts.is_showing(), "sin personaje (aún no está en el mundo) no hay nada")
+	assert_false(toasts.is_showing(), "without a character (not yet in the world) there is nothing")
 	client.fake_character = _track((load(CHARACTER_SCENE_PATH) as PackedScene).instantiate(), _root) as PlayerCharacter
 	toasts.poll()
-	assert_eq(toasts.get_current_id(), HintCatalog.COMBAT, "ya en el mundo, primero los controles de combate")
-	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS] as Array[StringName], "y después los del mapa y el marcador")
+	assert_eq(toasts.get_current_id(), HintCatalog.COMBAT, "once in the world, first the combat controls")
+	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS] as Array[StringName], "and then those of the map and the scoreboard")
 	toasts.poll()
-	assert_eq(toasts.get_queued_ids().size(), 1, "una sola vez, aunque se mire de nuevo")
+	assert_eq(toasts.get_queued_ids().size(), 1, "only once, even if looked at again")
 	panel.fake_shown = true
 	toasts.poll()
 	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS, HintCatalog.FORT_NEAR] as Array[StringName],
-			"con el panel del fuerte visible, la del fuerte")
+			"with the fort panel visible, the fort's one")
 
 
 func _fort_view(owner_realm: int, broken: bool = false) -> FortressView:
@@ -343,21 +343,21 @@ func _fort_view(owner_realm: int, broken: bool = false) -> FortressView:
 func test_a_gate_closed_for_your_realm_triggers_its_hint_only_when_you_are_close() -> void:
 	var view: FortressView = _fort_view(SOLMARCH)
 	var gate: Vector3 = view.get_gate_position(NET_ID)
-	assert_true(gate != Vector3.INF, "la puerta está enlazada")
+	assert_true(gate != Vector3.INF, "the gate is linked")
 	var near: FakeClient = _make_client(gate + Vector3(0.0, 0.0, HintToasts.GATE_DISTANCE - 2.0), VARDHEIM)
 	var toasts: HintToasts = _make_toasts(near, _log_after_the_intro(), null, view)
 	toasts.poll()
-	assert_eq(toasts.get_current_id(), HintCatalog.GATE_CLOSED, "cerrada para Vardheim y a 13 m de la puerta, sale")
-	# Lejos, no.
+	assert_eq(toasts.get_current_id(), HintCatalog.GATE_CLOSED, "closed to Vardheim and 13 m from the gate, it is shown")
+	# Far away, no.
 	var far: FakeClient = _make_client(gate + Vector3(0.0, 0.0, HintToasts.GATE_DISTANCE + 20.0), VARDHEIM)
 	var far_toasts: HintToasts = _make_toasts(far, _log_after_the_intro(), null, view)
 	far_toasts.poll()
 	assert_eq(far_toasts.get_current_id(), &"", "a 35 m, no")
-	# Para su dueño la puerta no está cerrada.
+	# For its owner the gate is not closed.
 	var owner_client: FakeClient = _make_client(gate + Vector3(0.0, 0.0, 3.0), SOLMARCH)
 	var owner_toasts: HintToasts = _make_toasts(owner_client, _log_after_the_intro(), null, view)
 	owner_toasts.poll()
-	assert_eq(owner_toasts.get_current_id(), &"", "al dueño no se le dice")
+	assert_eq(owner_toasts.get_current_id(), &"", "the owner is not told")
 
 
 func test_a_broken_gate_or_a_neutral_fort_changes_who_it_is_closed_to() -> void:
@@ -366,27 +366,27 @@ func test_a_broken_gate_or_a_neutral_fort_changes_who_it_is_closed_to() -> void:
 	var client: FakeClient = _make_client(gate + Vector3(0.0, 0.0, 3.0), VARDHEIM)
 	var toasts: HintToasts = _make_toasts(client, _log_after_the_intro(), null, broken_view)
 	toasts.poll()
-	assert_eq(toasts.get_current_id(), &"", "derribada, ya no está cerrada")
-	# Con el fuerte neutral la puerta está cerrada para todos los reinos.
+	assert_eq(toasts.get_current_id(), &"", "knocked down, it is no longer closed")
+	# With the fort neutral the gate is closed to all realms.
 	var neutral_view: FortressView = _fort_view(RealmCatalog.NEUTRAL_CODE)
 	var neutral_client: FakeClient = _make_client(neutral_view.get_gate_position(NET_ID) + Vector3(0.0, 0.0, 3.0), SOLMARCH)
 	var neutral_toasts: HintToasts = _make_toasts(neutral_client, _log_after_the_intro(), null, neutral_view)
 	neutral_toasts.poll()
-	assert_eq(neutral_toasts.get_current_id(), HintCatalog.GATE_CLOSED, "neutral, cerrada para todos")
+	assert_eq(neutral_toasts.get_current_id(), HintCatalog.GATE_CLOSED, "neutral, closed to everyone")
 
 
-# --- Vista de verdad (revisión de la fase 4, cliente) -------------------------------------------
+# --- Real view (phase 4 review, client) ---------------------------------------------------------
 
 func test_a_hint_is_noted_only_after_it_has_been_on_screen_for_a_while() -> void:
 	var hint_log: HintLog = HintLog.in_memory()
 	var toasts: HintToasts = _make_toasts(_make_client(), hint_log)
 	toasts.request(HintCatalog.CONTROLS)
 	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS)
-	assert_false(hint_log.has_shown(HintCatalog.CONTROLS), "al salir aún no se ha leído")
+	assert_false(hint_log.has_shown(HintCatalog.CONTROLS), "on appearing it has not been read yet")
 	toasts.advance(HintToasts.MIN_SEEN_SECONDS - 0.1)
 	assert_false(hint_log.has_shown(HintCatalog.CONTROLS))
 	toasts.advance(0.2)
-	assert_true(hint_log.has_shown(HintCatalog.CONTROLS), "tras %.0f s a la vista, sí" % HintToasts.MIN_SEEN_SECONDS)
+	assert_true(hint_log.has_shown(HintCatalog.CONTROLS), "after %.0f s in view, yes" % HintToasts.MIN_SEEN_SECONDS)
 
 
 func test_a_covered_hint_waits_and_one_covered_before_being_read_goes_back_to_the_queue() -> void:
@@ -394,29 +394,29 @@ func test_a_covered_hint_waits_and_one_covered_before_being_read_goes_back_to_th
 	var toasts: HintToasts = _make_toasts(_make_client(), hint_log)
 	var covered: Array[bool] = [true]
 	toasts.is_covered = func() -> bool: return covered[0]
-	assert_true(toasts.request(HintCatalog.CONTROLS), "se pide aunque esté tapada")
-	assert_false(toasts.is_showing(), "pero no sale mientras algo la tapa (el mapa, el marcador)")
+	assert_true(toasts.request(HintCatalog.CONTROLS), "it is requested even if covered")
+	assert_false(toasts.is_showing(), "but it is not shown while something covers it (the map, the scoreboard)")
 	toasts.advance(HintToasts.SHOW_SECONDS * 2.0)
-	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS] as Array[StringName], "espera en la cola")
+	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS] as Array[StringName], "it waits in the queue")
 	covered[0] = false
 	toasts.advance(0.016)
-	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "destapada, sale")
+	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "uncovered, it is shown")
 	toasts.request(HintCatalog.FORT_NEAR)
 	toasts.advance(1.0)
 	covered[0] = true
 	toasts.advance(0.016)
-	assert_false(toasts.is_showing(), "tapada al poco de salir, se quita")
+	assert_false(toasts.is_showing(), "covered shortly after appearing, it is removed")
 	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS, HintCatalog.FORT_NEAR] as Array[StringName],
-			"y vuelve la primera de la cola")
-	assert_false(hint_log.has_shown(HintCatalog.CONTROLS), "sin anotarse")
+			"and the first of the queue comes back")
+	assert_false(hint_log.has_shown(HintCatalog.CONTROLS), "without being recorded")
 	covered[0] = false
 	toasts.advance(0.016)
-	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "al destaparse sale otra vez")
+	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "once uncovered it is shown again")
 	toasts.advance(HintToasts.MIN_SEEN_SECONDS + 0.1)
 	covered[0] = true
 	toasts.advance(0.016)
-	assert_true(hint_log.has_shown(HintCatalog.CONTROLS), "leída ya, tapar la quita pero cuenta como vista")
-	assert_eq(toasts.get_queued_ids(), [HintCatalog.FORT_NEAR] as Array[StringName], "y no vuelve a la cola")
+	assert_true(hint_log.has_shown(HintCatalog.CONTROLS), "already read, covering removes it but it counts as seen")
+	assert_eq(toasts.get_queued_ids(), [HintCatalog.FORT_NEAR] as Array[StringName], "and it does not return to the queue")
 
 
 func test_withdrawing_a_hint_drops_it_without_noting_it() -> void:
@@ -425,11 +425,11 @@ func test_withdrawing_a_hint_drops_it_without_noting_it() -> void:
 	toasts.request(HintCatalog.RESPAWN_MAP)
 	toasts.request(HintCatalog.CAPTAIN_DOWN)
 	toasts.withdraw(HintCatalog.RESPAWN_MAP)
-	assert_false(toasts.is_showing(), "la que se veía se quita")
-	assert_false(hint_log.has_shown(HintCatalog.RESPAWN_MAP), "sin anotarse")
+	assert_false(toasts.is_showing(), "the one that was visible is removed")
+	assert_false(hint_log.has_shown(HintCatalog.RESPAWN_MAP), "without being recorded")
 	toasts.withdraw(HintCatalog.CAPTAIN_DOWN)
-	assert_true(toasts.get_queued_ids().is_empty(), "y la que esperaba sale de la cola")
-	assert_true(toasts.request(HintCatalog.RESPAWN_MAP), "se puede volver a pedir")
+	assert_true(toasts.get_queued_ids().is_empty(), "and the one that was waiting leaves the queue")
+	assert_true(toasts.request(HintCatalog.RESPAWN_MAP), "it can be requested again")
 
 
 func _telegraph(npc_id: int, origin: Vector3, impact_ticks: int = 60) -> NetMessages.EntityEvent:
@@ -456,25 +456,25 @@ func test_the_telegraph_hint_needs_a_hostile_mark_near_the_player_and_still_on_t
 	_npc(client, 42, RealmCatalog.NEUTRAL_CODE, Vector3(3.0, 0.0, 0.0))
 	var toasts: HintToasts = _make_toasts(client, _log_after_the_intro())
 	client.telegraph_received.emit(_telegraph(41, Vector3(2.0, 0.0, 0.0)))
-	assert_false(toasts.is_showing(), "el golpe de un guardia de tu reino no te puede dañar: no es «un ataque enemigo»")
+	assert_false(toasts.is_showing(), "a hit from a guard of your realm cannot damage you: it is not \"an enemy attack\"")
 	client.telegraph_received.emit(_telegraph(42, Vector3(200.0, 0.0, 0.0)))
-	assert_false(toasts.is_showing(), "una marca a 200 m no se ve: no se explica")
+	assert_false(toasts.is_showing(), "a marker at 200 m is not visible: it is not explained")
 	assert_true(toasts.get_queued_ids().is_empty())
 	client.telegraph_received.emit(_telegraph(42, Vector3(3.0, 0.0, 0.0)))
-	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "un Hueco que golpea a tu lado, sí")
-	# Si tiene que esperar en la cola, caduca con la marca.
+	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "a Hollow that hits beside you, yes")
+	# If it has to wait in the queue, it expires with the marker.
 	var later: HintToasts = _make_toasts(client, _log_after_the_intro())
 	later.request(HintCatalog.FORT_NEAR)
 	client.telegraph_received.emit(_telegraph(42, Vector3(3.0, 0.0, 0.0), 30))
-	assert_eq(later.get_queued_ids(), [HintCatalog.TELEGRAPH] as Array[StringName], "en cola tras la del fuerte")
+	assert_eq(later.get_queued_ids(), [HintCatalog.TELEGRAPH] as Array[StringName], "queued behind the fort's one")
 	later.advance(HintToasts.SHOW_SECONDS)
 	later.advance(HintToasts.GAP_SECONDS + 0.1)
-	assert_false(later.is_showing(), "cuando le llega el turno la marca ya no está: se descarta")
+	assert_false(later.is_showing(), "when its turn comes the marker is gone: it is discarded")
 	assert_true(later.get_queued_ids().is_empty())
-	assert_false(later.get_shown_total() > 1, "solo salió la del fuerte")
+	assert_false(later.get_shown_total() > 1, "only the fort's one was shown")
 
 
-# --- El HUD ------------------------------------------------------------------------------------
+# --- The HUD -----------------------------------------------------------------------------------
 
 func test_the_hud_mounts_the_hints_above_the_death_screen() -> void:
 	HintLog.set_current(HintLog.in_memory())
@@ -487,13 +487,13 @@ func test_the_hud_mounts_the_hints_above_the_death_screen() -> void:
 	hud.bind(client.fake_character, rig)
 	hud.bind_net(client, _root)
 	var toasts: HintToasts = hud.get_hints()
-	if not assert_not_null(toasts, "el HUD en red monta las pistas"):
+	if not assert_not_null(toasts, "the networked HUD mounts the hints"):
 		return
-	assert_eq(toasts.get_parent(), hud, "fuera de la interfaz de guerra (que se atenúa al morir)")
-	assert_true(toasts.get_index() > hud.get_death_screen().get_index(), "y por encima de la pantalla de muerte")
+	assert_eq(toasts.get_parent(), hud, "outside the war interface (which fades when dying)")
+	assert_true(toasts.get_index() > hud.get_death_screen().get_index(), "and above the death screen")
 	assert_true(toasts.is_enabled() == bool(ClientSettings.current().get_value(ClientSettings.HINTS)),
-			"con los ajustes del jugador")
-	assert_eq(HintLog.current().get_shown_count(), 0, "y el registro en memoria de las pruebas")
+			"with the player's settings")
+	assert_eq(HintLog.current().get_shown_count(), 0, "and the in-memory log of the tests")
 	hud.bind_net(client, _root)
 	assert_eq(hud.get_children().filter(func(child: Node) -> bool: return child is HintToasts).size(), 1,
-			"una segunda llamada a bind_net no las duplica")
+			"a second call to bind_net does not duplicate them")

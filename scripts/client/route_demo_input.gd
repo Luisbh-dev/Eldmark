@@ -1,61 +1,61 @@
 class_name RouteDemoInput
 extends DemoInput
-## Demo guionizada que recorre una ruta de una zona siguiendo puntos de paso.
+## Scripted demo that walks a route through a zone by following waypoints.
 ##
-## A diferencia de [DemoInput] (un guion fijo pensado para el circuito de pruebas), esta demo
-## lee la posición del personaje en cada tick y corre en línea recta hacia el siguiente punto de
-## paso, como [code]tools/terrain/verify_vado_gris_routes.gd[/code]; así no choca con la
-## empalizada, los pretiles del puente o las tiendas aunque un golpe o una pendiente la desvíen.
-## La vista gira hacia el rumbo con una velocidad limitada, para que la cámara no salte en las
-## esquinas. Sigue siendo determinista: la entrada solo depende del tick y del estado simulado.
+## Unlike [DemoInput] (a fixed script designed for the test circuit), this demo reads the character's
+## position on every tick and runs in a straight line toward the next waypoint, like
+## [code]tools/terrain/verify_vado_gris_routes.gd[/code]; this way it does not bump into the palisade,
+## the bridge parapets or the stalls even if a hit or a slope pushes it off course. The view turns
+## toward the heading at a limited speed, so the camera does not jump at corners. It is still
+## deterministic: the input depends only on the tick and the simulated state.
 ## [br][br]
-## La ruta es una lista de pasos (quieto, ir a un punto, saltos, paso lateral, mirar a un punto,
-## órbita de la cámara, combate) que se construye encadenando [method idle], [method go_to],
-## [method jumps], [method strafe], [method face], [method orbit] y [method combat]. Con
-## [code]mirror_z = true[/code] cada paso se refleja (z -> -z), que es como se pasa la ruta del
-## norte (Vardheim) a la del sur (Solmarch) en una zona simétrica.
+## The route is a list of steps (stand still, go to a point, jumps, strafe, look at a point, camera
+## orbit, combat) built by chaining [method idle], [method go_to], [method jumps], [method strafe],
+## [method face], [method orbit] and [method combat]. With [code]mirror_z = true[/code] each step is
+## mirrored (z -> -z), which is how the north route (Vardheim) is turned into the south one (Solmarch) in
+## a symmetric zone.
 ## [br][br]
-## Hay que llamar a [method look_for] y [method next] una vez por tick y en orden (los dos con el
-## mismo tick devuelven datos coherentes) y vincular el personaje con [method bind].
+## You must call [method look_for] and [method next] once per tick and in order (both with the same tick
+## return consistent data) and bind the character with [method bind].
 
 enum Kind { IDLE, GOTO, JUMPS, STRAFE, FACE, ORBIT, COMBAT }
 
-## Distancia (m) a la que se da por alcanzado un punto de paso.
+## Distance (m) at which a waypoint counts as reached.
 const REACH: float = 1.6
-## Velocidad máxima de giro de la vista hacia el rumbo (grados por segundo).
+## Maximum turning speed of the view toward the heading (degrees per second).
 const LOOK_TURN_DEGREES_PER_SECOND: float = 220.0
-## Ticks de cada salto de [method jumps] y tick dentro de ese tramo en el que se pulsa.
+## Ticks of each jump of [method jumps], and the tick within that stretch at which it is pressed.
 const JUMP_SLOT_TICKS: int = 50
 const JUMP_PRESS_OFFSET: int = 6
-## Ticks sin acercarse al punto de paso antes de darlo por inalcanzable y pasar al siguiente.
+## Ticks without getting closer to the waypoint before declaring it unreachable and moving on to the next.
 const STUCK_TICKS: int = 150
-## Margen de ticks de un tramo [method go_to] sobre el tiempo que debería tardar.
+## Tick margin of a [method go_to] stretch over the time it should take.
 const GOTO_EXTRA_TICKS: int = 120
-## Velocidades (m/s) para estimar la duración de los tramos (las de [PlayerCharacter]).
+## Speeds (m/s) used to estimate the duration of the stretches (those of [PlayerCharacter]).
 const ESTIMATE_RUN_SPEED: float = 5.0
 const ESTIMATE_SPRINT_SPEED: float = 7.5
 
 
-## Un paso de la ruta.
+## A route step.
 class Step:
 	var kind: int = 0
 	var label: String = ""
-	## GOTO: punto de destino (x, z). FACE: punto al que mirar.
+	## GOTO: destination point (x, z). FACE: point to look at.
 	var target: Vector2 = Vector2.ZERO
 	var sprint: bool = false
-	## Duración en ticks (en GOTO no se usa: se calcula al empezar el tramo).
+	## Duration in ticks (not used in GOTO: computed when the stretch starts).
 	var ticks: int = 0
-	## STRAFE: movimiento relativo a la vista (x = derecha, y = adelante).
+	## STRAFE: movement relative to the view (x = right, y = forward).
 	var move: Vector2 = Vector2.ZERO
-	## GOTO: ticks desde el inicio del tramo en los que se pulsa saltar (-1: sin salto).
+	## GOTO: ticks since the start of the stretch at which jump is pressed (-1: no jump).
 	var jump_after: int = -1
-	## ORBIT y COMBAT: giro total de la vista (grados, positivo hacia la izquierda).
+	## ORBIT and COMBAT: total turn of the view (degrees, positive to the left).
 	var degrees: float = 0.0
-	## COMBAT: guion de botones que se pulsa durante el paso.
+	## COMBAT: button script that is pressed during the step.
 	var combat: CombatDemoScript = null
 
 
-## Refleja cada paso que se añade (z -> -z, lateral y órbita invertidos).
+## Mirrors every step that is added (z -> -z, strafe and orbit inverted).
 var mirror_z: bool = false
 
 var _steps: Array[Step] = []
@@ -75,9 +75,9 @@ var _orbit_start_yaw: float = 0.0
 var _orbit_start_pitch: float = 0.0
 
 
-## Demo de [param zone_id] para un jugador de [param realm]: la ruta de la zona si la tiene, el
-## guion del circuito de pruebas en [code]test_world[/code] y, en cualquier otra zona, una vuelta
-## de cámara sin moverse (no se conoce el terreno).
+## Demo of [param zone_id] for a player of [param realm]: the zone's route if it has one, the test
+## circuit's script in [code]test_world[/code] and, in any other zone, a camera turn without moving (the
+## terrain is not known).
 static func for_zone(zone_id: StringName, realm: StringName) -> DemoInput:
 	match zone_id:
 		&"test_world":
@@ -89,12 +89,12 @@ static func for_zone(zone_id: StringName, realm: StringName) -> DemoInput:
 	return fallback
 
 
-## Ruta del Vado Gris (ver docs/zonas/vado_gris.md): del campamento propio por la calzada, carrera
-## con salto, cruce del puente propio, dos saltos en la ladera del fuerte, paso lateral, rodeo de
-## la esquina de la empalizada hasta la explanada de la puerta (frente al vado) y, allí, el combate
-## ([CombatDemoScript]: combo de 3 ligeros, un fuerte cargado, un bloqueo y una esquiva) mientras la
-## cámara da una vuelta completa. Los puntos de paso son los de la ruta del puente de
-## [code]verify_vado_gris_routes.gd[/code]; Solmarch recorre el reflejo de la de Vardheim.
+## Vado Gris route (see docs/zonas/vado_gris.md): from the player's own camp along the causeway, a run
+## with a jump, crossing the realm's own bridge, two jumps on the fort's slope, a strafe, going around
+## the corner of the palisade to the gate esplanade (facing the ford) and, there, the combat
+## ([CombatDemoScript]: a 3-hit light combo, a charged heavy attack, a block and a dodge) while the
+## camera makes a full turn. The waypoints are those of the bridge route in
+## [code]verify_vado_gris_routes.gd[/code]; Solmarch walks the mirror image of Vardheim's.
 static func vado_gris(realm: StringName) -> RouteDemoInput:
 	var demo: RouteDemoInput = RouteDemoInput.new()
 	demo.mirror_z = realm == &"solmarch"
@@ -115,17 +115,17 @@ static func vado_gris(realm: StringName) -> RouteDemoInput:
 	return demo
 
 
-# --- Construcción de la ruta ------------------------------------------------------------------
+# --- Building the route -----------------------------------------------------------------------
 
-## Quieto [param ticks] ticks.
+## Stand still for [param ticks] ticks.
 func idle(ticks: int, label: String = "quieto") -> RouteDemoInput:
 	var step: Step = _new_step(Kind.IDLE, label)
 	step.ticks = ticks
 	return self
 
 
-## Correr (o esprintar) en línea recta hasta (x, z). Con [param jump_after] >= 0 se salta ese
-## número de ticks después de empezar el tramo.
+## Run (or sprint) in a straight line to (x, z). With [param jump_after] >= 0 it jumps that many ticks
+## after the stretch starts.
 func go_to(x: float, z: float, sprint: bool = false, jump_after: int = -1,
 		label: String = "") -> RouteDemoInput:
 	var step: Step = _new_step(Kind.GOTO, label if not label.is_empty() else "ir a (%.0f, %.0f)" % [x, z])
@@ -135,14 +135,14 @@ func go_to(x: float, z: float, sprint: bool = false, jump_after: int = -1,
 	return self
 
 
-## [param count] saltos en el sitio.
+## [param count] jumps on the spot.
 func jumps(count: int, label: String = "saltos") -> RouteDemoInput:
 	var step: Step = _new_step(Kind.JUMPS, label)
 	step.ticks = count * JUMP_SLOT_TICKS
 	return self
 
 
-## Moverse [param ticks] ticks con [param move] relativo a la vista, sin girarla.
+## Move for [param ticks] ticks with [param move] relative to the view, without turning it.
 func strafe(move: Vector2, ticks: int, label: String = "paso lateral") -> RouteDemoInput:
 	var step: Step = _new_step(Kind.STRAFE, label)
 	step.move = Vector2(-move.x if mirror_z else move.x, move.y)
@@ -150,7 +150,7 @@ func strafe(move: Vector2, ticks: int, label: String = "paso lateral") -> RouteD
 	return self
 
 
-## Quieto [param ticks] ticks mientras la vista gira hacia (x, z).
+## Stand still for [param ticks] ticks while the view turns toward (x, z).
 func face(x: float, z: float, ticks: int, label: String = "mirar") -> RouteDemoInput:
 	var step: Step = _new_step(Kind.FACE, label)
 	step.target = Vector2(x, -z if mirror_z else z)
@@ -158,8 +158,8 @@ func face(x: float, z: float, ticks: int, label: String = "mirar") -> RouteDemoI
 	return self
 
 
-## Quieto mientras la cámara gira [param degrees] grados en [param ticks] ticks, mirando algo
-## más desde arriba.
+## Stand still while the camera turns [param degrees] degrees over [param ticks] ticks, looking slightly
+## more from above.
 func orbit(degrees: float, ticks: int, label: String = "vuelta de cámara") -> RouteDemoInput:
 	var step: Step = _new_step(Kind.ORBIT, label)
 	step.degrees = -degrees if mirror_z else degrees
@@ -167,7 +167,7 @@ func orbit(degrees: float, ticks: int, label: String = "vuelta de cámara") -> R
 	return self
 
 
-## Combate en el sitio ([CombatDemoScript]) mientras la cámara gira [param degrees] grados.
+## Combat on the spot ([CombatDemoScript]) while the camera turns [param degrees] degrees.
 func combat(degrees: float, label: String = "combate") -> RouteDemoInput:
 	var step: Step = _new_step(Kind.COMBAT, label)
 	step.combat = CombatDemoScript.new()
@@ -176,7 +176,7 @@ func combat(degrees: float, label: String = "combate") -> RouteDemoInput:
 	return self
 
 
-# --- API de DemoInput -------------------------------------------------------------------------
+# --- DemoInput API ----------------------------------------------------------------------------
 
 func bind(character: PlayerCharacter) -> void:
 	_character = character
@@ -200,7 +200,7 @@ func look_for(tick: int) -> Vector2:
 	return Vector2(wrapf(_look_yaw, -PI, PI), _look_pitch)
 
 
-## Estimación de la duración en ticks (los tramos [method go_to] dependen del recorrido real).
+## Estimated duration in ticks ([method go_to] stretches depend on the actual path).
 func get_length() -> int:
 	var dt: float = 1.0 / float(Engine.physics_ticks_per_second)
 	var total: int = 0
@@ -225,12 +225,12 @@ func is_finished(_tick: int) -> bool:
 	return _finished
 
 
-## Nombre del paso en curso (vacío al terminar).
+## Name of the step in progress (empty when finished).
 func get_step_label() -> String:
 	return _steps[_index].label if _index < _steps.size() else ""
 
 
-# --- Ejecución --------------------------------------------------------------------------------
+# --- Execution --------------------------------------------------------------------------------
 
 func _new_step(kind: int, label: String) -> Step:
 	var step: Step = Step.new()
@@ -240,7 +240,7 @@ func _new_step(kind: int, label: String) -> Step:
 	return step
 
 
-## Calcula la entrada del tick [param tick] (una sola vez por tick).
+## Computes the input for tick [param tick] (only once per tick).
 func _update(tick: int) -> void:
 	if tick == _last_tick:
 		return
@@ -279,7 +279,7 @@ func _begin_step(step: Step, tick: int) -> void:
 		_orbit_start_pitch = _look_pitch
 
 
-## Ejecuta un tick del paso. Devuelve false si el paso ya había terminado (sin generar entrada).
+## Runs one tick of the step. Returns false if the step had already finished (without generating input).
 func _run_step(step: Step, dt: float) -> bool:
 	var p: Vector3 = _character.global_position
 	var flat: Vector2 = Vector2(p.x, p.z)
@@ -348,14 +348,14 @@ func _run_step(step: Step, dt: float) -> bool:
 	return false
 
 
-## Gira la vista hacia [param heading] (yaw) con la velocidad máxima de giro.
+## Turns the view toward [param heading] (yaw) at the maximum turning speed.
 func _turn_look_toward(heading: float, dt: float) -> void:
 	var max_step: float = deg_to_rad(LOOK_TURN_DEGREES_PER_SECOND) * dt
 	_look_yaw = wrapf(rotate_toward(_look_yaw, heading, max_step), -PI, PI)
 
 
-## Dirección del mundo (x, z) -> movimiento relativo a la vista (x = derecha, y = adelante),
-## con las mismas convenciones que [method PlayerCharacter.simulate].
+## World direction (x, z) -> movement relative to the view (x = right, y = forward), with the same
+## conventions as [method PlayerCharacter.simulate].
 func _world_to_move(direction: Vector2) -> Vector2:
 	var forward: Vector2 = Vector2(-sin(_look_yaw), -cos(_look_yaw))
 	var right: Vector2 = Vector2(cos(_look_yaw), -sin(_look_yaw))

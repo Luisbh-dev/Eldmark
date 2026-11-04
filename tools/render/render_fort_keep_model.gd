@@ -1,30 +1,30 @@
 extends SceneTree
-## Herramienta de revisión del torreón del fuerte (ART-57): renders del modelo solo, sin zona,
-## sobre un suelo liso y con la luz del Vado Gris (sol con sombras y el cielo del ambiente de
-## la frontera, sin niebla). Saca una vuelta de 8 ángulos, los detalles (puerta, base, cadalso, remate,
-## estandartes), los tres niveles de detalle, la colisión de baja resolución, las cuatro paletas de
-## reino y las vistas a 10, 30 y 60 m a altura de jugador.
+## Fort keep review tool (ART-57): renders of the model alone, with no zone,
+## on a plain ground and with the Vado Gris light (sun with shadows and the sky of the
+## frontier ambience, no fog). It produces a turnaround of 8 angles, the details (door, base, scaffold, finial,
+## banners), the three levels of detail, the low-resolution collision, the four realm
+## palettes and the views at 10, 30 and 60 m at player height.
 ##
-## Necesita ventana (no headless). Uso desde la raíz del proyecto:
+## Needs a window (not headless). Usage from the project root:
 ## [codeblock]
 ## godot --path . --resolution 1600x1200 -s res://tools/render/render_fort_keep_model.gd -- \
 ##     --out=C:/ruta/build/torreon/modelo
 ## [/codeblock]
-## Con [code]--only=<prefijo>[/code] solo guarda las vistas cuyo nombre empiece así; con
-## [code]--no-ssao[/code] apaga la oclusión ambiental de pantalla y con [code]--shadow-quality=N[/code]
-## (0 a 5, como RenderingServer.ShadowQuality) fuerza el filtro de sombras suaves de la luz direccional:
-## sirve para separar el moteado de la penumbra del de las texturas. Con [code]--debug-bg[/code]
-## el fondo es magenta: sirve para encontrar rendijas por las que se ve el otro lado del muro.
-## Con [code]--shimmer[/code] no guarda vistas: mide el centelleo de la piedra en movimiento (ver [method _measure_shimmer]).
+## With [code]--only=<prefix>[/code] it only saves the views whose name starts like that; with
+## [code]--no-ssao[/code] it turns off screen-space ambient occlusion and with [code]--shadow-quality=N[/code]
+## (0 to 5, like RenderingServer.ShadowQuality) it forces the soft shadow filter of the directional light:
+## useful for separating the penumbra mottling from that of the textures. With [code]--debug-bg[/code]
+## the background is magenta: useful for finding gaps through which the other side of the wall is visible.
+## With [code]--shimmer[/code] it saves no views: it measures the shimmer of the stone in motion (see [method _measure_shimmer]).
 
 const KEEP_PATH: String = "res://assets/models/environment/custom/fort_keep.glb"
 const ENVIRONMENT_PATH: String = "res://assets/environments/vado_gris_frontier.tres"
 const SETTLE_FRAMES: int = 8
 
-## [nombre, posición de la cámara respecto al origen del torreón, punto al que mira, fov, reino,
-## modo, extras]. Modos: "" (LOD0), "lod1" (nivel medio), "lod2" (silueta lejana), "ranges" (los tres
-## con los rangos y el fundido de FortKeepPreview.apply_lods), "colision" (LOD0 con la malla de
-## colisión encima). Extras (opcional): owner, contest, progress (estandarte).
+## [name, camera position relative to the keep's origin, point it looks at, fov, realm,
+## mode, extras]. Modes: "" (LOD0), "lod1" (medium level), "lod2" (distant silhouette), "ranges" (the three
+## with the ranges and the fade of FortKeepPreview.apply_lods), "colision" (LOD0 with the collision
+## mesh on top). Extras (optional): owner, contest, progress (banner).
 const VIEWS: Array = [
 	["vuelta_0_oeste", Vector3(-46, 8, 0), Vector3(0, 13, 0), 40.0, "eldrun", ""],
 	["vuelta_1_suroeste", Vector3(-33, 8, 33), Vector3(0, 13, 0), 40.0, "eldrun", ""],
@@ -146,7 +146,7 @@ func _build_stage() -> void:
 	environment.fog_enabled = false
 	environment.ssao_enabled = environment.ssao_enabled and _ssao
 	if _debug_background:
-		# Fondo magenta y suelo fuera: cualquier rendija por la que se vea el otro lado sale magenta.
+		# Magenta background and ground removed: any gap through which the other side is visible comes out magenta.
 		environment.background_mode = Environment.BG_COLOR
 		environment.background_color = Color(1.0, 0.0, 1.0)
 		environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -155,7 +155,7 @@ func _build_stage() -> void:
 	var world := WorldEnvironment.new()
 	world.environment = environment
 	root.add_child(world)
-	# Sol del Vado Gris: misma orientación, energía y sombras que en la zona.
+	# Vado Gris sun: same orientation, energy and shadows as in the zone.
 	var sun := DirectionalLight3D.new()
 	sun.transform = Transform3D(Basis(Vector3(-4.371139e-08, 0, 1), Vector3(0.52991927, 0.8480481, 2.3163507e-08),
 			Vector3(-0.8480481, 0.52991927, -3.706936e-08)), Vector3.ZERO)
@@ -174,7 +174,7 @@ func _build_stage() -> void:
 	fill.light_energy = 0.42
 	fill.sky_mode = DirectionalLight3D.SKY_MODE_SKY_ONLY
 	root.add_child(fill)
-	# Suelo liso verde grisáceo, como la hierba de la colina.
+	# Plain greyish-green ground, like the grass of the hill.
 	var ground := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(400, 400)
@@ -190,13 +190,13 @@ func _build_stage() -> void:
 	root.add_child(_keep)
 
 
-## "" muestra el LOD0; "lod1" el nivel medio; "lod2" la silueta lejana; "colision" el LOD0 con la
-## malla de colisión encima, en celeste translúcido y con sus aristas.
+## "" shows LOD0; "lod1" the medium level; "lod2" the distant silhouette; "colision" LOD0 with the
+## collision mesh on top, in translucent sky blue and with its edges.
 func _show_mode(mode: String) -> void:
 	for node: Node in _keep.find_children("FortKeep_LOD*", "MeshInstance3D", true, false):
 		var instance: MeshInstance3D = node as MeshInstance3D
 		if mode != "ranges":
-			# fuera del modo "ranges" no quedan rangos de visibilidad de una vista anterior
+			# outside the "ranges" mode no visibility ranges are left over from a previous view
 			instance.visibility_range_begin = 0.0
 			instance.visibility_range_end = 0.0
 			instance.visibility_range_begin_margin = 0.0
@@ -246,21 +246,21 @@ func _show_mode(mode: String) -> void:
 	_keep.add_child(drawn)
 
 
-## Fotogramas por medición, paso lateral de la cámara (en píxeles de pantalla por fotograma) y
-## distancias (m) del centelleo en movimiento.
+## Frames per measurement, lateral camera step (in screen pixels per frame) and
+## distances (m) of the shimmer in motion.
 const SHIMMER_FRAMES: int = 14
 const SHIMMER_STEP_PX: float = 0.4
 const SHIMMER_DISTANCES: Array = [10.0, 30.0, 60.0]
 const SHIMMER_FOV: float = 70.0
 
 
-## Mide el centelleo de la piedra al mover la cámara: a 10, 30 y 60 m de la fachada, con la cámara
-## a altura de jugador desplazándose de lado fracciones de píxel por fotograma, calcula el error
-## medio de la segunda derivada temporal de la luminancia (|I(t) - (I(t-1) + I(t+1)) / 2|, en una
-## zona de 1,6 m de pared; mediana de tres pasadas) con los mipmaps de la importación actual y con las texturas sin
-## mipmaps (cómo se importaron antes de fijar el preset del repo). Un movimiento lineal sin
-## aliasing da casi cero; el aliasing de la textura da valores altos. Escribe
-## [code]metricas_movimiento.txt[/code] en la carpeta de salida.
+## Measures the shimmer of the stone when moving the camera: at 10, 30 and 60 m from the facade, with the camera
+## at player height moving sideways fractions of a pixel per frame, it computes the mean
+## error of the second temporal derivative of the luminance (|I(t) - (I(t-1) + I(t+1)) / 2|, over a
+## 1.6 m area of wall; median of three passes) with the mipmaps of the current import and with the textures without
+## mipmaps (how they were imported before the repo's preset was fixed). A linear motion without
+## aliasing gives almost zero; texture aliasing gives high values. Writes
+## [code]metricas_movimiento.txt[/code] in the output folder.
 func _measure_shimmer(camera: Camera3D) -> void:
 	camera.fov = SHIMMER_FOV
 	var lines: PackedStringArray = PackedStringArray([
@@ -274,7 +274,7 @@ func _measure_shimmer(camera: Camera3D) -> void:
 			FortKeepPreview.apply_materials(_keep, &"eldrun")
 			if not bool(case[1]):
 				_strip_mipmaps(_keep)
-			# mediana de tres pasadas: una sola oscila por el ruido de las sombras suaves
+			# median of three passes: a single one fluctuates because of the soft shadow noise
 			var runs: Array[float] = []
 			for _run_index: int in 3:
 				runs.append(await _shimmer_at(camera, distance))
@@ -323,7 +323,7 @@ func _shimmer_at(camera: Camera3D, distance: float) -> float:
 	return total / float(count)
 
 
-## Sustituye las texturas de los materiales de reino por copias sin mipmaps (y sin compresión).
+## Replaces the textures of the realm materials with copies without mipmaps (and without compression).
 func _strip_mipmaps(keep: Node) -> void:
 	for node: Node in keep.find_children("*", "MeshInstance3D", true, false):
 		var instance: MeshInstance3D = node as MeshInstance3D

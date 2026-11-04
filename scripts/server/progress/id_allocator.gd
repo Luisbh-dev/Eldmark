@@ -1,61 +1,61 @@
 class_name IdAllocator
 extends RefCounted
-## Los ids de la zona (docs/progresion.md §4.5): los [code]uid[/code] de los objetos y los [code]op_id[/code] de
-## las operaciones salen del mismo generador. Con plataforma, de los bloques de 1024 que da
-## [code]POST /internal/v1/id-blocks[/code] ([method ZonePlatform.request_id_block], plataforma.md §6), únicos en
-## todos los mundos; sin plataforma, [method local] cuenta desde 1 en memoria (nada se guarda).
+## The zone's ids (docs/progresion.md §4.5): the object [code]uid[/code]s and the [code]op_id[/code]s of
+## operations come from the same generator. With a platform, from the blocks of 1024 that
+## [code]POST /internal/v1/id-blocks[/code] gives ([method ZonePlatform.request_id_block], plataforma.md §6), unique across
+## all worlds; without a platform, [method local] counts from 1 in memory (nothing is saved).
 ## [br][br]
-## [b]Tres tramos[/b], de abajo arriba en lo que queda:
+## [b]Three bands[/b], from the bottom up in what remains:
 ## [codeblock]
-## los últimos build_reserve (2 × max_players)   solo next_for_build: cerrar lo agregado al construir un guardado
-## los SERVER_RESERVE de encima                  next_for_server: kit, pila nueva de CAMP_REFILL, cierre antes de una
-##                                               operación suelta, GM y reversión
-## el resto                                      next_for_client: SPLIT y DESTROY del cliente
+## the last build_reserve (2 × max_players)      only next_for_build: closing what was added when building a save
+## the SERVER_RESERVE above that                 next_for_server: kit, new CAMP_REFILL stack, closing before a
+##                                               one-off operation, GM and reversal
+## the rest                                      next_for_client: client SPLIT and DESTROY
 ## [/codeblock]
-## Así ningún cliente deja a otro sin beber ni a la zona sin guardar: con la plataforma caída nada sale salvo el
-## guardado en vuelo, nadie nuevo entra y cada personaje construye como mucho dos cuerpos, que la reserva cubre.
-## Guarda dos bloques como mucho (pide otro cuando quedan menos de [constant REFILL_BELOW] por encima de la reserva
-## de los guardados) y los gasta en orden. Un bloque a medias que se pierde en una caída deja un hueco: nunca se
-## repite nada. Solo servidor: sin reloj.
+## This way no client leaves another unable to drink or the zone unable to save: with the platform down nothing goes out except the
+## save in flight, nobody new enters and each character builds at most two bodies, which the reserve covers.
+## It keeps at most two blocks (it requests another when fewer than [constant REFILL_BELOW] remain above the saves'
+## reserve) and spends them in order. A half-used block lost in a crash leaves a gap: nothing is
+## ever repeated. Server only: no clock.
 
-## Avisa cuando, tras tomar un id, [method needs_block] es true: quien lo escucha pide el siguiente bloque.
+## Warns when, after taking an id, [method needs_block] is true: whoever listens requests the next block.
 signal running_low
 
-## Ids de cada bloque de la plataforma.
+## Ids in each platform block.
 const BLOCK_SIZE: int = 1024
-## Se pide otro bloque cuando quedan menos que esto por encima de [member build_reserve].
+## Another block is requested when fewer than this remain above [member build_reserve].
 const REFILL_BELOW: int = 512
-## Ids del tramo del servidor, por encima de [member build_reserve].
+## Ids in the server's band, above [member build_reserve].
 const SERVER_RESERVE: int = 256
-## Mayor id (2^53 − 1: un número JSON lo lleva exacto, §3.4).
+## Highest id (2^53 − 1: a JSON number carries it exactly, §3.4).
 const MAX_ID: int = (1 << 53) - 1
 
-## El tramo de los guardados: 2 × [code]max_players[/code] (128 con 64 plazas); lo pone
+## The saves' band: 2 × [code]max_players[/code] (128 with 64 slots); set by
 ## [method ProgressService.setup].
 var build_reserve: int = 128
 
-## Bloques que quedan: [code][siguiente, último][/code] (los dos incluidos), en el orden en que llegaron.
+## Blocks that remain: [code][next, last][/code] (both included), in the order they arrived.
 var _blocks: Array[PackedInt64Array] = []
-## Sin plataforma: cuenta desde 1 sin tope ni tramos.
+## Without a platform: counts from 1 with no cap or bands.
 var _local: bool = false
 var _local_next: int = 1
 var _taken: int = 0
 
 
-## El generador sin plataforma: desde 1, en memoria, sin bloques ni tramos (todos los personajes son efímeros).
+## The generator without a platform: from 1, in memory, with no blocks or bands (all characters are ephemeral).
 static func local() -> IdAllocator:
 	var ids := IdAllocator.new()
 	ids._local = true
 	return ids
 
 
-## true si es el de [method local].
+## true if it is the one from [method local].
 func is_local() -> bool:
 	return _local
 
 
-## Añade el bloque [code][first, first + count)[/code] que ha dado la plataforma. Un bloque que no vale (vacío,
-## fuera de 1 … 2^53 − 1 o que se solapa con uno que queda) se ignora con aviso: es un error de la plataforma.
+## Adds the block [code][first, first + count)[/code] given by the platform. A block that is not valid (empty,
+## outside 1 … 2^53 − 1 or overlapping one that remains) is ignored with a warning: it is a platform error.
 func add_block(first: int, count: int) -> void:
 	if _local:
 		return
@@ -70,12 +70,12 @@ func add_block(first: int, count: int) -> void:
 	_blocks.append(PackedInt64Array([first, last]))
 
 
-## true si hay que pedir otro bloque: quedan menos de [member build_reserve] + [constant REFILL_BELOW].
+## true if another block must be requested: fewer than [member build_reserve] + [constant REFILL_BELOW] remain.
 func needs_block() -> bool:
 	return not _local and available() < build_reserve + REFILL_BELOW
 
 
-## Ids que quedan en los bloques (sin plataforma, los que quedan hasta 2^53 − 1).
+## Ids remaining in the blocks (without a platform, those remaining up to 2^53 − 1).
 func available() -> int:
 	if _local:
 		return MAX_ID - _local_next + 1
@@ -85,30 +85,30 @@ func available() -> int:
 	return total
 
 
-## Un id para una petición del cliente (SPLIT, DESTROY); 0 si quedan [member build_reserve] +
-## [constant SERVER_RESERVE] o menos.
+## An id for a client request (SPLIT, DESTROY); 0 if [member build_reserve] +
+## [constant SERVER_RESERVE] or fewer remain.
 func next_for_client() -> int:
 	return _take(build_reserve + SERVER_RESERVE)
 
 
-## Un id para el resto del servidor (kit, CAMP_REFILL, cierre antes de una operación suelta, GM, reversión); 0 si
-## quedan [member build_reserve] o menos.
+## An id for the rest of the server (kit, CAMP_REFILL, closing before a one-off operation, GM, reversal); 0 if
+## [member build_reserve] or fewer remain.
 func next_for_server() -> int:
 	return _take(build_reserve)
 
 
-## Un id para cerrar lo agregado al construir un guardado ([method PlayerProgress.build_section]); 0 si no queda
-## ninguno.
+## An id for closing what was added when building a save ([method PlayerProgress.build_section]); 0 if none
+## remain.
 func next_for_build() -> int:
 	return _take(0)
 
 
-## Ids que se han dado desde que existe (métricas y pruebas).
+## Ids that have been given out since it came into existence (metrics and tests).
 func taken_count() -> int:
 	return _taken
 
 
-# El siguiente id si quedan más de [param keep]; 0 si no.
+# The next id if more than [param keep] remain; 0 otherwise.
 func _take(keep: int) -> int:
 	if _local:
 		if _local_next > MAX_ID:

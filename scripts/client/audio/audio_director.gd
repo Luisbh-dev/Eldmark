@@ -1,75 +1,77 @@
 class_name AudioDirector
 extends Node
-## Director de audio del cliente (ART-10): reparte los sonidos en pools de reproductores con un
-## límite de voces por categoría y decide cuáles suenan cuando hay más peticiones que voces.
+## Client audio director (ART-10): distributes sounds across pools of players with a voice limit
+## per category and decides which ones play when there are more requests than voices.
 ## [br][br]
-## [b]Categorías[/b] ([enum Category]): efectos ([constant AudioBuses.SFX]), ambiente
-## ([constant AudioBuses.AMBIENCE]) y voces ([constant AudioBuses.VOICES]) son posicionales, con un
-## [AudioStreamPlayer3D] por voz ([method play_3d]); los sonidos de interfaz ([constant
-## AudioBuses.UI]) no tienen posición y usan [AudioStreamPlayer] ([method play_ui]). Cada categoría
-## manda a su bus, tiene un número fijo de voces ([constant VOICE_LIMITS]) y, las posicionales, una
-## distancia máxima ([constant MAX_DISTANCES]) a partir de la cual el sonido ni se intenta.
+## [b]Categories[/b] ([enum Category]): effects ([constant AudioBuses.SFX]), ambience
+## ([constant AudioBuses.AMBIENCE]) and voices ([constant AudioBuses.VOICES]) are positional, with
+## one [AudioStreamPlayer3D] per voice ([method play_3d]); interface sounds ([constant
+## AudioBuses.UI]) have no position and use [AudioStreamPlayer] ([method play_ui]). Each category
+## sends to its bus, has a fixed number of voices ([constant VOICE_LIMITS]) and, for the
+## positional ones, a maximum distance ([constant MAX_DISTANCES]) beyond which the sound is not
+## even attempted.
 ## [br][br]
-## [b]Prioridad[/b]: con todas las voces de la categoría ocupadas, un sonido nuevo roba la voz del
-## más lejano al oyente si él está más cerca (a igual distancia, la del más antiguo); si no, se
-## descarta. [param priority_bonus] (metros) hace pasar un sonido por más cercano de lo que está: los
-## del propio jugador deberían llevar uno grande para no perderse nunca en una refriega.
+## [b]Priority[/b]: with all the category's voices busy, a new sound steals the voice of the one
+## farthest from the listener if it is closer (at equal distance, the oldest one's); otherwise it
+## is discarded. [param priority_bonus] (meters) makes a sound pass for closer than it is: the
+## player's own sounds should carry a large one so they are never lost in a melee.
 ## [br][br]
-## [b]Variación[/b]: [method make_variation] monta un [AudioStreamRandomizer] con varios sonidos y
-## variación de tono y volumen; [method play_3d] y [method play_ui] aceptan además un tono y un
-## volumen propios.
+## [b]Variation[/b]: [method make_variation] builds an [AudioStreamRandomizer] with several sounds
+## and pitch and volume variation; [method play_3d] and [method play_ui] also accept their own
+## pitch and volume.
 ## [br][br]
-## [b]Volúmenes[/b]: [AudioBuses] los aplica y los guarda en [code]user://settings.cfg[/code]; el
-## director los carga al entrar en el árbol ([member load_volumes_on_ready]).
+## [b]Volumes[/b]: [AudioBuses] applies and saves them in [code]user://settings.cfg[/code]; the
+## director loads them on entering the tree ([member load_volumes_on_ready]).
 ## [br][br]
-## Solo cliente. No es un autoload (el servidor dedicado no debe cargarlo): lo crea [ClientServices],
-## un hijo de las escenas raíz del cliente, y [method get_instance] lo devuelve (null si no hay).
+## Client only. It is not an autoload (the dedicated server must not load it): it is created by
+## [ClientServices], a child of the client's root scenes, and [method get_instance] returns it
+## (null if there is none).
 
-## Categorías de sonido. Cada una tiene su bus, su límite de voces y su tipo (3D o plano).
+## Sound categories. Each has its bus, its voice limit and its type (3D or flat).
 enum Category { SFX, AMBIENCE, VOICES, UI }
 
-## Bus al que manda cada categoría.
+## Bus that each category sends to.
 const CATEGORY_BUSES: Dictionary = {
 	Category.SFX: AudioBuses.SFX,
 	Category.AMBIENCE: AudioBuses.AMBIENCE,
 	Category.VOICES: AudioBuses.VOICES,
 	Category.UI: AudioBuses.UI,
 }
-## Voces simultáneas por categoría (el tamaño de cada pool).
+## Simultaneous voices per category (the size of each pool).
 const VOICE_LIMITS: Dictionary = {
 	Category.SFX: 24, Category.AMBIENCE: 12, Category.VOICES: 8, Category.UI: 6,
 }
-## Distancia (m) más allá de la cual un sonido posicional se descarta sin gastar una voz.
+## Distance (m) beyond which a positional sound is discarded without spending a voice.
 const MAX_DISTANCES: Dictionary = {
 	Category.SFX: 70.0, Category.AMBIENCE: 140.0, Category.VOICES: 45.0, Category.UI: 0.0,
 }
-## Metros a los que un reproductor 3D suena a su volumen nominal (más lejos, atenúa).
+## Meters at which a 3D player sounds at its nominal volume (farther away, it attenuates).
 const UNIT_SIZE: float = 8.0
 
-## Cambian los contadores de [method get_stats] (llegó una petición).
+## The counters of [method get_stats] change (a request arrived).
 signal stats_changed
 
-## Si es true, al entrar en el árbol se cargan los volúmenes guardados. Las pruebas lo desactivan.
+## If true, the saved volumes are loaded on entering the tree. Tests disable it.
 var load_volumes_on_ready: bool = true
 
 static var _instance: AudioDirector = null
 
-# Categoría -> Array[Voice].
+# Category -> Array[Voice].
 var _pools: Dictionary = {}
 var _listener: Node3D = null
 var _serial: int = 0
 var _stats: Dictionary = {"requested": 0, "started": 0, "stolen": 0, "culled": 0, "dropped": 0}
 
 
-## Una voz del pool: un reproductor 3D o plano, con lo que hace falta para decidir si se roba.
+## A pool voice: a 3D or flat player, with what is needed to decide whether it is stolen.
 class Voice extends RefCounted:
 	var player_3d: AudioStreamPlayer3D = null
 	var player_2d: AudioStreamPlayer = null
-	## Prioridad con la que arrancó: cuanto menor, más importante (distancia menos bonus).
+	## Priority it started with: the lower, the more important (distance minus bonus).
 	var cost: float = 0.0
-	## Número de arranque, para saber cuál es la más antigua.
+	## Start number, to know which is the oldest.
 	var serial: int = 0
-	## Fotograma de proceso en el que arrancó (hasta que el motor lo refleja cuenta como ocupada).
+	## Process frame at which it started (until the engine reflects it, it counts as busy).
 	var started_frame: int = -1
 
 	func is_busy() -> bool:
@@ -87,14 +89,14 @@ class Voice extends RefCounted:
 			player_2d.stop()
 
 
-## Director vivo, o null si no hay (por ejemplo en el servidor o en una prueba sin él).
+## Live director, or null if there is none (for example on the server or in a test without it).
 static func get_instance() -> AudioDirector:
 	return _instance if is_instance_valid(_instance) else null
 
 
-## Monta un [AudioStreamRandomizer] con [param streams]: cada reproducción elige uno sin repetir el
-## anterior y varía el tono hasta [param pitch_range] por arriba y por abajo (0,08 = ±8 %) y el volumen
-## hasta [param volume_range_db] decibelios.
+## Builds an [AudioStreamRandomizer] with [param streams]: each playback picks one without
+## repeating the previous one and varies the pitch up to [param pitch_range] above and below (0.08
+## = ±8 %) and the volume up to [param volume_range_db] decibels.
 static func make_variation(streams: Array[AudioStream], pitch_range: float = 0.08,
 		volume_range_db: float = 1.5) -> AudioStreamRandomizer:
 	var randomizer: AudioStreamRandomizer = AudioStreamRandomizer.new()
@@ -122,14 +124,14 @@ func _ready() -> void:
 		AudioBuses.load_volumes()
 
 
-# --- Reproducción -----------------------------------------------------------------------------
+# --- Playback ---------------------------------------------------------------------------------
 
-## Reproduce [param stream] en [param position] (coordenadas globales) por la categoría posicional
-## [param category] ([constant Category.SFX], [constant Category.AMBIENCE] o [constant
-## Category.VOICES]). [param volume_db] y [param pitch_scale] son los del reproductor; [param
-## priority_bonus] se resta (en metros) a la distancia al oyente al decidir quién se queda sin voz.
-## Devuelve true si el sonido arrancó; false si se descartó (muy lejos, sin voces libres que robar o
-## una categoría que no es posicional).
+## Plays [param stream] at [param position] (global coordinates) through the positional category
+## [param category] ([constant Category.SFX], [constant Category.AMBIENCE] or [constant
+## Category.VOICES]). [param volume_db] and [param pitch_scale] are the player's own; [param
+## priority_bonus] is subtracted (in meters) from the distance to the listener when deciding who
+## loses a voice. Returns true if the sound started; false if it was discarded (too far away, no
+## free voices to steal, or a category that is not positional).
 func play_3d(category: Category, stream: AudioStream, position: Vector3, volume_db: float = 0.0,
 		pitch_scale: float = 1.0, priority_bonus: float = 0.0) -> bool:
 	_stats["requested"] += 1
@@ -151,9 +153,9 @@ func play_3d(category: Category, stream: AudioStream, position: Vector3, volume_
 	return true
 
 
-## Reproduce [param stream] sin posición por la categoría de interfaz. [param priority_bonus] cuenta
-## como metros igual que en [method play_3d] (a falta de distancia, solo desempata). Devuelve true si
-## arrancó.
+## Plays [param stream] with no position through the interface category. [param priority_bonus]
+## counts as meters just as in [method play_3d] (lacking a distance, it only breaks ties). Returns
+## true if it started.
 func play_ui(stream: AudioStream, volume_db: float = 0.0, pitch_scale: float = 1.0,
 		priority_bonus: float = 0.0) -> bool:
 	_stats["requested"] += 1
@@ -171,22 +173,22 @@ func play_ui(stream: AudioStream, volume_db: float = 0.0, pitch_scale: float = 1
 	return true
 
 
-## Para todos los sonidos que están sonando.
+## Stops all sounds that are playing.
 func stop_all() -> void:
 	for category: int in _pools:
 		for voice: Voice in _pools[category]:
 			voice.stop()
 
 
-# --- Oyente -----------------------------------------------------------------------------------
+# --- Listener ---------------------------------------------------------------------------------
 
-## Fija el nodo que hace de oyente para repartir las voces por distancia (null: la cámara activa).
+## Sets the node that acts as the listener for distributing voices by distance (null: the active camera).
 func set_listener(listener: Node3D) -> void:
 	_listener = listener
 
 
-## Posición del oyente: el nodo fijado con [method set_listener], si no la cámara activa del
-## viewport y, si tampoco hay cámara, el origen.
+## Listener position: the node set with [method set_listener], otherwise the viewport's active
+## camera and, if there is no camera either, the origin.
 func get_listener_position() -> Vector3:
 	if is_instance_valid(_listener) and _listener.is_inside_tree():
 		return _listener.global_position
@@ -197,9 +199,9 @@ func get_listener_position() -> Vector3:
 	return Vector3.ZERO
 
 
-# --- Lectura (para las pruebas y los ajustes) -------------------------------------------------
+# --- Reading (for tests and settings) ---------------------------------------------------------
 
-## Voces que suenan ahora en [param category].
+## Voices currently playing in [param category].
 func get_active_voices(category: Category) -> int:
 	var count: int = 0
 	for voice: Voice in _pools.get(category, []):
@@ -208,7 +210,7 @@ func get_active_voices(category: Category) -> int:
 	return count
 
 
-## Voces que suenan ahora en todas las categorías.
+## Voices currently playing across all categories.
 func get_total_active_voices() -> int:
 	var count: int = 0
 	for category: int in _pools:
@@ -216,20 +218,20 @@ func get_total_active_voices() -> int:
 	return count
 
 
-## Tamaño del pool de [param category] (su límite de voces).
+## Size of the pool of [param category] (its voice limit).
 func get_voice_limit(category: Category) -> int:
 	return (_pools.get(category, []) as Array).size()
 
 
-## Contadores desde el arranque: [code]requested[/code] (peticiones), [code]started[/code] (sonaron),
-## [code]stolen[/code] (voces ocupadas cedidas a un sonido más importante), [code]culled[/code]
-## (descartadas por distancia) y [code]dropped[/code] (descartadas por falta de voces). Cada petición
-## acaba en started, culled o dropped; stolen cuenta además las voces cedidas.
+## Counters since startup: [code]requested[/code] (requests), [code]started[/code] (played),
+## [code]stolen[/code] (busy voices given up to a more important sound), [code]culled[/code]
+## (discarded by distance) and [code]dropped[/code] (discarded for lack of voices). Each request
+## ends up in started, culled or dropped; stolen also counts the voices given up.
 func get_stats() -> Dictionary:
 	return _stats.duplicate()
 
 
-## Reproductores 3D de [param category] (para las pruebas: contar a mano los que suenan).
+## 3D players of [param category] (for tests: counting by hand which ones are playing).
 func get_players_3d(category: Category) -> Array[AudioStreamPlayer3D]:
 	var players: Array[AudioStreamPlayer3D] = []
 	for voice: Voice in _pools.get(category, []):
@@ -237,7 +239,7 @@ func get_players_3d(category: Category) -> Array[AudioStreamPlayer3D]:
 	return players
 
 
-## Reproductores planos de la categoría de interfaz.
+## Flat players of the interface category.
 func get_players_ui() -> Array[AudioStreamPlayer]:
 	var players: Array[AudioStreamPlayer] = []
 	for voice: Voice in _pools.get(Category.UI, []):
@@ -245,7 +247,7 @@ func get_players_ui() -> Array[AudioStreamPlayer]:
 	return players
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ---------------------------------------------------------------------------------
 
 func _build_pools() -> void:
 	for category: int in VOICE_LIMITS:
@@ -271,8 +273,8 @@ func _build_pools() -> void:
 		_pools[category] = voices
 
 
-# Una voz libre de la categoría o, si todas suenan, la del sonido menos importante cuando el nuevo
-# (con coste [param cost]) lo es más. null si no hay ninguna que ceder.
+# A free voice of the category or, if all are playing, that of the least important sound when
+# the new one (with cost [param cost]) is more important. null if there is none to give up.
 func _acquire_voice(category: Category, cost: float) -> Voice:
 	var victim: Voice = null
 	for voice: Voice in _pools[category]:

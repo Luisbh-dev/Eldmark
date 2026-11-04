@@ -35,7 +35,7 @@ func TestEmbeddedRules(t *testing.T) {
 	}
 }
 
-// El archivo incrustado es el de Godot: el protocol_version coincide con el de net_protocol.gd.
+// The embedded file is Godot's: the protocol_version matches net_protocol.gd's.
 func TestProtocolVersionMatchesGodot(t *testing.T) {
 	src, err := os.ReadFile("../../../scripts/shared/net/net_protocol.gd")
 	if err != nil {
@@ -83,7 +83,7 @@ func TestParseRejectsBrokenFiles(t *testing.T) {
 			t.Errorf("%s: se esperaba un error", name)
 		}
 	}
-	// Otras secciones (las de progresion.md) no molestan.
+	// Other sections (those of progresion.md) do not interfere.
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(good, &top); err != nil {
 		t.Fatal(err)

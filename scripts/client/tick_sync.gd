@@ -1,56 +1,54 @@
 class_name TickSync
 extends RefCounted
-## Antelación del cliente respecto al servidor (docs/red.md, sección 4.2).
+## Client lead over the server (docs/red.md, section 4.2).
 ##
-## En cada tick de física el cliente pregunta a [method next_steps] cuántos pasos de predicción
-## ([method ClientPrediction.step]) debe dar:
-## [br]- 1: lo normal.
-## [br]- 2: para adelantarse (paso doble).
-## [br]- 0: para retrasarse (paso nulo, uno de cada dos ticks).
-## [br]- N: resincronización dura hacia delante.
+## On every physics tick the client asks [method next_steps] how many prediction steps
+## ([method ClientPrediction.step]) it must take:
+## [br]- 1: the normal case.
+## [br]- 2: to get ahead (double step).
+## [br]- 0: to fall back (null step, one every two ticks).
+## [br]- N: hard forward resynchronization.
 ## [br][br]
-## La realimentación sale del servidor: cada snapshot trae [code]input_margin[/code], la antelación
-## mínima con la que llegaron las entradas desde el snapshot anterior (0 = justo a tiempo,
-## negativo = tarde). Se guardan las últimas [constant WINDOW_SAMPLES] muestras y se usa su
-## mínimo: si queda por debajo del margen objetivo ([method get_target_margin]) hay que
-## adelantarse; si queda muy por encima, retrasarse poco a poco. Nunca se salta hacia atrás,
-## porque regeneraría entradas ya enviadas y, como el servidor se queda con la primera copia,
-## habría predicciones fallidas seguras.
+## Feedback comes from the server: each snapshot carries [code]input_margin[/code], the minimum lead with
+## which inputs arrived since the previous snapshot (0 = just in time, negative = late). The last
+## [constant WINDOW_SAMPLES] samples are kept and their minimum is used: if it falls below the target
+## margin ([method get_target_margin]) the client must get ahead; if it stays well above, fall back
+## gradually. It never jumps backward, because it would regenerate inputs already sent and, since the
+## server keeps the first copy, there would be guaranteed mispredictions.
 ## [br][br]
-## Tras cada ajuste se descartan las muestras hasta que llega un snapshot cuyo
-## [code]input_ack_tick[/code] demuestra que el servidor ya ha recibido entradas generadas después
-## del ajuste: así se espera exactamente el retardo de la realimentación, sea cual sea el RTT, y no
-## hay sobreimpulso.
+## After each adjustment, samples are discarded until a snapshot arrives whose [code]input_ack_tick[/code]
+## proves the server has already received inputs generated after the adjustment: this way it waits exactly
+## the feedback delay, whatever the RTT, and there is no overshoot.
 
-## Muestras de margen que se guardan (~0,5 s a 30 snapshots por segundo).
+## Margin samples kept (~0.5 s at 30 snapshots per second).
 const WINDOW_SAMPLES: int = 15
-## Margen objetivo mínimo y máximo (ticks).
+## Minimum and maximum target margin (ticks).
 const MIN_TARGET: int = 1
 const MAX_TARGET: int = 4
-## Margen mínimo (ticks) a partir del cual se resincroniza de golpe hacia delante.
+## Minimum margin (ticks) below which it resynchronizes forward at once.
 const RESYNC_BEHIND: int = -8
-## Pasos máximos que se dan de golpe en una resincronización dura.
+## Maximum steps taken at once in a hard resynchronization.
 const MAX_RESYNC_STEPS: int = 30
-## Ticks, tras el primero generado después de un ajuste, que debe haber recibido el servidor para
-## que sus márgenes ya reflejen el ajuste.
+## Ticks, after the first one generated after an adjustment, that the server must have received for its
+## margins to already reflect the adjustment.
 const ACK_WAIT_TICKS: int = 2
-## Cuánto debe superar el mínimo de la ventana al margen objetivo para empezar a retrasarse.
+## How much the window's minimum must exceed the target margin before starting to fall back.
 const SLOW_DOWN_THRESHOLD: int = 2
 
-## Número de ajustes hechos desde [method start] (adelantos, retrasos y resincronizaciones).
+## Number of adjustments made since [method start] (advances, retreats and resynchronizations).
 var adjustments: int = 0
 
 var _target: int = MIN_TARGET
 var _window: Array[int] = []
-## Pasos de más pendientes (positivo, adelantarse) o de menos (negativo, retrasarse).
+## Pending extra steps (positive, getting ahead) or missing steps (negative, falling back).
 var _debt: int = 0
 var _slow_toggle: bool = false
 var _ignore_until_ack: int = 0
 
 
-## Empieza una sesión nueva y devuelve P0, el primer tick con entrada real:
-## [code]spawn_tick + rtt_ticks + margen objetivo + 1[/code]. [param spawn_tick] es el tick del
-## servidor en el que apareció el jugador y [param rtt_ticks] el RTT medido durante la conexión.
+## Starts a new session and returns P0, the first tick with real input:
+## [code]spawn_tick + rtt_ticks + target margin + 1[/code]. [param spawn_tick] is the server tick at which
+## the player spawned and [param rtt_ticks] the RTT measured during connection.
 func start(spawn_tick: int, rtt_ticks: int) -> int:
 	_window.clear()
 	_debt = 0
@@ -60,16 +58,16 @@ func start(spawn_tick: int, rtt_ticks: int) -> int:
 	return spawn_tick + maxi(rtt_ticks, 0) + _target + 1
 
 
-## Jitter de llegada de los snapshots (ticks; lo mide [InterpolationClock]). Fija el margen
-## objetivo: [code]clamp(1 + ceil(2 · jitter), 1, 4)[/code].
+## Snapshot arrival jitter (ticks; measured by [InterpolationClock]). Sets the target margin:
+## [code]clamp(1 + ceil(2 · jitter), 1, 4)[/code].
 func set_jitter(jitter_ticks: float) -> void:
 	_target = clampi(1 + ceili(2.0 * maxf(jitter_ticks, 0.0)), MIN_TARGET, MAX_TARGET)
 
 
-## Registra el margen de un snapshot nuevo. [param input_ack_tick] es el
-## [code]input_ack_tick[/code] del snapshot; [param input_margin] su [code]input_margin[/code]
-## ([constant NetProtocol.NO_MARGIN] si el servidor no tenía datos). Las muestras sin datos o
-## demasiado antiguas (anteriores a un ajuste) se descartan.
+## Records the margin of a new snapshot. [param input_ack_tick] is the snapshot's
+## [code]input_ack_tick[/code]; [param input_margin] its [code]input_margin[/code]
+## ([constant NetProtocol.NO_MARGIN] if the server had no data). Samples with no data or too old
+## (earlier than an adjustment) are discarded.
 func on_snapshot(input_ack_tick: int, input_margin: int) -> void:
 	if input_margin == NetProtocol.NO_MARGIN or input_ack_tick < _ignore_until_ack:
 		return
@@ -78,9 +76,8 @@ func on_snapshot(input_ack_tick: int, input_margin: int) -> void:
 		_window.pop_front()
 
 
-## Pasos de predicción que hay que dar en este tick de física. [param predicted_tick] es el último
-## tick predicho (antes de dar los pasos de este tick). Nunca es negativo; como mucho es
-## [constant MAX_RESYNC_STEPS].
+## Prediction steps to take on this physics tick. [param predicted_tick] is the last predicted tick
+## (before taking this tick's steps). It is never negative; at most it is [constant MAX_RESYNC_STEPS].
 func next_steps(predicted_tick: int) -> int:
 	if _debt == 0 and not _window.is_empty():
 		var low: int = _window_min()
@@ -108,12 +105,12 @@ func next_steps(predicted_tick: int) -> int:
 	return 1
 
 
-## Margen objetivo actual (ticks), entre [constant MIN_TARGET] y [constant MAX_TARGET].
+## Current target margin (ticks), between [constant MIN_TARGET] and [constant MAX_TARGET].
 func get_target_margin() -> int:
 	return _target
 
 
-## Mínimo de la ventana de márgenes, o [constant NetProtocol.NO_MARGIN] si está vacía.
+## Minimum of the margin window, or [constant NetProtocol.NO_MARGIN] if it is empty.
 func get_window_min() -> int:
 	if _window.is_empty():
 		return NetProtocol.NO_MARGIN

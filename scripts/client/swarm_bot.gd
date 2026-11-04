@@ -1,51 +1,52 @@
 class_name SwarmBot
 extends Node
-## Bot ligero del enjambre de carga (docs/red.md, secciones 14, 15 y 17.5; TEC-11).
+## Lightweight bot of the load swarm (docs/red.md, sections 14, 15 and 17.5; TEC-11).
 ## [br][br]
-## No simula ni carga la zona: no tiene [PlayerCharacter] propio, ni [ClientPrediction], ni
-## [RemoteWorld]. Es lo mínimo para que el servidor lo trate como a un cliente de verdad y para medir
-## lo que le cuesta:
+## It neither simulates nor loads the zone: it has no [PlayerCharacter] of its own, nor
+## [ClientPrediction], nor [RemoteWorld]. It is the bare minimum for the server to treat it like a real
+## client and to measure what it costs:
 ## [codeblock]
-## HELLO -> WELCOME -> CLIENT_READY 1 s después de conectar (no hay zona que cargar; ver READY_DELAY_TICKS)
-##            -> SPAWN propio
-## cada tick: poll, pasos de TickSync -> entradas de BotBrain (guiado por la posición del estado
-##            propio del último snapshot) -> INPUT_BATCH con ack_snapshot_tick -> flush
-## cada SNAPSHOT: se lee solo la cabecera (el tick, el ack, el margen, las sustituciones y el estado
-##            propio) y se cuentan sus registros; alimenta a TickSync y a InterpolationClock
+## HELLO -> WELCOME -> CLIENT_READY 1 s after connecting (no zone to load; see READY_DELAY_TICKS)
+##            -> own SPAWN
+## every tick: poll, TickSync steps -> BotBrain inputs (guided by the position of the own
+##            state in the last snapshot) -> INPUT_BATCH with ack_snapshot_tick -> flush
+## every SNAPSHOT: only the header is read (the tick, the ack, the margin, the substitutions and the
+##            own state) and its records are counted; it feeds TickSync and InterpolationClock
 ## [/codeblock]
-## [TickSync] e [InterpolationClock] son los de verdad, así que el bot se adelanta al servidor lo
-## justo y sus entradas llegan a tiempo, como las de un cliente; lo único que cambia es que la
-## posición con la que el [BotBrain] decide es la del snapshot (con el retraso de la red), no la de
-## una simulación local. Cada bot tiene su propio [NetTransport] (y por tanto su propio
-## [SceneMultiplayer], registrado por la ruta de su nodo).
+## [TickSync] and [InterpolationClock] are the real ones, so the bot runs ahead of the server just
+## enough and its inputs arrive on time, like a client's; the only difference is that the position the
+## [BotBrain] decides with is the snapshot's (with the network delay), not that of a local simulation.
+## Each bot has its own [NetTransport] (and therefore its own [SceneMultiplayer], registered under its
+## node's path).
 ## [br][br]
-## [b]Cerebro de combate[/b] ([code]--bot-brain=combat[/code], [member ClientConfig.bot_brain]): el bot
-## pelea con [constant BotBrain.Pattern.COMBAT] como un jugador de verdad, sin simular nada. Sabe quién
-## es enemigo por los ENTITY_SPAWN (reino y tipo; solo jugadores a los que el servidor dejaría dañar) y
-## dónde está por los snapshots, de los que solo decodifica una fracción de los registros en cada uno
-## ([constant ENEMY_SCAN_STRIDE]): con 128 bots, decodificarlos todos costaría más que el servidor, y a
-## un bot le basta con posiciones de hace unas décimas de segundo. Cada entrada lleva el
-## [code]view_offset_q[/code] que mandaría un cliente (su tick menos el de dibujo), así que el servidor
-## hace el rebobinado de verdad, y al morir pide reaparecer en cuanto puede (RESPAWN_REQUEST).
+## [b]Combat brain[/b] ([code]--bot-brain=combat[/code], [member ClientConfig.bot_brain]): the bot
+## fights with [constant BotBrain.Pattern.COMBAT] like a real player, without simulating anything. It
+## knows who is an enemy from the ENTITY_SPAWN messages (realm and kind; only players the server would
+## let it damage) and where they are from the snapshots, of which it decodes only a fraction of the
+## records in each ([constant ENEMY_SCAN_STRIDE]): with 128 bots, decoding them all would cost more than
+## the server, and a bot is fine with positions a few tenths of a second old. Each input carries the
+## [code]view_offset_q[/code] a client would send (its tick minus the draw tick), so the server does the
+## real rewind, and when it dies it asks to respawn as soon as it can (RESPAWN_REQUEST).
 ## [br][br]
-## [b]Cerebro de asedio[/b] ([code]--bot-brain=siege[/code], GUE-15): como el de combate (enemigos por los
-## ENTITY_SPAWN, también los PNJ de guerra, y posiciones por los snapshots), pero con
-## [constant BotBrain.Pattern.SIEGE]: sigue la ruta de su reino (los puntos de [code]data/routes/<zona>.tres[/code],
-## en línea recta de uno al siguiente: el servidor simula el movimiento y pone el suelo), golpea la puerta del
-## fuerte, entra en el círculo y pelea con el enemigo más cercano. El [SiegeView] lo llena a mano con los campos
-## del ENTITY_SPAWN de la fortaleza y de cada OBJECT_STATE ([method SiegeView.update_from_fields]), sin
-## [FortressView] ni escena; las posiciones de la puerta y el círculo salen de las rutas
-## ([method SiegeView.set_places_from_routes]). Desde F6b busca primero a los PNJ de guerra
-## ([method BotBrain.set_defender_finder]) y sale de los golpes avisados con TELEGRAPH ([BotThreatSight]). Desde GUE-44
-## sigue también a los jugadores de su reino (altas y los mismos registros de los snapshots) para contar a los suyos en
-## el punto de reunión de su campamento ([method BotBrain.set_ally_counter]).
+## [b]Siege brain[/b] ([code]--bot-brain=siege[/code], GUE-15): like the combat one (enemies from the
+## ENTITY_SPAWN messages, including the war NPCs, and positions from the snapshots), but with
+## [constant BotBrain.Pattern.SIEGE]: it follows its realm's route (the points of
+## [code]data/routes/<zone>.tres[/code], in a straight line from one to the next: the server simulates
+## the movement and sets the ground), hits the fort's gate, enters the circle and fights the nearest
+## enemy. The [SiegeView] is filled by hand with the fields of the fortress's ENTITY_SPAWN and of each
+## OBJECT_STATE ([method SiegeView.update_from_fields]), with no [FortressView] or scene; the positions of
+## the gate and the circle come from the routes ([method SiegeView.set_places_from_routes]). Since F6b it
+## looks for the war NPCs first ([method BotBrain.set_defender_finder]) and dodges hits announced with
+## TELEGRAPH ([BotThreatSight]). Since GUE-44 it also tracks the players of its realm (spawns and the
+## same snapshot records) to count its own at its camp's rally point
+## ([method BotBrain.set_ally_counter]).
 ## [br][br]
-## [b]Estadísticas[/b] ([method get_stats]): bytes de subida y de bajada de ENet desde que apareció
-## (con las cabeceras de ENet, sin las de UDP/IP), snapshots recibidos y su tamaño medio, registros por
-## snapshot, y lo que [BotSwarm] vuelca en su informe; con el cerebro de asedio, también el tick del servidor en que llegó
-## al fuerte ([code]fort_reached_tick[/code], GUE-16).
+## [b]Statistics[/b] ([method get_stats]): ENet upload and download bytes since it appeared (with ENet
+## headers, without UDP/IP ones), snapshots received and their average size, records per snapshot, and
+## what [BotSwarm] dumps into its report; with the siege brain, also the server tick at which it reached
+## the fort ([code]fort_reached_tick[/code], GUE-16).
 
-## Fase de la sesión.
+## Session phase.
 enum State {
 	IDLE,
 	CONNECTING,
@@ -58,38 +59,40 @@ enum State {
 }
 
 const PLAYER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
-## Id con el que el bot ve al servidor.
+## Id under which the bot sees the server.
 const SERVER_PEER_ID: int = 1
-## Tiempo de espera de ENet al conectar (ms).
+## ENet timeout when connecting (ms).
 const CONNECT_TIMEOUT_MS: int = 3000
-## Radio (m) por el que pasea cada bot alrededor de su punto de aparición.
+## Radius (m) within which each bot wanders around its spawn point.
 const BOT_RADIUS: float = 30.0
-## Reinos que se reparten los bots cuando la configuración no fija ninguno (los de las zonas con
-## campamentos: el Vado Gris).
+## Realms the bots are divided among when the configuration does not fix any (those of the zones with
+## camps: Vado Gris).
 const DEFAULT_REALMS: Array[int] = [NetProtocol.Realm.VARDHEIM, NetProtocol.Realm.SOLMARCH]
-## Entradas recientes que se guardan para la redundancia (más que NetProtocol.INPUT_REDUNDANCY_LOSSY).
+## Recent inputs kept for redundancy (more than NetProtocol.INPUT_REDUNDANCY_LOSSY).
 const INPUT_RING_SIZE: int = 16
-## Ticks, tras una subida de las sustituciones del servidor, en los que se envía con R = 8.
+## Ticks, after a rise in the server's substitutions, during which it sends with R = 8.
 const LOSSY_WINDOW_TICKS: int = 120
-## Escala del retardo de interpolación en el INPUT_BATCH (× 8) y del desfase de vista (× 16).
+## Scale of the interpolation delay in the INPUT_BATCH (× 8) and of the view offset (× 16).
 const INTERP_DELAY_SCALE: float = 8.0
 const VIEW_OFFSET_SCALE: float = 16.0
-## Cerebro de combate: de cada snapshot solo se decodifica uno de cada tantos registros (rotando).
+## Combat brain: from each snapshot only one in this many records is decoded (rotating).
 const ENEMY_SCAN_STRIDE: int = 6
-## Cerebro de combate: ticks mínimos entre dos peticiones de reaparición.
+## Combat brain: minimum ticks between two respawn requests.
 const RESPAWN_RETRY_TICKS: int = 30
-## Ticks que espera CLIENT_READY tras conectar (1 s), como un cliente que carga la zona. La confirmación de la
-## autenticación va por el canal 0 de ENet y CLIENT_READY por el 3, que no se ordenan entre sí: si la confirmación se
-## pierde (con 64 bots en una máquina, el búfer de UDP del servidor se llena en sus parones de 70 ms) y CLIENT_READY
-## llega antes, el servidor lo tira como «paquete ajeno al protocolo» y el bot se queda cargando hasta que lo echan
-## (2 de cada 3 pasadas de 64 bots, docs/plataforma.md §19.18). Pasado 1 s, ENet ya ha reenviado la confirmación.
+## Ticks it waits before CLIENT_READY after connecting (1 s), like a client loading the zone. The
+## authentication confirmation travels on ENet channel 0 and CLIENT_READY on channel 3, which are not
+## ordered relative to each other: if the confirmation is lost (with 64 bots on one machine, the server's
+## UDP buffer fills up during its 70 ms stalls) and CLIENT_READY arrives first, the server drops it as a
+## "paquete ajeno al protocolo" (packet foreign to the protocol) and the bot stays stuck loading until it
+## is kicked out (2 of every 3 runs of 64 bots, docs/plataforma.md §19.18). After 1 s, ENet has already
+## resent the confirmation.
 const READY_DELAY_TICKS: int = 60
 const TEXT_CONNECT_FAILED: String = "No se pudo conectar con el servidor %s:%d"
 const TEXT_CONNECTION_LOST: String = "Se perdió la conexión con el servidor"
 const TEXT_LEFT: String = "Ha salido de la zona"
 const TEXT_BAD_REPLY: String = "Respuesta del servidor no válida"
 
-## Huella de la simulación que se calcula una sola vez por proceso (es la misma para todos los bots).
+## Fingerprint of the simulation, computed only once per process (it is the same for all the bots).
 static var _cached_sim_hash: int = -1
 
 var _index: int = 0
@@ -102,20 +105,20 @@ var _tick_sync: TickSync = TickSync.new()
 var _interp_clock: InterpolationClock = InterpolationClock.new()
 var _brain: BotBrain = null
 var _combat: bool = false
-# Cerebro de asedio: lo que sabe del fuerte (campos de OBJECT_STATE), las rutas de la zona y la fortaleza que sigue.
+# Siege brain: what it knows about the fort (OBJECT_STATE fields), the zone's routes and the fortress it follows.
 var _siege_mode: bool = false
 var _siege_view: SiegeView = null
 var _siege_routes: ApproachRoutes = null
 var _threat_sight: BotThreatSight = null
 var _fortress_net_id: int = 0
 var _object_states_applied: int = 0
-# Tick del servidor (el del snapshot) en que el bot de asedio llega por primera vez a menos de
-# BotBrain.SIEGE_RALLY_FORT_RADIUS del círculo; -1 mientras no llega (GUE-16: la carga mira que estén en el fuerte).
+# Server tick (the snapshot's) at which the siege bot first gets within BotBrain.SIEGE_RALLY_FORT_RADIUS
+# of the circle; -1 until it does (GUE-16: the load run checks that they are at the fort).
 var _fort_reached_tick: int = -1
 var _local_tick: int = 0
 var _hello_tick: int = 0
 var _ready_tick: int = 0
-# Tick local en que sale CLIENT_READY (READY_DELAY_TICKS tras conectar).
+# Local tick at which CLIENT_READY is sent (READY_DELAY_TICKS after connecting).
 var _ready_due_tick: int = 0
 var _rtt_hello_ticks: int = 0
 var _rtt_ticks: int = 0
@@ -143,21 +146,21 @@ var _reject_text: String = ""
 var _disconnect_text: String = ""
 var _last_notice_text: String = ""
 
-# Cerebro de combate: los enemigos que conoce por los ENTITY_SPAWN (net_id -> última posición conocida)
-# y cuáles siguen vivos, y el desfase de la rotación con la que se decodifican los registros.
+# Combat brain: the enemies it knows from the ENTITY_SPAWN messages (net_id -> last known position)
+# and which are still alive, and the rotation offset with which the records are decoded.
 var _enemy_positions: Dictionary[int, Vector3] = {}
-# Máximo de enemigos conocidos a la vez durante la sesión (para el informe).
+# Maximum number of enemies known at once during the session (for the report).
 var _enemies_known_max: int = 0
 var _enemy_alive: Dictionary[int, bool] = {}
-# Cerebro de asedio: los enemigos conocidos que son PNJ de guerra (los que busca primero).
+# Siege brain: the known enemies that are war NPCs (the ones it looks for first).
 var _enemy_npcs: Dictionary[int, bool] = {}
-# Cerebro de asedio: los jugadores de su reino que conoce por los ENTITY_SPAWN (net_id -> última posición conocida) y
-# cuáles siguen vivos, para contarlos en la reunión (GUE-44).
+# Siege brain: the players of its realm it knows from the ENTITY_SPAWN messages (net_id -> last known position) and
+# which are still alive, to count them at the rally (GUE-44).
 var _ally_positions: Dictionary[int, Vector3] = {}
 var _ally_alive: Dictionary[int, bool] = {}
 var _scan_phase: int = 0
 
-# Estadísticas.
+# Statistics.
 var _snapshots: int = 0
 var _snapshots_late: int = 0
 var _snapshots_with_state: int = 0
@@ -175,10 +178,10 @@ var _hit_events_seen: int = 0
 var _respawn_requests: int = 0
 var _last_respawn_request_tick: int = -1000
 var _dead: bool = false
-# CHAT_MESSAGE y PARTY_* bien formados que han llegado (se descartan).
+# Well-formed CHAT_MESSAGE and PARTY_* messages that have arrived (they are discarded).
 var _chat_messages_seen: int = 0
 var _party_messages_seen: int = 0
-# INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE bien formados (protocolo 7; se descartan).
+# Well-formed INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE (protocol 7; they are discarded).
 var _progress_messages_seen: int = 0
 var _malformed_packets: int = 0
 var _bytes_at_join: Dictionary = {}
@@ -191,11 +194,12 @@ func _init() -> void:
 	_view_offsets.resize(INPUT_RING_SIZE)
 
 
-## Prepara el bot número [param index] del enjambre con [param config] y empieza a conectar. El nodo
-## debe estar ya en el árbol. Nombre: [code]NameRules.bot_name(bot_seed + index)[/code]; reino: el de
-## la configuración o uno de [constant DEFAULT_REALMS] según el índice; cerebro: [BotBrain] con la
-## semilla [code]bot_seed + index[/code]. Con [param dtls] (el certificado de la zona anclado, el mismo para todo el
-## enjambre) conecta por DTLS con el nombre [member ClientConfig.dtls_name] (docs/plataforma.md §10.2).
+## Prepares swarm bot number [param index] with [param config] and starts connecting. The node must
+## already be in the tree. Name: [code]NameRules.bot_name(bot_seed + index)[/code]; realm: the
+## configuration's or one of [constant DEFAULT_REALMS] according to the index; brain: [BotBrain] with the
+## seed [code]bot_seed + index[/code]. With [param dtls] (the pinned zone certificate, the same for the
+## whole swarm) it connects over DTLS with the name [member ClientConfig.dtls_name] (docs/plataforma.md
+## §10.2).
 func setup(index: int, config: ClientConfig, dtls: TLSOptions = null) -> void:
 	if _state != State.IDLE:
 		return
@@ -229,8 +233,8 @@ func setup(index: int, config: ClientConfig, dtls: TLSOptions = null) -> void:
 	_state = State.CONNECTING
 
 
-## Sale de la zona: CLIENT_LEAVE y corte ordenado. [method get_state] pasa a [constant State.CLOSED]
-## cuando la conexión se cierra.
+## Leaves the zone: CLIENT_LEAVE and an orderly disconnect. [method get_state] changes to
+## [constant State.CLOSED] when the connection closes.
 func leave() -> void:
 	if _state == State.IDLE or _state == State.CLOSED or _state == State.LEAVING:
 		return
@@ -256,17 +260,17 @@ func get_display_name() -> String:
 	return _display_name
 
 
-## true si ya tiene personaje en el servidor y juega.
+## true if it already has a character on the server and is playing.
 func is_in_world() -> bool:
 	return _state == State.IN_WORLD
 
 
-## Id de red del personaje (0 hasta el SPAWN propio).
+## Network id of the character (0 until the own SPAWN).
 func get_net_id() -> int:
 	return _net_id
 
 
-## El tick del servidor del snapshot más reciente que ha recibido (0 si aún ninguno).
+## The server tick of the most recent snapshot it has received (0 if none yet).
 func get_newest_server_tick() -> int:
 	return _newest_snapshot_tick
 
@@ -275,17 +279,17 @@ func get_local_tick() -> int:
 	return _local_tick
 
 
-## Último estado propio del servidor (posición del último snapshot con estado).
+## Last own state from the server (position from the last snapshot with state).
 func get_position() -> Vector3:
 	return _position
 
 
-## El [SiegeView] que llena con los OBJECT_STATE (null si no usa el cerebro de asedio).
+## The [SiegeView] it fills with the OBJECT_STATE messages (null if it does not use the siege brain).
 func get_siege_view() -> SiegeView:
 	return _siege_view
 
 
-## El cerebro del bot (null hasta que aparece).
+## The bot's brain (null until it spawns).
 func get_brain() -> BotBrain:
 	return _brain
 
@@ -298,35 +302,35 @@ func get_interpolation_clock() -> InterpolationClock:
 	return _interp_clock
 
 
-## Texto del último NOTICE del servidor ("" si no llegó ninguno).
+## Text of the server's last NOTICE ("" if none arrived).
 func get_last_notice_text() -> String:
 	return _last_notice_text
 
 
-## Estadísticas del bot:
+## Bot statistics:
 ## [br]- [code]index[/code], [code]name[/code], [code]realm[/code], [code]state[/code], [code]net_id[/code],
 ## [code]spawn_tick[/code], [code]rtt_ticks[/code], [code]rejected[/code] ([code]reject_result[/code],
 ## [code]reject_text[/code]), [code]disconnect_text[/code], [code]last_notice[/code].
-## [br]- [code]local_ticks[/code] (ticks de física desde que empezó), [code]world_ticks[/code] (los que lleva
-## jugando, desde el SPAWN propio hasta el cierre o ahora).
-## [br]- [code]snapshots[/code] recibidos, [code]late_snapshots[/code], [code]snapshots_with_state[/code],
-## [code]snapshot_bytes[/code] (suma de sus tamaños), [code]avg_snapshot_bytes[/code],
+## [br]- [code]local_ticks[/code] (physics ticks since it started), [code]world_ticks[/code] (those it has
+## been playing, from the own SPAWN until closing or now).
+## [br]- [code]snapshots[/code] received, [code]late_snapshots[/code], [code]snapshots_with_state[/code],
+## [code]snapshot_bytes[/code] (sum of their sizes), [code]avg_snapshot_bytes[/code],
 ## [code]max_snapshot_bytes[/code], [code]avg_snapshot_records[/code], [code]max_snapshot_records[/code].
-## [br]- [code]bytes_up[/code] y [code]bytes_down[/code]: bytes de ENet desde el SPAWN propio;
-## [code]kb_up_per_s[/code] y [code]kb_down_per_s[/code] sobre [code]world_ticks[/code]; [code]total_bytes_up[/code] y
-## [code]total_bytes_down[/code] de toda la sesión.
+## [br]- [code]bytes_up[/code] and [code]bytes_down[/code]: ENet bytes since the own SPAWN;
+## [code]kb_up_per_s[/code] and [code]kb_down_per_s[/code] over [code]world_ticks[/code];
+## [code]total_bytes_up[/code] and [code]total_bytes_down[/code] for the whole session.
 ## [br]- [code]batches_sent[/code], [code]target_margin[/code], [code]last_input_margin[/code],
 ## [code]tick_sync_adjustments[/code], [code]resyncs[/code], [code]substitution_rises[/code],
-## [code]substitutions[/code] (contador del servidor), [code]spawns_seen[/code], [code]despawns_seen[/code],
-## [code]projectile_spawns_seen[/code] (los proyectiles del protocolo 6, que el bot ignora; sus DESPAWN cuentan en
+## [code]substitutions[/code] (server counter), [code]spawns_seen[/code], [code]despawns_seen[/code],
+## [code]projectile_spawns_seen[/code] (protocol 6 projectiles, which the bot ignores; their DESPAWN count in
 ## [code]despawns_seen[/code]), [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]malformed_packets[/code].
-## [br]- Del chat y los grupos (protocolo 5), que el bot decodifica y descarta: [code]chat_messages_seen[/code]
-## (CHAT_MESSAGE) y [code]party_messages_seen[/code] (PARTY_INVITATION, PARTY_ROSTER y PARTY_STATUS).
-## [br]- Del inventario y el progreso (protocolo 7, docs/progresion.md §4.6), que también decodifica y descarta:
-## [code]progress_messages_seen[/code] (INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE).
-## [br]- Del combate: [code]combat[/code] (si pelea), [code]events_seen[/code] y [code]event_bytes[/code]
-## (ENTITY_EVENT recibidos y su tamaño), [code]hit_events_seen[/code], [code]enemies_known[/code] (y su máximo, [code]enemies_known_max[/code]),
-## [code]dead[/code] y [code]respawn_requests[/code].
+## [br]- From chat and parties (protocol 5), which the bot decodes and discards: [code]chat_messages_seen[/code]
+## (CHAT_MESSAGE) and [code]party_messages_seen[/code] (PARTY_INVITATION, PARTY_ROSTER and PARTY_STATUS).
+## [br]- From inventory and progression (protocol 7, docs/progresion.md §4.6), which it also decodes and discards:
+## [code]progress_messages_seen[/code] (INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE).
+## [br]- From combat: [code]combat[/code] (whether it fights), [code]events_seen[/code] and [code]event_bytes[/code]
+## (ENTITY_EVENT messages received and their size), [code]hit_events_seen[/code], [code]enemies_known[/code] (and its maximum, [code]enemies_known_max[/code]),
+## [code]dead[/code] and [code]respawn_requests[/code].
 func get_stats() -> Dictionary:
 	var counters: Dictionary = _byte_counters()
 	var up: int = int(counters.get("wire_out", 0)) - int(_bytes_at_join.get("wire_out", 0))
@@ -401,9 +405,9 @@ func get_stats() -> Dictionary:
 	return stats
 
 
-# Asedio: apunta el tick del servidor [param server_tick] la primera vez que el bot está a menos de
-# [constant BotBrain.SIEGE_RALLY_FORT_RADIUS] (en horizontal) del centro del círculo, la misma distancia con la que el
-# cerebro cuenta a los suyos «peleando en el fuerte».
+# Siege: records the server tick [param server_tick] the first time the bot is within
+# [constant BotBrain.SIEGE_RALLY_FORT_RADIUS] (horizontally) of the circle's center, the same distance
+# the brain uses to count its own as "fighting at the fort".
 func _note_fort_reached(server_tick: int) -> void:
 	if not _siege_mode or _fort_reached_tick >= 0 or _siege_view.circle_radius <= 0.0:
 		return
@@ -412,7 +416,7 @@ func _note_fort_reached(server_tick: int) -> void:
 		_fort_reached_tick = server_tick
 
 
-# --- Bucle del tick ---------------------------------------------------------------------------
+# --- Tick loop --------------------------------------------------------------------------------
 
 func _physics_process(_delta: float) -> void:
 	if _state == State.IDLE or _state == State.CLOSED:
@@ -427,8 +431,8 @@ func _physics_process(_delta: float) -> void:
 	_transport.flush()
 
 
-# Los pasos de predicción que decide TickSync generan, cada uno, la entrada del siguiente tick, y se
-# envía el lote. No hay simulación: la posición para el cerebro es la del último estado propio.
+# The prediction steps decided by TickSync each generate the input for the next tick, and the batch is
+# sent. There is no simulation: the position for the brain is that of the last own state.
 func _play_tick() -> void:
 	var steps: int = _tick_sync.next_steps(_predicted_tick)
 	if steps > 2:
@@ -442,8 +446,8 @@ func _play_tick() -> void:
 	_send_input_batch()
 
 
-# INPUT_BATCH de 5.4: de max(ack + 1, newest - R + 1, primer tick real) a newest, con R = 4 (8 si las
-# sustituciones del servidor subieron hace poco).
+# INPUT_BATCH from 5.4: from max(ack + 1, newest - R + 1, first real tick) to newest, with R = 4 (8 if the
+# server's substitutions rose recently).
 func _send_input_batch() -> void:
 	var newest: int = _predicted_tick
 	if newest < _first_real_tick:
@@ -472,9 +476,9 @@ func _send_input_batch() -> void:
 		_batches_sent += 1
 
 
-# Desfase de la vista de la entrada del tick [param tick] ((tick - tick de dibujo) × 16): lo que mandaría
-# un cliente, para que el servidor haga el rebobinado de verdad. Solo con el cerebro de combate; sin él
-# (y antes de que arranque el reloj de interpolación) no hay vista que medir.
+# View offset of the input at tick [param tick] ((tick - draw tick) × 16): what a client would send, so
+# the server does the real rewind. Only with the combat brain; without it (and before the interpolation
+# clock starts) there is no view to measure.
 func _view_offset_q(tick: int) -> int:
 	if not _combat:
 		return 0
@@ -484,7 +488,7 @@ func _view_offset_q(tick: int) -> int:
 	return clampi(roundi((float(tick) - drawn) * VIEW_OFFSET_SCALE), 0, NetMessages.MAX_VIEW_OFFSET_Q)
 
 
-# --- Conexión ---------------------------------------------------------------------------------
+# --- Connection -------------------------------------------------------------------------------
 
 func _on_peer_authenticating(peer_id: int) -> void:
 	if peer_id != SERVER_PEER_ID or _state != State.CONNECTING:
@@ -529,7 +533,7 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 		_close(TEXT_CONNECTION_LOST)
 
 
-# Autenticado en los dos lados: no hay zona que cargar, pero CLIENT_READY espera READY_DELAY_TICKS (ver la constante).
+# Authenticated on both sides: there is no zone to load, but CLIENT_READY waits READY_DELAY_TICKS (see the constant).
 func _on_peer_connected(peer_id: int) -> void:
 	if peer_id != SERVER_PEER_ID or _state != State.HELLO_SENT or _welcome == null:
 		return
@@ -563,7 +567,7 @@ func _on_connection_failed() -> void:
 	_close(TEXT_CONNECT_FAILED % [_config.address, _config.port])
 
 
-# Termina la sesión: deja de jugar y cierra el transporte.
+# Ends the session: stops playing and closes the transport.
 func _close(text: String) -> void:
 	if _state == State.CLOSED:
 		return
@@ -576,7 +580,7 @@ func _close(text: String) -> void:
 	set_physics_process(false)
 
 
-# --- Paquetes ---------------------------------------------------------------------------------
+# --- Packets ----------------------------------------------------------------------------------
 
 func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 	if peer_id != SERVER_PEER_ID or bytes.is_empty():
@@ -599,7 +603,7 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 					if _threat_sight != null:
 						_threat_sight.forget(despawn.net_id)
 		NetProtocol.MSG_ENTITY_EVENT:
-			# Los eventos de combate no hacen nada a un bot, pero tienen que estar bien formados.
+			# Combat events do nothing to a bot, but they must be well formed.
 			var event: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(bytes)
 			if event == null:
 				_malformed_packets += 1
@@ -625,9 +629,10 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 		NetProtocol.MSG_SCOREBOARD:
 			if NetMessages.Scoreboard.decode(bytes) == null:
 				_malformed_packets += 1
-		# Chat y grupos (protocolo 5, docs/social.md 12.7): el servidor trata al bot como a un jugador, así
-		# que le llega la «zona» y el «decir» de su reino, los susurros y las invitaciones (con su aviso del
-		# sistema). No contesta a nada (una invitación caduca sola); solo los decodifica y los descarta.
+		# Chat and parties (protocol 5, docs/social.md 12.7): the server treats the bot as a player, so it
+		# receives its realm's "zona" (zone) and "decir" (say) messages, whispers and invitations (with their
+		# system notice). It answers none of them (an invitation expires on its own); it only decodes and
+		# discards them.
 		NetProtocol.MSG_CHAT_MESSAGE:
 			if NetMessages.ChatMessage.decode(bytes) == null:
 				_malformed_packets += 1
@@ -648,8 +653,8 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 			else:
 				_party_messages_seen += 1
-		# Inventario y progreso (protocolo 7, docs/progresion.md §4.6): solo al dueño. El bot no tiene ventana de
-		# inventario: los decodifica y los descarta, y solo cuenta como mal formado lo que no se decodifica.
+		# Inventory and progression (protocol 7, docs/progresion.md §4.6): owner only. The bot has no inventory
+		# window: it decodes and discards them, and only what fails to decode counts as malformed.
 		NetProtocol.MSG_INVENTORY_DELTA, NetProtocol.MSG_INVENTORY_FULL, NetProtocol.MSG_WALLET_UPDATE, \
 				NetProtocol.MSG_PROGRESS_UPDATE:
 			if _decode_progress_message(bytes) == null:
@@ -660,7 +665,7 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_malformed_packets += 1
 
 
-# El mensaje de inventario o progreso decodificado (null si está mal formado o no es uno de los S→C).
+# The decoded inventory or progression message (null if malformed or not one of the S→C ones).
 static func _decode_progress_message(bytes: PackedByteArray) -> RefCounted:
 	match NetMessages.peek_type(bytes):
 		NetProtocol.MSG_INVENTORY_DELTA:
@@ -674,8 +679,8 @@ static func _decode_progress_message(bytes: PackedByteArray) -> RefCounted:
 	return null
 
 
-# Solo se lee la cabecera del SNAPSHOT (ver NetMessages.Snapshot): este bot no dibuja a nadie, y
-# decodificar los registros de 57 jugadores en cada bot de un enjambre costaría más que el servidor.
+# Only the SNAPSHOT header is read (see NetMessages.Snapshot): this bot draws nobody, and decoding the
+# records of 57 players in every bot of a swarm would cost more than the server.
 func _on_snapshot(bytes: PackedByteArray) -> void:
 	var size: int = bytes.size()
 	if size < NetMessages.SNAPSHOT_HEADER_SIZE:
@@ -688,7 +693,7 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 		if size < NetMessages.SNAPSHOT_HEADER_SIZE_WITH_STATE:
 			_malformed_packets += 1
 			return
-		# El estado propio va seguido del bloque extra (vida), que siempre lo acompaña.
+		# The own state is followed by the extra block (health), which always accompanies it.
 		section_offset += PlayerState.ENCODED_SIZE + NetMessages.SNAPSHOT_EXTRA_SIZE
 	var server_tick: int = bytes.decode_u32(1)
 	if _combat and _state == State.IN_WORLD:
@@ -724,9 +729,9 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 			_note_extra_block(bytes, server_tick)
 
 
-# Cerebro de combate: decodifica la posición y la vida de uno de cada ENEMY_SCAN_STRIDE registros del
-# snapshot (rotando el desfase en cada snapshot) y actualiza solo a los enemigos (y, con el de asedio, a los aliados)
-# que ya conoce.
+# Combat brain: decodes the position and health of one in every ENEMY_SCAN_STRIDE records of the
+# snapshot (rotating the offset on each snapshot) and updates only the enemies (and, with the siege
+# brain, the allies) it already knows.
 func _scan_enemies(bytes: PackedByteArray, section_offset: int) -> void:
 	if section_offset >= bytes.size() or (_enemy_positions.is_empty() and _ally_positions.is_empty()):
 		return
@@ -757,17 +762,18 @@ func _scan_enemies(bytes: PackedByteArray, section_offset: int) -> void:
 		offset += count * EntityRecord.SIZE
 
 
-## true si el registro de [param bytes] en [param record_offset] ([EntityRecord]) es de alguien vivo y en pie: su vida
-## no es [constant EntityRecord.HEALTH_Q_DEAD] y su acción (byte 19, los 4 bits bajos) no es DOWNED. Un derribado publica
-## su vida de derribado, que nunca es 0 ([code]Combatant.publish[/code]): sin mirar la acción contaría como vivo. Son los
-## aliados que cuenta en la reunión (GUE-44), como [code]ZoneServer._count_allies[/code] y [BotAllySight].
+## true if the record in [param bytes] at [param record_offset] ([EntityRecord]) belongs to someone alive
+## and standing: its health is not [constant EntityRecord.HEALTH_Q_DEAD] and its action (byte 19, the low
+## 4 bits) is not DOWNED. A downed player publishes its downed health, which is never 0
+## ([code]Combatant.publish[/code]): without looking at the action it would count as alive. These are the
+## allies it counts at the rally (GUE-44), like [code]ZoneServer._count_allies[/code] and [BotAllySight].
 static func is_standing_record(bytes: PackedByteArray, record_offset: int) -> bool:
 	return bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD \
 			and (bytes[record_offset + 19] & 15) != CombatState.Action.DOWNED
 
 
-# Cerebro de combate: lee el bloque extra del snapshot (vida, estado, tick de reaparición) y, estando
-# muerto, pide reaparecer en cuanto se puede.
+# Combat brain: reads the snapshot's extra block (health, state, respawn tick) and, if dead, asks to
+# respawn as soon as it can.
 func _note_extra_block(bytes: PackedByteArray, server_tick: int) -> void:
 	var extra_offset: int = 13 + PlayerState.ENCODED_SIZE
 	var status: int = bytes.decode_u8(extra_offset + 4)
@@ -783,8 +789,8 @@ func _note_extra_block(bytes: PackedByteArray, server_tick: int) -> void:
 		_respawn_requests += 1
 
 
-# Cerebro de combate: el enemigo vivo más cercano a [param position] (la última posición que se sabe de
-# él; con la altura pesada, BotBrain.target_distance_squared), o null.
+# Combat brain: the living enemy closest to [param position] (the last position known of it; with the
+# height weighted, BotBrain.target_distance_squared), or null.
 func _find_enemy(position: Vector3) -> Variant:
 	var best: Variant = null
 	var best_distance: float = INF
@@ -799,7 +805,7 @@ func _find_enemy(position: Vector3) -> Variant:
 	return best
 
 
-# Cerebro de asedio: el PNJ de guerra enemigo vivo más cercano a [param position], o null.
+# Siege brain: the living enemy war NPC closest to [param position], or null.
 func _find_defender(position: Vector3) -> Variant:
 	var best: Variant = null
 	var best_distance: float = INF
@@ -814,9 +820,9 @@ func _find_defender(position: Vector3) -> Variant:
 	return best
 
 
-# Cerebro de asedio: cuántos jugadores de su reino, vivos y en pie (is_standing_record) y sin contarle a él, están a menos
-# de [param radius] metros (en horizontal) de [param center], según su última posición conocida (el contador de la
-# reunión, GUE-44).
+# Siege brain: how many players of its realm, alive and standing (is_standing_record) and not counting
+# itself, are within [param radius] meters (horizontally) of [param center], according to their last
+# known position (the rally counter, GUE-44).
 func _count_allies(center: Vector3, radius: float) -> int:
 	var limit: float = radius * radius
 	var found: int = 0
@@ -831,20 +837,20 @@ func _count_allies(center: Vector3, radius: float) -> int:
 	return found
 
 
-# Cerebro de asedio: true si el PNJ [param net_id] es uno de los de guerra enemigos que conoce por sus altas (los únicos
-# cuyos golpes avisados evita: los de los PNJ de su reino no le dañan).
+# Siege brain: true if NPC [param net_id] is one of the enemy war NPCs it knows from their spawns (the
+# only ones whose telegraphed hits it avoids: those of its own realm's NPCs do not damage it).
 func _is_enemy_npc(net_id: int) -> bool:
 	return _enemy_npcs.has(net_id)
 
 
-# Cerebro de asedio: los golpes avisados que siguen activos en el tick de la entrada que se decide.
+# Siege brain: the telegraphed hits still active at the tick of the input being decided.
 func _find_threats(_position: Vector3) -> Array[BotBrain.Threat]:
 	if _threat_sight == null:
 		return []
 	return _threat_sight.find(_predicted_tick)
 
 
-# Registros del snapshot, sumando los contadores de sus secciones sin decodificarlos.
+# Snapshot records, summing the counters of its sections without decoding them.
 func _count_records(bytes: PackedByteArray, section_offset: int) -> int:
 	if section_offset >= bytes.size():
 		return 0
@@ -860,7 +866,7 @@ func _count_records(bytes: PackedByteArray, section_offset: int) -> int:
 	return total
 
 
-# Contador de entradas sustituidas del servidor (mod 65536): si sube, se envía con más redundancia.
+# Counter of the server's substituted inputs (mod 65536): if it rises, it is sent with more redundancy.
 func _note_substitutions(value: int) -> void:
 	if _server_substitutions < 0:
 		_server_substitutions = value
@@ -877,14 +883,14 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	if spawn == null:
 		_malformed_packets += 1
 		return
-	# Un proyectil (kind 3, protocolo 6) no es una entidad para el bot: ni enemigo ni el personaje propio.
+	# A projectile (kind 3, protocol 6) is not an entity to the bot: neither an enemy nor its own character.
 	if spawn.kind == NetProtocol.EntityKind.PROJECTILE:
 		_projectile_spawns_seen += 1
 		return
 	if not spawn.is_yours:
 		_spawns_seen += 1
 		if spawn.kind == NetProtocol.EntityKind.STRUCTURE:
-			# La fortaleza: el alta lleva sus campos completos (como un OBJECT_STATE).
+			# The fortress: the spawn carries its full fields (like an OBJECT_STATE).
 			if _siege_mode and _fortress_net_id == 0:
 				_fortress_net_id = spawn.net_id
 				_apply_fortress_fields(spawn.to_object_state())
@@ -926,11 +932,11 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	_state = State.IN_WORLD
 
 
-# --- Asedio -------------------------------------------------------------------------------------
+# --- Siege --------------------------------------------------------------------------------------
 
-# true si el alta [param spawn] es de alguien a quien este bot puede atacar: un jugador de otro reino y, con el
-# cerebro de asedio, también un PNJ de guerra (los Huecos y los defensores tienen id de definición; los
-# maniquíes no).
+# true if spawn [param spawn] belongs to someone this bot can attack: a player of another realm and, with
+# the siege brain, also a war NPC (the Hollow and the defenders have a definition id; the dummies do
+# not).
 func _is_enemy_spawn(spawn: NetMessages.EntitySpawn) -> bool:
 	if spawn.state == null:
 		return false
@@ -939,12 +945,12 @@ func _is_enemy_spawn(spawn: NetMessages.EntitySpawn) -> bool:
 	return attackable_kind and FactionRules.can_damage(_realm, spawn.realm, StringName(_welcome.zone_id))
 
 
-# true si el alta [param spawn] es de un jugador de su reino (otro que él): los que cuenta en la reunión (GUE-44).
+# true if spawn [param spawn] belongs to a player of its realm (other than itself): those it counts at the rally (GUE-44).
 func _is_ally_spawn(spawn: NetMessages.EntitySpawn) -> bool:
 	return spawn.state != null and spawn.kind == NetProtocol.EntityKind.PLAYER and spawn.realm == _realm
 
 
-# Las rutas de la zona del WELCOME y, con ellas, dónde están la puerta y el círculo del fuerte.
+# The routes of the WELCOME's zone and, with them, where the fort's gate and circle are.
 func _load_siege_data(zone_id: String) -> void:
 	var path: String = "res://data/routes/%s.tres" % zone_id
 	if ResourceLoader.exists(path):
@@ -952,7 +958,7 @@ func _load_siege_data(zone_id: String) -> void:
 	_siege_view.set_places_from_routes(_siege_routes)
 
 
-# Pasa los campos de un OBJECT_STATE (o del alta) de la fortaleza al SiegeView, sin pasar por FortressView.
+# Passes the fields of an OBJECT_STATE (or of the spawn) of the fortress to the SiegeView, without going through FortressView.
 func _apply_fortress_fields(object_state: NetMessages.ObjectState) -> void:
 	if object_state == null or (_fortress_net_id != 0 and object_state.net_id != _fortress_net_id):
 		return
@@ -963,17 +969,17 @@ func _apply_fortress_fields(object_state: NetMessages.ObjectState) -> void:
 	_object_states_applied += 1
 
 
-# --- Auxiliares -------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
-# Bytes de ENet del transporte (el último conocido si ya se cerró).
+# ENet bytes of the transport (the last known if it has already closed).
 func _byte_counters() -> Dictionary:
 	if is_instance_valid(_transport):
 		_bytes_final = _transport.get_byte_counters()
 	return _bytes_final
 
 
-# Huella de la simulación (sección 3), calculada una vez por proceso sobre una instancia del
-# personaje dentro del árbol, después de _ready().
+# Fingerprint of the simulation (section 3), computed once per process on a character instance inside
+# the tree, after _ready().
 func _get_sim_hash() -> int:
 	if _cached_sim_hash >= 0:
 		return _cached_sim_hash

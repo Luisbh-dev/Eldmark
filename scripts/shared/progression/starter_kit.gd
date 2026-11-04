@@ -1,27 +1,28 @@
 class_name StarterKit
 extends RefCounted
-## El kit de inicio (docs/progresion.md §2.5, PRG-07): lo que recibe un personaje en su primera entrada al
-## mundo, según su plantilla ([EquipmentTemplate] con [code]selectable = true[/code]):
-## [br]1. cada arma de la plantilla → su objeto ([method ItemDatabase.for_ref]), en las ranuras de equipo 0 y 1
-## por el orden de la plantilla;
-## [br]2. cada objeto de inicio sin [member ItemDefinition.camp_refill] que no haya quedado puesto (las armas
-## de las demás plantillas) → una unidad en la bolsa, desde la ranura 0 por orden de id;
-## [br]3. cada objeto con [member ItemDefinition.camp_refill] > 0 → una pila con esa cantidad en la bolsa, a
-## continuación y también por orden de id.
+## The starter kit (docs/progresion.md §2.5, PRG-07): what a character receives on first entering
+## the world, according to its template ([EquipmentTemplate] with [code]selectable = true[/code]):
+## [br]1. each weapon of the template → its item ([method ItemDatabase.for_ref]), in equipment slots
+## 0 and 1 in the template's order;
+## [br]2. each starter item without [member ItemDefinition.camp_refill] that was not left equipped
+## (the weapons of the other templates) → one unit in the bag, from slot 0 in id order;
+## [br]3. each item with [member ItemDefinition.camp_refill] > 0 → a stack with that quantity in the
+## bag, after those and also in id order.
 ## [br][br]
-## Así se conserva la libertad de la fase 4 (cambiar de estilo) dentro del inventario. Una plantilla que no
-## existe o que no se puede elegir usa la primera elegible por orden de id, con aviso en el registro. Los
-## objetos de inicio son [code]ON_PICKUP[/code]: salen ligados ([method ItemInstance.create]). Quien llama
-## (el servidor) mete los eventos en una operación STARTER_KIT y marca [code]starter_granted[/code].
-## Compartido: sin reloj ni azar.
+## This preserves the phase 4 freedom (switching style) within the inventory. A template that does
+## not exist or cannot be chosen uses the first selectable one in id order, with a log warning.
+## Starter items are [code]ON_PICKUP[/code]: they come out bound ([method ItemInstance.create]).
+## The caller (the server) puts the events in a STARTER_KIT operation and sets
+## [code]starter_granted[/code]. Shared: no clock, no randomness.
 
 
-## Coloca el kit de §2.5 de la plantilla [param template_id] en el inventario vacío [param state], con las
-## definiciones de [param db] (null = [method ItemDatabase.shared]) y los ids de [param new_uid]
-## ([code]() -> int[/code]; 0 = sin ids). Devuelve un evento por instancia (motivo STARTER_KIT, con su
-## [code]uid[/code]) en el orden en que se colocan. Entero o nada: con el inventario no vacío, sin plantillas
-## elegibles o sin sitio en la bolsa (los dos, errores de quien llama o de los datos: se registran), o sin
-## algún id (los ya tomados se pierden), devuelve una lista vacía y no cambia nada.
+## Places the §2.5 kit of template [param template_id] in the empty inventory [param state], with
+## the definitions of [param db] (null = [method ItemDatabase.shared]) and the ids of
+## [param new_uid] ([code]() -> int[/code]; 0 = no ids). Returns one event per instance (reason
+## STARTER_KIT, with its [code]uid[/code]) in the order they are placed. All or nothing: with a
+## non-empty inventory, with no selectable templates or with no room in the bag (both are caller or
+## data errors: they are logged), or missing an id (those already taken are lost), it returns an
+## empty list and changes nothing.
 static func grant(state: InventoryState, template_id: StringName, db: ItemDatabase,
 		new_uid: Callable) -> Array[ItemEvent]:
 	var events: Array[ItemEvent] = []
@@ -66,8 +67,8 @@ static func grant(state: InventoryState, template_id: StringName, db: ItemDataba
 	return events
 
 
-## La plantilla que usa el kit para [param template_id]: la elegible con ese id o, si no la hay, la primera
-## elegible por orden de id (con aviso en el registro). null si no hay ninguna elegible.
+## The template the kit uses for [param template_id]: the selectable one with that id or, if there
+## is none, the first selectable one in id order (with a log warning). null if none is selectable.
 static func template_for(template_id: StringName) -> EquipmentTemplate:
 	var first: EquipmentTemplate = null
 	for template: EquipmentTemplate in CombatCatalog.tables().templates:
@@ -83,9 +84,10 @@ static func template_for(template_id: StringName) -> EquipmentTemplate:
 	return first
 
 
-## Dónde va cada objeto del kit de [param template]: una lista de [code][contenedor, ranura, definición,
-## cantidad][/code] en el orden de las tres reglas. Un arma sin objeto en [param db] se salta con aviso (las
-## reglas exportadas y la plataforma ya lo impiden) y la siguiente ocupa su ranura: la 0 nunca queda vacía.
+## Where each item of the kit of [param template] goes: a list of [code][container, slot,
+## definition, quantity][/code] in the order of the three rules. A weapon without an item in
+## [param db] is skipped with a warning (the exported rules and the platform already prevent it)
+## and the next one takes its slot: slot 0 is never left empty.
 static func plan(template: EquipmentTemplate, db: ItemDatabase) -> Array[Array]:
 	var placements: Array[Array] = []
 	var placed: Dictionary[StringName, bool] = {}

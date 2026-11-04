@@ -1,23 +1,24 @@
 class_name RaceDefinition
 extends Resource
-## Un pueblo jugable (docs/progresion.md §7.1, PRG-14), en [code]data/characters/races/<id>.tres[/code]:
-## uno por reino y solo estético. Dice qué piezas y colores de [AppearanceCatalog] puede llevar quien es
-## de él; la regla entera está en [method CharacterAppearance.validate].
+## A playable people (docs/progresion.md §7.1, PRG-14), in
+## [code]data/characters/races/<id>.tres[/code]: one per realm and cosmetic only. It says which
+## parts and colors of [AppearanceCatalog] one of its members can wear; the whole rule is in
+## [method CharacterAppearance.validate].
 ## [br][br]
-## Las listas son índices de la lista del mismo nombre del catálogo (desde 0; el pelo y la barba
-## también, aunque en los 8 B vayan con +1). No hay estadísticas raciales: [member stat_modifiers] tiene
-## que estar vacío (lo exige la prueba). En la simulación no cambia nada.
+## The lists are indices into the catalog list of the same name (from 0; hair and beard too, even
+## though in the 8 B they go with +1). There are no racial stats: [member stat_modifiers] must be
+## empty (the test requires it). Nothing changes in the simulation.
 
-## Id estable: [code]race_<reino>[/code] (la API y la base de datos lo guardan).
+## Stable id: [code]race_<realm>[/code] (the API and the database store it).
 @export var id: StringName = &""
-## Reino, como id de [RealmCatalog] ([code]vardheim[/code]…). En la API y en las reglas exportadas va
-## como su código de [enum NetProtocol.Realm].
+## Realm, as a [RealmCatalog] id ([code]vardheim[/code]…). In the API and in the exported rules it
+## goes as its [enum NetProtocol.Realm] code.
 @export var realm: StringName = &""
-## Nombre en español (provisional hasta MUN-28).
+## Name in Spanish (provisional until MUN-28).
 @export var display_name: String = ""
-## Lo propio del pueblo, para la pantalla de creación (lo amplía ART-20).
+## What is distinctive about the people, for the creation screen (expanded by ART-20).
 @export_multiline var description: String = ""
-## Índices permitidos de cada lista del catálogo.
+## Allowed indices of each catalog list.
 @export var bodies: PackedInt32Array = PackedInt32Array()
 @export var heads: PackedInt32Array = PackedInt32Array()
 @export var hairs: PackedInt32Array = PackedInt32Array()
@@ -26,16 +27,16 @@ extends Resource
 @export var skin_tones: PackedInt32Array = PackedInt32Array()
 @export var hair_colors: PackedInt32Array = PackedInt32Array()
 @export var eye_colors: PackedInt32Array = PackedInt32Array()
-## Se puede elegir ir sin pelo (byte 3 = 0).
+## Going without hair can be chosen (byte 3 = 0).
 @export var allows_no_hair: bool = true
-## Se puede elegir ir sin barba (byte 4 = 0).
+## Going without a beard can be chosen (byte 4 = 0).
 @export var allows_no_beard: bool = true
-## Efecto en las estadísticas: ninguno (decisión de §0). Tiene que estar vacío.
+## Effect on stats: none (decision in §0). Must be empty.
 @export var stat_modifiers: Dictionary = {}
 
 
-## Índices permitidos de la categoría [param category] ([constant AppearanceCatalog.PART_CATEGORIES] o
-## [constant AppearanceCatalog.COLOR_CATEGORIES]); vacío si no existe.
+## Allowed indices of category [param category] ([constant AppearanceCatalog.PART_CATEGORIES] or
+## [constant AppearanceCatalog.COLOR_CATEGORIES]); empty if it does not exist.
 func allowed(category: StringName) -> PackedInt32Array:
 	match category:
 		&"bodies":

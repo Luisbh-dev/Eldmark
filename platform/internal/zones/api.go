@@ -7,15 +7,15 @@ import (
 	"eldmark/platform/internal/jsonx"
 )
 
-// API son las rutas de las instancias de zona y de los bloques de ids (§6).
+// API are the routes for zone instances and id blocks (§6).
 type API struct {
 	s *Service
 }
 
-// NewAPI prepara las rutas del servicio.
+// NewAPI prepares the service's routes.
 func NewAPI(s *Service) *API { return &API{s: s} }
 
-// Mount monta las rutas, todas con el token de zona.
+// Mount mounts the routes, all with the zone token.
 func (a *API) Mount(r Router) {
 	zone := func(pattern string, h http.HandlerFunc) { r.HandleInternal(pattern, a.s.guard.Zone(h)) }
 	zone("POST /internal/v1/zone-instances", a.register)
@@ -41,7 +41,7 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, res)
 }
 
-// instance lee la instancia {id} de la ruta para op (los pasos 2 y 3 de §6.1).
+// instance reads the route's {id} instance for op (steps 2 and 3 of §6.1).
 func (a *API) instance(w http.ResponseWriter, r *http.Request, op Op) (*Instance, bool) {
 	inst, err := a.s.guard.Instance(r.Context(), ScopeFrom(r.Context()), r.PathValue("id"), op)
 	if err != nil {
@@ -93,7 +93,7 @@ func (a *API) stop(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// IDBlockView es la respuesta de POST /internal/v1/id-blocks: el primero en cadena (§4.1).
+// IDBlockView is the response of POST /internal/v1/id-blocks: the first id as a string (§4.1).
 type IDBlockView struct {
 	First jsonx.ID `json:"first"`
 	Count int      `json:"count"`

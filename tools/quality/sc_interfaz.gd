@@ -1,8 +1,8 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área interfaz (escenario de online_driver.gd).
+## Quality capture bench (TEC-50), interfaz area (scenario of online_driver.gd).
 ##
-## Interfaz del cliente en red: pantalla de carga, HUD en reposo y en pelea, placas, ajustes, inventario,
-## personaje, chat, marcador, menú social, muerte y elección de reaparición, captura del fuerte y jefe.
+## Networked client interface: loading screen, HUD at rest and in a fight, nameplates, settings, inventory,
+## character, chat, scoreboard, social menu, death and respawn choice, fort capture and boss.
 
 var d: Variant
 
@@ -26,7 +26,7 @@ func run(drv: Variant) -> void:
 
 
 func _loading() -> void:
-	# Capturas de la pantalla de carga mientras conecta y carga la zona.
+	# Captures of the loading screen while it connects and loads the zone.
 	var n: int = 0
 	var end: int = Time.get_ticks_msec() + 60000
 	while Time.get_ticks_msec() < end and n < 14:
@@ -42,7 +42,7 @@ func _loading() -> void:
 
 func _nameplates() -> void:
 	d.heal()
-	# Aliados cerca del campamento: mirar al más cercano de mi reino.
+	# Allies near the camp: look at the nearest one from my realm.
 	var my_realm: int = d.client.get_config().realm
 	var target: Dictionary = {}
 	for r: Dictionary in d.remotes():
@@ -62,13 +62,13 @@ func _nameplates() -> void:
 
 func _windows() -> void:
 	await d.tp(0.0, -134.0, 180.0, 4.0, NAN, 1.0)
-	# Marcador (Tab).
+	# Scoreboard (Tab).
 	Input.action_press(&"scoreboard")
 	await d.wait(0.7)
 	await d.shot("interfaz/marcador_tab.png", "marcador de la zona (Tab mantenido)", "Input.action_press(scoreboard)")
 	Input.action_release(&"scoreboard")
 	await d.wait(0.3)
-	# Chat: abrir, escribir y enviar varias líneas.
+	# Chat: open, type and send several lines.
 	var chat: Variant = d.hud.get_chat()
 	if chat != null:
 		chat.open()
@@ -86,7 +86,7 @@ func _windows() -> void:
 		await d.wait(0.6)
 		await d.shot("interfaz/chat_con_mensajes.png", "chat con varias líneas enviadas (incluida una orden)", "chat.submit(...) tres veces")
 		chat.close()
-	# Inventario y personaje: se le dan objetos, oro, nivel y XP con los comandos de depuración.
+	# Inventory and character: given items, gold, level and XP with the debug commands.
 	var db: ItemDatabase = ItemDatabase.shared()
 	for id: StringName in [&"potion_health", &"potion_stamina", &"sword_shield_vado", &"bow_vado"]:
 		var nid: int = db.net_id_of(id)
@@ -106,7 +106,7 @@ func _windows() -> void:
 	await d.shot("interfaz/personaje_c.png", "ventana de personaje (C)", "tecla C")
 	await d.key(KEY_C)
 	await d.wait(0.3)
-	# Menú social sobre un aliado.
+	# Social menu on an ally.
 	var my_realm: int = d.client.get_config().realm
 	var ally: Object = null
 	for r: Dictionary in d.remotes():
@@ -122,7 +122,7 @@ func _windows() -> void:
 		await d.wait(0.3)
 	else:
 		d.note("no se encontró un aliado para abrir el menú social")
-	# Ajustes F10, una captura por pestaña.
+	# F10 settings, one capture per tab.
 	await d.key(KEY_F10)
 	await d.wait(0.8)
 	var menu: Node = _find_class(d.root, &"SettingsMenu")
@@ -139,7 +139,7 @@ func _windows() -> void:
 					"ajustes (F10), pestaña «%s»" % title, "tecla F10 y cambio de pestaña")
 	await d.key(KEY_F10)
 	await d.wait(0.4)
-	# Hint bar y panel de depuración (F3).
+	# Hint bar and debug panel (F3).
 	await d.key(KEY_F3)
 	await d.wait(0.6)
 	await d.shot("interfaz/panel_depuracion_f3.png", "panel de depuración (F3)", "tecla F3")
@@ -147,7 +147,7 @@ func _windows() -> void:
 
 
 func _fort_capture() -> void:
-	# Fuerte: se mata al capitán y se pone la captura rápida; el jugador espera dentro del círculo.
+	# Fort: the captain is killed and the quick capture is set; the player waits inside the circle.
 	await d.tp(-30.0, 0.0, -90.0, 6.0, NAN, 0.8)
 	await d.wait_healing(1.0)
 	await d.shot("interfaz/placas_de_nombre_fuerte.png", "placas de nombre de PNJ y jugadores cerca de la puerta del fuerte",
@@ -160,13 +160,13 @@ func _fort_capture() -> void:
 		await d.wait_healing(1.2)
 		await d.shot("interfaz/captura_fuerte_%02d.png" % (i + 1), "dentro del círculo de captura del fuerte (secuencia %d)" % (i + 1),
 				"teletransporte al círculo, capitán muerto con el comando 10 y captura x6 (comando 11)")
-	# Barra de jefe: el capitán del vado reaparece al restablecer el fuerte.
+	# Boss bar: the Ford Captain respawns when the fort is reset.
 	d.cmd(NetProtocol.DEBUG_FORT_RESET)
 	await d.wait_healing(3.0)
 
 
 func _fight_hud() -> void:
-	# Pelea contra los Huecos y el capitán del patio con el HUD visible.
+	# Fight against the Hollow and the courtyard captain with the HUD visible.
 	await d.tp(-12.0, -6.0, -60.0, 4.0, NAN, 1.0)
 	var end: int = Time.get_ticks_msec() + 22000
 	var next_shot: int = Time.get_ticks_msec() + 1500
@@ -211,7 +211,7 @@ func _death() -> void:
 		await d.shot("interfaz/mapa_eleccion_de_reaparicion.png", "mapa en modo elegir dónde reaparecer", "WorldMap.open(true) con el jugador muerto")
 		map.close()
 		await d.wait(0.3)
-	# Esperar a poder reaparecer y pedirlo.
+	# Wait until respawning is possible and request it.
 	var end: int = Time.get_ticks_msec() + 40000
 	while Time.get_ticks_msec() < end and d.client.is_dead():
 		var respawn_tick: int = d.client.get_respawn_tick()

@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
-# Exporta Eldmark con los presets de export_presets.cfg (TEC-12).
+# Exports Eldmark with the presets in export_presets.cfg (TEC-12).
 #
-# Destinos:
-#   client  "Cliente Windows"  -> exports/windows/Eldmark.exe (y su .pck)
-#   server  "Servidor Linux"   -> exports/server/eldmark-server.x86_64 (y su .pck), servidor dedicado
-#                                 con los modelos, materiales, audio y animaciones recortados, más
-#                                 run-server.sh, que lo lanza con --headless
-#   all     los dos (por defecto)
+# Targets:
+#   client  "Cliente Windows"  -> exports/windows/Eldmark.exe (and its .pck)
+#   server  "Servidor Linux"   -> exports/server/eldmark-server.x86_64 (and its .pck), dedicated server
+#                                 with models, materials, audio and animations stripped, plus
+#                                 run-server.sh, which launches it with --headless
+#   all     both (default)
 #
-# Uso, desde cualquier carpeta:
+# Usage, from any folder:
 #   tools/export.sh [client|server|all] [--debug] [--pack-only] [--zip] [--dry-run]
 #
-#   --debug      exporta con las plantillas de depuración en lugar de las de lanzamiento
-#   --pack-only  solo el .pck de cada preset (godot --export-pack): NO necesita las plantillas de
-#                exportación y sirve para comprobar los filtros y el recorte de recursos
-#   --zip        comprime cada carpeta exportada (exports/Eldmark-windows.zip, exports/Eldmark-server.zip)
-#   --dry-run    muestra lo que haría sin exportar nada
+#   --debug      export with the debug templates instead of the release ones
+#   --pack-only  only the .pck of each preset (godot --export-pack): does NOT need the export
+#                templates and is useful for checking the filters and the resource stripping
+#   --zip        compress each exported folder (exports/Eldmark-windows.zip, exports/Eldmark-server.zip)
+#   --dry-run    show what it would do without exporting anything
 #
-# Requisitos (ver README, «Exportación»):
-#   - Godot 4.7.2 (variable GODOT o `godot` en el PATH) y, salvo con --pack-only, las plantillas de
-#     exportación de la misma versión (Editor > Administrar plantillas de exportación > Descargar e
-#     instalar).
-#   - Los objetos de Git LFS descargados (git lfs pull): el terreno y las texturas van por LFS.
+# Requirements (see the README, "Export"):
+#   - Godot 4.7.2 (GODOT variable or `godot` on the PATH) and, except with --pack-only, the export
+#     templates of the same version (Editor > Manage Export Templates > Download and
+#     Install).
+#   - The Git LFS objects downloaded (git lfs pull): the terrain and the textures go through LFS.
 #
-# Códigos de salida: 0 bien, 1 fallo o uso incorrecto, 2 falta Godot, sus plantillas o los objetos LFS.
+# Exit codes: 0 success, 1 failure or incorrect usage, 2 Godot, its templates or the LFS objects are missing.
 set -euo pipefail
 
-# Nombres de los presets (los de export_presets.cfg; test_export_config.gd comprueba que coinciden).
+# Preset names (those in export_presets.cfg; test_export_config.gd checks that they match).
 CLIENT_PRESET="Cliente Windows"
 SERVER_PRESET="Servidor Linux"
 CLIENT_OUT="exports/windows/Eldmark.exe"
@@ -63,7 +63,7 @@ if ! command -v "$GODOT" > /dev/null 2>&1; then
 	exit 2
 fi
 
-# Versión de Godot ("4.7.2.stable.official.xxxx" -> "4.7.2.stable") y carpeta de sus plantillas.
+# Godot version ("4.7.2.stable.official.xxxx" -> "4.7.2.stable") and its templates folder.
 GODOT_VERSION="$("$GODOT" --version | head -n 1)"
 TEMPLATE_VERSION="$(echo "$GODOT_VERSION" | cut -d. -f1-4)"
 case "$(uname -s)" in
@@ -73,7 +73,7 @@ case "$(uname -s)" in
 esac
 TEMPLATES_DIR="$DATA_HOME/export_templates/$TEMPLATE_VERSION"
 
-# Un comando que no hace nada con --dry-run.
+# A command that does nothing with --dry-run.
 run() {
 	printf '+'
 	printf ' %q' "$@"
@@ -105,7 +105,7 @@ check_lfs() {
 	fi
 }
 
-# Comprime una carpeta exportada (en exports/<nombre>.zip).
+# Compresses an exported folder (into exports/<name>.zip).
 zip_dir() {
 	local dir="$1" name="$2"
 	if [ "$DRY_RUN" -eq 1 ]; then
@@ -126,11 +126,11 @@ if [ "$PACK_ONLY" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
 	fi
 fi
 
-# Identificador de la compilación (git describe), que se guarda junto a lo exportado.
+# Build identifier (git describe), stored next to the exported files.
 BUILD_ID="$(git describe --tags --always --dirty 2> /dev/null || echo desconocido)"
 echo "Godot $GODOT_VERSION · compilación $BUILD_ID · destino: $TARGET ($MODE)"
 
-# Importa los recursos (deja al día la caché .godot/ que usa la exportación).
+# Imports the resources (brings the .godot/ cache that the export uses up to date).
 run "$GODOT" --headless --path "$ROOT" --import
 
 export_preset() {
@@ -156,11 +156,11 @@ fi
 if [ "$TARGET" = "server" ] || [ "$TARGET" = "all" ]; then
 	export_preset "$SERVER_PRESET" "$SERVER_OUT"
 	if [ "$DRY_RUN" -eq 0 ]; then
-		# El servidor dedicado se ejecuta siempre sin ventana: el lanzador pone --headless y pasa el
-		# resto de las opciones (--zone, --port, --max-players...) detrás de --server.
+		# The dedicated server always runs without a window: the launcher adds --headless and passes the
+		# remaining options (--zone, --port, --max-players...) after --server.
 		cat > exports/server/run-server.sh << 'EOF'
 #!/usr/bin/env bash
-# Lanza el servidor dedicado de Eldmark: ./run-server.sh --zone=vado_gris --port=24600
+# Launches the Eldmark dedicated server: ./run-server.sh --zone=vado_gris --port=24600
 cd "$(dirname "${BASH_SOURCE[0]}")"
 exec ./eldmark-server.x86_64 --headless -- --server "$@"
 EOF

@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Genera los iconos de la interfaz (ART-12): capas SVG, pintura y fondos.
+"""Generates the interface icons (ART-12): SVG layers, painting and backgrounds.
 
-Los iconos son figuras sueltas (PNG con fondo transparente) más un fondo por categoría que la casilla
-dibuja debajo. Todo es contenido propio de Eldmark, hecho por código: no hay nada de terceros.
+The icons are loose shapes (PNG with a transparent background) plus a background per category that the slot
+draws underneath. Everything is Eldmark's own content, made by code: there is nothing third-party.
 
-Dos pasos, con el rasterizador del motor en medio (`build_icons.sh` los encadena):
+Two steps, with the engine's rasteriser in between (`build_icons.sh` chains them):
 
-    python3 tools/ui/icons/make_icons.py layers   # dibuja las figuras y escribe las capas SVG
+    python3 tools/ui/icons/make_icons.py layers   # draws the shapes and writes the SVG layers
     godot --headless --path . -s res://tools/ui/icons/rasterize_icons.gd
-    python3 tools/ui/icons/make_icons.py paint    # compone, pinta y escribe los PNG de assets/
+    python3 tools/ui/icons/make_icons.py paint    # composes, paints and writes the PNGs in assets/
 
-Salida:
-    assets/ui/icons/<nombre>.png            figura de 128 px, sin fondo (grande: barras, inventario)
-    assets/ui/icons/small/<estado>_14.png   variante pequeña de los estados, a la medida exacta de
-    assets/ui/icons/small/<estado>_26.png   StatusIcons (18 y 30 px menos 2 px de borde por lado)
-    assets/ui/icons/backgrounds/<cat>.png   fondos de 128 px por categoría, a sangre y sin marco
+Output:
+    assets/ui/icons/<name>.png              128 px shape, no background (large: bars, inventory)
+    assets/ui/icons/small/<state>_14.png    small variant of the states, at the exact size of
+    assets/ui/icons/small/<state>_26.png    StatusIcons (18 and 30 px minus a 2 px border per side)
+    assets/ui/icons/backgrounds/<cat>.png   128 px backgrounds per category, full-bleed and frameless
 
-Las capas intermedias van a build/iconos/capas (Git las ignora). Se pueden pasar nombres de icono al
-final para regenerar solo esos.
+The intermediate layers go to build/iconos/capas (Git ignores them). Icon names can be passed at the
+end to regenerate only those.
 """
 
 import json
@@ -38,12 +38,12 @@ ASSETS = os.path.join(ROOT, "assets", "ui", "icons")
 LAYERS = os.path.join(ROOT, "build", "iconos", "capas")
 MANIFEST = os.path.join(LAYERS, "manifest.json")
 
-BIG_SIDE = 256       # lado de rasterizado de los iconos grandes (se reducen a 128)
+BIG_SIDE = 256       # rasterisation side of the large icons (downscaled to 128)
 FINAL_SIDE = 128
-SMALL_SIZES = (14, 26)   # lados nativos de los estados pequeños
-SMALL_SS = 6             # factor de sobremuestreo de los pequeños
-SMALL_OW = {14: 2.6, 26: 2.0}   # contorno más grueso en proporción cuanto más pequeño
-SMALL_FILL = 0.90        # fracción del cuadrado que ocupa la figura (contorno incluido)
+SMALL_SIZES = (14, 26)   # native sides of the small states
+SMALL_SS = 6             # supersampling factor of the small ones
+SMALL_OW = {14: 2.6, 26: 2.0}   # outline proportionally thicker the smaller it is
+SMALL_FILL = 0.90        # fraction of the square that the shape fills (outline included)
 
 
 def seed_of(name):

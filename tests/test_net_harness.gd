@@ -1,10 +1,10 @@
 extends TestCase
-## Pruebas de [NetHarness] (los ayudantes de las pruebas de integración de red) y del arranque por
-## línea de comandos de los dos modos: un proceso de servidor y un proceso de bot de verdad, lanzados
-## con [method NetHarness.launch_process] y comprobados por sus informes.
+## Tests for [NetHarness] (the helpers for the network integration tests) and for command-line
+## startup of both modes: a real server process and a real bot process, launched
+## with [method NetHarness.launch_process] and checked through their reports.
 
 const PROCESS_TIMEOUT_MSEC: int = 25000
-## Un pid que no existe (no cabe en los pid de Linux ni de Windows).
+## A pid that does not exist (it does not fit in Linux or Windows pids).
 const DEAD_PID: int = 2147483000
 
 var _viewports: Array[SubViewport] = []
@@ -27,22 +27,22 @@ func test_free_udp_port_gives_distinct_ports_that_can_be_bound() -> void:
 	var first: int = NetHarness.free_udp_port()
 	var second: int = NetHarness.free_udp_port()
 	assert_true(first >= NetHarness.FIRST_PORT and first <= NetHarness.LAST_PORT)
-	assert_true(second != first, "dos llamadas seguidas no dan el mismo puerto")
+	assert_true(second != first, "two consecutive calls do not give the same port")
 	for port: int in [first, second]:
 		var probe := PacketPeerUDP.new()
-		assert_eq(probe.bind(port), OK, "el puerto %d se puede abrir" % port)
+		assert_eq(probe.bind(port), OK, "port %d can be opened" % port)
 		probe.close()
-	# Un puerto ocupado justo después del último que se dio se salta.
+	# A port that is busy right after the last one handed out is skipped.
 	var occupied := PacketPeerUDP.new()
 	assert_eq(occupied.bind(second + 1), OK)
 	var third: int = NetHarness.free_udp_port()
-	assert_true(third != second + 1 and third > second, "el ocupado no se vuelve a dar (%d)" % third)
+	assert_true(third != second + 1 and third > second, "the busy one is not handed out again (%d)" % third)
 	occupied.close()
-	# Y uno que tiene abierto un servidor ENet, tampoco.
+	# And one that an ENet server has open, neither.
 	var enet := ENetMultiplayerPeer.new()
 	assert_eq(enet.create_server(third + 1, 2, NetProtocol.CUSTOM_CHANNELS), OK)
 	var fourth: int = NetHarness.free_udp_port()
-	assert_true(fourth != third + 1, "ni el de un servidor ENet (%d)" % fourth)
+	assert_true(fourth != third + 1, "nor that of an ENet server (%d)" % fourth)
 	enet.close()
 
 
@@ -51,23 +51,23 @@ func test_each_process_starts_looking_for_ports_in_its_own_slot() -> void:
 	for pid: int in range(5000, 5000 + NetHarness.PORT_SLOT_COUNT):
 		var first: int = NetHarness.first_port_for(pid)
 		assert_true(first >= NetHarness.FIRST_PORT and first + NetHarness.PORT_SLOT_SIZE <= NetHarness.LAST_PORT,
-				"la ranura del pid %d cabe en el rango (%d)" % [pid, first])
+				"the slot of pid %d fits in the range (%d)" % [pid, first])
 		starts[first] = true
-	assert_eq(starts.size(), NetHarness.PORT_SLOT_COUNT, "pids seguidos, ranuras distintas")
+	assert_eq(starts.size(), NetHarness.PORT_SLOT_COUNT, "consecutive pids, different slots")
 	assert_eq(NetHarness.first_port_for(7), NetHarness.first_port_for(7 + NetHarness.PORT_SLOT_COUNT),
-			"y se repiten cada PORT_SLOT_COUNT pids")
+			"and they repeat every PORT_SLOT_COUNT pids")
 	var port: int = NetHarness.free_udp_port()
 	var slot_start: int = NetHarness.first_port_for(OS.get_process_id())
 	assert_true(port >= NetHarness.FIRST_PORT and port <= NetHarness.LAST_PORT)
 	assert_true(port >= slot_start or port < NetHarness.FIRST_PORT + NetHarness.PORT_SLOT_SIZE * 2,
-			"este proceso busca a partir de su ranura (%d), no del primer puerto" % slot_start)
+			"this process searches starting from its slot (%d), not from the first port" % slot_start)
 
 
 func test_build_files_live_in_a_folder_of_this_process() -> void:
 	var dir: String = NetHarness.get_build_dir()
 	assert_eq(dir.get_file(), str(OS.get_process_id()), "build/<pid>")
 	assert_eq(dir.get_base_dir(), ProjectSettings.globalize_path("res://build"))
-	assert_true(DirAccess.dir_exists_absolute(dir), "y existe")
+	assert_true(DirAccess.dir_exists_absolute(dir), "and it exists")
 	assert_eq(NetHarness.build_path("informe.json"), dir.path_join("informe.json"))
 
 
@@ -82,10 +82,10 @@ func test_stale_build_folders_of_dead_processes_are_removed() -> void:
 	file.close()
 	var mine: String = NetHarness.get_build_dir()
 	var removed: int = NetHarness.clean_stale_build_dirs()
-	assert_true(removed >= 1, "se borra al menos la del proceso muerto")
-	assert_false(DirAccess.dir_exists_absolute(dead), "la carpeta de un proceso que ya no existe, con su contenido")
-	assert_true(DirAccess.dir_exists_absolute(mine), "la de este proceso, no")
-	assert_true(DirAccess.dir_exists_absolute(named), "ni las que no son un pid")
+	assert_true(removed >= 1, "at least the dead process's one is deleted")
+	assert_false(DirAccess.dir_exists_absolute(dead), "the folder of a process that no longer exists, with its contents")
+	assert_true(DirAccess.dir_exists_absolute(mine), "this process's, no")
+	assert_true(DirAccess.dir_exists_absolute(named), "nor those that are not a pid")
 	DirAccess.remove_absolute(named)
 
 
@@ -96,13 +96,13 @@ func test_make_world_viewport_has_its_own_physics_world_and_zone() -> void:
 	_viewports.append(first)
 	_viewports.append(second)
 	for viewport: SubViewport in _viewports:
-		assert_true(viewport.own_world_3d, "con su propio mundo")
-		assert_not_null(NetHarness.get_world(viewport), "y su zona")
+		assert_true(viewport.own_world_3d, "with its own world")
+		assert_not_null(NetHarness.get_world(viewport), "and its zone")
 	var first_world: World3D = first.find_world_3d()
 	var second_world: World3D = second.find_world_3d()
 	assert_true(first_world != second_world)
 	assert_true(first_world != tree.root.find_world_3d())
-	assert_true(first_world.space != second_world.space, "y su propio espacio de física")
+	assert_true(first_world.space != second_world.space, "and its own physics space")
 	assert_eq(NetHarness.get_world(second).name, "TestWorld")
 	assert_eq(Zones.get_spawn_points(NetHarness.get_world(first), &"solmarch").size(), 1)
 
@@ -116,7 +116,7 @@ func test_error_lines_finds_engine_and_script_errors_in_a_log() -> void:
 	var found: PackedStringArray = NetHarness.error_lines(path)
 	assert_eq(found, PackedStringArray(["ERROR: algo falló", "SCRIPT ERROR: Parse Error: otro"]))
 	assert_eq(NetHarness.error_lines(NetHarness.build_path("test_harness_no_existe.log")), PackedStringArray(),
-			"un registro que no existe no tiene errores")
+			"a log that does not exist has no errors")
 	DirAccess.remove_absolute(path)
 
 
@@ -132,7 +132,7 @@ func test_read_report_survives_missing_and_broken_files() -> void:
 	var array_file: FileAccess = FileAccess.open(array_path, FileAccess.WRITE)
 	array_file.store_string("[1, 2]")
 	array_file.close()
-	assert_eq(NetHarness.read_report(array_path), {}, "un JSON que no es un objeto tampoco vale")
+	assert_eq(NetHarness.read_report(array_path), {}, "a JSON that is not an object is not valid either")
 	var good_path: String = dir.path_join("test_harness_good.json")
 	var good: FileAccess = FileAccess.open(good_path, FileAccess.WRITE)
 	good.store_string("{\"a\": 1}")
@@ -142,9 +142,9 @@ func test_read_report_survives_missing_and_broken_files() -> void:
 		DirAccess.remove_absolute(path)
 
 
-## Un servidor y un bot, cada uno en su proceso (sin ventana), lanzados como lo haría un usuario:
-## comprueba que [code]boot.gd[/code] enruta [code]--server[/code] y [code]--bot[/code], que
-## [ClientConfig] lee los argumentos de verdad y que los dos informes salen.
+## A server and a bot, each in its own process (no window), launched as a user would:
+## checks that [code]boot.gd[/code] routes [code]--server[/code] and [code]--bot[/code], that
+## [ClientConfig] really reads the arguments and that both reports come out.
 func test_server_and_bot_processes_play_together_and_write_their_reports() -> void:
 	var server_report: String = NetHarness.build_path("test_harness_server.json")
 	var bot_report: String = NetHarness.build_path("test_harness_bot.json")
@@ -156,8 +156,8 @@ func test_server_and_bot_processes_play_together_and_write_their_reports() -> vo
 		"--report=%s" % server_report,
 	]), "test_harness_server")
 	_pids.append(server_pid)
-	assert_true(server_pid > 0, "el servidor se lanza")
-	# El servidor tarda en cargar la zona y abrir el puerto: el bot reintenta hasta que conecta.
+	assert_true(server_pid > 0, "the server is launched")
+	# The server takes a while to load the zone and open the port: the bot retries until it connects.
 	var bot_pid: int = -1
 	var started: int = Time.get_ticks_msec()
 	while bot_pid < 0 and Time.get_ticks_msec() - started < PROCESS_TIMEOUT_MSEC:
@@ -170,31 +170,31 @@ func test_server_and_bot_processes_play_together_and_write_their_reports() -> vo
 				"--name=%s" % NameRules.bot_name(4), "--quit-after-ticks=300", "--report=%s" % bot_report,
 			]), "test_harness_bot")
 	_pids.append(bot_pid)
-	assert_true(bot_pid > 0, "el servidor llega a escuchar y se lanza el bot")
+	assert_true(bot_pid > 0, "the server gets to listen and the bot is launched")
 	while (OS.is_process_running(server_pid) or OS.is_process_running(bot_pid)) \
 			and Time.get_ticks_msec() - started < PROCESS_TIMEOUT_MSEC:
 		await wait_process_frames(30)
-	assert_false(OS.is_process_running(bot_pid), "el bot termina solo")
-	assert_false(OS.is_process_running(server_pid), "y el servidor también")
+	assert_false(OS.is_process_running(bot_pid), "the bot finishes on its own")
+	assert_false(OS.is_process_running(server_pid), "and the server too")
 
 	var server: Dictionary = NetHarness.read_report(server_report)
 	assert_eq(server.get("zone"), "test_world")
 	assert_eq(int(server.get("ticks", 0)), 600)
 	var players: Dictionary = server.get("players", {})
-	assert_eq(int(players.get("joined_total", 0)), 1, "entró un jugador")
-	assert_eq(int(players.get("left_total", 0)), 1, "y se fue")
+	assert_eq(int(players.get("joined_total", 0)), 1, "a player entered")
+	assert_eq(int(players.get("left_total", 0)), 1, "and left")
 	var bot: Dictionary = NetHarness.read_report(bot_report)
 	assert_eq(bot.get("name"), NameRules.bot_name(4))
 	assert_eq(bot.get("mode"), "BOT")
 	assert_eq(bot.get("realm"), "Solmarch")
 	assert_eq(bot.get("state"), "IN_WORLD")
 	assert_eq(bot.get("zone"), "test_world")
-	assert_true(int(bot.get("matches", 0)) > 50, "predicción exacta entre procesos")
-	assert_eq(int(bot.get("unexplained_diffs", -1)), 0, "sin diferencias sin explicar")
+	assert_true(int(bot.get("matches", 0)) > 50, "exact prediction between processes")
+	assert_eq(int(bot.get("unexplained_diffs", -1)), 0, "no unexplained differences")
 	assert_true(bool(bot.get("final", {}).get("exact", false)))
 	assert_eq(NetHarness.error_lines(NetHarness.build_path("test_harness_server.log")), PackedStringArray(),
-			"sin errores en el registro del servidor")
+			"no errors in the server log")
 	assert_eq(NetHarness.error_lines(NetHarness.build_path("test_harness_bot.log")), PackedStringArray(),
-			"ni en el del bot")
+			"nor in the bot's")
 	for path: String in [server_report, bot_report]:
 		DirAccess.remove_absolute(path)

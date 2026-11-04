@@ -1,12 +1,13 @@
-// Package zones es la parte de la API interna (plataforma.md §6, TEC-24) que lleva las instancias
-// de zona: los tokens por despliegue y su alcance, el registro (con la sustitución y la instancia
-// sin latido que se da por perdida), live, el latido (renueva los arrendamientos y dice a quién
-// expulsar y a quién silenciar), la baja, el trabajo de instancias perdidas y los bloques de ids.
+// Package zones is the part of the internal API (plataforma.md §6, TEC-24) that handles zone
+// instances: per-deployment tokens and their scope, registration (with replacement and the
+// silent instance that is considered lost), live, the heartbeat (it renews leases and says whom
+// to remove and whom to mute), deregistration, the lost-instances job and id blocks.
 //
-// También da a los demás paquetes de la API interna (persistence, war, social) lo común de §6.1:
-// [Guard] comprueba el token (401 bad_token), el alcance de la instancia (403 forbidden) y su
-// estado según la petición (tabla de §6.1), y [Fail] escribe los errores con la regla interna (503
-// db_unavailable). Los lotes se leen con [DecodeBatch] y sus claves se validan con [KeyChecker].
+// It also gives the other internal API packages (persistence, war, social) what is common from
+// §6.1: [Guard] checks the token (401 bad_token), the instance's scope (403 forbidden) and its
+// state according to the request (the §6.1 table), and [Fail] writes errors with the internal
+// rule (503 db_unavailable). Batches are read with [DecodeBatch] and their keys are validated
+// with [KeyChecker].
 package zones
 
 import (
@@ -27,25 +28,25 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// Scope es el alcance de un token de zona: el despliegue (mundo, zona, canal) al que pertenece.
+// Scope is the scope of a zone token: the deployment (world, zone, channel) it belongs to.
 type Scope struct {
 	WorldID int16
 	ZoneID  string
 	Channel int16
 }
 
-// Registry son los tokens de las zonas (ELDMARK_ZONE_TOKENS): solo sus SHA-256 con su alcance.
+// Registry holds the zone tokens (ELDMARK_ZONE_TOKENS): only their SHA-256 with their scope.
 type Registry struct {
 	tokens []config.ZoneToken
 }
 
-// NewRegistry prepara los tokens de la configuración.
+// NewRegistry prepares the configuration's tokens.
 func NewRegistry(tokens []config.ZoneToken) *Registry {
 	return &Registry{tokens: append([]config.ZoneToken(nil), tokens...)}
 }
 
-// Authenticate calcula el SHA-256 del token y lo compara en tiempo constante con cada entrada (con
-// todas, también tras encontrarlo); la que casa da su alcance.
+// Authenticate computes the token's SHA-256 and compares it in constant time with every entry
+// (with all of them, even after finding it); the one that matches gives its scope.
 func (r *Registry) Authenticate(bearer string) (Scope, bool) {
 	if bearer == "" {
 		return Scope{}, false
@@ -63,7 +64,7 @@ func (r *Registry) Authenticate(bearer string) (Scope, bool) {
 
 // UUID.
 
-// NewUUID devuelve un UUID versión 4 de crypto/rand (§2.2: formato propio, sin dependencias).
+// NewUUID returns a version 4 UUID from crypto/rand (§2.2: own format, no dependencies).
 func NewUUID() [16]byte {
 	var u [16]byte
 	if _, err := rand.Read(u[:]); err != nil {
@@ -74,7 +75,7 @@ func NewUUID() [16]byte {
 	return u
 }
 
-// FormatUUID escribe el UUID en su forma canónica, en minúsculas.
+// FormatUUID writes the UUID in its canonical form, in lowercase.
 func FormatUUID(u [16]byte) string {
 	var b [36]byte
 	hex.Encode(b[0:8], u[0:4])
@@ -89,8 +90,8 @@ func FormatUUID(u [16]byte) string {
 	return string(b[:])
 }
 
-// ParseUUID lee un UUID en su forma canónica (36 caracteres con guiones, en minúsculas, como lo
-// escribe [FormatUUID]); cualquier otra forma no vale.
+// ParseUUID reads a UUID in its canonical form (36 characters with hyphens, in lowercase, as
+// [FormatUUID] writes it); any other form is invalid.
 func ParseUUID(s string) ([16]byte, bool) {
 	var u [16]byte
 	if len(s) != 36 || s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
@@ -108,7 +109,7 @@ func ParseUUID(s string) ([16]byte, bool) {
 	return u, true
 }
 
-// Estados de una instancia (zone_instances.status).
+// Instance states (zone_instances.status).
 const (
 	StatusStarting = "starting"
 	StatusLive     = "live"
@@ -117,7 +118,7 @@ const (
 	StatusReplaced = "replaced"
 )
 
-// Instance es una instancia de zona.
+// Instance is a zone instance.
 type Instance struct {
 	ID      [16]byte
 	WorldID int16
@@ -126,27 +127,27 @@ type Instance struct {
 	Status  string
 }
 
-// IDString es el zone_instance_id en su forma canónica.
+// IDString is the zone_instance_id in its canonical form.
 func (i *Instance) IDString() string { return FormatUUID(i.ID) }
 
-// Op es el tipo de petición para la tabla de estados de §6.1.
+// Op is the request type for the §6.1 state table.
 type Op int
 
-// Peticiones de la tabla de §6.1. live, la baja, el guardado y la liberación tienen sus propias
-// reglas y no pasan por [Instance.Check].
+// Requests in the §6.1 table. live, deregistration, save and release have their own rules and do
+// not go through [Instance.Check].
 const (
-	OpHeartbeat   Op = iota // starting y live: 200
-	OpIDBlock               // starting y live: 200 (el primero es del arranque, §8)
-	OpFortressGet           // starting y live: 200
-	OpClaim                 // solo live; starting: instance_not_live
-	OpProgress              // operación y libro: solo live
-	OpFortressPut           // solo live
-	OpModeration            // reportes, ignorados y sanciones: solo live
-	OpAny                   // lotes, guardados y liberación: cualquier estado
+	OpHeartbeat   Op = iota // starting and live: 200
+	OpIDBlock               // starting and live: 200 (the first one belongs to startup, §8)
+	OpFortressGet           // starting and live: 200
+	OpClaim                 // live only; starting: instance_not_live
+	OpProgress              // operation and ledger: live only
+	OpFortressPut           // live only
+	OpModeration            // reports, ignores and sanctions: live only
+	OpAny                   // batches, saves and release: any state
 )
 
-// Check aplica la tabla de §6.1: nil si la petición sigue, o su error (409 instance_not_live,
-// instance_lost, instance_replaced o instance_stopped).
+// Check applies the §6.1 table: nil if the request goes on, or its error (409 instance_not_live,
+// instance_lost, instance_replaced or instance_stopped).
 func (i *Instance) Check(op Op) *httpx.Error {
 	if op == OpAny {
 		return nil
@@ -164,8 +165,8 @@ func (i *Instance) Check(op Op) *httpx.Error {
 	return StatusError(i.Status)
 }
 
-// StatusError es el 409 de una instancia que ya no vale: instance_lost, instance_replaced o
-// instance_stopped (nil con starting y live).
+// StatusError is the 409 for an instance that is no longer valid: instance_lost,
+// instance_replaced or instance_stopped (nil with starting and live).
 func StatusError(status string) *httpx.Error {
 	switch status {
 	case StatusLost:
@@ -178,47 +179,47 @@ func StatusError(status string) *httpx.Error {
 	return nil
 }
 
-// Errores de la API interna (§6.1). El cuerpo es el de §4.1.
+// Internal API errors (§6.1). The body is the one from §4.1.
 
 func conflict(code, message string) *httpx.Error {
 	return &httpx.Error{Status: http.StatusConflict, Code: code, Message: message}
 }
 
-// Conflict es un 409 con su código y su texto.
+// Conflict is a 409 with its code and its text.
 func Conflict(code, message string) *httpx.Error { return conflict(code, message) }
 
-// ErrBadToken es el 401 de un token de zona que falta o no casa con ninguno.
+// ErrBadToken is the 401 for a zone token that is missing or matches none.
 func ErrBadToken() *httpx.Error {
 	return &httpx.Error{Status: http.StatusUnauthorized, Code: "bad_token", Message: "Token de zona no válido"}
 }
 
-// ErrForbidden es el 403 de lo que no es del alcance del token o de la instancia.
+// ErrForbidden is the 403 for what is outside the token's or the instance's scope.
 func ErrForbidden() *httpx.Error {
 	return &httpx.Error{Status: http.StatusForbidden, Code: "forbidden", Message: "No permitido"}
 }
 
-// ErrInstanceNotLive es el 409 de una petición que solo vale con la instancia live.
+// ErrInstanceNotLive is the 409 for a request that is only valid with the instance live.
 func ErrInstanceNotLive() *httpx.Error {
 	return conflict("instance_not_live", "La instancia aún no está en marcha")
 }
 
-// Validation es el 400 de campos que no valen, con fields.
+// Validation is the 400 for invalid fields, with fields.
 func Validation(fields map[string]string) *httpx.Error {
 	return &httpx.Error{Status: http.StatusBadRequest, Code: "validation", Message: "Datos no válidos", Fields: fields}
 }
 
-// ErrDBUnavailable es el 503 de la base que no responde o de una transacción que chocó con otras
-// más veces de las que se reintenta (§7.3).
+// ErrDBUnavailable is the 503 for a database that does not respond or a transaction that
+// collided with others more times than it is retried (§7.3).
 func ErrDBUnavailable() *httpx.Error {
 	return &httpx.Error{Status: http.StatusServiceUnavailable, Code: "db_unavailable",
 		Message: "La base de datos no responde", RetryAfter: 1}
 }
 
-// Fail escribe la respuesta de un error de la API interna: un *httpx.Error tal cual; uno de la
-// base no disponible o que agotó los reintentos, 503 db_unavailable; un dato que la base rechaza
-// (clase 22: un NUL en jsonb, una fecha fuera de rango), 400 validation, porque reintentarlo no lo
-// arregla y la zona reintenta un 5xx; cualquier otro, 500 internal. Los tres últimos se registran
-// con el id de la petición.
+// Fail writes the response for an internal API error: an *httpx.Error as is; one from an
+// unavailable database or that exhausted its retries, 503 db_unavailable; data the database
+// rejects (class 22: a NUL in jsonb, an out-of-range date), 400 validation, because retrying
+// does not fix it and the zone retries a 5xx; any other, 500 internal. The last three are logged
+// with the request id.
 func Fail(w http.ResponseWriter, r *http.Request, log *slog.Logger, err error) {
 	var e *httpx.Error
 	if errors.As(err, &e) {
@@ -242,14 +243,14 @@ func Fail(w http.ResponseWriter, r *http.Request, log *slog.Logger, err error) {
 	httpx.WriteError(w, resp)
 }
 
-// Querier es una consulta dentro de la transacción o la conexión de quien llama.
+// Querier is a query inside the caller's transaction or connection.
 type Querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// LoadInstance lee una instancia, o nil si no existe. lock añade «for share» (la reclamación: el
-// trabajo de perdidas y el latido esperan a que termine).
+// LoadInstance reads an instance, or nil if it does not exist. lock adds "for share" (the claim:
+// the lost-instances job and the heartbeat wait for it to finish).
 func LoadInstance(ctx context.Context, q Querier, id [16]byte, lock bool) (*Instance, error) {
 	sql := `select world_id, zone_id, channel, status from zone_instances where zone_instance_id = $1`
 	if lock {
@@ -266,7 +267,7 @@ func LoadInstance(ctx context.Context, q Querier, id [16]byte, lock bool) (*Inst
 	return i, nil
 }
 
-// InScope dice si la instancia es del alcance del token.
+// InScope says whether the instance is within the token's scope.
 func (i *Instance) InScope(s Scope) bool {
 	return i.WorldID == s.WorldID && i.ZoneID == s.ZoneID && i.Channel == s.Channel
 }

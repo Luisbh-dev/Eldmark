@@ -1,10 +1,10 @@
 extends TestCase
-## Pruebas del saneado del texto del chat ([ChatText], docs/social.md secciones 5 y 12.2): caracteres de
-## control e invisibles (con una tabla de puntos de código), marcas combinantes, BBCode, espacios y límite de
-## longitud.
+## Tests for chat text sanitizing ([ChatText], docs/social.md sections 5 and 12.2): control and
+## invisible characters (with a table of code points), combining marks, BBCode, spaces and length
+## limit.
 
-## Puntos de código que se quitan siempre: controles, formato invisible (Cf), separadores, ignorables por
-## defecto, no caracteres, uso privado y sin asignar. [código, qué es].
+## Code points that are always removed: controls, invisible formatting (Cf), separators, default
+## ignorables, noncharacters, private use and unassigned. [code, what it is].
 const STRIPPED_CODES: Array = [
 	[0x0007, "campana (C0)"], [0x001B, "escape (C0)"], [0x007F, "DEL"], [0x0085, "siguiente línea (C1)"],
 	[0x009F, "C1"], [0x00AD, "guion blando"], [0x034F, "unidor de grafemas"],
@@ -28,14 +28,14 @@ const STRIPPED_CODES: Array = [
 	[0x1D173, "inicio de barra musical (Cf)"], [0x13430, "unión jeroglífica (Cf)"],
 	[0x1BCA0, "formato taquigráfico (Cf)"], [0x0378, "sin asignar"], [0x0E3B, "sin asignar"],
 ]
-## Puntos de código que pasan a ser un espacio.
+## Code points that become a space.
 const SPACE_CODES: Array = [
 	[0x09, "tabulador"], [0x0A, "salto de línea"], [0x0B, "tabulador vertical"], [0x0C, "avance de página"],
 	[0x0D, "retorno"], [0xA0, "sin ruptura"], [0x1680, "espacio ogam"], [0x2000, "cuadratín medio"],
 	[0x2007, "espacio de cifra"], [0x200A, "espacio fino"], [0x202F, "sin ruptura estrecho"],
 	[0x205F, "espacio matemático"], [0x2800, "blanco braille"], [0x3000, "espacio ideográfico"],
 ]
-## Puntos de código que se quedan tal cual, vayan donde vayan.
+## Code points that stay as they are, wherever they go.
 const KEPT_CODES: Array = [
 	[0x41, "A"], [0xF1, "ñ"], [0xBF, "¿"], [0x20AC, "€"], [0x0628, "letra árabe"], [0x05D0, "álef"],
 	[0x0915, "letra devanagari"], [0x0E01, "letra tailandesa"], [0x4E2D, "ideograma"],
@@ -43,7 +43,7 @@ const KEPT_CODES: Array = [
 	[0x1F3FB, "tono de piel (modificador, no marca)"], [0xFF9E, "marca sonora de media anchura (Lm)"],
 	[0x1F1EA, "indicador regional"],
 ]
-## Marcas combinantes (categoría M): se quedan tras una letra y se quitan sin letra delante.
+## Combining marks (category M): they stay after a letter and are removed with no letter before them.
 const MARK_CODES: Array = [
 	[0x0300, "grave"], [0x0301, "agudo"], [0x0302, "circunflejo"], [0x0303, "tilde"], [0x0308, "diéresis"],
 	[0x036F, "x combinante"], [0x0483, "titlo cirílico"], [0x0591, "acento hebreo"],
@@ -56,81 +56,81 @@ const MARK_CODES: Array = [
 
 
 func test_plain_text_is_unchanged() -> void:
-	assert_eq(ChatText.sanitize("Hola, mundo"), "Hola, mundo", "texto normal")
-	assert_eq(ChatText.sanitize("¿Qué tal, Peña? ¡Ñandú!"), "¿Qué tal, Peña? ¡Ñandú!", "tildes y signos")
-	assert_eq(ChatText.sanitize("😀 ⚔ 日本語"), "😀 ⚔ 日本語", "emoji y otras escrituras")
-	assert_eq(ChatText.check("Hola"), ChatText.Problem.OK, "un texto normal vale")
+	assert_eq(ChatText.sanitize("Hola, mundo"), "Hola, mundo", "normal text")
+	assert_eq(ChatText.sanitize("¿Qué tal, Peña? ¡Ñandú!"), "¿Qué tal, Peña? ¡Ñandú!", "accents and punctuation")
+	assert_eq(ChatText.sanitize("😀 ⚔ 日本語"), "😀 ⚔ 日本語", "emoji and other scripts")
+	assert_eq(ChatText.check("Hola"), ChatText.Problem.OK, "a normal text is valid")
 
 
 func test_control_characters_are_removed() -> void:
-	# Un String no puede llevar el byte nulo, así que se prueban los demás controles por su código.
-	assert_eq(ChatText.sanitize("a" + _chr(0x07) + "b" + _chr(0x1B) + "c"), "abc", "campana y escape")
+	# A String cannot hold the null byte, so the other controls are tested by their code.
+	assert_eq(ChatText.sanitize("a" + _chr(0x07) + "b" + _chr(0x1B) + "c"), "abc", "bell and escape")
 	assert_eq(ChatText.sanitize("a" + _chr(0x7F) + "b"), "ab", "DEL")
-	assert_eq(ChatText.sanitize("a" + _chr(0x85) + "b" + _chr(0x9F) + "c"), "abc", "controles C1")
+	assert_eq(ChatText.sanitize("a" + _chr(0x85) + "b" + _chr(0x9F) + "c"), "abc", "C1 controls")
 	var invisible: Array[int] = [0x200B, 0x200E, 0x202E, 0x2066, 0xFEFF]
 	var text: String = ""
 	for code: int in invisible:
 		text += "x" + _chr(code)
 	assert_eq(ChatText.sanitize(text), "x".repeat(invisible.size()),
-			"anchura cero, marcas de dirección y marca de orden de bytes")
+			"zero width, direction marks and byte order mark")
 	assert_eq(ChatText.sanitize("a" + _chr(0x2028) + "b" + _chr(0x2029) + "c"), "abc",
-			"separadores de línea y de párrafo")
-	assert_eq(ChatText.sanitize(_chr(0x01) + _chr(0x02) + _chr(0x03)), "", "solo controles queda vacío")
+			"line and paragraph separators")
+	assert_eq(ChatText.sanitize(_chr(0x01) + _chr(0x02) + _chr(0x03)), "", "only controls leaves it empty")
 	for code: int in range(0x01, 0x20):
 		if ChatText.is_space(code):
 			continue
-		assert_true(ChatText.is_stripped_control(code), "el control 0x%02X se quita" % code)
+		assert_true(ChatText.is_stripped_control(code), "control 0x%02X is removed" % code)
 
 
 func test_line_breaks_and_tabs_become_a_space() -> void:
-	assert_eq(ChatText.sanitize("hola\nmundo"), "hola mundo", "salto de línea")
-	assert_eq(ChatText.sanitize("hola\r\nmundo"), "hola mundo", "retorno y salto")
-	assert_eq(ChatText.sanitize("hola\tmundo"), "hola mundo", "tabulador")
+	assert_eq(ChatText.sanitize("hola\nmundo"), "hola mundo", "line break")
+	assert_eq(ChatText.sanitize("hola\r\nmundo"), "hola mundo", "carriage return and line feed")
+	assert_eq(ChatText.sanitize("hola\tmundo"), "hola mundo", "tab")
 
 
 func test_bbcode_is_removed() -> void:
-	assert_eq(ChatText.sanitize("[b]hola[/b]"), "hola", "negrita")
+	assert_eq(ChatText.sanitize("[b]hola[/b]"), "hola", "bold")
 	assert_eq(ChatText.sanitize("[color=red]rojo[/color] normal"), "rojo normal", "color")
-	assert_eq(ChatText.sanitize("[url=http://x.y]enlace[/url]"), "enlace", "enlace")
+	assert_eq(ChatText.sanitize("[url=http://x.y]enlace[/url]"), "enlace", "link")
 	assert_eq(ChatText.sanitize("[img]res://icon.svg[/img]"), "res://icon.svg",
-			"se quitan las etiquetas, no lo que encierran")
-	assert_eq(ChatText.sanitize("[[b]b]x"), "x", "un par anidado no reaparece al quitar el de dentro")
-	assert_eq(ChatText.sanitize("[[[b]]]x"), "x", "varios niveles")
-	assert_eq(ChatText.sanitize("a [ b"), "a b", "un corchete que abre sin cerrar")
-	assert_eq(ChatText.sanitize("a ] b"), "a b", "un corchete que cierra sin abrir")
-	assert_eq(ChatText.sanitize("[]"), "", "corchetes vacíos")
-	assert_eq(ChatText.sanitize("[lb]b[rb]"), "b", "ni siquiera las secuencias de escape")
+			"the tags are removed, not what they enclose")
+	assert_eq(ChatText.sanitize("[[b]b]x"), "x", "a nested pair does not reappear when the inner one is removed")
+	assert_eq(ChatText.sanitize("[[[b]]]x"), "x", "several levels")
+	assert_eq(ChatText.sanitize("a [ b"), "a b", "a bracket that opens without closing")
+	assert_eq(ChatText.sanitize("a ] b"), "a b", "a bracket that closes without opening")
+	assert_eq(ChatText.sanitize("[]"), "", "empty brackets")
+	assert_eq(ChatText.sanitize("[lb]b[rb]"), "b", "not even the escape sequences")
 	for text: String in ["[b]x", "x[/b]", "[[b]b]", "[[[", "]]]", "a[b]c[d]e", "[a[b]c]d"]:
 		var cleaned: String = ChatText.sanitize(text)
-		assert_false(cleaned.contains("[") or cleaned.contains("]"), "sin corchetes: «%s»" % text)
+		assert_false(cleaned.contains("[") or cleaned.contains("]"), "without brackets: \"%s\"" % text)
 
 
 func test_spaces_are_collapsed_and_trimmed() -> void:
-	assert_eq(ChatText.sanitize("  hola  "), "hola", "espacios de los extremos")
-	assert_eq(ChatText.sanitize("a    b"), "a b", "espacios repetidos")
-	assert_eq(ChatText.sanitize("a  b"), "a b", "espacios sin ruptura")
-	assert_eq(ChatText.sanitize("a" + _chr(0x3000) + "b"), "a b", "espacio ideográfico")
-	assert_eq(ChatText.sanitize("  hola  "), "hola", "espacios Unicode en los extremos")
-	assert_eq(ChatText.sanitize("a [b] b"), "a b", "el hueco que deja el BBCode también se junta")
-	assert_eq(ChatText.sanitize("   "), "", "solo espacios queda vacío")
+	assert_eq(ChatText.sanitize("  hola  "), "hola", "spaces at the ends")
+	assert_eq(ChatText.sanitize("a    b"), "a b", "repeated spaces")
+	assert_eq(ChatText.sanitize("a  b"), "a b", "non-breaking spaces")
+	assert_eq(ChatText.sanitize("a" + _chr(0x3000) + "b"), "a b", "ideographic space")
+	assert_eq(ChatText.sanitize("  hola  "), "hola", "Unicode spaces at the ends")
+	assert_eq(ChatText.sanitize("a [b] b"), "a b", "the gap left by BBCode is also collapsed")
+	assert_eq(ChatText.sanitize("   "), "", "only spaces leaves it empty")
 
 
 func test_empty_and_too_long_are_rejected() -> void:
-	assert_eq(ChatText.check(""), ChatText.Problem.EMPTY, "vacío")
-	assert_eq(ChatText.check("   "), ChatText.Problem.EMPTY, "solo espacios")
-	assert_eq(ChatText.check("[b][/b]"), ChatText.Problem.EMPTY, "solo BBCode")
-	assert_eq(ChatText.sanitize(""), "", "sanear vacío da vacío")
+	assert_eq(ChatText.check(""), ChatText.Problem.EMPTY, "empty")
+	assert_eq(ChatText.check("   "), ChatText.Problem.EMPTY, "only spaces")
+	assert_eq(ChatText.check("[b][/b]"), ChatText.Problem.EMPTY, "only BBCode")
+	assert_eq(ChatText.sanitize(""), "", "sanitizing empty gives empty")
 	var limit: String = "a".repeat(ChatText.MAX_CHARS)
-	assert_eq(ChatText.check(limit), ChatText.Problem.OK, "255 caracteres valen")
-	assert_eq(ChatText.sanitize(limit), limit, "y se conservan")
-	assert_eq(ChatText.check(limit + "a"), ChatText.Problem.TOO_LONG, "256 caracteres no")
-	assert_eq(ChatText.sanitize(limit + "a"), "", "y sanear los rechaza")
-	# Lo que sobra son espacios o BBCode: tras sanear cabe.
-	assert_eq(ChatText.check("  " + limit + "  "), ChatText.Problem.OK, "los espacios no cuentan")
-	assert_eq(ChatText.check("[b]" + limit + "[/b]"), ChatText.Problem.OK, "el BBCode no cuenta")
-	assert_false(ChatText.problem_text(ChatText.Problem.EMPTY).is_empty(), "hay texto para vacío")
-	assert_false(ChatText.problem_text(ChatText.Problem.TOO_LONG).is_empty(), "y para largo")
-	assert_eq(ChatText.problem_text(ChatText.Problem.OK), "", "y ninguno para OK")
+	assert_eq(ChatText.check(limit), ChatText.Problem.OK, "255 characters are valid")
+	assert_eq(ChatText.sanitize(limit), limit, "and are kept")
+	assert_eq(ChatText.check(limit + "a"), ChatText.Problem.TOO_LONG, "256 characters are not")
+	assert_eq(ChatText.sanitize(limit + "a"), "", "and sanitizing rejects them")
+	# What is left over is spaces or BBCode: after sanitizing it fits.
+	assert_eq(ChatText.check("  " + limit + "  "), ChatText.Problem.OK, "spaces do not count")
+	assert_eq(ChatText.check("[b]" + limit + "[/b]"), ChatText.Problem.OK, "BBCode does not count")
+	assert_false(ChatText.problem_text(ChatText.Problem.EMPTY).is_empty(), "there is text for empty")
+	assert_false(ChatText.problem_text(ChatText.Problem.TOO_LONG).is_empty(), "and for long")
+	assert_eq(ChatText.problem_text(ChatText.Problem.OK), "", "and none for OK")
 
 
 func test_sanitizing_twice_changes_nothing() -> void:
@@ -141,20 +141,20 @@ func test_sanitizing_twice_changes_nothing() -> void:
 	]
 	for sample: String in samples:
 		var once: String = ChatText.sanitize(sample)
-		assert_eq(ChatText.sanitize(once), once, "idempotente: «%s»" % sample)
+		assert_eq(ChatText.sanitize(once), once, "idempotent: \"%s\"" % sample)
 
 
-# --- Invisibles y marcas (tabla de puntos de código) ------------------------------------------
+# --- Invisibles and marks (code point table) --------------------------------------------------
 
 func test_invisible_format_and_unassigned_code_points_are_removed() -> void:
-	assert_true(ChatText.is_stripped_control(0), "el byte nulo")
+	assert_true(ChatText.is_stripped_control(0), "the null byte")
 	for entry: Array in STRIPPED_CODES:
 		var code: int = entry[0]
 		var what: String = "U+%04X (%s)" % [code, entry[1]]
 		var c: String = _chr(code)
-		assert_eq(ChatText.sanitize("x" + c + "y"), "xy", "%s se quita entre letras" % what)
-		assert_true(ChatText.is_stripped_control(code), "%s se trata como invisible" % what)
-		assert_eq(ChatText.check(c + c + c), ChatText.Problem.EMPTY, "%s solo: queda vacío" % what)
+		assert_eq(ChatText.sanitize("x" + c + "y"), "xy", "%s is removed between letters" % what)
+		assert_true(ChatText.is_stripped_control(code), "%s is treated as invisible" % what)
+		assert_eq(ChatText.check(c + c + c), ChatText.Problem.EMPTY, "%s alone: it is left empty" % what)
 
 
 func test_spaces_table() -> void:
@@ -162,10 +162,10 @@ func test_spaces_table() -> void:
 		var code: int = entry[0]
 		var what: String = "U+%04X (%s)" % [code, entry[1]]
 		var c: String = _chr(code)
-		assert_eq(ChatText.sanitize("x" + c + "y"), "x y", "%s es un espacio" % what)
-		assert_true(ChatText.is_space(code), "%s cuenta como espacio" % what)
-		assert_false(ChatText.is_stripped_control(code), "%s no se quita" % what)
-		assert_eq(ChatText.check(c + c + c), ChatText.Problem.EMPTY, "%s solo: queda vacío" % what)
+		assert_eq(ChatText.sanitize("x" + c + "y"), "x y", "%s is a space" % what)
+		assert_true(ChatText.is_space(code), "%s counts as a space" % what)
+		assert_false(ChatText.is_stripped_control(code), "%s is not removed" % what)
+		assert_eq(ChatText.check(c + c + c), ChatText.Problem.EMPTY, "%s alone: it is left empty" % what)
 
 
 func test_visible_characters_table() -> void:
@@ -173,9 +173,9 @@ func test_visible_characters_table() -> void:
 		var code: int = entry[0]
 		var what: String = "U+%04X (%s)" % [code, entry[1]]
 		var c: String = _chr(code)
-		assert_eq(ChatText.sanitize("x" + c + "y"), "x" + c + "y", "%s se queda" % what)
-		assert_eq(ChatText.sanitize(c), c, "%s solo, también" % what)
-		assert_false(ChatText.is_stripped_control(code), "%s no es invisible" % what)
+		assert_eq(ChatText.sanitize("x" + c + "y"), "x" + c + "y", "%s stays" % what)
+		assert_eq(ChatText.sanitize(c), c, "%s alone, too" % what)
+		assert_false(ChatText.is_stripped_control(code), "%s is not invisible" % what)
 
 
 func test_combining_marks_table() -> void:
@@ -183,67 +183,67 @@ func test_combining_marks_table() -> void:
 		var code: int = entry[0]
 		var what: String = "U+%04X (%s)" % [code, entry[1]]
 		var c: String = _chr(code)
-		assert_eq(ChatText.sanitize("x" + c + "y"), "x" + c + "y", "%s se queda sobre una letra" % what)
-		assert_eq(ChatText.sanitize(c + "y"), "y", "%s al principio, sin letra, se quita" % what)
-		assert_eq(ChatText.sanitize("x " + c + "y"), "x y", "%s tras un espacio se quita" % what)
-		assert_eq(ChatText.check(c + c + c), ChatText.Problem.EMPTY, "%s solas: queda vacío" % what)
-		assert_false(ChatText.is_stripped_control(code), "%s no se quita siempre" % what)
+		assert_eq(ChatText.sanitize("x" + c + "y"), "x" + c + "y", "%s stays on a letter" % what)
+		assert_eq(ChatText.sanitize(c + "y"), "y", "%s at the start, with no letter, is removed" % what)
+		assert_eq(ChatText.sanitize("x " + c + "y"), "x y", "%s after a space is removed" % what)
+		assert_eq(ChatText.check(c + c + c), ChatText.Problem.EMPTY, "%s alone: it is left empty" % what)
+		assert_false(ChatText.is_stripped_control(code), "%s is not always removed" % what)
 
 
 func test_a_letter_keeps_at_most_four_marks() -> void:
-	# «Zalgo»: una letra con 254 marcas cabe en 255 caracteres; ocupa toda la caja de chat y, con estas
-	# marcas variadas, la maquetación de texto de Godot 4.7.2 se queda colgada en quien la recibe.
+	# \"Zalgo\": a letter with 254 marks fits in 255 characters; it fills the whole chat box and, with these
+	# varied marks, Godot 4.7.2 text layout hangs for whoever receives it.
 	var zalgo: String = "a"
 	for i: int in 254:
 		zalgo += _chr(0x0300 + i % 0x70)
 	var cleaned: String = ChatText.sanitize(zalgo)
-	assert_eq(cleaned.length(), 1 + ChatText.MAX_MARKS_PER_BASE, "la letra y cuatro marcas")
-	assert_eq(cleaned, zalgo.substr(0, 1 + ChatText.MAX_MARKS_PER_BASE), "las cuatro primeras")
-	assert_eq(ChatText.MAX_MARKS_PER_BASE, 4, "el tope documentado")
-	# Cada letra tiene su propio tope.
+	assert_eq(cleaned.length(), 1 + ChatText.MAX_MARKS_PER_BASE, "the letter and four marks")
+	assert_eq(cleaned, zalgo.substr(0, 1 + ChatText.MAX_MARKS_PER_BASE), "the first four")
+	assert_eq(ChatText.MAX_MARKS_PER_BASE, 4, "the documented cap")
+	# Each letter has its own cap.
 	var word: String = ""
 	var expected: String = ""
 	for letter: String in ["H", "o", "l", "a"]:
 		word += letter + _chr(0x0301).repeat(10)
 		expected += letter + _chr(0x0301).repeat(ChatText.MAX_MARKS_PER_BASE)
-	assert_eq(ChatText.sanitize(word), expected, "cuatro marcas por letra")
-	# Lo normal pasa entero.
+	assert_eq(ChatText.sanitize(word), expected, "four marks per letter")
+	# Normal text passes whole.
 	var vietnamese: String = "e" + _chr(0x0302) + _chr(0x0301)
-	assert_eq(ChatText.sanitize(vietnamese), vietnamese, "dos marcas (vietnamita descompuesto)")
+	assert_eq(ChatText.sanitize(vietnamese), vietnamese, "two marks (decomposed Vietnamese)")
 	var keycap: String = "1" + _chr(0xFE0F) + _chr(0x20E3)
-	assert_eq(ChatText.sanitize(keycap), keycap, "tecla 1 en emoji")
+	assert_eq(ChatText.sanitize(keycap), keycap, "key 1 as emoji")
 	var heart: String = _chr(0x2764) + _chr(0xFE0F)
-	assert_eq(ChatText.sanitize(heart), heart, "corazón en color")
+	assert_eq(ChatText.sanitize(heart), heart, "colored heart")
 	var hebrew: String = _chr(0x05D1) + _chr(0x05BC) + _chr(0x05B8) + _chr(0x0591) + _chr(0x05BD)
-	assert_eq(ChatText.sanitize(hebrew), hebrew, "letra hebrea con cuatro puntos y acentos")
+	assert_eq(ChatText.sanitize(hebrew), hebrew, "Hebrew letter with four points and accents")
 
 
 func test_a_grapheme_keeps_at_most_five_code_points() -> void:
-	# Lo que se pega a la letra anterior sin ser una marca (categoría M) también forma un grafema largo: con
-	# 128 «ำ» (U+0E33) tras una consonante tailandesa, la maquetación de Godot 4.7.2 se cuelga en quien lo
-	# recibe. Cada caso: la base y lo que se le pega, repetido.
+	# Anything that sticks to the previous letter without being a mark (category M) also forms a long
+	# grapheme: with 128 \"ำ\" (U+0E33) after a Thai consonant, Godot 4.7.2 layout hangs for whoever
+	# receives it. Each case: the base and what sticks to it, repeated.
 	var cases: Dictionary = {
 		"ำ tailandés": [0x0E01, 0x0E33], "ຳ lao": [0x0E81, 0x0EB3],
 		"vocal del hangul antiguo": [0x1100, 0x1161], "tono de piel": [0x1F44D, 0x1F3FB],
 	}
 	var limit: int = ChatText.MAX_CODE_POINTS_PER_GRAPHEME
-	assert_eq(limit, 1 + ChatText.MAX_MARKS_PER_BASE, "la letra y sus cuatro marcas")
+	assert_eq(limit, 1 + ChatText.MAX_MARKS_PER_BASE, "the letter and its four marks")
 	for what: String in cases:
 		var codes: Array = cases[what]
 		var hostile: String = _chr(codes[0]) + _chr(codes[1]).repeat(128)
 		var cleaned: String = ChatText.sanitize("hola " + hostile + " adiós")
 		var expected: String = "hola " + hostile.left(limit) + " adiós"
-		assert_eq(cleaned, expected, "%s: se queda la base con %d más" % [what, limit - 1])
-		assert_eq(ChatText.sanitize(cleaned), cleaned, "%s: idempotente" % what)
+		assert_eq(cleaned, expected, "%s: the base stays with %d more" % [what, limit - 1])
+		assert_eq(ChatText.sanitize(cleaned), cleaned, "%s: idempotent" % what)
 		if cleaned == expected:
-			# Lo saneado se maqueta sin colgarse (lo de antes del saneado no se maqueta aquí: colgaría la prueba).
+			# What is sanitized lays out without hanging (what came before sanitizing is not laid out here: it would hang the test).
 			var line := TextLine.new()
 			line.add_string(cleaned, ThemeDB.fallback_font, 16)
-			assert_true(line.get_size().x > 0.0, "%s: lo saneado se maqueta" % what)
-	# Lo normal, aunque no sea latino, pasa entero.
+			assert_true(line.get_size().x > 0.0, "%s: the sanitized text lays out" % what)
+	# Normal text, even if not Latin, passes whole.
 	for normal: String in ["café con leche, ñandú", "สวัสดีครับ", "ສະບາຍດີ", "안녕하세요", "こんにちは",
 			"Здравствуйте", "नमस्ते", _chr(0x1F44D) + _chr(0x1F3FD)]:
-		assert_eq(ChatText.sanitize(normal), normal, "«%s» no cambia" % normal)
+		assert_eq(ChatText.sanitize(normal), normal, "\"%s\" does not change" % normal)
 
 
 func test_text_that_only_looks_blank_is_empty() -> void:
@@ -251,19 +251,19 @@ func test_text_that_only_looks_blank_is_empty() -> void:
 			_chr(0x2800).repeat(3), _chr(0x0301).repeat(5), _chr(0x200B) + " " + _chr(0x061C),
 			_chr(0xE0041).repeat(4), _chr(0xFE0F).repeat(3)]:
 		assert_eq(ChatText.check(blank), ChatText.Problem.EMPTY,
-				"un mensaje que se vería en blanco: %s" % _codes(blank))
-	assert_eq(ChatText.sanitize("x" + _chr(0x061C) + "y"), "xy", "la marca de dirección U+061C no pasa")
+				"a message that would look blank: %s" % _codes(blank))
+	assert_eq(ChatText.sanitize("x" + _chr(0x061C) + "y"), "xy", "the direction mark U+061C does not pass")
 
 
 func test_markup_removal_is_linear_and_keeps_its_meaning() -> void:
 	var nested: String = "[".repeat(127) + "]".repeat(127)
-	assert_eq(ChatText.sanitize(nested), "", "127 niveles de corchetes")
-	assert_eq(ChatText.sanitize("a" + nested + "b"), "ab", "y lo que los rodea se queda")
-	assert_eq(ChatText.sanitize("]a[b"), "ab", "un cierre antes de una apertura")
-	assert_eq(ChatText.sanitize("[a]b]c"), "bc", "un cierre de más")
-	assert_eq(ChatText.sanitize("[a[b]"), "a", "una apertura de más")
-	assert_eq(ChatText.sanitize("x" + "[".repeat(300)), "x", "300 aperturas sin cerrar")
-	# Mismo resultado que quitar el par más interior una y otra vez (el saneado de antes), en textos al azar.
+	assert_eq(ChatText.sanitize(nested), "", "127 levels of brackets")
+	assert_eq(ChatText.sanitize("a" + nested + "b"), "ab", "and what surrounds them stays")
+	assert_eq(ChatText.sanitize("]a[b"), "ab", "a close before an open")
+	assert_eq(ChatText.sanitize("[a]b]c"), "bc", "one extra close")
+	assert_eq(ChatText.sanitize("[a[b]"), "a", "one extra open")
+	assert_eq(ChatText.sanitize("x" + "[".repeat(300)), "x", "300 unclosed opens")
+	# Same result as removing the innermost pair over and over (the earlier sanitizing), on random texts.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
 	var alphabet: Array[String] = ["a", "b", "[", "]", " "]
@@ -288,31 +288,31 @@ func test_sanitizing_random_hostile_text_is_stable_and_clean() -> void:
 		for _k: int in rng.randi_range(0, 40):
 			sample += pieces[rng.randi_range(0, pieces.size() - 1)]
 		var once: String = ChatText.sanitize(sample)
-		assert_eq(ChatText.sanitize(once), once, "idempotente: %s" % _codes(sample))
+		assert_eq(ChatText.sanitize(once), once, "idempotent: %s" % _codes(sample))
 		assert_false(once.contains("[") or once.contains("]") or once.contains("  "),
-				"sin corchetes ni espacios dobles: %s" % _codes(sample))
-		assert_eq(once, once.strip_edges(), "sin espacios en los extremos: %s" % _codes(sample))
+				"no brackets or double spaces: %s" % _codes(sample))
+		assert_eq(once, once.strip_edges(), "no spaces at the ends: %s" % _codes(sample))
 		var run: int = 0
 		for k: int in once.length():
 			var code: int = once.unicode_at(k)
-			assert_false(ChatText.is_stripped_control(code), "U+%04X no debía quedar" % code)
+			assert_false(ChatText.is_stripped_control(code), "U+%04X should not have stayed" % code)
 			if mark.search(once[k]) != null:
 				run += 1
-				assert_true(k > 0 and once[k - 1] != " ", "marca sin letra: %s" % _codes(sample))
+				assert_true(k > 0 and once[k - 1] != " ", "mark without a letter: %s" % _codes(sample))
 			else:
 				run = 0
-			assert_true(run <= ChatText.MAX_MARKS_PER_BASE, "demasiadas marcas: %s" % _codes(sample))
+			assert_true(run <= ChatText.MAX_MARKS_PER_BASE, "too many marks: %s" % _codes(sample))
 		for found: RegExMatch in grapheme.search_all(once):
 			assert_true(found.get_string().length() <= ChatText.MAX_CODE_POINTS_PER_GRAPHEME,
-					"grafema demasiado largo: %s" % _codes(sample))
+					"grapheme too long: %s" % _codes(sample))
 
 
-# Carácter con el código [param code] (así el archivo no lleva caracteres invisibles).
+# Character with code [param code] (so the file carries no invisible characters).
 func _chr(code: int) -> String:
 	return String.chr(code)
 
 
-# Los códigos de [param text], para los mensajes de error.
+# The codes of [param text], for error messages.
 func _codes(text: String) -> String:
 	var parts := PackedStringArray()
 	for i: int in text.length():
@@ -320,8 +320,8 @@ func _codes(text: String) -> String:
 	return " ".join(parts)
 
 
-# El saneado de corchetes de antes (quitar el par más interior hasta que no cambie, y después los sueltos)
-# más los espacios, para comparar con el lineal.
+# The earlier bracket sanitizing (remove the innermost pair until it stops changing, then the loose
+# ones) plus the spaces, to compare against the linear one.
 func _reference_markup(text: String) -> String:
 	var pair := RegEx.create_from_string("\\[[^\\[\\]]*\\]")
 	var current: String = text

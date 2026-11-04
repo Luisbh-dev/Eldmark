@@ -1,26 +1,26 @@
 class_name NameRules
 extends RefCounted
-## Reglas de los nombres de personaje (SOC-01), compartidas por el cliente (que valida antes de
-## conectar) y el servidor ([ServerAuth], que las aplica en el HELLO).
+## Character name rules (SOC-01), shared by the client (which validates before
+## connecting) and the server ([ServerAuth], which applies them in the HELLO).
 ## [br][br]
-## Un nombre válido tiene de [constant MIN_LENGTH] a [constant MAX_LENGTH] letras latinas
-## (a-z, con las tildes áéíóú, la ü y la ñ), sin espacios ni dígitos ni signos, empieza por
-## mayúscula y no es uno de los [constant RESERVED] (cargos del juego, reinos, lugares y PNJ de
-## docs/mundo.md). El resto de las letras se admite tal como viene, en mayúscula o minúscula.
+## A valid name has [constant MIN_LENGTH] to [constant MAX_LENGTH] Latin letters
+## (a-z, with the accents áéíóú, ü and ñ), with no spaces, digits or symbols, starts with an
+## uppercase letter and is not one of the [constant RESERVED] (game titles, realms, places and NPCs from
+## docs/mundo.md). The rest of the letters are accepted as they come, uppercase or lowercase.
 ## [br][br]
-## Para comparar nombres ([method normalize_key]) se pasa a minúsculas y se quitan las tildes, la
-## diéresis y la eñe, de modo que «Álvaro», «alvaro» y «ALVARO» son el mismo nombre, y también
-## «Peña» y «Pena» (si no, uno se haría pasar por el otro). Los susurros por nombre y la
-## unicidad dentro de la zona usan esa clave.
+## To compare names ([method normalize_key]) they are lowercased and the accents, the
+## diaeresis and the eñe are removed, so that "Álvaro", "alvaro" and "ALVARO" are the same name, and also
+## "Peña" and "Pena" (otherwise one could impersonate the other). Whispers by name and
+## uniqueness within the zone use that key.
 ## [br][br]
-## Este es el límite del juego; el del protocolo (24 caracteres y 48 bytes en el HELLO,
-## [constant NetProtocol.MAX_NAME_CHARS]) es más ancho y se mantiene como tope de lo que se
-## acepta del cable. No depende de nada de [code]scripts/client/[/code] ni de
+## This is the game's limit; the protocol's (24 characters and 48 bytes in the HELLO,
+## [constant NetProtocol.MAX_NAME_CHARS]) is wider and remains as the cap on what is
+## accepted from the wire. It depends on nothing in [code]scripts/client/[/code] or
 ## [code]scripts/server/[/code].
 
-## Motivo por el que un nombre no vale. [constant OK] (0) es un nombre válido.
-## [constant TAKEN] no lo devuelve [method validate] (es una regla pura): lo asigna quien conoce
-## a los jugadores conectados ([ServerAuth]).
+## Reason a name is not valid. [constant OK] (0) is a valid name.
+## [constant TAKEN] is not returned by [method validate] (it is a pure rule): it is assigned by whoever knows
+## the connected players ([ServerAuth]).
 enum Reason {
 	OK = 0,
 	TOO_SHORT = 1,
@@ -33,47 +33,47 @@ enum Reason {
 	TAKEN = 8,
 }
 
-## Letras mínimas y máximas de un nombre.
+## Minimum and maximum letters of a name.
 const MIN_LENGTH: int = 3
 const MAX_LENGTH: int = 16
 
-## Letras admitidas, en mayúscula y en minúscula (mismo orden en las dos cadenas).
+## Accepted letters, uppercase and lowercase (same order in both strings).
 const UPPER_LETTERS: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ"
 const LOWER_LETTERS: String = "abcdefghijklmnopqrstuvwxyzáéíóúüñ"
-## Nombre por defecto de un jugador: este prefijo más [constant DEFAULT_SUFFIX_LETTERS] letras.
+## Default name of a player: this prefix plus [constant DEFAULT_SUFFIX_LETTERS] letters.
 const DEFAULT_PREFIX: String = "Jugador"
-## Prefijo de los nombres por defecto de los bots.
+## Prefix of the default names of bots.
 const BOT_PREFIX: String = "Bot"
 const DEFAULT_SUFFIX_LETTERS: int = 4
 
-## Nombres reservados (se comparan con [method normalize_key], así que da igual cómo se
-## escriban aquí): cargos y avisos del juego, los reinos y bandos, y los lugares y PNJ principales
-## de docs/mundo.md. No incluye nombres de pila que solo salen en un topónimo ( «Atalaya de
-## Brenn», «Cantera de Odd»...).
+## Reserved names (compared with [method normalize_key], so it does not matter how they are
+## written here): game titles and notices, the realms and factions, and the main places and NPCs
+## from docs/mundo.md. It does not include first names that only appear in a place name ("Atalaya de
+## Brenn", "Cantera de Odd"...).
 const RESERVED: Array[String] = [
-	# Cargos y voces del sistema.
+	# System titles and voices.
 	"GM", "Admin", "Administrador", "Administrator", "Moderador", "Moderator", "Mod",
 	"Sistema", "System", "Servidor", "Server", "Soporte", "Support", "Staff", "Eldmark",
-	# Reinos, el reino viejo y los Huecos.
+	# Realms, the old realm and the Hollow.
 	"Vardheim", "Solmarch", "Askarra", "Eld", "Eldrun", "Huecos", "Hueco",
-	# Capitales y zonas de los reinos.
+	# Capitals and zones of the realms.
 	"Isenholm", "Valcorin", "Kassar", "Hondal", "Skarven", "Grimfell", "Lirien", "Morvel",
 	"Thal", "Ruhn", "Ossar",
-	# Zona de guerra: castillos y la ciudadela.
+	# War zone: castles and the citadel.
 	"Aldcor", "Grauholt", "Velmont", "Sarnath",
-	# PNJ.
+	# NPCs.
 	"Capitán", "Guardia",
 ]
 
-## Equivalencias para [method normalize_key] (ya en minúscula). Las exporta
-## [ProgressionRulesExport] para la plataforma, que aplica la misma regla en Go.
+## Equivalences for [method normalize_key] (already lowercase). They are exported by
+## [ProgressionRulesExport] for the platform, which applies the same rule in Go.
 const FOLDED: Dictionary = {
 	"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ü": "u", "ñ": "n",
 }
 
-## Código de cada motivo en la API de la plataforma (el [code]reason[/code] del 422
-## [code]name_invalid[/code] y de [code]name-check[/code], docs/plataforma.md §4.1 y §4.4), por
-## valor de [enum Reason]. Los casos compartidos con Go ([code]tests/fixtures/names/[/code]) los usan.
+## Code of each reason in the platform API (the [code]reason[/code] of the 422
+## [code]name_invalid[/code] and of [code]name-check[/code], docs/plataforma.md §4.1 and §4.4), by
+## value of [enum Reason]. The cases shared with Go ([code]tests/fixtures/names/[/code]) use them.
 const REASON_CODES: Dictionary = {
 	Reason.OK: "ok",
 	Reason.TOO_SHORT: "too_short",
@@ -87,9 +87,9 @@ const REASON_CODES: Dictionary = {
 }
 
 
-## Comprueba [param display_name] y devuelve [constant Reason.OK] (0) si vale o el primer motivo
-## por el que no, en este orden: longitud, caracteres (en el orden en que aparecen), mayúscula
-## inicial y reservados.
+## Checks [param display_name] and returns [constant Reason.OK] (0) if it is valid or the first reason
+## why it is not, in this order: length, characters (in the order they appear), initial
+## uppercase letter and reserved names.
 static func validate(display_name: String) -> int:
 	var length: int = display_name.length()
 	if length < MIN_LENGTH:
@@ -112,12 +112,12 @@ static func validate(display_name: String) -> int:
 	return Reason.OK
 
 
-## true si [param display_name] cumple todas las reglas ([method validate] devuelve 0).
+## true if [param display_name] meets all the rules ([method validate] returns 0).
 static func is_valid(display_name: String) -> bool:
 	return validate(display_name) == Reason.OK
 
 
-## Texto en español, para el jugador, del motivo [param reason] (un valor de [enum Reason]).
+## Text in Spanish, for the player, of reason [param reason] (a value of [enum Reason]).
 static func reason_text(reason: int) -> String:
 	match reason:
 		Reason.OK:
@@ -141,14 +141,14 @@ static func reason_text(reason: int) -> String:
 	return "Nombre no válido"
 
 
-## Código en la API de la plataforma del motivo [param reason] ([constant REASON_CODES]), o
-## [code]""[/code] si no es un valor de [enum Reason].
+## Platform API code of reason [param reason] ([constant REASON_CODES]), or
+## [code]""[/code] if it is not a value of [enum Reason].
 static func reason_code(reason: int) -> String:
 	return REASON_CODES.get(reason, "")
 
 
-## Motivo ([enum Reason]) de un código de la API de la plataforma ([code]"too_short"[/code]...), o
-## -1 si no es ninguno.
+## Reason ([enum Reason]) of a platform API code ([code]"too_short"[/code]...), or
+## -1 if it is none.
 static func reason_from_code(code: String) -> int:
 	for reason: int in REASON_CODES:
 		if REASON_CODES[reason] == code:
@@ -156,17 +156,17 @@ static func reason_from_code(code: String) -> int:
 	return -1
 
 
-## Resumen de todas las reglas en una frase, para mostrarlo junto al campo del nombre o en el
-## texto de un rechazo genérico.
+## Summary of all the rules in one sentence, to show next to the name field or in the
+## text of a generic rejection.
 static func rules_summary() -> String:
 	return "de %d a %d letras, sin espacios ni números y empezando por mayúscula" % [
 		MIN_LENGTH, MAX_LENGTH,
 	]
 
 
-## Clave para comparar nombres: minúsculas y sin tildes, diéresis ni eñe. Dos nombres son el
-## mismo si tienen la misma clave. Con un texto que no es un nombre válido no falla: pasa a
-## minúsculas lo que puede y deja el resto como está.
+## Key to compare names: lowercase and without accents, diaeresis or eñe. Two names are the
+## same if they have the same key. With text that is not a valid name it does not fail: it lowercases
+## what it can and leaves the rest as is.
 static func normalize_key(display_name: String) -> String:
 	var lowered: String = display_name.to_lower()
 	var key: String = ""
@@ -177,7 +177,7 @@ static func normalize_key(display_name: String) -> String:
 	return key
 
 
-## true si [param display_name] es, una vez normalizado, uno de los [constant RESERVED].
+## true if [param display_name] is, once normalized, one of the [constant RESERVED].
 static func is_reserved(display_name: String) -> bool:
 	var key: String = normalize_key(display_name)
 	for reserved: String in RESERVED:
@@ -186,16 +186,16 @@ static func is_reserved(display_name: String) -> bool:
 	return false
 
 
-## Nombre por defecto de un jugador sin [code]--name[/code]: «Jugador» más cuatro letras sacadas
-## de [param seed_value] ([code]0[/code] da «Jugadoraaaa», [code]1[/code] «Jugadoraaab»...). Siempre
-## es un nombre válido, y semillas distintas dan nombres distintos hasta 26^4 (456 976).
-## Determinista: no usa el reloj ni el azar global.
+## Default name of a player without [code]--name[/code]: "Jugador" plus four letters taken
+## from [param seed_value] ([code]0[/code] gives "Jugadoraaaa", [code]1[/code] "Jugadoraaab"...). It is always
+## a valid name, and different seeds give different names up to 26^4 (456,976).
+## Deterministic: it uses neither the clock nor global randomness.
 static func default_name(seed_value: int) -> String:
 	return DEFAULT_PREFIX + _letters_suffix(seed_value)
 
 
-## Nombre de un bot sin [code]--name[/code]: «Bot» más cuatro letras sacadas de [param seed_value]
-## ([code]1[/code] da «Botaaab»). Válido y determinista, como [method default_name].
+## Name of a bot without [code]--name[/code]: "Bot" plus four letters taken from [param seed_value]
+## ([code]1[/code] gives "Botaaab"). Valid and deterministic, like [method default_name].
 static func bot_name(seed_value: int) -> String:
 	return BOT_PREFIX + _letters_suffix(seed_value)
 

@@ -1,9 +1,9 @@
 extends TestCase
-## Los golpes avisados que recuerda un bot del cliente ([BotThreatSight], F6b): cada TELEGRAPH es un
-## [BotBrain.Threat] con el origen, el giro y el alcance del aviso, activo hasta su impacto más la ventana activa
-## del golpe; el mismo PNJ sustituye su aviso anterior y su DESPAWN lo olvida. Los demás eventos no cuentan, ni (con
-## la regla de quien lo crea) los avisos de los PNJ que no pueden dañar al bot: [SwarmBot] solo guarda los de los PNJ de
-## guerra enemigos y [ClientBotBrains] los de quien [method BotThreatSight.is_hostile_view] da por hostil.
+## The telegraphed hits that a client bot remembers ([BotThreatSight], F6b): each TELEGRAPH is a
+## [BotBrain.Threat] with the origin, the turn and the reach of the telegraph, active until its impact plus the hit's active
+## window; the same NPC replaces its previous telegraph and its DESPAWN forgets it. Other events do not count, nor (with
+## the rule of whoever creates it) the telegraphs of NPCs that cannot damage the bot: [SwarmBot] only keeps those of enemy
+## war NPCs and [ClientBotBrains] those of whoever [method BotThreatSight.is_hostile_view] deems hostile.
 
 
 func _telegraph(npc_id: int, tick: int, origin: Vector3, yaw: float, radius_cm: int,
@@ -16,28 +16,28 @@ func test_a_telegraph_is_a_threat_until_its_impact_and_active_window() -> void:
 	var sight := BotThreatSight.new()
 	sight.note(_telegraph(40, 1000, Vector3(1.0, 2.0, 3.0), PI, 350, 60))
 	var found: Array[BotBrain.Threat] = sight.find(1000)
-	if not assert_eq(found.size(), 1, "activo desde el aviso"):
+	if not assert_eq(found.size(), 1, "active from the telegraph"):
 		return
-	assert_vec_near(found[0].origin, Vector3(1.0, 2.0, 3.0), 0.001, "con el origen del aviso")
-	assert_near(found[0].yaw, PI, 0.001, "su giro")
-	assert_near(found[0].radius, 3.5, 0.001, "y su alcance en metros")
+	assert_vec_near(found[0].origin, Vector3(1.0, 2.0, 3.0), 0.001, "with the telegraph's origin")
+	assert_near(found[0].yaw, PI, 0.001, "its turn")
+	assert_near(found[0].radius, 3.5, 0.001, "and its reach in meters")
 	var last: int = 1000 + 60 + BotThreatSight.ACTIVE_TICKS
-	assert_eq(sight.find(last).size(), 1, "sigue hasta el impacto más la ventana activa")
-	assert_eq(sight.find(last + 1).size(), 0, "y después ya no")
-	assert_eq(sight.size(), 0, "lo olvida al pasar")
+	assert_eq(sight.find(last).size(), 1, "continues until the impact plus the active window")
+	assert_eq(sight.find(last + 1).size(), 0, "and afterward it does not")
+	assert_eq(sight.size(), 0, "forgets it as it passes")
 
 
 func test_the_same_npc_replaces_its_warning_and_a_despawn_forgets_it() -> void:
 	var sight := BotThreatSight.new()
 	sight.note(_telegraph(40, 1000, Vector3.ZERO, 0.0, 350, 60))
 	sight.note(_telegraph(41, 1010, Vector3(5.0, 0.0, 0.0), 0.0, 260, 30))
-	assert_eq(sight.find(1020).size(), 2, "dos PNJ, dos golpes")
+	assert_eq(sight.find(1020).size(), 2, "two NPCs, two hits")
 	sight.note(_telegraph(40, 1100, Vector3(9.0, 0.0, 0.0), 1.0, 350, 60))
 	var found: Array[BotBrain.Threat] = sight.find(1100)
-	assert_eq(found.size(), 1, "el otro ya ha pasado y el primero tiene uno nuevo")
-	assert_vec_near(found[0].origin, Vector3(9.0, 0.0, 0.0), 0.001, "el nuevo sustituye al anterior")
+	assert_eq(found.size(), 1, "the other has already passed and the first has a new one")
+	assert_vec_near(found[0].origin, Vector3(9.0, 0.0, 0.0), 0.001, "the new one replaces the previous one")
 	sight.forget(40)
-	assert_eq(sight.find(1100).size(), 0, "su DESPAWN lo olvida")
+	assert_eq(sight.find(1100).size(), 0, "its DESPAWN forgets it")
 
 
 func test_other_events_are_ignored() -> void:
@@ -49,14 +49,14 @@ func test_other_events_are_ignored() -> void:
 
 
 func test_with_a_hostility_rule_it_keeps_only_the_hits_of_those_who_can_harm_it() -> void:
-	# Revisión de F6b: el servidor avisa los fuertes de todos los PNJ, también los de la guarnición del propio bot, y los
-	# falsos del servidor solo evitan los de un reino hostil; los bots del cliente esquivaban también los de los suyos.
+	# F6b review: the server telegraphs the forts of all NPCs, including those of the bot's own garrison, and the
+	# server's fake ones only avoid those of a hostile realm; the client bots also dodged those of their own side.
 	var hostile: Dictionary[int, bool] = {41: true}
 	var sight := BotThreatSight.new(func(net_id: int) -> bool: return hostile.has(net_id))
 	sight.note(_telegraph(40, 1000, Vector3.ZERO, 0.0, 350, 60))
 	sight.note(_telegraph(41, 1000, Vector3(5.0, 0.0, 0.0), 0.0, 350, 60))
 	var found: Array[BotBrain.Threat] = sight.find(1000)
-	if not assert_eq(found.size(), 1, "solo el del PNJ que le puede dañar"):
+	if not assert_eq(found.size(), 1, "only that of the NPC that can damage it"):
 		return
 	assert_vec_near(found[0].origin, Vector3(5.0, 0.0, 0.0), 0.001)
 
@@ -71,11 +71,11 @@ func test_a_remote_npc_is_hostile_by_the_faction_rules_of_the_zone() -> void:
 	world.on_spawn(_npc_spawn(42, RealmCatalog.NEUTRAL_CODE))
 	var zone: StringName = &"vado_gris"
 	var vardheim: int = NetProtocol.Realm.VARDHEIM
-	assert_false(BotThreatSight.is_hostile_view(world, vardheim, zone, 40), "un guardia de su reino no le daña")
-	assert_true(BotThreatSight.is_hostile_view(world, vardheim, zone, 41), "uno del otro reino sí")
-	assert_true(BotThreatSight.is_hostile_view(world, vardheim, zone, 42), "y uno neutral (los Huecos, el Capitán del Vado)")
-	assert_false(BotThreatSight.is_hostile_view(world, vardheim, zone, 99), "uno sin alta no cuenta")
-	assert_false(BotThreatSight.is_hostile_view(null, vardheim, zone, 41), "sin mundo, nada")
+	assert_false(BotThreatSight.is_hostile_view(world, vardheim, zone, 40), "a guard of its realm does not damage it")
+	assert_true(BotThreatSight.is_hostile_view(world, vardheim, zone, 41), "one from the other realm does")
+	assert_true(BotThreatSight.is_hostile_view(world, vardheim, zone, 42), "and a neutral one (the Hollow, the Ford Captain)")
+	assert_false(BotThreatSight.is_hostile_view(world, vardheim, zone, 99), "one with no registration does not count")
+	assert_false(BotThreatSight.is_hostile_view(null, vardheim, zone, 41), "with no world, nothing")
 	tree.root.remove_child(world)
 	world.free()
 	await wait_process_frames()
@@ -96,7 +96,7 @@ func test_a_swarm_bot_does_not_evade_the_hits_of_the_npcs_of_its_realm() -> void
 	welcome.zone_id = "vado_gris"
 	bot._welcome = welcome
 	bot._predicted_tick = 1000
-	# Un guardia de Vardheim (su guarnición) y un Hueco (neutral), con sus altas de verdad.
+	# A Vardheim guard (its garrison) and a Hollow (neutral), with their real registrations.
 	bot._on_packet_received(SwarmBot.SERVER_PEER_ID, _npc_spawn(40, NetProtocol.Realm.VARDHEIM).encode())
 	bot._on_packet_received(SwarmBot.SERVER_PEER_ID, _npc_spawn(41, RealmCatalog.NEUTRAL_CODE).encode())
 	bot._on_packet_received(SwarmBot.SERVER_PEER_ID, _telegraph(40, 1000, Vector3.ZERO, 0.0, 350, 60).encode())
@@ -107,8 +107,8 @@ func test_a_swarm_bot_does_not_evade_the_hits_of_the_npcs_of_its_realm() -> void
 	tree.root.remove_child(bot)
 	bot.free()
 	await wait_process_frames()
-	assert_eq(own, 0, "el golpe avisado de un guardia de su reino no es una amenaza")
-	if assert_eq(found.size(), 1, "el del Hueco, sí"):
+	assert_eq(own, 0, "the telegraphed hit of a guard of its realm is not a threat")
+	if assert_eq(found.size(), 1, "the Hollow's is"):
 		assert_vec_near(found[0].origin, Vector3(3.0, 0.0, 0.0), 0.001)
 
 

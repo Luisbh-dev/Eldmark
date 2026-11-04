@@ -1,46 +1,47 @@
 class_name ChatBox
 extends Control
-## Caja de chat del HUD (SOC-05, docs/social.md, secciones 2, 4 y 12): el registro de mensajes abajo a la
-## izquierda, con pestañas por canal, y la línea donde se escribe.
+## HUD chat box (SOC-05, docs/social.md, sections 2, 4 and 12): the message log at the bottom
+## left, with a tab per channel, and the line where text is typed.
 ## [br][br]
-## [b]Abrir y cerrar.[/b] Intro (acción [code]chat_open[/code]) abre la línea; escribir [code]/[/code] la abre
-## ya con la barra. Mientras está abierta el cursor queda libre (la cámara no gira y los clics son para la
-## interfaz: [method CameraRig.set_ui_cursor_release]) y el personaje no se mueve ni usa botones
-## ([method LocalPlayerController.set_input_blocked]); es lo que hacen las ventanas de la interfaz, y el chat
-## además congela el movimiento porque se teclea. Esc la cierra sin enviar (se atiende en
-## [method Node._input], antes de que lo vea la cámara), Intro envía y cierra, y un clic fuera de la caja (con
-## cualquiera de los tres botones del ratón) la cierra sin enviar, para volver al juego sin buscar el Esc. Ese clic
-## no ataca: [LocalPlayerController] suprime los botones del ratón pulsados con el cursor libre hasta soltarlos.
-## Cambiar de ventana del sistema no la cierra (al volver se sigue escribiendo). Solo se abre si ninguna otra
-## ventana tiene el cursor ([method CameraRig.is_ui_holding_cursor]).
+## [b]Opening and closing.[/b] Enter (action [code]chat_open[/code]) opens the line; typing
+## [code]/[/code] opens it already with the slash. While it is open the cursor stays free (the
+## camera does not turn and clicks are for the interface: [method CameraRig.set_ui_cursor_release])
+## and the character neither moves nor uses buttons ([method LocalPlayerController.set_input_blocked]); this is what the interface windows do, and chat also
+## freezes movement because typing is going on. Esc closes it without sending (handled in [method Node._input], before the camera sees it), Enter sends and closes, and a click outside the box
+## (with any of the three mouse buttons) closes it without sending, to return to the game without
+## looking for Esc. That click does not attack: [LocalPlayerController] suppresses the mouse
+## buttons pressed with the cursor free until they are released. Switching system windows does not
+## close it (on returning, typing continues). It only opens if no other window holds the cursor
+## ([method CameraRig.is_ui_holding_cursor]).
 ## [br][br]
-## [b]Qué se escribe.[/b] [ChatCommandParser] decide si es texto para el canal activo (por defecto
-## [constant ChatChannel.Id.SAY]) o un comando en español sin distinguir mayúsculas ni tildes: [code]/d[/code],
-## [code]/z[/code], [code]/s nombre texto[/code], [code]/r[/code], [code]/g[/code], [code]/ayuda[/code] y los
-## de grupo, que se entregan a [member party_handler]. Un comando de canal sin texto deja ese canal como
-## activo. Flecha arriba y abajo recorren el historial de lo enviado ([ChatInputHistory]). El texto se sanea
-## ([ChatText]) antes de enviarse, y el servidor vuelve a sanearlo.
+## [b]What is typed.[/b] [ChatCommandParser] decides whether it is text for the active channel (by
+## default [constant ChatChannel.Id.SAY]) or a command in Spanish, case- and accent-insensitive:
+## [code]/d[/code], [code]/z[/code], [code]/s nombre texto[/code], [code]/r[/code], [code]/g[/code],
+## [code]/ayuda[/code] and the party ones, which are delivered to [member party_handler]. A channel
+## command without text leaves that channel as the active one. Up and down arrows walk through the
+## history of what was sent ([ChatInputHistory]). The text is sanitized ([ChatText]) before being
+## sent, and the server sanitizes it again.
 ## [br][br]
-## [b]Qué se ve.[/b] Una pestaña por canal (todo, decir, zona, grupo, susurros y sistema), cada línea con el color de
-## su canal ([ChatStyle]) y el nombre del emisor con el de su reino. Los NOTICE del servidor salen en el
-## canal del sistema. [b]El texto de otros jugadores se pinta como texto literal[/b]: nunca se interpreta
-## BBCode (se añade con [code]RichTextLabel.add_text[/code]). Cerrada, la caja se desvanece
-## [constant FADE_DELAY_SECONDS] s después del último mensaje y reaparece con el siguiente.
+## [b]What is shown.[/b] One tab per channel (all, say, zone, party, whispers and system), each
+## line with its channel's color ([ChatStyle]) and the sender's name with its realm's color. The
+## server's NOTICEs appear in the system channel. [b]Other players' text is painted as literal
+## text[/b]: BBCode is never interpreted (it is added with [code]RichTextLabel.add_text[/code]).
+## When closed, the box fades out [constant FADE_DELAY_SECONDS] s after the last message and
+## reappears with the next one.
 ## [br][br]
-## [b]Responder.[/b] [code]/r[/code] resuelve al último interlocutor de susurro con lo que ve el cliente: de la
-## copia de un susurro propio o del susurro recibido ([method ChatLog.Line.whisper_partner]).
+## [b]Replying.[/b] [code]/r[/code] resolves the last whisper correspondent from what the client
+## sees: from the copy of one's own whisper or from the received whisper ([method ChatLog.Line.whisper_partner]).
 ## [br][br]
-## Medidas, colores y textos provisionales (pendiente del usuario). Solo cliente.
+## Sizes, colors and texts are provisional (pending the user). Client only.
 
-## La línea se ha abierto o cerrado.
+## The line has been opened or closed.
 signal opened
 signal closed
-## El jugador ha escrito un comando de grupo ([constant ChatCommandParser.Kind.INVITE], [code]LEAVE[/code],
-## [code]KICK[/code] o [code]LEADER[/code]) y no hay [member party_handler]: otra pieza del HUD (SOC-08)
-## puede escucharlo.
+## The player has typed a party command ([constant ChatCommandParser.Kind.INVITE],
+## [code]LEAVE[/code], [code]KICK[/code] or [code]LEADER[/code]) and there is no [member party_handler]: another HUD piece (SOC-08) can listen to it.
 signal party_command_requested(command: ChatCommandParser.Command)
 
-## Pestañas: nombre y canales que muestran (lista vacía = todos).
+## Tabs: name and the channels they show (empty list = all).
 const TABS: Array[Dictionary] = [
 	{"name": "Todo", "channels": []},
 	{"name": "Decir", "channels": [ChatChannel.Id.SAY]},
@@ -49,22 +50,22 @@ const TABS: Array[Dictionary] = [
 	{"name": "Susurros", "channels": [ChatChannel.Id.WHISPER]},
 	{"name": "Sistema", "channels": [ChatChannel.Id.SYSTEM]},
 ]
-## Medidas (píxeles de la ventana base) y márgenes.
+## Sizes (base-window pixels) and margins.
 const WIDTH: float = 560.0
 const HEIGHT: float = 236.0
 const MARGIN_LEFT: float = 16.0
 const MARGIN_BOTTOM: float = 56.0
-## Caracteres como mucho de la línea: el texto más largo que admite el servidor ([constant ChatText.MAX_CHARS])
-## detrás de la forma más larga de un comando con nombre y texto, [code]/susurrar [/code] (10 caracteres), con un
-## nombre de [constant NameRules.MAX_LENGTH] letras y su espacio, y 4 de holgura para espacios de más. Si se pasa,
-## no se recorta en silencio: se avisa ([method _on_line_text_rejected]).
+## Maximum characters of the line: the longest text the server accepts ([constant ChatText.MAX_CHARS]) behind the longest form of a command with name and text, [code]/susurrar [/code]
+## (10 characters), with a name of [constant NameRules.MAX_LENGTH] letters and its space,
+## and 4 of slack for extra spaces. If exceeded, it is not trimmed silently: a warning is shown
+## ([method _on_line_text_rejected]).
 const MAX_INPUT_CHARS: int = ChatText.MAX_CHARS + 10 + NameRules.MAX_LENGTH + 1 + 4
-## Segundos sin mensajes tras los que la caja cerrada empieza a desvanecerse, lo que dura el fundido y
-## opacidad en reposo (0 = invisible).
+## Seconds without messages after which the closed box starts to fade, how long the fade lasts and
+## resting opacity (0 = invisible).
 const FADE_DELAY_SECONDS: float = 8.0
 const FADE_SECONDS: float = 2.0
 const IDLE_ALPHA: float = 0.0
-## Código Unicode de «/», para abrir la línea con la barra en cualquier distribución de teclado.
+## Unicode code of "/", to open the line with the slash on any keyboard layout.
 const SLASH_UNICODE: int = 47
 const TEXT_INPUT_HINT: String = "Escribe un mensaje o /ayuda"
 const TEXT_NO_REPLY: String = "No tienes a quién responder."
@@ -72,8 +73,8 @@ const TEXT_WHISPER_USAGE: String = "Uso: /s nombre texto"
 const TEXT_SEND_FAILED: String = "No se pudo enviar el mensaje."
 const TEXT_NO_PARTIES: String = "Los grupos aún no están disponibles."
 
-## Quién atiende los comandos de grupo: [code](command: ChatCommandParser.Command) -> void[/code]. Sin él
-## se emite [signal party_command_requested] y, si nadie lo escucha, se avisa de que no están disponibles.
+## Who handles the party commands: [code](command: ChatCommandParser.Command) -> void[/code].
+## Without it, [signal party_command_requested] is emitted and, if nobody listens, a notice says they are unavailable.
 var party_handler: Callable = Callable()
 
 var _client: NetClient = null
@@ -87,7 +88,7 @@ var _active_channel: int = ChatChannel.Id.SAY
 var _active_target: String = ""
 var _reply_target: String = ""
 var _own_name: String = ""
-# Segundos desde la última actividad (mensaje, apertura o cierre); empieza ya desvanecida.
+# Seconds since the last activity (message, open or close); it starts already faded.
 var _idle_seconds: float = FADE_DELAY_SECONDS + FADE_SECONDS
 var _panel: PanelContainer = null
 var _tabs: TabBar = null
@@ -95,9 +96,9 @@ var _label: RichTextLabel = null
 var _input_row: HBoxContainer = null
 var _prefix: Label = null
 var _line: LineEdit = null
-# Líneas que tiene ahora el RichTextLabel (para quitar las más viejas al pasar del tope).
+# Lines the RichTextLabel currently has (to remove the oldest ones when the cap is exceeded).
 var _label_lines: int = 0
-# Ya se ha avisado de que la línea no admite más caracteres (una vez cada vez que se abre).
+# A warning has already been shown that the line accepts no more characters (once each time it is opened).
 var _rejected_warned: bool = false
 
 
@@ -118,21 +119,22 @@ func _exit_tree() -> void:
 func _input(event: InputEvent) -> void:
 	if not _open:
 		return
-	# Esc cierra la línea antes de que lo vea la cámara (que lo usaría para soltar el cursor).
+	# Esc closes the line before the camera sees it (which would use it to release the cursor).
 	if event.is_action_pressed(&"ui_cancel"):
 		close()
 		if is_inside_tree():
 			get_viewport().set_input_as_handled()
 		return
-	# Un clic fuera de la caja la cierra (el campo de texto no pierde el foco al pulsar donde no hay ningún control).
-	# El clic sigue su camino: si cae en otra ventana, es para ella; en el mundo no ataca (ver la cabecera).
+	# A click outside the box closes it (the text field does not lose focus when clicking where
+	# there is no control). The click goes on its way: if it lands on another window, it is for that
+	# one; in the world it does not attack (see the header).
 	var click: InputEventMouseButton = event as InputEventMouseButton
 	if click != null and click.pressed and is_outside_click(click):
 		close()
 
 
-## true si [param click], un clic recibido en [method Node._input] (en coordenadas de la vista), es del botón
-## izquierdo, derecho o central y cae fuera de la caja. La rueda no cuenta.
+## true if [param click], a click received in [method Node._input] (in viewport coordinates), is
+## from the left, right or middle button and lands outside the box. The wheel does not count.
 func is_outside_click(click: InputEventMouseButton) -> bool:
 	if _panel == null or not _panel.is_inside_tree():
 		return false
@@ -158,9 +160,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 
-## Conecta la caja con el cliente de red [param client] (los mensajes que llegan y los NOTICE; el envío),
-## la cámara (que libera el cursor mientras se escribe) y el controlador del jugador (que suspende el
-## movimiento). Puede llamarse antes o después de añadir la caja al árbol.
+## Connects the box to the network client [param client] (the incoming messages and the NOTICEs;
+## sending), the camera (which releases the cursor while typing) and the player controller (which
+## suspends movement). It can be called before or after adding the box to the tree.
 func bind(client: NetClient, camera_rig: CameraRig, controller: LocalPlayerController) -> void:
 	_release_input()
 	_disconnect()
@@ -178,10 +180,11 @@ func bind(client: NetClient, camera_rig: CameraRig, controller: LocalPlayerContr
 		_hold_input()
 
 
-# --- Abrir y cerrar ---------------------------------------------------------------------------
+# --- Opening and closing ----------------------------------------------------------------------
 
-## Abre la línea con [param prefill] ya escrito (vacío, o «/» al pulsar la barra). Devuelve false, sin abrir
-## nada, si otra ventana tiene el cursor o no hay sesión. Si ya estaba abierta solo cambia el texto.
+## Opens the line with [param prefill] already typed (empty, or "/" when pressing the slash key).
+## Returns false, without opening anything, if another window holds the cursor or there is no
+## session. If it was already open, only the text changes.
 func open(prefill: String = "") -> bool:
 	_ensure_built()
 	if _open:
@@ -204,7 +207,7 @@ func open(prefill: String = "") -> bool:
 	return true
 
 
-## Cierra la línea sin enviar lo escrito y devuelve el cursor y el movimiento al juego.
+## Closes the line without sending what was typed and returns the cursor and movement to the game.
 func close() -> void:
 	if not _open:
 		return
@@ -222,10 +225,10 @@ func is_open() -> bool:
 	return _open
 
 
-# --- Entrada ----------------------------------------------------------------------------------
+# --- Input ------------------------------------------------------------------------------------
 
-## Procesa [param text] como si el jugador lo hubiera escrito y pulsado Intro: texto para el canal activo
-## o un comando. No cierra la línea ([method _on_text_submitted] lo hace).
+## Processes [param text] as if the player had typed it and pressed Enter: text for the active
+## channel or a command. It does not close the line ([method _on_text_submitted] does).
 func submit(text: String) -> void:
 	_ensure_built()
 	var command: ChatCommandParser.Command = ChatCommandParser.parse(text)
@@ -247,8 +250,8 @@ func submit(text: String) -> void:
 				ChatCommandParser.Kind.LEADER:
 			_party(command)
 		ChatCommandParser.Kind.SERVER:
-			# Lo atiende el servidor (docs/plataforma.md §9): la línea va por el canal GM y la respuesta llega por el
-			# canal del sistema.
+			# The server handles it (docs/plataforma.md §9): the line goes through the GM channel and the
+			# reply comes through the system channel.
 			_send(ChatChannel.Id.GM, "", command.text)
 		ChatCommandParser.Kind.UNKNOWN:
 			add_system_text(ChatCommandParser.TEXT_UNKNOWN)
@@ -256,7 +259,7 @@ func submit(text: String) -> void:
 			add_system_text(command.error)
 
 
-## Añade un mensaje del servidor al registro (lo que hace [signal NetClient.chat_received]).
+## Adds a server message to the log (what [signal NetClient.chat_received] does).
 func add_message(message: NetMessages.ChatMessage) -> void:
 	_ensure_built()
 	var line: ChatLog.Line = _log.add_message(message, _own_name)
@@ -265,15 +268,15 @@ func add_message(message: NetMessages.ChatMessage) -> void:
 		_reply_target = partner
 
 
-## Añade un texto local en el canal del sistema (ayuda, errores de un comando, NOTICE del servidor).
+## Adds a local text to the system channel (help, a command's errors, the server's NOTICEs).
 func add_system_text(text: String) -> void:
 	_ensure_built()
 	_log.add_text(text, ChatChannel.Id.SYSTEM)
 
 
-# --- Estado -----------------------------------------------------------------------------------
+# --- State ------------------------------------------------------------------------------------
 
-## El registro de mensajes.
+## The message log.
 func get_log() -> ChatLog:
 	return _log
 
@@ -282,27 +285,27 @@ func get_history() -> ChatInputHistory:
 	return _history
 
 
-## Canal al que va el texto sin comando.
+## Channel that text without a command goes to.
 func get_active_channel() -> int:
 	return _active_channel
 
 
-## Destinatario del canal activo si es un susurro (vacío en los demás).
+## Recipient of the active channel if it is a whisper (empty for the others).
 func get_active_target() -> String:
 	return _active_target
 
 
-## A quién responde [code]/r[/code] (vacío = a nadie todavía).
+## Whom [code]/r[/code] replies to (empty = nobody yet).
 func get_reply_target() -> String:
 	return _reply_target
 
 
-## Índice de la pestaña abierta ([constant TABS]).
+## Index of the open tab ([constant TABS]).
 func get_tab() -> int:
 	return _tab
 
 
-## Abre la pestaña [param index] ([constant TABS]) y repinta el registro.
+## Opens tab [param index] ([constant TABS]) and repaints the log.
 func set_tab(index: int) -> void:
 	_ensure_built()
 	index = clampi(index, 0, TABS.size() - 1)
@@ -311,18 +314,18 @@ func set_tab(index: int) -> void:
 	_select_tab(index)
 
 
-## El texto plano que muestra ahora el registro (para las pruebas).
+## The plain text the log currently shows (for tests).
 func get_visible_text() -> String:
 	_ensure_built()
 	return _label.get_parsed_text()
 
 
-## Líneas que muestra ahora el registro.
+## Lines the log currently shows.
 func get_visible_line_count() -> int:
 	return _label_lines
 
 
-## Opacidad de la caja ahora mismo (1 con la línea abierta y justo tras un mensaje).
+## Opacity of the box right now (1 with the line open and just after a message).
 func get_fade_alpha() -> float:
 	if _open:
 		return 1.0
@@ -352,14 +355,14 @@ func get_prefix_label() -> Label:
 	return _prefix
 
 
-## Avanza el desvanecimiento [param delta] segundos (lo llama [method _process]).
+## Advances the fade by [param delta] seconds (called by [method _process]).
 func advance(delta: float) -> void:
 	if not _open:
 		_idle_seconds += delta
 	_apply_visibility()
 
 
-# --- Montaje ----------------------------------------------------------------------------------
+# --- Assembly ---------------------------------------------------------------------------------
 
 func _ensure_built() -> void:
 	if _panel != null:
@@ -429,7 +432,7 @@ func _ensure_built() -> void:
 	_apply_visibility()
 
 
-# Pestañas, línea de texto y fondo según esté abierta o no, y la opacidad del desvanecimiento.
+# Tabs, text line and background depending on whether it is open or not, and the fade opacity.
 func _apply_visibility() -> void:
 	if _panel == null:
 		return
@@ -451,7 +454,7 @@ func _update_prefix() -> void:
 	_prefix.add_theme_color_override(&"font_color", ChatStyle.channel_color(_active_channel))
 
 
-# --- Registro ---------------------------------------------------------------------------------
+# --- Log --------------------------------------------------------------------------------------
 
 func _select_tab(index: int) -> void:
 	_tab = index
@@ -459,7 +462,7 @@ func _select_tab(index: int) -> void:
 	_idle_seconds = 0.0
 
 
-# Repinta el registro entero con las líneas de la pestaña abierta.
+# Repaints the whole log with the lines of the open tab.
 func _rebuild() -> void:
 	_label.clear()
 	_label_lines = 0
@@ -481,7 +484,7 @@ func _on_line_added(line: ChatLog.Line) -> void:
 	_apply_visibility()
 
 
-# Añade una línea al final del RichTextLabel, parte a parte y como texto literal (nunca BBCode).
+# Adds a line at the end of the RichTextLabel, part by part and as literal text (never BBCode).
 func _paint(line: ChatLog.Line) -> void:
 	if _label_lines > 0:
 		_label.newline()
@@ -492,7 +495,7 @@ func _paint(line: ChatLog.Line) -> void:
 	_label_lines += 1
 
 
-# --- Mensajes del servidor --------------------------------------------------------------------
+# --- Server messages --------------------------------------------------------------------------
 
 func _on_chat_received(message: NetMessages.ChatMessage) -> void:
 	add_message(message)
@@ -510,7 +513,7 @@ func _disconnect() -> void:
 			_client.notice_received.disconnect(_on_notice)
 
 
-# --- Envío ------------------------------------------------------------------------------------
+# --- Sending ----------------------------------------------------------------------------------
 
 func _on_text_submitted(text: String) -> void:
 	submit(text)
@@ -530,15 +533,15 @@ func _on_line_gui_input(event: InputEvent) -> void:
 	_line.accept_event()
 
 
-# Perder el foco (otro control se lo lleva) cierra la línea, igual que Esc. Un clic donde no hay ningún control no
-# quita el foco: ese caso lo atiende _input.
+# Losing focus (another control takes it) closes the line, just like Esc. A click where there is
+# no control does not remove focus: that case is handled by _input.
 func _on_line_focus_exited() -> void:
 	if _open:
 		close()
 
 
-# La línea ha llegado a MAX_INPUT_CHARS y se ha quedado sin parte de lo escrito o pegado: se avisa (una vez cada
-# vez que se abre, para no llenar el registro tecla a tecla) en lugar de enviar recortado sin decir nada.
+# The line has reached MAX_INPUT_CHARS and lost part of what was typed or pasted: a warning is
+# shown (once each time it is opened, so as not to fill the log key by key) instead of silently sending it trimmed.
 func _on_line_text_rejected(_rejected: String) -> void:
 	if _rejected_warned:
 		return
@@ -546,7 +549,7 @@ func _on_line_text_rejected(_rejected: String) -> void:
 	add_system_text(ChatText.problem_text(ChatText.Problem.TOO_LONG))
 
 
-# Envía [param text] por [param channel] (a [param target] si es un susurro) tras comprobarlo.
+# Sends [param text] through [param channel] (to [param target] if it is a whisper) after checking it.
 func _send(channel: int, target: String, text: String) -> void:
 	if channel == ChatChannel.Id.WHISPER and ChatText.clean(target).is_empty():
 		add_system_text(TEXT_WHISPER_USAGE)
@@ -562,14 +565,14 @@ func _send(channel: int, target: String, text: String) -> void:
 		add_system_text(TEXT_SEND_FAILED)
 
 
-# Cambia el canal activo (y su destinatario, en un susurro).
+# Changes the active channel (and its recipient, for a whisper).
 func _set_active(channel: int, target: String) -> void:
 	_active_channel = channel
 	_active_target = target if channel == ChatChannel.Id.WHISPER else ""
 	_update_prefix()
 
 
-# /r: susurro al último interlocutor, o ese susurro como canal activo si no hay texto.
+# /r: whisper to the last correspondent, or that whisper as the active channel if there is no text.
 func _reply(text: String) -> void:
 	if _reply_target.is_empty():
 		add_system_text(TEXT_NO_REPLY)
@@ -580,7 +583,7 @@ func _reply(text: String) -> void:
 		_send(ChatChannel.Id.WHISPER, _reply_target, text)
 
 
-# Comandos de grupo: a quien los atienda (SOC-08) o, si no hay nadie, aviso.
+# Party commands: to whoever handles them (SOC-08) or, if there is nobody, a notice.
 func _party(command: ChatCommandParser.Command) -> void:
 	if party_handler.is_valid():
 		party_handler.call(command)
@@ -591,7 +594,7 @@ func _party(command: ChatCommandParser.Command) -> void:
 	party_command_requested.emit(command)
 
 
-# --- Cursor y movimiento ----------------------------------------------------------------------
+# --- Cursor and movement ----------------------------------------------------------------------
 
 func _hold_input() -> void:
 	if is_instance_valid(_camera_rig):

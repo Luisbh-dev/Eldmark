@@ -13,27 +13,27 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// Fuentes de audit_log que puede mandar una zona (§9.1): la consola de la zona y lo demás (/gm y
-// DEBUG_COMMAND). Las filas cli y platform solo las escribe la plataforma.
+// audit_log sources that a zone can send (§9.1): the zone's console and everything else (/gm and
+// DEBUG_COMMAND). The cli and platform rows are written only by the platform.
 const (
 	SourceZone    = "zone"
 	SourceConsole = "console"
 )
 
-// commandPattern es la forma de un command de la zona: los de la CLI llevan guiones o espacios
-// («set-role», «reports show»), así que nunca casan.
+// commandPattern is the shape of a zone command: the CLI's ones contain hyphens or spaces
+// ("set-role", "reports show"), so they never match.
 var commandPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 
-// reservedCommands son los command que solo escribe la plataforma (§6, «Lotes»): una zona no los
-// puede mandar en su lote.
+// reservedCommands are the commands that only the platform writes (§6, "Batches"): a zone cannot
+// send them in its batch.
 var reservedCommands = map[string]bool{
-	"sanction_denied": true, // la autorización de una sanción (§9.5)
-	"sanction":        true, // una sanción creada (§9.5)
-	"zone_replace":    true, // un registro con replace (§5.3)
-	"set_role":        true, // por si se escribe sin guion
+	"sanction_denied": true, // the authorization of a sanction (§9.5)
+	"sanction":        true, // a created sanction (§9.5)
+	"zone_replace":    true, // a registration with replace (§5.3)
+	"set_role":        true, // in case it is written without a hyphen
 }
 
-// chatMessage es una entrada válida del lote de chat.
+// chatMessage is a valid entry of the chat batch.
 type chatMessage struct {
 	key           string
 	channel       int16
@@ -44,11 +44,11 @@ type chatMessage struct {
 	sentAt        time.Time
 }
 
-// Chat inserta los mensajes de un lote de chat (§9.2: {key, channel, sender_character_id,
-// target_character_id, text, sent_at_unix}) con world_id, zone_id y zone_channel de la instancia y
-// sender_account_id de characters, y devuelve las claves rechazadas: una entrada sin algún campo o
-// con uno que no vale, con una key que no es de la instancia, o con un emisor que no es un personaje
-// del mundo de la instancia.
+// Chat inserts the messages of a chat batch (§9.2: {key, channel, sender_character_id,
+// target_character_id, text, sent_at_unix}) with the instance's world_id, zone_id and
+// zone_channel and sender_account_id from characters, and returns the rejected keys: an entry
+// missing a field or with an invalid one, with a key that does not belong to the instance, or
+// with a sender that is not a character of the instance's world.
 func (s *Service) Chat(ctx context.Context, inst *zones.Instance, entries []json.RawMessage) ([]string, error) {
 	keys := zones.NewKeyChecker(inst, s.pool)
 	rejected := []string{}
@@ -110,7 +110,7 @@ func (s *Service) Chat(ctx context.Context, inst *zones.Instance, entries []json
 	}
 	rejected = append(rejected, failed...)
 	if len(rejected) > 0 {
-		// Solo las claves: el texto del chat nunca va al registro (§2.3).
+		// Only the keys: chat text never goes to the log (§2.3).
 		s.log.Warn("mensajes de chat rechazados", "zone_instance", inst.IDString(), "keys", rejected)
 	}
 	return rejected, nil
@@ -140,14 +140,14 @@ func parseChat(ctx context.Context, keys *zones.KeyChecker, raw json.RawMessage)
 		sentAt: time.Unix(sent, 0).UTC()}, true, nil
 }
 
-// Audit inserta las entradas de un lote de auditoría (§9.1: {key, actor_account_id,
-// actor_character_id, command, target_character_id, target_account_id, args, at_unix, source}) en
-// audit_log con world_id y zone_id de la instancia, at = to_timestamp(at_unix) y on conflict
-// (event_key) do nothing (el guardado escribe la misma fila de una operación con la misma key,
-// op:<op_id>), y devuelve las claves rechazadas: una entrada sin algún campo o con uno que no vale;
-// con una key que no es de la instancia o un op:<op_id> fuera de sus bloques de ids; con source
-// distinto de zone y console (las filas cli y platform solo las escribe la plataforma), console con
-// actor o zone sin él; o con un command de la CLI o de la plataforma.
+// Audit inserts the entries of an audit batch (§9.1: {key, actor_account_id, actor_character_id,
+// command, target_character_id, target_account_id, args, at_unix, source}) into audit_log with
+// the instance's world_id and zone_id, at = to_timestamp(at_unix) and on conflict (event_key) do
+// nothing (the save writes the same row of an operation with the same key, op:<op_id>), and
+// returns the rejected keys: an entry missing a field or with an invalid one; with a key that
+// does not belong to the instance or an op:<op_id> outside its id blocks; with a source other
+// than zone and console (the cli and platform rows are written only by the platform), console
+// with an actor or zone without one; or with a CLI or platform command.
 func (s *Service) Audit(ctx context.Context, inst *zones.Instance, entries []json.RawMessage) ([]string, error) {
 	keys := zones.NewKeyChecker(inst, s.pool)
 	rejected := []string{}
@@ -178,8 +178,8 @@ func (s *Service) Audit(ctx context.Context, inst *zones.Instance, entries []jso
 	return rejected, nil
 }
 
-// parseAudit lee una entrada de auditoría y devuelve los argumentos de la fila (sin world_id ni
-// zone_id), con la key al final.
+// parseAudit reads an audit entry and returns the row's arguments (without world_id or zone_id),
+// with the key at the end.
 func parseAudit(ctx context.Context, keys *zones.KeyChecker, raw json.RawMessage) ([]any, bool, error) {
 	e, ok := zones.ParseEntry(raw, "key", "actor_account_id", "actor_character_id", "command", "target_character_id",
 		"target_account_id", "args", "at_unix", "source")
@@ -226,7 +226,7 @@ func (s *Service) auditBatch(w http.ResponseWriter, r *http.Request) {
 	s.batch(w, r, "entries", s.Audit)
 }
 
-// batch atiende un lote: en cualquier estado de la instancia (§6.1), 204 o 200 {rejected}.
+// batch handles a batch: in any instance state (§6.1), 204 or 200 {rejected}.
 func (s *Service) batch(w http.ResponseWriter, r *http.Request, field string,
 	insert func(context.Context, *zones.Instance, []json.RawMessage) ([]string, error)) {
 	batch, e := zones.DecodeBatch(w, r, field)
@@ -248,16 +248,16 @@ func (s *Service) batch(w http.ResponseWriter, r *http.Request, field string,
 	zones.BatchResponse(w, rejected)
 }
 
-// ChatRetention es lo que se conserva el chat (§11.1: 30 días, todos los canales); lo copiado a un
-// reporte sigue en report_evidence.
+// ChatRetention is how long chat is kept (§11.1: 30 days, all channels); what was copied into a
+// report remains in report_evidence.
 const ChatRetention = 30 * 24 * time.Hour
 
-// chatPurgeBatch es el tamaño de cada borrado de la retención del chat (§11.1: lotes de 10 000).
+// chatPurgeBatch is the size of each delete in the chat retention (§11.1: batches of 10 000).
 const chatPurgeBatch = 10000
 
-// PurgeChat es la retención del chat (§11.1), el trabajo horario chat_retention: borra los
-// mensajes con sent_at de hace más de [ChatRetention], en lotes de 10 000 (cada uno, su propia
-// sentencia) hasta que no quede ninguno. Devuelve cuántos borró.
+// PurgeChat is the chat retention (§11.1), the hourly chat_retention job: it deletes messages
+// with sent_at older than [ChatRetention], in batches of 10 000 (each one its own statement)
+// until none remain. It returns how many it deleted.
 func (s *Service) PurgeChat(ctx context.Context) (int64, error) {
 	cutoff := s.clock.Now().Add(-ChatRetention)
 	var total int64
@@ -277,7 +277,7 @@ func (s *Service) PurgeChat(ctx context.Context) (int64, error) {
 	}
 }
 
-// ChatRetentionJob es [Service.PurgeChat] como trabajo periódico de app (registra lo borrado).
+// ChatRetentionJob is [Service.PurgeChat] as a periodic app job (it logs what was deleted).
 func (s *Service) ChatRetentionJob(ctx context.Context) error {
 	n, err := s.PurgeChat(ctx)
 	if n > 0 {

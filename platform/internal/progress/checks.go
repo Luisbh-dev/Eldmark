@@ -18,60 +18,59 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// Las comprobaciones del guardado S2–S7 (progresion.md §13.3) sobre la sección ya leída (S1, section.go) y
-// el estado del personaje en la base, bloqueado. Van en orden y la primera que falla da el check del
-// *persistence.InvalidSaveError; S8 (write.go) escribe.
+// The save checks S2–S7 (progresion.md §13.3) over the already parsed section (S1, section.go) and
+// the character's state in the database, locked. They run in order and the first that fails gives
+// the check of the *persistence.InvalidSaveError; S8 (write.go) writes.
 
-// Límites de S2, S5 y S7.
+// Limits of S2, S5 and S7.
 const (
-	// atUnixSlack es cuánto puede ir detail.at_unix por delante de ahora o por detrás del granted_at de su
-	// bloque (S2).
+	// atUnixSlack is how far detail.at_unix may be ahead of now or behind its block's granted_at (S2).
 	atUnixSlack = 60
-	// maxTimers son los temporizadores de un personaje como mucho (S7, ProgressRecord.MAX_TIMERS).
+	// maxTimers is the most timers a character can have (S7, ProgressRecord.MAX_TIMERS).
 	maxTimers = 16
-	// maxTimerAhead es lo más lejos que puede acabar un temporizador (S7).
+	// maxTimerAhead is the furthest a timer may end (S7).
 	maxTimerAhead = 7 * 24 * time.Hour
-	// maxNoteLen es la note más larga, en caracteres (economy_ops.note, EconomyOp.MAX_NOTE_LENGTH).
+	// maxNoteLen is the longest note, in characters (economy_ops.note, EconomyOp.MAX_NOTE_LENGTH).
 	maxNoteLen = 200
-	// maxDurability es la durabilidad llena (por mil, §2.1).
+	// maxDurability is full durability (per thousand, §2.1).
 	maxDurability = 1000
-	// maxSeed es la mayor semilla de afijos (u32, item_instances.seed).
+	// maxSeed is the largest affix seed (u32, item_instances.seed).
 	maxSeed = 1<<32 - 1
-	// maxCountDelta es el mayor count_delta en valor absoluto (item_events.count_delta int).
+	// maxCountDelta is the largest count_delta in absolute value (item_events.count_delta int).
 	maxCountDelta = 1<<31 - 1
-	// maxRefKind es el mayor ref_kind de un apunte (LedgerEntry.RefKind.OP).
+	// maxRefKind is the largest ref_kind of an entry (LedgerEntry.RefKind.OP).
 	maxRefKind = 4
-	// maxArgs y maxArgLen acotan detail.args de una GM o una REVERSAL.
+	// maxArgs and maxArgLen bound detail.args of a GM or a REVERSAL.
 	maxArgs   = 32
 	maxArgLen = 255
 )
 
 var (
 	timerKeyPattern = regexp.MustCompile(`^[a-z0-9_:]{1,48}$`)
-	// commandPattern es el command de una operación de la zona: el de su lote de auditoría
-	// (social.commandPattern), así S8 nunca escribe uno de la CLI («set-role») ni de la plataforma.
+	// commandPattern is the command of a zone operation: the one from its audit batch
+	// (social.commandPattern), so S8 never writes one from the CLI ("set-role") or from the platform.
 	commandPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
-	// detailKeys son las claves de detail de una GM o una REVERSAL (progresion.md §10); las de nivel y XP
-	// solo cuando el comando los toca.
+	// detailKeys are the detail keys of a GM or a REVERSAL (progresion.md §10); the level and XP ones
+	// only when the command touches them.
 	detailKeys = map[string]bool{"command": true, "args": true, "source": true, "actor_character_id": true,
 		"at_unix": true, "level_before": true, "level_after": true, "xp_before": true, "xp_after": true, "xp_delta": true}
-	// detailColumns son las claves de detail que S8 pone en su propia columna de audit_log; el resto va en args.
+	// detailColumns are the detail keys that S8 puts in their own audit_log column; the rest go in args.
 	detailColumns = map[string]bool{"command": true, "source": true, "actor_character_id": true, "at_unix": true}
 )
 
-// Fuentes de detail.source (progresion.md §10) y su source en audit_log (plataforma.md §9.1).
+// Sources of detail.source (progresion.md §10) and their source in audit_log (plataforma.md §9.1).
 const (
 	sourceGM      = "gm"
 	sourceConsole = "console"
 	sourceDebug   = "debug"
 )
 
-// checkError es un error de la comprobación check.
+// checkError is an error of the check named check.
 func checkError(check, format string, args ...any) error {
 	return &persistence.InvalidSaveError{Check: check, Detail: fmt.Sprintf(format, args...)}
 }
 
-// dbItem es un objeto vivo del personaje en la base.
+// dbItem is a live object of the character in the database.
 type dbItem struct {
 	defID           string
 	count           int64
@@ -82,18 +81,18 @@ type dbItem struct {
 	container, slot int64
 }
 
-// dbWallet es un saldo del personaje en la base.
+// dbWallet is a balance of the character in the database.
 type dbWallet struct{ balance, lastSeq int64 }
 
-// block es un bloque de ids de la instancia que guarda.
+// block is an id block of the instance that is saving.
 type block struct {
 	first   int64
 	granted time.Time
 }
 
-// state es lo que el guardado mira en la base, leído con el progreso, los saldos y los objetos vivos del
-// personaje bloqueados (for update): dos Apply del mismo personaje van en serie aunque quien llama no tenga
-// su arrendamiento bloqueado.
+// state is what the save looks at in the database, read with the character's progress, balances
+// and live objects locked (for update): two Apply calls for the same character run serially even
+// if the caller does not hold its lease locked.
 type state struct {
 	accountID      int64
 	starterGranted bool
@@ -106,34 +105,34 @@ type state struct {
 	blocks         []block
 }
 
-// gmDetail es el detail ya leído de una GM o una REVERSAL.
+// gmDetail is the already parsed detail of a GM or a REVERSAL.
 type gmDetail struct {
 	command   string
 	source    string
 	actorChar *int64
 	atUnix    int64
-	auditArgs json.RawMessage // detail sin lo que va en columnas propias (S8)
+	auditArgs json.RawMessage // detail without what goes in its own columns (S8)
 }
 
-// apply es un guardado en curso: la clave, la sección leída, el estado de la base y lo que las comprobaciones
-// dejan para S8.
+// apply is a save in progress: the key, the parsed section, the database state and what the
+// checks leave for S8.
 type apply struct {
 	s     *Store
 	key   persistence.SaveKey
 	sec   *section
 	db    *state
 	now   time.Time
-	gm    map[int64]*gmDetail // op_id → detail de las GM y REVERSAL
-	newID map[int64]bool      // uids de la foto que no están vivos en la base (se insertan)
-	// realmReverted son las operaciones que revierte el cuerpo con méritos de motivo 3–5 de este personaje: sus
-	// REVERSAL bajan los puntos de reino (I9, S6).
+	gm    map[int64]*gmDetail // op_id → detail of the GM and REVERSAL operations
+	newID map[int64]bool      // uids in the snapshot that are not live in the database (they are inserted)
+	// realmReverted are the operations that the body reverts with merits of reason 3–5 of this
+	// character: their REVERSAL lowers realm points (I9, S6).
 	realmReverted map[int64]bool
 }
 
-// Apply implementa persistence.ProgressStore: S1 (la sección), S2–S7 (contra la base, con el estado del
-// personaje bloqueado) y S8 (la escritura). Un fallo de S1–S7 es un *persistence.InvalidSaveError y no
-// escribe nada; un error de la base en S8 lo clasifica quien llama (plataforma.md §7.3). Devuelve el
-// save_version nuevo.
+// Apply implements persistence.ProgressStore: S1 (the section), S2–S7 (against the database, with
+// the character's state locked) and S8 (the write). A failure of S1–S7 is a
+// *persistence.InvalidSaveError and writes nothing; a database error in S8 is classified by the
+// caller (plataforma.md §7.3). It returns the new save_version.
 func (s *Store) Apply(ctx context.Context, tx pgx.Tx, key persistence.SaveKey, progress json.RawMessage) (int64, error) {
 	sec, err := parseSection(progress, key.ZoneID)
 	if err != nil {
@@ -157,7 +156,7 @@ func (s *Store) Apply(ctx context.Context, tx pgx.Tx, key persistence.SaveKey, p
 	return a.write(ctx, tx)
 }
 
-// loadState lee y bloquea el estado del personaje y los bloques de ids de la instancia.
+// loadState reads and locks the character's state and the instance's id blocks.
 func (s *Store) loadState(ctx context.Context, tx pgx.Tx, key persistence.SaveKey) (*state, error) {
 	st := &state{wallets: map[int64]dbWallet{}, items: map[int64]dbItem{}}
 	var bagSlots int16
@@ -235,7 +234,7 @@ func (s *Store) loadState(ctx context.Context, tx pgx.Tx, key persistence.SaveKe
 	return st, err
 }
 
-// blockOf devuelve el bloque de la instancia que contiene id.
+// blockOf returns the instance block that contains id.
 func (st *state) blockOf(id int64) (block, bool) {
 	for _, b := range st.blocks {
 		if id >= b.first && id < b.first+zones.BlockSize {
@@ -245,10 +244,11 @@ func (st *state) blockOf(id int64) (block, bool) {
 	return block{}, false
 }
 
-// checkOps es S2: los op_id caen en los bloques de la instancia, no se repiten y no están ya guardados; cada
-// tipo, con sus motivos y sus campos; GM y REVERSAL, con note, detail y un actor con rol en detail.at_unix (o
-// desde la consola); STARTER_KIT solo una vez; REVERSAL de una operación guardada de este personaje que no es
-// REVERSAL ni MIGRATION y que nadie ha revertido.
+// checkOps is S2: op_ids fall within the instance's blocks, are not repeated and are not already
+// stored; each type, with its reasons and its fields; GM and REVERSAL, with note, detail and an
+// actor with a role at detail.at_unix (or from the console); STARTER_KIT only once; REVERSAL of a
+// stored operation of this character that is neither a REVERSAL nor a MIGRATION and that nobody
+// has reverted.
 func (a *apply) checkOps(ctx context.Context, tx pgx.Tx) error {
 	k := a.s.rules.kinds
 	ids := make([]int64, 0, len(a.sec.ops))
@@ -342,7 +342,7 @@ func (a *apply) checkOps(ctx context.Context, tx pgx.Tx) error {
 	return nil
 }
 
-// checkActor es la parte de S2 de una GM o una REVERSAL: note, detail y actor.
+// checkActor is the part of S2 for a GM or a REVERSAL: note, detail and actor.
 func (a *apply) checkActor(ctx context.Context, tx pgx.Tx, o op) error {
 	if o.note == nil || strings.TrimSpace(*o.note) == "" {
 		return checkError("S2", "la operación %d es GM o REVERSAL y no lleva note", o.opID)
@@ -392,8 +392,9 @@ func (a *apply) checkActor(ctx context.Context, tx pgx.Tx, o op) error {
 	return nil
 }
 
-// parseDetail lee el detail de una GM o una REVERSAL (progresion.md §10): command, args (cadenas), source
-// (gm, console o debug), at_unix y, si lo hay, actor_character_id; las de nivel y XP, enteros.
+// parseDetail parses the detail of a GM or a REVERSAL (progresion.md §10): command, args
+// (strings), source (gm, console or debug), at_unix and, if present, actor_character_id; the
+// level and XP ones, integers.
 func parseDetail(o op) (*gmDetail, error) {
 	fail := func(format string, args ...any) error {
 		return checkError("S2", "detail de la operación %d: %s", o.opID, fmt.Sprintf(format, args...))
@@ -459,9 +460,9 @@ func parseDetail(o op) (*gmDetail, error) {
 	return d, nil
 }
 
-// checkReverted es la parte de S2 de la operación que revierte una REVERSAL: guardada, de este personaje, que
-// no es REVERSAL ni MIGRATION y que no está en op_reversals. Anota también si dio puntos de reino a este
-// personaje (méritos de motivo 3–5), para S6.
+// checkReverted is the part of S2 for the operation that a REVERSAL reverts: stored, from this
+// character, neither a REVERSAL nor a MIGRATION, and not in op_reversals. It also records whether
+// it gave realm points to this character (merits of reason 3–5), for S6.
 func (a *apply) checkReverted(ctx context.Context, tx pgx.Tx, refOp int64) error {
 	var kind int16
 	var mine, done, realm bool
@@ -492,8 +493,9 @@ func (a *apply) checkReverted(ctx context.Context, tx pgx.Tx, refOp int64) error
 	return nil
 }
 
-// checkLedger es S3: por moneda y en el orden del diario, balance_after = anterior + delta, entre 0 y el tope
-// y con el signo del rango de su motivo; el saldo de la foto es el último (o el de la base, sin apuntes).
+// checkLedger is S3: per currency and in journal order, balance_after = previous + delta, between
+// 0 and the cap and with the sign of its reason's range; the snapshot's balance is the last one
+// (or the database's, with no entries).
 func (a *apply) checkLedger() error {
 	rules := a.s.rules
 	balances := map[int64]int64{}
@@ -545,9 +547,9 @@ func (a *apply) checkLedger() error {
 	return nil
 }
 
-// checkItems es S4 (I4): por definición, lo vivo en la base más los eventos es lo de la foto; un evento con
-// uid que suma es de un uid que no estaba vivo en la base para este personaje, y uno que resta, de uno que sí
-// (con la misma definición).
+// checkItems is S4 (I4): per definition, what is live in the database plus the events equals the
+// snapshot; an event with a uid that adds is for a uid that was not live in the database for this
+// character, and one that subtracts, for one that was (with the same definition).
 func (a *apply) checkItems() error {
 	totals := map[string]int64{}
 	for _, it := range a.db.items {
@@ -590,11 +592,12 @@ func (a *apply) checkItems() error {
 	return nil
 }
 
-// checkSnapshot es S5: la foto. Uids sin repetir, contenedor abierto, ranuras únicas y en rango, definición en
-// las reglas, cantidad, durabilidad, rareza 0 y sin afijos (fase 5), solo armas en el equipo y la ranura
-// activa con arma (I10); un uid que ya estaba vivo conserva def_id, semilla, rareza y afijos y no se desliga
-// (I1, I12), y uno nuevo cae en un bloque de la instancia. Si ya existe (de otro personaje o retirado), la
-// clave primaria lo para en S8.
+// checkSnapshot is S5: the snapshot. Non-repeating uids, open container, unique and in-range
+// slots, definition in the rules, quantity, durability, rarity 0 and no affixes (phase 5), only
+// weapons in equipment and the active slot holding a weapon (I10); a uid that was already live
+// keeps def_id, seed, rarity and affixes and is not unlinked (I1, I12), and a new one falls in an
+// instance block. If it already exists (from another character or retired), the primary key
+// stops it in S8.
 func (a *apply) checkSnapshot() error {
 	rules := a.s.rules
 	uids := map[int64]bool{}
@@ -657,8 +660,9 @@ func (a *apply) checkSnapshot() error {
 	return nil
 }
 
-// checkProgress es S6: nivel de la curva (I8), XP que no baja sin GM ni REVERSAL, puntos de reino (I9),
-// bag_slots y starter_granted (I12), ranura activa, tiempo jugado que no baja y vida.
+// checkProgress is S6: level from the curve (I8), XP that does not go down without a GM or
+// REVERSAL, realm points (I9), bag_slots and starter_granted (I12), active slot, played time that
+// does not go down, and health.
 func (a *apply) checkProgress() error {
 	rules := a.s.rules
 	sec := a.sec
@@ -707,7 +711,7 @@ func (a *apply) checkProgress() error {
 	return nil
 }
 
-// hasKind dice si el cuerpo lleva alguna operación de esos tipos.
+// hasKind says whether the body carries any operation of those types.
 func (a *apply) hasKind(kinds ...int) bool {
 	for _, o := range a.sec.ops {
 		if containsInt(kinds, int(o.kind)) {
@@ -717,14 +721,14 @@ func (a *apply) hasKind(kinds ...int) bool {
 	return false
 }
 
-// revertsRealmMerits dice si la REVERSAL o revierte una operación con méritos que dieron puntos de reino a
-// este personaje (lo anota checkReverted).
+// revertsRealmMerits says whether the REVERSAL o reverts an operation with merits that gave realm
+// points to this character (checkReverted records it).
 func (a *apply) revertsRealmMerits(o op) bool {
 	return o.refOp != nil && a.realmReverted[*o.refOp]
 }
 
-// checkTimers es S7: como mucho 16, claves con formato y sin repetir, y ninguno acaba a más de 7 días. Las
-// fechas pasadas valen (un reintento tardío; la zona descarta los vencidos al cargar).
+// checkTimers is S7: at most 16, well-formed non-repeating keys, and none ends more than 7 days
+// away. Past dates are valid (a late retry; the zone discards expired ones on load).
 func (a *apply) checkTimers() error {
 	if len(a.sec.timers) > maxTimers {
 		return checkError("S7", "%d temporizadores (%d como mucho)", len(a.sec.timers), maxTimers)

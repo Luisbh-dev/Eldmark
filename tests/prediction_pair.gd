@@ -1,20 +1,21 @@
 class_name PredictionPair
 extends RefCounted
-## Cliente y servidor de un mismo personaje sin red (como test_prediction.gd): dos mundos de física
-## separados ([SubViewport] con [code]own_world_3d[/code]), cada uno con un [PlayerCharacter] sobre
-## un suelo plano. El cliente predice con la [ClientPrediction] de verdad (entradas de un cerebro
-## guionizado, por [LocalPlayerController]); el servidor aplica la regla de sustitución de
-## docs/red.md, sección 8.2 (repite la última entrada aplicada con todos sus botones y la marca
-## [constant PlayerInput.SUBSTITUTED]) y, tras simular cada tick, llama a [member server_hook] para lo
-## que imponga el servidor. Sus estados llegan al cliente cada 2 ticks con 6 de retraso.
+## Client and server of one and the same character without a network (like test_prediction.gd):
+## two separate physics worlds ([SubViewport] with [code]own_world_3d[/code]), each with a
+## [PlayerCharacter] on flat ground. The client predicts with the real [ClientPrediction] (inputs
+## from a scripted brain, via [LocalPlayerController]); the server applies the substitution rule of
+## docs/red.md, section 8.2 (it repeats the last applied input with all its buttons and the
+## [constant PlayerInput.SUBSTITUTED] marker) and, after simulating each tick, calls
+## [member server_hook] for whatever the server imposes. Its states reach the client every 2 ticks
+## with 6 delay.
 ## [br][br]
-## Uso: [code]await pair.build(tree, route, combat)[/code] y, dentro de cada tick de física,
-## [method frame]. Al acabar, [method free_worlds].
+## Usage: [code]await pair.build(tree, route, combat)[/code] and, inside each physics tick,
+## [method frame]. When finished, [method free_worlds].
 
-## Tick del servidor en el que aparece el jugador, y primer tick con entrada real.
+## Server tick at which the player spawns, and first tick with real input.
 const SPAWN_TICK: int = 10
 const FIRST_REAL_TICK: int = 14
-## Retraso (fotogramas) e intervalo (ticks) de los estados propios.
+## Delay (frames) and interval (ticks) of the own states.
 const STATE_DELAY_FRAMES: int = 6
 const STATE_INTERVAL_TICKS: int = 2
 const SPAWN_POSITION: Vector3 = Vector3(0.0, 0.0, 40.0)
@@ -22,7 +23,7 @@ const SPAWN_POSITION: Vector3 = Vector3(0.0, 0.0, 40.0)
 const _CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
 
 
-## Cerebro cuyas entradas salen de una función del tick.
+## Brain whose inputs come from a function of the tick.
 class ScriptedBrain extends BotBrain:
 	var route: Callable
 
@@ -38,21 +39,21 @@ class ScriptedBrain extends BotBrain:
 var server: PlayerCharacter
 var client: PlayerCharacter
 var prediction: ClientPrediction
-## Lo que impone el servidor tras simular un tick: [code]func(character, tick) -> void[/code]. Si
-## cambia el estado, quien lo pone llama a [method commit] (redondeo por encode/decode, como
-## [code]CombatDirector.commit_state[/code]).
+## What the server imposes after simulating a tick: [code]func(character, tick) -> void[/code]. If
+## it changes the state, whoever sets it calls [method commit] (rounding through encode/decode,
+## like [code]CombatDirector.commit_state[/code]).
 var server_hook: Callable = Callable()
-## Ticks cuya entrada se pierde camino del servidor.
+## Ticks whose input is lost on the way to the server.
 var lost: Array[int] = []
-## Fotogramas que tardan en llegar los estados propios del servidor.
+## Frames it takes for the server's own states to arrive.
 var state_delay_frames: int = STATE_DELAY_FRAMES
-## Resultados de [method ClientPrediction.on_server_state]: (tick, resultado).
+## Results of [method ClientPrediction.on_server_state]: (tick, result).
 var results: Array[Vector2i] = []
-## Estado del servidor tras cada tick (tick -> PlayerState).
+## Server state after each tick (tick -> PlayerState).
 var server_states: Dictionary = {}
-## Último tick que ha simulado el servidor.
+## Last tick the server has simulated.
 var server_tick: int = 0
-## Entradas sustituidas por el servidor.
+## Inputs substituted by the server.
 var substitutions: int = 0
 
 var _server_viewport: SubViewport
@@ -67,9 +68,9 @@ var _pending: Array[Dictionary] = []
 var _frame: int = 0
 
 
-## Monta los dos mundos y arranca la predicción con la ruta [param route]
-## ([code]func(tick) -> PlayerInput[/code]) y el estado de combate [param combat] al aparecer. Hay
-## que llamarla con [code]await[/code]; al volver se está dentro del tick de física.
+## Sets up the two worlds and starts prediction with route [param route]
+## ([code]func(tick) -> PlayerInput[/code]) and combat state [param combat] on spawning. It must be
+## called with [code]await[/code]; on return one is inside the physics tick.
 func build(tree: SceneTree, route: Callable, combat: CombatState) -> void:
 	_dt = 1.0 / float(Engine.physics_ticks_per_second)
 	_server_viewport = _make_world(tree, "ServidorPar")
@@ -105,9 +106,8 @@ func build(tree: SceneTree, route: Callable, combat: CombatState) -> void:
 	prediction.start(SPAWN_TICK, spawn, FIRST_REAL_TICK)
 
 
-## Un tick de cliente (llegan los estados que tocan, un paso de predicción y el envío de la entrada,
-## que se pierde si su tick está en [member lost]) y uno de servidor. Devuelve el estado del
-## servidor.
+## One client tick (the due states arrive, one prediction step and the input send, which is lost if
+## its tick is in [member lost]) and one server tick. Returns the server state.
 func frame() -> PlayerState:
 	while not _pending.is_empty() and _pending[0]["due"] <= _frame:
 		var item: Dictionary = _pending.pop_front()
@@ -133,17 +133,18 @@ func frame() -> PlayerState:
 	return state
 
 
-## Pasa el estado de [param character] por encode/decode (como [code]CombatDirector.commit_state[/code]).
+## Passes [param character]'s state through encode/decode (like
+## [code]CombatDirector.commit_state[/code]).
 static func commit(character: PlayerCharacter) -> void:
 	character.set_state(PlayerState.decode(character.get_state().encode()))
 
 
-## El estado predicho del tick [param tick] (null si ya no está en el anillo).
+## The predicted state of tick [param tick] (null if it is no longer in the ring).
 func predicted(tick: int) -> PlayerState:
 	return prediction.get_predicted_state(tick)
 
 
-## Ticks con un resultado distinto de [param expected].
+## Ticks with a result other than [param expected].
 func results_not(expected: int) -> Array[Vector2i]:
 	var found: Array[Vector2i] = []
 	for entry: Vector2i in results:
@@ -152,8 +153,8 @@ func results_not(expected: int) -> Array[Vector2i]:
 	return found
 
 
-## Primer tick, desde [param from_tick], a partir del cual cliente y servidor coinciden byte a byte
-## hasta el último que ha simulado el servidor; -1 si el último no coincide.
+## First tick, from [param from_tick], from which client and server match byte for byte up to the
+## last one the server has simulated; -1 if the last one does not match.
 func converged_since(from_tick: int) -> int:
 	var first: int = -1
 	for tick: int in range(from_tick, server_tick + 1):

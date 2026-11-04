@@ -1,107 +1,108 @@
 class_name Zones
 extends RefCounted
-## Registro de zonas del mundo: identificador -> escena, y elección del punto de aparición.
+## Registry of the world's zones: identifier -> scene, and spawn point selection.
 ##
-## Compartido: lo usan el cliente (para cargar la zona elegida con [code]--zone=[/code]) y, en
-## la fase 2, el servidor dedicado de cada zona. No depende de nada de [code]scripts/client/[/code].
+## Shared: used by the client (to load the zone chosen with [code]--zone=[/code]) and, in phase 2,
+## by each zone's dedicated server. It does not depend on anything in [code]scripts/client/[/code].
 ## [br][br]
-## Una zona es una escena cuyos puntos de aparición son nodos [Node3D] del grupo
-## [constant SPAWN_GROUP]. Si un punto lleva el metadato [constant REALM_META]
-## ([code]"vardheim"[/code], [code]"solmarch"[/code]...), solo es para ese reino.
+## A zone is a scene whose spawn points are [Node3D] nodes of the [constant SPAWN_GROUP] group. If
+## a point carries the [constant REALM_META] metadata ([code]"vardheim"[/code],
+## [code]"solmarch"[/code]...), it is only for that realm.
 
-## Zona que se carga si no se indica otra.
+## Zone loaded if no other is given.
 const DEFAULT_ZONE: StringName = &"vado_gris"
-## Identificador de zona -> ruta de su escena.
+## Zone identifier -> path of its scene.
 const SCENES: Dictionary[StringName, String] = {
 	&"vado_gris": "res://scenes/world/zones/vado_gris/vado_gris.tscn",
 	&"test_world": "res://scenes/world/test_world.tscn",
 }
 
-## Modo PvP de una zona (docs/combate.md, sección 5): en una zona [code]SAFE[/code] los reinos
-## enemigos no se dañan entre sí; en una [code]RVR[/code] (reino contra reino) sí.
+## PvP mode of a zone (docs/combate.md, section 5): in a [code]SAFE[/code] zone enemy realms do
+## not damage each other; in an [code]RVR[/code] (realm versus realm) zone they do.
 enum PvpMode { SAFE, RVR }
 
-## Modo PvP de cada zona registrada. Una zona que no figura aquí es [code]SAFE[/code].
+## PvP mode of each registered zone. A zone not listed here is [code]SAFE[/code].
 const PVP_MODES: Dictionary[StringName, int] = {
 	&"vado_gris": PvpMode.RVR,
 	&"test_world": PvpMode.RVR,
 }
 
-## Aforo por defecto del servidor de cada zona (jugadores, también los falsos), si no se pasa
-## [code]--max-players[/code]: en el Vado Gris, la zona de guerra, el límite de jugadores por batalla medido con
-## el kit de la fase 4 (docs/red.md, sección 14; docs/habilidades.md, sección 11). Una zona que no figura aquí
-## usa el de [code]ServerConfig[/code] (64).
+## Default capacity of each zone's server (players, fake ones too), if [code]--max-players[/code]
+## is not passed: in Vado Gris, the war zone, the per-battle player limit measured with the phase 4
+## kit (docs/red.md, section 14; docs/habilidades.md, section 11). A zone not listed here uses the
+## [code]ServerConfig[/code] one (64).
 const MAX_PLAYERS: Dictionary[StringName, int] = {
 	&"vado_gris": 40,
 }
 
-## Reinos jugables (ver docs/mundo.md): los de [RealmCatalog].
+## Playable realms (see docs/mundo.md): those of [RealmCatalog].
 const REALMS: Array[StringName] = RealmCatalog.REALM_IDS
-## Reino que se usa si no se indica otro.
+## Realm used if no other is given.
 const DEFAULT_REALM: StringName = RealmCatalog.VARDHEIM
 
-## Grupo de los puntos de aparición de una zona.
+## Group of a zone's spawn points.
 const SPAWN_GROUP: StringName = &"spawn_points"
-## Metadato con el reino de un punto de aparición.
+## Metadata with the realm of a spawn point.
 const REALM_META: StringName = &"realm"
-## Grupo de las cámaras de revisión de una zona (Marker3D con el metadato [code]fov[/code]).
+## Group of a zone's review cameras (Marker3D with the [code]fov[/code] metadata).
 const SCREENSHOT_GROUP: StringName = &"screenshot_points"
-## Grupo de los puntos de reaparición tras morir (docs/combate.md, sección 5): marcadores con el
-## metadato [constant REALM_META], en el orden de la escena. El cliente y el servidor cargan la misma
-## zona, así que el índice de un punto es el mismo en los dos lados. Una zona sin ninguno usa sus
-## puntos de aparición ([constant SPAWN_GROUP]).
+## Group of respawn points after dying (docs/combate.md, section 5): markers with the
+## [constant REALM_META] metadata, in scene order. The client and the server load the same zone, so
+## a point's index is the same on both sides. A zone with none uses its spawn points
+## ([constant SPAWN_GROUP]).
 const RESPAWN_GROUP: StringName = &"respawn_points"
-## Grupo de las zonas seguras (campamentos): [Marker3D] con los metadatos [constant REALM_META] y
-## [constant SAFE_AREA_RADIUS_META]. Solo protegen a los jugadores de su reino.
+## Group of safe areas (camps): [Marker3D] with the [constant REALM_META] and
+## [constant SAFE_AREA_RADIUS_META] metadata. They only protect the players of their realm.
 const SAFE_AREA_GROUP: StringName = &"safe_areas"
-## Metadato con el radio (m) de una zona segura.
+## Metadata with the radius (m) of a safe area.
 const SAFE_AREA_RADIUS_META: StringName = &"radius"
-## Radio (m) de una zona segura sin el metadato [constant SAFE_AREA_RADIUS_META].
+## Radius (m) of a safe area without the [constant SAFE_AREA_RADIUS_META] metadata.
 const SAFE_AREA_DEFAULT_RADIUS: float = 24.0
-## Grupo de los volúmenes letales: [Area3D] (máscara de la capa 2) que matan a quien entra.
+## Group of lethal volumes: [Area3D] (layer 2 mask) that kill whoever enters.
 const LETHAL_GROUP: StringName = &"lethal_volumes"
-## Grupo de los puntos donde el servidor coloca un maniquí de entrenamiento al arrancar la zona.
+## Group of points where the server places a training dummy when the zone starts.
 const DUMMY_GROUP: StringName = &"dummy_points"
-## Grupo de las fortalezas de una zona (docs/fuerte.md, sección 1.6): el nodo de cada fuerte, con el
-## metadato [constant FORTRESS_DEFINITION_META] y como hijos sus marcadores ([code]CaptureCircle[/code],
-## [code]CaptainSpawn[/code], [code]GuardSpawn1[/code]..4, [code]FortGate[/code], los estandartes...).
+## Group of a zone's forts (docs/fuerte.md, section 1.6): each fort's node, with the
+## [constant FORTRESS_DEFINITION_META] metadata and its markers as children
+## ([code]CaptureCircle[/code], [code]CaptainSpawn[/code], [code]GuardSpawn1[/code]..4,
+## [code]FortGate[/code], the banners...).
 const FORTRESS_GROUP: StringName = &"fortresses"
-## Metadato de una fortaleza con la ruta de su [code]FortressDefinition[/code] (.tres).
+## Fort metadata with the path of its [code]FortressDefinition[/code] (.tres).
 const FORTRESS_DEFINITION_META: StringName = &"definition"
-## Metadato de un punto de reaparición del interior de un fuerte con el id de su fortaleza (el
-## [code]id[/code] de su definición). Los puntos de los campamentos llevan [constant REALM_META].
+## Metadata of a respawn point inside a fort with the id of its fort (the [code]id[/code] of its
+## definition). Camp points carry [constant REALM_META].
 const FORTRESS_META: StringName = &"fortress"
-## Grupo de los generadores de PNJ ([NpcSpawner]).
+## Group of NPC spawners ([NpcSpawner]).
 const NPC_SPAWNER_GROUP: StringName = &"npc_spawners"
-## Grupo de los marcadores de las rutas de patrulla de los PNJ: [Marker3D] con el metadato
-## [constant PATROL_ROUTE_META], en el orden de la escena dentro de cada ruta.
+## Group of markers for NPC patrol routes: [Marker3D] with the [constant PATROL_ROUTE_META]
+## metadata, in scene order within each route.
 const PATROL_GROUP: StringName = &"patrol_points"
-## Metadato con el id de la ruta de un marcador de patrulla.
+## Metadata with the route id of a patrol marker.
 const PATROL_ROUTE_META: StringName = &"route"
 
 
-## true si [param zone_id] es una zona registrada.
+## true if [param zone_id] is a registered zone.
 static func has_zone(zone_id: StringName) -> bool:
 	return SCENES.has(zone_id)
 
 
-## Ruta de la escena de [param zone_id], o una cadena vacía si la zona no existe.
+## Scene path of [param zone_id], or an empty string if the zone does not exist.
 static func get_scene_path(zone_id: StringName) -> String:
 	return SCENES.get(zone_id, "")
 
 
-## Modo PvP de [param zone_id] (un valor de [enum PvpMode]). El Vado Gris y el mundo de pruebas
-## son RVR; una zona desconocida es [code]SAFE[/code], la opción segura.
+## PvP mode of [param zone_id] (a value of [enum PvpMode]). Vado Gris and the test world are RVR;
+## an unknown zone is [code]SAFE[/code], the safe option.
 static func get_pvp_mode(zone_id: StringName) -> int:
 	return PVP_MODES.get(zone_id, PvpMode.SAFE)
 
 
-## Aforo por defecto de [param zone_id] ([constant MAX_PLAYERS]), o 0 si no tiene uno propio.
+## Default capacity of [param zone_id] ([constant MAX_PLAYERS]), or 0 if it has none of its own.
 static func get_max_players(zone_id: StringName) -> int:
 	return MAX_PLAYERS.get(zone_id, 0)
 
 
-## Identificadores de todas las zonas registradas, ordenados.
+## Identifiers of all registered zones, sorted.
 static func get_zone_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	ids.assign(SCENES.keys())
@@ -109,14 +110,13 @@ static func get_zone_ids() -> Array[StringName]:
 	return ids
 
 
-## true si [param realm] es uno de los reinos de [constant REALMS].
+## true if [param realm] is one of the realms in [constant REALMS].
 static func is_realm(realm: StringName) -> bool:
 	return RealmCatalog.is_realm(realm)
 
 
-## Puntos de aparición de [param zone] (descendientes del grupo [constant SPAWN_GROUP]) en el
-## orden de la escena. Con [param realm] no vacío, solo los de ese reino. La zona debe estar
-## en el árbol.
+## Spawn points of [param zone] (descendants of the [constant SPAWN_GROUP] group) in scene order.
+## With a non-empty [param realm], only those of that realm. The zone must be in the tree.
 static func get_spawn_points(zone: Node, realm: StringName = &"") -> Array[Node3D]:
 	var result: Array[Node3D] = []
 	if zone == null or not zone.is_inside_tree():
@@ -130,13 +130,13 @@ static func get_spawn_points(zone: Node, realm: StringName = &"") -> Array[Node3
 	return result
 
 
-## Reino de un punto de aparición (vacío si no tiene el metadato [constant REALM_META]).
+## Realm of a spawn point (empty if it lacks the [constant REALM_META] metadata).
 static func get_spawn_realm(spawn: Node) -> StringName:
 	return StringName(spawn.get_meta(REALM_META, &""))
 
 
-## Punto de aparición para [param realm] en [param zone]: el primero de ese reino o, si la zona
-## no tiene ninguno de ese reino, el primero de la zona. Devuelve null si no hay ninguno.
+## Spawn point for [param realm] in [param zone]: the first of that realm or, if the zone has none
+## of that realm, the first of the zone. Returns null if there is none.
 static func find_spawn_point(zone: Node, realm: StringName) -> Node3D:
 	var for_realm: Array[Node3D] = get_spawn_points(zone, realm)
 	if not for_realm.is_empty():
@@ -145,8 +145,8 @@ static func find_spawn_point(zone: Node, realm: StringName) -> Node3D:
 	return any[0] if not any.is_empty() else null
 
 
-## Nodos de [param zone] (descendientes) del grupo [param group], en el orden de la escena. La zona
-## debe estar en el árbol; los nodos que no son [Node3D] se ignoran.
+## Nodes of [param zone] (descendants) in group [param group], in scene order. The zone must be in
+## the tree; nodes that are not [Node3D] are ignored.
 static func get_group_nodes(zone: Node, group: StringName) -> Array[Node3D]:
 	var result: Array[Node3D] = []
 	if zone == null or not zone.is_inside_tree():
@@ -158,10 +158,10 @@ static func get_group_nodes(zone: Node, group: StringName) -> Array[Node3D]:
 	return result
 
 
-## Puntos de reaparición de [param realm] en [param zone], en el orden de la escena: los nodos del
-## grupo [constant RESPAWN_GROUP] con ese reino o, si la zona no tiene ningún nodo en ese grupo, sus
-## puntos de aparición ([method get_spawn_points]) de ese reino. El índice de la lista es el que viaja
-## en RESPAWN_REQUEST y RESPAWN.
+## Respawn points of [param realm] in [param zone], in scene order: the nodes of the
+## [constant RESPAWN_GROUP] group with that realm or, if the zone has no node in that group, its
+## spawn points ([method get_spawn_points]) of that realm. The list index is the one that travels
+## in RESPAWN_REQUEST and RESPAWN.
 static func get_respawn_points(zone: Node, realm: StringName) -> Array[Node3D]:
 	var all_points: Array[Node3D] = get_group_nodes(zone, RESPAWN_GROUP)
 	if all_points.is_empty():
@@ -173,8 +173,8 @@ static func get_respawn_points(zone: Node, realm: StringName) -> Array[Node3D]:
 	return result
 
 
-## Radio (m) de una zona segura: su metadato [constant SAFE_AREA_RADIUS_META] o
-## [constant SAFE_AREA_DEFAULT_RADIUS] si falta o no es un número positivo.
+## Radius (m) of a safe area: its [constant SAFE_AREA_RADIUS_META] metadata or
+## [constant SAFE_AREA_DEFAULT_RADIUS] if missing or not a positive number.
 static func get_safe_area_radius(area: Node) -> float:
 	var value: Variant = area.get_meta(SAFE_AREA_RADIUS_META, SAFE_AREA_DEFAULT_RADIUS)
 	if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
@@ -183,8 +183,7 @@ static func get_safe_area_radius(area: Node) -> float:
 	return radius if radius > 0.0 and is_finite(radius) else SAFE_AREA_DEFAULT_RADIUS
 
 
-## Cámaras de revisión de [param zone] (grupo [constant SCREENSHOT_GROUP]) en el orden de la
-## escena.
+## Review cameras of [param zone] (group [constant SCREENSHOT_GROUP]) in scene order.
 static func get_screenshot_points(zone: Node) -> Array[Node3D]:
 	var result: Array[Node3D] = []
 	if zone == null or not zone.is_inside_tree():

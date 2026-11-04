@@ -1,19 +1,19 @@
-"""Glifos de los iconos de la interfaz (ART-12): cada función devuelve la lista de figuras de un icono.
+"""Glyphs of the interface icons (ART-12): each function returns the list of shapes of an icon.
 
-Lienzo de 128 x 128. Luz arriba a la izquierda. Las piezas reutilizables (espada, escudos, yelmo,
-arco, flecha...) se construyen con una transformación `xf` para poder colocarlas giradas; los
-degradados no giran con ellas (ver svgkit).
+128 x 128 canvas. Light from the top left. The reusable pieces (sword, shields, helm,
+bow, arrow...) are built with an `xf` transform so that they can be placed rotated; the
+gradients do not rotate with them (see svgkit).
 
-No hace falta centrar ni escalar a mano: `svgkit.fit_transform` mide la silueta y la lleva a un 35 a
-55 % del interior, centrada. Sí hay que respetar las zonas seguras de la casilla: la esquina de
-arriba a la izquierda es del rótulo de tecla y la de abajo a la derecha del contador, así que las
-figuras largas van por la diagonal que sube a la derecha.
+There is no need to centre or scale by hand: `svgkit.fit_transform` measures the silhouette and brings it to 35 to
+55 % of the interior, centred. The safe zones of the slot do have to be respected: the top-left
+corner belongs to the key label and the bottom-right to the counter, so long shapes
+run along the diagonal that rises to the right.
 
-Cada icono se distingue por la SILUETA de los que comparten barra (esa es la prueba que hace
-`qa.py`): el bloqueo es un escudo de frente con la espada rebotando, el golpe de escudo uno de
-perfil contra un yelmo, la embestida un cuerpo inclinado tras el escudo y el muro de escudos una
-fila de escudos altos con lanzas detrás. Los estados llevan además una variante pequeña
-(`SMALL_ICONS`) para las placas de nombre y la fila de efectos.
+Each icon is told apart by the SILHOUETTE of those that share a bar (that is the test `qa.py`
+runs): block is a shield seen from the front with the sword bouncing off, shield bash one in
+profile against a helm, charge a body leaning behind the shield and shield wall a
+row of tall shields with spears behind. The states also carry a small variant
+(`SMALL_ICONS`) for the nameplates and the effects row.
 """
 
 import math
@@ -24,16 +24,16 @@ from svgkit import (
 )
 
 # --------------------------------------------------------------------------------------------
-# Piezas reutilizables
+# Reusable pieces
 # --------------------------------------------------------------------------------------------
 
 
 def swoosh(a, b, out, inn, xf=IDENT):
-    """Media luna entre los puntos `a` y `b`: `out` es la panza exterior y `inn` la interior."""
+    """Crescent between points `a` and `b`: `out` is the outer belly and `inn` the inner one."""
     mx, my = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
     dx, dy = b[0] - a[0], b[1] - a[1]
     length = math.hypot(dx, dy)
-    nx, ny = dy / length, -dx / length  # normal a la izquierda del sentido a -> b
+    nx, ny = dy / length, -dx / length  # normal to the left of the direction a -> b
     path = Path(xf)
     path.M(*a)
     path.Q(mx + nx * out * 2.0, my + ny * out * 2.0, *b)
@@ -43,12 +43,12 @@ def swoosh(a, b, out, inn, xf=IDENT):
 
 
 def burst(cx, cy, r_out, r_in, n, fill, rot_deg=0.0, rr=1.2, **kw):
-    """Estrella de impacto de `n` puntas."""
+    """Impact star with `n` points."""
     return Sh(star(cx, cy, r_out, r_in, n, start_deg=rot_deg - 90.0, round_r=rr), fill, **kw)
 
 
 def sparkle(cx, cy, r, fill="white", **kw):
-    """Destello de cuatro puntas."""
+    """Four-pointed sparkle."""
     pts = []
     for i in range(8):
         ang = math.radians(i * 45.0 - 90.0)
@@ -58,20 +58,20 @@ def sparkle(cx, cy, r, fill="white", **kw):
 
 
 def tube(path, color, sw, ow=2.8, **kw):
-    """Trazo grueso con contorno (raíces, patas, flechas curvas)."""
+    """Thick stroke with outline (roots, legs, curved arrows)."""
     return Sh(path, stroke=color, sw=sw, outline=True, ow=ow, **kw)
 
 
 def tip_xf(tip, ang, length):
-    """Transformación que coloca una espada (ver `sword`) con la punta en `tip` y el eje apuntando de
-    la punta a la empuñadura según `ang` (grados, 0 = derecha, 90 = abajo)."""
+    """Transform that places a sword (see `sword`) with the tip at `tip` and the axis pointing from
+    the tip to the hilt according to `ang` (degrees, 0 = right, 90 = down)."""
     gx = tip[0] + length * math.cos(math.radians(ang))
     gy = tip[1] + length * math.sin(math.radians(ang))
     return move(gx, gy) @ rot(ang - 90.0)
 
 
 def sword(xf, length=64, w=12, gw=34, gh=7, grip=15, guard="bronze"):
-    """Espada con la punta hacia arriba y el centro de la cruz en el origen."""
+    """Sword with the tip pointing up and the centre of the crossguard at the origin."""
     hb = gh / 2.0
     out = []
     out.append(Sh(poly([(0, -length), (-w / 2, -length + 15), (-w / 2, -hb), (0, -hb)], xf),
@@ -94,11 +94,11 @@ def sword(xf, length=64, w=12, gw=34, gh=7, grip=15, guard="bronze"):
 
 
 def round_shield(cx, cy, r, xf=IDENT, rim="steel_dark", face="wood", boss="steel", paint=None):
-    """Escudo redondo de frente: aro de hierro, tablones de madera y centro de metal."""
+    """Round shield seen from the front: iron rim, wooden planks and metal boss."""
     out = []
     out.append(Sh(ellipse(cx, cy, r, r, xf), rim))
     out.append(Sh(ellipse(cx, cy, r * 0.8, r * 0.8, xf), face, edge=1.6))
-    # tablones: líneas verticales recortadas al círculo de la cara
+    # planks: vertical lines clipped to the face circle
     fr = r * 0.8
     for k in (-0.5, 0.0, 0.5):
         dx = k * fr
@@ -106,10 +106,10 @@ def round_shield(cx, cy, r, xf=IDENT, rim="steel_dark", face="wood", boss="steel
         out.append(Sh(Path(xf).M(cx + dx, cy - dy).L(cx + dx, cy + dy), stroke="#3A210C", sw=1.6,
                       outline=False, op=0.55))
     if paint:
-        # franja pintada que cruza la cara (de lado a lado, por detrás del centro)
+        # painted stripe crossing the face (from side to side, behind the boss)
         out.append(Sh(Path(xf).M(cx - fr * 0.92, cy).L(cx + fr * 0.92, cy), stroke=paint,
                       sw=r * 0.2, outline=False, op=0.95, cap="butt"))
-    # remaches del aro
+    # rim rivets
     for i in range(8):
         px, py = polar(cx, cy, r * 0.9, i * 45.0 + 22.5)
         out.append(Sh(ellipse(px, py, max(r * 0.045, 1.1), max(r * 0.045, 1.1), xf), "#F6F2E4",
@@ -117,14 +117,14 @@ def round_shield(cx, cy, r, xf=IDENT, rim="steel_dark", face="wood", boss="steel
     out.append(Sh(ellipse(cx, cy, r * 0.3, r * 0.3, xf), boss))
     out.append(Sh(ellipse(cx - r * 0.07, cy - r * 0.09, r * 0.1, r * 0.08, xf), "#FFFFFF",
                   outline=False, op=0.85))
-    # filo de luz del aro (arriba a la izquierda)
+    # light edge of the rim (top left)
     out.append(Sh(Path(xf).arc(cx, cy, r * 0.93, r * 0.93, 190, 265), stroke="#FFFFFF", sw=max(r * 0.05, 1.6),
                   outline=False, op=0.7))
     return out
 
 
 def tall_shield(x, y, w, h, band="cloth_red"):
-    """Escudo alto de frente (de muro): aro de hierro, cara de madera con una franja y un centro de metal."""
+    """Tall shield seen from the front (wall): iron rim, wooden face with a stripe and a metal boss."""
     out = []
     out.append(Sh(rpoly([(x, y), (x + w, y), (x + w, y + h), (x, y + h)], [w * 0.42, w * 0.42, 5, 5]),
                   "steel_dark", edge=1.8))
@@ -142,7 +142,7 @@ def tall_shield(x, y, w, h, band="cloth_red"):
 
 
 def helm(cx, cy, s=1.0, rot_deg=0.0, plume=None):
-    """Yelmo cerrado de frente con la visera en el centro (origen en el centro del casco)."""
+    """Closed helm seen from the front with the visor in the centre (origin at the centre of the helm)."""
     xf = move(cx, cy) @ rot(rot_deg) @ scale(s)
     out = []
     if plume:
@@ -162,13 +162,13 @@ def helm(cx, cy, s=1.0, rot_deg=0.0, plume=None):
 
 
 def bow(xf, height=84, belly=16, thick=9.0, tip_back=14, limb="wood_light"):
-    """Arco visto de lado con la panza hacia +x (el lado del blanco); el origen está en la empuñadura."""
+    """Bow seen from the side with the belly towards +x (the target side); the origin is at the grip."""
     h2 = height / 2.0
     out = []
     ctrl_x = 2.0 * belly + tip_back
     out.append(Sh(curve_band((-tip_back, -h2), (ctrl_x, 0), (-tip_back, h2), thick, thick * 0.5, xf),
                   limb))
-    # filo de luz en la panza (lado de la luz: arriba a la izquierda)
+    # light edge on the belly (light side: top left)
     hl = Path(xf)
     hl.M(-tip_back + 5, -h2 + 12)
     hl.Q(ctrl_x - belly * 0.5 - 1.0, -h2 * 0.2, belly - thick * 0.22, -10)
@@ -180,7 +180,7 @@ def bow(xf, height=84, belly=16, thick=9.0, tip_back=14, limb="wood_light"):
 
 
 def string(xf, height, tip_back, nock_x=None, color="#F6F0DA", width=2.2):
-    """Cuerda del arco; si hay `nock_x` va tensada en V hasta la muesca de la flecha."""
+    """Bowstring; if there is a `nock_x` it is drawn taut in a V up to the arrow's nock."""
     h2 = height / 2.0
     p = Path(xf).M(-tip_back, -h2)
     if nock_x is not None:
@@ -190,7 +190,7 @@ def string(xf, height, tip_back, nock_x=None, color="#F6F0DA", width=2.2):
 
 
 def arrow(xf, length=64, head=15, shaft=5.0, fletch="cloth_red", head_mat="steel", tip_mat=None):
-    """Flecha con la cola en el origen y la punta en +x."""
+    """Arrow with the tail at the origin and the tip at +x."""
     out = []
     out.append(Sh(rect(0, -shaft / 2, length - head + 2, shaft, 1.6, xf), "wood", ow=2.4, edge=1.4))
     fl = min(shaft * 1.9, 14.0)
@@ -208,13 +208,13 @@ def arrow(xf, length=64, head=15, shaft=5.0, fletch="cloth_red", head_mat="steel
 
 
 def _arrow_head(cx, cy, ang, size, fill, **kw):
-    """Punta de flecha triangular centrada en (cx, cy) que mira hacia `ang` grados."""
+    """Triangular arrowhead centred at (cx, cy) pointing towards `ang` degrees."""
     xf = move(cx, cy) @ rot(ang, 0, 0)
     return Sh(poly([(size, 0), (-size * 0.6, -size * 0.85), (-size * 0.6, size * 0.85)], xf), fill, **kw)
 
 
 def curved_arrow(p0, c, p2, width, head, color, head_mat):
-    """Flecha curva gruesa por la cuadrática p0-c-p2, con la punta (de largo `head`) en p2."""
+    """Thick curved arrow along the quadratic p0-c-p2, with the head (of length `head`) at p2."""
 
     def at(t):
         a = ((1 - t) * p0[0] + t * c[0], (1 - t) * p0[1] + t * c[1])
@@ -224,7 +224,7 @@ def curved_arrow(p0, c, p2, width, head, color, head_mat):
     t_end = 1.0
     while t_end > 0.3 and math.hypot(at(t_end)[0] - p2[0], at(t_end)[1] - p2[1]) < head * 0.78:
         t_end -= 0.01
-    # subcurva de p0 a at(t_end): mismo control reescalado
+    # subcurve from p0 to at(t_end): same control point rescaled
     a = ((1 - t_end) * p0[0] + t_end * c[0], (1 - t_end) * p0[1] + t_end * c[1])
     end = at(t_end)
     out = [Sh(Path().M(*p0).Q(a[0], a[1], end[0], end[1]), stroke=color, sw=width, outline=True,
@@ -238,7 +238,7 @@ def curved_arrow(p0, c, p2, width, head, color, head_mat):
 
 
 def flame(cx, cy, w, h, outer="ember", inner="gold", xf=IDENT):
-    """Llama con la base en (cx, cy)."""
+    """Call with the base at (cx, cy)."""
     p = Path(xf)
     p.M(cx, cy)
     p.C(cx - w * 0.62, cy, cx - w * 0.55, cy - h * 0.42, cx - w * 0.12, cy - h * 0.62)
@@ -261,7 +261,7 @@ def dust(cx, cy, r, op=0.85):
 
 
 # --------------------------------------------------------------------------------------------
-# Ataque
+# Attack
 # --------------------------------------------------------------------------------------------
 
 
@@ -274,7 +274,7 @@ def sword_light():
 
 
 def sword_heavy():
-    """Golpe desde arriba: la espada clavada en vertical, con la onda del impacto abierta a los lados."""
+    """Strike from above: the sword driven in vertically, with the impact wave spreading out to the sides."""
     out = [Sh(ellipse(60, 106, 50, 10), "dust", outline=False, op=0.8)]
     out.append(burst(60, 98, 34, 15, 11, "ember", 4, 1.6))
     out.append(burst(60, 98, 21, 9, 11, "gold", 4, 1.2, outline=False))
@@ -285,7 +285,7 @@ def sword_heavy():
 
 
 def bow_quick():
-    """Dos flechas en vuelo con rayas de velocidad."""
+    """Two arrows in flight with speed streaks."""
     out = []
     for y, x0, x1 in ((40, 4, 32), (66, 0, 28), (92, 6, 32), (112, 4, 24)):
         out.append(Sh(Path().M(x0, y).L(x1, y), stroke="#F4F1E8", sw=4.0, outline=False, op=0.8))
@@ -295,7 +295,7 @@ def bow_quick():
 
 
 def bow_drawn():
-    """Arco vertical tensado del todo: cuerda en V hasta la muesca, que brilla cargada."""
+    """Vertical bow fully drawn: string in a V up to the nock, which glows charged."""
     out = []
     out.append(Sh(ellipse(36, 64, 26, 26), "ember", outline=False, op=0.32))
     out.append(burst(36, 64, 22, 10, 8, "gold", 0, 1.0, outline=False, op=0.9))
@@ -307,12 +307,12 @@ def bow_drawn():
 
 
 # --------------------------------------------------------------------------------------------
-# Defensa
+# Defence
 # --------------------------------------------------------------------------------------------
 
 
 def block():
-    """Escudo de frente y la espada rebotando contra el canto; la espada va por encima del aro."""
+    """Shield seen from the front and the sword bouncing off the edge; the sword goes over the rim."""
     out = []
     out += round_shield(50, 78, 42)
     out += sword(tip_xf((83, 50), -48, 40), length=40, w=13, gw=30, gh=7, grip=13)
@@ -325,48 +325,48 @@ def block():
 
 
 def dodge():
-    """Una figura de capa roja rodando hacia delante, con su estela de siluetas detrás."""
+    """A red-caped figure rolling forward, with its trail of silhouettes behind."""
     out = []
     ang = rot(-20, 74, 66)
-    # estelas: siluetas planas que se desvanecen y rayas de velocidad
+    # trails: flat silhouettes that fade out and speed streaks
     for dx, op in ((-52, 0.18), (-30, 0.32)):
         out.append(Sh(ellipse(74 + dx, 66, 28, 24, ang), "#D8D0BC", outline=False, op=op, relief=False))
         out.append(Sh(ellipse(102 + dx, 84, 12, 12), "#D8D0BC", outline=False, op=op * 0.8, relief=False))
     for y, x0, x1 in ((38, 4, 30), (104, 6, 30), (118, 0, 22)):
         out.append(Sh(Path().M(x0, y).L(x1, y), stroke="#F4F1E8", sw=4.0, outline=False, op=0.7))
-    # capa que ondea hacia atrás
+    # cape billowing backwards
     cape = Path().M(64, 42).Q(34, 24, -14, 38).Q(18, 50, -6, 66).Q(30, 62, 60, 84).Z()
     out.append(Sh(cape, "cloth_red", edge=1.6))
-    # botas atrás
+    # boots at the back
     out.append(Sh(ellipse(44, 94, 13, 9, rot(28, 44, 94)), "leather"))
     out.append(Sh(ellipse(56, 106, 12, 8.5, rot(14, 56, 106)), "leather"))
-    # torso encogido, con cinto y costura
+    # tucked torso, with belt and stitching
     out.append(Sh(ellipse(76, 66, 29, 26, ang), "cloth_bone"))
     out.append(Sh(Path().arc(76, 66, 24, 21, 20, 118, -20), stroke="#5A3A1C", sw=5, outline=False))
     out.append(Sh(Path().arc(76, 66, 21, 18, 215, 275, -20), stroke="#8C826A", sw=2.0, outline=False, op=0.7))
-    # cabeza metida hacia delante, con la cofia
+    # head tucked forward, with the coif
     out.append(Sh(ellipse(104, 86, 14, 14), "skin"))
     cap = Path().arc(104, 86, 14.5, 14.5, 150, 330)
     cap.Z()
     out.append(Sh(cap, "wood_dark", outline=False, edge=0))
     out.append(Sh(ellipse(109, 90, 2.0, 2.0), "#2A170A", outline=False))
-    # mano apoyada
+    # hand resting on the ground
     out.append(Sh(ellipse(88, 101, 9, 8), "skin"))
-    # flecha curva de giro por encima, en sentido horario
+    # curved turning arrow overhead, clockwise
     out += curved_arrow((34, 52), (74, 14), (112, 54), 6.0, 17, "#F4EBD0", "bone")
     return out
 
 
 # --------------------------------------------------------------------------------------------
-# Habilidades
+# Abilities
 # --------------------------------------------------------------------------------------------
 
 
 def shield_bash():
-    """Escudo de perfil empujado contra un yelmo, con la estrella del impacto entre los dos."""
+    """Shield in profile pushed against a helm, with the impact star between the two."""
     out = []
     out += helm(94, 60, 1.08)
-    # escudo de canto, con el centro de metal hacia el yelmo
+    # shield edge-on, with the metal boss towards the helm
     out.append(Sh(ellipse(34, 68, 21, 47), "steel_dark"))
     out.append(Sh(ellipse(33, 68, 15.5, 41), "wood", edge=1.6))
     for dy in (-20, -7, 7, 20):
@@ -383,23 +383,23 @@ def shield_bash():
 
 
 def shield_rush():
-    """Un guerrero inclinado hacia delante tras su escudo, con las rayas de la carrera detrás."""
+    """A warrior leaning forward behind his shield, with the streaks of the charge behind."""
     out = []
     for y, x0, x1, w in ((34, 4, 40, 5.0), (52, 0, 36, 6.0), (70, 4, 34, 5.0)):
         out.append(Sh(Path().M(x0, y).L(x1, y), stroke="#F4F1E8", sw=w, outline=False, op=0.8))
     out.append(dust(18, 110, 8))
     out.append(dust(34, 114, 9))
     out.append(dust(8, 102, 5.5))
-    # pierna de atrás, estirada
+    # rear leg, stretched out
     out.append(tube(Path().M(52, 82).Q(42, 98, 26, 105), "#6B4E2E", 13))
     out.append(Sh(ellipse(24, 107, 9, 6, rot(-20, 24, 107)), "wood_dark"))
-    # torso inclinado
+    # leaning torso
     out.append(Sh(rect(-14, -23, 28, 46, 11, move(60, 62) @ rot(30)), "cloth_red"))
     out.append(Sh(Path().M(46, 80).L(66, 86), stroke="#432A12", sw=4.5, outline=False, op=0.8))
-    # pierna de delante, flexionada
+    # front leg, bent
     out.append(tube(Path().M(68, 84).Q(90, 86, 86, 106), "#7C5A36", 13))
     out.append(Sh(ellipse(88, 108, 10, 6, rot(8, 88, 108)), "wood_dark"))
-    # brazo hacia el escudo, hombrera y cabeza con casco y penacho
+    # arm towards the shield, pauldron and head with helmet and plume
     out.append(tube(Path().M(72, 54).L(96, 66), "#9E3C34", 10, ow=2.4))
     out.append(Sh(ellipse(72, 48, 12, 9, rot(28, 72, 48)), "steel"))
     plume = Path().M(70, 26).Q(46, 16, 36, 32)
@@ -408,7 +408,7 @@ def shield_rush():
     out.append(Sh(ellipse(80, 36, 14, 14), "steel"))
     out.append(Sh(rect(86, 32, 9, 3.6, 1.2), "#14100C", outline=False))
     out.append(Sh(Path().M(70, 26).Q(74, 22, 80, 22), stroke="#FFFFFF", sw=2.0, outline=False, op=0.7))
-    # escudo grande por delante
+    # large shield in front
     shield = [(92, 38), (116, 44), (118, 74), (104, 108), (92, 80)]
     out.append(Sh(rpoly(shield, 9), "steel_dark"))
     inner = [(96, 44), (112, 49), (113, 72), (103, 98), (96, 77)]
@@ -419,7 +419,7 @@ def shield_rush():
 
 
 def shield_wall():
-    """Fila de escudos altos canto con canto, con las lanzas asomando por detrás: un rectángulo bajo."""
+    """Row of tall shields edge to edge, with spears sticking out behind: a low rectangle."""
     out = []
     w, h, y = 29, 50, 64
     for i in range(4):
@@ -471,7 +471,7 @@ def bow_evasive_shot():
 
 
 # --------------------------------------------------------------------------------------------
-# Consumibles
+# Consumables
 # --------------------------------------------------------------------------------------------
 
 
@@ -494,7 +494,7 @@ def potion_health():
 
 
 def potion_stamina():
-    """Matraz de cuello largo y base ancha, inclinado, con el líquido verde y un rayo."""
+    """Long-necked flask with a wide base, tilted, with the green liquid and a lightning bolt."""
     out = []
     T = move(64, 64) @ rot(32) @ move(-64, -64)
     flask = rpoly([(54, 14), (74, 14), (74, 44), (106, 98), (106, 108), (22, 108), (22, 98), (54, 44)],
@@ -512,7 +512,7 @@ def potion_stamina():
 
 
 # --------------------------------------------------------------------------------------------
-# Mundo: cambiar de arma, armas, interactuar, fuerte, puerta, campamento y estandarte
+# World: swap weapon, weapons, interact, fort, gate, camp and banner
 # --------------------------------------------------------------------------------------------
 
 
@@ -534,7 +534,7 @@ def swap_weapon():
 
 
 def weapon_sword_shield():
-    """Espada y escudo como equipo: un escudo de lágrima a un lado y la espada recta al otro."""
+    """Sword and shield as equipment: a teardrop shield on one side and the straight sword on the other."""
     out = []
     out += sword(move(94, 58) @ rot(8), length=82, w=17, gw=40, gh=9, grip=18)
     kite = [(8, 30), (76, 30), (76, 62), (42, 118), (8, 62)]
@@ -549,7 +549,7 @@ def weapon_sword_shield():
 
 
 def weapon_bow():
-    """Arco con su carcaj de flechas al lado, todo inclinado para dejar libres las esquinas de la casilla."""
+    """Bow with its quiver of arrows beside it, all tilted to leave the slot corners free."""
     out = []
     t = rot(14, 64, 64)
     q = t @ move(98, 78) @ rot(14)
@@ -587,7 +587,7 @@ def interact():
 
 
 def _crenel(x, y, w, n, h=8, fill="stone"):
-    """Almenas: `n` dientes repartidos en el ancho `w` empezando en (x, y) hacia arriba."""
+    """Battlements: `n` teeth spread over the width `w` starting at (x, y) going up."""
     out = []
     step = w / (2 * n - 1)
     for i in range(n):
@@ -653,7 +653,7 @@ def _emblem_star(fill):
 
 
 def _emblem_wolf(fill):
-    """Cabeza de lobo de frente: dos orejas y un hocico en punta (Vardheim)."""
+    """Wolf head from the front: two ears and a pointed muzzle (Vardheim)."""
     head = poly([(59, 40), (68, 49), (81, 49), (90, 40), (91, 58), (80, 76), (69, 76), (58, 58)])
     eyes = [Sh(poly([(65, 56), (71, 58), (66, 61)]), "#10242E", outline=False),
             Sh(poly([(84, 56), (78, 58), (83, 61)]), "#10242E", outline=False)]
@@ -661,7 +661,7 @@ def _emblem_wolf(fill):
 
 
 def _emblem_sun(fill):
-    """Sol de rayos triangulares (Solmarch)."""
+    """Sun with triangular rays (Solmarch)."""
     out = []
     for i in range(8):
         ang = i * 45.0
@@ -672,14 +672,14 @@ def _emblem_sun(fill):
 
 
 def _emblem_anvil(fill):
-    """Yunque (Askarra)."""
+    """Anvil (Askarra)."""
     anvil = poly([(56, 46), (93, 46), (90, 53), (82, 56), (80, 66), (88, 72), (88, 77), (61, 77),
                   (61, 72), (69, 66), (67, 56), (59, 53)])
     return [Sh(anvil, fill, edge=1.4)]
 
 
 def _emblem_crown(fill):
-    """Corona rota de cinco puntas (los Huecos)."""
+    """Broken five-pointed crown (the Hollow)."""
     crown = poly([(58, 74), (58, 46), (66, 57), (74.5, 42), (83, 57), (91, 46), (91, 74)])
     crack = Sh(Path().M(76, 42).L(71, 56).L(78, 62).L(72, 76), stroke="#1E1812", sw=2.4, outline=False)
     return [Sh(crown, fill, edge=1.4), crack]
@@ -720,7 +720,7 @@ def banner_huecos():
 
 
 # --------------------------------------------------------------------------------------------
-# Estados
+# States
 # --------------------------------------------------------------------------------------------
 
 
@@ -759,7 +759,7 @@ def regen():
 
 
 def stun():
-    """Estrellas girando alrededor de un yelmo."""
+    """Stars spinning around a helm."""
     out = []
     out += helm(64, 82, 0.98)
     out.append(Sh(Path().arc(64, 40, 48, 14, 0, 360), stroke="#FFE08A", sw=3.4, outline=False, op=0.5))
@@ -793,7 +793,7 @@ def slowed():
 
 
 def knockback():
-    """Impacto y, saliendo de él, una flecha gruesa que lo aleja; con el polvo del arrastre."""
+    """Impact and, coming out of it, a thick arrow pushing it away; with the dust of the drag."""
     out = []
     out.append(dust(30, 108, 7))
     out.append(dust(48, 112, 6))
@@ -808,10 +808,10 @@ def knockback():
 
 
 def downed():
-    """Yelmo caído de lado junto a una espada rota."""
+    """Fallen helm on its side next to a broken sword."""
     out = []
     out.append(Sh(ellipse(64, 104, 58, 8), "dust", outline=False, op=0.7))
-    # espada rota: empuñadura con un muñón de hoja y el trozo suelto
+    # broken sword: hilt with a stump of blade and the loose piece
     xf = move(88, 82) @ rot(100)
     hb = 4
     blade = poly([(-8, -hb), (-8, -27), (-3, -31), (0, -25), (4, -33), (8, -28), (8, -hb)], xf)
@@ -822,14 +822,14 @@ def downed():
                   "bronze"))
     frag = poly([(66, 96), (96, 97), (112, 99), (98, 104), (66, 103)])
     out.append(Sh(frag, "steel_dark", edge=1.4))
-    # yelmo tumbado: la boca mira hacia la derecha
+    # helm lying down: the mouth faces right
     out += helm(36, 76, 1.05, rot_deg=-80)
     out.append(Sh(Path().M(30, 40).L(26, 52).L(33, 60), stroke="#14100C", sw=2.2, outline=False, op=0.8))
     return out
 
 
 def rooted():
-    """Una bota atrapada: raíces que se enroscan en la caña y la hunden en el suelo."""
+    """A trapped boot: roots that coil around the shaft and sink it into the ground."""
     out = []
     out.append(Sh(ellipse(64, 110, 58, 10), "earth"))
     boot = rpoly([(50, 6), (88, 6), (88, 98), (12, 98), (6, 86), (16, 74), (50, 68)],
@@ -851,9 +851,9 @@ def rooted():
 
 
 # --------------------------------------------------------------------------------------------
-# Variantes pequeñas de los estados (placas de nombre y fila de efectos): pocas piezas, formas
-# macizas. Se dibujan en un lienzo de 128 y se rasterizan a su tamaño exacto con el contorno más
-# grueso (ver make_icons.py).
+# Small variants of the states (nameplates and effects row): few pieces, solid
+# shapes. They are drawn on a 128 canvas and rasterised at their exact size with the
+# thicker outline (see make_icons.py).
 # --------------------------------------------------------------------------------------------
 
 
@@ -903,7 +903,7 @@ def small_downed():
 
 
 def small_rooted():
-    """Un brote sobre el suelo y las raíces que se hunden: pocas piezas gruesas."""
+    """A sprout on the ground and the roots sinking in: few thick pieces."""
     out = []
     root = "#8A6238"
     for x_end in (24, 64, 104):
@@ -916,7 +916,7 @@ def small_rooted():
 
 
 # --------------------------------------------------------------------------------------------
-# Registro: nombre -> (categoría de fondo, título en español, constructor)
+# Registry: name -> (background category, title in Spanish, constructor)
 # --------------------------------------------------------------------------------------------
 
 ICONS = {
@@ -966,9 +966,9 @@ SMALL_ICONS = {
 }
 
 
-# Ajustes de encuadre por icono (ver svgkit.fit_transform): centro y cobertura objetivo. Los iconos
-# que van por el suelo (esquiva) bajan; el resto se centra. Sirven para que las siluetas de una misma
-# barra no ocupen el mismo sitio (qa.py mide el solape).
+# Framing adjustments per icon (see svgkit.fit_transform): centre and target coverage. Icons
+# that run along the ground (dodge) move down; the rest are centred. They make the silhouettes of one
+# bar not occupy the same place (qa.py measures the overlap).
 FIT = {
     "sword_light": dict(center=(68.0, 74.0)),
     "block": dict(center=(53.0, 74.0)),

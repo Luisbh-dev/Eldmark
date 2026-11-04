@@ -17,21 +17,21 @@ import (
 	"eldmark/platform/internal/sanctions"
 )
 
-// Tipos de una línea de purges.txt (los de purge_log.kind).
+// Kinds of a purges.txt line (those of purge_log.kind).
 const (
 	PurgeAccount   = "account"
 	PurgeCharacter = "character"
 )
 
-// PurgeEntry es una línea de purges.txt: una fila de purge_log (§11.2).
+// PurgeEntry is a purges.txt line: a purge_log row (§11.2).
 type PurgeEntry struct {
-	Kind     string // PurgeAccount o PurgeCharacter
+	Kind     string // PurgeAccount or PurgeCharacter
 	ID       int64
 	PurgedAt time.Time
 }
 
-// purgeTimeLayouts son los formatos de purged_at que admite purges.txt: el de texto de PostgreSQL
-// (el que escribe backup.sh con COPY y la zona horaria UTC: 2026-10-30 09:46:00.123456+00) y RFC 3339.
+// purgeTimeLayouts are the purged_at formats that purges.txt accepts: PostgreSQL's text one (the one
+// backup.sh writes with COPY and the UTC time zone: 2026-10-30 09:46:00.123456+00) and RFC 3339.
 var purgeTimeLayouts = []string{
 	"2006-01-02 15:04:05.999999999-07",
 	"2006-01-02 15:04:05.999999999-07:00",
@@ -39,9 +39,9 @@ var purgeTimeLayouts = []string{
 	time.RFC3339Nano,
 }
 
-// ParsePurges lee purges.txt: una línea por fila de purge_log, «kind<TAB>id<TAB>purged_at», como la
-// escribe backup.sh (el formato de texto de COPY). Las líneas vacías no cuentan. Un error nombra la
-// línea; el archivo no lleva datos personales (solo ids y fechas), así que se puede repetir.
+// ParsePurges reads purges.txt: one line per purge_log row, "kind<TAB>id<TAB>purged_at", as
+// backup.sh writes it (COPY's text format). Empty lines do not count. An error names the line; the
+// file carries no personal data (only ids and dates), so it can be repeated.
 func ParsePurges(r io.Reader) ([]PurgeEntry, error) {
 	var entries []PurgeEntry
 	scanner := bufio.NewScanner(r)
@@ -84,23 +84,23 @@ func ParsePurges(r io.Reader) ([]PurgeEntry, error) {
 	return entries, nil
 }
 
-// CharacterReapplier vuelve a purgar un personaje con su purged_at original: characters.Purger.
+// CharacterReapplier purges a character again with its original purged_at: characters.Purger.
 type CharacterReapplier interface {
 	ReapplyPurge(ctx context.Context, characterID int64, at time.Time) (bool, error)
 }
 
-// ReapplyResult es el resultado de reapply-purges.
+// ReapplyResult is the result of reapply-purges.
 type ReapplyResult struct {
-	Entries        int   // líneas de purges.txt
-	LeasesDeleted  int64 // arrendamientos de la copia que se borraron
-	TicketsDeleted int64 // billetes de la copia que se borraron
-	Accounts       int   // cuentas purgadas ahora
-	Characters     int   // personajes purgados ahora (los de una cuenta que se purga, también)
-	Unchanged      int   // líneas cuya cuenta o personaje ya estaba purgado, o no existe, en la copia
+	Entries        int   // lines of purges.txt
+	LeasesDeleted  int64 // leases from the backup that were deleted
+	TicketsDeleted int64 // tickets from the backup that were deleted
+	Accounts       int   // accounts purged now
+	Characters     int   // characters purged now (those of a purged account too)
+	Unchanged      int   // lines whose account or character was already purged, or does not exist, in the backup
 }
 
-// UnpurgedError es un reapply-purges que deja algún id de purges.txt sin purgar (la orden sale
-// con 1). Solo lleva ids.
+// UnpurgedError is a reapply-purges that leaves some purges.txt id unpurged (the command exits with
+// 1). It only carries ids.
 type UnpurgedError struct {
 	Accounts   []int64
 	Characters []int64
@@ -117,16 +117,17 @@ func (e *UnpurgedError) Error() string {
 	return "quedan sin purgar ids de purges.txt: " + strings.Join(parts, " y ")
 }
 
-// ErrNoCharacterPurger es reapply-purges sin quien purgue personajes.
+// ErrNoCharacterPurger is reapply-purges without anything to purge characters.
 var ErrNoCharacterPurger = errors.New("no hay quien purgue personajes (el almacén del progreso, docs/progresion.md P7)")
 
-// ReapplyPurges vuelve a aplicar las purgas de purges.txt tras restaurar una copia (§11.2), con las
-// zonas paradas y antes de arrancar serve: en una transacción borra todos los character_leases y
-// enter_tickets de la copia (ya no son de nadie) y deja la fila reapply-purges (args con los
-// recuentos, sin ids); después purga cada cuenta y cada personaje de entries, cada uno en su
-// transacción y en el orden de purged_at, con su purged_at original y no con la hora: así no se
-// alarga ninguna retención. Es idempotente: lo ya purgado no se toca. Al final comprueba que no
-// queda ningún id de entries sin purgar; si queda alguno, [UnpurgedError].
+// ReapplyPurges applies the purges.txt purges again after restoring a backup (§11.2), with the zones
+// stopped and before starting serve: in one transaction it deletes all the backup's
+// character_leases and enter_tickets (they no longer belong to anyone) and leaves the
+// reapply-purges row (args with the counts, without ids); afterwards it purges each account and
+// each character of entries, each in its own transaction and in purged_at order, with its original
+// purged_at and not the current time: that way no retention is extended. It is idempotent: what is
+// already purged is not touched. At the end it checks that no id of entries is left unpurged; if
+// any is, [UnpurgedError].
 func (s *Service) ReapplyPurges(ctx context.Context, actor *Actor, entries []PurgeEntry) (*ReapplyResult, error) {
 	if s.characters == nil {
 		return nil, ErrNoCharacterPurger
@@ -139,7 +140,7 @@ func (s *Service) ReapplyPurges(ctx context.Context, actor *Actor, entries []Pur
 			return a.PurgedAt.Before(b.PurgedAt)
 		}
 		if a.Kind != b.Kind {
-			return a.Kind == PurgeCharacter // a igual hora, el personaje antes que su cuenta
+			return a.Kind == PurgeCharacter // at the same time, the character before its account
 		}
 		return a.ID < b.ID
 	})
@@ -216,7 +217,7 @@ func (s *Service) ReapplyPurges(ctx context.Context, actor *Actor, entries []Pur
 	return res, nil
 }
 
-// livingCharacters cuenta los personajes sin purgar de la cuenta (los que purgará su purga).
+// livingCharacters counts the account's unpurged characters (those its purge will purge).
 func (s *Service) livingCharacters(ctx context.Context, accountID int64) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx, `select count(*) from characters where account_id = $1 and purged_at is null`,
@@ -224,8 +225,8 @@ func (s *Service) livingCharacters(ctx context.Context, accountID int64) (int, e
 	return n, err
 }
 
-// checkPurged comprueba que ninguna cuenta ni ningún personaje de entries sigue sin purgar (los que
-// no tienen fila en la copia cuentan como purgados: no hay nada suyo).
+// checkPurged checks that no account or character of entries is still unpurged (those with no row in
+// the backup count as purged: there is nothing of theirs).
 func (s *Service) checkPurged(ctx context.Context, entries []PurgeEntry) error {
 	var accountIDs, characterIDs []int64
 	for _, e := range entries {
