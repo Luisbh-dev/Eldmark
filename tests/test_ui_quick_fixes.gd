@@ -357,7 +357,7 @@ func test_the_minimap_draws_its_terrain_with_a_shader_clamped_to_the_image() -> 
 	assert_true(terrain.visible, "con mapa y jugador, sí")
 	assert_vec_near(terrain.get_center_uv(), map.world_to_uv(Vector3(0.0, 0.0, -138.0)), 1e-6, "centrado en el jugador")
 	assert_vec_near(terrain.get_half_uv(), MinimapTerrain.half_uv_for(map, 160.0), 1e-6)
-	assert_near(terrain.get_half_uv().x, 80.0 / 320.0, 1e-6, "160 m de lado a lado sobre 320 m de mapa")
+	assert_near(terrain.get_half_uv().x, 80.0 / 400.0, 1e-6, "160 m de lado a lado sobre 400 m de mapa")
 	assert_true(terrain.get_center_uv().y - terrain.get_half_uv().y < 0.0, "en el campamento, medio disco cae fuera de la imagen")
 
 

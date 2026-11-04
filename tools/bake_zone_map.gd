@@ -12,6 +12,8 @@ extends SceneTree
 ## Qué se dibuja y cómo: [ZoneMapBaker]. Es determinista (misma escena, mismo mapa). Hay que repetirlo
 ## si cambia el relieve, el agua o las colisiones de la zona; lo comprueba tests/test_zone_map.gd.
 ## Con [code]--out=[/code] la imagen y el recurso van a esa ruta (sin tocar los de [code]assets/maps/[/code]).
+## [b]Ya no es el mapa del juego (UI-51)[/b]: el del Vado Gris es el de pergamino de
+## [code]tools/map/bake_parchment_map.gd[/code]. Sin [code]--out=[/code] esta herramienta lo pisaría con el volcado antiguo.
 
 ## Trozo de mundo y tamaño de la imagen de cada zona: esquina noroeste, tamaño (m) y lado (px). El Vado
 ## Gris cubre el área jugable (300 x 300 m) con 10 m de margen, a 3,2 píxeles por metro.

@@ -7,6 +7,11 @@ extends Control
 ## cae fuera del círculo se pega al borde. Se acerca y aleja con [method zoom_in] y [method zoom_out]
 ## (teclas del mapa, por niveles).
 ## [br][br]
+## [b]Iconos sin ruido (UI-52).[/b] Solo se pega al aro el objetivo actual ([method WorldMarkers.pick_objective]); los
+## demás lugares (campamentos, pasos, puerta) se enseñan únicamente si caen dentro del radio, y los iconos que se tocan
+## se fusionan en el de más prioridad ([method select_icons]). El cono de la cámara es un degradado suave (alfa 0,2 en
+## el vértice y 0 en el borde), sin borde duro que tape el terreno, y arriba hay una marca de norte.
+## [br][br]
 ## Los enemigos no se enseñan (solo si se revelan, con las atalayas de la fase 7). El trozo de mapa lo dibuja
 ## [MinimapTerrain] (un shader de CanvasItem detrás de todo: disco con borde suave, coordenadas de textura limitadas a
 ## la imagen, fundido a niebla cerca de su borde y mipmaps; UI-52), y [method _draw] pone encima el aro, los iconos y el
@@ -24,6 +29,19 @@ const DEFAULT_ZOOM: int = 1
 const BACK_COLOR: Color = Color(0.03, 0.035, 0.045, 0.85)
 const RING_COLOR: Color = Color(0.62, 0.58, 0.5, 1.0)
 const CONE_COLOR: Color = Color(1.0, 1.0, 1.0, 0.2)
+## Iconos a menos de esta distancia (px) se fusionan en uno; los aliados, a menos de [constant ALLY_MERGE_DISTANCE].
+const MERGE_DISTANCE: float = 11.0
+const ALLY_MERGE_DISTANCE: float = 6.0
+## Prioridad de cada tipo al fusionar (el mayor se queda).
+const KIND_PRIORITY: Dictionary = {
+	WorldMarker.Kind.CIRCLE: 5,
+	WorldMarker.Kind.FORT: 4,
+	WorldMarker.Kind.GATE: 3,
+	WorldMarker.Kind.CAMP: 2,
+	WorldMarker.Kind.PASS: 1,
+}
+const NORTH_COLOR: Color = Color(0.96, 0.92, 0.78, 0.95)
+const CONE_STEPS: int = 14
 const PLAYER_COLOR: Color = Color(1.0, 1.0, 1.0, 1.0)
 const ALLY_RADIUS: float = 3.0
 const ICON_SIZE: float = 6.0
@@ -98,10 +116,11 @@ func refresh() -> void:
 	if _has_player:
 		_player_position = character.global_position if character.is_inside_tree() else character.position
 		_player_yaw = _camera_rig.get_yaw() if is_instance_valid(_camera_rig) else character.yaw
-		for marker: WorldMarker in MarkerSource.build(_map, _view):
-			var point: Vector2 = clamp_to_circle(world_to_minimap(marker.position, _player_position,
-					pixels_per_meter(), center()), center(), radius() - ICON_SIZE)
-			_icons.append({"marker": marker, "point": point})
+		var markers: Array[WorldMarker] = MarkerSource.build(_map, _view)
+		var own_realm: int = _client.get_config().realm if _client.get_config() != null else NetProtocol.Realm.NONE
+		var objective: WorldMarker = WorldMarkers.pick_objective(markers, _player_position, own_realm)
+		_icons = select_icons(markers, objective.id if objective != null else &"", _player_position,
+				pixels_per_meter(), center(), radius())
 		_collect_allies()
 		_terrain.set_view(_player_position, get_visible_meters())
 	else:
@@ -156,8 +175,17 @@ func get_icons() -> Array[Dictionary]:
 func get_ally_points() -> Array[Vector2]:
 	var points: Array[Vector2] = []
 	for position: Vector3 in _allies:
-		points.append(clamp_to_circle(world_to_minimap(position, _player_position, pixels_per_meter(),
-				center()), center(), radius() - ALLY_RADIUS))
+		var point: Vector2 = world_to_minimap(position, _player_position, pixels_per_meter(), center())
+		# Los aliados fuera del círculo no se enseñan (al aro solo va el objetivo) y los que se tocan son uno.
+		if point.distance_to(center()) > radius() - ALLY_RADIUS:
+			continue
+		var merged: bool = false
+		for other: Vector2 in points:
+			if other.distance_to(point) < ALLY_MERGE_DISTANCE:
+				merged = true
+				break
+		if not merged:
+			points.append(point)
 	return points
 
 
@@ -186,6 +214,39 @@ static func clamp_to_circle(point: Vector2, center_px: Vector2, circle_radius: f
 ## izquierda): [code](-sin yaw, -cos yaw)[/code].
 static func yaw_to_direction(yaw: float) -> Vector2:
 	return Vector2(-sin(yaw), -cos(yaw))
+
+
+## Qué iconos se dibujan: [code]{"marker": WorldMarker, "point": Vector2, "rim": bool}[/code] con el punto en píxeles
+## del minimapa. Solo el marcador [param objective_id] se pega al aro ([code]rim[/code]) si cae fuera del círculo; los
+## demás se enseñan únicamente dentro del radio. Los que quedan a menos de [constant MERGE_DISTANCE] px de otro más
+## importante se descartan (el objetivo nunca).
+static func select_icons(markers: Array[WorldMarker], objective_id: StringName, player: Vector3,
+		p_pixels_per_meter: float, center_px: Vector2, circle_radius: float) -> Array[Dictionary]:
+	var candidates: Array[Dictionary] = []
+	for marker: WorldMarker in markers:
+		var raw: Vector2 = world_to_minimap(marker.position, player, p_pixels_per_meter, center_px)
+		var inside: bool = raw.distance_to(center_px) <= circle_radius - ICON_SIZE
+		var is_objective: bool = marker.id == objective_id
+		if not inside and not is_objective:
+			continue
+		var point: Vector2 = raw if inside else clamp_to_circle(raw, center_px, circle_radius - ICON_SIZE)
+		candidates.append({"marker": marker, "point": point, "rim": not inside})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var ma: WorldMarker = a["marker"]
+		var mb: WorldMarker = b["marker"]
+		var wa: int = int(KIND_PRIORITY.get(ma.kind, 0)) + (100 if ma.id == objective_id else 0)
+		var wb: int = int(KIND_PRIORITY.get(mb.kind, 0)) + (100 if mb.id == objective_id else 0)
+		return wa > wb)
+	var kept: Array[Dictionary] = []
+	for candidate: Dictionary in candidates:
+		var close: bool = false
+		for other: Dictionary in kept:
+			if (other["point"] as Vector2).distance_to(candidate["point"]) < MERGE_DISTANCE:
+				close = true
+				break
+		if not close:
+			kept.append(candidate)
+	return kept
 
 
 ## El terreno que se dibuja detrás de los iconos.
@@ -219,7 +280,9 @@ func _draw() -> void:
 	# Sin terreno que enseñar (sin mapa o sin jugador) queda el fondo liso.
 	if not _terrain.visible:
 		draw_circle(c, radius(), BACK_COLOR)
+	draw_arc(c, radius() - 2.5, 0.0, TAU, 64, Color(0.0, 0.0, 0.0, 0.35), 3.0, true)
 	draw_arc(c, radius() - 1.0, 0.0, TAU, 64, RING_COLOR, 2.0, true)
+	_draw_north(c)
 	for icon: Dictionary in _icons:
 		var marker: WorldMarker = icon["marker"]
 		MarkerIcons.draw(self, marker.kind, icon["point"], marker.color, ICON_SIZE)
@@ -230,12 +293,26 @@ func _draw() -> void:
 		_draw_player(c)
 
 
+# Marca de norte: una «N» con su halo, pegada al aro por dentro.
+func _draw_north(c: Vector2) -> void:
+	var font: Font = get_theme_default_font()
+	var at: Vector2 = Vector2(c.x - 4.5, c.y - radius() + 16.0)
+	draw_string_outline(font, at, "N", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, 4, Color(0.0, 0.0, 0.0, 0.8))
+	draw_string(font, at, "N", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, NORTH_COLOR)
+
+
 func _draw_player(c: Vector2) -> void:
 	var direction: Vector2 = yaw_to_direction(_player_yaw)
 	var half: float = deg_to_rad(CONE_HALF_DEGREES)
 	var length: float = radius() * CONE_LENGTH
-	draw_colored_polygon(PackedVector2Array([c, c + direction.rotated(-half) * length,
-			c + direction.rotated(half) * length]), CONE_COLOR)
+	# Cono suave: opaco (alfa 0,2) en el vértice y transparente en el borde, sin aristas duras.
+	var points := PackedVector2Array([c])
+	var colors := PackedColorArray([CONE_COLOR])
+	for step: int in CONE_STEPS + 1:
+		var angle: float = lerpf(-half, half, float(step) / float(CONE_STEPS))
+		points.append(c + direction.rotated(angle) * length)
+		colors.append(Color(CONE_COLOR.r, CONE_COLOR.g, CONE_COLOR.b, 0.0))
+	draw_polygon(points, colors)
 	MarkerIcons.draw_arrow(self, c, atan2(direction.x, -direction.y), PLAYER_COLOR, 7.0)
 
 

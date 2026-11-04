@@ -9,6 +9,9 @@ extends Resource
 const KIND_FORT: StringName = &"fort"
 const KIND_CAMP: StringName = &"camp"
 const KIND_PASS: StringName = &"pass"
+## Topónimo (UI-53): un lugar con nombre que solo se rotula en la ventana del mapa (un puente, el vado, unas
+## ruinas, un bosque o una sierra). No es un marcador del mundo ni sale en la brújula.
+const KIND_PLACE: StringName = &"place"
 
 ## Tipo ([constant KIND_FORT], [constant KIND_CAMP] o [constant KIND_PASS]).
 @export var kind: StringName = &""
@@ -20,14 +23,17 @@ const KIND_PASS: StringName = &"pass"
 @export var realm: int = 0
 ## Id de la fortaleza (el de su definición) si es un fuerte; vacío en lo demás.
 @export var fortress_id: StringName = &""
+## Solo en los topónimos: es una zona (un bosque, una sierra, un río) y no un punto; se rotula centrado y sin icono.
+@export var area: bool = false
 
 
 static func make(p_kind: StringName, p_label: String, p_position: Vector3, p_realm: int = 0,
-		p_fortress_id: StringName = &"") -> MapLandmark:
+		p_fortress_id: StringName = &"", p_area: bool = false) -> MapLandmark:
 	var landmark := MapLandmark.new()
 	landmark.kind = p_kind
 	landmark.label = p_label
 	landmark.position = p_position
 	landmark.realm = p_realm
 	landmark.fortress_id = p_fortress_id
+	landmark.area = p_area
 	return landmark

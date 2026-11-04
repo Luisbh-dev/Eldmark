@@ -41,8 +41,8 @@ const WATER_LINE: Color = Color(0.17, 0.29, 0.41)
 const SNOW: Color = Color(0.84, 0.84, 0.79)
 const STONE_LIGHT: Color = Color(0.84, 0.81, 0.73)
 const STONE_DARK: Color = Color(0.55, 0.52, 0.47)
-const FOLIAGE_LIGHT: Color = Color(0.50, 0.56, 0.43)
-const FOLIAGE_DARK: Color = Color(0.30, 0.36, 0.29)
+const FOLIAGE_LIGHT: Color = Color(0.53, 0.56, 0.46)
+const FOLIAGE_DARK: Color = Color(0.32, 0.35, 0.31)
 const ROAD_SAND: Color = Color(0.80, 0.72, 0.56)
 const WOOD: Color = Color(0.50, 0.37, 0.25)
 ## Color de cada reino sobre el mapa (código de red 1 a 3): lo único saturado que hay en el mapa.
@@ -1215,7 +1215,7 @@ func _draw_wall_run(sprite: Dictionary) -> void:
 		var f1: float = 0.34 if row % 2 == 0 else 0.68
 		_ink_line(PackedVector2Array([Vector2(joint_x, y_s) + lift * f0, Vector2(joint_x, y_s) + lift * f1]), 0.7, 0.22,
 				INK_SOFT, ParchmentCanvas.MODE_MULTIPLY, 0.6)
-		joint_x += _m(2.6)
+		joint_x += _m(2.6) + _m(0.9) * absf(sin(joint_x * 0.113))
 		row += 1
 	_ink_line(PackedVector2Array([Vector2(xa, y_s), Vector2(xb, y_s)]), _line(0.34, 1.5), 0.92, INK, ParchmentCanvas.MODE_MULTIPLY, 0.3)
 	_ink_line(PackedVector2Array([Vector2(xa, y_s) + lift, Vector2(xb, y_s) + lift]), _line(0.26, 1.2), 0.85, INK, ParchmentCanvas.MODE_MULTIPLY, 0.35)
@@ -1231,7 +1231,10 @@ func _draw_wall_run(sprite: Dictionary) -> void:
 		var polys: Array[PackedVector2Array] = [polygon]
 		_fill(polys, ParchmentCanvas.MODE_OVER, STONE_LIGHT.lightened(0.05), 0.98, 0.7)
 		_ink_line(polygon, 0.9, 0.88, INK, ParchmentCanvas.MODE_MULTIPLY, 0.35, true)
-		merlon_x += _m(2.6)
+		merlon_x += _m(2.6) + _m(0.5) * sin(merlon_x * 0.071)
+		# Alguna almena rota, para que la muralla no parezca una vía de tren.
+		if int(floor(merlon_x * 0.37)) % 11 == 0:
+			merlon_x += _m(2.6)
 
 
 func _draw_tower_sprite(sprite: Dictionary) -> void:
