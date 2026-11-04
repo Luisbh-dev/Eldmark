@@ -130,8 +130,8 @@ func test_askarra_blade_carries_the_glowing_crack_and_the_others_do_not() -> voi
 		root.free()
 
 
-func test_blade_is_dark_with_a_bright_thin_edge() -> void:
-	# El contraste sale de un albedo oscuro con el filo claro (un acero claro se funde con el cielo gris).
+func test_blade_is_mid_steel_with_a_bright_thin_edge() -> void:
+	# Acero medio (0,62 a 0,68: más oscuro se leía como obsidiana desde la cámara) con el filo claro.
 	var root: Node3D = _load(&"base")
 	var mesh: ArrayMesh = _lod(root, 0).mesh as ArrayMesh
 	var image: Image = _standard(mesh, 0).albedo_texture.get_image()
@@ -142,8 +142,8 @@ func test_blade_is_dark_with_a_bright_thin_edge() -> void:
 	# La cara plana (a un 40 % del medio ancho) es oscura y el filo (al 96 %) es claro.
 	var face: Color = image.get_pixel(int(w * (0.5 + 0.5 * 0.40)), row)
 	var edge: Color = image.get_pixel(int(w * (0.5 + 0.5 * 0.96)), row)
-	assert_true(face.get_luminance() > 0.20 and face.get_luminance() < 0.55,
-			"la cara plana es de acero oscuro (%.2f)" % face.get_luminance())
+	assert_true(face.get_luminance() > 0.55 and face.get_luminance() < 0.78,
+			"la cara plana es de acero medio (%.2f)" % face.get_luminance())
 	assert_true(edge.get_luminance() > 0.85, "el filo es claro (%.2f)" % edge.get_luminance())
 	# Más oscura junto a la guarda que hacia la punta.
 	# (La fila 0 de la imagen es la punta: v = 1.)
@@ -246,8 +246,8 @@ func test_trail_collects_samples_only_while_active_and_fades_out() -> void:
 	trail.free()
 
 
-func test_trail_reaches_out_to_about_2_2_m_along_the_blade() -> void:
-	# La estela alarga el borde exterior más allá de la punta para enseñar el alcance (decisión 8).
+func test_trail_is_born_on_the_blade_and_never_passes_the_tip() -> void:
+	# La cinta va del 40 % de la hoja a la punta: sin prolongación más allá (el alcance es de los datos de combate).
 	var root: Node3D = SwordModel.instantiate(&"base", false)
 	tree.root.add_child(root)
 	var trail: SwordTrail = _trail()
@@ -256,19 +256,30 @@ func test_trail_reaches_out_to_about_2_2_m_along_the_blade() -> void:
 	assert_eq(trail.get_sample_count(), 1)
 	var tip: Node3D = root.find_child(String(SwordModel.TRAIL_TIP_NAME), true, false) as Node3D
 	var base: Node3D = root.find_child(String(SwordModel.TRAIL_BASE_NAME), true, false) as Node3D
-	var edges: PackedVector3Array = trail.get_edges(0)
-	var outer: Vector3 = edges[edges.size() - 1]
-	assert_vec_near(edges[edges.size() - 2], tip.global_position, 0.001, "la línea del núcleo es la punta del modelo")
-	assert_true(edges[0].distance_to(base.global_position) < tip.global_position.distance_to(base.global_position),
-			"el borde interior queda dentro del filo")
-	assert_near(outer.distance_to(base.global_position),
-			tip.global_position.distance_to(base.global_position) + SwordTrail.REACH_EXTENSION, 0.01,
-			"el borde exterior sale de la punta siguiendo la hoja")
-	# Desde el eje del personaje (la mano está a medio metro) llega a unos 2,2 m con el agarre real.
-	var from_grip: float = outer.distance_to(root.global_position)
-	assert_true(from_grip + 0.55 > 2.0 and from_grip + 0.55 < 2.4, "alcance dibujado: %.2f m" % (from_grip + 0.55))
+	var edges: PackedVector3Array = trail.get_ribbon_edges(0)
+	assert_eq(edges.size(), 2, "dos bordes: el arranque y la punta")
+	assert_vec_near(edges[1], tip.global_position, 0.001, "el borde exterior es la punta del modelo")
+	var blade_length: float = tip.global_position.distance_to(base.global_position)
+	assert_near(edges[0].distance_to(base.global_position), blade_length * SwordTrail.INNER_FRACTION, 0.001,
+			"el borde interior, al 40 % de la hoja")
+	assert_near(SwordTrail.INNER_FRACTION, 0.40, 0.001)
 	trail.free()
 	root.free()
+
+
+func test_trail_follows_a_curve_through_the_samples_without_straight_chords() -> void:
+	# Tres muestras en arco: la curva densa pasa por ellas y añade puntos entre medias (Catmull-Rom por tiempo).
+	var trail: SwordTrail = _trail()
+	trail.add_sample_points(Vector3(0, 1, 0), Vector3(0.0, 1.8, 0.0))
+	trail.advance(1.0 / 30.0)
+	trail.add_sample_points(Vector3(0, 1, 0), Vector3(0.5, 1.7, 0.0))
+	trail.advance(1.0 / 30.0)
+	trail.add_sample_points(Vector3(0, 1, 0), Vector3(0.9, 1.4, 0.0))
+	var ribbon: MeshInstance3D = trail.get_node("Ribbon") as MeshInstance3D
+	var arrays: Array = (ribbon.mesh as ImmediateMesh).surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	assert_true(vertices.size() >= 2 * 3 * 2, "la curva se parte en tramos (%d vértices)" % vertices.size())
+	trail.free()
 
 
 func test_trail_is_tinted_per_realm() -> void:
@@ -284,11 +295,19 @@ func test_trail_is_tinted_per_realm() -> void:
 
 func test_trail_does_not_cast_shadows_or_read_light() -> void:
 	var trail: SwordTrail = _trail()
+	trail.add_sample_points(Vector3(0, 1, 0), Vector3(0, 2, 0))
+	trail.add_sample_points(Vector3(0.1, 1, 0), Vector3(0.2, 2, 0))
 	var ribbon: MeshInstance3D = trail.get_node("Ribbon") as MeshInstance3D
 	assert_eq(ribbon.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "sin sombra")
-	var material: StandardMaterial3D = ribbon.material_override as StandardMaterial3D
-	assert_eq(material.shading_mode, BaseMaterial3D.SHADING_MODE_UNSHADED, "sin luz")
-	assert_eq(material.blend_mode, BaseMaterial3D.BLEND_MODE_ADD, "aditiva")
+	var mesh: ImmediateMesh = ribbon.mesh as ImmediateMesh
+	assert_eq(mesh.get_surface_count(), 2, "cuerpo y línea del filo")
+	var body: StandardMaterial3D = mesh.surface_get_material(0) as StandardMaterial3D
+	var line: StandardMaterial3D = mesh.surface_get_material(1) as StandardMaterial3D
+	assert_eq(body.shading_mode, BaseMaterial3D.SHADING_MODE_UNSHADED, "sin luz")
+	assert_eq(body.blend_mode, BaseMaterial3D.BLEND_MODE_MIX, "el cuerpo, en mezcla normal con el color saturado")
+	assert_not_null(body.albedo_texture, "con la textura de degradado")
+	assert_eq(line.blend_mode, BaseMaterial3D.BLEND_MODE_ADD, "la línea del filo, aditiva")
+	assert_true(SwordTrail.PEAK_ALPHA <= 0.5, "alfa máximo del cuerpo 0,5")
 	assert_true(trail.top_level, "las muestras están en coordenadas del mundo")
 	trail.free()
 

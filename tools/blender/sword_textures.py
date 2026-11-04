@@ -44,17 +44,17 @@ PALETTES = {
 	"vardheim": {
 		"leather": (0.10, 0.15, 0.28), "thread": (0.62, 0.80, 0.94),
 		"metal": (0.42, 0.52, 0.70), "metal_rough": 0.34, "metal_metallic": 0.85,
-		"accent": (0.42, 0.82, 1.00), "accent_metal": 0.15, "accent_rough": 0.10,
+		"accent": (0.30, 0.66, 0.92), "accent_metal": 0.15, "accent_rough": 0.38,
 	},
 	"solmarch": {
 		"leather": (0.86, 0.83, 0.75), "thread": (0.86, 0.64, 0.20),
 		"metal": (0.92, 0.62, 0.16), "metal_rough": 0.24, "metal_metallic": 0.94,
-		"accent": (0.96, 0.50, 0.10), "accent_metal": 0.10, "accent_rough": 0.16,
+		"accent": (0.96, 0.50, 0.10), "accent_metal": 0.10, "accent_rough": 0.34,
 	},
 	"askarra": {
 		"leather": (0.52, 0.07, 0.09), "thread": (0.84, 0.54, 0.26),
-		"metal": (0.62, 0.32, 0.11), "metal_rough": 0.22, "metal_metallic": 0.95,
-		"accent": (0.12, 0.09, 0.08), "accent_metal": 0.80, "accent_rough": 0.50,
+		"metal": (0.76, 0.46, 0.17), "metal_rough": 0.30, "metal_metallic": 0.95,
+		"accent": (0.24, 0.22, 0.22), "accent_metal": 0.90, "accent_rough": 0.40,
 	},
 }
 
@@ -63,7 +63,7 @@ PALETTES = {
 S_FULLER_FLOOR = 0.18
 S_FULLER_RIM = 0.30
 S_SHOULDER = 0.50
-S_BEVEL = 0.84
+S_BEVEL = 0.76
 
 # Dónde empieza y acaba la acanaladura a lo largo de la hoja (en metros desde el centro de la
 # empuñadura; build_sword.py usa las mismas cifras) y largo de la hoja.
@@ -78,18 +78,22 @@ ATLAS_BANDS = 3
 # Qué lleva cada hoja. "tint" multiplica el gris acero de las caras, "edge" el del filo, y "dark"
 # escala el tono de las caras (Askarra es acero ennegrecido).
 BLADE_STYLES = {
-	"base": {"tint": (0.90, 0.95, 1.00), "edge": (0.96, 0.98, 1.00), "dark": 1.00},
-	"vardheim": {"tint": (0.82, 0.92, 1.00), "edge": (0.90, 0.97, 1.00), "dark": 1.00},
-	"solmarch": {"tint": (1.00, 0.96, 0.88), "edge": (1.00, 0.97, 0.88), "dark": 1.10},
-	"askarra": {"tint": (0.95, 0.90, 0.88), "edge": (1.00, 0.82, 0.66), "dark": 0.62},
+	"base": {"tint": (0.92, 0.96, 1.00), "edge": (0.97, 0.99, 1.00), "dark": 1.00, "metal": 0.88},
+	"vardheim": {"tint": (0.86, 0.94, 1.00), "edge": (0.92, 0.98, 1.00), "dark": 1.00, "metal": 0.88},
+	# Solmarch: blanco perla cálido en las caras (el oro va en la acanaladura), con menos metálico para que
+	# no refleje el cielo gris y se apague.
+	"solmarch": {"tint": (1.00, 0.97, 0.89), "edge": (1.00, 0.98, 0.90), "dark": 1.00, "metal": 0.80,
+			"face": 0.84, "bevel": 0.86},
+	"askarra": {"tint": (0.95, 0.90, 0.88), "edge": (1.00, 0.84, 0.68), "dark": 0.62, "metal": 0.80},
 }
 # Tono (albedo sRGB) de cada zona de la sección, del eje al filo. Las caras y el bisel mayor son
-# oscuras; solo el filo es claro.
-TONE_FULLER = 0.20
-TONE_FULLER_WALL = (0.24, 0.33)
-TONE_FACE = 0.46
-TONE_BEVEL = 0.48
-TONE_EDGE = 0.96
+# de un acero medio (0,62 a 0,68: más oscuro se lee como obsidiana desde la cámara del juego); el filo es
+# claro y mide 2-3 px de ancho a esa distancia.
+TONE_FULLER = 0.32
+TONE_FULLER_WALL = (0.38, 0.52)
+TONE_FACE = 0.65
+TONE_BEVEL = 0.67
+TONE_EDGE = 0.98
 # Emisión de la grieta de Askarra (multiplicada por la fuerza del material en el GLB).
 EMBER_COLOR = (1.00, 0.30, 0.04)
 
@@ -151,6 +155,15 @@ def fuller_mask(v):
 			* (1.0 - _smooth(FULLER_END[0] / TIP_Z, FULLER_END[1] / TIP_Z, v))
 
 
+def fuller_width_scale(v):
+	"""Cuánto de ancho tiene la acanaladura en cada punto a lo largo (de 0,35 a 1), igual que la geometría.
+
+	Nace y acaba en ojiva: estrecha en la punta de cada extremo y ensanchándose deprisa hasta su ancho
+	pleno (la curva ^0,6 abre rápido y se aplana, como un arco apuntado), no en un escalón rectangular.
+	"""
+	return 0.35 + 0.65 * np.asarray(fuller_mask(v), dtype=np.float64) ** 0.6
+
+
 def _segment_distance(px, py, ax, ay, bx, by):
 	"""Distancia de cada punto (px, py) al segmento de (ax, ay) a (bx, by)."""
 	dx, dy = bx - ax, by - ay
@@ -206,56 +219,64 @@ def blade_textures(palette="base", width=256, height=512):
 	s = np.abs(s_signed)  # 0 en el eje, 1 en el filo
 	ff, rim, sh, bev = S_FULLER_FLOOR, S_FULLER_RIM, S_SHOULDER, S_BEVEL
 	groove = fuller_mask(v)
+	# La acanaladura nace y acaba en ojiva: su ancho crece con v (ver fuller_width_scale), así que sus
+	# quiebros (suelo y borde) se miden con s_eff = s / ancho y no con s.
+	s_eff = s / fuller_width_scale(v)
+	face_tone = style.get("face", TONE_FACE)
+	bevel_tone = style.get("bevel", TONE_BEVEL)
 	# Tono por zona de la sección (ver build_sword.py): acanaladura (solo donde la hay), cara plana,
 	# bisel mayor y filo. Las transiciones son cortas pero no de un píxel, para que no centelleen.
-	stops_s = [0.0, ff - 0.015, ff + 0.012, rim, rim + 0.012, sh - 0.012, sh + 0.012, bev - 0.012,
-			bev + 0.014, 1.0]
-	groove_tone = np.interp(s, stops_s, [TONE_FULLER, TONE_FULLER, TONE_FULLER_WALL[0],
-			TONE_FULLER_WALL[1], TONE_FACE, TONE_FACE, TONE_BEVEL, TONE_BEVEL, TONE_EDGE, TONE_EDGE])
-	flat_tone = np.interp(s, stops_s, [TONE_FACE, TONE_FACE, TONE_FACE, TONE_FACE, TONE_FACE,
-			TONE_FACE, TONE_BEVEL, TONE_BEVEL, TONE_EDGE, TONE_EDGE])
-	tone = flat_tone + (groove_tone - flat_tone) * groove
+	stops_g = [0.0, ff - 0.015, ff + 0.012, rim, rim + 0.012]
+	groove_tone = np.interp(s_eff, stops_g, [TONE_FULLER, TONE_FULLER, TONE_FULLER_WALL[0],
+			TONE_FULLER_WALL[1], face_tone])
+	stops_s = [0.0, sh - 0.012, sh + 0.012, bev - 0.012, bev + 0.014, 1.0]
+	flat_tone = np.interp(s, stops_s, [face_tone, face_tone, bevel_tone, bevel_tone, TONE_EDGE, TONE_EDGE])
+	# La acanaladura solo manda dentro de su ancho (fuera, np.interp se quedaría con el tono de la cara).
+	in_groove = groove * (1.0 - _smooth(rim + 0.002, rim + 0.014, s_eff))
+	tone = flat_tone + (groove_tone - flat_tone) * in_groove
 	is_edge = _smooth(bev - 0.012, bev + 0.014, s)
 	# Degradado a lo largo: más oscuro junto a la guarda (x0,75) y más claro hacia la punta. El filo
 	# casi no cambia: tiene que ser claro de punta a punta.
 	along = _smooth(0.05, 0.95, v)
-	body_gain = (0.75 + 0.27 * along) * style["dark"]
-	edge_gain = (0.96 + 0.04 * along) * (0.88 if palette == "askarra" else 1.0)
+	body_gain = (0.90 + 0.12 * along) * style["dark"]
+	edge_gain = (0.97 + 0.03 * along) * (0.94 if palette == "askarra" else 1.0)
 	tone = tone * (body_gain * (1.0 - is_edge) + edge_gain * is_edge)
 	# Recazo (junto a la guarda, sin filo): un pelo más opaco, y la sombra que echa la guarda.
 	ricasso = 1.0 - _smooth(0.14, 0.22, v)
 	tone = tone * (1.0 - 0.06 * ricasso)
-	tone = tone * (1.0 - 0.35 * np.exp(-(((v - 0.133) / 0.025) ** 2)) * (1.0 - is_edge))
+	tone = tone * (1.0 - 0.28 * np.exp(-(((v - 0.133) / 0.025) ** 2)) * (1.0 - is_edge))
 	# Un reflejo fino en el borde de la acanaladura y en el hombro del bisel mayor, para que el
 	# acero tenga relieve aunque sea oscuro.
-	rim_line = np.exp(-(((s - rim) / 0.011) ** 2)) * groove * 0.16
-	shoulder_line = np.exp(-(((s - sh) / 0.012) ** 2)) * 0.10
+	rim_line = np.exp(-(((s_eff - rim) / 0.011) ** 2)) * groove * 0.12
+	shoulder_line = np.exp(-(((s - sh) / 0.012) ** 2)) * 0.07
 	tone = tone + (rim_line + shoulder_line) * (1.0 - is_edge)
-	# Pulido en cepillo: rayas muy suaves a lo largo y un grano casi invisible. Con más amplitud
-	# parecen una textura estirada junto al recazo.
+	# Pulido: un grano fino casi invisible y unas rayas a lo largo muy tenues (con más amplitud, junto al
+	# recazo se ven como rayas verticales estiradas).
 	brushed = fft_noise(width, height, 70.0, 4.0, 11)
 	grain = fft_noise(width, height, 100.0, 100.0, 12)
-	tone = tone + brushed * 0.012 + grain * 0.008
+	tone = tone + brushed * 0.003 + grain * 0.006
 	# Punta algo más viva.
-	tone = tone + 0.05 * _smooth(0.90, 0.99, v) * (1.0 - is_edge)
+	tone = tone + 0.04 * _smooth(0.90, 0.99, v) * (1.0 - is_edge)
 	tint = np.array(style["tint"])[None, None, :] * (1.0 - is_edge[..., None]) \
 			+ np.array(style["edge"])[None, None, :] * is_edge[..., None]
 	color = np.clip(tone[..., None] * tint, 0.0, 1.0)
-	# Rugosidad y metálico por zona.
-	stops_r = [0.00, ff - 0.015, ff + 0.01, rim + 0.015, sh + 0.015, bev - 0.015, bev + 0.015, 1.00]
-	rough = np.interp(s, stops_r, [0.46, 0.46, 0.50, 0.42, 0.38, 0.36, 0.22, 0.20]) + brushed * 0.04
-	# Metálico algo por debajo de 0,8: con menos, el acero conserva un poco de color propio y no se vuelve
-	# negro cuando refleja el suelo.
-	metal = np.full_like(rough, 0.60)
+	# Rugosidad y metálico por zona: acero pulido (rugosidad 0,30 a 0,35, metálico 0,85 a 0,90). El fondo de
+	# la acanaladura es algo más áspero para que no dé un punto caliente de reflejo.
+	stops_r = [0.00, sh + 0.015, bev - 0.015, bev + 0.015, 1.00]
+	rough_flat = np.interp(s, stops_r, [0.34, 0.33, 0.32, 0.24, 0.22])
+	rough_groove = np.interp(s_eff, [0.0, ff - 0.015, ff + 0.01, rim + 0.015],
+			[0.50, 0.50, 0.46, 0.34])
+	rough = rough_flat + (rough_groove - rough_flat) * groove * (s_eff < rim + 0.015) + brushed * 0.012
+	metal = np.full_like(rough, style["metal"])
 	emit = None
-	in_fuller = groove * (1.0 - _smooth(rim - 0.05, rim, s))
+	in_fuller = groove * (1.0 - _smooth(rim - 0.05, rim, s_eff))
 	if palette == "vardheim":
 		# Hielo azul en la acanaladura y una fila de runas blancas por el medio.
 		ice = np.array([0.14, 0.40, 0.66])[None, None, :] * (0.85 + 0.30 * along)[..., None]
 		color = color * (1.0 - in_fuller[..., None]) + ice * in_fuller[..., None]
 		marks = runes(s_signed, v, 0.30, 0.68) * in_fuller
 		color = color * (1.0 - marks[..., None]) + np.array([0.94, 0.99, 1.0])[None, None, :] * marks[..., None]
-		rough = rough + (0.22 - rough) * in_fuller
+		rough = rough + (0.42 - rough) * in_fuller
 		metal = metal + (0.35 - metal) * in_fuller
 	elif palette == "solmarch":
 		# Oro incrustado en la acanaladura, con una cinta de rombos más oscuros.
@@ -265,12 +286,12 @@ def blade_textures(palette="base", width=256, height=512):
 		band = _smooth(0.28, 0.30, v) * (1.0 - _smooth(0.66, 0.68, v))
 		pattern = (diamond < 0.9).astype(np.float64) * band * in_fuller
 		color = color * (1.0 - 0.30 * pattern[..., None])
-		rough = rough + (0.28 - rough) * in_fuller
-		metal = metal + (0.92 - metal) * in_fuller
+		rough = rough + (0.40 - rough) * in_fuller
+		metal = metal + (0.90 - metal) * in_fuller
 	elif palette == "askarra":
 		# Acero ennegrecido y mate, y la grieta en llamas que corre por la acanaladura.
-		rough = rough + 0.12
-		metal = np.full_like(rough, 0.55)
+		rough = rough + 0.14
+		metal = np.full_like(rough, 0.72)
 		distance = np.abs(s_signed - _crack_path(v))
 		gaps = fft_noise(width, height, 1.0, 9.0, 41)[:, :1]  # roturas a lo largo, iguales a lo ancho
 		live = _smooth(-0.55, -0.10, gaps)
@@ -282,7 +303,7 @@ def blade_textures(palette="base", width=256, height=512):
 			centre = float(_crack_path(np.array(v_a)))
 			branch = _segment_distance(s_signed, v, centre, v_a, side * 0.20, v_b)
 			core = core + np.clip(1.6 * np.exp(-((branch / 0.022) ** 2)), 0.0, 1.0) * 0.85
-		heat = np.clip(core + glow, 0.0, 1.0) * groove * (1.0 - _smooth(rim, rim + 0.05, s))
+		heat = np.clip(core + glow, 0.0, 1.0) * groove * (1.0 - _smooth(rim, rim + 0.05, s_eff))
 		red, green, blue = EMBER_COLOR
 		emission = np.stack([heat * red, (heat ** 1.4) * green, (heat ** 2.5) * blue,
 				np.ones_like(heat)], axis=2)
@@ -354,7 +375,7 @@ def metal_textures(palette, width=256, height=384):
 	# mapeado en caja deja la v creciendo con la altura de la pieza.
 	within = (v * ATLAS_BANDS) % 1.0
 	color = color * (0.86 + 0.24 * np.clip(within, 0.0, 1.0))[..., None]
-	rough = np.where(top, spec["metal_rough"] * 0.45, np.where(mid, spec["accent_rough"], spec["metal_rough"]))
+	rough = np.where(top, spec["metal_rough"] * 0.70, np.where(mid, spec["accent_rough"], spec["metal_rough"]))
 	rough = rough + blotch * 0.05 + grain * 0.03
 	metal = np.where(mid, spec["accent_metal"], spec["metal_metallic"]) + np.zeros_like(rough)
 	return _pack(color, rough, metal)

@@ -16,8 +16,12 @@ extends SceneTree
 ## [codeblock]
 ## godot --path . --resolution 1920x1080 --fixed-fps 30 -s res://tools/render/sword_hero_shots.gd -- \
 ##     --sin-raton --out=build/sword/hero [--only=reposo,ligero,fuerte,bloqueo] [--views=game,side,hand] \
-##     [--grip-offset=0,0.07,0] [--grip-rot=0,0,-90]
+##     [--grip-offset=0,0.07,0] [--grip-rot=0,0,-90] [--variant=base|vardheim|solmarch|askarra] [--frames]
 ## [/codeblock]
+## [br]Con [code]--variant[/code] la espada de la mano es la de ese reino (y la estela, de su color). Con
+## [code]--fixed-fps 60[/code] la hoja de contactos de cada golpe reparte sus 12 fotogramas por la fase activa
+## (con un margen antes y después) y, con [code]--frames[/code], se guardan además todos los fotogramas de la fase
+## activa, uno a uno, en [code]<out>/frames/<acción>/<vista>/[/code] (para montar vídeo).
 ## [br]Los dos últimos ajustes sustituyen el agarre de [WeaponProps] solo para esta ejecución: sirven
 ## para probar posiciones antes de dejarlas en las constantes.
 
@@ -41,6 +45,8 @@ var _only: PackedStringArray = PackedStringArray()
 var _views: PackedStringArray = PackedStringArray(["game", "side", "hand"])
 var _grip_offset: Variant = null
 var _grip_rotation: Variant = null
+var _variant: StringName = &""
+var _save_frames: bool = false
 
 var character: PlayerCharacter
 var visual: HumanoidVisual
@@ -96,6 +102,10 @@ func _initialize() -> void:
 			_views = arg.trim_prefix("--views=").split(",", false)
 		elif arg.begins_with("--grip-offset="):
 			_grip_offset = _parse_vector(arg.trim_prefix("--grip-offset="))
+		elif arg.begins_with("--variant="):
+			_variant = StringName(arg.trim_prefix("--variant="))
+		elif arg == "--frames":
+			_save_frames = true
 		elif arg.begins_with("--grip-rot="):
 			_grip_rotation = _parse_vector(arg.trim_prefix("--grip-rot="))
 	if _out.is_empty():
@@ -123,6 +133,10 @@ func _run() -> void:
 	for _i: int in range(90):
 		await process_frame
 	_apply_grip_overrides()
+	if _variant != &"":
+		WeaponProps.set_sword_variant(visual.get_skeleton(), _variant)
+		for _i: int in range(8):
+			await process_frame
 	for action: Dictionary in _actions():
 		if not _only.is_empty() and not _only.has(String(action["id"])):
 			continue
@@ -187,6 +201,11 @@ func _apply_grip_overrides() -> void:
 		sword.position = _grip_offset as Vector3
 	if _grip_rotation != null:
 		sword.rotation_degrees = _grip_rotation as Vector3
+
+
+func _trail_node() -> SwordTrail:
+	var sword: Node3D = _sword_node()
+	return sword.get_node_or_null(^"SwordTrail") as SwordTrail if sword != null else null
 
 
 func _hand_position() -> Vector3:
@@ -261,27 +280,57 @@ func _run_action(action: Dictionary) -> void:
 	while controller.get_tick() - start_tick < from_tick - 2:
 		await process_frame
 	_game_center = _project_center()
+	# Un fotograma por cada fotograma del motor entre `from` y `to`, con la marca de si el golpe estaba activo.
 	var frames: Dictionary = {}
 	for view: String in _views:
 		frames[view] = []
-	for k: int in range(FRAMES):
-		var target: int = roundi(lerpf(float(from_tick), float(to_tick), float(k) / float(FRAMES - 1)))
-		var guard: int = 0
-		while controller.get_tick() - start_tick < target and guard < 20000:
-			await process_frame
-			guard += 1
+	var active_flags: Array[bool] = []
+	var trail: SwordTrail = _trail_node()
+	var guard: int = 0
+	while controller.get_tick() - start_tick < to_tick and guard < 20000:
+		await process_frame
+		guard += 1
+		if controller.get_tick() - start_tick < from_tick:
+			continue
 		_update_cameras()
 		await RenderingServer.frame_post_draw
 		for view: String in _views:
 			(frames[view] as Array).append(_grab(view))
+		active_flags.append(trail != null and trail.is_active())
 	brain.stop()
+	var count: int = active_flags.size()
+	# Fase activa: del primer al último fotograma activo (con un margen); sin golpe, toda la toma.
+	var first: int = 0
+	var last: int = maxi(count - 1, 0)
+	var first_active: int = active_flags.find(true)
+	if first_active >= 0:
+		var last_active: int = active_flags.rfind(true)
+		first = maxi(first_active - 3, 0)
+		last = mini(last_active + 8, count - 1)
+		print("[sword_hero]   fase activa: fotogramas %d a %d de %d" % [first_active, last_active, count])
+		if _save_frames:
+			_save_active_frames(String(action["id"]), frames, maxi(first_active - 2, 0), mini(last_active + 6, count - 1))
 	for view: String in _views:
-		var sheet: Image = _compose(frames[view] as Array)
+		var picks: Array = []
+		for k: int in range(FRAMES):
+			var index: int = roundi(lerpf(float(first), float(last), float(k) / float(FRAMES - 1)))
+			picks.append((frames[view] as Array)[index])
+		var sheet: Image = _compose(picks)
 		var path: String = _out.path_join("%s__%s.png" % [action["id"], view])
 		sheet.save_png(path)
 		print("[sword_hero]   ", path)
 	for _i: int in range(6):
 		await process_frame
+
+
+func _save_active_frames(action_id: String, frames: Dictionary, first: int, last: int) -> void:
+	for view: String in _views:
+		if view == "hand":
+			continue
+		var dir: String = _out.path_join("frames").path_join(action_id).path_join(view)
+		DirAccess.make_dir_recursive_absolute(dir)
+		for index: int in range(first, last + 1):
+			((frames[view] as Array)[index] as Image).save_png(dir.path_join("%03d.png" % (index - first)))
 
 
 func _project_center() -> Vector2i:

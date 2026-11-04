@@ -195,7 +195,7 @@ declara una licencia propia:
   acanaladura de runas, oro o grieta emisiva, el cuero y un atlas de metal con el canto pulido, todo
   ruido y degradados) generadas por código en `tools/blender/sword_textures.py`. Ninguna malla ni
   textura viene de un pack: las espadas de RPG Weapons Free solo se miraron para comparar calidad.
-  La estela del golpe (`scripts/client/sword_trail.gd`) es una malla de cinta propia, sin texturas.
+  La estela del golpe (`scripts/client/sword_trail.gd`) es una cinta propia con una textura de degradado generada por código al arrancar.
   Para regenerarlas: `blender --background --factory-startup --python tools/blender/build_sword.py`
   y `godot --headless --path . --import`. Los GLB llevan las texturas dentro (el `.import` las
   conserva embebidas, `gltf/embedded_image_handling=3`).

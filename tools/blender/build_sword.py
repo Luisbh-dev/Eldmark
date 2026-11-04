@@ -68,12 +68,13 @@ POMMEL_Z = -0.078
 # La punta sigue en TIP_Z = 0,94 (decisión 8 de docs/calidad.md: el alcance del golpe no cambia).
 BLADE_STATIONS = [
 	(0.075, 0.0420, 0.0150), (0.145, 0.0420, 0.0150), (0.195, 0.0428, 0.0138),
-	(0.255, 0.0445, 0.0130), (0.330, 0.0468, 0.0124), (0.420, 0.0498, 0.0117),
+	(0.215, 0.0434, 0.0134), (0.235, 0.0439, 0.0132), (0.255, 0.0445, 0.0130), (0.330, 0.0468, 0.0124), (0.420, 0.0498, 0.0117),
 	(0.510, 0.0525, 0.0110), (0.600, 0.0540, 0.0103), (0.680, 0.0535, 0.0096),
 	(0.750, 0.0512, 0.0088), (0.800, 0.0478, 0.0080), (0.840, 0.0430, 0.0072),
 	(0.875, 0.0350, 0.0063), (0.905, 0.0245, 0.0052), (0.925, 0.0135, 0.0040),
 ]
-BLADE_STATIONS_LOD1 = [0, 1, 3, 5, 7, 9, 11, 13]
+# Las del LOD1, por su z (la lista del LOD0 lleva estaciones de más junto al arranque de la acanaladura).
+BLADE_STATIONS_LOD1_Z = [0.075, 0.145, 0.255, 0.420, 0.600, 0.750, 0.840, 0.905]
 
 # Índices de material en la malla final.
 M_BLADE, M_LEATHER, M_METAL, M_EMBER = 0, 1, 2, 3
@@ -245,7 +246,7 @@ def ellipse_outline(cx, cz, rx, rz, count=10):
 
 # --- La hoja (idéntica en todas las variantes) ----------------------------------------------------
 
-def blade_section(w, ht, edge, fuller):
+def blade_section(w, ht, edge, fuller, groove_scale=1.0):
 	"""Anillo de 18 puntos de la sección: bisel de filo, bisel mayor, cara plana y acanaladura.
 
 	Devuelve [(x, y, u)] empezando por el filo derecho, por arriba hacia la izquierda y de vuelta
@@ -256,8 +257,10 @@ def blade_section(w, ht, edge, fuller):
 	bevel_x = 1.0 - (1.0 - tex.S_BEVEL) * e
 	bevel_y = 0.95 - 0.65 * e
 	shoulder_x = 0.93 - (0.93 - tex.S_SHOULDER) * e
-	rim = tex.S_FULLER_RIM
-	floor_x = tex.S_FULLER_FLOOR
+	# La acanaladura nace y acaba en ojiva: su ancho (rim y suelo) crece con `groove_scale`, igual que en la
+	# textura (sword_textures.fuller_width_scale).
+	rim = tex.S_FULLER_RIM * groove_scale
+	floor_x = tex.S_FULLER_FLOOR * groove_scale
 	floor_y = 1.0 - 0.62 * fuller
 	top = [
 		(1.0, 0.0), (bevel_x, bevel_y), (shoulder_x, 1.0), (rim, 1.0), (floor_x, floor_y),
@@ -280,13 +283,13 @@ def blade_section_lod1(w, ht):
 def build_blade(detail):
 	part = new_part()
 	uv_layer = part.loops.layers.uv.verify()
-	stations = BLADE_STATIONS if detail == 0 else [BLADE_STATIONS[i] for i in BLADE_STATIONS_LOD1]
+	stations = BLADE_STATIONS if detail == 0 else [st for st in BLADE_STATIONS if st[0] in BLADE_STATIONS_LOD1_Z]
 	rings = []
 	for z, w, ht in stations:
 		if detail == 0:
 			edge = smoothstep(0.145, 0.195, z)
 			fuller = smoothstep(*tex.FULLER_START, z) * (1.0 - smoothstep(*tex.FULLER_END, z))
-			points = blade_section(w, ht, edge, fuller)
+			points = blade_section(w, ht, edge, fuller, float(tex.fuller_width_scale(z / TIP_Z)))
 		else:
 			points = blade_section_lod1(w, ht)
 		verts = [(part.verts.new((x, y, z)), u) for x, y, u in points]
@@ -386,8 +389,16 @@ def build_guard_boss(detail):
 	return finish(part, M_METAL, smooth=False, region=REGION_METAL, edge_region=REGION_EDGE)
 
 
-def guard_slab(outline, detail, region=REGION_METAL, half=0.0125, bevel=0.0045):
+def guard_slab(outline, detail, region=REGION_METAL, half=0.0125, bevel=0.0045, taper=None):
+	"""Pieza de guarda con volumen: una plancha con el bisel grande (sección en rombo achatado, no un
+	prisma de grosor constante) y, con `taper = (x_ini, x_fin, factor)`, afinándose hacia las puntas: el
+	grosor baja al `factor` entre |x| = x_ini y x_fin (de unos 2,5 cm en el centro a 1,2 cm en la punta)."""
 	part = slab(outline, -half, half, bevel=bevel if detail == 0 else 0.0, segments=1)
+	if taper is not None:
+		x0, x1, factor = taper
+		for vert in part.verts:
+			t = smoothstep(x0, x1, abs(vert.co.x))
+			vert.co.y *= 1.0 - (1.0 - factor) * t
 	return finish(part, M_METAL, smooth=False, region=region, edge_region=REGION_EDGE)
 
 
@@ -441,14 +452,14 @@ def guard_base(detail):
 	widths = [(0.0, 0.052), (0.03, 0.044), (0.07, 0.036), (0.11, 0.032), (0.14, 0.032),
 			(0.158, 0.040), (0.172, 0.048), (0.184, 0.042)]
 	half = swept_guard(widths, 0.070, 0.184, 0.002)
-	parts = [guard_slab(mirrored(half), detail, half=0.0145, bevel=0.0055)]
+	parts = [guard_slab(mirrored(half), detail, half=0.0150, bevel=0.0085, taper=(0.04, 0.17, 0.50))]
 	parts.append(gem(0.0, 0.092, 0.013, 0.0205, 0.0250))
 	parts.append(gem(0.0, 0.092, 0.013, -0.0250, -0.0205))
 	bulb_z = 0.092 + 0.070 * (0.172 / 0.184) ** 2.0
 	for side in (-1.0, 1.0):
 		# Un remache de oro en cada bulbo, a las dos caras.
-		parts.append(gem(side * 0.172, bulb_z, 0.0085, 0.0145, 0.0185))
-		parts.append(gem(side * 0.172, bulb_z, 0.0085, -0.0185, -0.0145))
+		parts.append(gem(side * 0.172, bulb_z, 0.0085, 0.0060, 0.0105))
+		parts.append(gem(side * 0.172, bulb_z, 0.0085, -0.0105, -0.0060))
 	return parts
 
 
@@ -478,7 +489,7 @@ def fang_half(center_z=0.092, bar_x=0.095, radius=0.115, sweep_deg=84.0, base_wi
 def guard_vardheim(detail):
 	"""Guarda de lobo: una barra recia que acaba en dos colmillos curvados hacia la punta."""
 	half = fang_half()
-	parts = [guard_slab(mirrored(half), detail, half=0.0145, bevel=0.0035)]
+	parts = [guard_slab(mirrored(half), detail, half=0.0150, bevel=0.0040, taper=(0.07, 0.19, 0.50))]
 	for side in (-1.0, 1.0):
 		# Una piedra de hielo en cada brazo de la barra, a las dos caras.
 		parts.append(facet_gem(side * 0.070, 0.092, 0.0105, 0.0055, 6, 0.0145, 1.0))
@@ -543,12 +554,12 @@ def half_sun_outline(center_z, hub, rays, lower_depth, lower_width=None, step=10
 
 
 def guard_solmarch(detail):
-	"""Guarda de medio sol, el sol partido del emblema: rayos solo del lado de la hoja, los dos largos
-	horizontales como gavilanes, y la mitad de abajo maciza (hacia la mano no sale ningún rayo)."""
-	rays = [(0.0, 0.195, 15.0), (32.0, 0.108, 12.0), (62.0, 0.094, 12.0), (118.0, 0.094, 12.0),
-			(148.0, 0.108, 12.0), (180.0, 0.195, 15.0)]
-	outline = half_sun_outline(0.092, 0.060, rays, 0.044, lower_width=0.068)
-	parts = [guard_slab(outline, detail, half=0.0135, bevel=0.0045)]
+	"""Guarda de medio sol, el sol partido del emblema: rayos gruesos y cortos solo del lado de la hoja (los dos
+	largos horizontales hacen de gavilanes) y la mitad de abajo maciza (hacia la mano no sale ningún rayo).
+	Sin rayos junto al recazo: de aguja desaparecen a 3 m y los pegados a la hoja parecían flotar."""
+	rays = [(0.0, 0.160, 16.0), (34.0, 0.106, 15.0), (146.0, 0.106, 15.0), (180.0, 0.160, 16.0)]
+	outline = half_sun_outline(0.092, 0.064, rays, 0.046, lower_width=0.070)
+	parts = [guard_slab(outline, detail, half=0.0145, bevel=0.0080, taper=(0.06, 0.16, 0.55))]
 	# La piedra solar, cálida y facetada, en el centro de las dos caras.
 	parts.append(facet_gem(0.0, 0.092, 0.022, 0.0120, 8, 0.0205, 1.0))
 	parts.append(facet_gem(0.0, 0.092, 0.022, 0.0120, 8, 0.0205, -1.0))
@@ -556,22 +567,24 @@ def guard_solmarch(detail):
 
 
 def guard_askarra(detail):
-	"""Guarda de forja: una barra maciza con las puntas cortadas a golpe de cincel, la de arriba más
-	alta, y un remache negro de hollín a cada lado. Recta y simétrica, para que no recuerde a un pico."""
+	"""Guarda de forja: una barra maciza de bronce con las puntas cortadas a golpe de cincel, la de arriba más
+	alta, y un remache negro de hollín a cada lado. La grieta de la hoja baja por el cuerpo de la guarda."""
 	half = [(0.0, 0.062), (0.100, 0.062), (0.168, 0.058), (0.206, 0.078), (0.208, 0.112),
 			(0.186, 0.140), (0.158, 0.124), (0.100, 0.116), (0.0, 0.116)]
-	parts = [guard_slab(mirrored(half), detail, half=0.0155, bevel=0.0060)]
+	parts = [guard_slab(mirrored(half), detail, half=0.0160, bevel=0.0090, taper=(0.07, 0.20, 0.50))]
 	for side in (-1.0, 1.0):
-		parts.append(facet_gem(side * 0.150, 0.090, 0.0095, 0.0050, 6, 0.0155, 1.0))
-		parts.append(facet_gem(side * 0.150, 0.090, 0.0095, 0.0050, 6, 0.0155, -1.0))
+		parts.append(facet_gem(side * 0.150, 0.090, 0.0095, 0.0050, 6, 0.0100, 1.0))
+		parts.append(facet_gem(side * 0.150, 0.090, 0.0095, 0.0050, 6, 0.0100, -1.0))
 	if detail == 0:
-		# Una raja de brasa en el centro de la barra, a las dos caras: la grieta empieza aquí.
+		# La grieta de la hoja sigue por las dos caras del cuerpo de la guarda (la pieza que abraza el recazo):
+		# baja en zigzag desde arriba y suelta dos ramas cortas hacia los lados.
+		trunk = [(0.003, 0.121), (-0.010, 0.109), (0.006, 0.097), (-0.006, 0.085), (0.002, 0.072)]
+		branches = [[(0.006, 0.097), (0.026, 0.092), (0.042, 0.099)], [(-0.010, 0.109), (-0.030, 0.104), (-0.044, 0.111)]]
 		for sign in (1.0, -1.0):
-			y0, y1 = (0.0150, 0.0175) if sign > 0 else (-0.0175, -0.0150)
-			parts.append(ember_bar((0.060, 0.068), (0.078, 0.092), 0.0050, y0, y1))
-			parts.append(ember_bar((0.078, 0.092), (0.068, 0.108), 0.0050, y0, y1))
-			parts.append(ember_bar((-0.060, 0.112), (-0.080, 0.092), 0.0050, y0, y1))
-			parts.append(ember_bar((-0.080, 0.092), (-0.070, 0.070), 0.0050, y0, y1))
+			y0, y1 = (0.0200, 0.0226) if sign > 0 else (-0.0226, -0.0200)
+			for chain, width in [(trunk, 0.0062)] + [(b, 0.0042) for b in branches]:
+				for p0, p1 in zip(chain, chain[1:]):
+					parts.append(ember_bar(p0, p1, width, y0, y1))
 	return parts
 
 
@@ -597,42 +610,57 @@ def pommel_outline(points, scale=1.0):
 	return [(x * 0.01 * scale, POMMEL_Z - d * 0.01 * scale) for x, d in points]
 
 
-# Cabeza de lobo de perfil, mirando a +X, en el plano de la hoja (cm; d = hacia fuera del cuero): la
-# nuca y el cuello cierran alrededor del anillo, la oreja tiesa sube a un lado del cuero, el hocico va
-# hacia delante con la mandíbula entreabierta y la gorguera de pelo cae en tres mechones.
-WOLF_HEAD = [
-	(2.4, -0.4), (3.0, 0.8), (3.9, 2.0), (5.4, 2.9), (7.5, 3.9), (8.3, 4.5), (8.5, 5.2), (8.0, 5.8),
-	(6.2, 6.0), (5.2, 6.1), (6.5, 6.8), (6.8, 7.5), (5.8, 8.2), (3.6, 8.2), (3.0, 10.4), (1.0, 8.4),
-	(-0.4, 11.0), (-1.6, 8.6), (-3.4, 10.0), (-3.7, 7.2), (-5.4, 7.4), (-4.6, 4.4), (-5.6, 3.2),
-	(-4.7, 1.6), (-6.2, -3.6), (-3.0, -0.2),
-]
-WOLF_SCALE = 0.86
-# Relieves de la cara del lobo (mismo plano, mismos cm): el interior de la oreja y la mejilla.
-WOLF_EAR_INNER = [(-3.6, -0.1), (-4.8, 1.3), (-5.4, -2.2)]
-WOLF_CHEEK = [(2.2, 3.3), (4.4, 4.0), (5.0, 5.1), (3.4, 5.8), (1.4, 5.4)]
-WOLF_EYE = (4.4, 3.5)
+# Cabeza de lobo de frente (cm; x a lo ancho, z hacia arriba, centrada en el eje del pomo): orejas tiesas,
+# frente, mejillas con pelo y hocico. Es el relieve de las dos caras de la rueda, mitad derecha de abajo a
+# arriba (la otra se espeja).
+WOLF_FACE_HALF = [(0.0, -1.95), (0.40, -1.95), (0.65, -1.70), (1.30, -1.10), (1.95, -0.45), (1.55, 0.25),
+		(1.60, 1.00), (1.05, 2.00), (0.55, 1.80), (0.50, 1.20), (0.0, 1.15)]
+WOLF_EYE_CM = (0.68, 0.35)
+# La rueda del pomo: centro, mitad del grosor y perfil (radio, posición axial) en metros.
+WOLF_WHEEL_CENTER_D = 0.040
+WOLF_WHEEL_PROFILE = [(0.0, -0.0150), (0.0240, -0.0150), (0.0262, -0.0178), (0.0294, -0.0178),
+		(0.0318, -0.0120), (0.0318, 0.0120), (0.0294, 0.0178), (0.0262, 0.0178), (0.0240, 0.0150),
+		(0.0, 0.0150)]
+# Ampliación de la cabeza de lobo sobre las medidas de WOLF_FACE_HALF (cabe en el hueco de la rueda; las
+# puntas de las orejas se montan sobre el aro).
+WOLF_HEAD_SCALE = 1.22
+
+
+def wheel(cz, profile, segments):
+	"""Rueda con el eje a lo largo de Y (de cara a la cámara de frente), centrada en z = `cz`.
+
+	`profile` es [(radio, posición axial)] de una cara a la otra: se modela como una pieza de revolución
+	alrededor de Z y se tumba para que el eje quede en Y.
+	"""
+	part = lathe(profile, segments, caps=True)
+	for vert in part.verts:
+		x, y, z = vert.co
+		vert.co = Vector((x, z, cz + y))
+	return finish(part, M_METAL, smooth=False, region=REGION_METAL)
 
 
 def pommel_vardheim(detail):
-	"""Pomo de lobo: la cabeza de perfil, en el plano de la hoja, cerrada alrededor del anillo del cuero
-	y con una gema de hielo por ojo."""
-	head = slab(pommel_outline(WOLF_HEAD, WOLF_SCALE), -0.0165, 0.0165,
-			bevel=0.0050 if detail == 0 else 0.0, segments=1)
-	parts = [finish(head, M_METAL, smooth=False, region=REGION_METAL, edge_region=REGION_EDGE)]
+	"""Pomo de lobo en volumen: una rueda gruesa (6 cm de diámetro, 3,5 de canto) centrada en el eje con la
+	cabeza de lobo en relieve en las dos caras (de frente se lee como cabeza, de perfil como un disco) y una
+	gema de hielo por ojo. Nada de planchas de perfil ni piedras en la espalda."""
+	center = POMMEL_Z - WOLF_WHEEL_CENTER_D
+	segments = 18 if detail == 0 else 8
+	stem = lathe([(0.0165, POMMEL_Z + 0.003), (0.0165, center + 0.0200)], 12 if detail == 0 else 8, scale_y=0.86)
+	parts = [finish(stem, M_METAL, smooth=False, region=REGION_METAL)]
+	parts.append(wheel(center, WOLF_WHEEL_PROFILE, segments))
 	if detail == 1:
 		return parts
-	ear = pommel_outline(WOLF_EAR_INNER, WOLF_SCALE)
-	cheek = pommel_outline(WOLF_CHEEK, WOLF_SCALE)
-	eye_x, eye_d = WOLF_EYE
-	eye = (eye_x * 0.01 * WOLF_SCALE, POMMEL_Z - eye_d * 0.01 * WOLF_SCALE)
+	k = 0.01 * WOLF_HEAD_SCALE
+	half = [(x * k, center + z * k) for x, z in WOLF_FACE_HALF]
+	head = mirrored(half)
 	for sign in (1.0, -1.0):
-		# Cada cara lleva sus relieves: se levantan desde la cara plana hacia fuera.
-		y0, y1 = (0.0150, 0.0200) if sign > 0 else (-0.0200, -0.0150)
-		parts.append(finish(slab(ear, y0, y1, bevel=0.0025), M_METAL, smooth=False,
-				region=REGION_METAL, edge_region=REGION_EDGE))
-		parts.append(finish(slab(cheek, y0, y1, bevel=0.0030), M_METAL, smooth=False,
-				region=REGION_METAL, edge_region=REGION_EDGE))
-		parts.append(facet_gem(eye[0], eye[1], 0.0085, 0.0055, 6, 0.0200, sign))
+		y0, y1 = (0.0150, 0.0215) if sign > 0 else (-0.0215, -0.0150)
+		# La cabeza en el metal pulido (más claro que el fondo de la rueda): se lee a distancia.
+		parts.append(finish(slab(head, y0, y1, bevel=0.0030), M_METAL, smooth=False,
+				region=REGION_EDGE, edge_region=REGION_EDGE))
+		for eye_side in (-1.0, 1.0):
+			parts.append(facet_gem(eye_side * WOLF_EYE_CM[0] * k, center + WOLF_EYE_CM[1] * k,
+					0.0066, 0.0045, 6, 0.0215, sign))
 	return parts
 
 
