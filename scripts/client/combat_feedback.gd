@@ -19,8 +19,14 @@ extends Node
 ## del evento, igual que los eventos ajenos. Sin cliente (el sandbox) no hay retardo y todo es
 ## inmediato.
 ## [br]
-## [br]- [b]Ganchos de sonido[/b]: la señal [signal sound_requested] con el nombre del sonido y su
-## posición. No hay audio todavía (ART-11): quien lo tenga, se conecta ahí.
+## [br]- [b]Ganchos de sonido y efectos[/b]: la señal [signal sound_requested] con el nombre del sonido y su
+## posición, y [signal hit_impact], una vez por cada HIT confirmado, sea de quien sea y bloqueado o no, en su tick de
+## dibujo, de la que cuelgan el sonido de impacto ([CombatAudio]) y las chispas ([CombatVfx]).
+## [br]- [b]Golpe predicho[/b] (ART-09, decisión 6 de calidad.md): mientras el golpe propio está activo se comprueba
+## contra las posiciones DIBUJADAS de los enemigos si alcanzaría a alguno ([method _try_predict]). Si es así, ya
+## suena el impacto, salen las chispas y la animación hace la parada de golpe (50 ms los ligeros, 80 ms los fuertes),
+## sin esperar al servidor ([signal hit_predicted]). Es solo cosmético: el número, el marcador y el DPS siguen
+## esperando al evento; y si el servidor lo confirma como golpe normal no se repite el sonido ni la chispa.
 ## [br]- Muerte y reaparición propias: [signal local_died] y [signal local_respawned].
 ## [br][br]
 ## [b]Acciones propias sin señales.[/b] La simulación no emite señales de combate (las repeticiones de
@@ -58,6 +64,16 @@ signal swing_active_changed(active: bool, attack_id: int)
 ## suena.
 signal sound_requested(sound: StringName, world_position: Vector3)
 
+## El golpe de [param event] ha dado en el punto [param position] (los pies de la víctima), sea quien sea quien
+## golpea, ya en el tick en que se dibuja. [param involves_me]: el jugador local es el atacante o la víctima.
+## [param already_predicted]: el golpe ya se enseñó como predicción local y es un golpe normal (no repetir sonido ni
+## chispa).
+signal hit_impact(event: NetMessages.EntityEvent, position: Vector3, involves_me: bool, already_predicted: bool)
+## El golpe propio activo alcanzaría a alguien según lo dibujado: [param position] son los pies de la víctima.
+signal hit_predicted(position: Vector3, heavy: bool)
+## [param net_id] muere en [param position] (los pies), en el tick en que se dibuja.
+signal entity_died(net_id: int, position: Vector3)
+
 const SOUND_SWING: StringName = &"swing"
 const SOUND_DODGE: StringName = &"dodge"
 const SOUND_HIT_DEALT: StringName = &"hit_dealt"
@@ -81,6 +97,17 @@ const SHAKE_PER_HEALTH_FRACTION: float = 0.25
 const SHAKE_MAX: float = 0.15
 const SHAKE_SECONDS: float = 0.18
 const BLOCKED_SHAKE_SCALE: float = 0.5
+## Parada de golpe (s) de la animación del atacante: un golpe ligero, uno fuerte, una parada y una muerte.
+const HITSTOP_LIGHT: float = 0.05
+const HITSTOP_HEAVY: float = 0.08
+const HITSTOP_PARRY: float = 0.10
+const HITSTOP_KILL: float = 0.10
+## Empujón de cámara (m) al lanzar el golpe fuerte y al conectar uno propio.
+const HEAVY_RELEASE_SHAKE: float = 0.05
+const HEAVY_DEALT_SHAKE: float = 0.04
+const PARRY_DEALT_SHAKE: float = 0.05
+## Segundos que vale un golpe predicho para saltarse el sonido y la chispa del mismo golpe confirmado.
+const PREDICTION_WINDOW_SECONDS: float = 1.2
 ## Texto de los números de golpes parados y bloqueados sin daño.
 const TEXT_PARRIED: String = "Parada"
 const TEXT_BLOCKED: String = "Bloqueado"
@@ -120,6 +147,11 @@ var _flash_left: Array[float] = []
 var _flash_materials: Array[StandardMaterial3D] = []
 var _flash_peaks: Array[float] = []
 var _events_handled: int = 0
+# Golpe predicho en local: el ataque, cuándo (ms) y si ya se predijo en este barrido.
+var _predicted_attack: int = -1
+var _predicted_msec: int = -1000000
+var _predicted_this_swing: bool = false
+var _predictions_made: int = 0
 # Reacciones visuales de eventos propios sobre un remoto que esperan a su tick de dibujo.
 var _deferred: CombatEventQueue = CombatEventQueue.new()
 
@@ -220,12 +252,13 @@ func handle_event(event: NetMessages.EntityEvent, is_own: bool = false) -> void:
 			_on_respawn(event, is_own)
 
 
-## Variante de marcador y de número para un HIT: muerte, bloqueado o parado, fuerte o normal.
+## Variante de marcador y de número para un HIT: muerte, parada, bloqueado, fuerte o normal.
 func kind_of(event: NetMessages.EntityEvent) -> int:
 	if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL):
 		return HitMarker.Kind.KILL
-	if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED) \
-			or event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED):
+	if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED):
+		return HitMarker.Kind.PARRY
+	if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED):
 		return HitMarker.Kind.BLOCKED
 	var attack: AttackTicks = CombatCatalog.attack(event.attack_id)
 	if attack != null and attack.heavy:
@@ -266,7 +299,7 @@ func _on_hit(event: NetMessages.EntityEvent, is_own: bool) -> void:
 	var blocked: bool = event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED)
 	var kind: int = kind_of(event)
 	var position: Vector3 = get_entity_position(event.net_id)
-	if event.amount > 0 and not _defer_remote_reaction(event, is_own):
+	if not _defer_remote_reaction(event, is_own):
 		_react_to_hit(event)
 	if attacker_is_me:
 		_dps.add_hit(event.tick, event.amount)
@@ -277,6 +310,8 @@ func _on_hit(event: NetMessages.EntityEvent, is_own: bool) -> void:
 					event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_CRITICAL),
 					_text_for(event, parried, blocked))
 		hit_confirmed.emit(kind, event.amount, event)
+		if heavy_or_parry_dealt(event):
+			_shake_dealt(parried)
 		_request_sound(SOUND_PARRY if parried else (SOUND_BLOCK if blocked else SOUND_HIT_DEALT),
 				position)
 	if victim_is_me:
@@ -310,14 +345,19 @@ func _on_kill(event: NetMessages.EntityEvent, is_own: bool) -> void:
 # Lo que se ve en la víctima de un HIT con daño: su placa enseña la vida y destella (a plena intensidad si el golpe
 # es del jugador local o lo recibe él, tenue si es de otros).
 func _react_to_hit(event: NetMessages.EntityEvent) -> void:
-	entity_damaged.emit(event.net_id)
 	var own_id: int = get_own_net_id()
 	var involves_me: bool = own_id != 0 and (event.attacker == own_id or event.net_id == own_id)
-	flash(event.net_id, 1.0 if involves_me else FLASH_OTHERS_INTENSITY)
+	if event.amount > 0:
+		entity_damaged.emit(event.net_id)
+		flash(event.net_id, 1.0 if involves_me else FLASH_OTHERS_INTENSITY)
+	_emit_impact(event, involves_me)
 
 
 func _react_to_death(event: NetMessages.EntityEvent) -> void:
-	_request_sound(SOUND_DEATH, get_entity_position(event.net_id))
+	var position: Vector3 = get_entity_position(event.net_id)
+	_request_sound(SOUND_DEATH, position)
+	if position != Vector3.INF:
+		entity_died.emit(event.net_id, position)
 
 
 func _react_to_kill(event: NetMessages.EntityEvent) -> void:
@@ -394,6 +434,146 @@ func _request_sound(sound: StringName, position: Vector3) -> void:
 	sound_requested.emit(sound, position if position != Vector3.INF else Vector3.ZERO)
 
 
+# true si el golpe propio es fuerte o una parada (los que empujan la cámara al conectar).
+func heavy_or_parry_dealt(event: NetMessages.EntityEvent) -> bool:
+	if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED):
+		return true
+	var attack: AttackTicks = CombatCatalog.attack(event.attack_id)
+	return attack != null and attack.heavy
+
+
+func _shake_dealt(parried: bool) -> void:
+	if not camera_shake_enabled or not is_instance_valid(_camera_rig):
+		return
+	_camera_rig.add_shake(PARRY_DEALT_SHAKE if parried else HEAVY_DEALT_SHAKE, SHAKE_SECONDS * 0.7)
+
+
+# Avisa del impacto de [param event] (ver [signal hit_impact]) y da la parada de golpe al atacante (y a los dos en una
+# parada o una muerte) si no se le dio ya al predecir el golpe.
+func _emit_impact(event: NetMessages.EntityEvent, involves_me: bool) -> void:
+	var position: Vector3 = get_entity_position(event.net_id)
+	if position == Vector3.INF:
+		return
+	var blocked: bool = event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED)
+	var parried: bool = event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED)
+	var already: bool = _consume_prediction(event) and not blocked and not parried
+	hit_impact.emit(event, position, involves_me, already)
+	var attack: AttackTicks = CombatCatalog.attack(event.attack_id)
+	var heavy: bool = attack != null and attack.heavy
+	var lethal: bool = event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL)
+	var seconds: float = HITSTOP_HEAVY if heavy else HITSTOP_LIGHT
+	if parried:
+		seconds = HITSTOP_PARRY
+	elif lethal:
+		seconds = maxf(seconds, HITSTOP_KILL)
+	# Un golpe ya predicho dio su parada de golpe al lanzarse; solo la muerte añade una más larga.
+	if already and not lethal:
+		return
+	if event.attacker != 0 and event.attacker != event.net_id:
+		_hitstop(event.attacker, seconds)
+	if parried or lethal:
+		_hitstop(event.net_id, seconds)
+
+
+# true (y lo gasta) si [param event] es el golpe propio que ya se predijo en local hace nada.
+func _consume_prediction(event: NetMessages.EntityEvent) -> bool:
+	var own_id: int = get_own_net_id()
+	if own_id == 0 or event.attacker != own_id or _predicted_attack != event.attack_id:
+		return false
+	var age: float = float(Time.get_ticks_msec() - _predicted_msec) / 1000.0
+	if age > PREDICTION_WINDOW_SECONDS:
+		return false
+	_predicted_attack = -1
+	return true
+
+
+# Congela [param seconds] la animación de combate de la entidad [param net_id] (solo la animación: la simulación
+# no se entera).
+func _hitstop(net_id: int, seconds: float) -> void:
+	var body: PlayerCharacter = _body_of(net_id)
+	if body == null:
+		return
+	var visual: HumanoidVisual = HumanoidVisual.of_body(body)
+	if visual != null:
+		visual.start_hitstop(seconds)
+
+
+## Golpes que se han predicho en local desde que existe (las pruebas).
+func get_predictions_made() -> int:
+	return _predictions_made
+
+
+## true si [param net_id] es un PNJ de los Huecos (suena y se ve distinto al humano).
+func is_hollow(net_id: int) -> bool:
+	if not is_instance_valid(_client) or net_id == 0:
+		return false
+	var view: RemotePlayerView = _client.get_remote_world().get_view(net_id)
+	if view == null or view.get_kind() != NetProtocol.EntityKind.NPC:
+		return false
+	var definition: NpcDefinition = NpcCatalog.get_by_number(view.get_npc_def_id())
+	return definition != null and definition.weapon_id == &"npc_hollow"
+
+
+## Pies del personaje local (Vector3.ZERO si no hay).
+func get_local_position() -> Vector3:
+	var character: PlayerCharacter = _local_character()
+	if character == null:
+		return Vector3.ZERO
+	return character.global_position if character.is_inside_tree() else character.position
+
+
+## Hacia dónde mira el personaje local (horizontal, unitario).
+func get_local_heading() -> Vector3:
+	var character: PlayerCharacter = _local_character()
+	if character == null:
+		return Vector3.FORWARD
+	return Basis(Vector3.UP, character.yaw) * Vector3.FORWARD
+
+
+## Reino del jugador local (código de [enum NetProtocol.Realm]; 0 si no se sabe).
+func get_local_realm() -> int:
+	if is_instance_valid(_client) and _client.get_welcome() != null:
+		return _client.get_welcome().realm
+	return 0
+
+
+## true si el remoto dibujado [param view] es alguien al que el jugador local puede dañar (reino y zona; los PNJ,
+## siempre) y no está muerto.
+func is_valid_target(view: RemotePlayerView) -> bool:
+	if not is_instance_valid(_client) or view == null or not view.is_drawn():
+		return false
+	if (view.get_drawn_action() & 15) == CombatState.Action.DEAD:
+		return false
+	var welcome: NetMessages.Welcome = _client.get_welcome()
+	if welcome == null:
+		return false
+	return FactionRules.can_damage(welcome.realm, view.get_realm(), StringName(welcome.zone_id))
+
+
+# Comprueba el golpe propio activo contra las posiciones dibujadas de los enemigos y, si alcanza a alguno, lo
+# predice: sonido, chispa y parada de golpe ya, sin esperar al servidor (solo cosmético).
+func _try_predict(character: PlayerCharacter, state: CombatState) -> void:
+	if not is_instance_valid(_client):
+		return
+	var attack: AttackTicks = CombatCatalog.attack(state.action_id)
+	if attack == null or attack.shape == null:
+		return
+	var origin: Vector3 = character.global_position if character.is_inside_tree() else character.position
+	for view: RemotePlayerView in _client.get_remote_world().get_views():
+		if view.get_net_id() == get_own_net_id() or not is_valid_target(view):
+			continue
+		var feet: Vector3 = view.get_drawn_position()
+		if HitShapes.sector_hits_capsule(origin, character.yaw, attack.shape, feet,
+				HitShapes.CAPSULE_RADIUS, HitShapes.CAPSULE_HEIGHT):
+			_predicted_this_swing = true
+			_predicted_attack = state.action_id
+			_predicted_msec = Time.get_ticks_msec()
+			_predictions_made += 1
+			hit_predicted.emit(feet, attack.heavy)
+			_hitstop(get_own_net_id(), HITSTOP_HEAVY if attack.heavy else HITSTOP_LIGHT)
+			return
+
+
 # --- Destello ---------------------------------------------------------------------------------
 
 ## Destello breve (material_overlay blanco y aditivo) sobre las mallas de la entidad [param net_id] con la fuerza
@@ -468,6 +648,8 @@ func _make_flash_material(alpha: float) -> StandardMaterial3D:
 
 
 func _exit_tree() -> void:
+	if OS.has_environment("ELDMARK_FEEL_LOG"):
+		print("[feedback] eventos %d, golpes predichos en local %d" % [_events_handled, _predictions_made])
 	# Que ninguna malla se quede teñida si el reparto desaparece a medias.
 	for mesh: MeshInstance3D in _flash_meshes:
 		if is_instance_valid(mesh):
@@ -500,12 +682,19 @@ func observe_action() -> void:
 			action_changed.emit(state.action, state.action_id, state.action_tick, previous)
 			if state.action == CombatState.Action.DODGE:
 				_request_sound(SOUND_DODGE, character.global_position)
+			if previous == CombatState.Action.CHARGE and state.action == CombatState.Action.HEAVY \
+					and camera_shake_enabled and is_instance_valid(_camera_rig):
+				_camera_rig.add_shake(HEAVY_RELEASE_SHAKE, SHAKE_SECONDS)
 	var active: bool = ActionMachine.is_attack_active(state, character.last_input_tick)
 	if active != _swing_active:
 		_swing_active = active
 		swing_active_changed.emit(active, state.action_id if active else 0)
 		if active:
 			_request_sound(SOUND_SWING, character.global_position)
+		else:
+			_predicted_this_swing = false
+	if active and not _predicted_this_swing:
+		_try_predict(character, state)
 
 
 # true si [param key] es la misma acción que [param previous] con el inicio movido unos ticks (una

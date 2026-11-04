@@ -40,13 +40,23 @@ const PEAK_ALPHA: float = 0.5
 const LINE_ALPHA: float = 0.85
 ## Cuánto se aclara el color del reino en la línea del filo (0 = igual, 1 = blanco).
 const LINE_LIGHTEN: float = 0.45
+## Golpe fuerte: la cinta arranca antes en la hoja (más ancha), con más opacidad, más saturada y con una gota de brasa
+## en el color, y la línea del filo es de plena opacidad. La del fuerte salía pálida (revisión de la oleada 4).
+const HEAVY_INNER_FRACTION: float = 0.22
+const HEAVY_PEAK_ALPHA: float = 0.86
+const HEAVY_LINE_ALPHA: float = 1.0
+const HEAVY_HEAT: Color = Color(1.0, 0.62, 0.22, 1.0)
+const HEAVY_HEAT_MIX: float = 0.28
+const HEAVY_SATURATION_BOOST: float = 0.18
 ## Tamaño de la textura del degradado (u = edad, v = a lo largo de la hoja).
 const TEXTURE_SIZE: Vector2i = Vector2i(128, 64)
 ## Color por variante de la espada (ids de [constant SwordModel.MODELS]), saturado: lo que no se ve en la
 ## textura (que es blanca con alfa) lo pone este tinte.
-const DEFAULT_COLOR: Color = Color(0.30, 0.62, 1.00, 1.0)
+## La espada base lleva una estela de acero cálido (marfil plateado), no azul: el azul es de Vardheim y la base se
+## confundía con él (revisión de la oleada 4).
+const DEFAULT_COLOR: Color = Color(0.88, 0.84, 0.72, 1.0)
 const COLORS: Dictionary[StringName, Color] = {
-	&"base": Color(0.30, 0.62, 1.00, 1.0),
+	&"base": Color(0.88, 0.84, 0.72, 1.0),
 	&"vardheim": Color(0.16, 0.60, 1.00, 1.0),
 	&"solmarch": Color(1.00, 0.68, 0.12, 1.0),
 	&"askarra": Color(1.00, 0.26, 0.04, 1.0),
@@ -58,6 +68,7 @@ var _base: Node3D = null
 var _tip: Node3D = null
 var _skeleton: Skeleton3D = null
 var _active: bool = false
+var _heavy: bool = false
 var _color: Color = DEFAULT_COLOR
 var _last_update_frame: int = -100
 # Muestras de la más vieja a la más nueva: [base: Vector3, tip: Vector3, age: float].
@@ -117,11 +128,14 @@ func set_tint(color: Color) -> void:
 	_color = Color(color.r, color.g, color.b, 1.0)
 
 
-## Empieza o corta el barrido. Al cortarlo, lo que queda de cinta se apaga solo.
-func set_active(active: bool) -> void:
+## Empieza o corta el barrido; con [param heavy] es el del golpe fuerte (más ancha, opaca y saturada). Al cortarlo, lo
+## que queda de cinta se apaga solo.
+func set_active(active: bool, heavy: bool = false) -> void:
 	if active == _active:
 		return
 	_active = active
+	if active:
+		_heavy = heavy
 	if _active:
 		set_process(true)
 		# Con esqueleto, la primera muestra es la del próximo fotograma ya posado; sin él, esta misma.
@@ -131,6 +145,24 @@ func set_active(active: bool) -> void:
 
 func is_active() -> bool:
 	return _active
+
+
+## true si el barrido en curso (o el último) es el del golpe fuerte.
+func is_heavy() -> bool:
+	return _heavy
+
+
+## Color con el que se pinta el cuerpo de la cinta ahora: el del reino, o con brasa y más saturado si es el fuerte.
+func get_body_color() -> Color:
+	if not _heavy:
+		return _color
+	var hot: Color = _color.lerp(HEAVY_HEAT, HEAVY_HEAT_MIX)
+	return Color.from_hsv(hot.h, minf(hot.s + HEAVY_SATURATION_BOOST, 1.0), 1.0)
+
+
+## Opacidad máxima del cuerpo de la cinta ahora.
+func get_peak_alpha() -> float:
+	return HEAVY_PEAK_ALPHA if _heavy else PEAK_ALPHA
 
 
 ## Muestras vivas ahora mismo.
@@ -206,12 +238,12 @@ func _push(base: Vector3, tip: Vector3) -> void:
 ## y la punta.
 func get_ribbon_edges(index: int) -> PackedVector3Array:
 	var sample: Array = _samples[index]
-	return _edges(sample[0] as Vector3, sample[1] as Vector3)
+	return _edges(sample[0] as Vector3, sample[1] as Vector3, HEAVY_INNER_FRACTION if _heavy else INNER_FRACTION)
 
 
-static func _edges(base: Vector3, tip: Vector3) -> PackedVector3Array:
+static func _edges(base: Vector3, tip: Vector3, inner: float = INNER_FRACTION) -> PackedVector3Array:
 	var along: Vector3 = tip - base
-	return PackedVector3Array([base + along * INNER_FRACTION, tip])
+	return PackedVector3Array([base + along * inner, tip])
 
 
 # Catmull-Rom uniforme entre [param p1] y [param p2] en [param t] (de 0 a 1).
@@ -254,18 +286,21 @@ func _rebuild() -> void:
 		return
 	_instance.visible = true
 	var dense: Array[Array] = _dense_samples()
-	var body_color: Color = _color
-	var line_color: Color = _color.lerp(Color.WHITE, LINE_LIGHTEN)
+	var body_color: Color = get_body_color()
+	var line_color: Color = body_color.lerp(Color.WHITE, LINE_LIGHTEN)
+	var inner: float = HEAVY_INNER_FRACTION if _heavy else INNER_FRACTION
+	var peak: float = get_peak_alpha()
+	var line_peak: float = HEAVY_LINE_ALPHA if _heavy else LINE_ALPHA
 	_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP, _body_material)
 	for sample: Array in dense:
 		var age: float = float(sample[2])
 		var fade: float = _fade(age)
 		var u: float = clampf(age / FADE_SECONDS, 0.0, 1.0)
-		var edges: PackedVector3Array = _edges(sample[0] as Vector3, sample[1] as Vector3)
-		_mesh.surface_set_color(Color(body_color.r, body_color.g, body_color.b, PEAK_ALPHA * fade))
+		var edges: PackedVector3Array = _edges(sample[0] as Vector3, sample[1] as Vector3, inner)
+		_mesh.surface_set_color(Color(body_color.r, body_color.g, body_color.b, peak * fade))
 		_mesh.surface_set_uv(Vector2(u, 0.0))
 		_mesh.surface_add_vertex(edges[0])
-		_mesh.surface_set_color(Color(body_color.r, body_color.g, body_color.b, PEAK_ALPHA * fade))
+		_mesh.surface_set_color(Color(body_color.r, body_color.g, body_color.b, peak * fade))
 		_mesh.surface_set_uv(Vector2(u, 1.0))
 		_mesh.surface_add_vertex(edges[1])
 	_mesh.surface_end()
@@ -276,7 +311,7 @@ func _rebuild() -> void:
 		var base: Vector3 = sample[0] as Vector3
 		var tip: Vector3 = sample[1] as Vector3
 		# La línea se apaga más deprisa que el cuerpo: una chispa en el filo, no una cola.
-		var alpha: float = LINE_ALPHA * fade * fade
+		var alpha: float = line_peak * fade * fade
 		_mesh.surface_set_color(Color(line_color.r, line_color.g, line_color.b, 0.0))
 		_mesh.surface_add_vertex(base + (tip - base) * LINE_FRACTION)
 		_mesh.surface_set_color(Color(line_color.r, line_color.g, line_color.b, alpha))

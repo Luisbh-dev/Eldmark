@@ -7,6 +7,12 @@ extends Control
 ## [b]Pool.[/b] Hay como mucho [constant MAX_NUMBERS] etiquetas, que se crean al hacer falta y se
 ## reutilizan; si están todas en uso, un número nuevo recicla la más antigua.
 ## [br][br]
+## [b]Legibilidad (UI-12).[/b] Cada número nace desplazado a un lado, alternando izquierda y derecha y subiendo un
+## escalón más cuanto más números de la misma víctima siguen vivos, así «225» y «250» no se escriben uno encima del
+## otro y se leen como «2250». Nace un 40 % más grande y baja a su tamaño en 80 ms. El crítico lleva color y tamaño
+## propios (amarillo limón, más grande, con «!»); la muerte, blanco con borde cálido y el mayor tamaño; y el daño
+## recibido, un rojo que no se parece a ninguno de los de daño dado.
+## [br][br]
 ## [b]Agrupación.[/b] Los golpes sobre el mismo objetivo (y del mismo sentido: dados o recibidos) que
 ## llegan en los [constant GROUP_WINDOW_SECONDS] s siguientes al primero de un número se suman en él,
 ## en lugar de apilar etiquetas: el número se hace más grande y su vida vuelve a empezar.
@@ -14,7 +20,7 @@ extends Control
 ## El tiempo lo lleva [method advance] ([method _process] lo llama con el delta de cada fotograma).
 
 ## Variantes de los números (las mismas que las de [HitMarker]).
-enum Kind { HIT, HEAVY, BLOCKED, KILL }
+enum Kind { HIT, HEAVY, BLOCKED, KILL, PARRY }
 
 ## Etiquetas que se crean como mucho.
 const MAX_NUMBERS: int = 24
@@ -24,22 +30,32 @@ const GROUP_WINDOW_SECONDS: float = 0.3
 const LIFETIME_SECONDS: float = 0.9
 const RISE_SPEED: float = 70.0
 ## Tamaño de letra base y crecimiento con el daño acumulado (hasta [constant MAX_FONT_SIZE]).
-const BASE_FONT_SIZE: int = 22
-const MAX_FONT_SIZE: int = 40
+const BASE_FONT_SIZE: int = 24
+const MAX_FONT_SIZE: int = 44
 const FONT_SIZE_PER_100_DAMAGE: float = 6.0
 ## Altura (m) sobre los pies a la que se ancla un número.
 const ANCHOR_HEIGHT: float = 2.15
 const OUTLINE_SIZE: int = 5
-## Colores por variante de los golpes dados.
+## Colores por variante de los golpes dados. Crema, oro, gris azulado, dorado vivo y blanco: ninguno es rojo.
 const COLORS: Dictionary[int, Color] = {
 	Kind.HIT: Color(1.0, 0.95, 0.75, 1.0),
 	Kind.HEAVY: Color(1.0, 0.68, 0.2, 1.0),
 	Kind.BLOCKED: Color(0.65, 0.77, 0.92, 1.0),
-	Kind.KILL: Color(1.0, 0.3, 0.25, 1.0),
+	Kind.KILL: Color(1.0, 1.0, 1.0, 1.0),
+	Kind.PARRY: Color(1.0, 0.86, 0.35, 1.0),
 }
-## Color de los números de daño recibido.
-const TAKEN_COLOR: Color = Color(1.0, 0.28, 0.28, 1.0)
+## Color del golpe crítico (amarillo limón) y del contorno de la muerte (cálido).
+const CRITICAL_COLOR: Color = Color(1.0, 0.92, 0.2, 1.0)
+const KILL_OUTLINE_COLOR: Color = Color(0.85, 0.35, 0.05, 0.95)
+## Color de los números de daño recibido (un rojo carmesí, más oscuro que el de la sangre y el de la muerte).
+const TAKEN_COLOR: Color = Color(0.95, 0.22, 0.24, 1.0)
 const OUTLINE_COLOR: Color = Color(0.0, 0.0, 0.0, 0.85)
+## Dispersión lateral al nacer (px), escalón vertical por número vivo de la misma víctima (px), tamaño con el que
+## nace (1 = sin salto) y tiempo (s) que tarda en bajar a su tamaño.
+const SPREAD_PX: float = 34.0
+const STACK_STEP_PX: float = 26.0
+const POP_SCALE: float = 1.4
+const POP_SECONDS: float = 0.08
 
 ## false: no se muestra ningún número (opción del jugador).
 var enabled: bool = true:
@@ -67,6 +83,7 @@ class _Number:
 	var group_age: float = 0.0
 	var hits: int = 1
 	var text_override: String = ""
+	var offset: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
@@ -114,6 +131,7 @@ func add_number(target_id: int, world_position: Vector3, amount: int, variant: i
 	created.amount = amount
 	created.world_position = world_position
 	created.text_override = text_override
+	created.offset = _spread_offset(target_id, taken)
 	_active.append(created)
 	_spawned_total += 1
 	_refresh(created)
@@ -212,6 +230,23 @@ func _release(label: Label) -> void:
 	label.visible = false
 
 
+# Dónde nace un número respecto al ancla: a un lado (alternando) y un escalón más arriba por cada número vivo de la
+# misma víctima y sentido, para que no se pisen.
+func _spread_offset(target_id: int, taken: bool) -> Vector2:
+	var alive: int = 0
+	for number: _Number in _active:
+		if number.target_id == target_id and number.taken == taken:
+			alive += 1
+	var side: float = -1.0 if (_spawned_total % 2) == 0 else 1.0
+	return Vector2(side * SPREAD_PX * (0.6 + 0.4 * float(alive % 3 + 1) / 3.0),
+			-STACK_STEP_PX * float(mini(alive, 4)))
+
+
+## Desplazamiento de nacimiento del número activo [param index] (para las pruebas).
+func get_number_offset(index: int) -> Vector2:
+	return _active[index].offset if index >= 0 and index < _active.size() else Vector2.ZERO
+
+
 # Texto, tamaño y color según el daño acumulado y la variante.
 func _refresh(number: _Number) -> void:
 	var label: Label = number.label
@@ -225,9 +260,16 @@ func _refresh(number: _Number) -> void:
 			* float(number.amount) / 100.0), BASE_FONT_SIZE, MAX_FONT_SIZE)
 	if number.variant == Kind.HEAVY or number.critical:
 		font_size = mini(font_size + 4, MAX_FONT_SIZE)
-	label.add_theme_font_size_override(&"font_size", font_size)
 	var color: Color = TAKEN_COLOR if number.taken else COLORS[number.variant]
+	if number.critical and not number.taken and number.variant != Kind.KILL:
+		color = CRITICAL_COLOR
+		font_size = mini(font_size + 4, MAX_FONT_SIZE + 4)
+	if number.variant == Kind.KILL and not number.taken:
+		font_size = MAX_FONT_SIZE
+	label.add_theme_font_size_override(&"font_size", font_size)
 	label.add_theme_color_override(&"font_color", color)
+	label.add_theme_color_override(&"font_outline_color",
+			KILL_OUTLINE_COLOR if number.variant == Kind.KILL and not number.taken else OUTLINE_COLOR)
 	label.modulate.a = 1.0
 
 
@@ -244,4 +286,7 @@ func _place(number: _Number) -> void:
 			return
 		screen = _camera.unproject_position(anchor)
 	screen.y -= number.age * RISE_SPEED
+	screen += number.offset
 	label.position = screen - label.size * 0.5
+	var pop: float = lerpf(POP_SCALE, 1.0, clampf(number.age / POP_SECONDS, 0.0, 1.0))
+	label.scale = Vector2.ONE * pop

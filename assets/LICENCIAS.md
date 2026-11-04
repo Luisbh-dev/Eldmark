@@ -154,6 +154,19 @@ versión; se anota la fecha del archivo usado dentro del zip.
 | Carpeta en el repo | `assets/textures/terrain/watercolor/` |
 | Créditos | No obligatorios; si se acredita, el autor pide "Jonas Voland" |
 
+### Kenney Impact Sounds (solo los pasos de hierba y de madera)
+
+| Campo | Valor |
+|---|---|
+| Autor | Kenney Vleugels (www.kenney.nl) |
+| Versión / archivo | Impact Sounds 1.0 (19-12-2019), `kenney_impact-sounds.zip`, sha256 `029d734af1582474edf3a694d1b0cebc97c1c152f2f39fa34d4c2bafc5de77f8`, descargado el 3 de noviembre de 2026. Usados, sin modificar (solo renombrados): `footstep_grass_000` a `004` como `assets/audio/sfx/step_grass/step_grass_01` a `05.ogg` y `footstep_wood_000` a `004` como `assets/audio/sfx/step_wood/step_wood_01` a `05.ogg` |
+| URL | https://kenney.nl/assets/impact-sounds |
+| Licencia | CC0 1.0 Universal |
+| Dónde se indica | `License.txt` dentro del zip |
+| Carpeta en el repo | `assets/audio/sfx/step_grass/` y `assets/audio/sfx/step_wood/` |
+| Créditos | No obligatorios (cortesía: "Kenney" o "www.kenney.nl") |
+| Nota | El resto de pasos y todos los sonidos de combate son de producción propia (ver más abajo). Los demás packs de audio descargados (Kenney RPG Audio, Still North Weapon Impacts, rubberduck 80 CC0 RPG SFX) solo se usan en la hoja de escucha `build/o4_hoja_escucha/` (`tools/audio/listening_sheet.py`), que no se versiona; si el usuario elige alguna de sus alternativas, se copia entonces al repo y se anota aquí. |
+
 ## Fuentes (pendientes: tarea del usuario)
 
 `assets/fonts/` está vacío: **faltan las fuentes OFL elegidas** para la interfaz (decisión del
@@ -191,7 +204,7 @@ declara una licencia propia:
 - Tema de interfaz `assets/ui/theme/eldmark_theme.tres` (generado por `tools/ui/build_theme.gd` a
   partir de `UIPalette`).
 - Efectos de golpe (ART-09) `scenes/vfx/`: escenas (`hit_metal_spark`, `hit_flesh`, `hit_cloth`,
-  `hit_block_wood`, `parry_flash`, `dust_kick`, `weapon_trail` y `charge_aura`), sombreadores
+  `hit_block_wood`, `parry_flash`, `dust_kick`, `weapon_trail`, `charge_aura` y `shield_wall`), sombreadores
   `scenes/vfx/shaders/*.gdshader` (escritos a mano para Eldmark: formas de luz, chorros de sangre, polvo con
   luz y sombra, estela, brillo de la hoja y distorsión de calor), materiales `scenes/vfx/materials/*.tres` y
   texturas `scenes/vfx/textures/*.png`. No hay nada de terceros: las texturas se generan con
@@ -216,7 +229,8 @@ declara una licencia propia:
   contra el listón de calidad y dibuja `tools/audio/analyze_sfx.py` (espectrogramas, hojas y comparativas
   en `build/audio/`, no versionados). `niveles.json` lleva la sonoridad de cada archivo, el recorte de
   volumen por grupo, el instante del pico (`pico_s`) para sincronizar los barridos con `data/combat` y el
-  aleatorizador recomendado. Todavía no están conectados al juego.
+  aleatorizador recomendado. Desde la oleada 4 de calidad los conecta `CombatAudio` (`scripts/client/audio/combat_audio.gd`) con los bancos
+  de `CombatSoundBank`; a los pasos de tierra y de piedra se suman los de hierba y de madera de Kenney (arriba).
 
 - Torreón del fuerte (ART-57), versión 2, modelado y pintado desde cero con código, sin fotos, IA ni
   texturas de terceros: `assets/models/environment/custom/fort_keep.glb` (tres niveles de detalle, el nodo

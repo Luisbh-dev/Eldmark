@@ -87,6 +87,9 @@ var _camera_rig: CameraRig = null
 var _client: NetClient = null
 var _world: Node = null
 var _feedback: CombatFeedback = null
+# Audio y efectos del combate (ART-11, ART-09): se conectan al reparto de la sensación de combate.
+var _combat_audio: CombatAudio = null
+var _combat_vfx: CombatVfx = null
 var _debug_refresh_left: float = 0.0
 var _health_initialized: bool = false
 # Quién te mató y con qué (del DEATH propio), hasta que se use para la pantalla de muerte.
@@ -428,6 +431,16 @@ func get_feedback() -> CombatFeedback:
 	return _feedback
 
 
+## Audio del combate (null hasta [method bind]).
+func get_combat_audio() -> CombatAudio:
+	return _combat_audio
+
+
+## Efectos de golpe (null hasta [method bind] o sin personaje).
+func get_combat_vfx() -> CombatVfx:
+	return _combat_vfx
+
+
 ## true mientras la interfaz de juego está atenuada por la pantalla de muerte.
 func is_dimmed() -> bool:
 	return _dimmed
@@ -447,6 +460,19 @@ func _setup_feedback() -> void:
 		_feedback.local_died.connect(_on_local_died)
 		_feedback.local_respawned.connect(_on_local_respawned)
 	_feedback.setup(_client, _camera_rig, _character, _marker, _numbers)
+	if _combat_audio == null:
+		_combat_audio = CombatAudio.new()
+		add_child(_combat_audio)
+	_combat_audio.bind(_feedback)
+	# Los efectos cuelgan del mundo (van en coordenadas globales): del personaje, que se recrea con la zona.
+	if is_instance_valid(_character) and (not is_instance_valid(_combat_vfx)
+			or _combat_vfx.get_parent() != _character):
+		if is_instance_valid(_combat_vfx):
+			_combat_vfx.queue_free()
+		_combat_vfx = CombatVfx.new()
+		_character.add_child(_combat_vfx)
+	if is_instance_valid(_combat_vfx):
+		_combat_vfx.bind(_feedback)
 
 
 # Crea (de nuevo, si ya había una) la interfaz de guerra y la conecta con el cliente. Va por debajo de la

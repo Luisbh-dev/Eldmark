@@ -155,13 +155,19 @@ static func get_sword_variant(skeleton: Skeleton3D) -> StringName:
 
 ## Lanza o corta la estela de la espada de [param skeleton] (el golpe está activo o ha terminado). No hace nada
 ## sin modelo de espada.
-static func set_swing_active(skeleton: Skeleton3D, active: bool) -> void:
+static func set_swing_active(skeleton: Skeleton3D, active: bool, heavy: bool = false) -> void:
 	var root: Node3D = _sword_root(skeleton)
 	if root == null:
 		return
 	var trail: SwordTrail = root.get_node_or_null(NodePath(SWORD_TRAIL_NODE)) as SwordTrail
 	if trail != null:
-		trail.set_active(active)
+		trail.set_active(active, heavy)
+
+
+## El nodo de la espada de [param skeleton] (la raíz del modelo, cuyo eje +X o +Y sigue la hoja según el agarre), o
+## null si no hay espada. De él cuelga el aura de carga.
+static func get_sword_node(skeleton: Skeleton3D) -> Node3D:
+	return _sword_root(skeleton)
 
 
 # El nodo [constant SWORD_MODEL_NODE] de la espada, o null (sin espada instalada o con la caja de reserva).
