@@ -32,7 +32,7 @@ const SLOT_SIZE: Vector2 = Vector2(52.0, 52.0)
 ## Segundos que dura el destello de «lista».
 const FLASH_SECONDS: float = 0.3
 ## Margen (px) entre el borde y el icono.
-const ICON_MARGIN: float = 5.0
+const ICON_MARGIN: float = 3.0
 const BORDER_WIDTH: int = 2
 const COUNT_FONT_SIZE: int = 14
 const COOLDOWN_FONT_SIZE: int = 18

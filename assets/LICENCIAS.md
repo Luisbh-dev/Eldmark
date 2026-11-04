@@ -154,24 +154,23 @@ versión; se anota la fecha del archivo usado dentro del zip.
 | Carpeta en el repo | `assets/textures/terrain/watercolor/` |
 | Créditos | No obligatorios; si se acredita, el autor pide "Jonas Voland" |
 
-## Fuentes (pendientes: tarea del usuario)
+## Fuentes de la interfaz (UI-02)
 
-`assets/fonts/` está vacío: **faltan las fuentes OFL elegidas** para la interfaz (decisión del
-backlog, UI-02) y por ahora el tema usa la fuente por defecto del motor. No se han podido bajar con
-garantías de licencia desde el entorno de desarrollo, así que quedan pendientes de añadir a mano:
+Tres familias de Google Fonts, todas bajo la SIL Open Font License 1.1 (la OFL pide conservar el aviso
+de copyright y la licencia dentro del juego exportado: los `OFL-*.txt` están junto a los archivos). Origen:
+repositorio https://github.com/google/fonts (carpetas `ofl/cinzel`, `ofl/notosans` y `ofl/imfellenglishsc`,
+rama main, descargadas el 2026-11-03 a `../Eldmark-raw/fuentes_google_fonts/`). Se renombraron al copiarlas
+(sin corchetes en el nombre); no se modificaron.
 
-| Uso | Fuente elegida | Licencia | Archivo esperado |
+| Uso | Familia y copyright | Archivo en el repo | Archivo de origen |
 |---|---|---|---|
-| Cuerpo de texto y números | Noto Sans (Google / Noto Project) | SIL OFL 1.1 | `assets/fonts/NotoSans-Regular.ttf` |
-| Títulos y pestañas | Cinzel (Natanael Gama) o Alegreya SC (Juan Pablo del Peral) | SIL OFL 1.1 | `assets/fonts/Cinzel-Regular.ttf` |
+| Cuerpo de texto, números y placas | Noto Sans, (c) 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | `assets/fonts/NotoSans-Variable.ttf`, licencia `OFL-NotoSans.txt` | `NotoSans[wdth,wght].ttf` (variable) |
+| Títulos, nombres de jefe, avisos y pestañas | Cinzel, (c) 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel) | `assets/fonts/Cinzel-Variable.ttf`, licencia `OFL-Cinzel.txt` | `Cinzel[wght].ttf` (variable) |
+| Rótulos de lugares del mapa | IM Fell English SC, (c) 2010 Igino Marini (mail@iginomarini.com) | `assets/fonts/IMFellEnglishSC-Regular.ttf`, licencia `OFL-IMFellEnglishSC.txt` | `IMFeENsc28P.ttf` |
 
-Pasos: descargar cada familia de su origen oficial (Google Fonts o el repositorio del autor), copiar el
-`.ttf` con el nombre de la tabla (los `.ttf` van por Git LFS, ver `.gitattributes`) junto con su
-`OFL.txt`, anotar aquí autor, versión, fecha, URL y licencia (como en los demás packs), comprobar que
-la `ñ` y las tildes salen bien y ejecutar `godot --headless --path . -s res://tools/ui/build_theme.gd`
-para que el tema las cablee (`UIThemeBuilder` carga esas rutas si existen). Si se elige Alegreya SC,
-basta cambiar `UIThemeBuilder.TITLE_FONT_PATH`. La OFL pide conservar el aviso de copyright y la
-licencia de cada familia dentro del juego exportado.
+`UIThemeBuilder` las cablea en el tema (`assets/ui/theme/eldmark_theme.tres`, se regenera con
+`godot --headless --path . -s res://tools/ui/build_theme.gd`) y `UIFonts` se las da al código que dibuja
+texto a mano. Las dos grandes son fuentes variables: la seminegrita y la negrita salen del eje `wght`.
 
 ## Contenido propio (no es de terceros)
 

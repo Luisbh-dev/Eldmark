@@ -17,16 +17,27 @@ const PLATE_SIZE: Vector2 = Vector2(160.0, 56.0)
 const MAX_STATUS_ICONS: int = 4
 const DOWNED_BAR_COLOR: Color = Color(0.95, 0.55, 0.15, 1.0)
 const BAR_SIZE: Vector2 = Vector2(84.0, 7.0)
+## Barra de quien está cerca (menos de [constant NEAR_RANGE] m): algo mayor, para leerla de un vistazo.
+const BAR_SIZE_NEAR: Vector2 = Vector2(108.0, 9.0)
+const NEAR_RANGE: float = 15.0
 const FONT_SIZE: int = 15
 const OUTLINE_SIZE: int = 4
 const BAR_BACK_COLOR: Color = Color(0.03, 0.03, 0.04, 0.75)
-const ALLY_BAR_COLOR: Color = Color(0.36, 0.8, 0.38, 1.0)
-const ENEMY_BAR_COLOR: Color = Color(0.86, 0.2, 0.18, 1.0)
+const ALLY_BAR_COLOR: Color = UIPalette.ALLY
+const ENEMY_BAR_COLOR: Color = UIPalette.ENEMY
 const OUTLINE_COLOR: Color = Color(0.0, 0.0, 0.0, 0.85)
 ## Color del nivel delante del nombre. # TODO(arte): provisional.
 const LEVEL_COLOR: Color = Color(0.78, 0.76, 0.7, 1.0)
 const TEXT_LEVEL: String = "Nv %d"
 
+## Marca de bando sobre la cabeza (UI-56): ninguna, aliado (círculo) o enemigo (rombo).
+enum Mark { NONE, ALLY, ENEMY }
+## Lado (px) de la marca.
+const MARK_SIZE: float = 11.0
+
+var _mark: int = Mark.NONE
+var _mark_color: Color = Color.WHITE
+var _near: bool = false
 var _text: String = ""
 var _color: Color = Color.WHITE
 var _show_name: bool = true
@@ -83,6 +94,8 @@ func release() -> void:
 	_net_id = 0
 	_downed = false
 	_level = 0
+	_mark = Mark.NONE
+	_near = false
 	var none: Array[StatusTracker.Entry] = []
 	_statuses.show_entries(none, 0)
 
@@ -157,9 +170,60 @@ func is_ally() -> bool:
 	return _ally
 
 
+## Marca de bando sobre la cabeza ([enum Mark]) con el color del reino; [constant Mark.NONE] la quita.
+func set_mark(mark: int, color: Color = Color.WHITE) -> void:
+	if _mark != mark or _mark_color != color:
+		_mark = mark
+		_mark_color = color
+		queue_redraw()
+
+
+func get_mark() -> int:
+	return _mark
+
+
+## Cerca (menos de [constant NEAR_RANGE] m): la barra se dibuja algo mayor.
+func set_near(near: bool) -> void:
+	if _near != near:
+		_near = near
+		queue_redraw()
+
+
+func is_near() -> bool:
+	return _near
+
+
+## Tamaño de la barra de vida ahora.
+func get_bar_size() -> Vector2:
+	return BAR_SIZE_NEAR if _near else BAR_SIZE
+
+
+## Rectángulo (en coordenadas de la placa) que ocupa de verdad lo que se dibuja: marca, nombre y barra. Lo usa
+## [Nameplates] para apilar las placas que se tocan.
+func get_content_rect() -> Rect2:
+	var bar_size: Vector2 = get_bar_size()
+	var bottom: float = size.y
+	var top: float = size.y
+	var width: float = 0.0
+	if _show_bar:
+		top = size.y - bar_size.y - 2.0
+		width = bar_size.x
+	if _show_name and not _text.is_empty():
+		var text: String = _text if _level <= 0 else "%s %s" % [get_level_text(), _text]
+		var name_width: float = UIFonts.body_semibold().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+				FONT_SIZE).x
+		width = maxf(width, name_width)
+		top -= FONT_SIZE + 7.0
+	if _mark != Mark.NONE:
+		top -= MARK_SIZE + 3.0
+		width = maxf(width, MARK_SIZE)
+	return Rect2((size.x - width) * 0.5, top, width, bottom - top)
+
+
 func _draw() -> void:
-	var font: Font = ThemeDB.fallback_font
-	var bar_top: float = size.y - BAR_SIZE.y - 2.0
+	var font: Font = UIFonts.body_semibold()
+	var bar_size: Vector2 = get_bar_size()
+	var bar_top: float = size.y - bar_size.y - 2.0
 	if _show_name and not _text.is_empty():
 		var baseline: float = bar_top - 5.0 if _show_bar else size.y - 6.0
 		var level_text: String = get_level_text()
@@ -183,8 +247,13 @@ func _draw() -> void:
 					FONT_SIZE, OUTLINE_SIZE, OUTLINE_COLOR)
 			draw_string(font, Vector2(name_x, baseline), _text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE,
 					_color)
+	if _mark != Mark.NONE:
+		var mark_bottom: float = bar_top - 2.0
+		if _show_name and not _text.is_empty():
+			mark_bottom -= FONT_SIZE + 5.0
+		_draw_mark(Vector2(size.x * 0.5, mark_bottom - MARK_SIZE * 0.5 - 1.0))
 	if _show_bar:
-		var rect := Rect2(Vector2((size.x - BAR_SIZE.x) * 0.5, bar_top), BAR_SIZE)
+		var rect := Rect2(Vector2((size.x - bar_size.x) * 0.5, bar_top), bar_size)
 		draw_rect(rect, BAR_BACK_COLOR)
 		var fill: Color = ALLY_BAR_COLOR if _ally else ENEMY_BAR_COLOR
 		if _downed:
@@ -198,3 +267,20 @@ func _draw() -> void:
 					center + Vector2(0.0, 6.0), center + Vector2(-6.0, 0.0)])
 			draw_colored_polygon(diamond, CombatIcons.DOWNED_COLOR)
 			draw_polyline(diamond + PackedVector2Array([diamond[0]]), OUTLINE_COLOR, 1.0, true)
+
+
+# La marca de bando: un círculo con aro claro para los aliados y un rombo con aro oscuro para los enemigos,
+# los dos con el color del reino. La forma se distingue sin leer el color (daltonismo) y a 20 m sin apuntar.
+func _draw_mark(center: Vector2) -> void:
+	var half: float = MARK_SIZE * 0.5
+	if _mark == Mark.ALLY:
+		draw_circle(center, half + 1.5, OUTLINE_COLOR)
+		draw_circle(center, half, _mark_color)
+		draw_arc(center, half, 0.0, TAU, 20, Color(1.0, 1.0, 1.0, 0.85), 1.5, true)
+	else:
+		var outer := PackedVector2Array([center + Vector2(0.0, -half - 1.5), center + Vector2(half + 1.5, 0.0),
+				center + Vector2(0.0, half + 1.5), center + Vector2(-half - 1.5, 0.0)])
+		draw_colored_polygon(outer, OUTLINE_COLOR)
+		var inner := PackedVector2Array([center + Vector2(0.0, -half), center + Vector2(half, 0.0),
+				center + Vector2(0.0, half), center + Vector2(-half, 0.0)])
+		draw_colored_polygon(inner, _mark_color)

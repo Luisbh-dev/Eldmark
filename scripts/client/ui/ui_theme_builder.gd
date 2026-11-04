@@ -33,8 +33,8 @@ extends RefCounted
 const THEME_PATH: String = "res://assets/ui/theme/eldmark_theme.tres"
 ## Dónde deben estar las fuentes elegidas (decisión del backlog: Noto Sans para el cuerpo y Cinzel o
 ## Alegreya SC para los títulos, todas OFL) cuando el usuario las añada.
-const BODY_FONT_PATH: String = "res://assets/fonts/NotoSans-Regular.ttf"
-const TITLE_FONT_PATH: String = "res://assets/fonts/Cinzel-Regular.ttf"
+const BODY_FONT_PATH: String = "res://assets/fonts/NotoSans-Variable.ttf"
+const TITLE_FONT_PATH: String = "res://assets/fonts/Cinzel-Variable.ttf"
 
 const FONT_SIZE: int = 16
 const SMALL_FONT_SIZE: int = 14

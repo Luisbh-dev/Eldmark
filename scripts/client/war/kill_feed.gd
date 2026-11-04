@@ -25,7 +25,10 @@ const FONT_SIZE: int = 16
 const TOP_MARGIN: float = 16.0
 const RIGHT_MARGIN: float = 16.0
 const WIDTH: float = 520.0
-const OWN_BACKGROUND: Color = Color(0.88, 0.51, 0.18, 0.28)
+const OWN_BACKGROUND: Color = Color(0.3, 0.17, 0.06, 0.78)
+## Banda de las líneas ajenas y lado (px) del icono del arma.
+const BAND_COLOR: Color = Color(0.03, 0.035, 0.05, 0.6)
+const ICON_SIZE: float = 22.0
 const TEXT_DEFEATED: String = " derrotó a "
 const TEXT_DOWNED: String = " derribó a "
 const TEXT_FELL: String = " cayó"
@@ -88,7 +91,8 @@ func show_kill(event: NetMessages.EntityEvent) -> String:
 	var victim_color: Color = _color_of(event.net_id)
 	while _entries.size() >= MAX_ENTRIES:
 		_remove_entry(0)
-	var row: PanelContainer = _make_row(parts, killer_color, victim_color, role != ROLE_NONE)
+	var row: PanelContainer = _make_row(parts, killer_color, victim_color, role != ROLE_NONE,
+			icon_for_source(event.attack_id), event.assistants.size())
 	_column.add_child(row)
 	var text: String = "".join(parts)
 	_entries.append({"row": row, "left": LIFETIME_SECONDS, "text": text, "role": role,
@@ -119,7 +123,7 @@ func show_downed(event: NetMessages.EntityEvent) -> String:
 	while _entries.size() >= MAX_ENTRIES:
 		_remove_entry(0)
 	var row: PanelContainer = _make_row(parts, _color_of(event.attacker), _color_of(event.net_id),
-			role != ROLE_NONE)
+			role != ROLE_NONE, icon_for_source(event.attack_id))
 	_column.add_child(row)
 	var text: String = "".join(parts)
 	_entries.append({"row": row, "left": LIFETIME_SECONDS, "text": text, "role": role,
@@ -236,36 +240,93 @@ func _remove_entry(index: int) -> void:
 		row.queue_free()
 
 
+## Icono del arma, la habilidad o el efecto de la fuente [param source] ([CombatSource]) para la línea de
+## una baja; null si no tiene dibujo (un ataque de PNJ, el entorno), y entonces la línea usa el verbo.
+static func icon_for_source(source: int) -> Texture2D:
+	if source == CombatSource.NONE:
+		return null
+	var id: int = CombatSource.id_of(source)
+	match CombatSource.kind_of(source):
+		CombatSource.Kind.ATTACK:
+			var attack: AttackTicks = CombatCatalog.attack(id)
+			if attack == null:
+				return null
+			var attack_name: String = String(attack.name)
+			if attack_name.begins_with("sword_heavy"):
+				return CombatIcons.named(&"sword_heavy")
+			if attack_name.begins_with("sword"):
+				return CombatIcons.named(&"sword_light")
+			if attack_name.begins_with("bow") or attack_name.begins_with("arrow"):
+				return CombatIcons.named(&"bow_quick")
+		CombatSource.Kind.ABILITY:
+			var ability: AbilityTicks = CombatCatalog.ability(id)
+			return CombatIcons.named(ability.name) if ability != null else null
+		CombatSource.Kind.STATUS:
+			var status: StatusTicks = CombatCatalog.status(id)
+			return CombatIcons.named(status.name) if status != null else null
+	return null
+
+
+# Una línea sobre su banda: el nombre de quien mata, el icono del arma (o el verbo si no lo hay), el nombre de la
+# víctima y las asistencias. Las líneas del jugador local van con una banda más viva y un filo del color de acento.
 func _make_row(parts: PackedStringArray, killer_color: Color, victim_color: Color,
-		own: bool) -> PanelContainer:
+		own: bool, icon: Texture2D = null, assist_count: int = 0) -> PanelContainer:
 	var row := PanelContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.size_flags_horizontal = Control.SIZE_SHRINK_END
 	var style := StyleBoxFlat.new()
-	style.bg_color = OWN_BACKGROUND if own else Color(0.0, 0.0, 0.0, 0.0)
-	style.content_margin_left = 8.0
-	style.content_margin_right = 8.0
-	style.content_margin_top = 1.0
-	style.content_margin_bottom = 1.0
+	style.bg_color = OWN_BACKGROUND if own else BAND_COLOR
+	if own:
+		style.border_color = UIPalette.ACCENT
+		style.border_width_left = 3
+	style.content_margin_left = 10.0
+	style.content_margin_right = 10.0
+	style.content_margin_top = 2.0
+	style.content_margin_bottom = 2.0
 	style.set_corner_radius_all(3)
 	row.add_theme_stylebox_override(&"panel", style)
 	var line := HBoxContainer.new()
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	line.add_theme_constant_override(&"separation", 0)
+	line.alignment = BoxContainer.ALIGNMENT_END
+	line.add_theme_constant_override(&"separation", 6)
 	row.add_child(line)
-	var colors: Array[Color] = [killer_color, UIPalette.TEXT_DIM, victim_color, UIPalette.TEXT_DIM]
-	for i: int in parts.size():
-		if parts[i].is_empty():
-			continue
-		var label := Label.new()
-		label.text = parts[i]
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		label.add_theme_font_size_override(&"font_size", FONT_SIZE)
-		label.add_theme_color_override(&"font_color", colors[i])
-		label.add_theme_color_override(&"font_outline_color", UIPalette.OUTLINE)
-		label.add_theme_constant_override(&"outline_size", 5)
-		line.add_child(label)
+	if parts[0].is_empty():
+		# Sin autor (el entorno): «Bruno cayó» y el final tal cual.
+		_add_label(line, parts[2], victim_color)
+		_add_label(line, parts[3], UIPalette.TEXT_DIM)
+		return row
+	_add_label(line, parts[0], killer_color)
+	if icon != null:
+		var icon_rect := TextureRect.new()
+		icon_rect.texture = icon
+		icon_rect.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_rect.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		line.add_child(icon_rect)
+		_add_label(line, parts[2], victim_color)
+		if assist_count > 0:
+			_add_label(line, TEXT_ASSISTS % assist_count, UIPalette.TEXT_DIM)
+	else:
+		_add_label(line, parts[1].strip_edges(), UIPalette.TEXT_DIM)
+		_add_label(line, parts[2], victim_color)
+		_add_label(line, parts[3], UIPalette.TEXT_DIM)
 	return row
+
+
+func _add_label(line: HBoxContainer, text: String, color: Color) -> void:
+	if text.is_empty():
+		return
+	var label := Label.new()
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_override(&"font", UIFonts.body_semibold())
+	label.add_theme_font_size_override(&"font_size", FONT_SIZE)
+	label.add_theme_color_override(&"font_color", color)
+	label.add_theme_color_override(&"font_outline_color", UIPalette.OUTLINE)
+	label.add_theme_constant_override(&"outline_size", 4)
+	line.add_child(label)
 
 
 func _ensure_built() -> void:

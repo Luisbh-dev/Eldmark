@@ -64,9 +64,9 @@ const DEBUG_REFRESH_INTERVAL: float = 0.1
 ## Opacidad a la que se atenúa la interfaz de juego con la pantalla de muerte abierta.
 const DEAD_DIM_ALPHA: float = 0.3
 ## Posición (px desde abajo, anclada al centro) de la barra de acciones y de la fila de efectos propios,
-## por encima de la vida y la resistencia ([code]Vitals[/code] empieza a 118 px del borde).
-const ACTION_BAR_RECT: Rect2 = Rect2(-320.0, -240.0, 640.0, 56.0)
-const STATUS_ROW_RECT: Rect2 = Rect2(-200.0, -172.0, 400.0, 30.0)
+## por encima de la barra de acciones (a 24 px del borde); [code]Vitals[/code] va justo encima de ella.
+const ACTION_BAR_RECT: Rect2 = Rect2(-340.0, -76.0, 680.0, 52.0)
+const STATUS_ROW_RECT: Rect2 = Rect2(-200.0, -160.0, 400.0, 30.0)
 ## Aviso del menú social (SOC-07) cuando no hay a quién ofrecérselo. Es el único: un enemigo, un muerto, un jugador
 ## falso o alguien tras una pared dan el mismo que no apuntar a nadie, para no delatar lo que no se ve.
 const TEXT_NO_SOCIAL_TARGET: String = "Apunta a un jugador de tu reino (a 20 m o menos) para ver sus acciones."

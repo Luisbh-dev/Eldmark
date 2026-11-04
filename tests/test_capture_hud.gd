@@ -312,13 +312,16 @@ func test_banners_take_the_realm_color_and_the_big_ones_last_longer() -> void:
 	assert_near(banners.get_banner_seconds_left(0), WarBanners.NORMAL_SECONDS, 1e-9)
 	assert_near(banners.get_banner_seconds_left(1), WarBanners.BIG_SECONDS, 1e-9)
 	banners.advance(WarBanners.NORMAL_SECONDS + 0.1)
-	assert_eq(banners.get_banner_count(), 1, "el normal se va y el grande sigue")
+	assert_eq(banners.get_banner_count(), 2, "el normal se va; el grande entra y la disputa espera")
 	assert_true(banners.is_banner_big(0))
+	assert_near(banners.get_banner_seconds_left(0), WarBanners.BIG_SECONDS, 1e-6, "su tiempo empieza al entrar")
 	banners.advance(WarBanners.BIG_SECONDS)
+	assert_eq(banners.get_banner_count(), 1, "el grande se va y queda la disputa")
+	banners.advance(WarBanners.NORMAL_SECONDS)
 	assert_eq(banners.get_banner_count(), 0, "y luego también")
 
 
-func test_banners_stack_up_to_three_and_the_oldest_leaves() -> void:
+func test_banners_queue_up_to_three_and_the_oldest_leaves() -> void:
 	var banners: WarBanners = _track(WarBanners.new()) as WarBanners
 	for i: int in 5:
 		banners.add_banner("Aviso %d" % i, Color.WHITE)
@@ -326,10 +329,9 @@ func test_banners_stack_up_to_three_and_the_oldest_leaves() -> void:
 	assert_eq(banners.get_texts(), PackedStringArray(["Aviso 2", "Aviso 3", "Aviso 4"]))
 	banners.add_banner("", Color.WHITE)
 	assert_eq(banners.get_banner_count(), 3, "un texto vacío no cuenta")
-	# Fundido final.
-	banners.advance(WarBanners.NORMAL_SECONDS - 0.5)
-	var label: Label = banners.get_child(0).get_child(banners.get_child(0).get_child_count() - 1) as Label
-	assert_near(label.modulate.a, 0.5, 1e-6, "en el último segundo se desvanece")
+	# Fundido final de la banda (solo del aviso que se ve).
+	banners.advance(WarBanners.NORMAL_SECONDS - WarBanners.FADE_SECONDS * 0.5)
+	assert_near(banners.get_band().modulate.a, 0.5, 1e-6, "en el último instante se desvanece")
 
 
 func test_banners_follow_the_clients_war_events() -> void:
@@ -382,7 +384,11 @@ func test_the_boss_bar_follows_the_nearest_living_boss_in_range() -> void:
 	client.get_remote_world().on_spawn(_npc_spawn(33, "Otro jefe lejano", 1, Vector3(300.0, 0.0, 0.0)))
 	client.get_remote_world().draw(200.0, 0.016)
 	bar.refresh()
-	assert_true(bar.visible, "con el Capitán a 20 m, barra")
+	assert_false(bar.visible, "con el Capitán a 20 m pero sin pelear con él, sin barra (UI-18)")
+	bar.engage(31)
+	bar.engage(33)
+	bar.refresh()
+	assert_true(bar.visible, "peleando con el Capitán a 20 m, barra")
 	assert_eq(bar.get_shown_id(), 31, "el Hueco no es jefe y el otro está lejos")
 	assert_eq(bar.get_boss_name(), "Capitán del Vado")
 	assert_near(bar.get_health_fraction(), 1.0, 1e-9)

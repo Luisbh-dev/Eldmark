@@ -124,7 +124,7 @@ func is_dimmed() -> bool:
 
 
 func _draw() -> void:
-	var font: Font = ThemeDB.fallback_font
+	var font: Font = UIFonts.body_semibold()
 	var rect := Rect2(Vector2.ZERO, size)
 	draw_rect(rect, UIPalette.PANEL_BG)
 	var border: Color = UIPalette.ACCENT if _own else UIPalette.BORDER
