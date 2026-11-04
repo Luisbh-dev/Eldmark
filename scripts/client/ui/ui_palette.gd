@@ -57,6 +57,21 @@ const SUCCESS: Color = Color(0.42, 0.78, 0.4, 1.0)
 const WARNING: Color = Color(1.0, 0.72, 0.4, 1.0)
 const DANGER: Color = Color(0.9, 0.3, 0.26, 1.0)
 
+# --- Paleta semántica del combate (UI-50): un color por significado --------------------------
+
+## Peligro de los PNJ (la telegrafía de sus golpes): ámbar con borde más claro. El rojo queda para el daño
+## recibido y la vida; así «te va a pegar» y «te han pegado» no se confunden.
+const TELEGRAPH: Color = Color(1.0, 0.6, 0.08, 1.0)
+const TELEGRAPH_EDGE: Color = Color(1.0, 0.84, 0.35, 1.0)
+## Barra de vida de un aliado y de un enemigo en las placas.
+const ALLY: Color = Color(0.36, 0.8, 0.38, 1.0)
+const ENEMY: Color = Color(0.86, 0.2, 0.18, 1.0)
+## Barra de jefe.
+const BOSS: Color = Color(0.72, 0.1, 0.12, 1.0)
+## Texto de daño propio (crema) y daño recibido (rojo).
+const DAMAGE_DEALT: Color = Color(1.0, 0.95, 0.75, 1.0)
+const DAMAGE_TAKEN: Color = Color(1.0, 0.28, 0.28, 1.0)
+
 ## Color de cada rareza, en el orden de [enum Rarity]: gris, verde, azul, morado y naranja.
 const RARITY_COLORS: Array[Color] = [
 	Color(0.66, 0.66, 0.66, 1.0), Color(0.37, 0.72, 0.35, 1.0), Color(0.3, 0.56, 0.84, 1.0),

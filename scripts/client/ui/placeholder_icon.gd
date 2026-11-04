@@ -69,7 +69,7 @@ func _paint(canvas_item: RID, rect: Rect2, modulate: Color) -> void:
 	RenderingServer.canvas_item_add_rect(canvas_item, top, color.lightened(0.18) * modulate)
 	if letter.is_empty():
 		return
-	var font: Font = ThemeDB.fallback_font
+	var font: Font = UIFonts.title_bold()
 	if font == null:
 		return
 	var font_size: int = maxi(int(rect.size.y * LETTER_SCALE), 6)

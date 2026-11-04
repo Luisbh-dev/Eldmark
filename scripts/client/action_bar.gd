@@ -34,12 +34,20 @@ const SLOT_ACTIONS: Array[StringName] = [
 ## Separación (px) entre casillas y entre grupos (ataques, habilidades, pociones, cambio).
 const SLOT_GAP: int = 6
 const GROUP_GAP: float = 16.0
+## Banda translúcida detrás de las casillas: margen (px) alrededor y color.
+const BACKDROP_PADDING: Vector2 = Vector2(10.0, 6.0)
+const BACKDROP_COLOR: Color = Color(0.03, 0.035, 0.045, 0.58)
 ## Segundos que parpadea una casilla pulsada a destiempo.
 const BLINK_SECONDS: float = 0.45
 const BLINK_HERTZ: float = 8.0
 const BLINK_COLOR: Color = Color(1.0, 0.2, 0.15, 1.0)
 const CROSS_COLOR: Color = Color(0.9, 0.15, 0.12, 0.9)
 ## Letra de las casillas que no son habilidades.
+const ICON_ATTACK: StringName = &"sword_light"
+const ICON_SHOT: StringName = &"bow_quick"
+const ICON_BLOCK: StringName = &"block"
+const ICON_DODGE: StringName = &"dodge"
+## Letras de reserva (si falta el dibujo de un icono).
 const LETTER_ATTACK: String = "A"
 const LETTER_SHOT: String = "D"
 const LETTER_BLOCK: String = "B"
@@ -141,6 +149,28 @@ func _exit_tree() -> void:
 	_disconnect_controller()
 
 
+# La banda oscura detrás de las casillas (UI-55): el bloque inferior se lee como una sola pieza con la vida.
+func _draw() -> void:
+	if _row == null:
+		return
+	var width: float = _row.get_combined_minimum_size().x
+	var band := Rect2((size.x - width) * 0.5, 0.0, width, size.y).grow_individual(
+			BACKDROP_PADDING.x, BACKDROP_PADDING.y, BACKDROP_PADDING.x, BACKDROP_PADDING.y)
+	var box := StyleBoxFlat.new()
+	box.bg_color = BACKDROP_COLOR
+	box.border_color = UIPalette.BORDER_DIM
+	box.set_border_width_all(1)
+	box.border_width_top = 2
+	box.set_corner_radius_all(6)
+	box.anti_aliasing = true
+	draw_style_box(box, band)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		queue_redraw()
+
+
 ## Conecta la barra con el personaje local (su estado predicho) y, si se da, con su controlador (para
 ## que una pulsación a destiempo haga parpadear la casilla). Con null la barra se queda quieta.
 func bind(character: PlayerCharacter, controller: LocalPlayerController = null) -> void:
@@ -209,6 +239,7 @@ func refresh(state: CombatState, tick: int, delta: float = 0.0) -> void:
 	var can_block: bool = weapon == null or weapon.can_block
 	if _slots[Slot.BLOCK].visible != can_block:
 		_slots[Slot.BLOCK].visible = can_block
+		queue_redraw()
 	_set_flags(_slots[Slot.BLOCK], not exhausted, false)
 	_set_flags(_slots[Slot.DODGE], not exhausted, false)
 	_set_flags(_slots[Slot.SWAP], state.alt_weapon_id != 0, state.action == CombatState.Action.SWAP)
@@ -279,14 +310,15 @@ func _show_weapons(state: CombatState) -> void:
 	var weapon: WeaponTicks = CombatCatalog.weapon(state.weapon_id)
 	var ranged: bool = is_ranged(weapon)
 	var primary: ActionSlot = _slots[Slot.PRIMARY]
-	primary.icon = CombatIcons.icon(LETTER_SHOT if ranged else LETTER_ATTACK, CombatIcons.weapon_color(state.weapon_id))
+	primary.icon = CombatIcons.named_or_letter(ICON_SHOT if ranged else ICON_ATTACK,
+			LETTER_SHOT if ranged else LETTER_ATTACK, CombatIcons.weapon_color(state.weapon_id))
 	_set_tooltip(primary, CombatText.TEXT_QUICK_SHOT if ranged else CombatText.TEXT_LIGHT,
 			CombatText.TEXT_DRAWN_SHOT if ranged else CombatText.TEXT_HEAVY)
 	var block: ActionSlot = _slots[Slot.BLOCK]
-	block.icon = CombatIcons.icon(LETTER_BLOCK, CombatIcons.weapon_color(state.weapon_id))
+	block.icon = CombatIcons.named_or_letter(ICON_BLOCK, LETTER_BLOCK, CombatIcons.weapon_color(state.weapon_id))
 	_set_tooltip(block, CombatText.TEXT_BLOCK)
 	var dodge: ActionSlot = _slots[Slot.DODGE]
-	dodge.icon = CombatIcons.icon(LETTER_DODGE, CombatIcons.NEUTRAL_COLOR)
+	dodge.icon = CombatIcons.named_or_letter(ICON_DODGE, LETTER_DODGE, CombatIcons.NEUTRAL_COLOR)
 	_set_tooltip(dodge, CombatText.TEXT_DODGE)
 	for index: int in CombatState.ABILITY_SLOTS:
 		var slot: ActionSlot = _slots[Slot.ABILITY_1 + index]

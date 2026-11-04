@@ -11,10 +11,16 @@ extends Control
 ## Metros a los que se ve la barra de un jefe.
 const RANGE: float = 90.0
 const BAR_WIDTH: float = 520.0
-const TOP_OFFSET: float = 200.0
-const FILL_COLOR: Color = Color(0.72, 0.1, 0.12, 1.0)
+const TOP_OFFSET: float = 234.0
+const FILL_COLOR: Color = UIPalette.BOSS
+
+## Segundos que dura «peleando» tras cada golpe entre el jugador y el jefe.
+const ENGAGE_SECONDS: float = 8.0
 
 var _client: NetClient = null
+var _clock: float = 0.0
+# net_id del jefe -> segundo (del reloj de la barra) hasta el que se le da por «peleando».
+var _engaged: Dictionary[int, float] = {}
 var _shown_id: int = 0
 var _name_label: Label = null
 var _bar: FractionBar = null
@@ -26,17 +32,52 @@ func _ready() -> void:
 	visible = false
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_clock += delta
 	refresh()
 
 
+func _exit_tree() -> void:
+	if is_instance_valid(_client) and _client.combat_event.is_connected(_on_combat_event):
+		_client.combat_event.disconnect(_on_combat_event)
+
+
 func bind(client: NetClient) -> void:
+	if is_instance_valid(_client) and _client.combat_event.is_connected(_on_combat_event):
+		_client.combat_event.disconnect(_on_combat_event)
 	_client = client
+	_engaged.clear()
 	_ensure_built()
+	if is_instance_valid(_client):
+		_client.combat_event.connect(_on_combat_event)
 
 
-## Busca el jefe vivo más cercano a menos de [constant RANGE] m y lo muestra; si no hay, oculta la
-## barra.
+## Da por «peleando» con el jefe [param net_id] durante [constant ENGAGE_SECONDS] s (un golpe del jugador
+## al jefe o del jefe al jugador). Hasta entonces la barra no sale (UI-18).
+func engage(net_id: int) -> void:
+	_engaged[net_id] = _clock + ENGAGE_SECONDS
+
+
+## true si se pelea con el jefe [param net_id] ahora mismo.
+func is_engaged(net_id: int) -> bool:
+	return _engaged.has(net_id) and _clock <= float(_engaged[net_id])
+
+
+# Un golpe entre el jugador local y otra entidad abre la pelea con ella (solo cuenta si es un jefe).
+func _on_combat_event(event: NetMessages.EntityEvent, _is_own: bool) -> void:
+	if event.event != NetMessages.EntityEvent.Kind.HIT or not is_instance_valid(_client):
+		return
+	var own: int = _client.get_net_id()
+	if own == 0:
+		return
+	if event.attacker == own:
+		engage(event.net_id)
+	elif event.net_id == own and event.attacker != 0:
+		engage(event.attacker)
+
+
+## Busca el jefe vivo más cercano a menos de [constant RANGE] m con el que se pelea ([method is_engaged]) y lo
+## muestra; si no hay, oculta la barra.
 func refresh() -> void:
 	if not is_instance_valid(_client):
 		_hide()
@@ -51,7 +92,7 @@ func refresh() -> void:
 	for view: RemotePlayerView in _client.get_remote_world().get_views():
 		if view.get_kind() != NetProtocol.EntityKind.NPC or not view.is_drawn() \
 				or view.get_drawn_health_q() == EntityRecord.HEALTH_Q_DEAD \
-				or not BossInfo.is_boss(view.get_npc_def_id()):
+				or not BossInfo.is_boss(view.get_npc_def_id()) or not is_engaged(view.get_net_id()):
 			continue
 		var there: Vector3 = view.get_drawn_position()
 		var distance: float = Vector2(there.x - here.x, there.z - here.z).length()
@@ -113,6 +154,7 @@ func _ensure_built() -> void:
 	_name_label.name = "Nombre"
 	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_name_label.add_theme_font_override(&"font", UIFonts.title_bold())
 	_name_label.add_theme_font_size_override(&"font_size", 20)
 	_name_label.add_theme_color_override(&"font_color", UIPalette.TITLE)
 	_name_label.add_theme_color_override(&"font_outline_color", UIPalette.OUTLINE)

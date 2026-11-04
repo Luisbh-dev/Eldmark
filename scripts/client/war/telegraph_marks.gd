@@ -37,8 +37,11 @@ const TAIL_SECONDS: float = 0.35
 const DEFAULT_ACTIVE_TICKS: int = 12
 ## Marcas a la vez como mucho (al llegar otra de más, se quita la más antigua).
 const MAX_MARKS: int = 24
-const BASE_COLOR: Color = Color(0.9, 0.18, 0.12, 0.28)
-const FILL_COLOR: Color = Color(0.95, 0.2, 0.1, 0.5)
+## Ámbar de [UIPalette.TELEGRAPH]: el color exclusivo del peligro de los PNJ, distinto del rojo del daño (UI-50).
+const BASE_COLOR: Color = Color(UIPalette.TELEGRAPH.r, UIPalette.TELEGRAPH.g, UIPalette.TELEGRAPH.b, 0.26)
+const FILL_COLOR: Color = Color(UIPalette.TELEGRAPH.r, UIPalette.TELEGRAPH.g, UIPalette.TELEGRAPH.b, 0.5)
+const EDGE_COLOR: Color = Color(UIPalette.TELEGRAPH_EDGE.r, UIPalette.TELEGRAPH_EDGE.g,
+		UIPalette.TELEGRAPH_EDGE.b, 0.92)
 
 class Mark extends RefCounted:
 	var node: Node3D = null
@@ -59,6 +62,7 @@ var _marks: Array[Mark] = []
 var _client: NetClient = null
 var _base_material: StandardMaterial3D = null
 var _fill_material: StandardMaterial3D = null
+var _edge_material: StandardMaterial3D = null
 var _added: int = 0
 
 
@@ -132,6 +136,13 @@ func add_telegraph(event: NetMessages.EntityEvent) -> bool:
 	base.material_override = _get_base_material()
 	base.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(base)
+	var edge := MeshInstance3D.new()
+	edge.name = "Borde"
+	edge.mesh = build_edge_mesh(radius, angle, SEGMENTS)
+	edge.material_override = _get_edge_material()
+	edge.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	edge.position.y = 0.02
+	root.add_child(edge)
 	var fill := MeshInstance3D.new()
 	fill.name = "Relleno"
 	fill.mesh = base.mesh
@@ -236,6 +247,49 @@ static func build_mesh(radius: float, angle: float, segments: int) -> ArrayMesh:
 	return mesh
 
 
+## Malla plana (y = 0) del borde de la misma zona que [method build_mesh]: una franja de [param width] m por
+## el arco y, en un sector, también por sus dos lados rectos. Es lo que da el borde ámbar a la marca (UI-50).
+static func build_edge_mesh(radius: float, angle: float, segments: int, width: float = 0.14) -> ArrayMesh:
+	var steps: int = maxi(ceili(float(segments) * minf(angle, TAU) / TAU), 1)
+	var start: float = -angle * 0.5
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+	var inner_radius: float = maxf(radius - width, 0.0)
+	for i: int in steps + 1:
+		var direction: float = start + angle * float(i) / float(steps)
+		var radial := Vector3(sin(direction), 0.0, -cos(direction))
+		vertices.append(radial * inner_radius)
+		vertices.append(radial * radius)
+		normals.append(Vector3.UP)
+		normals.append(Vector3.UP)
+	for i: int in steps:
+		var a: int = i * 2
+		indices.append_array(PackedInt32Array([a, a + 3, a + 1, a, a + 2, a + 3]))
+	if angle < TAU - 0.001:
+		# Los dos lados rectos: un rectángulo del centro al arco, de [param width] de grosor.
+		for side: int in 2:
+			var direction: float = start if side == 0 else start + angle
+			var radial := Vector3(sin(direction), 0.0, -cos(direction))
+			var across := Vector3(radial.z, 0.0, -radial.x) * (width * 0.5)
+			var base: int = vertices.size()
+			vertices.append(-across)
+			vertices.append(across)
+			vertices.append(radial * radius + across)
+			vertices.append(radial * radius - across)
+			for _n: int in 4:
+				normals.append(Vector3.UP)
+			indices.append_array(PackedInt32Array([base, base + 2, base + 1, base, base + 3, base + 2]))
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
 ## Marcas que se ven ahora.
 func get_mark_count() -> int:
 	return _marks.size()
@@ -305,6 +359,12 @@ func _get_fill_material() -> StandardMaterial3D:
 	if _fill_material == null:
 		_fill_material = _make_material(FILL_COLOR)
 	return _fill_material
+
+
+func _get_edge_material() -> StandardMaterial3D:
+	if _edge_material == null:
+		_edge_material = _make_material(EDGE_COLOR)
+	return _edge_material
 
 
 func _make_material(color: Color) -> StandardMaterial3D:

@@ -29,11 +29,11 @@ const BLINK_HERTZ: float = 8.0
 const STAMINA_HIDE_DELAY: float = 0.8
 const STAMINA_FADE_SPEED: float = 3.0
 ## Medidas de las barras (px).
-const BAR_WIDTH: float = 380.0
-const HEALTH_HEIGHT: float = 18.0
-const STAMINA_HEIGHT: float = 9.0
-const BAR_GAP: float = 5.0
-const FONT_SIZE: int = 14
+const BAR_WIDTH: float = 480.0
+const HEALTH_HEIGHT: float = 20.0
+const STAMINA_HEIGHT: float = 6.0
+const BAR_GAP: float = 3.0
+const FONT_SIZE: int = 13
 
 const HEALTH_COLOR: Color = Color(0.78, 0.13, 0.15, 1.0)
 const GHOST_COLOR: Color = Color(1.0, 0.82, 0.55, 0.85)
@@ -43,6 +43,11 @@ const STAMINA_COLOR: Color = Color(0.58, 0.82, 0.3, 1.0)
 const EXHAUSTED_COLOR: Color = Color(0.95, 0.5, 0.12, 1.0)
 const BLINK_COLOR: Color = Color(1.0, 0.15, 0.1, 1.0)
 const TEXT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.95)
+const HEALTH_SHINE: Color = Color(1.0, 1.0, 1.0, 0.13)
+const TICK_COLOR: Color = Color(0.0, 0.0, 0.0, 0.38)
+const FRAME_COLOR: Color = Color(0.5, 0.47, 0.42, 0.9)
+## Opacidad de la barra fina de resistencia cuando está llena y quieta (nunca se oculta del todo).
+const STAMINA_IDLE_ALPHA: float = 0.5
 
 var _health: int = 1000
 var _max_health: int = 1000
@@ -198,14 +203,19 @@ func is_blinking() -> bool:
 	return _blink_left > 0.0
 
 
+## Opacidad con la que se dibuja la resistencia: la de [method get_stamina_alpha] y, como mínimo,
+## [constant STAMINA_IDLE_ALPHA] (la barra fina no desaparece nunca: UI-55).
+func get_drawn_stamina_alpha() -> float:
+	return maxf(_stamina_alpha, STAMINA_IDLE_ALPHA)
+
+
 func _draw() -> void:
 	var left: float = (size.x - BAR_WIDTH) * 0.5
 	var y: float = 0.0
 	if _health_visible:
 		_draw_health(Rect2(left, y, BAR_WIDTH, HEALTH_HEIGHT))
 		y += HEALTH_HEIGHT + BAR_GAP
-	if _stamina_alpha > 0.0:
-		_draw_stamina(Rect2(left, y, BAR_WIDTH, STAMINA_HEIGHT))
+	_draw_stamina(Rect2(left, y, BAR_WIDTH, STAMINA_HEIGHT))
 
 
 func _draw_health(rect: Rect2) -> void:
@@ -214,15 +224,26 @@ func _draw_health(rect: Rect2) -> void:
 	draw_rect(Rect2(rect.position, Vector2(ghost_width, rect.size.y)), GHOST_COLOR)
 	var health_width: float = rect.size.x * get_health_fraction()
 	draw_rect(Rect2(rect.position, Vector2(health_width, rect.size.y)), HEALTH_COLOR)
-	draw_rect(rect, BORDER_COLOR, false, 1.5)
-	var font: Font = ThemeDB.fallback_font
+	# Un brillo en la mitad de arriba da volumen al relleno.
+	draw_rect(Rect2(rect.position, Vector2(health_width, rect.size.y * 0.4)), HEALTH_SHINE)
+	# Trazos cada 10 %: dejan leer la vida a ojo sin mirar el número.
+	for tenth: int in range(1, 10):
+		var x: float = rect.position.x + rect.size.x * float(tenth) * 0.1
+		draw_line(Vector2(x, rect.position.y + rect.size.y * 0.55), Vector2(x, rect.end.y),
+				TICK_COLOR, 1.0)
+	# Marco de metal: contorno oscuro y filo claro por dentro.
+	draw_rect(rect.grow(1.0), BORDER_COLOR, false, 2.0)
+	draw_rect(rect, FRAME_COLOR, false, 1.0)
+	var font: Font = UIFonts.body_semibold()
 	var text: String = "%d / %d" % [_health, _max_health]
-	draw_string(font, rect.position + Vector2(0.0, rect.size.y - 4.0), text,
-			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, FONT_SIZE, TEXT_COLOR)
+	var baseline: Vector2 = rect.position + Vector2(0.0, rect.size.y - 5.0)
+	draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, FONT_SIZE, 3,
+			UIPalette.OUTLINE)
+	draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, FONT_SIZE, TEXT_COLOR)
 
 
 func _draw_stamina(rect: Rect2) -> void:
-	var alpha: float = _stamina_alpha
+	var alpha: float = get_drawn_stamina_alpha()
 	var back: Color = BACK_COLOR
 	back.a *= alpha
 	draw_rect(rect, back)
