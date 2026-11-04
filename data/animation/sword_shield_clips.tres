@@ -14,13 +14,13 @@ to_s = 0.2
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Regular_A"
 from_s = 0.2
-to_s = 0.433
+to_s = 0.33
 
 [sub_resource type="Resource" id="Seg_sword_light_1_recovery"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Regular_A_Rec"
-from_s = 0.0
-to_s = 0.95
+from_s = 0.05
+to_s = 0.5
 
 [sub_resource type="Resource" id="Seg_sword_light_2_windup"]
 script = ExtResource("3_seg")
@@ -32,55 +32,55 @@ to_s = 0.2
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Regular_B"
 from_s = 0.2
-to_s = 0.533
+to_s = 0.32
 
 [sub_resource type="Resource" id="Seg_sword_light_2_recovery"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Regular_B_Rec"
-from_s = 0.0
-to_s = 1.0
+from_s = 0.15
+to_s = 0.6
 
 [sub_resource type="Resource" id="Seg_sword_light_3_windup"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Regular_C"
-from_s = 0.0
+from_s = 0.35
 to_s = 0.6
 
 [sub_resource type="Resource" id="Seg_sword_light_3_active"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Regular_C"
 from_s = 0.6
-to_s = 0.8
+to_s = 0.72
 
 [sub_resource type="Resource" id="Seg_sword_light_3_recovery"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Regular_C"
-from_s = 0.8
-to_s = 2.0
+from_s = 0.9
+to_s = 1.55
 
 [sub_resource type="Resource" id="Seg_sword_heavy_windup"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Heavy_Combo"
-from_s = 0.2
-to_s = 0.34
+from_s = 2.2
+to_s = 2.5
 
 [sub_resource type="Resource" id="Seg_sword_heavy_active"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Heavy_Combo"
-from_s = 0.34
-to_s = 0.6
+from_s = 2.5
+to_s = 2.66
 
 [sub_resource type="Resource" id="Seg_sword_heavy_recovery"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Heavy_Combo"
-from_s = 0.6
-to_s = 0.95
+from_s = 3.1
+to_s = 3.85
 
 [sub_resource type="Resource" id="Seg_charge_main"]
 script = ExtResource("3_seg")
 animation = &"ual2/Sword_Heavy_Combo"
-from_s = 0.0
-to_s = 0.2
+from_s = 1.95
+to_s = 2.2
 
 [sub_resource type="Resource" id="Seg_block_main"]
 script = ExtResource("3_seg")
@@ -100,6 +100,12 @@ animation = &"ual1/Hit_Chest"
 from_s = 0.0
 to_s = 0.333
 
+[sub_resource type="Resource" id="Seg_stagger_head_main"]
+script = ExtResource("3_seg")
+animation = &"ual1/Hit_Head"
+from_s = 0.0
+to_s = 0.433
+
 [sub_resource type="Resource" id="Seg_stun_main"]
 script = ExtResource("3_seg")
 animation = &"ual2/Idle_Shield_Break"
@@ -109,8 +115,8 @@ to_s = 1.06
 [sub_resource type="Resource" id="Seg_dead_main"]
 script = ExtResource("3_seg")
 animation = &"ual1/Death01"
-from_s = 0.0
-to_s = 2.4
+from_s = 0.65
+to_s = 1.45
 
 [sub_resource type="Resource" id="Anim_sword_light_1"]
 script = ExtResource("2_anim")
@@ -124,6 +130,8 @@ duration_s = 0.0
 hold_end = false
 blend_in_s = 0.06
 blend_out_s = 0.12
+lower_weight = 1.0
+keep_left_arm = true
 
 [sub_resource type="Resource" id="Anim_sword_light_2"]
 script = ExtResource("2_anim")
@@ -137,6 +145,8 @@ duration_s = 0.0
 hold_end = false
 blend_in_s = 0.06
 blend_out_s = 0.12
+lower_weight = 1.0
+keep_left_arm = true
 
 [sub_resource type="Resource" id="Anim_sword_light_3"]
 script = ExtResource("2_anim")
@@ -150,6 +160,9 @@ duration_s = 0.0
 hold_end = false
 blend_in_s = 0.06
 blend_out_s = 0.12
+lower_weight = 1.0
+keep_left_arm = true
+lower_weight_windup = 0.0
 
 [sub_resource type="Resource" id="Anim_sword_heavy"]
 script = ExtResource("2_anim")
@@ -158,11 +171,13 @@ upper_body = true
 windup = SubResource("Seg_sword_heavy_windup")
 active = SubResource("Seg_sword_heavy_active")
 recovery = SubResource("Seg_sword_heavy_recovery")
-contact_s = 0.47
+contact_s = 2.6
 duration_s = 0.0
 hold_end = false
 blend_in_s = 0.08
 blend_out_s = 0.15
+lower_weight = 1.0
+keep_left_arm = true
 
 [sub_resource type="Resource" id="Anim_charge"]
 script = ExtResource("2_anim")
@@ -170,10 +185,14 @@ key = &"charge"
 upper_body = true
 windup = SubResource("Seg_charge_main")
 contact_s = -1.0
-duration_s = 0.2
+duration_s = 0.35
 hold_end = true
 blend_in_s = 0.08
 blend_out_s = 0.1
+sway_s = 0.1
+sway_hz = 1.4
+lower_weight = 1.0
+keep_left_arm = true
 
 [sub_resource type="Resource" id="Anim_block"]
 script = ExtResource("2_anim")
@@ -201,12 +220,34 @@ blend_out_s = 0.1
 [sub_resource type="Resource" id="Anim_stagger"]
 script = ExtResource("2_anim")
 key = &"stagger"
-upper_body = true
+upper_body = false
 windup = SubResource("Seg_stagger_main")
+contact_s = -1.0
+duration_s = 0.35
+hold_end = true
+blend_in_s = 0.05
+blend_out_s = 0.1
+
+[sub_resource type="Resource" id="Anim_stagger_short"]
+script = ExtResource("2_anim")
+key = &"stagger_short"
+windup = SubResource("Seg_stagger_main")
+upper_body = false
+contact_s = -1.0
+duration_s = 0.3
+hold_end = false
+blend_in_s = 0.04
+blend_out_s = 0.1
+
+[sub_resource type="Resource" id="Anim_stagger_head"]
+script = ExtResource("2_anim")
+key = &"stagger_head"
+windup = SubResource("Seg_stagger_head_main")
+upper_body = false
 contact_s = -1.0
 duration_s = 0.4
 hold_end = false
-blend_in_s = 0.03
+blend_in_s = 0.04
 blend_out_s = 0.1
 
 [sub_resource type="Resource" id="Anim_stun"]
@@ -226,9 +267,9 @@ key = &"dead"
 upper_body = false
 windup = SubResource("Seg_dead_main")
 contact_s = -1.0
-duration_s = 2.4
+duration_s = 0.6
 hold_end = true
-blend_in_s = 0.08
+blend_in_s = 0.1
 blend_out_s = 0.2
 
 [sub_resource type="Resource" id="Seg_shield_bash_windup"]
@@ -299,9 +340,9 @@ to_s = 0.4
 
 [sub_resource type="Resource" id="Seg_downed_main"]
 script = ExtResource("3_seg")
-animation = &"ual1/Death01"
-from_s = 2.3
-to_s = 2.4
+animation = &"ual1/Crouch_Idle_Loop"
+from_s = 0.0
+to_s = 2.933
 
 [sub_resource type="Resource" id="Seg_downed_crawl_main"]
 script = ExtResource("3_seg")
@@ -317,9 +358,9 @@ to_s = 3.0
 
 [sub_resource type="Resource" id="Seg_execute_main"]
 script = ExtResource("3_seg")
-animation = &"ual2/Melee_Hook"
-from_s = 0.0
-to_s = 0.466
+animation = &"ual2/Sword_Heavy_Combo"
+from_s = 2.1
+to_s = 3.1
 
 [sub_resource type="Resource" id="Seg_get_up_main"]
 script = ExtResource("3_seg")
@@ -339,6 +380,7 @@ duration_s = 0.0
 hold_end = false
 blend_in_s = 0.06
 blend_out_s = 0.12
+lower_weight = 1.0
 
 [sub_resource type="Resource" id="Anim_shield_rush"]
 script = ExtResource("2_anim")
@@ -352,6 +394,7 @@ duration_s = 0.0
 hold_end = false
 blend_in_s = 0.06
 blend_out_s = 0.15
+lower_weight = 1.0
 
 [sub_resource type="Resource" id="Anim_shield_wall"]
 script = ExtResource("2_anim")
@@ -395,10 +438,11 @@ key = &"downed"
 upper_body = false
 windup = SubResource("Seg_downed_main")
 contact_s = -1.0
-duration_s = 0.1
-hold_end = true
+duration_s = 2.933
+hold_end = false
 blend_in_s = 0.25
 blend_out_s = 0.25
+loop = true
 
 [sub_resource type="Resource" id="Anim_downed_crawl"]
 script = ExtResource("2_anim")
@@ -433,6 +477,8 @@ duration_s = 1.0
 hold_end = false
 blend_in_s = 0.08
 blend_out_s = 0.15
+lower_weight = 1.0
+keep_left_arm = true
 
 [sub_resource type="Resource" id="Anim_get_up"]
 script = ExtResource("2_anim")
@@ -447,7 +493,7 @@ blend_out_s = 0.2
 
 [resource]
 script = ExtResource("1_set")
-entries = Array[ExtResource("2_anim")]([SubResource("Anim_sword_light_1"), SubResource("Anim_sword_light_2"), SubResource("Anim_sword_light_3"), SubResource("Anim_sword_heavy"), SubResource("Anim_charge"), SubResource("Anim_block"), SubResource("Anim_dodge"), SubResource("Anim_stagger"), SubResource("Anim_stun"), SubResource("Anim_dead"), SubResource("Anim_shield_bash"), SubResource("Anim_shield_rush"), SubResource("Anim_shield_wall"), SubResource("Anim_drink"), SubResource("Anim_swap"), SubResource("Anim_downed"), SubResource("Anim_downed_crawl"), SubResource("Anim_revive"), SubResource("Anim_execute"), SubResource("Anim_get_up")])
+entries = Array[ExtResource("2_anim")]([SubResource("Anim_sword_light_1"), SubResource("Anim_sword_light_2"), SubResource("Anim_sword_light_3"), SubResource("Anim_sword_heavy"), SubResource("Anim_charge"), SubResource("Anim_block"), SubResource("Anim_dodge"), SubResource("Anim_stagger"), SubResource("Anim_stagger_short"), SubResource("Anim_stagger_head"), SubResource("Anim_stun"), SubResource("Anim_dead"), SubResource("Anim_shield_bash"), SubResource("Anim_shield_rush"), SubResource("Anim_shield_wall"), SubResource("Anim_drink"), SubResource("Anim_swap"), SubResource("Anim_downed"), SubResource("Anim_downed_crawl"), SubResource("Anim_revive"), SubResource("Anim_execute"), SubResource("Anim_get_up")])
 libraries = Dictionary[StringName, String]({
 &"ual1": "res://assets/animations/ual1/UAL1_Standard.glb",
 &"ual2": "res://assets/animations/ual2/UAL2_Standard.glb"

@@ -53,7 +53,6 @@ const LAYERS: Dictionary = {
 ## ninguno).
 const REALMS: Dictionary = {
 	"eldrun": {
-		"stone_wall": ["stone_wall", Color("#8c8d84"), 0.78, {"detail": 0.8}],
 		"stone_trim": ["stone_trim", Color("#a3a39a"), 0.72, {"detail": 0.8}],
 		"stone_floor": ["stone_floor", Color("#8f8a82"), 0.6, {}],
 		"stone_bridge": ["stone_wall", Color("#949389"), 0.75, {"uv": Vector2(1.0, 1.0), "detail": 0.8}],
@@ -65,7 +64,6 @@ const REALMS: Dictionary = {
 		"ruin_trim": ["rock_trim", Color("#8f8d85"), 0.65, {}],
 		"ruin_brick": ["brick", Color("#8f8a82"), 0.65, {}],
 		"metal": ["metal", Color("#6e4a35"), 0.6, {"metal": 0.5, "rough": 0.6, "layer": 0.0}],
-		"door": ["door", Color("#5e5850"), 0.5, {"scissor": 0.5, "layer": 0.0}],
 		"banner": ["cloth", RealmCatalog.HUECOS_COLOR, 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
 		"ember": ["cloth", Color("#3a2a20"), 1.0, {"emission": Color("#ff8a2a"), "energy": 3.0, "layer": 0.0, "closed": true}],
 	},

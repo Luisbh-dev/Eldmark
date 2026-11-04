@@ -115,7 +115,7 @@ func test_planner_picks_the_right_clip_for_each_action() -> void:
 		[CombatState.Action.CHARGE, ActionMachine.PHASE_WINDUP, 0, &"ual2/Sword_Heavy_Combo", true],
 		[CombatState.Action.BLOCK, ActionMachine.PHASE_NONE, 0, &"ual2/Idle_Shield_Loop", true],
 		[CombatState.Action.DODGE, ActionMachine.PHASE_NONE, 0, &"ual1/Roll", false],
-		[CombatState.Action.STAGGER, ActionMachine.PHASE_NONE, 0, &"ual1/Hit_Chest", true],
+		[CombatState.Action.STAGGER, ActionMachine.PHASE_NONE, 0, &"ual1/Hit_Chest", false],
 		[CombatState.Action.STUN, ActionMachine.PHASE_NONE, 0, &"ual2/Idle_Shield_Break", true],
 		[CombatState.Action.DEAD, ActionMachine.PHASE_NONE, 0, &"ual1/Death01", false],
 	]
@@ -201,7 +201,9 @@ func test_charge_and_death_hold_their_last_pose() -> void:
 		assert_true(entry.hold_end, "%s se queda en la última pose" % pair[1])
 		var late: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, int(pair[0]),
 				ActionMachine.PHASE_NONE, 0, 100000.0)
-		assert_near(late.time_s, entry.windup.to_s, 0.0001, "%s: mucho después sigue en el final" % pair[1])
+		# La carga respira (ART-07): se mece hasta sway_s hacia atrás por su tramo y vuelve.
+		assert_true(late.time_s <= entry.windup.to_s + 0.0001 and late.time_s >= entry.windup.to_s - entry.sway_s - 0.0001,
+				"%s: mucho después sigue en el final (%.3f)" % [pair[1], late.time_s])
 		assert_true(late.hold)
 
 
@@ -375,7 +377,8 @@ func test_a_server_imposed_control_changes_the_key_and_crossfades() -> void:
 	ActionMachine.impose_stagger(driver.c, driver.tick, driver.tick + 20, Vector2.ZERO)
 	driver.step()
 	layer.update_local(driver.c, driver.tick, 0.0, 1.0 / _tick_rate)
-	assert_eq(layer.get_current().key, &"stagger", "el tambaleo impuesto cambia el clip")
+	assert_true(layer.get_current().key == &"stagger" or layer.get_current().key == &"stagger_short"
+			or layer.get_current().key == &"stagger_head", "el tambaleo impuesto cambia el clip")
 	assert_true(layer.get_previous() == attack_slot, "y el ataque se desvanece")
 	assert_true(layer.get_previous().target == 0.0)
 	for i: int in 20:
@@ -611,6 +614,9 @@ func test_weapons_follow_the_hand_bone() -> void:
 	var skeleton: Skeleton3D = visual.get_skeleton()
 	var sword: BoneAttachment3D = skeleton.get_node(NodePath(WeaponProps.SWORD_ATTACHMENT)) \
 			as BoneAttachment3D
+	# La postura armada mueve la mano después de que el árbol ponga su pose: aquí solo se comprueba el agarre al
+	# hueso, así que se apaga para leer el hueso y la espada en el mismo instante.
+	visual.get_animator().get_stance_modifier().active = false
 	await wait_process_frames(3)
 	var hand: int = skeleton.find_bone("RightHand")
 	var hand_global: Transform3D = skeleton.global_transform * skeleton.get_bone_global_pose(hand)
@@ -786,7 +792,7 @@ func test_each_weapon_has_its_clip_set_with_the_phase_4_entries() -> void:
 		assert_not_null(bow_clips.find(key), "arco: %s" % key)
 	assert_null(bow_clips.find(&"block"), "el arco no bloquea")
 	assert_true(_clips.find(&"downed_crawl").loop, "arrastrarse se repite")
-	assert_true(_clips.find(&"downed").hold_end, "derribado quieto, en la última pose")
+	assert_true(_clips.find(&"downed").loop, "derribado quieto, de rodillas y en bucle (ART-51)")
 	# Todos los tramos del arco existen y caben en su clip (los de la espada ya los mira otra prueba).
 	for entry: CombatActionAnim in bow_clips.entries:
 		for segment: CombatClipSegment in [entry.windup, entry.active, entry.recovery]:

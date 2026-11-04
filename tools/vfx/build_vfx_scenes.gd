@@ -68,6 +68,13 @@ const BLADE_TIP: float = 1.12
 
 func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SCENES_DIR))
+	# Con --solo-habilidades solo se genera lo que añadió la oleada 4 (el muro de escudos), sin borrar ni reescribir
+	# los materiales de los demás efectos (los .tres conservan su uid).
+	if OS.get_cmdline_user_args().has("--solo-habilidades"):
+		_build_shield_wall()
+		print("[vfx] Escena del muro de escudos generada en %s" % SCENES_DIR)
+		quit(0)
+		return
 	_clean_materials()
 	_build_metal_spark()
 	_build_flesh()
@@ -77,6 +84,7 @@ func _initialize() -> void:
 	_build_dust()
 	_build_trail()
 	_build_aura()
+	_build_shield_wall()
 	print("[vfx] Escenas generadas en %s" % SCENES_DIR)
 	quit(0)
 
@@ -354,6 +362,47 @@ func _build_parry() -> void:
 		"tint_weight": 0.3,
 	})
 	_save(root, "parry_flash")
+
+
+# Muro de escudos (habilidad de espada y escudo): un arco de luz de frente a quien se acerca, con el borde del color
+# del reino (tinte completo), un relleno tenue, un destello al levantarlo y motas que suben. El eje +Z es hacia
+# donde mira el portador; el arco es la mitad alta de un aro que se queda de pie delante del escudo.
+func _build_shield_wall() -> void:
+	var root: VfxEffect = _effect("ShieldWall", 0.9)
+	root.tint = Color(0.8, 0.88, 1.0)
+
+	_shape(root, "Arch", Vector2.ONE * 2.6, _mat("shape_arch_wall", SHAPE_ADD, {
+		"mode": SHAPE_RING, "billboard": false, "noise_tex": _tex("noise"), "intensity": 2.4,
+		"ring_start_radius": 0.62, "ring_width_start": 0.10, "ring_width_end": 0.07, "ring_line": 0.055,
+		"ring_tail": 0.5, "ring_fill": 0.28, "ring_arc": 0.5, "ring_squash": 0.78, "fade_power": 0.9,
+		"attack": 0.08, "push": 0.0, "start_scale": 0.9, "end_scale": 1.0,
+	}), Vector2(0.0, 0.85), Color(1.0, 1.0, 1.0), 1.0)
+
+	_shape(root, "ArchInner", Vector2.ONE * 2.0, _mat("shape_arch_wall_inner", SHAPE_ADD, {
+		"mode": SHAPE_RING, "billboard": false, "noise_tex": _tex("noise"), "intensity": 1.6,
+		"ring_start_radius": 0.62, "ring_width_start": 0.05, "ring_width_end": 0.03, "ring_line": 0.03,
+		"ring_tail": 0.0, "ring_fill": 0.0, "ring_arc": 0.5, "ring_squash": 0.78, "fade_power": 1.2,
+		"attack": 0.1, "push": 0.0, "start_scale": 0.9, "end_scale": 1.0,
+	}), Vector2(0.05, 0.7), Color(1.0, 1.0, 1.0), 0.8)
+
+	_shape(root, "Flash", Vector2.ONE * 1.3, _mat("shape_flash_wall", SHAPE_ADD, {
+		"mode": SHAPE_FLASH, "tex": _tex("flare_star"), "intensity": 3.0, "start_scale": 0.4,
+		"end_scale": 1.0, "spin": 0.4, "fade_power": 1.6, "attack": 0.05, "push": 0.1,
+	}), Vector2(0.0, 0.22), Color(1.0, 0.97, 0.9), 0.35)
+
+	var motes_proc: ParticleProcessMaterial = _proc({
+		"direction": Vector3(0, 1, 0), "spread": 40.0, "initial_velocity_min": 0.5,
+		"initial_velocity_max": 1.4, "damping_min": 1.0, "damping_max": 2.0,
+		"gravity": Vector3(0, 0.3, 0), "scale_min": 0.5, "scale_max": 1.0,
+		"scale_curve": _curve([[0.0, 0.0], [0.2, 1.0], [1.0, 0.0]]),
+		"color_ramp": _ramp([[0.0, Color(1, 1, 1, 1)], [1.0, Color(1, 1, 1, 0)]]),
+	})
+	_particles(root, "Motes", 18, 0.7, motes_proc, _quad(Vector2(0.09, 0.09),
+			_mat("mote_wall", PARTICLE_ADD, {"tex": _tex("soft_dot"), "intensity": 3.2,
+			"fade_in": 0.05, "fade_out_start": 0.4})), {
+		"explosiveness": 0.6, "randomness": 0.6, "meta_tint": Color(1.0, 1.0, 1.0), "tint_weight": 0.9,
+	})
+	_save(root, "shield_wall")
 
 
 # Polvo al esquivar o aterrizar. El eje +Z del efecto es el suelo hacia arriba y el +Y, hacia atrás (contrario

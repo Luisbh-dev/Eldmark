@@ -154,24 +154,58 @@ versión; se anota la fecha del archivo usado dentro del zip.
 | Carpeta en el repo | `assets/textures/terrain/watercolor/` |
 | Créditos | No obligatorios; si se acredita, el autor pide "Jonas Voland" |
 
-## Fuentes (pendientes: tarea del usuario)
+### Texturas de terreno de Poly Haven (ART-55)
 
-`assets/fonts/` está vacío: **faltan las fuentes OFL elegidas** para la interfaz (decisión del
-backlog, UI-02) y por ahora el tema usa la fuente por defecto del motor. No se han podido bajar con
-garantías de licencia desde el entorno de desarrollo, así que quedan pendientes de añadir a mano:
+| Campo | Valor |
+|---|---|
+| Autores | Dimitrios Savva (`damp_beach_sand`, y fotografía de `rock_boulder_dry`), eye-candy.xyz (`dirt_floor`), Charlotte Baglioni (`forest_ground_06`, `grass_ground`), Rob Tuytel (`ground_grey`, `snow_02`), Rico Cilliers (procesado de `rock_boulder_dry`), Amal Kumar (`rocky_trail`) |
+| Versión / archivo | Las ocho a 2K, bajadas el 3 de noviembre de 2026 a `../Eldmark-raw/texturas_polyhaven_2k/` (md5 comprobado contra la API de Poly Haven; ver su `FUENTE.txt`). **Modificadas**: reescaladas a 1024 px, desaturadas, con el contraste comprimido y parte de la oclusión ambiental horneada en el color; la altura va en el alfa del albedo (`*_alb_ht.png`) y la rugosidad en el alfa de la normal OpenGL (`*_nrm_rough.png`). Script: `tools/assets/process_terrain_textures.py` |
+| URL | https://polyhaven.com/textures (cada una en https://polyhaven.com/a/<id>) |
+| Licencia | CC0 1.0 (dominio público), https://polyhaven.com/license |
+| Dónde se indica | Página de licencia de Poly Haven (los archivos no traen licencia propia) |
+| Carpeta en el repo | `assets/textures/terrain/polyhaven/` |
+| Créditos | No obligatorios (cortesía: "Poly Haven") |
+| Nota | Sustituyen a las de acuarela y a la normal plana en el terreno del Vado Gris; las de acuarela siguen en el repo por si otra zona las usa |
 
-| Uso | Fuente elegida | Licencia | Archivo esperado |
+### Sky3D 2.1.0: descartado (ART-54)
+
+El cielo del Vado Gris es propio (`assets/materials/shaders/storm_sky.gdshader`, un shader de cielo con
+nubes procedurales): Sky3D (TokisanGames, MIT) trae un ciclo de día y noche completo que aquí no hace
+falta, arrastra la luna de procedencia dudosa (MoonMap.png) y las estrellas de ESO/S. Brunier (CC BY 4.0,
+que obligaría a acreditarlas), y su ciclo habría que mantenerlo apagado en el servidor. No se ha copiado
+nada de Sky3D al repo, así que no hay nada que acreditar por él. Si algún día se quiere el ciclo de día y
+noche (decisión pendiente en el backlog), habrá que volver a valorarlo y acreditar a ESO entonces.
+
+### Kenney Impact Sounds (solo los pasos de hierba y de madera)
+
+| Campo | Valor |
+|---|---|
+| Autor | Kenney Vleugels (www.kenney.nl) |
+| Versión / archivo | Impact Sounds 1.0 (19-12-2019), `kenney_impact-sounds.zip`, sha256 `029d734af1582474edf3a694d1b0cebc97c1c152f2f39fa34d4c2bafc5de77f8`, descargado el 3 de noviembre de 2026. Usados, sin modificar (solo renombrados): `footstep_grass_000` a `004` como `assets/audio/sfx/step_grass/step_grass_01` a `05.ogg` y `footstep_wood_000` a `004` como `assets/audio/sfx/step_wood/step_wood_01` a `05.ogg` |
+| URL | https://kenney.nl/assets/impact-sounds |
+| Licencia | CC0 1.0 Universal |
+| Dónde se indica | `License.txt` dentro del zip |
+| Carpeta en el repo | `assets/audio/sfx/step_grass/` y `assets/audio/sfx/step_wood/` |
+| Créditos | No obligatorios (cortesía: "Kenney" o "www.kenney.nl") |
+| Nota | El resto de pasos y todos los sonidos de combate son de producción propia (ver más abajo). Los demás packs de audio descargados (Kenney RPG Audio, Still North Weapon Impacts, rubberduck 80 CC0 RPG SFX) solo se usan en la hoja de escucha `build/o4_hoja_escucha/` (`tools/audio/listening_sheet.py`), que no se versiona; si el usuario elige alguna de sus alternativas, se copia entonces al repo y se anota aquí. |
+
+## Fuentes de la interfaz (UI-02)
+
+Tres familias de Google Fonts, todas bajo la SIL Open Font License 1.1 (la OFL pide conservar el aviso
+de copyright y la licencia dentro del juego exportado: los `OFL-*.txt` están junto a los archivos). Origen:
+repositorio https://github.com/google/fonts (carpetas `ofl/cinzel`, `ofl/notosans` y `ofl/imfellenglishsc`,
+rama main, descargadas el 2026-11-03 a `../Eldmark-raw/fuentes_google_fonts/`). Se renombraron al copiarlas
+(sin corchetes en el nombre); no se modificaron.
+
+| Uso | Familia y copyright | Archivo en el repo | Archivo de origen |
 |---|---|---|---|
-| Cuerpo de texto y números | Noto Sans (Google / Noto Project) | SIL OFL 1.1 | `assets/fonts/NotoSans-Regular.ttf` |
-| Títulos y pestañas | Cinzel (Natanael Gama) o Alegreya SC (Juan Pablo del Peral) | SIL OFL 1.1 | `assets/fonts/Cinzel-Regular.ttf` |
+| Cuerpo de texto, números y placas | Noto Sans, (c) 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | `assets/fonts/NotoSans-Variable.ttf`, licencia `OFL-NotoSans.txt` | `NotoSans[wdth,wght].ttf` (variable) |
+| Títulos, nombres de jefe, avisos y pestañas | Cinzel, (c) 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel) | `assets/fonts/Cinzel-Variable.ttf`, licencia `OFL-Cinzel.txt` | `Cinzel[wght].ttf` (variable) |
+| Rótulos de lugares del mapa | IM Fell English SC, (c) 2010 Igino Marini (mail@iginomarini.com) | `assets/fonts/IMFellEnglishSC-Regular.ttf`, licencia `OFL-IMFellEnglishSC.txt` | `IMFeENsc28P.ttf` |
 
-Pasos: descargar cada familia de su origen oficial (Google Fonts o el repositorio del autor), copiar el
-`.ttf` con el nombre de la tabla (los `.ttf` van por Git LFS, ver `.gitattributes`) junto con su
-`OFL.txt`, anotar aquí autor, versión, fecha, URL y licencia (como en los demás packs), comprobar que
-la `ñ` y las tildes salen bien y ejecutar `godot --headless --path . -s res://tools/ui/build_theme.gd`
-para que el tema las cablee (`UIThemeBuilder` carga esas rutas si existen). Si se elige Alegreya SC,
-basta cambiar `UIThemeBuilder.TITLE_FONT_PATH`. La OFL pide conservar el aviso de copyright y la
-licencia de cada familia dentro del juego exportado.
+`UIThemeBuilder` las cablea en el tema (`assets/ui/theme/eldmark_theme.tres`, se regenera con
+`godot --headless --path . -s res://tools/ui/build_theme.gd`) y `UIFonts` se las da al código que dibuja
+texto a mano. Las dos grandes son fuentes variables: la seminegrita y la negrita salen del eje `wght`.
 
 ## Contenido propio (no es de terceros)
 
@@ -191,7 +225,7 @@ declara una licencia propia:
 - Tema de interfaz `assets/ui/theme/eldmark_theme.tres` (generado por `tools/ui/build_theme.gd` a
   partir de `UIPalette`).
 - Efectos de golpe (ART-09) `scenes/vfx/`: escenas (`hit_metal_spark`, `hit_flesh`, `hit_cloth`,
-  `hit_block_wood`, `parry_flash`, `dust_kick`, `weapon_trail` y `charge_aura`), sombreadores
+  `hit_block_wood`, `parry_flash`, `dust_kick`, `weapon_trail`, `charge_aura` y `shield_wall`), sombreadores
   `scenes/vfx/shaders/*.gdshader` (escritos a mano para Eldmark: formas de luz, chorros de sangre, polvo con
   luz y sombra, estela, brillo de la hoja y distorsión de calor), materiales `scenes/vfx/materials/*.tres` y
   texturas `scenes/vfx/textures/*.png`. No hay nada de terceros: las texturas se generan con
@@ -216,7 +250,8 @@ declara una licencia propia:
   contra el listón de calidad y dibuja `tools/audio/analyze_sfx.py` (espectrogramas, hojas y comparativas
   en `build/audio/`, no versionados). `niveles.json` lleva la sonoridad de cada archivo, el recorte de
   volumen por grupo, el instante del pico (`pico_s`) para sincronizar los barridos con `data/combat` y el
-  aleatorizador recomendado. Todavía no están conectados al juego.
+  aleatorizador recomendado. Desde la oleada 4 de calidad los conecta `CombatAudio` (`scripts/client/audio/combat_audio.gd`) con los bancos
+  de `CombatSoundBank`; a los pasos de tierra y de piedra se suman los de hierba y de madera de Kenney (arriba).
 
 - Torreón del fuerte (ART-57), versión 2, modelado y pintado desde cero con código, sin fotos, IA ni
   texturas de terceros: `assets/models/environment/custom/fort_keep.glb` (tres niveles de detalle, el nodo
@@ -281,6 +316,6 @@ Ninguno es obligatorio, pero los autores lo agradecen. Para la pantalla de créd
 - Modelos y animaciones: **Quaternius** (quaternius.com).
 - Murallas: **loafbrr**.
 - Piezas de blockout: **Kenney** (www.kenney.nl).
-- Texturas de terreno: **Jonas Voland**.
+- Texturas de terreno: **Jonas Voland** y **Poly Haven** (Dimitrios Savva, eye-candy.xyz, Charlotte Baglioni, Rob Tuytel, Rico Cilliers, Amal Kumar).
 - Terreno: **Terrain3D**, de Cory Petkovsek, Roope Palmroos y colaboradores (MIT).
 - Dispersión: **ProtonScatter**, de HungryProton (MIT).

@@ -36,6 +36,8 @@ const MIN_HEIGHT: float = 22.0
 const COMPACT_MIN_HEIGHT: float = 16.0
 const MIN_WIDTH: float = 22.0
 const COMPACT_MIN_WIDTH: float = 16.0
+## Medidas (px) del ratón dibujado de los glifos compactos de clic.
+const MOUSE_ICON_SIZE: Vector2 = Vector2(11.0, 15.0)
 
 ## Acción cuya asignación se muestra. Vacía: se muestra [member text_override].
 var action: StringName = &"":
@@ -54,6 +56,9 @@ var compact: bool = false:
 		refresh()
 
 var _label: String = UNASSIGNED_TEXT
+## En el modo compacto, el botón del ratón que se dibuja como icono en vez de escribir «Clic izq.»
+## (MOUSE_BUTTON_NONE: se escribe el texto).
+var _mouse_icon: MouseButton = MOUSE_BUTTON_NONE
 
 
 ## Crea un glifo ya configurado para [param action_name].
@@ -197,11 +202,24 @@ func refresh() -> void:
 		_label = label_for_action(action)
 	else:
 		_label = UNASSIGNED_TEXT
+	_mouse_icon = MOUSE_BUTTON_NONE
+	if compact and text_override.is_empty():
+		if _label == mouse_button_name(MOUSE_BUTTON_LEFT):
+			_mouse_icon = MOUSE_BUTTON_LEFT
+		elif _label == mouse_button_name(MOUSE_BUTTON_RIGHT):
+			_mouse_icon = MOUSE_BUTTON_RIGHT
 	update_minimum_size()
 	queue_redraw()
 
 
+## Botón del ratón que se dibuja como icono (MOUSE_BUTTON_NONE si el glifo lleva texto).
+func get_mouse_icon() -> MouseButton:
+	return _mouse_icon
+
+
 func _get_minimum_size() -> Vector2:
+	if _mouse_icon != MOUSE_BUTTON_NONE:
+		return Vector2(COMPACT_MIN_WIDTH + 2.0, COMPACT_MIN_HEIGHT)
 	var font: Font = get_theme_default_font()
 	var font_size: int = COMPACT_FONT_SIZE if compact else FONT_SIZE
 	var text_width: float = font.get_string_size(_label, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
@@ -222,9 +240,33 @@ func _draw() -> void:
 	cap.set_corner_radius_all(3)
 	cap.anti_aliasing = true
 	draw_style_box(cap, rect)
+	if _mouse_icon != MOUSE_BUTTON_NONE:
+		_draw_mouse(rect)
+		return
 	var font: Font = get_theme_default_font()
 	var font_size: int = COMPACT_FONT_SIZE if compact else FONT_SIZE
 	var text_size: Vector2 = font.get_string_size(_label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size)
 	var baseline: float = (rect.size.y - 1.0 - text_size.y) * 0.5 + font.get_ascent(font_size)
 	draw_string(font, Vector2((rect.size.x - text_size.x) * 0.5, baseline), _label,
 			HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, UIPalette.TEXT)
+
+
+# Un ratón visto desde arriba con el botón de [member _mouse_icon] relleno: dentro de la tecla, un clic
+# cabe donde un texto de nueve letras se salía de la casilla.
+func _draw_mouse(rect: Rect2) -> void:
+	var body := Rect2(rect.position + (rect.size - MOUSE_ICON_SIZE) * 0.5 - Vector2(0.0, 0.5),
+			MOUSE_ICON_SIZE)
+	var shell := StyleBoxFlat.new()
+	shell.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	shell.border_color = UIPalette.TEXT
+	shell.set_border_width_all(1)
+	shell.set_corner_radius_all(5)
+	shell.anti_aliasing = true
+	draw_style_box(shell, body)
+	var half: float = body.size.x * 0.5
+	var button_left: float = body.position.x + 1.0
+	if _mouse_icon == MOUSE_BUTTON_RIGHT:
+		button_left = body.position.x + half
+	draw_rect(Rect2(button_left, body.position.y + 1.0, half - 1.0, body.size.y * 0.4), UIPalette.ACCENT)
+	draw_line(Vector2(body.position.x + half, body.position.y + 1.0),
+			Vector2(body.position.x + half, body.position.y + body.size.y * 0.42), UIPalette.TEXT, 1.0)

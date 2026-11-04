@@ -2,26 +2,27 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://da4witykaemlp"
-path="res://.godot/imported/vado_gris_parchment.png-7e04016b5da04357e21187599c6102b6.ctex"
+uid="uid://cojwyu8jdmqmn"
+path.s3tc="res://.godot/imported/dirt_floor_nrm_rough.png-63684393d1772775798b9657fdd2a201.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
-source_file="res://assets/maps/vado_gris_parchment.png"
-dest_files=["res://.godot/imported/vado_gris_parchment.png-7e04016b5da04357e21187599c6102b6.ctex"]
+source_file="res://assets/textures/terrain/polyhaven/dirt_floor_nrm_rough.png"
+dest_files=["res://.godot/imported/dirt_floor_nrm_rough.png-63684393d1772775798b9657fdd2a201.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=2
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
@@ -37,4 +38,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

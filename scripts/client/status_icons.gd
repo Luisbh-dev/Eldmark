@@ -15,6 +15,9 @@ extends HBoxContainer
 const ICON_SIZE: float = 30.0
 const COMPACT_ICON_SIZE: float = 18.0
 const BORDER_WIDTH: float = 2.0
+## Píxeles que quedan para el dibujo dentro del borde (las variantes pequeñas de [CombatIcons]).
+const NORMAL_PIXELS: int = 26
+const COMPACT_PIXELS: int = 14
 const HARMFUL_BORDER: Color = Color(0.92, 0.22, 0.18, 1.0)
 const BENEFICIAL_BORDER: Color = Color(0.35, 0.85, 0.4, 1.0)
 const TEXT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.95)
@@ -53,7 +56,7 @@ class StatusIcon extends Control:
 		if icon != null:
 			draw_texture_rect(icon, rect.grow(-BORDER_WIDTH), false)
 		draw_rect(rect.grow(-BORDER_WIDTH * 0.5), get_border_color(), false, BORDER_WIDTH)
-		var font: Font = ThemeDB.fallback_font
+		var font: Font = UIFonts.body_semibold()
 		var stacks_text: String = get_stacks_text()
 		if not stacks_text.is_empty():
 			var origin := Vector2(0.0, size.y - 3.0)
@@ -113,9 +116,10 @@ func show_entries(entries: Array[StatusTracker.Entry], tick: int) -> int:
 		# Solo se toca lo que cambia: con 32 placas, esto va cada fotograma.
 		if icon.status_id != entry.status_id or icon.stacks != entry.stacks \
 				or icon.seconds_left != seconds or icon.compact != compact or not icon.visible:
-			if icon.status_id != entry.status_id or icon.icon == null:
-				icon.icon = CombatIcons.status_icon(entry.status_id)
-				icon.harmful = entry.is_harmful()
+			# La variante pequeña de cada estado está dibujada a la medida exacta del icono.
+			icon.icon = CombatIcons.status_icon(entry.status_id,
+					COMPACT_PIXELS if compact else NORMAL_PIXELS)
+			icon.harmful = entry.is_harmful()
 			icon.status_id = entry.status_id
 			icon.stacks = entry.stacks
 			icon.seconds_left = seconds

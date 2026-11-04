@@ -1,50 +1,31 @@
 extends SceneTree
-## Hornea el mapa de pergamino de una zona (UI-51) con [ParchmentMapBaker] y lo guarda en
-## [code]assets/maps/<zona>_parchment.png[/code] (por Git LFS) junto a su escala y sus lugares fijos en
-## [code]assets/maps/<zona>_parchment_map.tres[/code] ([ZoneMapDefinition], en texto).
+## Hornea el mapa de pergamino de una zona (UI-51) con [ParchmentMapBaker] y lo guarda como mapa de la zona: la
+## imagen en [code]assets/maps/<zona>.png[/code] (por Git LFS) y su escala y sus lugares fijos en
+## [code]assets/maps/<zona>_map.tres[/code] ([ZoneMapDefinition], en texto). Es el mapa que usan la ventana M y el
+## minimapa, y lo comprueba [code]tests/test_zone_map.gd[/code].
 ##
-## Uso (desde la raíz del proyecto, sin ventana; unos minutos a 2048 px):
+## Orden única y reproducible (desde la raíz del proyecto, sin ventana; unos 40 s a 2048 px):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/map/bake_parchment_map.gd
-## godot --headless --path . -s res://tools/map/bake_parchment_map.gd -- --size=1024 --out=user://prueba.png
 ## godot --headless --path . --import      # después, para importar el PNG nuevo
 ## [/codeblock]
-## Con [code]--out=[/code] la imagen y el recurso van a esa ruta (sin tocar los de [code]assets/maps/[/code]) y
+## Hay que repetirla cuando cambien el relieve, el agua, las murallas, el fuerte o la vegetación del Vado Gris (la
+## prueba [code]test_baking_the_zone_again_gives_the_saved_map[/code] avisa si el mapa guardado ya no es el de la
+## escena). Con [code]--out=[/code] la imagen y el recurso van a esa ruta (sin tocar los de [code]assets/maps/[/code]) y
 ## con [code]--size=[/code] la imagen es más pequeña (para probar: todo se escala con los metros).
 ## [br][br]
-## [b]Estado[/b]: no toca [code]assets/maps/<zona>.png[/code] ni [code]<zona>_map.tres[/code]: el mapa que usa el
-## juego sigue siendo el de [code]tools/bake_zone_map.gd[/code] (1024 px, ±160 m), que fija
-## [code]tests/test_zone_map.gd[/code]. El de pergamino está listo al lado, con los mismos lugares fijos.
+## El horneador anterior (volcado de la pintura del terreno, [code]tools/bake_zone_map.gd[/code]) queda solo como
+## referencia: ya no escribe en [code]assets/maps/[/code] salvo que se le pida.
 ## [br][br]
-## [b]Para activarlo en el juego[/b] (no se ha hecho: toca la interfaz y las pruebas):
-## [codeblock]
-## # 1. En assets/maps/vado_gris_map.tres solo cambian cuatro líneas de [resource] (o se copia encima
-## #    assets/maps/vado_gris_parchment_map.tres, que ya las lleva):
-## image_path = "res://assets/maps/vado_gris_parchment.png"
-## world_origin = Vector2(-200, -200)
-## world_size = Vector2(400, 400)
-## image_size = Vector2i(2048, 2048)
-## # 2. En tests/test_zone_map.gd:
-## #    IMAGE_PATH = "res://assets/maps/vado_gris_parchment.png"
-## #    image_size 1024 -> 2048, world_origin -160 -> -200, world_size 320 -> 400,
-## #    meters_per_pixel 0.3125 -> 0.1953125, pixels_per_meter 3.2 -> 5.12,
-## #    world_to_pixel de las esquinas (-160/160 -> -200/200; el centro pasa a (1024, 1024)),
-## #    contains(161, 0, 0) y contains(0, 0, -170) pasan a ser true (usar 201 y -210),
-## #    y de los tres chequeos de color de test_the_image_shows_water_structures_and_ground solo cambia
-## #    el del borde sur de la empalizada, de z = 20 a z = 30 (el fuerte se dibuja 1,5 veces más
-## #    grande); el río (b > r + 0.15) y el prado (g > b) siguen cumpliéndose con el papel gris pardo.
-## #    test_baking_the_zone_again_gives_the_saved_map compara con tools/bake_zone_map.gd: dejarlo
-## #    apuntando a vado_gris.png o sustituirlo por un horneado de ParchmentMapBaker con tolerancia.
-## [/codeblock]
-## Los marcadores de la interfaz (fuerte, campamentos, puertas) caen en el mismo sitio en los dos mapas:
-## el dibujo se hace con las coordenadas del mundo.
+## Los marcadores de la interfaz (fuerte, campamentos, puertas) caen en el mismo sitio en los dos mapas: el dibujo se
+## hace con las coordenadas del mundo.
 
 ## Trozo de mundo de cada zona: esquina noroeste y tamaño (m). El Vado Gris cubre ±200 m: el valle jugable
 ## (±150 m) ocupa tres cuartos de la imagen y las montañas lo enmarcan sin comérselo.
 const ZONE_BAKES: Dictionary = {
 	&"vado_gris": {"origin": Vector2(-200.0, -200.0), "size": Vector2(400.0, 400.0), "pixels": 2048},
 }
-const PARCHMENT_SUFFIX: String = "_parchment"
+const PARCHMENT_SUFFIX: String = ""
 
 
 func _initialize() -> void:

@@ -64,9 +64,9 @@ const DEBUG_REFRESH_INTERVAL: float = 0.1
 ## Opacidad a la que se atenúa la interfaz de juego con la pantalla de muerte abierta.
 const DEAD_DIM_ALPHA: float = 0.3
 ## Posición (px desde abajo, anclada al centro) de la barra de acciones y de la fila de efectos propios,
-## por encima de la vida y la resistencia ([code]Vitals[/code] empieza a 118 px del borde).
-const ACTION_BAR_RECT: Rect2 = Rect2(-320.0, -240.0, 640.0, 56.0)
-const STATUS_ROW_RECT: Rect2 = Rect2(-200.0, -172.0, 400.0, 30.0)
+## por encima de la barra de acciones (a 24 px del borde); [code]Vitals[/code] va justo encima de ella.
+const ACTION_BAR_RECT: Rect2 = Rect2(-340.0, -76.0, 680.0, 52.0)
+const STATUS_ROW_RECT: Rect2 = Rect2(-200.0, -160.0, 400.0, 30.0)
 ## Aviso del menú social (SOC-07) cuando no hay a quién ofrecérselo. Es el único: un enemigo, un muerto, un jugador
 ## falso o alguien tras una pared dan el mismo que no apuntar a nadie, para no delatar lo que no se ve.
 const TEXT_NO_SOCIAL_TARGET: String = "Apunta a un jugador de tu reino (a 20 m o menos) para ver sus acciones."
@@ -87,6 +87,9 @@ var _camera_rig: CameraRig = null
 var _client: NetClient = null
 var _world: Node = null
 var _feedback: CombatFeedback = null
+# Audio y efectos del combate (ART-11, ART-09): se conectan al reparto de la sensación de combate.
+var _combat_audio: CombatAudio = null
+var _combat_vfx: CombatVfx = null
 var _debug_refresh_left: float = 0.0
 var _health_initialized: bool = false
 # Quién te mató y con qué (del DEATH propio), hasta que se use para la pantalla de muerte.
@@ -428,6 +431,16 @@ func get_feedback() -> CombatFeedback:
 	return _feedback
 
 
+## Audio del combate (null hasta [method bind]).
+func get_combat_audio() -> CombatAudio:
+	return _combat_audio
+
+
+## Efectos de golpe (null hasta [method bind] o sin personaje).
+func get_combat_vfx() -> CombatVfx:
+	return _combat_vfx
+
+
 ## true mientras la interfaz de juego está atenuada por la pantalla de muerte.
 func is_dimmed() -> bool:
 	return _dimmed
@@ -447,6 +460,19 @@ func _setup_feedback() -> void:
 		_feedback.local_died.connect(_on_local_died)
 		_feedback.local_respawned.connect(_on_local_respawned)
 	_feedback.setup(_client, _camera_rig, _character, _marker, _numbers)
+	if _combat_audio == null:
+		_combat_audio = CombatAudio.new()
+		add_child(_combat_audio)
+	_combat_audio.bind(_feedback)
+	# Los efectos cuelgan del mundo (van en coordenadas globales): del personaje, que se recrea con la zona.
+	if is_instance_valid(_character) and (not is_instance_valid(_combat_vfx)
+			or _combat_vfx.get_parent() != _character):
+		if is_instance_valid(_combat_vfx):
+			_combat_vfx.queue_free()
+		_combat_vfx = CombatVfx.new()
+		_character.add_child(_combat_vfx)
+	if is_instance_valid(_combat_vfx):
+		_combat_vfx.bind(_feedback)
 
 
 # Crea (de nuevo, si ya había una) la interfaz de guerra y la conecta con el cliente. Va por debajo de la

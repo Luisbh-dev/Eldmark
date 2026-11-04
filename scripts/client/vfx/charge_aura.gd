@@ -26,6 +26,11 @@ const CUE_PULSE: StringName = &"pulse"
 const CUE_RELEASE: StringName = &"release"
 ## Carga a partir de la cual se considera completa y suena el pulso.
 const FULL_CHARGE: float = 0.995
+## Hoja sobre la que se monta el brillo (m, de la empuñadura a la punta de la espada provisional): lo que ocupa el
+## nodo [code]Blade[/code] a escala 1. Una espada de otro largo escala el punto de montaje (ver [HumanoidVisual]).
+const BLADE_BASE: float = 0.12
+const BLADE_TIP: float = 1.12
+const BLADE_LENGTH: float = BLADE_TIP - BLADE_BASE
 
 ## Reino que decide el color ([VfxPalette]).
 @export var realm: int = 0:

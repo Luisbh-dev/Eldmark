@@ -30,6 +30,11 @@ const KEY_CHARGE: StringName = &"charge"
 const KEY_BLOCK: StringName = &"block"
 const KEY_DODGE: StringName = &"dodge"
 const KEY_STAGGER: StringName = &"stagger"
+## Tambaleo corto (hasta [constant SHORT_STAGGER_TICKS] ticks): otro golpe a la cabeza o al pecho, alternando.
+const KEY_STAGGER_SHORT: StringName = &"stagger_short"
+const KEY_STAGGER_HEAD: StringName = &"stagger_head"
+## Duración (ticks) hasta la que un tambaleo cuenta como corto (0,42 s).
+const SHORT_STAGGER_TICKS: int = 25
 const KEY_STUN: StringName = &"stun"
 const KEY_DEAD: StringName = &"dead"
 const KEY_DRINK: StringName = &"drink"
@@ -55,6 +60,10 @@ class Plan:
 	var phase: int = ActionMachine.PHASE_NONE
 	var upper_body: bool = false
 	var hold: bool = false
+	## Peso de la cadera y las piernas del clip y si deja el brazo izquierdo a la postura armada (ver
+	## [CombatActionAnim.lower_weight] y [member CombatActionAnim.keep_left_arm]).
+	var lower_weight: float = 0.0
+	var keep_left_arm: bool = false
 	var blend_in_s: float = 0.06
 	var blend_out_s: float = 0.12
 	## Tramo del clip que se está recorriendo y los segundos reales que le toca durar.
@@ -107,6 +116,16 @@ static func key_for(weapon: WeaponTicks, action: int, combo_index: int, ability_
 	return &""
 
 
+## Clave del tambaleo (ART-50): los cortos ([param control_ticks] de 1 a [constant SHORT_STAGGER_TICKS]) alternan
+## entre el golpe al pecho y a la cabeza según [param variant] (par o impar) si el juego de clips tiene las
+## entradas; los largos y los de duración desconocida (un remoto) usan [constant KEY_STAGGER].
+static func stagger_key(clips: CombatClipSet, control_ticks: int, variant: int) -> StringName:
+	if clips == null or control_ticks <= 0 or control_ticks > SHORT_STAGGER_TICKS:
+		return KEY_STAGGER
+	var wanted: StringName = KEY_STAGGER_HEAD if (variant & 1) == 1 else KEY_STAGGER_SHORT
+	return wanted if clips.find(wanted) != null else KEY_STAGGER
+
+
 ## Habilidad del byte de acción de un remoto: la de la ranura [param slot] (0-2) del arma
 ## [param weapon], o la primera poción si [param slot] es 3 (los dos consumibles se animan igual).
 static func ability_of_slot(weapon: WeaponTicks, slot: int) -> int:
@@ -123,12 +142,14 @@ static func ability_of_slot(weapon: WeaponTicks, slot: int) -> int:
 ## arrastra. Devuelve null si la acción no tiene animación (o no hay entrada para ella).
 static func plan(clips: CombatClipSet, weapon: WeaponTicks, action: int, phase: int,
 		combo_index: int, phase_elapsed_ticks: float, control_ticks: int = 0, ability_id: int = 0,
-		moving: bool = false) -> Plan:
+		moving: bool = false, variant: int = 0) -> Plan:
 	if clips == null or action == CombatState.Action.NONE:
 		return null
 	var key: StringName = key_for(weapon, action, combo_index, ability_id, moving)
 	if key.is_empty():
 		return null
+	if action == CombatState.Action.STAGGER:
+		key = stagger_key(clips, control_ticks, variant)
 	return plan_entry(clips, key, weapon, action, phase, phase_elapsed_ticks, control_ticks, ability_id)
 
 
@@ -169,6 +190,8 @@ static func plan_entry(clips: CombatClipSet, key: StringName, weapon: WeaponTick
 	result.phase = used_phase
 	result.upper_body = entry.upper_body
 	result.hold = entry.hold_end
+	result.lower_weight = entry.lower_weight_for_phase(used_phase)
+	result.keep_left_arm = entry.keep_left_arm
 	result.blend_in_s = entry.blend_in_s
 	result.blend_out_s = entry.blend_out_s
 	result.from_s = segment.from_s
@@ -182,6 +205,11 @@ static func plan_entry(clips: CombatClipSet, key: StringName, weapon: WeaponTick
 			progress = clampf(phase_elapsed_ticks / phase_ticks, 0.0, 1.0)
 		result.speed = segment.length_s() / result.duration_s
 	result.time_s = lerpf(segment.from_s, segment.to_s, progress)
+	# Pose mantenida que respira (la carga del fuerte): se mece hacia atrás por el tramo y vuelve.
+	if entry.hold_end and entry.sway_s > 0.0 and phase_ticks > 0.0 and phase_elapsed_ticks > phase_ticks:
+		var excess_s: float = (phase_elapsed_ticks - phase_ticks) / tick_rate
+		var sway: float = 0.5 - 0.5 * cos(TAU * entry.sway_hz * excess_s)
+		result.time_s = maxf(segment.from_s, segment.to_s - entry.sway_s * sway)
 	return result
 
 

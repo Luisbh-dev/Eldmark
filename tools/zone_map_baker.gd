@@ -35,6 +35,9 @@ const TEXTURE_COLORS: Dictionary[int, Color] = {
 	4: Color(0.52, 0.50, 0.50),
 	5: Color(0.38, 0.55, 0.30),
 	6: Color(0.40, 0.42, 0.46),
+	7: Color(0.36, 0.33, 0.28),
+	8: Color(0.88, 0.90, 0.92),
+	9: Color(0.27, 0.26, 0.20),
 }
 const UNKNOWN_TEXTURE_COLOR: Color = Color(0.5, 0.5, 0.45)
 const WATER_COLOR: Color = Color(0.20, 0.42, 0.62)

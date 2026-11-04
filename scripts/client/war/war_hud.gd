@@ -28,6 +28,7 @@ var _banners: WarBanners = null
 var _boss_bar: BossBar = null
 var _telegraph_marks: TelegraphMarks = null
 var _compass: Compass = null
+var _objective_line: ObjectiveLine = null
 var _minimap: Minimap = null
 var _kill_feed: KillFeed = null
 var _world_markers: WorldMarkers = null
@@ -72,6 +73,10 @@ func bind(client: NetClient, camera_rig: CameraRig = null) -> void:
 	_compass = Compass.new()
 	_compass.name = "Compass"
 	add_child(_compass)
+	_objective_line = ObjectiveLine.new()
+	_objective_line.name = "ObjectiveLine"
+	add_child(_objective_line)
+	_objective_line.bind(client, view, _capture_panel)
 	_kill_feed = KillFeed.new()
 	_kill_feed.name = "KillFeed"
 	add_child(_kill_feed)
@@ -103,6 +108,10 @@ func get_telegraph_marks() -> TelegraphMarks:
 
 func get_compass() -> Compass:
 	return _compass
+
+
+func get_objective_line() -> ObjectiveLine:
+	return _objective_line
 
 
 func get_world_markers() -> WorldMarkers:

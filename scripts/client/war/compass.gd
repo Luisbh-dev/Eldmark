@@ -10,6 +10,10 @@ extends Control
 ## Un punto del mundo está en el rumbo [method bearing_to] y a [method relative_bearing] grados a la
 ## derecha (positivos) o a la izquierda (negativos) de hacia donde se mira.
 ## [br][br]
+## [b]Jerarquía (UI-54).[/b] Tres filas: la cinta con las letras y las marcas (las letras se desvanecen hacia los
+## extremos), una fila aparte debajo con los iconos de los marcadores (los que caen al mismo rumbo se fusionan en el de
+## más prioridad: [method get_drawn_markers]) y, bajo la aguja, una placa con el rumbo numérico («045° NE»).
+## [br][br]
 ## La cinta enseña [constant SPAN_DEGREES] grados (± la mitad a cada lado). Los marcadores fuera de ese
 ## arco no se dibujan en la brújula (los muestra el [WorldMarkers] en el borde de la pantalla). Las
 ## medidas y los colores son provisionales. Solo cliente.
@@ -18,7 +22,15 @@ const GROUP: StringName = &"compass"
 ## Grados que cubre la cinta, de lado a lado.
 const SPAN_DEGREES: float = 180.0
 const WIDTH: float = 560.0
-const HEIGHT: float = 34.0
+const HEIGHT: float = 60.0
+## Alto de la cinta de letras y marcas; debajo, la fila de iconos y la placa del rumbo.
+const TAPE_HEIGHT: float = 24.0
+const ICON_ROW_HEIGHT: float = 20.0
+const PLATE_SIZE: Vector2 = Vector2(84.0, 18.0)
+## Iconos a menos de esta distancia (px) en la fila se fusionan en uno.
+const MERGE_PX: float = 14.0
+## Las letras empiezan a desvanecerse a esta fracción del medio ancho de la cinta y desaparecen en el borde.
+const FADE_FROM: float = 0.55
 const TOP_MARGIN: float = 4.0
 const BACK_COLOR: Color = Color(0.04, 0.045, 0.06, 0.62)
 const TICK_COLOR: Color = Color(0.8, 0.78, 0.72, 0.75)
@@ -67,6 +79,39 @@ func get_heading() -> float:
 ## en la cinta (0 a [constant WIDTH]).
 func get_visible_markers() -> Array[Dictionary]:
 	return _visible_markers.duplicate()
+
+
+## Los marcadores que se dibujan en la fila de iconos: los de [method get_visible_markers] con los que caen a menos de
+## [constant MERGE_PX] px de otro fusionados en el de más prioridad (a igualdad, el más cercano al jugador). Cada
+## elemento añade [code]merged: int[/code], cuántos marcadores representa.
+func get_drawn_markers() -> Array[Dictionary]:
+	var ordered: Array[Dictionary] = _visible_markers.duplicate()
+	ordered.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var pa: int = int(Minimap.KIND_PRIORITY.get((a["marker"] as WorldMarker).kind, 0))
+		var pb: int = int(Minimap.KIND_PRIORITY.get((b["marker"] as WorldMarker).kind, 0))
+		if pa != pb:
+			return pa > pb
+		return (a["marker"] as WorldMarker).distance_from(_origin) < (b["marker"] as WorldMarker).distance_from(_origin))
+	var drawn: Array[Dictionary] = []
+	for entry: Dictionary in ordered:
+		var absorbed: bool = false
+		for kept: Dictionary in drawn:
+			if absf(float(kept["x"]) - float(entry["x"])) < MERGE_PX:
+				kept["merged"] = int(kept["merged"]) + 1
+				absorbed = true
+				break
+		if not absorbed:
+			var copy: Dictionary = entry.duplicate()
+			copy["merged"] = 1
+			drawn.append(copy)
+	return drawn
+
+
+## Opacidad (0 a 1) de las letras y números de la cinta en la posición [param x] (0 a [constant WIDTH]): 1 en el
+## centro, 0 en los bordes.
+static func letter_alpha(x: float) -> float:
+	var distance: float = absf(x - WIDTH * 0.5) / (WIDTH * 0.5)
+	return 1.0 - smoothstep(FADE_FROM, 1.0, distance)
 
 
 ## Texto del rumbo central: «045° NE».
@@ -127,8 +172,9 @@ func _recompute() -> void:
 
 
 func _draw() -> void:
-	var area := Rect2(Vector2.ZERO, Vector2(WIDTH, HEIGHT))
-	draw_rect(area, BACK_COLOR)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(WIDTH, TAPE_HEIGHT + ICON_ROW_HEIGHT)), BACK_COLOR)
+	# Filete entre la cinta y la fila de iconos.
+	draw_line(Vector2(0.0, TAPE_HEIGHT), Vector2(WIDTH, TAPE_HEIGHT), Color(TICK_COLOR.r, TICK_COLOR.g, TICK_COLOR.b, 0.25), 1.0)
 	var font: Font = get_theme_default_font()
 	var half: float = SPAN_DEGREES * 0.5
 	var first: int = floori((_heading - half) / 15.0)
@@ -140,18 +186,36 @@ func _draw() -> void:
 			continue
 		var rumbo: float = fposmod(degrees, 360.0)
 		var cardinal: bool = is_equal_approx(fposmod(rumbo, 45.0), 0.0)
-		draw_line(Vector2(x, HEIGHT - (14.0 if cardinal else 8.0)), Vector2(x, HEIGHT - 2.0), TICK_COLOR, 1.0)
+		var fade: float = letter_alpha(x)
+		var tick_color: Color = Color(TICK_COLOR.r, TICK_COLOR.g, TICK_COLOR.b, TICK_COLOR.a * lerpf(0.35, 1.0, fade))
+		draw_line(Vector2(x, TAPE_HEIGHT - (10.0 if cardinal else 6.0)), Vector2(x, TAPE_HEIGHT - 2.0), tick_color, 1.0)
 		if cardinal:
 			var text: String = cardinal_of(rumbo)
 			var size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE)
-			draw_string(font, Vector2(x - size.x * 0.5, 14.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE, CARDINAL_COLOR)
+			draw_string(font, Vector2(x - size.x * 0.5, 14.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE,
+					Color(CARDINAL_COLOR.r, CARDINAL_COLOR.g, CARDINAL_COLOR.b, fade))
 		elif is_equal_approx(fposmod(rumbo, 30.0), 0.0):
 			var number: String = "%d" % roundi(rumbo)
 			var number_size: Vector2 = font.get_string_size(number, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE - 3)
-			draw_string(font, Vector2(x - number_size.x * 0.5, 14.0), number, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE - 3, TICK_COLOR)
-	for entry: Dictionary in _visible_markers:
+			draw_string(font, Vector2(x - number_size.x * 0.5, 14.0), number, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+					FONT_SIZE - 3, Color(TICK_COLOR.r, TICK_COLOR.g, TICK_COLOR.b, TICK_COLOR.a * fade))
+	# Fila de iconos aparte, con los marcadores fusionados al mismo rumbo.
+	for entry: Dictionary in get_drawn_markers():
 		var marker: WorldMarker = entry["marker"]
-		MarkerIcons.draw(self, marker.kind, Vector2(float(entry["x"]), HEIGHT * 0.5 + 2.0), marker.color, 7.0)
-	# Marca del centro (hacia donde se mira) y rumbo.
-	draw_colored_polygon(PackedVector2Array([Vector2(WIDTH * 0.5 - 5.0, 0.0), Vector2(WIDTH * 0.5 + 5.0, 0.0),
-			Vector2(WIDTH * 0.5, 7.0)]), HEADING_COLOR)
+		var at: Vector2 = Vector2(float(entry["x"]), TAPE_HEIGHT + ICON_ROW_HEIGHT * 0.5)
+		MarkerIcons.draw(self, marker.kind, at, marker.color, 7.0)
+		if int(entry["merged"]) > 1:
+			draw_circle(at + Vector2(7.0, -6.0), 2.5, HEADING_COLOR)
+	# Aguja: triángulo arriba, hilo por la cinta y placa con el rumbo numérico debajo.
+	var center_x: float = WIDTH * 0.5
+	draw_colored_polygon(PackedVector2Array([Vector2(center_x - 5.0, 0.0), Vector2(center_x + 5.0, 0.0),
+			Vector2(center_x, 7.0)]), HEADING_COLOR)
+	draw_line(Vector2(center_x, 7.0), Vector2(center_x, TAPE_HEIGHT - 1.0), Color(HEADING_COLOR.r, HEADING_COLOR.g,
+			HEADING_COLOR.b, 0.35), 1.0)
+	var plate := Rect2(Vector2(center_x - PLATE_SIZE.x * 0.5, TAPE_HEIGHT + ICON_ROW_HEIGHT - 1.0), PLATE_SIZE)
+	draw_rect(plate, Color(0.03, 0.035, 0.05, 0.85))
+	draw_rect(plate, Color(TICK_COLOR.r, TICK_COLOR.g, TICK_COLOR.b, 0.45), false, 1.0)
+	var heading_label: String = get_heading_text()
+	var heading_size: Vector2 = font.get_string_size(heading_label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE - 1)
+	draw_string(font, Vector2(center_x - heading_size.x * 0.5, plate.end.y - 5.0), heading_label,
+			HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE - 1, HEADING_COLOR)

@@ -19,6 +19,9 @@ const FOG_COLOR: Color = Color(0.2, 0.225, 0.25, 1.0)
 const FADE_METERS: float = 14.0
 ## Anchura (fracción del radio) del suavizado del borde del disco.
 const DISC_EDGE: float = 0.025
+## Anchura (fracción del radio) y fuerza de la niebla que apaga el terreno hacia el aro del minimapa.
+const RIM_FADE: float = 0.2
+const RIM_STRENGTH: float = 0.55
 
 const _SHADER_CODE: String = """
 shader_type canvas_item;
@@ -29,6 +32,8 @@ uniform vec2 half_uv = vec2(0.25);
 uniform vec2 fade_uv = vec2(0.04);
 uniform vec4 fog_color : source_color = vec4(0.2, 0.225, 0.25, 1.0);
 uniform float disc_edge = 0.025;
+uniform float rim_fade = 0.2;
+uniform float rim_strength = 0.55;
 
 void fragment() {
 	vec2 p = UV * 2.0 - vec2(1.0);
@@ -38,7 +43,10 @@ void fragment() {
 	float keep = smoothstep(0.0, 1.0, min(edge.x, edge.y));
 	vec3 terrain = texture(map_tex, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
 	float disc = 1.0 - smoothstep(1.0 - disc_edge, 1.0, length(p));
-	COLOR = vec4(mix(fog_color.rgb, terrain, keep), disc);
+	// Niebla en el borde del círculo (UI-52): el terreno se apaga hacia el aro y deja de verse el corte.
+	float rim = smoothstep(1.0 - rim_fade, 1.0, length(p)) * rim_strength;
+	vec3 shown = mix(terrain, fog_color.rgb, rim);
+	COLOR = vec4(mix(fog_color.rgb, shown, keep), disc);
 }
 """
 
@@ -63,6 +71,8 @@ func _init() -> void:
 	_material.shader = _shared_shader
 	_material.set_shader_parameter(&"fog_color", FOG_COLOR)
 	_material.set_shader_parameter(&"disc_edge", DISC_EDGE)
+	_material.set_shader_parameter(&"rim_fade", RIM_FADE)
+	_material.set_shader_parameter(&"rim_strength", RIM_STRENGTH)
 	material = _material
 
 

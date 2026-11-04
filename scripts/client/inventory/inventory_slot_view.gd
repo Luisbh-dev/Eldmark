@@ -143,6 +143,15 @@ static func icon_for(definition: ItemDefinition) -> Texture2D:
 		var texture: Texture2D = load(definition.icon_path) as Texture2D
 		if texture != null:
 			return texture
+	# ART-12: las armas y las pociones llevan el dibujo de la barra de acciones (por el nombre del recurso de combate).
+	var drawn: Texture2D = null
+	match definition.category:
+		ItemDefinition.Category.WEAPON:
+			drawn = CombatIcons.named(StringName("weapon_%s" % definition.ref_id))
+		ItemDefinition.Category.CONSUMABLE:
+			drawn = CombatIcons.named(definition.ref_id)
+	if drawn != null:
+		return drawn
 	var placeholder := PlaceholderIcon.new()
 	placeholder.letter = short_name(definition.display_name)
 	placeholder.color = CATEGORY_COLORS.get(int(definition.category), CATEGORY_COLORS[ItemDefinition.Category.MISC])

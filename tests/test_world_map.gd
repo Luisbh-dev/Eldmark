@@ -252,9 +252,10 @@ func test_the_minimap_marks_the_fortress_in_its_owners_color_the_camps_and_only_
 		var point: Vector2 = icon["point"]
 		assert_true(point.distance_to(minimap.center()) <= minimap.radius() + 1e-3,
 				"el icono %s cabe en el círculo" % marker.id)
-	assert_true(ids.has("fort_%d" % NET_ID), "el fuerte (%s)" % ", ".join(ids))
-	assert_true(ids.has("gate_%d" % NET_ID), "su puerta")
-	assert_true(ids.has("camp_1") and ids.has("camp_2"), "y los dos campamentos")
+	assert_true(ids.has("fort_%d" % NET_ID), "el fuerte, que es el objetivo, pegado al aro (%s)" % ", ".join(ids))
+	assert_true(ids.has("camp_1"), "el campamento donde está el jugador")
+	assert_false(ids.has("gate_%d" % NET_ID), "la puerta queda fuera del círculo y no es el objetivo: no se pega al aro")
+	assert_false(ids.has("camp_2"), "ni el campamento del otro lado")
 	assert_eq(fort_color, RealmCatalog.color_of(RealmCatalog.SOLMARCH), "el fuerte, con el color de su dueño")
 	# Sin cliente no hay nada que dibujar.
 	minimap.bind(null, null, null, null)
@@ -310,9 +311,9 @@ func test_the_map_rect_is_a_square_inside_the_screen_and_converts_coordinates_bo
 	assert_true(Rect2(Vector2.ZERO, SIZE).encloses(world_map.get_legend_rect()), "y también dentro")
 	assert_vec_near(world_map.world_to_screen(Vector3.ZERO), rect.get_center(), 1e-3,
 			"el centro del mapa (el fuerte) cae en el centro del cuadrado")
-	assert_vec_near(world_map.world_to_screen(Vector3(-160.0, 0.0, -160.0)), rect.position, 1e-3,
+	assert_vec_near(world_map.world_to_screen(Vector3(-200.0, 0.0, -200.0)), rect.position, 1e-3,
 			"la esquina noroeste del mapa, arriba a la izquierda")
-	assert_vec_near(world_map.world_to_screen(Vector3(160.0, 0.0, 160.0)), rect.end, 1e-3, "y la sureste, abajo a la derecha")
+	assert_vec_near(world_map.world_to_screen(Vector3(200.0, 0.0, 200.0)), rect.end, 1e-3, "y la sureste, abajo a la derecha")
 	for point: Vector3 in [VARDHEIM_CAMP, Vector3(60.0, 0.0, 30.0), Vector3(-90.0, 0.0, 120.0)]:
 		var back: Vector3 = world_map.screen_to_world(world_map.world_to_screen(point))
 		assert_near(back.x, point.x, 1e-3, "ida y vuelta en x (%s)" % point)

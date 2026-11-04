@@ -21,6 +21,11 @@ extends RefCounted
 ## Sin acción, el clip actual se desvanece ([member CombatActionAnim.blend_out_s]) y la capa queda
 ## inactiva.
 ## [br][br]
+## [b]Parada de golpe[/b] (ART-09, solo la animación): [method start_hitstop] congela el clip actual unos 50 a 80 ms
+## cuando un golpe conecta. No se toca el tiempo de la simulación ni el plan: se acumula un desfase ([member
+## _lag_s], segundos de clip) que se resta al instante del clip mientras dura la parada y se recupera después
+## acelerando el clip (a 1,5x) durante la recuperación, así la acción acaba a su hora. Cambiar de clip lo anula.
+## [br][br]
 ## [b]Fase 4[/b] (docs/habilidades.md, sección 6.6, provisional): cada arma anima con su juego de clips
 ## ([method clips_for]: [code]data/animation/<arma>_clips.tres[/code], o el de por defecto si no tiene);
 ## el remoto da su arma activa (pareja de armas y bit de ranura de su registro). Una ABILITY sale con la
@@ -39,15 +44,31 @@ class Slot:
 	var target: float = 1.0
 	var upper_body: bool = false
 	var hold: bool = false
+	## Peso de cadera y piernas con [member upper_body] y brazo izquierdo reservado (ver [CombatActionAnim]).
+	var lower_weight: float = 0.0
+	## [member lower_weight] suavizado (cambia con la fase en 0,08 s) que usa el [CombatPoseModifier].
+	var lower_current: float = 0.0
+	var keep_left_arm: bool = false
 	var blend_in_s: float = 0.06
 	var blend_out_s: float = 0.12
 	var length_s: float = 0.0
 
 ## Directorio de los juegos de clips por arma.
 const CLIPS_DIR: String = "res://data/animation"
+## Metros que avanza un derribado por ciclo del clip de arrastre (ART-51): el ciclo va al ritmo de la velocidad
+## real, para que las manos y las rodillas no patinen.
+const CRAWL_CYCLE_METERS: float = 1.2
+## Segundos que tarda el peso de las piernas en pasar al de la fase siguiente de un ataque.
+const LOWER_BLEND_S: float = 0.08
 
 ## Juego de clips por defecto (el de las armas sin juego propio).
 var clips: CombatClipSet = null
+## Cuánto movimiento pide la entrada (0 = ninguno, 1 = andar a pleno): con él las piernas de un ataque vuelven a
+## la locomoción ([member Slot.lower_weight], ART-46). Lo pone el [CharacterAnimator] cada fotograma.
+var move_request: float = 0.0
+## Velocidad (m/s) de un derribado que se arrastra: marca el ritmo de su clip (ART-51).
+var crawl_speed: float = 0.0
+var _crawl_cycles: float = 0.0
 var _weapon: WeaponTicks = null
 # Levantarse tras ser levantado: si se está viendo y el tiempo (ticks) que lleva.
 var _was_downed: bool = false
@@ -58,11 +79,18 @@ static var _weapon_clips: Dictionary[StringName, CombatClipSet] = {}
 var _current: Slot = null
 var _previous: Slot = null
 var _plan: CombatClipPlanner.Plan = null
+# Parada de golpe: segundos de parada que quedan y desfase acumulado del clip actual (segundos de clip).
+var _hitstop_left: float = 0.0
+var _lag_s: float = 0.0
+## Velocidad extra (fracción de la normal) con la que el clip recupera el desfase de la parada de golpe.
+const HITSTOP_CATCHUP: float = 0.5
 # Seguimiento del byte action de un remoto.
 var _remote_action: int = -1
 var _remote_step: int = -1
 var _remote_phase: int = -1
 var _remote_elapsed: float = 0.0
+# Contador de reinicio del byte (varía entre tambaleos seguidos: alterna el golpe al pecho y a la cabeza).
+var _remote_restart_counter: int = 0
 # true mientras el golpe del arma está activo (la estela de la espada; ver [method is_swing_active]).
 var _swing_active: bool = false
 
@@ -116,7 +144,7 @@ func update_local(state: CombatState, tick: int, fraction: float, delta: float,
 		var control_ticks: int = maxi(state.cc_until_tick - state.action_tick, 0)
 		var ability_id: int = state.action_id if state.action == CombatState.Action.ABILITY else 0
 		plan = CombatClipPlanner.plan(set_for_weapon, weapon, state.action, phase, combo,
-				maxf(in_phase, 0.0), control_ticks, ability_id, moving)
+				maxf(in_phase, 0.0), control_ticks, ability_id, moving, state.action_tick)
 	plan = _with_get_up(plan, state.action, set_for_weapon, weapon,
 			float(tick - state.action_tick) + fraction, delta, true)
 	apply_plan(plan, delta)
@@ -152,6 +180,7 @@ func update_remote(action_byte: int, delta: float, weapon_id: int = 0, moving: b
 	_remote_action = action
 	_remote_step = step
 	_remote_phase = phase
+	_remote_restart_counter = step
 	var used_phase: int = phase if (action == CombatState.Action.LIGHT
 			or action == CombatState.Action.HEAVY or action == CombatState.Action.ABILITY) \
 			else ActionMachine.PHASE_NONE
@@ -159,7 +188,7 @@ func update_remote(action_byte: int, delta: float, weapon_id: int = 0, moving: b
 			if action == CombatState.Action.ABILITY else 0
 	var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(set_for_weapon, weapon, action,
 			used_phase, combo, _remote_elapsed * float(Engine.physics_ticks_per_second), 0, ability_id,
-			moving)
+			moving, _remote_restart_counter)
 	plan = _with_get_up(plan, action, set_for_weapon, weapon, 0.0, delta, false)
 	apply_plan(plan, delta)
 
@@ -177,14 +206,54 @@ func apply_plan(plan: CombatClipPlanner.Plan, delta: float) -> void:
 			_current.animation_name = plan.animation
 			_current.animation = _animation_of(plan.animation)
 			_current.length_s = _current.animation.length if _current.animation != null else 0.0
-		_current.time_s = plan.time_s
+		_current.time_s = _hitstop_time(plan, delta)
 		_current.speed = plan.speed
 		_current.hold = plan.hold
+		_current.lower_weight = plan.lower_weight
+		_current.lower_current = move_toward(_current.lower_current, plan.lower_weight, delta / LOWER_BLEND_S)
+		if plan.key == CombatClipPlanner.KEY_DOWNED_CRAWL and _current.length_s > 0.0:
+			# El arrastre avanza al ritmo de la velocidad real (ART-51), no al del reloj.
+			_crawl_cycles = fposmod(_crawl_cycles + delta * crawl_speed / CRAWL_CYCLE_METERS, 1.0)
+			_current.time_s = lerpf(plan.from_s, plan.to_s, _crawl_cycles)
+			_current.speed = plan.speed * crawl_speed / CRAWL_CYCLE_METERS * plan.duration_s
 	elif _current != null:
 		_current.target = 0.0
 		# Sigue avanzando mientras se desvanece, sin pasarse del final del clip.
 		_current.time_s = minf(_current.time_s + _current.speed * delta, _current.length_s)
 	_advance_weights(delta)
+
+
+# --- Parada de golpe ---------------------------------------------------------------------------
+
+## Congela [param seconds] el clip actual (solo la animación). Si ya hay una parada en curso, se queda con la más larga.
+## No hace nada sin clip de combate en marcha (no hay nada que congelar).
+func start_hitstop(seconds: float) -> void:
+	if _current == null or seconds <= 0.0:
+		return
+	_hitstop_left = maxf(_hitstop_left, seconds)
+
+
+## true mientras el clip está congelado por la parada de golpe.
+func is_in_hitstop() -> bool:
+	return _hitstop_left > 0.0
+
+
+## Desfase (s de clip) que lleva el clip actual por la parada de golpe y aún no ha recuperado.
+func get_hitstop_lag() -> float:
+	return _lag_s
+
+
+# Instante del clip con la parada de golpe aplicada: congelado mientras dura, y recuperando el desfase después.
+func _hitstop_time(plan: CombatClipPlanner.Plan, delta: float) -> float:
+	if _hitstop_left > 0.0:
+		var frozen: float = minf(delta, _hitstop_left)
+		_hitstop_left -= frozen
+		_lag_s += plan.speed * frozen
+		if plan.hold:
+			_lag_s = 0.0
+	elif _lag_s > 0.0:
+		_lag_s = maxf(_lag_s - plan.speed * delta * HITSTOP_CATCHUP, 0.0)
+	return maxf(plan.time_s - _lag_s, 0.0)
 
 
 # --- Salida -----------------------------------------------------------------------------------
@@ -214,6 +283,25 @@ func get_previous() -> Slot:
 	return _previous
 
 
+## Peso (0 a 1) del clip de cuerpo entero que se está viendo (esquiva, muerte, derribado, tambaleo...): la
+## postura armada se aparta mientras tanto ([ArmedStanceModifier]).
+func get_full_body_weight() -> float:
+	var weight: float = 0.0
+	for slot: Slot in get_slots():
+		if not slot.upper_body:
+			weight = maxf(weight, slot.weight)
+	return clampf(weight, 0.0, 1.0)
+
+
+## Peso (0 a 1) con el que los clips en curso reservan el brazo izquierdo a la postura armada (ataques de espada).
+func get_left_arm_reserved() -> float:
+	var weight: float = 0.0
+	for slot: Slot in get_slots():
+		if slot.keep_left_arm:
+			weight = maxf(weight, slot.weight)
+	return clampf(weight, 0.0, 1.0)
+
+
 ## true si algún clip tiene peso.
 func is_active() -> bool:
 	return not get_slots().is_empty()
@@ -238,7 +326,11 @@ func reset() -> void:
 	_remote_step = -1
 	_remote_phase = -1
 	_remote_elapsed = 0.0
+	_remote_restart_counter = 0
 	_swing_active = false
+	_crawl_cycles = 0.0
+	_hitstop_left = 0.0
+	_lag_s = 0.0
 
 
 # --- Interno ----------------------------------------------------------------------------------
@@ -276,12 +368,17 @@ func _with_get_up(plan: CombatClipPlanner.Plan, action: int, set_for_weapon: Com
 
 # Empieza un clip nuevo: el actual pasa a ser el saliente (si se veía) y el nuevo entra desde 0.
 func _start_slot(plan: CombatClipPlanner.Plan) -> void:
+	_hitstop_left = 0.0
+	_lag_s = 0.0
 	if _current != null and _current.weight > 0.01:
 		_previous = _current
 		_previous.target = 0.0
 	var slot := Slot.new()
 	slot.key = plan.key
 	slot.upper_body = plan.upper_body
+	slot.lower_weight = plan.lower_weight
+	slot.lower_current = plan.lower_weight
+	slot.keep_left_arm = plan.keep_left_arm
 	slot.blend_in_s = plan.blend_in_s
 	slot.blend_out_s = plan.blend_out_s
 	slot.target = 1.0

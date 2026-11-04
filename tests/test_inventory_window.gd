@@ -161,10 +161,15 @@ func test_the_bag_grid_shows_the_view_and_the_wallet() -> void:
 	assert_eq(view_slot.count, item.count, "con su pila")
 	assert_eq(view_slot.get_count_text(), str(item.count) if item.count > 1 else "")
 	assert_eq(view_slot.rarity, 0, "borde de común")
-	var icon: PlaceholderIcon = view_slot.icon as PlaceholderIcon
-	if assert_not_null(icon, "sin icono de ART-12, el provisional"):
+	assert_true(view_slot.icon is GameIcon, "la poción lleva el dibujo de ART-12, no una letra")
+	# Lo que no tiene dibujo (una armadura, por ejemplo) sigue con el cuadro provisional con su nombre corto.
+	var plain := ItemDefinition.new()
+	plain.display_name = "Poción de vida"
+	plain.category = ItemDefinition.Category.MISC
+	var icon: PlaceholderIcon = InventorySlotView.icon_for(plain) as PlaceholderIcon
+	if assert_not_null(icon, "sin dibujo, el provisional"):
 		assert_eq(icon.letter, "PV", "nombre corto de «Poción de vida»")
-		assert_eq(icon.color, InventorySlotView.CATEGORY_COLORS[ItemDefinition.Category.CONSUMABLE],
+		assert_eq(icon.color, InventorySlotView.CATEGORY_COLORS[ItemDefinition.Category.MISC],
 				"con el color de su categoría")
 	assert_eq(view_slot.get_tooltip_content()["title"], "Poción de vida")
 	assert_null(_window.get_slot_view(InventoryState.BAG_SLOTS_DEFAULT - 1).get_item(), "la última, vacía")

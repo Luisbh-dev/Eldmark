@@ -50,6 +50,10 @@ const GATE_NODE: NodePath = ^"FortGate"
 const CIRCLE_NODE: NodePath = ^"CaptureCircle"
 ## Propiedad de la malla del estandarte con el color de bando (parámetro de instancia del shader).
 const FACTION_COLOR_PROPERTY: String = "instance_shader_parameters/faction_color"
+## Emblema del atlas del estandarte del torreón (parámetro de instancia): 0 Vardheim, 1 Solmarch, 2 Askarra
+## y 3 el neutral (los mástiles de las puertas no lo tienen).
+const EMBLEM_PROPERTY: String = "instance_shader_parameters/emblem_index"
+const NEUTRAL_EMBLEM: float = 3.0
 ## Carpeta de las definiciones, por si la escena no está para decir cuál es.
 const DEFINITIONS_DIR: String = "res://data/fortresses"
 ## Cada cuántas llamadas a [method advance] se reintenta enlazar con la escena.
@@ -412,10 +416,16 @@ func _bind_node(fortress: Fortress) -> void:
 func _find_banners(root: Node) -> Array[MeshInstance3D]:
 	var found: Array[MeshInstance3D] = []
 	for banner_name: StringName in BANNER_NODES:
+		# El estandarte del torreón (FortKeep) cuelga del glTF del torreón, no de la raíz del fuerte, y es
+		# él mismo la malla; los de los mástiles son un nodo con la malla dentro.
 		var banner: Node = root.get_node_or_null(NodePath(String(banner_name)))
 		if banner == null:
+			banner = root.find_child(String(banner_name), true, false)
+		if banner == null:
 			continue
-		for child: Node in banner.find_children("*", "MeshInstance3D", true, false):
+		var candidates: Array[Node] = [banner]
+		candidates.append_array(banner.find_children("*", "MeshInstance3D", true, false))
+		for child: Node in candidates:
 			var mesh: MeshInstance3D = child as MeshInstance3D
 			if mesh != null and mesh.get(FACTION_COLOR_PROPERTY) != null:
 				found.append(mesh)
@@ -481,6 +491,8 @@ func _apply_to_scene(fortress: Fortress, state: FortressState) -> void:
 	for mesh: MeshInstance3D in fortress.banners:
 		if is_instance_valid(mesh):
 			mesh.set(FACTION_COLOR_PROPERTY, color)
+			if mesh.get(EMBLEM_PROPERTY) != null:
+				mesh.set(EMBLEM_PROPERTY, float(state.owner - 1) if state.owner >= 1 and state.owner <= 3 else NEUTRAL_EMBLEM)
 	var gate: FortGate = fortress.gate
 	if gate != null and is_instance_valid(gate):
 		gate.set_state(state.owner, state.is_gate_broken())

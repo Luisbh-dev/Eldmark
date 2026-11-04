@@ -234,10 +234,19 @@ func test_the_plate_is_anchored_to_the_projected_head() -> void:
 
 # --- Enemigos ---------------------------------------------------------------------------------
 
+# Un enemigo a menos de MARK_RANGE m sin apuntar ni herido (UI-56): sin nombre ni barra, solo la marca de rombo.
+func _assert_mark_only(net_id: int, message: String) -> void:
+	var plate: Nameplate = _plates.get_plate_for(net_id)
+	if plate == null:
+		return
+	assert_false(plate.is_name_shown(), message + " (sin nombre)")
+	assert_false(plate.is_bar_shown(), message + " (sin barra)")
+	assert_eq(plate.get_mark(), Nameplate.Mark.ENEMY, message + " (con la marca de enemigo)")
+
 func test_enemy_has_no_plate_unless_aimed_at_or_recently_damaged() -> void:
 	_spawn(ENEMY_ID, SOLMARCH, "Hostil", Vector3(9.0, 0.0, -14.0))
 	_frame()
-	assert_null(_plates.get_plate_for(ENEMY_ID), "un enemigo cualquiera no tiene placa")
+	_assert_mark_only(ENEMY_ID, "un enemigo cualquiera no lleva información: solo la marca de bando")
 	assert_eq(_plates.get_targeted_id(), 0)
 
 
@@ -256,7 +265,7 @@ func test_enemy_under_the_crosshair_shows_name_and_health_bar() -> void:
 	# Al apartar la retícula, desaparece.
 	_rig.set_look(1.0, 0.0)
 	_frame()
-	assert_null(_plates.get_plate_for(ENEMY_ID), "sin apuntarle ni haberle dañado, nada")
+	_assert_mark_only(ENEMY_ID, "sin apuntarle ni haberle dañado, solo la marca")
 
 
 func test_only_the_nearest_enemy_on_the_aim_ray_is_targeted() -> void:
@@ -265,7 +274,7 @@ func test_only_the_nearest_enemy_on_the_aim_ray_is_targeted() -> void:
 	_frame()
 	assert_eq(_plates.get_targeted_id(), ENEMY_ID)
 	assert_not_null(_plates.get_plate_for(ENEMY_ID))
-	assert_null(_plates.get_plate_for(OTHER_ENEMY_ID), "el de detrás no se apunta")
+	_assert_mark_only(OTHER_ENEMY_ID, "el de detrás no se apunta")
 
 
 func test_damaged_enemy_keeps_a_health_bar_without_name_for_five_seconds() -> void:
@@ -281,7 +290,7 @@ func test_damaged_enemy_keeps_a_health_bar_without_name_for_five_seconds() -> vo
 	_frame(Nameplates.DAMAGED_SECONDS - 0.5)
 	assert_not_null(_plates.get_plate_for(ENEMY_ID), "a los 4,5 s aún")
 	_frame(1.0)
-	assert_null(_plates.get_plate_for(ENEMY_ID), "pasados 5 s, fuera")
+	_assert_mark_only(ENEMY_ID, "pasados 5 s, fuera la barra")
 	assert_false(_plates.was_damaged_recently(ENEMY_ID))
 
 
@@ -299,7 +308,7 @@ func test_no_enemy_is_targeted_while_the_cursor_is_free() -> void:
 	_rig.set_ui_cursor_release(true, self)
 	_frame()
 	assert_eq(_plates.get_targeted_id(), 0, "con el cursor libre no hay retícula")
-	assert_null(_plates.get_plate_for(ENEMY_ID))
+	_assert_mark_only(ENEMY_ID, "con el cursor libre, sin información")
 	_rig.set_ui_cursor_release(false, self)
 
 
@@ -337,7 +346,7 @@ func test_a_targeted_enemy_behind_a_wall_is_not_targeted() -> void:
 	for _i: int in Nameplates.OCCLUSION_INTERVAL_FRAMES + 1:
 		_frame()
 	assert_eq(_plates.get_targeted_id(), 0, "el muro tapa al apuntado")
-	assert_null(_plates.get_plate_for(ENEMY_ID))
+	_assert_mark_only(ENEMY_ID, "con el cursor libre, sin información")
 
 
 func test_occlusion_rays_are_spread_over_frames() -> void:

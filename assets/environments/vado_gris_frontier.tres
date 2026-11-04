@@ -1,56 +1,68 @@
 [gd_resource type="Environment" format=3]
 
-[sub_resource type="Gradient" id="Gradient_n5t2r"]
-offsets = PackedFloat32Array(0.3, 0.75)
-colors = PackedColorArray(1, 1, 1, 0.25, 1, 1, 1, 1)
+[ext_resource type="Shader" path="res://assets/materials/shaders/storm_sky.gdshader" id="1_3p38f"]
 
-[sub_resource type="FastNoiseLite" id="FastNoiseLite_3p38f"]
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_kuxv1"]
 seed = 4113
-frequency = 0.006
-fractal_gain = 0.55
+fractal_octaves = 3
 
-[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_kuxv1"]
-width = 1024
-noise = SubResource("FastNoiseLite_3p38f")
-color_ramp = SubResource("Gradient_n5t2r")
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_hmw72"]
+noise = SubResource("FastNoiseLite_kuxv1")
 seamless = true
 
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_hmw72"]
-sky_top_color = Color(0.3372549, 0.38039216, 0.42745098, 1)
-sky_horizon_color = Color(0.6392157, 0.67058825, 0.6901961, 1)
-sky_curve = 0.12
-sky_cover = SubResource("NoiseTexture2D_kuxv1")
-sky_cover_modulate = Color(0.78, 0.8, 0.83, 0.85)
-ground_bottom_color = Color(0.29411766, 0.30980393, 0.30588236, 1)
-ground_horizon_color = Color(0.627451, 0.654902, 0.6666667, 1)
-sun_curve = 0.1
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_2omwd"]
+shader = ExtResource("1_3p38f")
+shader_parameter/cloud_noise = SubResource("NoiseTexture2D_hmw72")
+shader_parameter/zenith_color = null
+shader_parameter/horizon_color = null
+shader_parameter/clear_color = null
+shader_parameter/sun_glow_color = null
+shader_parameter/cloud_shadow_color = null
+shader_parameter/cloud_mid_color = null
+shader_parameter/cloud_lit_color = null
+shader_parameter/ground_color = null
+shader_parameter/realm_cold = null
+shader_parameter/realm_warm = null
+shader_parameter/cloud_scale = null
+shader_parameter/coverage = null
+shader_parameter/sun_break = null
+shader_parameter/sun_disk_intensity = null
+shader_parameter/sun_disk_size = null
 
-[sub_resource type="Sky" id="Sky_2omwd"]
-sky_material = SubResource("ProceduralSkyMaterial_hmw72")
+[sub_resource type="Sky" id="Sky_3r8v0"]
+sky_material = SubResource("ShaderMaterial_2omwd")
 
 [resource]
 background_mode = 2
-sky = SubResource("Sky_2omwd")
+sky = SubResource("Sky_3r8v0")
 ambient_light_source = 3
-ambient_light_sky_contribution = 0.85
-ambient_light_energy = 0.48
+ambient_light_energy = 0.55
 reflected_light_source = 2
-tonemap_mode = 2
-tonemap_exposure = 1.04
+tonemap_mode = 4
 tonemap_white = 6.0
 ssao_enabled = true
 ssao_radius = 1.6
 ssao_intensity = 1.6
+ssil_enabled = true
+ssil_radius = 4.0
+ssil_intensity = 0.8
 glow_enabled = true
-glow_bloom = 0.03
+glow_intensity = 0.35
+glow_bloom = 0.04
+glow_hdr_threshold = 1.2
 fog_enabled = true
-fog_light_color = Color(0.6392157, 0.67058825, 0.6901961, 1)
-fog_sun_scatter = 0.05
-fog_density = 0.0015
-fog_aerial_perspective = 0.2
-fog_sky_affect = 0.35
-fog_height = 2.0
-fog_height_density = 0.004
+fog_light_color = Color(0.60784316, 0.64705884, 0.68235296, 1)
+fog_sun_scatter = 0.18
+fog_density = 0.0016
+fog_aerial_perspective = 0.3
+fog_sky_affect = 0.25
+fog_height = 3.0
+fog_height_density = 0.01
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.0012
+volumetric_fog_albedo = Color(0.72156864, 0.76862746, 0.8156863, 1)
+volumetric_fog_length = 120.0
+volumetric_fog_ambient_inject = 0.25
+volumetric_fog_sky_affect = 0.4
 adjustment_enabled = true
-adjustment_contrast = 1.05
-adjustment_saturation = 0.88
+adjustment_contrast = 1.06

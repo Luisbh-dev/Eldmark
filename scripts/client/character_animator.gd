@@ -34,6 +34,21 @@ extends Node
 ## de [member turn_sharpness] y la columna recupera su compensación en [member dodge_twist_return_time]. La
 ## simulación no se entera: solo se mueve el [code]Pivot[/code].
 ## [br][br]
+## [b]Postura armada[/b] (ART-45): el [ArmedStanceModifier] pone el reposo de combate (la guardia con escudo
+## de [code]ual2/Idle_Shield_Loop[/code]) cuando se está parado y, andando, una capa de brazos con peso de 0,6 a
+## 0,9 (el escudo delante del torso, la hoja sin ir hacia atrás) y los dedos cerrados. Se aparta en el aire, con un
+## clip de cuerpo entero (esquiva, muerte...) y con el arco; el Hueco usa el perfil zombi.
+## [br][br]
+## [b]Ataques con los pies plantados[/b] (ART-46): mientras dura un ataque sin que la entrada pida andar, el modelo
+## mira a donde mira la cámara (se coloca al instante al empezar) y la capa de combate toma cadera y piernas del
+## clip ([member CombatAnimationLayer.move_request] a 0). Lo que avanza la estocada del ataque no cuenta como
+## entrada: se descuenta de la velocidad. Si se pide andar, todo vuelve a la locomoción.
+## [br][br]
+## [b]Reacciones[/b] (ART-48, ART-50, ART-51): [method react_to_hit] da al [HitReactionModifier] el golpe recibido o
+## bloqueado; el tambaleo da un paso atrás del [code]Pivot[/code]; al morir, el cuerpo conserva parte de la
+## velocidad que llevaba (se desliza y se frena) y se vuelve hacia el atacante para caer alejándose de él. Todo es
+## visual: la simulación no se entera.
+## [br][br]
 ## [b]Aire.[/b] Saltar reproduce Jump_Start desde el despegue (sin la anticipación agachada, porque
 ## la simulación ya ha despegado) y pasa a Jump_Loop al empezar a caer; caer por un borde va
 ## directo a Jump_Loop. Al aterrizar se mezcla Jump_Land con una intensidad que depende de la
@@ -73,6 +88,18 @@ signal weapon_shown(weapon_id: int)
 ## ([method CombatAnimationLayer.is_swing_active]): de aquí cuelga la estela de la espada.
 signal swing_active_changed(active: bool)
 
+## El personaje despega del suelo con un salto (para el sonido y el polvo; no sale al caer por un borde).
+signal jumped_visual
+## El personaje toca el suelo tras estar en el aire, con [param strength] de 0 a 1 según la velocidad del impacto.
+signal touched_down(strength: float)
+## Un remoto empieza una acción de combate ([param action] es un [enum CombatState.Action]; [param step] el paso del
+## combo, la ranura de la habilidad o el contador de reinicio del byte de acción). Solo de los remotos: lo propio lo
+## reparte [CombatFeedback].
+signal remote_action_started(action: int, step: int)
+## La carga del golpe fuerte está en curso ([param active]) con [param fraction] de 0 a 1, o ha terminado. Se emite
+## cada fotograma mientras dura. De aquí cuelga el aura de la espada ([ChargeAura]).
+signal charge_changed(active: bool, fraction: float)
+
 ## Fases del aire.
 enum AirState { GROUNDED, JUMPING, FALLING }
 ## Velocidad horizontal (m/s) por encima de la cual un derribado se arrastra.
@@ -82,6 +109,30 @@ const CRAWL_MIN_SPEED: float = 0.2
 ## Tiempo (s) en que el modelo gira hacia el rumbo de la esquiva al empezar y suavizado de ese giro.
 const DODGE_TURN_TIME: float = 0.08
 const DODGE_TURN_SHARPNESS: float = 40.0
+## Velocidad (m/s) a partir de la cual la entrada se considera «pide andar» en un ataque (entre ese 8 % y el 40 % de
+## la carrera, las piernas pasan del clip a la locomoción).
+const MOVE_REQUEST_FROM: float = 0.08
+const MOVE_REQUEST_TO: float = 0.4
+## Pesos de la capa de brazos de la postura armada: andando y esprintando.
+const STANCE_ARM_WEIGHT_WALK: float = 0.9
+const STANCE_ARM_WEIGHT_SPRINT: float = 0.65
+## Velocidad (m/s) del caminar del zombi a su velocidad de reproducción 1, y límites de esa velocidad. Por encima
+## de [constant ZOMBIE_RUN_FROM] m/s el Hueco corre con la locomoción normal (el zombi no esprinta).
+const ZOMBIE_WALK_SPEED: float = 1.1
+const ZOMBIE_RUN_FROM: float = 2.8
+const ZOMBIE_RUN_TO: float = 4.0
+## Tambaleo: metros que da el cuerpo hacia atrás y rapidez con la que lo hace y vuelve.
+const STAGGER_STEP_BACK: float = 0.3
+const STAGGER_STEP_RATE: float = 2.4
+const STAGGER_RETURN_RATE: float = 1.0
+## Muerte (ART-51): fracción de la velocidad que conserva el cuerpo (con tope en m/s), tiempo (s) en que se frena y
+## cuánto tarda en volverse hacia el atacante.
+const DEATH_SLIDE_FACTOR: float = 0.55
+const DEATH_SLIDE_MAX_SPEED: float = 3.5
+const DEATH_SLIDE_TAU: float = 0.28
+const DEATH_FACE_SHARPNESS: float = 22.0
+## Tiempo (s) tras el que un golpe recibido ya no cuenta como el que mata.
+const LAST_HIT_MEMORY: float = 0.7
 
 @export var animation_tree: AnimationTree
 ## Nodo que se gira para orientar el modelo; su padre debe ser un Node3D que siga al personaje.
@@ -193,6 +244,25 @@ var _twist_weight: float = 1.0
 var _swap_elapsed: float = 0.0
 var _combat_layer: CombatAnimationLayer = null
 var _combat_modifier: CombatPoseModifier = null
+var _stance: ArmedStanceModifier = null
+var _reaction: HitReactionModifier = null
+## Instantes de los clips de la postura armada (s).
+var _stance_rest_time: float = 0.0
+var _stance_walk_time: float = 0.0
+## Perfil de postura pedido: [code]shield[/code] o [code]zombie[/code].
+var _stance_profile: StringName = &"shield"
+# Ataque en curso con el modelo ya colocado hacia la cámara.
+var _attack_facing: bool = false
+# Cuerpo: desplazamiento visual del Pivot (paso atrás del tambaleo, deslizamiento de la muerte).
+var _body_offset: Vector3 = Vector3.ZERO
+var _slide_velocity: Vector3 = Vector3.ZERO
+var _live_velocity: Vector3 = Vector3.ZERO
+var _was_dead: bool = false
+var _death_yaw: float = NAN
+var _was_staggered: bool = false
+# Último golpe recibido: dirección hacia el atacante (mundo) y segundos desde entonces.
+var _last_attacker_dir: Vector3 = Vector3.ZERO
+var _last_reaction_age: float = 99.0
 ## Origen del byte action de un remoto: devuelve el byte del registro dibujado. Si no es válido, la
 ## acción sale del [member PlayerCharacter.combat] del personaje.
 var _remote_source: Callable = Callable()
@@ -201,6 +271,12 @@ var _remote_weapon_source: Callable = Callable()
 var _shown_weapon: int = -1
 # Último valor avisado por [signal swing_active_changed].
 var _swing_shown: bool = false
+# Última acción de un remoto avisada por [signal remote_action_started] y su paso (-1 = ninguna).
+var _remote_action_seen: int = -1
+var _remote_step_seen: int = -1
+# Carga del fuerte: si se está avisando y los segundos que lleva un remoto cargando.
+var _charging: bool = false
+var _remote_charge_s: float = 0.0
 
 
 func _ready() -> void:
@@ -246,8 +322,14 @@ func reset_facing() -> void:
 	_backpedal = false
 	_dodging = false
 	_twist_weight = 1.0
+	_attack_facing = false
+	_body_offset = Vector3.ZERO
+	_slide_velocity = Vector3.ZERO
+	_was_dead = false
+	_death_yaw = NAN
 	if pivot != null:
 		pivot.rotation = Vector3.ZERO
+		pivot.position = Vector3.ZERO
 	if _spine != null:
 		_spine.twist = 0.0
 
@@ -265,6 +347,55 @@ func set_combat_modifier(modifier: CombatPoseModifier) -> void:
 		_combat_layer = CombatAnimationLayer.new(clip_set)
 	if _combat_modifier != null:
 		_combat_modifier.layer = _combat_layer
+
+
+## Modificador de la postura armada (lo crea [HumanoidVisual]; va antes que el de combate).
+func set_stance_modifier(modifier: ArmedStanceModifier) -> void:
+	_stance = modifier
+	if _stance != null:
+		_stance.clips = clip_set
+		_apply_stance_profile()
+
+
+## Modificador de las reacciones procedurales (lo crea [HumanoidVisual]).
+func set_reaction_modifier(modifier: HitReactionModifier) -> void:
+	_reaction = modifier
+
+
+## Cambia el perfil de la postura armada: [code]shield[/code] (guardia con escudo) o [code]zombie[/code] (el Hueco).
+func set_stance_profile(profile: StringName) -> void:
+	_stance_profile = profile
+	_apply_stance_profile()
+
+
+## Modificador de la postura armada (o null).
+func get_stance_modifier() -> ArmedStanceModifier:
+	return _stance
+
+
+## Modificador de reacciones (o null).
+func get_reaction_modifier() -> HitReactionModifier:
+	return _reaction
+
+
+## Peso con el que se mezcla con la locomoción el reposo de combate (1 parado, 0 en movimiento).
+func get_move_weight() -> float:
+	return _move_weight
+
+
+## El personaje recibe un golpe de [param amount] de daño desde [param attacker_direction] (vector del mundo de la
+## víctima hacia el atacante; cero si no se sabe). Con [param blocked], el escudo lo ha parado: empujón del brazo y
+## de la columna en lugar de echar atrás el cuerpo (ART-48, ART-50).
+func react_to_hit(attacker_direction: Vector3, amount: float = 0.0, blocked: bool = false) -> void:
+	_last_reaction_age = 0.0
+	if attacker_direction.length_squared() > 0.0001:
+		_last_attacker_dir = Vector3(attacker_direction.x, 0.0, attacker_direction.z).normalized()
+	if _reaction == null:
+		return
+	if blocked:
+		_reaction.trigger_block(attacker_direction)
+	else:
+		_reaction.trigger_hit(attacker_direction, amount)
 
 
 ## Hace que la acción de combate salga del byte [code]action[/code] que devuelve [param source]
@@ -308,6 +439,12 @@ func get_debug_state() -> Dictionary:
 		"dodging": _dodging,
 		"spine_twist_deg": rad_to_deg(_spine.twist) if _spine != null else 0.0,
 		"combat": _combat_debug(),
+		"move_request": _combat_layer.move_request if _combat_layer != null else 0.0,
+		"stance_rest": _stance.rest_weight if _stance != null else 0.0,
+		"stance_arms": _stance.arm_weight if _stance != null else 0.0,
+		"stance_master": _stance.master_weight if _stance != null else 0.0,
+		"body_offset": _body_offset,
+		"attack_facing": _attack_facing,
 	}
 
 
@@ -328,6 +465,8 @@ func _process(delta: float) -> void:
 	animation_tree.set(PARAM_LAND, _land_weight)
 
 	_update_combat(delta)
+	_update_body_offset(delta, horizontal)
+	_update_stance(delta)
 
 
 # --- Combate -----------------------------------------------------------------------------------
@@ -351,12 +490,87 @@ func _update_combat(delta: float) -> void:
 	if _combat_layer == null:
 		return
 	var moving: bool = _character.get_horizontal_speed() > CRAWL_MIN_SPEED
+	_combat_layer.move_request = _move_request()
+	_combat_layer.crawl_speed = _character.get_horizontal_speed()
 	if _remote_source.is_valid():
 		_combat_layer.update_remote(int(_remote_source.call()), delta, weapon_id, moving)
 	else:
 		_combat_layer.update_local(_character.combat, _character.last_input_tick,
 				Engine.get_physics_interpolation_fraction(), delta, moving)
 	_set_swing_shown(_combat_layer.is_swing_active())
+	_update_charge(delta, weapon_id)
+	_observe_remote_action()
+
+
+# Avisa de la carga del fuerte ([signal charge_changed]): la fracción sale del estado en el jugador local y del
+# tiempo que se ve cargar a un remoto.
+func _update_charge(delta: float, weapon_id: int) -> void:
+	var charging: bool = _current_action() == CombatState.Action.CHARGE
+	if not charging:
+		_remote_charge_s = 0.0
+		if _charging:
+			_charging = false
+			charge_changed.emit(false, 0.0)
+		return
+	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id)
+	var heavy: AttackTicks = CombatCatalog.attack(weapon.heavy_id) if weapon != null else null
+	var full_ticks: float = float(maxi(heavy.charge_max_ticks, 1)) if heavy != null else 72.0
+	var elapsed_ticks: float = 0.0
+	if _remote_source.is_valid():
+		_remote_charge_s += delta
+		elapsed_ticks = _remote_charge_s * float(Engine.physics_ticks_per_second)
+	else:
+		elapsed_ticks = float(_character.last_input_tick - _character.combat.action_tick) \
+				+ Engine.get_physics_interpolation_fraction()
+	_charging = true
+	charge_changed.emit(true, clampf(elapsed_ticks / full_ticks, 0.0, 1.0))
+
+
+# Avisa de las acciones nuevas de un remoto ([signal remote_action_started]).
+func _observe_remote_action() -> void:
+	if not _remote_source.is_valid():
+		return
+	var byte: int = int(_remote_source.call())
+	var action: int = byte & 15
+	var step: int = ActionWire.step_of(byte)
+	if action == CombatState.Action.NONE or action > CombatState.Action.EXECUTE:
+		_remote_action_seen = -1
+		_remote_step_seen = -1
+		return
+	if action != _remote_action_seen or step != _remote_step_seen:
+		_remote_action_seen = action
+		_remote_step_seen = step
+		remote_action_started.emit(action, step)
+
+
+## true si este animador lo conduce un remoto (la acción sale del byte de su registro).
+func is_remote() -> bool:
+	return _remote_source.is_valid()
+
+
+# Cuánto movimiento pide la entrada (0 a 1) para las piernas de un ataque: la velocidad horizontal sin lo que avanza
+# la estocada del ataque en curso, entre [constant MOVE_REQUEST_FROM] y [constant MOVE_REQUEST_TO] de la carrera.
+func _move_request() -> float:
+	var speed: float = _character.get_horizontal_speed() - _current_lunge_speed()
+	var ratio: float = maxf(speed, 0.0) / maxf(_character.run_speed, 0.001)
+	return smoothstep(MOVE_REQUEST_FROM, MOVE_REQUEST_TO, ratio)
+
+
+# Avance (m/s) que la simulación suma ahora por la estocada del ataque en curso (hasta el final del golpe activo).
+func _current_lunge_speed() -> float:
+	if _combat_layer == null:
+		return 0.0
+	var plan: CombatClipPlanner.Plan = _combat_layer.get_plan()
+	if plan == null or plan.phase == ActionMachine.PHASE_NONE or plan.phase == ActionMachine.PHASE_RECOVERY:
+		return 0.0
+	var attack: AttackTicks = CombatCatalog.attack(CombatCatalog.attack_id(plan.key))
+	return attack.lunge_speed if attack != null else 0.0
+
+
+# true si la acción de este fotograma es un ataque de los que se plantan hacia la cámara.
+func _is_attack_action(action: int) -> bool:
+	return action == CombatState.Action.LIGHT or action == CombatState.Action.HEAVY \
+			or action == CombatState.Action.CHARGE or action == CombatState.Action.ABILITY
 
 
 # Avisa por [signal swing_active_changed] solo cuando el estado cambia.
@@ -364,6 +578,12 @@ func _set_swing_shown(swinging: bool) -> void:
 	if swinging != _swing_shown:
 		_swing_shown = swinging
 		swing_active_changed.emit(swinging)
+
+
+## Acción de combate de este fotograma (un [enum CombatState.Action]): la del byte del registro dibujado de un remoto
+## o la del estado del personaje.
+func get_current_action() -> int:
+	return _current_action()
 
 
 # Acción de combate de este fotograma: la del byte del registro dibujado de un remoto o la del estado del
@@ -492,6 +712,32 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 		return
 	_dodging = false
 	_twist_weight = move_toward(_twist_weight, 1.0, delta / maxf(dodge_twist_return_time, 0.001))
+	var action: int = _current_action()
+	# Muerte: el modelo se vuelve hacia el atacante para caer alejándose de él (ART-51).
+	if action == CombatState.Action.DEAD and not is_nan(_death_yaw):
+		var death_diff: float = angle_difference(_visual_yaw, _death_yaw)
+		_visual_yaw = wrapf(_visual_yaw + death_diff * (1.0 - exp(-DEATH_FACE_SHARPNESS * delta)), -PI, PI)
+		pivot.rotation = Vector3(0.0, angle_difference(base_yaw, _visual_yaw), 0.0)
+		if _spine != null:
+			_spine.twist = 0.0
+		return
+	# Ataque sin pedir andar: el modelo mira donde la cámara, al instante al empezar, y la columna no compensa
+	# nada (ART-46): la cadera y los pies del clip salen hacia el punto de mira.
+	var planted: bool = _is_attack_action(action) \
+			and (_combat_layer == null or _combat_layer.move_request < 0.5)
+	if planted:
+		if not _attack_facing:
+			_attack_facing = true
+			_visual_yaw = base_yaw
+		_backpedal = false
+		_visual_yaw = wrapf(_visual_yaw + angle_difference(_visual_yaw, base_yaw)
+				* (1.0 - exp(-turn_sharpness * 2.0 * delta)), -PI, PI)
+		pivot.rotation = Vector3(0.0, angle_difference(base_yaw, _visual_yaw), 0.0)
+		if _spine != null:
+			_spine.twist = -clampf(pivot.rotation.y, -deg_to_rad(max_spine_twist), deg_to_rad(max_spine_twist)) \
+					* _twist_weight
+		return
+	_attack_facing = false
 	var target_yaw: float = base_yaw
 	if real_speed > turn_min_speed:
 		var move_yaw: float = atan2(-horizontal.x, -horizontal.z)
@@ -528,6 +774,111 @@ func _dodge_heading(horizontal: Vector3, real_speed: float) -> float:
 ## Yaw (convención de [member Node3D.rotation].y: 0 mira hacia -Z) de una base.
 static func _yaw_of(basis: Basis) -> float:
 	return atan2(basis.z.x, basis.z.z)
+
+
+# --- Postura armada y cuerpo -------------------------------------------------------------------
+
+# Pone en el modificador de la postura los clips del perfil pedido.
+func _apply_stance_profile() -> void:
+	if _stance == null:
+		return
+	if _stance_profile == &"zombie":
+		_stance.use_zombie_profile()
+	else:
+		_stance.use_shield_profile()
+
+
+# Fija los pesos y los instantes de la postura armada de este fotograma (ART-45).
+func _update_stance(delta: float) -> void:
+	if _stance == null:
+		return
+	var weapon: WeaponTicks = CombatCatalog.weapon(_shown_weapon)
+	var bow: bool = weapon != null and weapon.name == WeaponProps.BOW_WEAPON
+	if _stance.clips == null:
+		_stance.clips = clip_set
+	_stance.enabled = not bow
+	var full_body: float = _combat_layer.get_full_body_weight() if _combat_layer != null else 0.0
+	_stance.master_weight = (1.0 - _air_weight) * (1.0 - full_body)
+	_stance.rest_weight = 1.0 - _move_weight
+	var sprint_ratio: float = clampf(inverse_lerp(_character.run_speed, _character.sprint_speed, _speed), 0.0, 1.0)
+	_stance.arm_weight = lerpf(STANCE_ARM_WEIGHT_WALK, STANCE_ARM_WEIGHT_SPRINT, sprint_ratio)
+	_stance.left_arm_reserved = _combat_layer.get_left_arm_reserved() if _combat_layer != null else 0.0
+	_stance.grip_weight = 1.0
+	_stance.grip_time = 0.0
+	var rest: Animation = null
+	if clip_set != null and _stance.rest_clip != &"":
+		rest = clip_set.get_animation(_stance.rest_clip)
+	if rest != null and rest.length > 0.0:
+		_stance_rest_time = fposmod(_stance_rest_time + delta, rest.length)
+	_stance.rest_time = _stance_rest_time
+	if _stance.walk_clip != &"":
+		var walk: Animation = clip_set.get_animation(_stance.walk_clip) if clip_set != null else null
+		var rate: float = clampf(_speed / ZOMBIE_WALK_SPEED, 0.5, 2.2)
+		if walk != null and walk.length > 0.0:
+			_stance_walk_time = fposmod(_stance_walk_time + delta * rate, walk.length)
+		_stance.walk_time = _stance_walk_time
+		var shamble: float = 1.0 - smoothstep(ZOMBIE_RUN_FROM, ZOMBIE_RUN_TO, _speed)
+		_stance.walk_weight = _move_weight * shamble
+		# El brazo de la espada solo entra cuando corre: caminando manda el brazo del zombi.
+		_stance.arm_weight *= 1.0 - _stance.walk_weight
+	else:
+		_stance.walk_weight = 0.0
+	if _reaction != null:
+		_reaction.guard_raise = _guard_raise()
+	_last_reaction_age += delta
+
+
+# Cuánto se alza el escudo (0 a 1): mientras dura el bloqueo o el muro de escudos.
+func _guard_raise() -> float:
+	if _combat_layer == null:
+		return 0.0
+	var raise: float = 0.0
+	for slot: CombatAnimationLayer.Slot in _combat_layer.get_slots():
+		if slot.key == CombatClipPlanner.KEY_BLOCK or slot.key == &"shield_wall":
+			raise = maxf(raise, slot.weight)
+	return raise
+
+
+# Desplazamiento visual del Pivot: el paso atrás del tambaleo y el deslizamiento de la muerte (ART-50, ART-51).
+func _update_body_offset(delta: float, horizontal: Vector3) -> void:
+	var parent: Node3D = pivot.get_parent() as Node3D
+	if parent == null:
+		return
+	var to_local: Basis = parent.global_transform.basis.orthonormalized().inverse()
+	var action: int = _current_action()
+	if action == CombatState.Action.DEAD:
+		if not _was_dead:
+			_was_dead = true
+			_slide_velocity = _live_velocity * DEATH_SLIDE_FACTOR
+			if _slide_velocity.length() > DEATH_SLIDE_MAX_SPEED:
+				_slide_velocity = _slide_velocity.normalized() * DEATH_SLIDE_MAX_SPEED
+			if _last_reaction_age < LAST_HIT_MEMORY and _last_attacker_dir != Vector3.ZERO:
+				_death_yaw = atan2(-_last_attacker_dir.x, -_last_attacker_dir.z)
+			else:
+				_death_yaw = NAN
+		_slide_velocity *= exp(-delta / DEATH_SLIDE_TAU)
+		_body_offset += to_local * _slide_velocity * delta
+		pivot.position = _body_offset
+		return
+	_was_dead = false
+	_death_yaw = NAN
+	_slide_velocity = Vector3.ZERO
+	_live_velocity = _live_velocity.lerp(horizontal, 1.0 - exp(-6.0 * delta))
+	var staggered: bool = action == CombatState.Action.STAGGER
+	if staggered and not _was_staggered and _last_reaction_age > 0.15:
+		# Un tambaleo sin golpe avisado (el sandbox, una prueba): se echa atrás como si viniera de enfrente.
+		react_to_hit(-parent.global_transform.basis.z, 60.0)
+	_was_staggered = staggered
+	var target := Vector3.ZERO
+	var rate: float = STAGGER_RETURN_RATE
+	if staggered:
+		var away: Vector3 = parent.global_transform.basis.z
+		if _last_attacker_dir != Vector3.ZERO and _last_reaction_age < LAST_HIT_MEMORY:
+			away = -_last_attacker_dir
+		target = to_local * away.normalized() * STAGGER_STEP_BACK
+		rate = STAGGER_STEP_RATE
+	_body_offset = _body_offset.move_toward(target, STAGGER_STEP_BACK * rate * delta * 2.0)
+	pivot.position = _body_offset
 
 
 # --- Aire --------------------------------------------------------------------------------------
@@ -574,6 +925,7 @@ func _update_air(delta: float, vertical_velocity: float) -> void:
 
 
 func _start_jump() -> void:
+	jumped_visual.emit()
 	_air_state = AirState.JUMPING
 	_air_time = 0.0
 	_min_vertical_velocity = 0.0
@@ -595,6 +947,8 @@ func _land() -> void:
 	var impact_factor: float = clampf(inverse_lerp(land_min_impact, land_full_impact, impact), 0.0, 1.0)
 	var run_factor: float = clampf(_speed / maxf(_character.run_speed, 0.001), 0.0, 1.0)
 	_land_strength = lerpf(land_strength_idle, land_strength_moving, run_factor) * impact_factor
+	if impact > 0.5:
+		touched_down.emit(clampf(maxf(impact_factor, 0.15), 0.0, 1.0))
 	if _land_strength > 0.01:
 		_land_time = 0.0
 		animation_tree.set(PARAM_LAND_SEEK, 0.0)

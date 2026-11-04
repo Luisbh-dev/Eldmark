@@ -29,6 +29,10 @@ extends Control
 ## Distancia máxima (m) a la que se ve la placa de un aliado y comienzo del fundido.
 const ALLY_RANGE: float = 40.0
 const ALLY_FADE_START: float = 30.0
+## Distancia (m) hasta la que cada jugador lleva su marca de bando sobre la cabeza.
+const MARK_RANGE: float = 30.0
+## Separación (px) mínima entre dos placas apiladas.
+const STACK_GAP: float = 2.0
 ## Distancia máxima (m) a la que se apunta a un enemigo con la retícula o se le enseña herido.
 const ENEMY_RANGE: float = 70.0
 ## Color del nombre de los miembros del grupo (provisional, el mismo azul del canal de grupo del chat).
@@ -135,6 +139,7 @@ func refresh(delta: float) -> void:
 			_assigned[int(candidate["net_id"])] = plate
 			used += 1
 	_release_from(used)
+	_stack_overlapping()
 	_forget_gone(candidates)
 
 
@@ -272,10 +277,14 @@ func _show(plate: Nameplate, candidate: Dictionary, camera: Camera3D) -> void:
 		var aimed: bool = candidate["aimed"]
 		var damaged: bool = was_damaged_recently(net_id) and distance <= ENEMY_RANGE
 		if not aimed and not damaged:
-			plate.release()
-			return
-		show_name = aimed
-		show_bar = true
+			# Sin apuntar ni herido: solo la marca de bando (un rombo) a menos de MARK_RANGE m, para
+			# distinguir a un enemigo de un aliado a lo lejos (UI-56). Los PNJ no la llevan.
+			if view.get_kind() != NetProtocol.EntityKind.PLAYER or distance > MARK_RANGE:
+				plate.release()
+				return
+		else:
+			show_name = aimed
+			show_bar = true
 	var head: Vector3 = Vector3(candidate["feet"]) + Vector3(0.0, HEAD_HEIGHT, 0.0)
 	if camera.is_position_behind(head):
 		plate.release()
@@ -286,6 +295,11 @@ func _show(plate: Nameplate, candidate: Dictionary, camera: Camera3D) -> void:
 		realm_color = PARTY_COLOR
 	plate.configure(net_id, view.get_display_name(), realm_color, show_name, show_bar, fraction,
 			ally, alpha)
+	plate.set_near(distance <= Nameplate.NEAR_RANGE)
+	var mark: int = Nameplate.Mark.NONE
+	if view.get_kind() == NetProtocol.EntityKind.PLAYER and distance <= MARK_RANGE:
+		mark = Nameplate.Mark.ALLY if ally else Nameplate.Mark.ENEMY
+	plate.set_mark(mark, realm_color)
 	plate.set_downed((view.get_drawn_action() & 15) == CombatState.Action.DOWNED)
 	# El nivel solo de los aliados (el de un enemigo llega a 0 y no se enseña, docs/progresion.md §7.3).
 	plate.set_level(view.get_level() if ally else 0)
@@ -294,6 +308,52 @@ func _show(plate: Nameplate, candidate: Dictionary, camera: Camera3D) -> void:
 				int(_client.get_interpolation_clock().get_render_tick()))
 	plate.place(camera.unproject_position(head))
 	plate.visible = true
+
+
+# Apila hacia arriba las placas que se tocan (UI-56): las más cercanas a la mira se quedan donde están y
+# las demás suben lo justo para no pisarlas.
+func _stack_overlapping() -> void:
+	var centre: Vector2 = get_viewport_rect().size * 0.5 if is_inside_tree() else Vector2.ZERO
+	var plates: Array[Nameplate] = []
+	var rects: Array[Rect2] = []
+	for plate: Nameplate in _assigned.values():
+		var content: Rect2 = plate.get_content_rect()
+		plates.append(plate)
+		rects.append(Rect2(plate.position + content.position, content.size))
+	var order: Array[int] = []
+	for index: int in plates.size():
+		order.append(index)
+	order.sort_custom(func(a: int, b: int) -> bool:
+		return rects[a].get_center().distance_squared_to(centre) \
+				< rects[b].get_center().distance_squared_to(centre))
+	var shifts: PackedFloat32Array = stack_shifts(rects, order, STACK_GAP)
+	for index: int in plates.size():
+		plates[index].position.y -= shifts[index]
+
+
+## Cuánto sube cada rectángulo de [param rects] (en px, 0 o más) para que ninguno pise a otro. Se atienden en
+## el orden de [param order] (índices): el primero no se mueve y cada siguiente sube hasta quedar libre de los
+## ya colocados, con [param gap] px de aire. Devuelve un valor por rectángulo, en el orden original.
+static func stack_shifts(rects: Array[Rect2], order: Array[int], gap: float) -> PackedFloat32Array:
+	var shifts := PackedFloat32Array()
+	shifts.resize(rects.size())
+	var placed: Array[Rect2] = []
+	for index: int in order:
+		var rect: Rect2 = rects[index]
+		var shift: float = 0.0
+		# Cada pasada que choca sube la placa sobre la que choca; con N placas basta con N pasadas.
+		for _pass: int in order.size():
+			var moved: bool = false
+			for other: Rect2 in placed:
+				var current := Rect2(rect.position - Vector2(0.0, shift), rect.size)
+				if current.grow(gap * 0.5).intersects(other):
+					shift = rect.end.y - other.position.y + gap
+					moved = true
+			if not moved:
+				break
+		shifts[index] = shift
+		placed.append(Rect2(rect.position - Vector2(0.0, shift), rect.size))
+	return shifts
 
 
 func _plate_at(index: int) -> Nameplate:

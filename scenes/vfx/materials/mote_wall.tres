@@ -1,0 +1,18 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_particle_add.gdshader" id="1_p48go"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/soft_dot.png" id="2_gpieu"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_p48go")
+shader_parameter/tex = ExtResource("2_gpieu")
+shader_parameter/h_frames = null
+shader_parameter/v_frames = null
+shader_parameter/intensity = 3.2
+shader_parameter/cover = null
+shader_parameter/soft_distance = null
+shader_parameter/aligned_by_engine = null
+shader_parameter/fade_in = 0.05
+shader_parameter/fade_out_start = 0.4
+shader_parameter/grow = null
