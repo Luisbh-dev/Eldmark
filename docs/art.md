@@ -433,3 +433,5 @@ The first piece of final art made in-house (ART-06), and the template for the fo
 - **Simple Grass Textured:** it overlaps with the Terrain3D instancer, stores the MultiMesh and the height image inside the `.tscn` (huge text scenes) and has an open hang on 4.7.
 - **Poly Haven and ambientCG as the main style:** they are photorealistic. Only for gaps (snow, sand) and processed.
 - **Packs discarded by the research:** EmaceArt (contradictory license), Avraman (files withdrawn over license), Cenji (paid and not CC0; unverified), Gobkit (AI provenance), poly.pizza (mixed styles), Ultimate Fantasy RTS (RTS scale and no textures) and Explosive LLC RPG Animations (unstable version 0.1.0).
+
+Sources for the new check: [UAL1 on itch](https://quaternius.itch.io/universal-animation-library), [Bestiary on itch](https://quaternius.itch.io/bestiary-dungeon-monsters-kit) and [Bestiary on quaternius.com](https://quaternius.com/packs/bestiarydungeonmonsterskit.html). The rest of the data comes from the verified research I received.

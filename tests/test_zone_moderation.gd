@@ -439,7 +439,7 @@ func test_gm_teleport_and_visible_mark_and_invisible_hides_from_everything() -> 
 	for bytes: PackedByteArray in _messages(sol, NetProtocol.MSG_ENTITY_SPAWN):
 		if NetMessages.EntitySpawn.decode(bytes).net_id == gema_id:
 			spawns += 1
-	assert_eq(spawns, 2, "Sol receives her SPAWN again (the sign-up one and the current one)")
+	assert_eq(spawns, 2, "Sol receives her SPAWN again (the join one and the current one)")
 	# Respawning removes the flag from both.
 	await _die_and_respawn(ana.entity.net_id)
 	assert_false(ana.entity.gm_forced)

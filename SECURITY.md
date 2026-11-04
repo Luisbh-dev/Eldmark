@@ -35,3 +35,5 @@ upstream), denial of service by raw network flooding, and social engineering.
 The private keys in `tests/fixtures/dtls/` and the fixed passwords in `platform/deploy/dev.sh`
 exist only for automated tests and local development. They are not secrets. Never reuse them
 in a real deployment.
+
+<!-- Maintainer note: when the repository is made public, enable Settings > Code security > Private vulnerability reporting, otherwise the link above does not work. -->

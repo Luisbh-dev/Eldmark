@@ -1,6 +1,6 @@
--- Semilla de conservación del esquema 0010 (progresion.md §3.3): el progreso de Aneira con un objeto vivo
--- y otro retirado, un saldo y un temporizador; una GM y su REVERSAL con participantes, apuntes, un evento
--- y la reversión, y una operación retenida de la lápida (su libro dura un año tras la purga).
+-- Retention seed for schema 0010 (docs/progression.md §3.3): the progress of Aneira with a live item
+-- and a retired one, a balance and a timer; a GM and its REVERSAL with participants, entries, an event
+-- and the reversal, and a retained tombstone operation (its ledger lasts a year after the purge).
 insert into character_progress (character_id, race_id, appearance, starter_template_id, starter_granted, level,
   xp_total, realm_points, played_seconds, health, last_zone_id, last_channel, pos_x, pos_y, pos_z, yaw, saved_at,
   save_version)

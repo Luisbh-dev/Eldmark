@@ -1494,6 +1494,7 @@ func available() -> int
 func next_for_client() -> int                                     # 0 if ≤ build_reserve + SERVER_RESERVE remain
 func next_for_server() -> int                                     # 0 if ≤ build_reserve remain
 func next_for_build() -> int                                      # build_section only; 0 if none remains
+
 class_name PlayerProgress extends RefCounted   # authoritative state of one character in the zone
 var record: ProgressRecord; var persistent: bool
 var character_id: int; var account_id: int                        # 0 if ephemeral

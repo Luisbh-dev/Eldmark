@@ -449,7 +449,7 @@ func nearest_enemy(max_dist: float = 60.0) -> Dictionary:
 	return {}
 
 
-## Centre of the group of players/bots (not NPCs) with the most neighbours within [param radius] m. {} if there are fewer than [param min_count].
+## Center of the group of players/bots (not NPCs) with the most neighbours within [param radius] m. {} if there are fewer than [param min_count].
 func busiest_spot(radius: float = 9.0, min_count: int = 3, include_npc: bool = true) -> Dictionary:
 	var best: Dictionary = {}
 	var best_n: int = 0

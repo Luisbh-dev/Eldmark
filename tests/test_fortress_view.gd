@@ -215,7 +215,7 @@ func test_banners_take_the_owner_color_in_the_draw_tick() -> void:
 			% _view.get_banners(NET_ID).size())
 	_view.advance(100.0)
 	assert_true(_view.has_banner_color(NET_ID))
-	assert_true(_banner_colors_are(neutral_color), "neutral: the Hollow's bone grey")
+	assert_true(_banner_colors_are(neutral_color), "neutral: the Hollow's bone gray")
 	_view.on_object_state(_change(200, {FortressFields.OWNER: VARDHEIM}))
 	_view.advance(199.0)
 	assert_true(_banner_colors_are(neutral_color), "before tick 200 the banners are still neutral")

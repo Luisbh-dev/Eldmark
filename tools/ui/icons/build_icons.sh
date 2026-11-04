@@ -4,7 +4,7 @@
 #   GODOT=/path/to/godot tools/ui/icons/build_icons.sh [icon_name ...]
 #
 # 1. make_icons.py layers   draws the shapes and writes their SVG layers to build/iconos/capas.
-# 2. rasterize_icons.gd     rasterises them with the engine (ThorVG): one image per layer.
+# 2. rasterize_icons.gd     rasterizes them with the engine (ThorVG): one image per layer.
 # 3. make_icons.py paint    composes the layers with grain, occlusion and edge light and writes the PNGs to
 #                           assets/ui/icons (shapes, small/ and backgrounds/).
 # With icon names at the end only those are rebuilt (not the backgrounds). Afterwards the new

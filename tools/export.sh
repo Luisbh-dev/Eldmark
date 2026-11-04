@@ -17,7 +17,7 @@
 #   --zip        compress each exported folder (exports/Eldmark-windows.zip, exports/Eldmark-server.zip)
 #   --dry-run    show what it would do without exporting anything
 #
-# Requirements (see the README, "Export"):
+# Requirements (see docs/getting-started.md, section Export):
 #   - Godot 4.7.2 (GODOT variable or `godot` on the PATH) and, except with --pack-only, the export
 #     templates of the same version (Editor > Manage Export Templates > Download and
 #     Install).

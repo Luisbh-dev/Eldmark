@@ -1,4 +1,4 @@
-// Package legal holds Eldmark's versioned legal texts (plataforma.md §11.4): terms (terms-N.md),
+// Package legal holds Eldmark's versioned legal texts (docs/platform.md §11.4): terms (terms-N.md),
 // privacy (privacy-N.md) and community rules (rules-N.md), in Markdown.
 //
 // The files in this folder are embedded in the binary ([Embedded]); ELDMARK_LEGAL_DIR replaces

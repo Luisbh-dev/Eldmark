@@ -1,5 +1,5 @@
--- Semilla de conservación del esquema 0003: una instancia viva con su billete, su arrendamiento y
--- un bloque de ids.
+-- Retention seed for schema 0003: a live instance with its ticket, its lease and
+-- a block of ids.
 insert into zone_instances (zone_instance_id, world_id, zone_id, channel, public_host, public_port, realms, build_id,
   protocol_version, record_format, max_players, status, live_at)
 values ('00000000-0000-4000-8000-000000000001', 1, 'vado_gris', 0, '127.0.0.1', 24600, '{1,2}', 'semilla', 7, 1, 64, 'live', now());

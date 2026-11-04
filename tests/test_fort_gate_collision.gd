@@ -47,7 +47,7 @@ func test_a_neutral_gate_stops_the_three_realms_but_not_the_hollows() -> void:
 	assert_false(crossed[VARDHEIM], "a neutral fort stops Vardheim")
 	assert_false(crossed[SOLMARCH], "and Solmarch")
 	assert_false(crossed[ASKARRA], "and Askarra")
-	assert_true(crossed[0], "the Hollows (without a realm layer) pass")
+	assert_true(crossed[0], "the Hollow (without a realm layer) pass")
 
 
 func test_a_realm_owned_gate_stops_its_enemies_and_lets_its_owner_through() -> void:

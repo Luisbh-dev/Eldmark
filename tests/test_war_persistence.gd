@@ -10,7 +10,7 @@ extends TestCase
 ## [br][br]
 ## A network-less [ZoneServer] over the flat zone with the fortress from [FortressFixture], advanced
 ## quickly with its [FortressFixture.Stepper], and the fake platform ([FakeZonePlatform]) with the
-## clock fixed; characters with a claim are set up by hand like the real sign-up (LOADING, claim,
+## clock fixed; characters with a claim are set up by hand like the real join (LOADING, claim,
 ## [method ProgressService.prepare] and CLIENT_READY). The real startup ([ServerMain] with
 ## [code]--platform[/code] against [FakeHttpServer]) is in [code]test_war_platform_process.gd[/code].
 
@@ -219,7 +219,7 @@ func _entity(net_id: int) -> NetEntity:
 	return _server.get_registry().get_entity(net_id)
 
 
-## Sets up a peer with the claim [param claimed] like the real sign-up and waits for it to join.
+## Sets up a peer with the claim [param claimed] like the real join and waits for it to join.
 func _enter(peer_id: int, claimed: ClaimedCharacter) -> ServerPeer:
 	var peer := ServerPeer.new(peer_id)
 	peer.state = ServerPeer.State.LOADING
@@ -375,7 +375,7 @@ func test_starting_with_consolidating_half_way_keeps_the_owner_and_the_deadline(
 	assert_eq(_server.get_fortresses().get_gate(FORTRESS).collision_layer, FortGate.layers_for(SOLMARCH, false),
 			"the gate belongs to Solmarch")
 	assert_false(_server.get_fortresses().get_entity(FORTRESS).encode_spawn(_server.get_tick(), false).is_empty(),
-			"the fortress sign-up is encoded (no negative ticks)")
+			"the fortress spawn is encoded (no negative ticks)")
 	assert_eq(_persistence().get_stats()["loaded"], 1)
 	await _advance(58 - _server.get_tick())
 	await _pump_until(func() -> bool: return false, 50)

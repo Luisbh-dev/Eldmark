@@ -91,7 +91,7 @@ func test_fake_players_run_for_300_ticks() -> void:
 			VARDHEIM_SPAWNS[0], 20.0), VARDHEIM)
 	var jumper: int = _server.add_fake_player(BotBrain.new(3, BotBrain.Pattern.JUMPY,
 			SOLMARCH_SPAWN, 20.0), SOLMARCH)
-	assert_eq([circler, walker, jumper], [1, 2, 3], "net_id 1, 2 and 3 in sign-up order")
+	assert_eq([circler, walker, jumper], [1, 2, 3], "net_id 1, 2 and 3 in join order")
 	assert_eq(_server.get_player_count(), 3, "three players")
 	assert_eq(_server.get_registry().size(), 3, "three entities in the registry")
 	var start_tick: int = _server.get_tick()
@@ -129,7 +129,7 @@ func test_fake_players_run_for_300_ticks() -> void:
 
 
 func test_the_social_step_has_its_own_metrics_section() -> void:
-	# The social step (invitation expiry and PARTY_STATUS at 2 Hz) runs after sign-ups and before the
+	# The social step (invitation expiry and PARTY_STATUS at 2 Hz) runs after joins and before the
 	# history, and is measured in its own section (docs/social.md 12.2; ZoneServer header).
 	assert_eq(ZoneServer.SECTION_SOCIAL, &"social", "the section is called \"social\"")
 	var social_index: int = ZoneServer.LOGGED_SECTIONS.find(&"social")
@@ -178,7 +178,7 @@ func test_snapshots_fit_in_the_packet_limit() -> void:
 		var realm: int = VARDHEIM if i % 2 == 0 else SOLMARCH
 		var home: Vector3 = VARDHEIM_SPAWNS[0] if realm == VARDHEIM else SOLMARCH_SPAWN
 		assert_true(_server.add_fake_player(BotBrain.new(100 + i, BotBrain.Pattern.WANDER, home,
-				10.0), realm) > 0, "sign-up %d" % i)
+				10.0), realm) > 0, "join %d" % i)
 	await wait_physics_frames(60)
 
 	var builder := SnapshotBuilder.new(_server.interest_policy)
@@ -324,8 +324,8 @@ func test_players_spawn_at_their_realm_and_on_the_ground() -> void:
 		assert_vec_near(state.position, expected[net_id], 1e-5, "spawn point of %d" % net_id)
 		assert_true(state.grounded, "the spawn point is on the ground")
 		assert_true(state.equals_exact(PlayerState.decode(state.encode())),
-				"the sign-up state goes through encode/decode")
-		assert_eq(state.last_input_tick, 0, "last_input_tick = sign-up tick")
+				"the join state goes through encode/decode")
+		assert_eq(state.last_input_tick, 0, "last_input_tick = join tick")
 	await wait_physics_frames(30)
 	for net_id: int in expected:
 		var character: PlayerCharacter = _character_of(net_id)
@@ -424,7 +424,7 @@ func test_remove_fake_player_frees_the_slot_and_counts_the_departure() -> void:
 	assert_eq(_server.write_report(_report_path()), OK)
 	var report: Dictionary = _read_json(_report_path())
 	var players: Dictionary = report.get("players", {})
-	assert_eq(int(players.get("joined_total", 0)), 3, "three sign-ups")
+	assert_eq(int(players.get("joined_total", 0)), 3, "three joins")
 	assert_eq(int(players.get("left_total", 0)), 1, "one removal")
 	assert_eq(int(players.get("peak", 0)), 2, "peak of two")
 	var simulate: Dictionary = report.get("simulate", {})
@@ -433,7 +433,7 @@ func test_remove_fake_player_frees_the_slot_and_counts_the_departure() -> void:
 	assert_true(report.has("snapshots"), "and the report carries the snapshot measurements")
 
 
-## Continuous sign-ups and removals (a client that joins and leaves in a loop, --fake-churn) must not
+## Continuous joins and removals (a client that joins and leaves in a loop, --fake-churn) must not
 ## make memory grow without bound (finding S3): each report record retained its InputQueue, its
 ## ServerPeer and its NetEntity forever (about 70 objects and 80 KB per cycle). When the player leaves,
 ## the record drops those references, and the report keeps only the latest records with the totals kept separately.
@@ -455,7 +455,7 @@ func test_player_churn_does_not_grow_memory_without_limit() -> void:
 		await wait_physics_frames(2)
 		cycles += 40
 		if round_index == 5:
-			# There are already more than 100 sign-ups: the report ring is full.
+			# There are already more than 100 joins: the report ring is full.
 			objects_after_warmup = int(Performance.get_monitor(Performance.OBJECT_COUNT))
 	var objects_now: int = int(Performance.get_monitor(Performance.OBJECT_COUNT))
 	assert_eq(_server.get_player_count(), 0, "in the end nobody is left")
@@ -467,7 +467,7 @@ func test_player_churn_does_not_grow_memory_without_limit() -> void:
 	var players: Dictionary = report.get("players", {})
 	assert_eq((report.get("player_list", []) as Array).size(), 100,
 			"the report keeps only the latest 100 records")
-	assert_eq(int(players.get("joined_total", 0)), cycles, "but counts all the sign-ups")
+	assert_eq(int(players.get("joined_total", 0)), cycles, "but counts all the joins")
 	assert_eq(int(players.get("left_total", 0)), cycles, "and all the removals")
 	assert_eq(int(players.get("fake", 0)), cycles, "and all the fake players")
 	assert_eq(int(players.get("archived", 0)), cycles - 100, "the records that drop out are summarized")

@@ -12,10 +12,10 @@ extends RefCounted
 ## having them on top).
 ## [br]- [code]execute[/code]: approaches a knocked-down player and holds INTERACT to finish them off.
 ## [method step] is called once per frame. The camera points [member look_offset_deg] degrees to the left of the
-## enemy: with the over-the-shoulder camera, this way the enemy ends up right of centre and the client's body,
+## enemy: with the over-the-shoulder camera, this way the enemy ends up right of center and the client's body,
 ## which is in the foreground on the left, does not block it in the strips.
 
-## Points (x, z) in front of the Solmarch camp, outside its safe zone (about 30 m from its centre) and in view of the
+## Points (x, z) in front of the Solmarch camp, outside its safe zone (about 30 m from its center) and in view of the
 ## combat bot (40 m), to meet it: [code]online_driver.open_spot[/code] picks the most open one.
 const MEET_CANDIDATES: Array = [Vector2(0.0, 105.0), Vector2(30.0, 100.0), Vector2(-30.0, 100.0), Vector2(55.0, 104.0),
 		Vector2(-55.0, 104.0), Vector2(15.0, 92.0), Vector2(-15.0, 92.0), Vector2(75.0, 100.0), Vector2(-75.0, 100.0)]

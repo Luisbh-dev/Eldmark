@@ -73,7 +73,7 @@ func test_a_bot_client_sees_a_full_capture_as_object_states_and_war_events() -> 
 	var spawned: bool = await _wait_until(func() -> bool:
 		return int(_client.get_stats()["structure_spawns"]) >= 1)
 	assert_true(spawned, "receives the fortress SPAWN on entering")
-	# The capture is made by a fake Vardheim player, after killing the Hollows' captain.
+	# The capture is made by a fake Vardheim player, after killing the Hollow' captain.
 	_server.spawn_captain_double(FORTRESS)
 	var attacker: int = _server.add_fake_player(CombatFixture.ScriptBrain.new(1), VARDHEIM)
 	_server.teleport(attacker, FortressFixture.circle_center())

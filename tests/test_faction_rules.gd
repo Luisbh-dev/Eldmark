@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for [FactionRules] (who can damage whom) and [method Zones.get_pvp_mode]:
-## the full matrix of the four sides (0 the neutral Hollows; 1, 2 and 3 the realms) in an
+## the full matrix of the four sides (0 the neutral Hollow; 1, 2 and 3 the realms) in an
 ## RVR zone and in a safe zone, invalid codes and the PvP mode of each registered zone.
 
 const HUECOS: int = RealmCatalog.NEUTRAL_CODE
@@ -10,7 +10,7 @@ const ASKARRA: int = NetProtocol.Realm.ASKARRA
 ## Zone that is not registered: SAFE mode.
 const SAFE_ZONE: StringName = &"zona_segura_de_prueba"
 
-## Matrix in an RVR zone: row = attacker, column = victim, in the order Hollows, Vardheim,
+## Matrix in an RVR zone: row = attacker, column = victim, in the order Hollow, Vardheim,
 ## Solmarch, Askarra. Only the diagonal (no friendly fire) is false.
 const RVR_MATRIX: Array = [
 	[false, true, true, true],
@@ -18,7 +18,7 @@ const RVR_MATRIX: Array = [
 	[true, true, false, true],
 	[true, true, true, false],
 ]
-## Matrix in a safe zone: the realms do not damage each other, but the Hollows are still
+## Matrix in a safe zone: the realms do not damage each other, but the Hollow are still
 ## hostile to everyone.
 const SAFE_MATRIX: Array = [
 	[false, true, true, true],
@@ -49,9 +49,9 @@ func test_huecos_are_hostile_to_every_realm_in_any_zone() -> void:
 	for zone_id: StringName in [&"vado_gris", &"test_world", SAFE_ZONE]:
 		for realm: int in RealmCatalog.realm_codes():
 			assert_true(FactionRules.can_damage(HUECOS, realm, zone_id),
-					"the Hollows damage realm %d in %s" % [realm, zone_id])
+					"the Hollow damage realm %d in %s" % [realm, zone_id])
 			assert_true(FactionRules.can_damage(realm, HUECOS, zone_id),
-					"realm %d damages the Hollows in %s" % [realm, zone_id])
+					"realm %d damages the Hollow in %s" % [realm, zone_id])
 
 
 func test_enemy_realms_only_in_rvr_zones() -> void:
@@ -77,8 +77,8 @@ func test_invalid_codes_never_damage_or_get_damaged() -> void:
 
 func test_codes_come_from_realm_catalog() -> void:
 	# The matrix speaks in network codes: they must be the catalog's.
-	assert_eq(HUECOS, 0, "the Hollows are code 0")
-	assert_eq(RealmCatalog.code_of(RealmCatalog.HUECOS), HUECOS, "catalog: Hollows")
+	assert_eq(HUECOS, 0, "the Hollow are code 0")
+	assert_eq(RealmCatalog.code_of(RealmCatalog.HUECOS), HUECOS, "catalog: Hollow")
 	assert_eq(RealmCatalog.code_of(RealmCatalog.VARDHEIM), VARDHEIM, "catalog: Vardheim")
 	assert_eq(RealmCatalog.code_of(RealmCatalog.SOLMARCH), SOLMARCH, "catalog: Solmarch")
 	assert_eq(RealmCatalog.code_of(RealmCatalog.ASKARRA), ASKARRA, "catalog: Askarra")

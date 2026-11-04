@@ -3,9 +3,9 @@
 
     python tools/vfx/contact_sheet.py [output_folder]
 
-Paints each texture the way its shader reads it: light masks in grey, shape masks on a dark
+Paints each texture the way its shader reads it: light masks in gray, shape masks on a dark
 background, and those that carry data in the channels (puffs, blood jets, wood planks) already interpreted,
-with a test colour. By default it writes build/vfx/tex_sheet.png.
+with a test color. By default it writes build/vfx/tex_sheet.png.
 """
 
 import os

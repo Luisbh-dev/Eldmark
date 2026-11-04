@@ -152,7 +152,7 @@ func test_against_the_defender_npc_the_squire_fights_with_its_kit() -> void:
 	assert_true(_angle_gap(walker.yaw, _yaw_to(walker.position, npc)) < 0.3,
 			"with the defending NPC even though the player is closer (yaw %.2f)" % walker.yaw)
 	assert_true(counts.get(&"ability_0", 0) + counts.get(&"ability_2", 0) >= 2,
-			"with the shield-bearer's abilities (%s)" % [counts])
+			"with the squire's abilities (%s)" % [counts])
 	for press: Vector3i in walker.presses:
 		assert_eq(press.z, ActionMachine.AbilityStatus.READY,
 				"only presses a ready slot (tick %d, slot %d)" % [press.x, press.y])
@@ -479,7 +479,7 @@ func test_the_line_of_sight_decides_the_shot_and_is_asked_once_per_search() -> v
 
 
 func test_the_bow_fights_further_than_the_sword() -> void:
-	# At 16 m: the archer shoots at it (SIEGE_BOW_FIGHT_RANGE); the shield-bearer follows its plan (SIEGE_FIGHT_RANGE).
+	# At 16 m: the archer shoots at it (SIEGE_BOW_FIGHT_RANGE); the squire follows its plan (SIEGE_FIGHT_RANGE).
 	var archer := KitWalker.new(_marksman_state(), CIRCLE)
 	archer.blocked = true
 	var archer_brain: BotBrain = _brain(archer, 55)
@@ -498,7 +498,7 @@ func test_the_bow_fights_further_than_the_sword() -> void:
 		squire_fights += 1 if squire_brain.get_siege_task() == BotBrain.SiegeTask.FIGHT else 0
 	assert_eq(archer_fights, 600, "the archer shoots at 16 m")
 	assert_true(_shots(archer_brain) >= 5, "(%s)" % [archer_brain.get_kit_counts()])
-	assert_eq(squire_fights, 0, "the shield-bearer does not fight at 16 m")
+	assert_eq(squire_fights, 0, "the squire does not fight at 16 m")
 
 
 func test_with_the_sword_in_hand_it_draws_the_bow_for_a_far_target_without_closing_in() -> void:
@@ -584,7 +584,7 @@ func test_going_to_finish_a_downed_foe_it_gives_up_a_chase_that_does_not_close_i
 
 
 func test_a_marksman_swaps_to_the_sword_to_hit_the_gate() -> void:
-	# Integration review: with arrows, 4 shooters took off the gate about 2.6 times less than 4 shield-bearers.
+	# Integration review: with arrows, 4 shooters took off the gate about 2.6 times less than 4 squires.
 	# The shooter draws the sword to hit it; the pure archer of the load tests (kit_ranged_only) does not.
 	_view.gate_health = 9000
 	_view.enclosure_size = Vector2(40.0, 40.0)

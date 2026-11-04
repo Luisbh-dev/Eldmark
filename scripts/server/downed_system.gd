@@ -1,6 +1,6 @@
 class_name DownedSystem
 extends RefCounted
-## Knocked down, lifting and finishing off on the server (docs/abilities.md, section 4.5; CMB-28).
+## Knocked down, reviving and finishing off on the server (docs/abilities.md, section 4.5; CMB-28).
 ## [br][br]
 ## [b]When[/b] ([method should_down]): the health of a [b]player[/b] (fake ones too) reaches 0 from a
 ## hit, an arrow or a pulse whose author is a player of a hostile realm in an RvR zone. Otherwise, direct
@@ -18,12 +18,12 @@ extends RefCounted
 ## against those of [code]s − 1[/code], kept by the [Combatant]) from someone alive, in NONE or BLOCK and on the
 ## ground, looks for the nearest downed player within [member CombatRules.interact_range_m] horizontally (height difference ≤
 ## [constant MAX_HEIGHT_DIFFERENCE], ties by net_id) with line of sight from the chest (feet + 1.4) to feet +
-## 0.5 of the downed player: an ally whom nobody is lifting → REVIVE (INTERACT 1); an enemy with no safe zones in
+## 0.5 of the downed player: an ally whom nobody is reviving → REVIVE (INTERACT 1); an enemy with no safe zones in
 ## between → EXECUTE (INTERACT 4). [method ActionMachine.impose_interact] and [code]commit_state[/code].
 ## Starting to finish off removes respawn protection (like attacking): otherwise nobody could cut off the finishing of
 ## someone who has just respawned, because a protected player is no candidate for any hit (H5 review).
 ## [br]3. [b]Progress and end[/b]: at [code]s == start + duration[/code] it ends (checked before continuing: on
-## that tick the simulation has already returned to NONE): lifting → [method ActionMachine.impose_revived] with
+## that tick the simulation has already returned to NONE): reviving → [method ActionMachine.impose_revived] with
 ## [member CombatRules.revived_health] (INTERACT 3); finishing off → death with the source "execution". Before that, each
 ## tick it is cut (INTERACT 2 or 5, and [method ActionMachine.impose_interrupt] if still in the action) if
 ## whoever acts has left the action (released, dodged, had another imposed or was interrupted by a hit), the
@@ -45,7 +45,7 @@ signal event_emitted(event: NetMessages.EntityEvent, involved: PackedInt32Array)
 ## source ([constant CombatSource.BLEED_OUT] or [constant CombatSource.EXECUTE]). The [CombatDirector] kills them.
 signal killed(victim: Combatant, killer_id: int, source: int, tick: int)
 
-## Maximum height difference (m) between whoever acts and the downed player to start lifting or finishing them off, and to continue.
+## Maximum height difference (m) between whoever acts and the downed player to start reviving or finishing them off, and to continue.
 const MAX_HEIGHT_DIFFERENCE: float = 1.5
 ## Height above the downed player's feet that the line-of-sight ray reaches (they are on the ground).
 const DOWNED_SIGHT_HEIGHT: float = 0.5
@@ -68,7 +68,7 @@ var stats: Dictionary[StringName, int] = {
 	&"interact_cut": 0,
 }
 
-# Downed players of the zone and those who lift or finish off, by net_id: with none, step() iterates over nobody.
+# Downed players of the zone and those who revive or finish off, by net_id: with none, step() iterates over nobody.
 var _downed: Dictionary[int, Combatant] = {}
 var _actors: Dictionary[int, Combatant] = {}
 # (realm of whoever acts · 16 + realm of the downed player) -> whether they are hostile in this zone.
@@ -114,7 +114,7 @@ func down(victim: Combatant, author_id: int, source: int, s: int) -> void:
 
 
 ## Step 7 of tick [param s] (docs/abilities.md, section 4.1) over [param list] (by net_id):
-## bleeding out, new INTERACTs and the progress and end of lifting and finishing off. [param space] is the world's
+## bleeding out, new INTERACTs and the progress and end of reviving and finishing off. [param space] is the world's
 ## physics space (line of sight; null = no world).
 func step(s: int, list: Array[Combatant], space: PhysicsDirectSpaceState3D) -> void:
 	if _downed.is_empty() and _actors.is_empty():
@@ -171,7 +171,7 @@ func killer_of(victim: Combatant) -> int:
 	return 0
 
 
-## Stops tracking [param victim] as downed (it has died or respawned). Whoever was lifting or
+## Stops tracking [param victim] as downed (it has died or respawned). Whoever was reviving or
 ## finishing it off is cut on the next step 7.
 func release(victim: Combatant) -> void:
 	if victim != null:
@@ -189,7 +189,7 @@ func downed_count() -> int:
 	return _downed.size()
 
 
-## Those lifting or finishing off now.
+## Those reviving or finishing off now.
 func interacting_count() -> int:
 	return _actors.size()
 
@@ -226,7 +226,7 @@ func _interact_pressed(actor: Combatant, s: int) -> bool:
 	return real and (buttons & PlayerInput.INTERACT) != 0 and (previous & PlayerInput.INTERACT) == 0
 
 
-# Starts lifting or finishing off the nearest valid downed player, if [param actor] can: alive, with no other
+# Starts reviving or finishing off the nearest valid downed player, if [param actor] can: alive, with no other
 # interaction, in NONE or BLOCK and on the ground.
 func _try_start(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tables: CombatTables) -> void:
 	var character: PlayerCharacter = actor.get_character()
@@ -278,10 +278,10 @@ func _try_start(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tabl
 		return
 
 
-# What [param actor] can do with the downed player [param target]: REVIVE an ally whom nobody is lifting,
+# What [param actor] can do with the downed player [param target]: REVIVE an ally whom nobody is reviving,
 # EXECUTE an enemy with no safe zones in between, or 0 (always 0 for an invisible GM).
 func _interaction_for(actor: Combatant, target: Combatant) -> int:
-	# An invisible GM neither lifts nor finishes off (docs/platform.md §9.1).
+	# An invisible GM neither revives nor finishes off (docs/platform.md §9.1).
 	if actor.is_gm_invisible():
 		return 0
 	if target.get_realm() == actor.get_realm():
@@ -343,7 +343,7 @@ func _keeps_going(actor: Combatant, target: Combatant, s: int, space: PhysicsDir
 	return _clear_line(space, feet, other)
 
 
-# Ends [param actor]'s interaction on [param target]: lifted (revived health, NONE and INTERACT 3)
+# Ends [param actor]'s interaction on [param target]: revived (revived health, NONE and INTERACT 3)
 # or finished off (death with the source "execution").
 func _complete(actor: Combatant, target: Combatant, s: int, tables: CombatTables) -> void:
 	var action: int = actor.interact_action
@@ -392,7 +392,7 @@ static func _duration(action: int, tables: CombatTables) -> int:
 	return tables.revive_ticks if action == _REVIVE else tables.execute_ticks
 
 
-# Removes from the lists whoever is no longer there (dead, lifted, removed).
+# Removes from the lists whoever is no longer there (dead, revived, removed).
 func _prune() -> void:
 	for net_id: int in _downed.keys():
 		var victim: Combatant = _downed[net_id]

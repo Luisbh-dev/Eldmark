@@ -76,7 +76,7 @@ func test_a_player_without_real_input_for_sixty_seconds_does_not_count() -> void
 
 
 func test_npcs_and_unknown_realms_never_count() -> void:
-	# The neutral side (the Hollows) and codes that are not realms are ignored, without breaking the count.
+	# The neutral side (the Hollow) and codes that are not realms are ignored, without breaking the count.
 	var hollow: FortressPresence.Candidate = _candidate(0, CENTER)
 	var strange: FortressPresence.Candidate = _candidate(7, CENTER)
 	var negative: FortressPresence.Candidate = _candidate(-1, CENTER)

@@ -43,8 +43,9 @@ static func channel_color(channel: int) -> Color:
 
 
 ## The parts of a line, in order: each one is [code]{"text": String, "color": Color}[/code]. Joined
-## they give the line's text. A whisper reads "Ana whispers to you: text" or "You whisper to Bruno:
-## text"; a "say", "Ana says: text" or "You say: text"; zone, party and the others, "[Zone] Ana: text".
+## they give the line's text. A whisper reads "Ana te susurra: texto" (Ana whispers to you) or "Susurras a Bruno:
+## texto" (You whisper to Bruno); a "say", "Ana dice: texto" or "Dices: texto"; zone, party and the others,
+## "[code][Zona][/code] Ana: texto".
 ## The sender's name goes in their realm's color and the rest in the channel's color.
 static func segments(line: ChatLog.Line) -> Array[Dictionary]:
 	var color: Color = channel_color(line.channel)

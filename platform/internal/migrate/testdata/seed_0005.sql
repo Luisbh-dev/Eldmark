@@ -1,4 +1,4 @@
--- Semilla de conservación del esquema 0005: chat, ignorados, reportes, sanciones y auditoría.
+-- Retention seed for schema 0005: chat, ignores, reports, sanctions and audit.
 insert into chat_messages (world_id, zone_id, zone_channel, channel, sender_character_id, sender_account_id, text, sent_at, message_key)
 select 1, 'vado_gris', 0, 1, c.character_id, c.account_id, 'Hola', now(), '00000000-0000-4000-8000-000000000001:2'
 from characters c where c.name_key = 'aneira';

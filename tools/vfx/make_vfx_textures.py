@@ -53,14 +53,14 @@ def smoothstep(a, b, x):
 
 
 def grid(height, width=None):
-	"""Normalised coordinates (x, y) of the centre of each pixel, in [0, 1)."""
+	"""Normalised coordinates (x, y) of the center of each pixel, in [0, 1)."""
 	width = width or height
 	yy, xx = np.mgrid[0:height, 0:width]
 	return (xx + 0.5) / width, (yy + 0.5) / height
 
 
 def fbm_tile(size, beta, seed, stretch=1.0):
-	"""1/f^beta colour noise that tiles at the edges (via FFT), normalised to [0, 1].
+	"""1/f^beta color noise that tiles at the edges (via FFT), normalised to [0, 1].
 	[stretch] > 1 lengthens it along x (streaks)."""
 	rng = np.random.default_rng(seed)
 	white = rng.standard_normal((size, size if isinstance(size, int) else size[1]))
@@ -277,7 +277,7 @@ def make_droplets():
 def make_puffs():
 	"""Four puffs of dust with volume, in a 2 x 2 atlas of 256 px cells (512 x 512).
 
-	They do not carry baked colour: they are data for the lit shader (vfx_particle_lit):
+	They do not carry baked color: they are data for the lit shader (vfx_particle_lit):
 	    R = relief height (0 outside the puff, 1 at the top of the lobes); the
 	        normal comes from it, so the sun shapes it and the shadow darkens it;
 	    G = fine noise (the erosion: the puff dissolves from the edge, the alpha does not drop all at once);
@@ -315,10 +315,10 @@ def make_puffs():
 
 def make_splat_jets():
 	"""Splash jets in sequence, for the hit on flesh: 4 variants (rows) by 5 frames
-	(columns), 128 px cells, 640 x 512. The jet leaves the centre of the cell towards +X (the
+	(columns), 128 px cells, 640 x 512. The jet leaves the center of the cell towards +X (the
 	shader rotates it towards the direction of the hit).
 
-	    R = shading (1 = light; the centre of the jet is lighter, giving the thickness of a liquid);
+	    R = shading (1 = light; the center of the jet is lighter, giving the thickness of a liquid);
 	    G = specular highlight (an elongated reflection on the jet and a dot on each drop);
 	    A = silhouette.
 	Each frame is an instant of the jet: it is born as a fat blob, stretches, narrows and

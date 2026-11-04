@@ -46,8 +46,8 @@ extends SceneTree
 ## [br]- [b]Shield wall[/b]: one and two attackers with the perfect combo against whoever holds it for 6 s:
 ## stamina it takes from them and whether it breaks their guard.
 ## [br]- The combat bot duels and teams use the kit ([BotBrain] with its combat state): sword against
-## sword (shield-bearers), and also, with both templates, ranged vs ranged, shield-bearer vs ranged and 2 vs 2
-## with one shield-bearer and one ranged fighter on each side; with [code]--reference[/code], also the duels without abilities (the
+## sword (squires), and also, with both templates, ranged vs ranged, squire vs ranged and 2 vs 2
+## with one squire and one ranged fighter on each side; with [code]--reference[/code], also the duels without abilities (the
 ## phase 3 brain) for comparison.
 
 ## Zone for the measurements (no safe zones or terrain).
@@ -714,7 +714,7 @@ func _wall_against(attackers: int) -> Dictionary:
 
 # --- Duels with the two templates -------------------------------------------------------------
 
-# Ranged vs ranged and shield-bearer vs ranged, from 20 m (the bow has room).
+# Ranged vs ranged and squire vs ranged, from 20 m (the bow has room).
 func _measure_template_duels() -> Dictionary:
 	var marksman: int = CombatCatalog.template_id(&"marksman")
 	return {
@@ -812,7 +812,7 @@ func _ideal_ttk_against(mode: String) -> Dictionary:
 # --- Combat bot duels -----------------------------------------------------------------
 
 # Combat bot duels: with or without the kit ([param kit]), with the templates [param templates] (0 = the
-# shield-bearer) and from [param distance] meters.
+# squire) and from [param distance] meters.
 func _measure_duels(kit: bool = true, templates: Array[int] = [0, 0], label: String = "espada contra espada",
 		distance: float = DUEL_DISTANCE, potions: bool = true) -> Dictionary:
 	print("\nDuelos de bots de combate, %s%s, de %.0f m (%d duelos):" % [label,
@@ -873,7 +873,7 @@ func _measure_duels(kit: bool = true, templates: Array[int] = [0, 0], label: Str
 
 
 # A duel between two combat bots with the seeds [param seed_first] and [param seed_first] + 1, with or without
-# the kit ([param kit]) and with the templates [param templates] (0 = the default one, the shield-bearer).
+# the kit ([param kit]) and with the templates [param templates] (0 = the default one, the squire).
 func _duel(seed_first: int, kit: bool = true, templates: Array[int] = [0, 0],
 		distance: float = DUEL_DISTANCE, potions: bool = true) -> Dictionary:
 	await _start_server()
@@ -938,7 +938,7 @@ func _measure_teams() -> Dictionary:
 	var results: Dictionary = {}
 	var runs: int = maxi(_team_runs, 1)
 	print("\nEquipos de bots de combate, de %.0f m (%d combates de cada tamaño):" % [DUEL_DISTANCE, runs])
-	# 2 and 5 shield-bearers per side and, with both templates, 2 vs 2 with one shield-bearer and one ranged fighter on each.
+	# 2 and 5 squires per side and, with both templates, 2 vs 2 with one squire and one ranged fighter on each.
 	for setup: Array in [[2, false], [5, false], [2, true]]:
 		var size: int = setup[0]
 		var mixed: bool = setup[1]
@@ -974,7 +974,7 @@ func _measure_teams() -> Dictionary:
 
 
 # A [param size] vs [param size] fight: Vardheim on one side and Solmarch on the other, in a line. With
-# [param mixed], the odd ones on each side use the ranged template (otherwise all use the shield-bearer).
+# [param mixed], the odd ones on each side use the ranged template (otherwise all use the squire).
 func _team_fight(size: int, seed_first: int, mixed: bool = false) -> Dictionary:
 	await _start_server()
 	var marksman: int = CombatCatalog.template_id(&"marksman")

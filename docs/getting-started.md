@@ -58,7 +58,7 @@ godot --headless --path . --import
 godot --headless --path . --quit-after 120
 ```
 
-Arguments for the game itself go after `--`. Screenshots and other temporary files can go in `build/`, which Godot ignores and Git does not track.
+Arguments for the game itself go after `--`. Screenshots and other temporary files can go in `build/`, which Git does not track (Godot imports whatever you leave there, so for `.csv` files see the note below).
 
 ## Offline sandbox and startup options
 
@@ -306,7 +306,7 @@ The internal API (`/internal/v1`, on `ELDMARK_INTERNAL_ADDR`, for zones only) re
 ```bash
 export ELDMARK_ZONE_TOKENS="1:vado_gris:0:$(printf %s secret | sha256sum | cut -d' ' -f1)"
 curl -s -H 'Authorization: Bearer secret' -d '{"world_id": 1, "zone_id": "vado_gris", "channel": 0,
-  "public_host": "127.0.0.1", "public_port": 24600, "realms": [1, 2], "build_id": "dev", "protocol_version": 5,
+  "public_host": "127.0.0.1", "public_port": 24600, "realms": [1, 2], "build_id": "dev", "protocol_version": 7,
   "record_format": 1, "max_players": 64, "dtls_cert_pem": null, "dtls_name": null, "replace": false}' \
   http://127.0.0.1:24681/internal/v1/zone-instances
 ```
@@ -374,7 +374,7 @@ There are about 210 test files and over 2,800 test methods. Many of them start s
 - **Plataforma**: checks that no secrets are in the Git index (`tools/check_secrets.sh`) and runs `gofmt`, `go vet` and `go test` for the platform service against an ephemeral PostgreSQL, plus the deployment-script checks (backup and restore scripts, shellcheck, `docker compose config`).
 - **Plataforma e2e**: the Go platform in the test process against real `test_world` zones and real Godot bots with accounts (`platform/e2e`, tag `e2e`).
 
-The workflow comments and job names are in Spanish for now.
+The workflow and job names (`Pruebas`, `Suite completa`, `Plataforma`) are still in Spanish.
 
 ## Quality capture bench
 

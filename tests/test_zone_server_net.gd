@@ -4,7 +4,7 @@ extends TestCase
 ## The server and each client have their own [NetTransport] (with its [SceneMultiplayer]); the clients
 ## are [RawClient]: they speak the protocol by hand (HELLO, WELCOME, CLIENT_READY, INPUT_BATCH...)
 ## with no prediction or interpolation, which belong to the real client. The tests check the handshake
-## and rejections, sign-up with the "after S" state, snapshots, inputs, interest, removals, security
+## and rejections, join with the "after S" state, snapshots, inputs, interest, removals, security
 ## (warnings, kicks, unexpected types, debug commands), the network simulator and shutdown with a
 ## warning. The runner fails on any engine error, so each test also checks that nothing is sent before
 ## [signal NetTransport.peer_connected].
@@ -359,7 +359,7 @@ func test_handshake_spawns_the_player_and_streams_snapshots() -> void:
 	assert_eq(own.kind, NetProtocol.EntityKind.PLAYER)
 	assert_eq(own.realm, VARDHEIM)
 	assert_eq(own.display_name, "Ana")
-	assert_eq(own.spawn_tick, peer.entity.spawn_tick, "spawn_tick = sign-up tick S")
+	assert_eq(own.spawn_tick, peer.entity.spawn_tick, "spawn_tick = join tick S")
 	assert_eq(own.state.last_input_tick, own.spawn_tick, "the state is \"after S\"")
 	assert_vec_near(own.state.position, ZoneFixture.VARDHEIM_SPAWNS[0], 1e-4,
 			"at Vardheim's first spawn point")
@@ -368,12 +368,12 @@ func test_handshake_spawns_the_player_and_streams_snapshots() -> void:
 	assert_true(own.state.equals_exact(PlayerState.decode(own.state.encode())),
 			"the imposed state goes through encode/decode")
 	var history: StateHistory = _server.get_history()
-	assert_true(history.has_tick(own.net_id, own.spawn_tick), "the history records the sign-up tick")
+	assert_true(history.has_tick(own.net_id, own.spawn_tick), "the history records the join tick")
 	var at_spawn: StateHistory.Sample = history.sample(own.net_id, float(own.spawn_tick))
 	if assert_not_null(at_spawn, "and it can be sampled"):
-		assert_vec_near(at_spawn.position, own.state.position, 1e-4, "with the sign-up position")
+		assert_vec_near(at_spawn.position, own.state.position, 1e-4, "with the join position")
 
-	# Snapshots: with no real inputs, the server substitutes the neutral sign-up input.
+	# Snapshots: with no real inputs, the server substitutes the neutral join input.
 	await _run_frames(40)
 	assert_true(client.snapshots.size() >= 10, "snapshots arrive (%d)" % client.snapshots.size())
 	var previous_tick: int = 0
@@ -618,7 +618,7 @@ func test_a_person_who_leaves_before_entering_frees_the_seat_and_no_filler_moves
 	loading.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
 	assert_true(await _run_until(func() -> bool: return keeper.reserved_count() == 0),
 			"she leaves without entering the world and the slot is freed")
-	assert_eq(_filler_ids(keeper), fillers, "the same filler fakes, with no sign-ups or removals")
+	assert_eq(_filler_ids(keeper), fillers, "the same filler fakes, with no joins or removals")
 	assert_eq(_server.get_player_count(), 2, "the server is full of filler again")
 
 
@@ -653,7 +653,7 @@ func test_a_hello_and_a_disconnect_in_a_loop_do_not_churn_the_fillers() -> void:
 	await _run_frames(10)
 	assert_eq(_filler_ids(keeper), fillers, "the same filler fakes")
 	assert_eq(ana.despawns.size(), despawns_before, "Ana receives no removals")
-	assert_eq(ana.spawns.size(), spawns_before, "nor any sign-ups")
+	assert_eq(ana.spawns.size(), spawns_before, "nor any joins")
 
 
 func test_a_seat_abandoned_while_another_person_loads_keeps_the_sides_even() -> void:
@@ -1503,7 +1503,7 @@ func test_reliable_flood_trips_the_reliable_limiter() -> void:
 	if client == null:
 		return
 	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
-	# 30 valid teleports at once: the reliable ones allow a burst of 20 (the sign-up CLIENT_READY
+	# 30 valid teleports at once: the reliable ones allow a burst of 20 (the join CLIENT_READY
 	# already spent a token) plus 1 every 6 ticks, so the rest are dropped with one warning
 	# each.
 	for i: int in 30:

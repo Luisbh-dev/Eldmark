@@ -6,11 +6,11 @@ Everything is drawn on a 128 x 128 canvas with a single style:
     direction, and the paint pass (`paint.py`) adds inner edge light on that same side.
   - Strong silhouette: each shape carries a dark outline of a single thickness and a shadow cast
     towards the bottom right, so that it reads small whatever the background.
-  - Colours from the game's palette (desaturated): no violet and no nearly pure materials. The backgrounds
+  - Colors from the game's palette (desaturated): no violet and no nearly pure materials. The backgrounds
     per category are not here but in `paint.py`, because the shape is exported on its own, without a background.
 
 This module does not write the final icon: it splits each shape into LAYERS (shadow, silhouette and one per piece)
-and sends them to be rasterised by the engine (`rasterize_icons.gd`). `paint.py` composes them with grain,
+and sends them to be rasterized by the engine (`rasterize_icons.gd`). `paint.py` composes them with grain,
 occlusion between pieces and edge light. The transformations are applied to the points when building the
 path, not with `transform`, so the gradients always face the same side even if the shape
 is rotated.
@@ -91,7 +91,7 @@ class Path:
     """Path with absolute commands; each point goes through the transform `xf`.
 
     Besides the SVG string it keeps a flattened version (`polys`) to measure the silhouette without
-    rasterising with the engine.
+    rasterizing with the engine.
     """
 
     def __init__(self, xf=IDENT):
@@ -273,7 +273,7 @@ def polar(cx, cy, r, deg):
 
 
 # --------------------------------------------------------------------------------------------
-# Colour
+# Color
 # --------------------------------------------------------------------------------------------
 
 
@@ -300,7 +300,7 @@ def lighten(color, t):
 
 
 def desaturate(color, amount):
-    """Moves `color` towards its grey of equal luminance (amount = 0 leaves it alone, 1 gives the grey)."""
+    """Moves `color` towards its gray of equal luminance (amount = 0 leaves it alone, 1 gives the gray)."""
     r, g, b = hex_rgb(color)
     gray = 0.2126 * r + 0.7152 * g + 0.0722 * b
     return rgb_hex([c + (gray - c) * amount for c in (r, g, b)])
@@ -365,7 +365,7 @@ MATERIALS = {
 # --------------------------------------------------------------------------------------------
 
 # top/bottom: background fill (value 25 to 35 % at the top, saturation 0.45 or less). glow: inner halo
-# and edge in the category colour. The frame is added by the slot (UIPalette.BORDER and
+# and edge in the category color. The frame is added by the slot (UIPalette.BORDER and
 # BORDER_LIGHT, iron and warm bronze); here there is only a fine edge in those same tones.
 CATEGORIES = {
     # attack: dark crimson and bronze (Askarra)
@@ -517,7 +517,7 @@ def measure(shapes, ow_scale=1.0, fit=(1.0, 0.0, 0.0)):
 
 
 def _centered(shapes, s, center, ow_scale):
-    """Translation that centres the box of the shape scaled by `s` at `center`."""
+    """Translation that centers the box of the shape scaled by `s` at `center`."""
     bbox, _cover = measure(shapes, ow_scale, (s, 0.0, 0.0))
     cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
     return center[0] - cx, center[1] - cy
@@ -525,7 +525,7 @@ def _centered(shapes, s, center, ow_scale):
 
 def fit_transform(shapes, target=0.375, lo=0.6, hi=1.6, max_extent=110.0, center=(64.0, 62.0),
                   ow_scale=1.0):
-    """Scale and translation that leave the shape centred and with coverage close to `target`.
+    """Scale and translation that leave the shape centerd and with coverage close to `target`.
 
     Returns (s, tx, ty): x' = s * x + tx. The outline does not scale (it is compensated when emitting the layers), so
     the coverage does not follow s squared exactly: it is refined in a few passes. The scale is limited
@@ -604,7 +604,7 @@ def layers(shapes, side=256, fit=(1.0, 0.0, 0.0), ow_scale=1.0, shadow=1.0):
     """Splits the shape into SVG layers: shadow, silhouette and one per piece.
 
     Returns a list of dicts: {"kind": "shadow"|"silhouette"|"piece", "svg": text, ...}. Each piece
-    also carries its `role` (see `Sh.role`), the material or flat colour, the opacity and whether it has an edge.
+    also carries its `role` (see `Sh.role`), the material or flat color, the opacity and whether it has an edge.
     The outline and edge widths are divided by the scale so they neither thicken nor thin when
     fitting the shape to the canvas; `ow_scale` multiplies them (the small states carry a proportionally
     thicker outline) and `shadow` does the same with the shadow offset.

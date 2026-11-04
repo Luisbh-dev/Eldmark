@@ -733,7 +733,7 @@ func test_the_fortress_debug_commands_act_over_the_network_with_debug_commands()
 	_send_command(ana, NetMessages.DebugCommand.fort_capture_speed(30))
 	var sped_up: bool = await _run_until(func() -> bool: return _state().capture_rate_multiplier == 30)
 	assert_true(sped_up, "fort_capture_speed 30")
-	# 10 fort_kill_captain: the Hollows' captain falls at the hands of the realm of whoever orders it and,
+	# 10 fort_kill_captain: the Hollow' captain falls at the hands of the realm of whoever orders it and,
 	# with Ana in the circle, the fort is captured.
 	_send_command(ana, NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_KILL_CAPTAIN))
 	var captured: bool = await _run_until(func() -> bool: return _state().owner == VARDHEIM)
@@ -797,7 +797,7 @@ func test_the_periodic_reset_reaches_every_client_and_closes_the_gate_for_everyb
 		return
 	assert_eq(_state().last_reset_tick - given_at, 4 * 60, "exactly 4 s after the last reset")
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
-	assert_true(_state().captain_alive, "with the Hollows and their Captain")
+	assert_true(_state().captain_alive, "with the Hollow and their Captain")
 	assert_eq(_state().gate_health, 900)
 	assert_eq(_gate().collision_layer, FortGate.layers_for(0, false), "now it holds back all three realms")
 	assert_vec_near(_server.get_registry().get_entity(ana.own_spawn.net_id).get_position(), position, 0.2,

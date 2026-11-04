@@ -132,7 +132,7 @@ def compose_summary(folder):
 		if not os.path.exists(path):
 			continue
 		frame = Image.open(path).convert("RGB")
-		# A frame of a different aspect ratio is cropped to the centre to fill the cell.
+		# A frame of a different aspect ratio is cropped to the center to fill the cell.
 		target = cell[0] / cell[1]
 		if abs(frame.size[0] / frame.size[1] - target) > 0.05:
 			if frame.size[0] / frame.size[1] > target:

@@ -103,6 +103,7 @@ def rewrite(rel: str, text: str) -> tuple[str, list[tuple[int, str, str]]]:
 
 
 def main() -> int:
+	sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 	ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 	ap.add_argument("paths", nargs="*")
 	ap.add_argument("--dry-run", action="store_true")

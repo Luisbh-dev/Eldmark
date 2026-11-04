@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Eldmark"
-config/description="MMORPG 3D de fantasía medieval."
+config/description="3D medieval fantasy MMORPG."
 config/version="0.1.0"
 run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")

@@ -231,7 +231,7 @@ func _script_heartbeat(revoked: Array, maintenance: Variant = null) -> void:
 
 # --- Tests ------------------------------------------------------------------------------------
 
-## A critical flagged right after track (on sign-up) goes out on that same tick; afterwards, each character's
+## A critical flagged right after track (on join) goes out on that same tick; afterwards, each character's
 ## checkpoint goes out in its phase (tick % 120 == character_id % 120) when its section is dirty.
 func test_a_critical_right_after_track_and_checkpoints_in_their_phase() -> void:
 	var joined_tick: Dictionary[int, int] = {}
@@ -249,7 +249,7 @@ func test_a_critical_right_after_track_and_checkpoints_in_their_phase() -> void:
 	var net_10: int = first.own_spawn.net_id
 	var net_70: int = second.own_spawn.net_id
 	await _run_until(func() -> bool: return _section.acknowledged.size() == 2)
-	assert_eq(_section.build_ticks(net_10), [joined_tick[net_10]], "the sign-up critical goes out on the sign-up tick")
+	assert_eq(_section.build_ticks(net_10), [joined_tick[net_10]], "the join critical goes out on the join tick")
 	assert_eq(_section.build_ticks(net_70), [joined_tick[net_70]], "also the second one's")
 	_section.set_kills(net_10, 1)
 	_section.set_kills(net_70, 2)

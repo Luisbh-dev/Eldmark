@@ -1,4 +1,4 @@
--- Semilla de conservación del esquema 0004: una fortaleza, un evento y un recurso.
+-- Retention seed for schema 0004: a fortress, an event and a resource.
 insert into fortresses (world_id, fortress_id, zone_id, record, version, updated_by)
 values (1, 'vado_gris_fort', 'vado_gris', '{"schema": 1, "owner": 1, "phase": "consolidating"}', 1,
   '00000000-0000-4000-8000-000000000001');

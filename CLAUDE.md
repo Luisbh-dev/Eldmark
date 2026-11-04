@@ -4,7 +4,7 @@ A 3D medieval fantasy MMORPG in Godot 4.7 (GDScript). Third-person action combat
 
 Three realms, each with its own zones, cities and a wall surrounding it, plus a central war zone with capturable forts and castles. Design and roadmap in `docs/vision.md`: read it before making design decisions.
 
-Eldmark is an open source project: the code is MIT-licensed, the assets made by the project are CC BY 4.0, and third-party assets keep their own license as recorded in `assets/LICENSES.md`.
+Eldmark is an open source project: the code is MIT-licensed, the assets made by the project are CC BY 4.0, and third-party assets keep their own license as recorded in `assets/LICENCIAS.md`.
 
 ## Architecture
 
@@ -27,7 +27,7 @@ Eldmark is an open source project: the code is MIT-licensed, the assets made by 
 
 - Art direction: the Quaternius "Universal + MegaKit" family (stylized with textures, heroic proportions), a single kit recolored per realm. Details in `docs/art.md`.
 - The original zips are kept outside the repo, in `../Eldmark-raw/<pack>/`. Only the glTF files and textures that are used go into the repo.
-- Every pack that enters the repo is recorded in `assets/LICENSES.md` (author, version, date, URL, license).
+- Every pack that enters the repo is recorded in `assets/LICENCIAS.md` (author, version, date, URL, license).
 - Animations: variants without root motion. Movement is decided by the shared simulation, not by the animation. The server does not play animations.
 
 ## Running Godot from the terminal

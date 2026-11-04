@@ -61,7 +61,7 @@ func run(d: Variant) -> void:
 		var z: float = float(v[2])
 		var yaw: float = float(v[3])
 		var pitch: float = float(v[4])
-		# The orientation -1 means "look at the centre of the fort (0, 0)".
+		# The orientation -1 means "look at the center of the fort (0, 0)".
 		if yaw == -1.0:
 			yaw = d.yaw_to(x, z, 0.0, 0.0)
 		if mirror:

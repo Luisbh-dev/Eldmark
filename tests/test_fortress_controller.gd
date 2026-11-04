@@ -2,7 +2,7 @@ extends TestCase
 ## The [FortressController] alone, with no server or network (docs/fortress.md, sections 1 to 3; GUE-08, GUE-10,
 ## GUE-12 and GUE-13): advanced by hand, tick by tick, with fake players placed inside or outside the
 ## circle. It checks presence (every 6 ticks, alive, connected and active), a full neutral -> Vardheim -> Solmarch
-## capture with the Hollows' captain and the owner's, the dispute and the
+## capture with the Hollow' captain and the owner's, the dispute and the
 ## decays, consolidation, the OBJECT_STATE rate, the gate layers from the next
 ## tick, the repair deferred while someone occupies the doorway, the war notices in order, the
 ## interface with the NPCs, the periodic reset and the debug commands.
@@ -182,7 +182,7 @@ func test_setup_creates_the_structure_entity_and_the_gate_target() -> void:
 		assert_vec_near(targets[0].half_extents, Vector3(0.25, 2.15, 2.0), 1e-4)
 		assert_eq(targets[0].exclude.size(), 2, "the gate's two bodies")
 		assert_true(targets[0].can_be_hit_by(VARDHEIM), "a neutral fort can be damaged by any realm")
-		assert_false(targets[0].can_be_hit_by(0), "but not by the Hollows")
+		assert_false(targets[0].can_be_hit_by(0), "but not by the Hollow")
 
 
 func test_the_spawn_message_carries_the_whole_state_of_the_fortress() -> void:
@@ -261,12 +261,12 @@ func test_presence_has_the_cylinder_shape_and_the_activity_timeout() -> void:
 
 func test_a_full_capture_neutral_to_vardheim_to_solmarch_with_both_captains() -> void:
 	var mirror: FortressState = FortressState.initial(_definition, 0)
-	# Neutral fort, guarded by the Hollows: with the circle inactive, being inside does not capture.
+	# Neutral fort, guarded by the Hollow: with the circle inactive, being inside does not capture.
 	_put(1, VARDHEIM, _inside())
 	_run(30)
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "with the captain alive the circle does not count")
 	assert_true(_war.is_empty(), "and there are no notices")
-	# The Hollows' captain falls at the hands of Vardheim.
+	# The Hollow' captain falls at the hands of Vardheim.
 	assert_true(_controller.on_captain_died(FORTRESS, _tick + 1, VARDHEIM))
 	_run(1)
 	_run(6)
@@ -717,7 +717,7 @@ func test_the_fortress_goes_back_to_neutral_on_its_own_when_the_definition_says_
 	_run(3)
 	assert_eq(_state().owner, 0, "goes back to neutral")
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
-	assert_true(_state().captain_alive, "with the Hollows and their Captain")
+	assert_true(_state().captain_alive, "with the Hollow and their Captain")
 	assert_eq(_war_ids(), [WarEvents.FORT_RESET] as Array[int])
 	assert_eq(_war_realms(), [0] as Array[int])
 	assert_eq(_signal_names(), [&"retired", &"garrison"] as Array[StringName])

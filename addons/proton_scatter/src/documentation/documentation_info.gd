@@ -68,7 +68,7 @@ func add_paragraph(text: String) -> void:
 
 
 # Warning importance:
-#	0: Default (Grey)
+#	0: Default (Gray)
 #	1: Mid (Yellow)
 #	2: Critical (Red)
 func add_warning(text: String, importance: int = 0) -> void:

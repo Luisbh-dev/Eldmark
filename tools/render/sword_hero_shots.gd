@@ -18,7 +18,7 @@ extends SceneTree
 ##     --sin-raton --out=build/sword/hero [--only=reposo,ligero,fuerte,bloqueo] [--views=game,side,hand] \
 ##     [--grip-offset=0,0.07,0] [--grip-rot=0,0,-90] [--variant=base|vardheim|solmarch|askarra] [--frames]
 ## [/codeblock]
-## [br]With [code]--variant[/code] the hand's sword is that realm's (and the trail, in its colour). With
+## [br]With [code]--variant[/code] the hand's sword is that realm's (and the trail, in its color). With
 ## [code]--fixed-fps 60[/code] each strike's contact sheet spreads its 12 frames over the active phase
 ## (with a margin before and after) and, with [code]--frames[/code], all the frames of the active
 ## phase are also saved, one by one, in [code]<out>/frames/<action>/<view>/[/code] (to assemble video).

@@ -1947,7 +1947,7 @@ F6b (below) the summary verifies it: the 10 real bots get within 25 m of the cir
 54 s with 64 vs 64, before the window (59 s).
 
 **Sieges with NPCs** (`load_test.gd --siege --npcs` or `--scenario=siege --npcs`, GUE-16, F6b): the server starts with the
-Vado Gris NPCs (four Hollows, the Ford Captain, the owner's garrison and the four camp Guardians) and the fort runs on its own,
+Vado Gris NPCs (four Hollow, the Ford Captain, the owner's garrison and the four camp Guardians) and the fort runs on its own,
 without `fort_kill_captain`; without `--npcs`, the F6a siege with `--no-npcs`. Two runs of each 32 vs 32 siege, alternating, on the
 same 4-core machine **with no other suite running** (load average of 0.5 to 1.1), so they are not compared in detail with those of F6a.
 The first 64 vs 64 run had the same defect as the F6a one (its percentiles are of 118 players with no clients at all); the second,
@@ -1962,7 +1962,7 @@ Tick in ms, p50 / p95 / p99 / maximum of the last 34 s stretch; `npc_brains` (th
 | 64 vs 64 with NPCs, 2nd (F6b review) | 128 (90% of the last stretch) | 17.2 / 24.2 / 30.0 / 72.3 | 12.3 | 0.23 / 0.06 | 0.08 / 1.9 | 32.1 KB/s | 0.00% | 44 (8 suspicious) |
 
 The 9 war NPCs (the 5 of the fort and the 4 camp Guardians) cost about 1 ms of the tick while alive (their
-brains, with a p99 of 0.8 to 1.1 ms per 10 s mark while the Hollows live; the spawners, 0.06 ms; their `simulate()`, about
+brains, with a p99 of 0.8 to 1.1 ms per 10 s mark while the Hollow live; the spawners, 0.06 ms; their `simulate()`, about
 0.55 ms inside `sim`), and ~0.5 ms when only the four Guardians remain. It is of the
 order of the difference between two identical runs (0.8–1.2 ms of p50): with these figures the siege with NPCs cannot be told apart from the one without
 them. The criteria do not change: with 64 players, **p99 of 15.2 to 17.4 ms, NOT met** (`simulate()` dominates); 36.2–36.3 KB/s per
@@ -1980,7 +1980,7 @@ real bots `--bot-brain=combat` and the rest fake combatants in the `--fake-cente
 finishers, **half carry the marksman template** (`--fake-loadout=marksman:50`) and are pure archers
 (`--fake-archers`: in a dense brawl everyone has an enemy within 5 m and a normal shooter draws the sword; the
 first measurement gave 0 arrows), of which half fire at the sky (`--sky-archers=50`: their arrows live 2 s). The fort's
-NPCs (Hollows, captain, garrison and Guardians) are in the zone. Same 4-core machine, with other agents
+NPCs (Hollow, captain, garrison and Guardians) are in the zone. Same 4-core machine, with other agents
 running at times (load average of 0.5 to 0.7 at the start of each scenario). Tick in ms, p50 / p99 / maximum; the rest, p50
 (p99 in parentheses in `combat_projectiles`); arrows: shots in the server's 83 s and peak alive (cap 64):
 

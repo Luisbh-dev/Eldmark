@@ -51,10 +51,10 @@ jobs:
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
 
-      - name: Lista de objetos LFS
+      - name: List LFS objects
         run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
 
-      - name: Caché de objetos LFS
+      - name: LFS objects cache
         uses: actions/cache@v4
         with:
           path: .git/lfs
@@ -65,7 +65,7 @@ jobs:
       - name: Descargar objetos LFS
         run: git lfs pull
 
-      - name: Caché de Godot
+      - name: Godot cache
         id: godot-cache
         uses: actions/cache@v4
         with:
@@ -88,7 +88,7 @@ jobs:
           ln -sf "$HOME/godot/${GODOT_FILE}" "$HOME/.local/bin/godot"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Versión de Godot
+      - name: Godot version
         run: godot --headless --version
 
       - name: Importar el proyecto
@@ -101,7 +101,7 @@ jobs:
 
       # The tests start their own Godot processes (server and clients). This step's timeout is shorter
       # than the job's so that the logs step still gets to run in time if it hangs.
-      - name: Pruebas
+      - name: Tests
         timeout-minutes: 15
         run: |
           set -o pipefail
@@ -131,7 +131,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Resultado de las cuatro partes
+      - name: Result of the four shards
         run: test "${{ needs.tests.result }}" = "success"
 
   # Windows is the development platform and there OS.is_process_running only knows about its own child
@@ -156,10 +156,10 @@ jobs:
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
 
-      - name: Lista de objetos LFS
+      - name: List LFS objects
         run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
 
-      - name: Caché de objetos LFS
+      - name: LFS objects cache
         uses: actions/cache@v4
         with:
           path: .git/lfs
@@ -170,7 +170,7 @@ jobs:
       - name: Descargar objetos LFS
         run: git lfs pull
 
-      - name: Caché de Godot
+      - name: Godot cache
         id: godot-cache
         uses: actions/cache@v4
         with:
@@ -195,7 +195,7 @@ jobs:
           chmod +x "$HOME/godot/godot"
           cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
 
-      - name: Versión de Godot
+      - name: Godot version
         run: godot --headless --version
 
       - name: Importar el proyecto
@@ -206,7 +206,7 @@ jobs:
             exit 1
           }
 
-      - name: Pruebas de LocalServerLauncher
+      - name: LocalServerLauncher tests
         timeout-minutes: 15
         run: |
           set -o pipefail
@@ -321,10 +321,10 @@ jobs:
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
 
-      - name: Lista de objetos LFS
+      - name: List LFS objects
         run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
 
-      - name: Caché de objetos LFS
+      - name: LFS objects cache
         uses: actions/cache@v4
         with:
           path: .git/lfs
@@ -335,7 +335,7 @@ jobs:
       - name: Descargar objetos LFS
         run: git lfs pull
 
-      - name: Caché de Godot
+      - name: Godot cache
         id: godot-cache
         uses: actions/cache@v4
         with:
@@ -372,7 +372,7 @@ jobs:
           "$HOME/godot/${GODOT_FILE}" --headless --version
 
       # The logs of each test are left in $RUNNER_TEMP/e2e (outside the project, which Godot imports).
-      - name: Pruebas de extremo a extremo
+      - name: End-to-end tests
         working-directory: platform
         timeout-minutes: 15
         run: |

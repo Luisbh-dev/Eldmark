@@ -4,8 +4,8 @@
 bow, arrow...) are built with an `xf` transform so that they can be placed rotated; the
 gradients do not rotate with them (see svgkit).
 
-There is no need to centre or scale by hand: `svgkit.fit_transform` measures the silhouette and brings it to 35 to
-55 % of the interior, centred. The safe zones of the slot do have to be respected: the top-left
+There is no need to center or scale by hand: `svgkit.fit_transform` measures the silhouette and brings it to 35 to
+55 % of the interior, centerd. The safe zones of the slot do have to be respected: the top-left
 corner belongs to the key label and the bottom-right to the counter, so long shapes
 run along the diagonal that rises to the right.
 
@@ -71,7 +71,7 @@ def tip_xf(tip, ang, length):
 
 
 def sword(xf, length=64, w=12, gw=34, gh=7, grip=15, guard="bronze"):
-    """Sword with the tip pointing up and the centre of the crossguard at the origin."""
+    """Sword with the tip pointing up and the center of the crossguard at the origin."""
     hb = gh / 2.0
     out = []
     out.append(Sh(poly([(0, -length), (-w / 2, -length + 15), (-w / 2, -hb), (0, -hb)], xf),
@@ -142,7 +142,7 @@ def tall_shield(x, y, w, h, band="cloth_red"):
 
 
 def helm(cx, cy, s=1.0, rot_deg=0.0, plume=None):
-    """Closed helm seen from the front with the visor in the centre (origin at the centre of the helm)."""
+    """Closed helm seen from the front with the visor in the center (origin at the center of the helm)."""
     xf = move(cx, cy) @ rot(rot_deg) @ scale(s)
     out = []
     if plume:
@@ -208,7 +208,7 @@ def arrow(xf, length=64, head=15, shaft=5.0, fletch="cloth_red", head_mat="steel
 
 
 def _arrow_head(cx, cy, ang, size, fill, **kw):
-    """Triangular arrowhead centred at (cx, cy) pointing towards `ang` degrees."""
+    """Triangular arrowhead centerd at (cx, cy) pointing towards `ang` degrees."""
     xf = move(cx, cy) @ rot(ang, 0, 0)
     return Sh(poly([(size, 0), (-size * 0.6, -size * 0.85), (-size * 0.6, size * 0.85)], xf), fill, **kw)
 
@@ -852,7 +852,7 @@ def rooted():
 
 # --------------------------------------------------------------------------------------------
 # Small variants of the states (nameplates and effects row): few pieces, solid
-# shapes. They are drawn on a 128 canvas and rasterised at their exact size with the
+# shapes. They are drawn on a 128 canvas and rasterized at their exact size with the
 # thicker outline (see make_icons.py).
 # --------------------------------------------------------------------------------------------
 
@@ -966,8 +966,8 @@ SMALL_ICONS = {
 }
 
 
-# Framing adjustments per icon (see svgkit.fit_transform): centre and target coverage. Icons
-# that run along the ground (dodge) move down; the rest are centred. They make the silhouettes of one
+# Framing adjustments per icon (see svgkit.fit_transform): center and target coverage. Icons
+# that run along the ground (dodge) move down; the rest are centerd. They make the silhouettes of one
 # bar not occupy the same place (qa.py measures the overlap).
 FIT = {
     "sword_light": dict(center=(68.0, 74.0)),

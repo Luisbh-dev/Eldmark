@@ -161,7 +161,7 @@ func test_it_drinks_when_hurt_or_tired_and_only_with_charges_and_off_cooldown() 
 	rig.brain.set_health_source(func() -> float: return health[0])
 	rig.run(4000)
 	var drinks: Array[Vector3i] = _presses_of(rig, 3)
-	assert_eq(drinks.size(), 3, "the shield-bearer's three health charges, not one more (%s)" % [drinks])
+	assert_eq(drinks.size(), 3, "the squire's three health charges, not one more (%s)" % [drinks])
 	for index: int in range(1, drinks.size()):
 		assert_true(drinks[index].x - drinks[index - 1].x >= CombatCatalog.tables().consumable_cooldown_ticks,
 				"separated by the shared cooldown")

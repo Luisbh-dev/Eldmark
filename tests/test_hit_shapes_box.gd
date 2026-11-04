@@ -3,7 +3,7 @@ extends TestCase
 ## attack against an oriented box ([method HitShapes.sector_hits_box]) and the overlap of a capsule with
 ## the box ([method HitShapes.capsule_overlaps_box]), which decides whether the gate's doorway is occupied.
 ## The test box is the real gate's: 0.5 m thick in X, 4.3 m high and 4 m wide in Z,
-## with its centre at 2.15 m.
+## with its center at 2.15 m.
 
 const HALF_EXTENTS: Vector3 = Vector3(0.25, 2.15, 2.0)
 const BOX_CENTER: Vector3 = Vector3(0.0, 2.15, 0.0)

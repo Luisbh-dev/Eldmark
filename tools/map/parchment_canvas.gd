@@ -17,7 +17,7 @@ extends RefCounted
 
 ## Covers what is underneath (with the paper grain).
 const MODE_OVER: int = 0
-## Multiplies what is underneath by the colour (ink and washes). The colour may exceed 1.
+## Multiplies what is underneath by the color (ink and washes). The color may exceed 1.
 const MODE_MULTIPLY: int = 1
 
 ## Maximum side of a mask (px); long lines are split beforehand so as not to exceed this.
@@ -526,7 +526,7 @@ static func dash(points: PackedVector2Array, on: float, off: float, offset: floa
 	return pieces
 
 
-## A thick line already rasterised and split into pieces so that no mask exceeds the maximum size.
+## A thick line already rasterized and split into pieces so that no mask exceeds the maximum size.
 ## Returns the masks (to paint them one by one).
 static func stroke_masks(p_points: PackedVector2Array, p_widths: PackedFloat32Array, closed: bool = false,
 		round_caps: bool = true, chunk: int = 90) -> Array[Mask]:

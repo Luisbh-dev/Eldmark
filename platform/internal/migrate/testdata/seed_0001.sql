@@ -1,5 +1,5 @@
--- Semilla de conservación del esquema 0001 (plataforma.md §2.4): al menos una fila en cada tabla.
--- worlds ya tiene la de «Eld» de la propia migración.
+-- Retention seed for schema 0001 (docs/platform.md §2.4): at least one row in every table.
+-- worlds already has the "Eld" row from the migration itself.
 insert into accounts (email, password_hash, email_verified_at, role, age_confirmed_at)
 values ('semilla@eldmark.test', '$argon2id$v=19$m=8,t=1,p=1$c2FsdA$aGFzaA', now(), 'admin', now()),
        ('otra@eldmark.test', null, null, 'player', now());

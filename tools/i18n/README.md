@@ -56,5 +56,30 @@ are, keep `%s`/`%d` markers in the same order, keep the spaces at the ends of as
 start every Go doc comment with the identifier it documents.
 
 The files of the pending quality-wave branch (`wip/o2-integracion`) were left out of the first
-pass on purpose. Once that branch is merged, the same tools translate them: extract with an empty
-exclude file restricted to those paths, translate, apply and check.
+pass on purpose. Checklist for the pass after that branch is merged:
+
+1. Get the path list with `git diff --name-only main...wip/o2-integracion` **before** merging (the
+   first pass kept it in `build/i18n/exclude_o2.txt`, which is not versioned), or commit it.
+2. Extract with an empty exclude file restricted to those paths, translate, apply, and run
+   `check_comment_only.py`.
+3. Run `rename_doc_refs.py` on those paths (about 45 of them still cite old doc names such as
+   `plataforma.md` or `red.md`).
+4. Pick English names for the deferred docs (`combate.md`, `calidad.md`, `backlog.md`, `zonas/`) and
+   for `assets/LICENCIAS.md` (-> `assets/LICENSES.md`; update `CLAUDE.md`, `CONTRIBUTING.md`, the PR
+   template, `export_presets.cfg`, `tests/test_assets.gd` and `tests/test_export_config.gd`),
+   add them to `DOC_RENAMES` in `rename_doc_refs.py` and `git mv` them.
+5. Re-point the links from already translated docs to the Spanish anchors of `combate.md`
+   (`networking.md`, `abilities.md`, `fortress.md`) and the links inside the translated deferred docs.
+6. Check that no internal link or anchor is broken (there is no versioned link checker yet; write one
+   in `tools/i18n/` when doing this pass).
+7. Add `docs/getting-started.md`'s `export_presets.cfg` filter for `LICENSE` and `LICENSE-ASSETS.md`.
+
+Known leftovers that are deliberate or deferred:
+
+- The SQL migrations in `platform/internal/migrate/migrations/` keep their Spanish comments and old doc
+  names: `migrate.go` rejects a changed SHA-256 for an applied `.up.sql`, so they cannot be edited once
+  deployed. The `testdata/seed_*.sql` seeds carry no checksum and are translated.
+- The messages of the Go test assertions (`t.Errorf`, `t.Fatalf`, ...) in `platform/**/*_test.go` are
+  still in Spanish; the extractor only knows GDScript assert functions. Pending as a follow-up.
+- Some `tests/*.gd` helpers with a `label` parameter or case tables still carry Spanish labels.
+- Run the Python tools with `python -I -X utf8` on Windows when redirecting their output.

@@ -5,16 +5,16 @@ extends SceneTree
 ## glTF ones with these and the keep takes on each realm's palette.
 ##
 ## Stone, cloth, wood, roof and earth use assets/materials/shaders/fort_keep_surface.gdshader
-## (it recolours the texture towards the colour in docs/world.md, "Palette per material", and reads the model's
-## vertex colour: value of each ashlar block, joint occlusion, dirt and wear mask).
-## The fabrics use fort_keep_cloth.gdshader (emblem atlas, faction colour, capture and wind per
+## (it recolors the texture towards the color in docs/world.md, "Palette per material", and reads the model's
+## vertex color: value of each ashlar block, joint occlusion, dirt and wear mask).
+## The fabrics use fort_keep_cloth.gdshader (emblem atlas, faction color, capture and wind per
 ## instance). The textures are the project's own from tools/blender/make_fort_keep_textures.py.
 ##
 ## Usage, after generating the textures and importing the GLB:
 ## [codeblock]
 ## godot --headless --path . -s res://tools/materials/build_fort_keep_materials.gd
 ## [/codeblock]
-## It is deterministic; to adjust a colour, change the table here, not the .tres.
+## It is deterministic; to adjust a color, change the table here, not the .tres.
 
 const SURFACE_SHADER: String = "res://assets/materials/shaders/fort_keep_surface.gdshader"
 const CLOTH_SHADER: String = "res://assets/materials/shaders/fort_keep_cloth.gdshader"
@@ -31,7 +31,7 @@ const TEXTURES: Dictionary = {
 	"flat": ["", ""],
 }
 
-## Layer on upward-facing surfaces: [colour, amount, threshold] (snow, moss, dust, ash).
+## Layer on upward-facing surfaces: [color, amount, threshold] (snow, moss, dust, ash).
 const LAYERS: Dictionary = {
 	"vardheim": [Color("#e6edf1"), 0.75, 0.55],
 	"solmarch": [Color("#6b7350"), 0.22, 0.78],
@@ -39,7 +39,7 @@ const LAYERS: Dictionary = {
 	"eldrun": [Color("#8f8a82"), 0.32, 0.60],
 }
 
-## Vertex colour weathering (lower area and streaks): [colour, amount]. Moss and ivy in Solmarch,
+## Vertex color weathering (lower area and streaks): [color, amount]. Moss and ivy in Solmarch,
 ## cold lichen in Vardheim, dust in Askarra, ash in Eldrun.
 const WEATHER: Dictionary = {
 	"vardheim": [Color("#6f7a66"), 0.38],
@@ -48,7 +48,7 @@ const WEATHER: Dictionary = {
 	"eldrun": [Color("#7d7a73"), 0.50],
 }
 
-## Emissive embers in the cracks (Eldrun only): [colour, energy].
+## Emissive embers in the cracks (Eldrun only): [color, energy].
 const EMBERS: Dictionary = {
 	"eldrun": [Color("#ff8a2a"), 4.0],
 }
@@ -58,7 +58,7 @@ const ROOF_HOLES: Dictionary = {
 	"eldrun": 0.27,
 }
 
-## Earth skirt: multiplier of the vertex colour per realm.
+## Earth skirt: multiplier of the vertex color per realm.
 const EARTH_TINT: Dictionary = {
 	"vardheim": Color("#eef3f6"),
 	"solmarch": Color("#ffffff"),
@@ -66,7 +66,7 @@ const EARTH_TINT: Dictionary = {
 	"eldrun": Color("#f6f6f2"),
 }
 
-## material -> [texture, target colour, tint, extras]. Extras: detail, gain, layer (factor on
+## material -> [texture, target color, tint, extras]. Extras: detail, gain, layer (factor on
 ## the realm's layer), weather (factor on the weathering), metal, rough, ember (0/1), holes (0/1),
 ## normal (normal map strength).
 const REALMS: Dictionary = {
@@ -197,7 +197,7 @@ func _build_cloth(shader: Shader, spec: Array) -> ShaderMaterial:
 
 
 ## Mean luminance of the texture (over a small version), so that "tint" keeps the
-## mean brightness of the target colour. Alpha does not count: in stone it is the crack mask.
+## mean brightness of the target color. Alpha does not count: in stone it is the crack mask.
 func _mean_luminance(path: String) -> float:
 	if _luminance_cache.has(path):
 		return _luminance_cache[path]

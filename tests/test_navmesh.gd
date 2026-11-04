@@ -18,9 +18,9 @@ const MAX_FILE_BYTES: int = 20 * 1024 * 1024
 ## A path arrives if it ends less than this (m) from the destination horizontally and vertically.
 const REACH_XZ: float = 1.0
 const REACH_Y: float = 1.5
-## Bridges: centre at x = 0, z = ±62.
+## Bridges: center at x = 0, z = ±62.
 const BRIDGE_Z: float = 62.0
-## Centre of the ford.
+## Center of the ford.
 const FORD: Vector2 = Vector2(-62.0, 0.0)
 ## Esplanade in front of the fort's gate (outside, to the west).
 const GATE_OUTSIDE: Vector2 = Vector2(-30.0, 0.0)

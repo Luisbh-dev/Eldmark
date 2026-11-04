@@ -208,7 +208,7 @@ func test_select_lists_the_characters_and_the_free_slots() -> void:
 	assert_true(buttons[0].text.begins_with("Anéira\nNivel 7 · Vado Gris"), buttons[0].text)
 	assert_true(buttons[1].text.ends_with("Nivel 1 · Sin entrar aún"), buttons[1].text)
 	assert_true(buttons[2].text.contains("Borrado · se puede restaurar hasta el "), buttons[2].text)
-	assert_true(buttons[2].modulate.r < 1.0, "the deleted one, in grey")
+	assert_true(buttons[2].modulate.r < 1.0, "the deleted one, in gray")
 	assert_eq(select.get_slots_text(), "Huecos libres: 3 de 6", "deleted ones within the grace period still take a slot")
 	assert_eq(select.get_selected_id(), 11, "selects the first live one")
 	var shown: CharacterAppearance = select.get_figure().get_appearance()

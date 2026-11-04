@@ -1,39 +1,39 @@
 ﻿<#
 .SYNOPSIS
-Exporta Eldmark con los presets de export_presets.cfg (TEC-12). Es el equivalente en PowerShell de
+Exports Eldmark with the presets in export_presets.cfg (TEC-12). It is the PowerShell equivalent of
 tools/export.sh.
 
 .DESCRIPTION
-Destinos:
-  client  "Cliente Windows"  -> exports\windows\Eldmark.exe (y su .pck)
-  server  "Servidor Linux"   -> exports\server\eldmark-server.x86_64 (y su .pck), servidor dedicado con
-                                los modelos, materiales, audio y animaciones recortados, más
-                                run-server.sh, que lo lanza con --headless
-  all     los dos (por defecto)
+Targets:
+  client  "Cliente Windows"  -> exports\windows\Eldmark.exe (and its .pck)
+  server  "Servidor Linux"   -> exports\server\eldmark-server.x86_64 (and its .pck), a dedicated server with
+                                models, materials, audio and animations stripped, plus
+                                run-server.sh, which starts it with --headless
+  all     both (the default)
 
-Requisitos (ver README, «Exportación»):
-  - Godot 4.7.2: la variable de entorno GODOT, `godot` en el PATH o la instalación de winget.
-  - Salvo con -PackOnly, las plantillas de exportación de la misma versión (Editor > Administrar
-    plantillas de exportación > Descargar e instalar).
-  - Los objetos de Git LFS descargados (git lfs pull): el terreno y las texturas van por LFS.
+Requirements (see docs/getting-started.md, section Export):
+  - Godot 4.7.2: the GODOT environment variable, `godot` on the PATH or the winget install.
+  - Unless -PackOnly is used, the export templates of the same version (Editor > Manage Export
+    Templates > Download and Install).
+  - The Git LFS objects downloaded (git lfs pull): terrain and textures go through LFS.
 
-Códigos de salida: 0 bien, 1 fallo, 2 falta Godot, sus plantillas o los objetos LFS.
+Exit codes: 0 success, 1 failure, 2 Godot, its templates or the LFS objects are missing.
 
 .PARAMETER Target
-client, server o all (por defecto).
+client, server or all (the default).
 
 .PARAMETER DebugBuild
-Exporta con las plantillas de depuración en lugar de las de lanzamiento.
+Exports with the debug templates instead of the release ones.
 
 .PARAMETER PackOnly
-Solo el .pck de cada preset (godot --export-pack): NO necesita las plantillas de exportación y sirve
-para comprobar los filtros y el recorte de recursos.
+Only the .pck of each preset (godot --export-pack): it does NOT need the export templates and is
+useful to check the filters and the resource stripping.
 
 .PARAMETER Zip
-Comprime cada carpeta exportada (exports\Eldmark-windows.zip, exports\Eldmark-server.zip).
+Compresses each exported folder (exports\Eldmark-windows.zip, exports\Eldmark-server.zip).
 
 .PARAMETER DryRun
-Muestra lo que haría sin exportar nada.
+Shows what it would do without exporting anything.
 
 .EXAMPLE
 tools\export.ps1 -Target client

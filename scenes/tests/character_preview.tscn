@@ -18,7 +18,7 @@ ssao_enabled = true
 
 [sub_resource type="Shader" id="Shader_checker"]
 code = "shader_type spatial;
-// Suelo a cuadros de 1 m en coordenadas de mundo: sirve para ver si los pies patinan.
+// 1 m checkered floor in world coordinates: it shows whether the feet slide.
 uniform vec3 color_a : source_color = vec3(0.56, 0.56, 0.52);
 uniform vec3 color_b : source_color = vec3(0.36, 0.38, 0.34);
 uniform float cell_size = 1.0;

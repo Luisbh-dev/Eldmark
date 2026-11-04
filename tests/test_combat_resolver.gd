@@ -813,7 +813,7 @@ func test_allies_are_never_hit_and_realms_need_an_rvr_zone() -> void:
 	# A Hollow (neutral faction) is hostile to everyone.
 	attacker.forget_swing()
 	ally.entity.realm = RealmCatalog.NEUTRAL_CODE
-	assert_eq(safe_zone.resolve(S, _fighters, space).size(), 1, "the Hollows are hostile")
+	assert_eq(safe_zone.resolve(S, _fighters, space).size(), 1, "the Hollow are hostile")
 
 
 func test_dead_and_protected_targets_are_not_candidates() -> void:

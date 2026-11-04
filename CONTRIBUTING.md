@@ -61,7 +61,7 @@ and extend `TestCase`; test methods start with `test_`.
 - Follow the [official GDScript style guide](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html).
 - Indent with tabs. Files and variables in `snake_case`, `class_name` in `PascalCase`.
 - Always use static typing: `var speed: float = 5.0`, `func move(dir: Vector3) -> void`.
-- Identifiers, comments, documentation comments (`##`) and assert messages are in English.
+- Identifiers, comments, documentation comments (`##`) and assert messages are in English (the Go platform tests' failure messages are still being translated).
   In-game UI text and runtime log messages are currently in Spanish; localization will be
   handled as a separate task.
 - Scenes and resources are text (`.tscn`, `.tres`). Do not commit binary `.scn` or `.res`

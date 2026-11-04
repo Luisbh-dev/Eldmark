@@ -1,7 +1,7 @@
 """Icon painting pass (ART-12): from flat layers to a drawing with material.
 
 The vector only gives shapes and gradients. This is what separates a flat icon from the "stylised with
-textures" look of docs/art.md. It is done in Python (numpy and PIL) over the layers the engine rasterises:
+textures" look of docs/art.md. It is done in Python (numpy and PIL) over the layers the engine rasterizes:
 
   - Each piece is painted from the bottom up. Before pasting it, it casts a soft occlusion onto what is already
     underneath (bottom right, like the single light): where two pieces overlap it is clear which goes
@@ -10,10 +10,10 @@ textures" look of docs/art.md. It is done in Python (numpy and PIL) over the lay
     light comes from the top left. Light edge on that side, dark edge on the opposite one.
   - Grain per material: streaks in wood, brushing in metal, weave in cloth, mottling in
     stone, plus a fine brush stroke common to the whole icon set.
-  - It is rasterised at 256 px and reduced to 128 (or, for the small states, to 4 times the final size).
+  - It is rasterized at 256 px and reduced to 128 (or, for the small states, to 4 times the final size).
 
 The backgrounds per category (`make_tile`) are generated right here, without SVG: dark, muted gradient,
-mottling, inner halo in the category colour and a fine iron and bronze bevel.
+mottling, inner halo in the category color and a fine iron and bronze bevel.
 
 Everything is deterministic (seed per icon name).
 """
@@ -132,7 +132,7 @@ def weave(shape, period, angle=0.0):
 
 
 # --------------------------------------------------------------------------------------------
-# Textures per material: they multiply the colour (relative amplitude)
+# Textures per material: they multiply the color (relative amplitude)
 # --------------------------------------------------------------------------------------------
 
 # kind: streak (streaks), brushed (fine brushing), weave (cloth), blotch (mottling), soft (almost smooth).
@@ -206,7 +206,7 @@ def _luma(c):
 
 
 def paint_figure(entry, root, res, seed, small=False):
-    """Composes a shape from its rasterised layers. Returns an RGBA image (res x res)."""
+    """Composes a shape from its rasterized layers. Returns an RGBA image (res x res)."""
     r = res / 128.0
     rng = np.random.default_rng(seed)
     layers = entry["layers"]
@@ -312,13 +312,13 @@ def make_tile(category, side=128):
     grain = rng.standard_normal((h, w)).astype(np.float32) * 0.022
     col *= (1.0 + mott + brush + grain)[..., None]
 
-    # inner halo in the category colour, behind the shape
+    # inner halo in the category color, behind the shape
     cx, cy = 0.49 * w, 0.44 * h
     d = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2) / (0.62 * w)
     halo = np.clip(1.0 - d, 0.0, 1.0) ** 1.7
     col += glow[None, None, :] * (0.20 * halo)[..., None]
 
-    # inner edge: soft halo hugging the border and a fine line in the category colour
+    # inner edge: soft halo hugging the border and a fine line in the category color
     edge = np.minimum(np.minimum(xs + 0.5, w - xs - 0.5), np.minimum(ys + 0.5, h - ys - 0.5)) / r
     col += glow[None, None, :] * (0.14 * np.exp(-edge / 6.0))[..., None]
     line = np.exp(-((edge - 5.5) ** 2) / 0.8)

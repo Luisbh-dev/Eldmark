@@ -26,7 +26,7 @@ func TestEmbeddedDrafts(t *testing.T) {
 			t.Fatalf("%s: %+v", kind, d)
 		}
 	}
-	// privacy-1.md reflects the retention table from plataforma.md §11.1.
+	// privacy-1.md reflects the retention table from docs/platform.md §11.1.
 	privacy := string(s.Current("privacy").Text)
 	for _, want := range []string{"30 días", "1 año", "14 días", "35 días", "HMAC", "7 días", "1 día", "90 días",
 		"desde que se purga", "instancias de zona terminadas", "dato de moderación"} {

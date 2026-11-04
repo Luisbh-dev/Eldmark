@@ -25,25 +25,25 @@ var _logged_errors_allowed: bool = false
 
 ## Checks that [param condition] is true.
 func assert_true(condition: bool, message: String = "") -> bool:
-	return _check(condition, "se esperaba verdadero", message)
+	return _check(condition, "expected true", message)
 
 
 ## Checks that [param condition] is false.
 func assert_false(condition: bool, message: String = "") -> bool:
-	return _check(not condition, "se esperaba falso", message)
+	return _check(not condition, "expected false", message)
 
 
 ## Checks that [param actual] equals [param expected]. Types must match, except
 ## int/float and String/StringName, which are compared by value.
 func assert_eq(actual: Variant, expected: Variant, message: String = "") -> bool:
-	var detail: String = "se esperaba %s, se obtuvo %s" % [_repr(expected), _repr(actual)]
+	var detail: String = "expected %s, got %s" % [_repr(expected), _repr(actual)]
 	return _check(_values_equal(actual, expected), detail, message)
 
 
 ## Checks that [code]|a - b| <= eps[/code]. A NaN or an infinity always fails.
 func assert_near(a: float, b: float, eps: float, message: String = "") -> bool:
 	var ok: bool = is_finite(a) and is_finite(b) and absf(a - b) <= eps
-	var detail: String = "%s no está a menos de %s de %s (diferencia %s)" % [
+	var detail: String = "%s is not within %s of %s (difference %s)" % [
 		_repr(a), _repr(eps), _repr(b), _repr(absf(a - b)),
 	]
 	return _check(ok, detail, message)
@@ -54,12 +54,12 @@ func assert_near(a: float, b: float, eps: float, message: String = "") -> bool:
 func assert_vec_near(a: Variant, b: Variant, eps: float, message: String = "") -> bool:
 	var vector_types: Array[int] = [TYPE_VECTOR2, TYPE_VECTOR3, TYPE_VECTOR4]
 	if typeof(a) != typeof(b) or typeof(a) not in vector_types:
-		return _check(false, "assert_vec_near necesita dos vectores del mismo tipo (%s, %s)" % [
+		return _check(false, "assert_vec_near needs two vectors of the same type (%s, %s)" % [
 			type_string(typeof(a)), type_string(typeof(b)),
 		], message)
 	var distance: float = a.distance_to(b)
 	var ok: bool = a.is_finite() and b.is_finite() and distance <= eps
-	var detail: String = "%s no está a menos de %s de %s (distancia %s)" % [
+	var detail: String = "%s is not within %s of %s (distance %s)" % [
 		_repr(a), _repr(eps), _repr(b), _repr(distance),
 	]
 	return _check(ok, detail, message)
@@ -67,12 +67,12 @@ func assert_vec_near(a: Variant, b: Variant, eps: float, message: String = "") -
 
 ## Checks that [param value] is null (or an already freed object).
 func assert_null(value: Variant, message: String = "") -> bool:
-	return _check(not _is_present(value), "se esperaba null, se obtuvo %s" % _repr(value), message)
+	return _check(not _is_present(value), "expected null, got %s" % _repr(value), message)
 
 
 ## Checks that [param value] is neither null nor a freed object.
 func assert_not_null(value: Variant, message: String = "") -> bool:
-	return _check(_is_present(value), "se esperaba un valor, se obtuvo null", message)
+	return _check(_is_present(value), "expected a value, got null", message)
 
 
 ## Records a failure unconditionally.

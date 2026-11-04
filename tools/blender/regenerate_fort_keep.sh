@@ -4,12 +4,12 @@
 #
 #     bash tools/blender/regenerate_fort_keep.sh
 #
-# Optional variables: BLENDER (by default the one in C:/Users/MrPortainer/Tools) and GODOT (Godot's console
+# Optional variables: BLENDER (by default `blender` from the PATH) and GODOT (Godot's console
 # executable; by default the winget one). It is deterministic: two passes give the same files
 # (except the .import files and the .ctex files in Godot's cache).
 set -euo pipefail
 
-BLENDER="${BLENDER:-C:/Users/MrPortainer/Tools/blender-5.2.3-windows-x64/blender.exe}"
+BLENDER="${BLENDER:-blender}"
 GODOT="${GODOT:-$LOCALAPPDATA/Microsoft/WinGet/Packages/GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe/Godot_v4.7.2-stable_win64_console.exe}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"

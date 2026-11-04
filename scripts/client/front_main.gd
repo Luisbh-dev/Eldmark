@@ -3,10 +3,10 @@ extends Node
 ## Root of the title screen with an account (docs/platform.md §13, UI-22 to UI-24): mounts the screens, talks to the platform
 ## ([PlatformApi] and [AccountFlow]) and keeps the [AccountSession] between scenes ([member session]).
 ## [codeblock]
-## título ──Entrar──▶ (aceptar textos nuevos) ──▶ selección ──Entrar──▶ OnlineMain con billete
+## título ──Entrar──▶ (accept new texts) ──▶ selección ──Entrar──▶ OnlineMain with a ticket
 ##   │ Crear cuenta · ¿Has olvidado la contraseña?      │ Crear ──▶ creación ──▶ selección
 ##   └ Ajustes (F10) · Salir                            │ Borrar · Restaurar · Cerrar sesión ──▶ título
-## OnlineMain: rechazo o desconexión ──▶ selección con el motivo (la sesión sigue)
+## OnlineMain: rejection or disconnection ──▶ selection with the reason (the session stays)
 ## [/codeblock]
 ## (The diagram shows the Spanish UI labels: title screen, "Entrar" = enter, character select, creation, and so on.)
 ## A suspended or banned account receives the privacy session and only sees [SanctionedPanel]. On entering,

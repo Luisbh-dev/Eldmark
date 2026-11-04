@@ -2,7 +2,7 @@ extends TestCase
 ## Reconciliation with the whole phase-4 kit and a bad network (H5; docs/abilities.md, sections 6.1 and 7.3; the
 ## acceptance of phase 2): three combat bots ([code]--bot-brain=combat[/code], with the [BotBrain] kit) with
 ## both templates, real ENet over 127.0.0.1 and a [NetSim] of 120 ms RTT, 20 ms jitter and 5 % loss
-## on the server (in both directions): a wounded archer and a Vardheim shield-bearer against a Solmarch
+## on the server (in both directions): a wounded archer and a Vardheim squire against a Solmarch
 ## archer.
 ## [br][br]
 ## Over 900 ticks of fighting they use abilities (shield bash, charge, wall, fan, weighted arrow, backflip),

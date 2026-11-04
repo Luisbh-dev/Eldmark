@@ -152,7 +152,7 @@ func test_segment_hits_capsule_through_body() -> void:
 	var h: float = HitShapes.CAPSULE_HEIGHT
 	# Horizontal at mid height, side to side: the distance to the axis is the deviation in z.
 	assert_true(_segment(Vector3(-2.0, 1.0, 0.0), Vector3(2.0, 1.0, 0.0), feet, r, h),
-			"through the centre")
+			"through the center")
 	assert_true(_segment(Vector3(-2.0, 1.0, r - MARGIN), Vector3(2.0, 1.0, r - MARGIN), feet, r, h),
 			"grazing on the inside")
 	assert_false(_segment(Vector3(-2.0, 1.0, r + MARGIN), Vector3(2.0, 1.0, r + MARGIN), feet, r,
@@ -187,7 +187,7 @@ func test_segment_hits_capsule_end_caps() -> void:
 	assert_false(_segment(Vector3(-2.0, h - 0.05, 0.35), Vector3(2.0, h - 0.05, 0.35), feet, r, h),
 			"through the cap, with deviation")
 	assert_true(_segment(Vector3(-2.0, h - 0.05, 0.1), Vector3(2.0, h - 0.05, 0.1), feet, r, h),
-			"through the cap, centred")
+			"through the cap, centerd")
 
 
 func test_segment_hits_capsule_vertical_and_degenerate() -> void:
@@ -209,7 +209,7 @@ func test_segment_hits_capsule_vertical_and_degenerate() -> void:
 			"at the height of the other's feet, but 1 m below this capsule's")
 	# A capsule shorter than two radii collapses to a point.
 	assert_true(_segment(Vector3(-1.0, 0.3, 0.0), Vector3(1.0, 0.3, 0.0), Vector3.ZERO, 0.4, 0.6),
-			"squat capsule, through the centre")
+			"squat capsule, through the center")
 	assert_false(_segment(Vector3(-1.0, 0.8, 0.0), Vector3(1.0, 0.8, 0.0), Vector3.ZERO, 0.4, 0.6),
 			"squat capsule, above")
 
@@ -273,7 +273,7 @@ func test_line_of_sight_blocked_by_wall() -> void:
 
 
 func test_line_of_sight_uses_chest_and_center_heights() -> void:
-	# The ray goes from 1.4 m (attacker's chest) to 0.9 m (victim's centre): halfway along
+	# The ray goes from 1.4 m (attacker's chest) to 0.9 m (victim's center): halfway along
 	# it is at 1.15 m. A 1.0 m low wall lets it through and a 1.3 m one blocks it.
 	await _build_world([
 		_wall(Vector3(-10.0, 0.5, -3.0), Vector3(4.0, 1.0, 0.2)),
@@ -411,7 +411,7 @@ func _polar(distance: float, angle: float) -> Vector3:
 	return Vector3(distance * sin(angle), 0.0, -distance * cos(angle))
 
 
-## Static wall on the world layer, centred at [param center].
+## Static wall on the world layer, centerd at [param center].
 func _wall(center: Vector3, size: Vector3) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.collision_layer = PlayerCharacter.WORLD_COLLISION_LAYER

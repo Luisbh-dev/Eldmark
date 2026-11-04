@@ -1,6 +1,6 @@
-# Orden congelado de data/characters/appearance_catalog.tres (docs/progression.md §7.2): «categoría índice id».
-# Solo crece: los 8 B guardados de cada personaje son índices en estas listas. Nada se reordena ni se borra;
-# una pieza se retira quitándola de las razas. test_character_appearance exige que el catálogo empiece así.
+# Frozen order of data/characters/appearance_catalog.tres (docs/progression.md §7.2): "category index id".
+# It only grows: the 8 bytes saved for each character are indices into these lists. Nothing is reordered or deleted;
+# a piece is retired by removing it from the races. test_character_appearance requires the catalog to start like this.
 races 0 race_vardheim
 races 1 race_solmarch
 races 2 race_askarra

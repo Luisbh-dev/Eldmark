@@ -34,7 +34,7 @@ func test_the_realm_layers_are_5_to_7() -> void:
 	assert_eq(PlayerCharacter.realm_layer(1), VARDHEIM_LAYER, "Vardheim: layer 5")
 	assert_eq(PlayerCharacter.realm_layer(2), SOLMARCH_LAYER, "Solmarch: layer 6")
 	assert_eq(PlayerCharacter.realm_layer(3), ASKARRA_LAYER, "Askarra: layer 7")
-	assert_eq(PlayerCharacter.realm_layer(0), 0, "the Hollows have no realm layer")
+	assert_eq(PlayerCharacter.realm_layer(0), 0, "the Hollow have no realm layer")
 	assert_eq(PlayerCharacter.realm_layer(4), 0, "nor does a code that is not a realm")
 	assert_eq(PlayerCharacter.realm_layer(-1), 0)
 	# They do not overlap with the layers that already exist.

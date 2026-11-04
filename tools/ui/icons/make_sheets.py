@@ -7,8 +7,8 @@ are used at. Outputs go to build/iconos (Git ignores them):
 
   muestra_iconos.png            all the icons at 64, 48 and 32 px in simulated slots (2 px frame
                                 of UIPalette.BORDER and the icon full-bleed), on dark and light backgrounds.
-  muestra_contacto.png          the icons at their native size (128 px), in colour and in greys.
-  muestra_grises.png            the sword bar and the bow bar at 52 px, in colour and in greyscale.
+  muestra_contacto.png          the icons at their native size (128 px), in color and in greys.
+  muestra_grises.png            the sword bar and the bow bar at 52 px, in color and in greyscale.
   muestra_estados.png           the states at 14, 18, 26, 30 and 52 px, 1:1 and without rescaling, with the
                                 red or green border of StatusIcons.
   muestra_estados_x4.png        the same enlarged x4 with nearest neighbour, ONLY for checking pixels.
@@ -160,7 +160,7 @@ def make_icon_sheet(out_path):
 
 
 def make_contact_sheet(out_path):
-    """All the icons at 128 px, in colour and in greys, with their name."""
+    """All the icons at 128 px, in color and in greys, with their name."""
     names = list(glyphs.ICONS)
     cols = 6
     cell = 128
@@ -189,7 +189,7 @@ def make_contact_sheet(out_path):
 
 
 def make_gray_sheet(out_path):
-    """The two bars at 52 px, in colour and in greyscale, 1:1."""
+    """The two bars at 52 px, in color and in greyscale, 1:1."""
     font = load_font(13, bold=True)
     gap, pad, side = 6, 12, 52
     width = pad * 2 + 9 * side + 8 * gap

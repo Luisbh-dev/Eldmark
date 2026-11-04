@@ -2,7 +2,7 @@ extends RefCounted
 ## Vado Gris layout: key positions, the river, the roads and the height function.
 ##
 ## It is the single source of truth shared by the terrain generator and the scene assembly
-## (tools/terrain/generate_vado_gris.gd). Coordinates in metres with the origin at the centre of the
+## (tools/terrain/generate_vado_gris.gd). Coordinates in metres with the origin at the center of the
 ## fort; north is -Z. Vardheim (Muro de Escarcha, "Frost Wall") is to the north and Solmarch (Muralla del
 ## Alba, "Dawn Wall") to the south. Design and rationale in docs/zonas/vado_gris.md.
 ##
@@ -21,11 +21,11 @@ const PLAY_HALF: float = 150.0
 
 # --- Walls, gates and camps -------------------------------------------------------------------
 
-## Distance from the centre to the inner face of each wall.
+## Distance from the center to the inner face of each wall.
 const WALL_Z: float = 152.0
 ## Ground height next to the walls (camps and foot of the wall).
 const CAMP_GROUND: float = 6.2
-## Centre of each camp (in the north half; the south is the mirror).
+## Center of each camp (in the north half; the south is the mirror).
 const CAMP_CENTER_NORTH: Vector2 = Vector2(0.0, -128.0)
 const CAMP_RADIUS: float = 24.0
 ## The wall extends this far on each side and sinks into the mountains.
@@ -123,7 +123,7 @@ static func river_distance(x: float, z: float) -> float:
 	return absf(sqrt(x * x + zz * zz) - RIVER_RADIUS)
 
 
-## Distance along the channel from the west vertex of the curve (centre of the ford).
+## Distance along the channel from the west vertex of the curve (center of the ford).
 static func ford_arc_distance(x: float, z: float) -> float:
 	if x >= 0.0:
 		return RIVER_RADIUS * PI * 0.5 + x
@@ -131,7 +131,7 @@ static func ford_arc_distance(x: float, z: float) -> float:
 	return RIVER_RADIUS * (PI * 0.5 - phi)
 
 
-## 1 at the centre of the ford, 0 outside it.
+## 1 at the center of the ford, 0 outside it.
 static func ford_factor(x: float, z: float) -> float:
 	return 1.0 - smoothstep(FORD_PLATEAU, FORD_HALF_LENGTH, ford_arc_distance(x, z))
 

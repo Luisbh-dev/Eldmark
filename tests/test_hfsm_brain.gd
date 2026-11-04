@@ -476,7 +476,7 @@ func test_the_captain_calls_two_hollows_at_half_health_only_if_hollows_remain() 
 	assert_eq(_count_npcs_of(&"hollow"), hollows_before, "with full health there are no reinforcements")
 	captain_combatant.health = roundi(float(captain_combatant.max_health) * 0.5) - 10
 	await _rig.advance(40)
-	assert_eq(_count_npcs_of(&"hollow"), hollows_before + 2, "at 50 %% health two more Hollows arrive")
+	assert_eq(_count_npcs_of(&"hollow"), hollows_before + 2, "at 50 %% health two more Hollow arrive")
 	await _rig.advance(40)
 	assert_eq(_count_npcs_of(&"hollow"), hollows_before + 2, "and only once")
 	var reinforcement: NetEntity = null
@@ -499,7 +499,7 @@ func test_the_captain_does_not_call_reinforcements_when_no_hollow_is_left() -> v
 	var combatant: Combatant = _rig.combatant(captain)
 	combatant.health = roundi(float(combatant.max_health) * 0.5) - 10
 	await _rig.advance(120)
-	assert_eq(_count_npcs_of(&"hollow"), 0, "without living Hollows there are no reinforcements")
+	assert_eq(_count_npcs_of(&"hollow"), 0, "without living Hollow there are no reinforcements")
 
 
 func _count_npcs_of(definition_id: StringName) -> int:

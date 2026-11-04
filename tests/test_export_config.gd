@@ -8,7 +8,7 @@ extends TestCase
 ## the export templates) yields a trimmed pack, with what is needed and without what is surplus.
 ## [br][br]
 ## Truly exporting (the executable) needs the 4.7.2 export templates, which cannot be
-## installed from the tests: that is done by hand with [code]tools/export.sh[/code] (see the README).
+## installed from the tests: that is done by hand with [code]tools/export.sh[/code] (see docs/getting-started.md, section Export).
 
 const PRESETS_PATH: String = "res://export_presets.cfg"
 const CLIENT_PRESET: String = "Cliente Windows"

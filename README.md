@@ -8,7 +8,7 @@ Three realms fight over the forts and castles of a central war zone. You pick a 
 
 > **Status: pre-alpha, a playable vertical slice.** One real zone (the Vado Gris frontier, with a capturable fort), accounts and character saves through a separate platform service, and the full network and combat stack underneath. It is a prototype, not a finished game: most of the world, the third realm's content and the siege layer are still ahead (see [Roadmap](#roadmap)).
 >
-> **Language:** the code, comments and documentation are in English. The in-game interface text and the server log messages are still in Spanish; an English localization is planned.
+> **Language:** the code, comments and documentation are in English (the messages of the Go platform tests are still in Spanish). The in-game interface text and the server log messages are still in Spanish; an English localization is planned.
 
 ## What works today
 
@@ -17,13 +17,13 @@ Everything below is in `main` and covered by the automated test suite.
 - **Dedicated server per zone.** The same Godot project runs as a headless server (`--headless -- --server`). Each zone is its own map and its own process; there is no continuous world.
 - **Authoritative networking.** Fixed 60 Hz ticks, binary protocol over ENet (optionally DTLS), snapshots at 30 Hz, **client-side prediction** with reconciliation for the local player, **interpolation** for everyone else, and **lag compensation**: the server keeps a short position history and rewinds hitboxes to what the attacker saw (up to 24 ticks, 400 ms). Rate limiting, input-window checks and a per-IP connection cap protect the server from malformed or abusive clients.
 - **Action combat.** Sword and shield (light-attack combo, charged heavy attack, block with a parry window, dodge with invulnerability frames), bow (quick and drawn shots, projectiles simulated deterministically), three shield abilities and three bow abilities, two potions, weapon swap, stamina, knockdown (the "downed" state, revive and finisher). Fully data-driven from `data/combat/*.tres`.
-- **NPCs and a boss.** A hierarchical-state-machine AI with navmesh pathing and attack tokens: the undead Hollows, realm guards, gate guardians and the Ford Captain.
+- **NPCs and a boss.** A hierarchical-state-machine AI with navmesh pathing and attack tokens: the undead of the Hollow, realm guards, gate guardians and the Ford Captain.
 - **Capturable fort.** The Vado Gris fort has a destructible gate, a capture circle, a garrison that changes hands, respawn waves inside owned forts, war alerts, a minimap and a capture HUD.
 - **Social.** Realm-only chat (say, zone, whisper, party and system channels), parties, ignore and report, server-side filtering by realm, moderation sanctions.
 - **Progression.** Races and character appearance, inventory with an authoritative ledger, currencies, levels and experience, starter templates (Squire with sword and shield, Marksman with bow).
 - **Platform service in Go** (`platform/`, Go 1.24 on PostgreSQL 16): accounts with email verification and password reset, characters, hand-off tickets that let a zone admit a character, periodic persistence with integrity checks, an admin CLI, privacy tooling (data export and retention purges), and Docker-based deployment with backups. Optional: you can run the whole game without it.
 - **Bots and load testing.** Full headless bot clients and a lightweight swarm that can load a zone with dozens of connections, a battery of cheating bots that checks the server cannot be fooled, and tools that compare the predicted and authoritative state bit by bit.
-- **Tests and CI.** Over 2,800 test methods in about 210 files, including multi-process network tests, run on every push through GitHub Actions (see [docs/getting-started.md](docs/getting-started.md#continuous-integration)).
+- **Tests and CI.** Over 2,800 test methods in about 210 files, including multi-process network tests, run on every pull request and every push to `main` through GitHub Actions (see [docs/getting-started.md](docs/getting-started.md#continuous-integration)).
 
 Not there yet, to be honest about it: the other two war-zone regions, siege weapons, the capital cities and PvE zones, Askarra gameplay content (the realm exists in the catalog and the realm-select screen, but the Vado Gris only admits Vardheim and Solmarch), classes beyond the two starter templates, guilds, and a polished art pass. Interest management is a stub that sends every entity to every client; a grid-based policy is designed but not built.
 
@@ -46,13 +46,13 @@ Eldmark is set in **The Broken Crown**. The three peoples were once a single kin
 
 | Realm | Inspiration | Colors and emblem | Capital |
 |---|---|---|---|
-| **Vardheim** (north) | Norse and Anglo-Saxon clans: fjords, pine forest, tundra | Steel grey and ice blue; white wolf | Isenholm |
+| **Vardheim** (north) | Norse and Anglo-Saxon clans: fjords, pine forest, tundra | Steel gray and ice blue; white wolf | Isenholm |
 | **Solmarch** (southwest) | Gothic theocracy: fertile valleys, vineyards, slow rivers | White and gold; split radiant sun | Valcorin |
 | **Askarra** (southeast) | Forgelords and merchants: red canyons, mesas, volcanic fields | Crimson and bronze; anvil over a burning crack | Kassar |
 
 Each realm is enclosed by a wall with gates facing **Eldrun**, the central war zone, where the ruined citadel of Aldcor stands and where forts (small, quick objectives) and castles (large, with walls, gates and several lines of defense) can be captured and held. Realm-vs-realm combat happens there; inside a realm's own safe areas, enemies cannot hurt you. There is no diplomacy and no cross-realm chat: you see the enemy's body and banner, never their voice.
 
-The first playable zone is the **Vado Gris** ("Grey Ford"), a compressed frontier of about 300 by 300 m between Vardheim's Frost Wall (north) and Solmarch's Dawn Wall (south), with a horseshoe river, a stone bridge and a wide ford, ruins on the flanks and a palisade fort on the central hill. Full lore and geography are in [docs/world.md](docs/world.md) and the zone notes in [docs/zonas/vado_gris.md](docs/zonas/vado_gris.md) (Spanish until translated).
+The first playable zone is the **Vado Gris** ("Gray Ford"), a compressed frontier of about 300 by 300 m between Vardheim's Frost Wall (north) and Solmarch's Dawn Wall (south), with a horseshoe river, a stone bridge and a wide ford, ruins on the flanks and a palisade fort on the central hill. Full lore and geography are in [docs/world.md](docs/world.md) and the zone notes in [docs/zonas/vado_gris.md](docs/zonas/vado_gris.md) (Spanish until translated).
 
 ## Quick start
 
@@ -77,6 +77,8 @@ Open `project.godot` in Godot and press **F5**. This starts the offline sandbox 
 Run the following from the project root. `godot` stands for the Godot 4.7 console executable (see [getting started](docs/getting-started.md#running-godot-from-the-terminal) if it is not on your `PATH`).
 
 ```bash
+godot --headless --path . --import   # once after cloning
+
 # Everything in one command: starts a local server if none is running, then connects
 godot --path . -- --local --realm=vardheim --name=Ana
 ```
@@ -130,7 +132,7 @@ Keys are bound to physical key positions, so WASD works on any keyboard layout. 
 | Swap camera shoulder / zoom | V / mouse wheel |
 | Free the cursor while held / release the cursor until you click | Alt / Esc |
 | Chat / party invite accept, decline | Enter / Y, N |
-| Map (zoom with + and -) / scoreboard | M / Tab |
+| Map (zoom with the keys right of 0: `=` and `-` on a US layout) / scoreboard | M / Tab |
 | Inventory / character window / social menu | I / C / G |
 | Settings / controls help bar | F10 / F1 |
 | Debug panels / network ghost (client) | F3 / F4 |
@@ -161,7 +163,7 @@ One Godot project holds client and server. `scripts/shared/` never depends on `s
 
 If you want to build your own networked action game in Godot, the parts of Eldmark that are hardest to get right are written down and tested:
 
-- **A deterministic shared simulation** (`scripts/shared/`) that the server and the predicting client run bit for bit, with no clock, input or scene-tree access. Reconciliation compares encoded state exactly, and a test fails on any unexplained divergence. See [docs/networking.md](docs/networking.md).
+- **A deterministic shared simulation** (`scripts/shared/`) that the server and the predicting client run bit for bit on the same binary and OS. It never reads a clock or `Input`; movement goes through Godot physics (`CharacterBody3D.move_and_slide`), so each simulated world needs its own physics space. Reconciliation compares encoded state exactly, and a test fails on any unexplained divergence. See [docs/networking.md](docs/networking.md).
 - **Prediction, interpolation and lag compensation** built on ENet with explicit ticks instead of Godot's high-level multiplayer: tick synchronization, input windows, snapshot priority under a byte budget, rewound hit checks with cheat-resistant limits.
 - **An action-combat state machine** driven by `.tres` data, shared by client and server, with abilities, status effects, projectiles and a deterministic balance tool. See the [combat section](docs/architecture.md#combat) of the architecture overview and [docs/abilities.md](docs/abilities.md).
 - **A test harness** that runs a server and several clients in a single process, or as real processes, with a network simulator (latency, jitter, loss, duplication) and cheating bots.

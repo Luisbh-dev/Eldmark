@@ -15,7 +15,7 @@ extends SceneTree
 
 const OUTPUT_PATH: String = "res://data/routes/vado_gris.tres"
 
-## Where the fort is (x, z): the centre of the gate opening (west face of the enclosure), the centre of the
+## Where the fort is (x, z): the center of the gate opening (west face of the enclosure), the center of the
 ## capture circle (the CaptureCircle marker) and its radius. They are those in vado_gris.tscn;
 ## tests/test_siege_zone.gd checks that they still match the scene's.
 const GATE_POINT: Vector2 = Vector2(-20.0, 0.0)
@@ -24,7 +24,7 @@ const CIRCLE_RADIUS: float = 5.0
 ## The palisade enclosure (40 x 40 m, docs/zonas/vado_gris.md), measured from the gate: depth and width.
 const ENCLOSURE_SIZE: Vector2 = Vector2(40.0, 40.0)
 ## The walkway (GUE-45; docs/zonas/vado_gris.md): its floor is 3.35 m above the fort plateau (10.2 m: at 13.55 m) and its axis
-## at 18.77 m from the centre (the 20 m half side, minus the radius of the logs and half of their 2 m width). The bots
+## at 18.77 m from the center (the 20 m half side, minus the radius of the logs and half of their 2 m width). The bots
 ## walk along the axis from the top of the north ramp to that of the south one, passing over the gate (west face).
 const WALKWAY_HEIGHT: float = 13.55
 const WALKWAY_AXIS: float = 18.77
@@ -33,7 +33,7 @@ const WALKWAY_PATH: Array[Vector2] = [
 	Vector2(7.0, WALKWAY_AXIS),
 ]
 ## North ramp from the courtyard: a point between the gate and the tower but outside the capture circle (9.6 m from its
-## centre: with the points verify_vado_gris_routes.gd used to walk, (-6, -6) and (7, -5), whoever went up crossed the
+## center: with the points verify_vado_gris_routes.gd used to walk, (-6, -6) and (7, -5), whoever went up crossed the
 ## edge of the circle and contested the capture in passing, and the bots' recapture dragged on), in front of the foot of the
 ## ramp (x = 7, it climbs towards -Z from z = -10.87) and its top, on the walkway axis. The south one is its mirror.
 const NORTH_RAMP: Array[Vector2] = [Vector2(-12.0, -9.0), Vector2(7.0, -8.0), Vector2(7.0, -WALKWAY_AXIS)]
