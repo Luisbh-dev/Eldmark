@@ -27,8 +27,9 @@ const DOWNED_COLOR: Color = Color(0.95, 0.55, 0.15, 1.0)
 const REVIVE_COLOR: Color = Color(0.4, 0.85, 0.45, 1.0)
 const EXECUTE_COLOR: Color = Color(0.95, 0.2, 0.15, 1.0)
 const BAR_BACK: Color = Color(0.03, 0.03, 0.04, 0.75)
-## Desde lo alto de la pantalla (px).
-const TOP_OFFSET: float = 150.0
+## Desde lo alto de la pantalla (px). Por debajo de la barra de jefe (BossBar.TOP_OFFSET 200 + unos 50 de alto),
+## que sale en todo el fuerte, para que la cuenta atrás no se pise con ella.
+const TOP_OFFSET: float = 260.0
 
 ## Ticks tras el fin previsto de una interacción en que se olvida si no llega su evento de fin.
 const FORGET_AFTER_TICKS: int = 30

@@ -38,7 +38,7 @@ Antes de escribirlo he revisado yo mismo las capturas que respaldan los hallazgo
 
 1. En todos los fotogramas de `loc_*` (lado, frente y cámara del juego) el escudo va delante del torso y la hoja nunca apunta hacia atrás ni por encima de la cabeza. Los dedos de las dos manos están cerrados.
 2. En `com_ligero_*`, `com_combo_completo` y `com_fuerte__golpe`, sin entrada de movimiento, los pies quedan plantados durante la anticipación y el golpe, la cadera gira hacia el golpe y el escudo no sale de delante del pecho.
-3. Ningún tramo de ataque, bloqueo o habilidad se reproduce fuera de 0,7x a 1,5x de su velocidad original. Lo comprueba una prueba que cruza `data/animation` con los ticks de `data/combat`; la esquiva admite hasta 2x hasta tener clips propios.
+3. Ningún tramo de ataque, bloqueo o habilidad se reproduce fuera de 0,7x a 1,5x de su velocidad original. Lo comprueba una prueba que cruza `data/animation` con los ticks de `data/combat`; la esquiva admite hasta 2x hasta tener clips propios, y la anticipación de los PNJ admite desde 0,3x (la alargan a propósito; se cambiará en la oleada 2 por un tramo a 1x más una pose mantenida).
 4. Todo ataque de toda `WeaponDefinition` de `data/combat` tiene entrada en su `CombatClipSet` (prueba automática), y las tiras `npc_*` muestran un clip en cada fotograma de la acción.
 5. Bloqueo: visto desde el atacante, el escudo tapa pecho y cabeza; la pose respira (no hay 12 fotogramas idénticos), se puede andar bloqueando y cada golpe bloqueado da una reacción visible de 0,15 s o más.
 6. En las cuatro esquivas el cuerpo viaja hacia donde rueda o salta. ⓒ Con clips direccionales, el modelo no gira más de 15° respecto al punto de mira.

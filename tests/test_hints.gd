@@ -129,7 +129,7 @@ func test_every_hint_has_a_spanish_text_and_an_order() -> void:
 func test_the_texts_name_the_keys_the_player_really_has() -> void:
 	InputBindings.ensure_defaults()
 	assert_eq(HintCatalog.text_of(HintCatalog.CONTROLS),
-			"Pulsa M para abrir el mapa, mantén Tab para ver el marcador y F10 para los ajustes.")
+			"Pulsa M para abrir el mapa, mantén Tab para ver el marcador y F10 para los ajustes. F1 muestra u oculta la línea de controles.")
 	assert_true(HintCatalog.text_of(HintCatalog.COMBAT).contains("Ctrl esquiva"), "con la esquiva en Ctrl")
 	# Si el jugador reasigna el mapa, la pista lo dice.
 	var saved: Array[InputEvent] = InputMap.action_get_events(&"open_map")

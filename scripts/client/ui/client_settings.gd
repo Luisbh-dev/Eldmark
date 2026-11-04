@@ -92,6 +92,7 @@ const AA_MSAA_2X: int = 2
 const AA_MSAA_4X: int = 3
 ## Metadato de una luz con su [member Light3D.shadow_enabled] original.
 const LIGHT_SHADOW_META: StringName = &"client_settings_shadow_default"
+const SUN_SPLITS_META: StringName = &"client_settings_sun_splits_default"
 ## Metadato de un recurso de hierba con sus valores originales.
 const GRASS_META: StringName = &"client_settings_grass_default"
 ## Un [code]Terrain3DMeshAsset[/code] es hierba si su nombre empieza así.
@@ -569,13 +570,13 @@ static func antialiasing_for(value: int) -> Dictionary:
 static func shadow_profile_for(level: int) -> Dictionary:
 	match level:
 		0:
-			return {"enabled": false, "atlas": 1024, "filter": RenderingServer.SHADOW_QUALITY_HARD}
+			return {"enabled": false, "atlas": 1024, "filter": RenderingServer.SHADOW_QUALITY_HARD, "splits": 2}
 		1:
-			return {"enabled": true, "atlas": 1024, "filter": RenderingServer.SHADOW_QUALITY_HARD}
+			return {"enabled": true, "atlas": 1024, "filter": RenderingServer.SHADOW_QUALITY_HARD, "splits": 2}
 		2:
 			return {"enabled": true, "atlas": 2048,
-					"filter": RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW}
-	return {"enabled": true, "atlas": 4096, "filter": RenderingServer.SHADOW_QUALITY_SOFT_LOW}
+					"filter": RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW, "splits": 2}
+	return {"enabled": true, "atlas": 4096, "filter": RenderingServer.SHADOW_QUALITY_SOFT_LOW, "splits": 4}
 
 
 # --- Aplicación a la escena -------------------------------------------------------------------
@@ -590,6 +591,22 @@ static func apply_shadows(root: Node, level: int) -> void:
 		(root as Viewport).positional_shadow_atlas_size = int(profile["atlas"])
 	for node: Node in root.find_children("*", "Light3D", true, false):
 		apply_light_shadow(node as Light3D, bool(profile["enabled"]))
+		if node is DirectionalLight3D:
+			apply_sun_splits(node as DirectionalLight3D, int(profile["splits"]))
+
+
+## Cortes de sombra del sol: los niveles bajo y medio usan 2 cortes y 120 m como máximo (menos llamadas de dibujo);
+## el alto, lo que traiga la escena. Guarda el valor original de la escena para poder volver a él.
+static func apply_sun_splits(sun: DirectionalLight3D, splits: int) -> void:
+	if not sun.has_meta(SUN_SPLITS_META):
+		sun.set_meta(SUN_SPLITS_META, [sun.directional_shadow_mode, sun.directional_shadow_max_distance])
+	var original: Array = sun.get_meta(SUN_SPLITS_META)
+	if splits >= 4:
+		sun.directional_shadow_mode = int(original[0]) as DirectionalLight3D.ShadowMode
+		sun.directional_shadow_max_distance = float(original[1])
+	else:
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+		sun.directional_shadow_max_distance = minf(float(original[1]), 120.0)
 
 
 ## Enciende o apaga las sombras de [param light] respetando si en la escena las tenía: nunca las

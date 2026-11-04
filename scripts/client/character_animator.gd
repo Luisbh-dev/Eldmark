@@ -76,6 +76,10 @@ enum AirState { GROUNDED, JUMPING, FALLING }
 const CRAWL_MIN_SPEED: float = 0.2
 
 ## Árbol de animación que se conduce.
+## Tiempo (s) en que el modelo gira hacia el rumbo de la esquiva al empezar y suavizado de ese giro.
+const DODGE_TURN_TIME: float = 0.08
+const DODGE_TURN_SHARPNESS: float = 40.0
+
 @export var animation_tree: AnimationTree
 ## Nodo que se gira para orientar el modelo; su padre debe ser un Node3D que siga al personaje.
 @export var pivot: Node3D
@@ -463,7 +467,11 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 			_backpedal = false
 			_twist_weight = 0.0
 		if not is_nan(dodge_yaw):
-			_visual_yaw = wrapf(dodge_yaw, -PI, PI)
+			# El giro de entrada se reparte en unos 0,08 s (antes era un salto de hasta 180 grados en un fotograma).
+			var dodge_diff: float = angle_difference(_visual_yaw, dodge_yaw)
+			var dodge_step: float = dodge_diff * (1.0 - exp(-DODGE_TURN_SHARPNESS * delta))
+			var dodge_max: float = PI / DODGE_TURN_TIME * delta
+			_visual_yaw = wrapf(_visual_yaw + clampf(dodge_step, -dodge_max, dodge_max), -PI, PI)
 		pivot.rotation = Vector3(0.0, angle_difference(base_yaw, _visual_yaw), 0.0)
 		if _spine != null:
 			_spine.twist = 0.0

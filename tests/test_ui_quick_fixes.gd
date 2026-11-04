@@ -101,6 +101,42 @@ func test_the_downed_notice_is_centered_and_not_cut_off() -> void:
 	assert_true(title.get_global_rect().position.x >= 0.0, "el título de derribado se ve entero")
 
 
+func test_the_downed_notice_does_not_overlap_the_boss_bar() -> void:
+	var screen: Control = _screen_parent()
+	var notice: DownedNotice = _add(DownedNotice.new(), screen) as DownedNotice
+	notice.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var boss: BossBar = _add(BossBar.new(), screen) as BossBar
+	boss.show_boss(7, "Capitán del Vado", 1.0)
+	# El aviso más alto: derribado con barra de levantar.
+	notice.set_own_id(1)
+	notice.update_view(true, 100, 0)
+	await wait_process_frames(2)
+	var notice_rect: Rect2 = (notice.get_node(^"Columna") as Control).get_global_rect()
+	var boss_rect: Rect2 = (boss.get_node(^"Columna") as Control).get_global_rect()
+	assert_false(notice_rect.intersects(boss_rect), "el aviso (%s) no pisa la barra de jefe (%s)" % [notice_rect, boss_rect])
+
+
+func test_low_and_medium_shadows_use_two_sun_splits() -> void:
+	for level: int in [1, 2]:
+		assert_eq(int(ClientSettings.shadow_profile_for(level)["splits"]), 2, "nivel %d con 2 cortes" % level)
+	assert_eq(int(ClientSettings.shadow_profile_for(3)["splits"]), 4, "el alto conserva los 4 cortes")
+	var sun := DirectionalLight3D.new()
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = 130.0
+	_add(sun)
+	ClientSettings.apply_sun_splits(sun, 2)
+	assert_eq(sun.directional_shadow_mode, DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS)
+	assert_near(sun.directional_shadow_max_distance, 120.0, 0.01)
+	ClientSettings.apply_sun_splits(sun, 4)
+	assert_eq(sun.directional_shadow_mode, DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS, "se restaura el de la escena")
+	assert_near(sun.directional_shadow_max_distance, 130.0, 0.01)
+
+
+func test_the_controls_hint_mentions_the_help_key() -> void:
+	assert_true(HintCatalog.TEXTS[HintCatalog.CONTROLS].contains("{toggle_help}"), "la pista de controles cita F1")
+	assert_false(HintCatalog.text_of(HintCatalog.CONTROLS).contains("{"), "y la marca se sustituye por la tecla")
+
+
 func test_the_top_center_helper_keeps_the_width_and_grows_both_ways() -> void:
 	var screen: Control = _screen_parent()
 	var control := Control.new()

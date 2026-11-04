@@ -137,8 +137,11 @@ def spawn(ctx, name, args, cwd=ROOT):
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
+    # Nunca capturar el ratón del usuario: los clientes del banco arrancan siempre con el cursor libre.
+    env = dict(os.environ)
+    env["ELDMARK_SIN_RATON"] = "1"
     proc = subprocess.Popen([ctx.godot] + [str(a) for a in args], cwd=str(cwd), stdout=log, stderr=subprocess.STDOUT,
-                            stdin=subprocess.DEVNULL, **kwargs)
+                            stdin=subprocess.DEVNULL, env=env, **kwargs)
     proc.log_path = log_path
     proc.log_handle = log
     proc.proc_name = name

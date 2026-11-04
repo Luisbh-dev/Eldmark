@@ -7,6 +7,9 @@ extends TestCase
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 
+## Fotogramas de espera para que acabe el giro de entrada de la esquiva (0,08 s, con margen).
+const DODGE_TURN_FRAMES: int = 30
+
 var _nodes: Array[Node] = []
 
 
@@ -52,7 +55,10 @@ func test_the_model_faces_the_dodge_heading_from_the_first_frame() -> void:
 	# Esquiva hacia atrás (rumbo a +Z, de espaldas a la mira): el modelo se da la vuelta de golpe.
 	_start_dodge(character, PI)
 	await wait_process_frames(1)
-	assert_near(absf(_offset_deg(animator)), 180.0, 1.0, "esquiva atrás: el modelo mira hacia atrás en el primer fotograma")
+	var partial: float = absf(_offset_deg(animator))
+	assert_true(partial < 170.0, "el giro de entrada no cabe en un fotograma (%.0f grados)" % partial)
+	await wait_process_frames(DODGE_TURN_FRAMES)
+	assert_near(absf(_offset_deg(animator)), 180.0, 1.0, "esquiva atrás: el modelo acaba mirando hacia atrás")
 	assert_near(float(animator.get_debug_state()["spine_twist_deg"]), 0.0, 0.01,
 			"y la columna no compensa el giro durante la voltereta")
 	assert_true(bool(animator.get_debug_state()["dodging"]))
@@ -60,14 +66,14 @@ func test_the_model_faces_the_dodge_heading_from_the_first_frame() -> void:
 	character.combat.action = CombatState.Action.NONE
 	await wait_process_frames(60)
 	_start_dodge(character, PI * 0.5)
-	await wait_process_frames(1)
-	assert_near(_offset_deg(animator), 90.0, 1.0, "esquiva a la izquierda: gira 90 grados al instante")
+	await wait_process_frames(DODGE_TURN_FRAMES)
+	assert_near(_offset_deg(animator), 90.0, 1.0, "esquiva a la izquierda: gira 90 grados")
 	# A la derecha (rumbo +X).
 	character.combat.action = CombatState.Action.NONE
 	await wait_process_frames(60)
 	_start_dodge(character, -PI * 0.5)
-	await wait_process_frames(1)
-	assert_near(_offset_deg(animator), -90.0, 1.0, "esquiva a la derecha: gira -90 grados al instante")
+	await wait_process_frames(DODGE_TURN_FRAMES)
+	assert_near(_offset_deg(animator), -90.0, 1.0, "esquiva a la derecha: gira -90 grados")
 	# Hacia delante no gira.
 	character.combat.action = CombatState.Action.NONE
 	await wait_process_frames(60)
@@ -84,7 +90,7 @@ func test_the_model_turns_back_smoothly_when_the_dodge_ends() -> void:
 	var character: PlayerCharacter = animator.get_character()
 	await wait_process_frames(3)
 	_start_dodge(character, PI)
-	await wait_process_frames(2)
+	await wait_process_frames(DODGE_TURN_FRAMES)
 	assert_near(absf(_offset_deg(animator)), 180.0, 1.0)
 	character.combat.action = CombatState.Action.NONE
 	await wait_process_frames(1)
@@ -107,7 +113,7 @@ func test_a_remote_dodge_faces_its_velocity() -> void:
 	await wait_process_frames(2)
 	# Rueda hacia +X con la cámara (yaw 0) mirando a -Z: el modelo gira 90 grados a la derecha.
 	character.velocity = Vector3(6.0, 0.0, 0.0)
-	await wait_process_frames(1)
+	await wait_process_frames(DODGE_TURN_FRAMES)
 	assert_near(_offset_deg(animator), -90.0, 1.0, "mira hacia la velocidad")
 
 

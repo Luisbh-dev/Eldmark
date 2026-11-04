@@ -23,11 +23,11 @@ const IDS: Array[StringName] = [COMBAT, CONTROLS, FORT_NEAR, GATE_CLOSED, CAPTAI
 
 ## Acciones cuyas marcas se sustituyen en los textos.
 const ACTIONS: Array[StringName] = [&"primary_attack", &"block", &"dodge", &"open_map", &"scoreboard",
-		&"open_settings"]
+		&"open_settings", &"toggle_help"]
 
 const TEXTS: Dictionary = {
 	COMBAT: "Combate: {primary_attack} ataca, {block} bloquea y {dodge} esquiva. Cada acción gasta resistencia.",
-	CONTROLS: "Pulsa {open_map} para abrir el mapa, mantén {scoreboard} para ver el marcador y {open_settings} para los ajustes.",
+	CONTROLS: "Pulsa {open_map} para abrir el mapa, mantén {scoreboard} para ver el marcador y {open_settings} para los ajustes. {toggle_help} muestra u oculta la línea de controles.",
 	FORT_NEAR: "Estás cerca de un fuerte. Cuando caiga su capitán, entra en el círculo de captura para tomarlo.",
 	GATE_CLOSED: "La puerta está cerrada para tu reino: rómpela a golpes o espera a que la abran desde dentro.",
 	CAPTAIN_DOWN: "Ha caído el capitán: el círculo de captura está activo. Quédate dentro para capturar el fuerte.",

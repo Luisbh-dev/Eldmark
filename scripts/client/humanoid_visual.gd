@@ -44,6 +44,8 @@ const NO_SHADOW_MESH_PREFIXES: PackedStringArray = [
 ## todo, y distancia a partir de la cual se ve entero. Entre las dos se difumina con tramado (ART-53).
 const CAMERA_FADE_HIDDEN: float = 0.5
 const CAMERA_FADE_SOLID: float = 1.2
+## Altura (m) sobre los pies del punto del que se mide la distancia a la cámara.
+const CAMERA_FADE_CHEST_HEIGHT: float = 1.2
 
 ## Ranuras de pieza que admite [method set_part].
 const PART_SLOTS: Array[StringName] = [&"body", &"head", &"hair", &"beard", &"marks"]
@@ -71,7 +73,7 @@ const TINT_MATERIAL_PREFIXES: Dictionary = {
 		if is_node_ready():
 			_apply_hood()
 
-## Difumina el visual con tramado cuando la cámara está a menos de [constant CAMERA_FADE_SOLID] m, y lo
+## Difumina el visual (transparencia única para todas sus mallas) cuando la cámara está a menos de [constant CAMERA_FADE_SOLID] m, y lo
 ## oculta a menos de [constant CAMERA_FADE_HIDDEN] (ART-53). Es para los personajes ajenos: no hay colisión
 ## entre personajes, y un torso o un escudo pegado a la cámara llenaba media pantalla en las refriegas. El
 ## propio personaje no lo usa (la cámara ya oculta su visual al acercarse). Se aplica con los rangos de
@@ -87,6 +89,8 @@ const TINT_MATERIAL_PREFIXES: Dictionary = {
 var _skeleton: Skeleton3D = null
 # true si los rangos de visibilidad de camera_fade están puestos en las mallas.
 var _camera_fade_applied: bool = false
+var _fade_meshes: Array[MeshInstance3D] = []
+var _fade_value: float = -1.0
 # Ranura -> sus mallas (colgadas del esqueleto) y la ruta de la escena de la que salieron.
 var _part_meshes: Dictionary[StringName, Array] = {}
 var _part_paths: Dictionary[StringName, String] = {}
@@ -385,25 +389,54 @@ func _apply_shadow_casting() -> void:
 				mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
-# Pone (o quita) el rango de visibilidad de cada malla del visual. En el modo de fundido propio el motor
-# difumina con tramado a ambos lados de visibility_range_begin, a lo largo de su margen: con begin en el
-# punto medio y el margen en la mitad del tramo, la malla desaparece a CAMERA_FADE_HIDDEN y se ve entera a
-# CAMERA_FADE_SOLID.
+# Pone (o quita) el fundido de cámara en las mallas del visual: transparencia única por distancia al pecho.
 func _apply_camera_fade() -> void:
 	if not camera_fade and not _camera_fade_applied:
 		return
 	_camera_fade_applied = camera_fade
-	var meshes: Array[MeshInstance3D] = []
-	_collect_meshes(self, meshes)
-	for mesh: MeshInstance3D in meshes:
-		if camera_fade:
-			mesh.visibility_range_begin = (CAMERA_FADE_HIDDEN + CAMERA_FADE_SOLID) * 0.5
-			mesh.visibility_range_begin_margin = (CAMERA_FADE_SOLID - CAMERA_FADE_HIDDEN) * 0.5
-			mesh.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-		else:
+	_fade_meshes.clear()
+	_collect_meshes(self, _fade_meshes)
+	set_process(camera_fade)
+	# Una sola distancia por visual (de la cámara al pecho): todas las mallas, también las armas, el escudo y las
+	# botas, se atenúan por igual (antes, un rango de visibilidad por malla dejaba opacos los pies y el escudo).
+	_fade_value = -1.0
+	if camera_fade:
+		_update_camera_fade()
+	else:
+		for mesh: MeshInstance3D in _fade_meshes:
+			mesh.transparency = 0.0
 			mesh.visibility_range_begin = 0.0
 			mesh.visibility_range_begin_margin = 0.0
 			mesh.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+
+
+func _process(_delta: float) -> void:
+	if camera_fade:
+		_update_camera_fade()
+
+
+## Transparencia (0 = opaco, 1 = invisible) de un visual con el pecho a [param distance] m de la cámara.
+static func fade_for_distance(distance: float) -> float:
+	return clampf(inverse_lerp(CAMERA_FADE_SOLID, CAMERA_FADE_HIDDEN, distance), 0.0, 1.0)
+
+
+## Transparencia que llevan ahora las mallas por el fundido de cámara (0 si no hay).
+func get_camera_fade_value() -> float:
+	return maxf(_fade_value, 0.0)
+
+
+func _update_camera_fade() -> void:
+	var camera: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	if camera == null:
+		return
+	var chest: Vector3 = global_position + Vector3.UP * CAMERA_FADE_CHEST_HEIGHT
+	var value: float = fade_for_distance(camera.global_position.distance_to(chest))
+	if is_equal_approx(value, _fade_value):
+		return
+	_fade_value = value
+	for mesh: MeshInstance3D in _fade_meshes:
+		if is_instance_valid(mesh):
+			mesh.transparency = value
 
 
 static func _find_skeleton(root: Node) -> Skeleton3D:
