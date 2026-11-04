@@ -290,9 +290,7 @@ func test_world_markers_refresh_with_a_client_and_a_camera() -> void:
 	var own_camp: Dictionary = markers_node.get_item(&"camp_1")
 	if assert_false(own_camp.is_empty(), "y el propio campamento"):
 		assert_eq(own_camp["alpha"], 0.0, "pero encima de él se desvanece")
-	var enemy_camp: Dictionary = markers_node.get_item(&"camp_2")
-	if assert_false(enemy_camp.is_empty(), "el campamento enemigo, a 276 m"):
-		assert_near(float(enemy_camp["distance"]), 276.0, 0.01)
+	assert_eq(markers_node.get_item(&"camp_2"), {}, "el campamento enemigo, a 276 m, no se marca (UI-54)")
 	assert_eq(markers_node.get_item(&"circle_1"), {}, "el círculo no está activo y no se marca")
 	# Sin cliente o sin cámara no hay nada que marcar.
 	markers_node.bind(null, null, rig, _map)

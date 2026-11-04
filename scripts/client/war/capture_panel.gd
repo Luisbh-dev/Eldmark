@@ -22,7 +22,7 @@ extends PanelContainer
 const NEAR_DISTANCE: float = 80.0
 const COMBAT_DISTANCE: float = 200.0
 const PANEL_WIDTH: float = 440.0
-const TOP_MARGIN: float = 44.0
+const TOP_MARGIN: float = 68.0
 const EMBLEM_SIZE: float = 30.0
 ## Parpadeos por segundo de «Disputado».
 const CONTESTED_BLINK_HERTZ: float = 1.5

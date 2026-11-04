@@ -2,7 +2,7 @@ extends TestCase
 ## Pruebas del mapa horneado de la zona (UI-20, docs/fuerte.md sección 6): la imagen y su escala existen y
 ## son coherentes ([ZoneMapDefinition]), los lugares fijos son los de la escena, el horneado es el que
 ## sale de la escena de hoy (si se cambia el relieve, el agua o las colisiones hay que repetir
-## [code]tools/bake_zone_map.gd[/code]) y las piezas de [ZoneMapBaker] hacen lo que dicen.
+## [code]tools/map/bake_parchment_map.gd[/code], UI-51) y las piezas de [ZoneMapBaker] hacen lo que dicen.
 
 const ZONE_ID: StringName = &"vado_gris"
 const IMAGE_PATH: String = "res://assets/maps/vado_gris.png"
@@ -34,17 +34,17 @@ func test_the_baked_map_exists_with_its_scale() -> void:
 	assert_eq(ZoneMapDefinition.image_path_for(ZONE_ID), IMAGE_PATH)
 	assert_eq(definition.zone_id, ZONE_ID)
 	assert_eq(definition.image_path, IMAGE_PATH)
-	assert_eq(definition.image_size, Vector2i(1024, 1024))
-	assert_eq(definition.world_origin, Vector2(-160.0, -160.0), "el área jugable (±150 m) con 10 m de margen")
-	assert_eq(definition.world_size, Vector2(320.0, 320.0))
-	assert_near(definition.meters_per_pixel(), 0.3125, 1e-9, "320 m en 1024 píxeles")
-	assert_eq(definition.pixels_per_meter(), Vector2(3.2, 3.2))
+	assert_eq(definition.image_size, Vector2i(2048, 2048))
+	assert_eq(definition.world_origin, Vector2(-200.0, -200.0), "±200 m: el valle jugable (±150 m) y las montañas que lo enmarcan")
+	assert_eq(definition.world_size, Vector2(400.0, 400.0))
+	assert_near(definition.meters_per_pixel(), 0.1953125, 1e-9, "400 m en 2048 píxeles")
+	assert_eq(definition.pixels_per_meter(), Vector2(5.12, 5.12))
 	var texture: Texture2D = definition.load_texture()
 	if assert_not_null(texture, "la imagen está importada"):
-		assert_eq(texture.get_size(), Vector2(1024.0, 1024.0), "la textura mide lo que dice la definición")
+		assert_eq(texture.get_size(), Vector2(2048.0, 2048.0), "la textura mide lo que dice la definición")
 	var image: Image = _saved_image()
 	if assert_not_null(image, "y su imagen se lee"):
-		assert_eq(image.get_size(), Vector2i(1024, 1024))
+		assert_eq(image.get_size(), Vector2i(2048, 2048))
 	assert_true(FileAccess.file_exists(IMAGE_PATH), "el PNG está en assets/maps/")
 
 
@@ -52,9 +52,9 @@ func test_world_and_image_coordinates_convert_both_ways() -> void:
 	var definition: ZoneMapDefinition = ZoneMapDefinition.load_for_zone(ZONE_ID)
 	if not assert_not_null(definition):
 		return
-	assert_eq(definition.world_to_pixel(Vector3(-160.0, 5.0, -160.0)), Vector2.ZERO, "la esquina noroeste es el píxel 0, 0")
-	assert_eq(definition.world_to_pixel(Vector3(160.0, 0.0, 160.0)), Vector2(1024.0, 1024.0), "y la sureste, el último")
-	assert_eq(definition.world_to_pixel(Vector3(0.0, 0.0, 0.0)), Vector2(512.0, 512.0), "el centro del fuerte, en el centro")
+	assert_eq(definition.world_to_pixel(Vector3(-200.0, 5.0, -200.0)), Vector2.ZERO, "la esquina noroeste es el píxel 0, 0")
+	assert_eq(definition.world_to_pixel(Vector3(200.0, 0.0, 200.0)), Vector2(2048.0, 2048.0), "y la sureste, el último")
+	assert_eq(definition.world_to_pixel(Vector3(0.0, 0.0, 0.0)), Vector2(1024.0, 1024.0), "el centro del fuerte, en el centro")
 	assert_true(definition.world_to_pixel(Vector3(0.0, 0.0, -100.0)).y < definition.world_to_pixel(Vector3(0.0, 0.0, 100.0)).y,
 			"el norte (-Z) queda arriba")
 	assert_true(definition.world_to_pixel(Vector3(100.0, 0.0, 0.0)).x > definition.world_to_pixel(Vector3(-100.0, 0.0, 0.0)).x,
@@ -64,9 +64,9 @@ func test_world_and_image_coordinates_convert_both_ways() -> void:
 		assert_vec_near(definition.uv_to_world(definition.world_to_uv(point)), point, 1e-4, "y por uv")
 	assert_eq(definition.world_to_uv(Vector3(0.0, 0.0, 0.0)), Vector2(0.5, 0.5))
 	assert_true(definition.contains(Vector3(0.0, 0.0, 0.0)))
-	assert_true(definition.contains(Vector3(-160.0, 0.0, 160.0)), "el borde cuenta")
-	assert_false(definition.contains(Vector3(161.0, 0.0, 0.0)))
-	assert_false(definition.contains(Vector3(0.0, 0.0, -170.0)))
+	assert_true(definition.contains(Vector3(-200.0, 0.0, 200.0)), "el borde cuenta")
+	assert_false(definition.contains(Vector3(201.0, 0.0, 0.0)))
+	assert_false(definition.contains(Vector3(0.0, 0.0, -210.0)))
 	assert_null(ZoneMapDefinition.load_for_zone(&"no_existe"), "una zona sin mapa da null")
 
 
@@ -110,17 +110,17 @@ func test_the_image_shows_water_structures_and_ground() -> void:
 	# El camino de grava y el prado no lo son.
 	var meadow: Color = _pixel(image, definition, Vector3(80.0, 0.0, -110.0))
 	assert_true(meadow.g > meadow.b, "el prado es verdoso (%s)" % meadow)
-	# La empalizada del fuerte (40 x 40 m, el borde sur está en z = 20 de su centro) deja un trazo oscuro.
+	# La empalizada del fuerte (se dibuja 1,5 veces más grande: su borde sur cae en z = 30) deja un trazo oscuro.
 	var found_outline: bool = false
 	for step: int in range(-3, 4):
-		var sample: Color = _pixel(image, definition, Vector3(float(step) * 0.3, 0.0, 20.0))
+		var sample: Color = _pixel(image, definition, Vector3(float(step) * 0.3, 0.0, 30.0))
 		if sample.get_luminance() < 0.2:
 			found_outline = true
 	assert_true(found_outline, "el borde de la empalizada se dibuja")
 	# Dos puntos distintos de la imagen no son iguales: hay relieve y detalle, no un color liso.
 	var distinct: Dictionary = {}
-	for x: int in range(0, 1024, 64):
-		for y: int in range(0, 1024, 64):
+	for x: int in range(0, 2048, 128):
+		for y: int in range(0, 2048, 128):
 			distinct[image.get_pixel(x, y).to_html(false)] = true
 	assert_true(distinct.size() > 40, "la imagen no es lisa (%d colores en 256 muestras)" % distinct.size())
 
@@ -141,7 +141,7 @@ func test_baking_the_zone_again_gives_the_saved_map() -> void:
 		assert_eq(fresh.landmarks[i].kind, saved.landmarks[i].kind)
 		assert_eq(fresh.landmarks[i].realm, saved.landmarks[i].realm)
 		assert_vec_near(fresh.landmarks[i].position, saved.landmarks[i].position, 1e-3, fresh.landmarks[i].label)
-	var image: Image = ZoneMapBaker.bake(_zone, fresh)
+	var image: Image = ParchmentMapBaker.bake(_zone, fresh)
 	if not assert_not_null(image, "la zona se hornea"):
 		return
 	assert_eq(image.get_size(), saved_image.get_size())
@@ -157,7 +157,7 @@ func test_baking_the_zone_again_gives_the_saved_map() -> void:
 				different += 1
 	var count: float = float(image.get_width() * image.get_height())
 	assert_true(total / count <= MAX_MEAN_DIFFERENCE,
-			"el mapa guardado ya no es el de la escena: repite tools/bake_zone_map.gd (diferencia media %.5f)" % (total / count))
+			"el mapa guardado ya no es el de la escena: repite tools/map/bake_parchment_map.gd (diferencia media %.5f)" % (total / count))
 	assert_true(float(different) / count <= MAX_DIFFERENT_FRACTION,
 			"y %.2f %% de los píxeles cambia" % (100.0 * float(different) / count))
 

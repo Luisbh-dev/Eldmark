@@ -163,6 +163,8 @@ El orden pone primero lo que permite demostrar la mejora, después lo barato y l
 
 **Depende del usuario.** Elegir el estilo del mapa (decisión 3) y aprobar las descargas de fuentes e iconos (gratis; game-icons exige acreditar a cada autor).
 
+**Estado (carril mapa, 4 de noviembre de 2026).** Hechas UI-51 (mapa de pergamino activado y horneado reproducible), UI-52, UI-53 y UI-54 en lo que dice el backlog; faltan de esta oleada UI-55, UI-56, ART-12, UI-02, UI-18, UI-08 y UI-41 (otros carriles). Capturas antes y después con `python tools/quality/run.py mapa`; `sc_mapa` suma el zoom, el arrastre y la línea de objetivo (`mapa_m_08` a `mapa_m_10`, `hud_objetivo_lejos`). Para volver a hornear el mapa tras cambiar el escenario: `godot --headless --path . -s res://tools/map/bake_parchment_map.gd` y `godot --headless --path . --import`.
+
 ### Oleada 4: sensación de golpe (5 a 7 sesiones)
 
 **Objetivo.** Que pegar y recibir se oiga y se sienta.

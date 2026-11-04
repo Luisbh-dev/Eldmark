@@ -23,6 +23,10 @@ extends Control
 ## [br]- Hasta [constant MAX_SHOWN] a la vez, sin que dos iconos queden a menos de [constant LABEL_SPACING] (se
 ## pisarían los rótulos) y, durante [constant COMBAT_SECONDS] s tras un golpe dado o recibido
 ## ([method notify_combat]), solo el objetivo y sin nombres.
+## [br]- El campamento y el paso de un reino enemigo no se marcan ([method is_markable]).
+## [br]- Nada pegado a los bordes del HUD: el borde inferior deja [constant BOTTOM_MARGIN] px libres.
+## [br]- [b]El texto nunca cae a menos de [constant LABEL_MIN_AIM_DISTANCE] px de la mira[/b] ([method push_from_aim]):
+## si el icono está cerca de ella, el rótulo se aparta y queda unido al icono por una línea guía.
 ## [br][br]
 ## Solo cliente.
 
@@ -36,6 +40,10 @@ const EDGE_MARGIN: float = 44.0
 ## Distancias (m) entre las que un marcador pasa de invisible a opaco al acercarse.
 const FADE_NEAR_START: float = 5.0
 const FADE_NEAR_END: float = 16.0
+## Margen (px) libre en el borde inferior de la pantalla (la barra de acciones y las barras de vida).
+const BOTTOM_MARGIN: float = 150.0
+## Distancia (px) mínima entre la mira y cualquier rótulo de un marcador.
+const LABEL_MIN_AIM_DISTANCE: float = 150.0
 const ICON_SIZE: float = 9.0
 const FONT_SIZE: int = 14
 const TEXT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.95)
@@ -103,12 +111,17 @@ func refresh() -> void:
 	var markers: Array[WorldMarker] = MarkerSource.build(_map, _view)
 	var own_realm: int = _client.get_config().realm if _client.get_config() != null else NetProtocol.Realm.NONE
 	var objective: WorldMarker = pick_objective(markers, here, own_realm)
+	var markable: Array[WorldMarker] = []
+	for candidate: WorldMarker in markers:
+		if is_markable(candidate, own_realm):
+			markable.append(candidate)
+	markers = markable
 	_objective_id = objective.id if objective != null else &""
 	for marker: WorldMarker in markers:
 		var distance: float = marker.distance_from(here)
 		if distance > max_distance_for(marker.kind):
 			continue
-		var projected: Dictionary = project(camera, screen_size, marker.position, EDGE_MARGIN)
+		var projected: Dictionary = project(camera, screen_size, marker.position, EDGE_MARGIN, BOTTOM_MARGIN)
 		_items.append({
 			"marker": marker, "distance": distance, "screen": projected["screen"],
 			"on_edge": projected["on_edge"], "angle": projected["angle"],
@@ -214,7 +227,8 @@ static func select_shown(items: Array[Dictionary], aim: Vector2, alt_held: bool,
 ## pantalla; si está pegada al borde (fuera de la vista o a la espalda, a [param margin] px del borde);
 ## si está detrás de la cámara; y el ángulo (radianes, 0 = arriba, positivo hacia la derecha) de la
 ## dirección en que cae desde el centro, para la flecha.
-static func project(camera: Camera3D, screen_size: Vector2, world: Vector3, margin: float) -> Dictionary:
+static func project(camera: Camera3D, screen_size: Vector2, world: Vector3, margin: float,
+		bottom_margin: float = -1.0) -> Dictionary:
 	var camera_transform: Transform3D = camera.get_camera_transform()
 	var local: Vector3 = camera_transform.affine_inverse() * world
 	# Detrás de la cámara (o en su plano, donde la proyección no existe) el icono va al borde por el
@@ -226,7 +240,8 @@ static func project(camera: Camera3D, screen_size: Vector2, world: Vector3, marg
 	if not behind:
 		screen = camera.unproject_position(world)
 		direction = screen - center
-	var inside := Rect2(Vector2(margin, margin), screen_size - Vector2(margin, margin) * 2.0)
+	var bottom: float = margin if bottom_margin < 0.0 else bottom_margin
+	var inside := Rect2(Vector2(margin, margin), screen_size - Vector2(margin * 2.0, margin + bottom))
 	var on_edge: bool = behind or not inside.has_point(screen)
 	if on_edge:
 		if direction.length() < 0.001:
@@ -237,10 +252,43 @@ static func project(camera: Camera3D, screen_size: Vector2, world: Vector3, marg
 
 ## Punto en que el rayo desde [param center] hacia [param direction] sale del rectángulo [param inside].
 static func edge_point(center: Vector2, direction: Vector2, inside: Rect2) -> Vector2:
-	var half: Vector2 = inside.size * 0.5
-	var scale_x: float = half.x / absf(direction.x) if absf(direction.x) > 0.0001 else INF
-	var scale_y: float = half.y / absf(direction.y) if absf(direction.y) > 0.0001 else INF
-	return center + direction * minf(scale_x, scale_y)
+	# El rectángulo puede no estar centrado en [param center] (el margen inferior es mayor): se mide hacia cada lado.
+	var limit_x: float = INF
+	if absf(direction.x) > 0.0001:
+		limit_x = ((inside.end.x if direction.x > 0.0 else inside.position.x) - center.x) / direction.x
+	var limit_y: float = INF
+	if absf(direction.y) > 0.0001:
+		limit_y = ((inside.end.y if direction.y > 0.0 else inside.position.y) - center.y) / direction.y
+	return center + direction * minf(limit_x, limit_y)
+
+
+## false para el campamento y el paso de un reino que no es [param own_realm]: no se marcan (solo ayudan al enemigo).
+static func is_markable(marker: WorldMarker, own_realm: int) -> bool:
+	if marker.kind != WorldMarker.Kind.CAMP and marker.kind != WorldMarker.Kind.PASS:
+		return true
+	return marker.realm == 0 or own_realm == NetProtocol.Realm.NONE or marker.realm == own_realm
+
+
+## Mueve [param rect] (el rótulo) en línea recta alejándose de [param aim] hasta que su punto más cercano quede a
+## [param min_distance] px o más de ella. Si ya cumple, lo deja donde está; si está justo encima, lo sube.
+static func push_from_aim(rect: Rect2, aim: Vector2, min_distance: float) -> Rect2:
+	var closest: Vector2 = Vector2(clampf(aim.x, rect.position.x, rect.end.x), clampf(aim.y, rect.position.y, rect.end.y))
+	var gap: float = closest.distance_to(aim)
+	if gap >= min_distance:
+		return rect
+	var direction: Vector2 = rect.get_center() - aim
+	if direction.length() < 0.001:
+		direction = Vector2.UP
+	direction = direction.normalized()
+	# Avanza hasta cumplir (el rectángulo es pequeño: unos pasos bastan y la solución es monótona).
+	var moved: Rect2 = rect
+	for step: int in 400:
+		moved.position += direction * 2.0
+		var nearest: Vector2 = Vector2(clampf(aim.x, moved.position.x, moved.end.x),
+				clampf(aim.y, moved.position.y, moved.end.y))
+		if nearest.distance_to(aim) >= min_distance:
+			break
+	return moved
 
 
 ## Opacidad (0 a 1) de un marcador a [param distance] m: invisible al llegar y opaco a partir de
@@ -282,8 +330,15 @@ func _draw() -> void:
 		var distance_text: String = "%d m" % roundi(float(item["distance"]))
 		var text: String = "%s · %s" % [marker.label, distance_text] if bool(item["label"]) else distance_text
 		var size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE)
-		var at := Vector2(screen.x - size.x * 0.5, screen.y + ICON_SIZE + 4.0 + size.y * 0.7)
-		at.x = clampf(at.x, 2.0, maxf(self.size.x - size.x - 2.0, 2.0))
+		var rect := Rect2(Vector2(screen.x - size.x * 0.5, screen.y + ICON_SIZE + 4.0), size)
+		rect.position.x = clampf(rect.position.x, 2.0, maxf(self.size.x - size.x - 2.0, 2.0))
+		var pushed: Rect2 = push_from_aim(rect, self.size * 0.5, LABEL_MIN_AIM_DISTANCE)
+		if pushed.position != rect.position:
+			# Rótulo apartado de la mira: línea guía hasta el icono.
+			var edge := Vector2(clampf(screen.x, pushed.position.x, pushed.end.x),
+					clampf(screen.y, pushed.position.y, pushed.end.y))
+			draw_line(screen, edge, Color(1.0, 1.0, 1.0, alpha * 0.5), 1.0, true)
+		var at := Vector2(pushed.position.x, pushed.position.y + size.y * 0.75)
 		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE, 4,
 				Color(TEXT_OUTLINE.r, TEXT_OUTLINE.g, TEXT_OUTLINE.b, alpha * TEXT_OUTLINE.a))
 		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE,
