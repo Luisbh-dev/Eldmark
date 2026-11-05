@@ -1,6 +1,6 @@
 extends TestCase
 ## Server combat over the network, with clients that speak the protocol by hand over ENet on
-## 127.0.0.1 (docs/combate.md, sections 5 and 6; docs/networking.md, 5.5 and 5.6): who each
+## 127.0.0.1 (docs/combat.md, sections 5 and 6; docs/networking.md, 5.5 and 5.6): who each
 ## ENTITY_EVENT is sent to (HIT, DOWNED, DEATH, KILL and RESPAWN), the extra snapshot block with health, the NPC in
 ## the snapshots, RESPAWN_REQUEST (on time, past the deadline and with an index that is no longer valid) and the
 ## debug commands (with and without [code]--debug-commands[/code]).

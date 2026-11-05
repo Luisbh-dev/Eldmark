@@ -17,7 +17,7 @@ const SCENES: Dictionary[StringName, String] = {
 	&"test_world": "res://scenes/world/test_world.tscn",
 }
 
-## PvP mode of a zone (docs/combate.md, section 5): in a [code]SAFE[/code] zone enemy realms do
+## PvP mode of a zone (docs/combat.md, section 5): in a [code]SAFE[/code] zone enemy realms do
 ## not damage each other; in an [code]RVR[/code] (realm versus realm) zone they do.
 enum PvpMode { SAFE, RVR }
 
@@ -46,7 +46,7 @@ const SPAWN_GROUP: StringName = &"spawn_points"
 const REALM_META: StringName = &"realm"
 ## Group of a zone's review cameras (Marker3D with the [code]fov[/code] metadata).
 const SCREENSHOT_GROUP: StringName = &"screenshot_points"
-## Group of respawn points after dying (docs/combate.md, section 5): markers with the
+## Group of respawn points after dying (docs/combat.md, section 5): markers with the
 ## [constant REALM_META] metadata, in scene order. The client and the server load the same zone, so
 ## a point's index is the same on both sides. A zone with none uses its spawn points
 ## ([constant SPAWN_GROUP]).

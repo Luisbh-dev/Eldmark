@@ -394,7 +394,7 @@ func test_an_ability_press_that_expires_after_the_light_restarts_the_combo() -> 
 
 
 func test_substituted_inputs_start_nothing() -> void:
-	# The substitute repeats the buttons of the last applied input (docs/combate.md, section 3.2): a
+	# The substitute repeats the buttons of the last applied input (docs/combat.md, section 3.2): a
 	# lost single-tick tap does not invent anything.
 	var d := MachineDriver.new(_sword(), _bow(), CombatState.pack_charges(3, 2))
 	d.hold(0, 3)

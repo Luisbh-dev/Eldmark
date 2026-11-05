@@ -1,30 +1,30 @@
 class_name PlaceholderIcon
 extends Texture2D
-## Icono provisional (docs/habilidades.md, secciones 6.3 y 6.4; hasta los iconos de ART-12): un cuadro
-## del color del arma o del efecto con la inicial de la acción encima. Es una [Texture2D] que se dibuja
-## a sí misma, así que entra en cualquier [UIIconSlot] y los barridos de reutilización se pintan por
-## encima como con un icono de verdad. Sin imagen: no cuesta memoria de vídeo. Solo cliente.
+## Placeholder icon (docs/abilities.md, sections 6.3 and 6.4; until the ART-12 icons): a square
+## in the color of the weapon or effect with the action's initial on top. It is a [Texture2D] that draws
+## itself, so it fits in any [UIIconSlot] and the cooldown sweeps are painted on top
+## as with a real icon. No image: it costs no video memory. Client only.
 
-## Lado (px) con el que se declara la textura (se estira a lo que pida quien la dibuja).
+## Side (px) the texture is declared with (it stretches to whatever the drawer asks).
 const SIZE: int = 64
-## Fracción del lado que ocupa la letra.
+## Fraction of the side that the letter takes up.
 const LETTER_SCALE: float = 0.55
 const LETTER_COLOR: Color = Color(1.0, 1.0, 1.0, 0.95)
 const LETTER_OUTLINE: Color = Color(0.0, 0.0, 0.0, 0.7)
 
-## Inicial que se dibuja (una o dos letras).
+## Initial that is drawn (one or two letters).
 @export var letter: String = "":
 	set(value):
 		letter = value
 		emit_changed()
-## Color del cuadro.
+## Color of the square.
 @export var color: Color = Color(0.4, 0.4, 0.45, 1.0):
 	set(value):
 		color = value
 		emit_changed()
 
 
-## Un icono con la inicial de [param text] (su primera letra, en mayúscula) sobre [param fill].
+## An icon with the initial of [param text] (its first letter, uppercase) over [param fill].
 static func make(text: String, fill: Color) -> PlaceholderIcon:
 	var icon := PlaceholderIcon.new()
 	icon.letter = text.strip_edges().left(1).to_upper()
@@ -62,14 +62,14 @@ func _draw_rect_region(to_canvas_item: RID, rect: Rect2, _src_rect: Rect2, modul
 	_paint(to_canvas_item, rect, modulate)
 
 
-# El cuadro con un degradado de dos tonos (arriba más claro) y la letra centrada con contorno.
+# The square with a two-tone gradient (lighter at the top) and the letter centered with an outline.
 func _paint(canvas_item: RID, rect: Rect2, modulate: Color) -> void:
 	RenderingServer.canvas_item_add_rect(canvas_item, rect, color * modulate)
 	var top := Rect2(rect.position, Vector2(rect.size.x, rect.size.y * 0.45))
 	RenderingServer.canvas_item_add_rect(canvas_item, top, color.lightened(0.18) * modulate)
 	if letter.is_empty():
 		return
-	var font: Font = ThemeDB.fallback_font
+	var font: Font = UIFonts.title_bold()
 	if font == null:
 		return
 	var font_size: int = maxi(int(rect.size.y * LETTER_SCALE), 6)

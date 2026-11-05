@@ -1,6 +1,6 @@
 class_name CombatCatalog
 extends RefCounted
-## Combat catalog (docs/combate.md, section 2; docs/abilities.md, section 2.2): reads the
+## Combat catalog (docs/combat.md, section 2; docs/abilities.md, section 2.2): reads the
 ## resources in [code]data/combat/[/code] only once (lazy loading), assigns stable IDs,
 ## converts durations to ticks and bakes the dodge and advance curves.
 ## [br][br]

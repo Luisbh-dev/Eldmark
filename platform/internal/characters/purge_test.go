@@ -28,7 +28,7 @@ func TestPurgeExpiredLeavesATombstone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if h.count(`select count(*) from characters where purged_at is not null`) != 0 {
-		t.Fatal("purgado en plazo")
+		t.Fatal("purged within the window")
 	}
 	// Expired, but with a live lease (deletion does not allow it, but the purge checks it).
 	h.clock.Advance(7*day + time.Second)
@@ -38,7 +38,7 @@ func TestPurgeExpiredLeavesATombstone(t *testing.T) {
 	}
 	if h.count(`select count(*) from characters where purged_at is not null`) != 0 ||
 		!strings.Contains(h.logs.String(), "personaje sin purgar") {
-		t.Fatal("se purgó con un arrendamiento vivo")
+		t.Fatal("purged with a live lease")
 	}
 	h.clock.Advance(21 * time.Second)
 	if err := purger.PurgeExpired(ctx); err != nil {
@@ -51,38 +51,38 @@ func TestPurgeExpiredLeavesATombstone(t *testing.T) {
 	h.scalar(&key, `select name_key from characters where character_id = $1`, id)
 	h.scalar(&at, `select purged_at from characters where character_id = $1`, id)
 	if name != nil || key != nil || !at.Equal(purgedAt) {
-		t.Fatalf("lápida: %v %v %v", name, key, at)
+		t.Fatalf("tombstone: %v %v %v", name, key, at)
 	}
 	if h.count(`select count(*) from purge_log where kind = 'character' and id = $1 and purged_at = $2`, id, purgedAt) != 1 ||
 		h.count(`select count(*) from character_pvp_stats where character_id = $1`, id) != 0 ||
 		h.count(`select count(*) from character_leases where character_id = $1`, id) != 0 ||
 		h.count(`select count(*) from enter_tickets where character_id = $1`, id) != 0 {
-		t.Fatal("la purga deja filas")
+		t.Fatal("the purge leaves rows behind")
 	}
 	if h.progress.Has(id) || !h.progress.Has(keep) {
-		t.Fatal("ProgressStore.Purge de quien no toca")
+		t.Fatal("ProgressStore.Purge of one that should not be touched")
 	}
 	// The name stays reserved (until restore_until + 30 days), now without a character.
 	if h.count(`select count(*) from character_names where name_key = 'brenna' and status = 'reserved'
 		and character_id is null and reserved_until > $1`, h.clock.Now()) != 1 {
-		t.Fatal("el nombre no sigue reservado")
+		t.Fatal("the name is no longer reserved")
 	}
 	// It neither appears in the list nor can be restored; the other one stays intact.
 	h.login(p)
 	l := h.list(p)
 	if l.body["used"] != 1.0 {
-		t.Errorf("lista tras la purga: %s", l.raw)
+		t.Errorf("list after the purge: %s", l.raw)
 	}
 	h.expect(h.restore(p, id), http.StatusNotFound, "not_found")
 	if h.count(`select count(*) from characters where character_id = $1 and name = 'Aneira' and purged_at is null`, keep) != 1 {
-		t.Error("el otro personaje no debería cambiar")
+		t.Error("the other character should not change")
 	}
 	// Another round does nothing more.
 	if err := purger.PurgeExpired(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if h.count(`select count(*) from purge_log`) != 1 {
-		t.Error("purga repetida")
+		t.Error("repeated purge")
 	}
 }
 
@@ -99,7 +99,7 @@ func TestRestoredCharacterIsNotPurged(t *testing.T) {
 		t.Fatal(err)
 	}
 	if h.count(`select count(*) from characters where purged_at is null and deleted_at is null and character_id = $1`, id) != 1 {
-		t.Fatal("se purgó un personaje restaurado")
+		t.Fatal("a restored character was purged")
 	}
 }
 
@@ -124,7 +124,7 @@ func TestAccountPurgeWithCharacters(t *testing.T) {
 	if h.count(`select count(*) from accounts where account_id = $1 and status = 'pending_deletion'`, p.id) != 1 ||
 		h.count(`select count(*) from characters where purged_at is not null`) != 0 ||
 		!strings.Contains(h.logs.String(), "un personaje está en el mundo") {
-		t.Fatal("con un personaje en el mundo no se purga nada")
+		t.Fatal("with a character in the world nothing is purged")
 	}
 	h.clock.Advance(21 * time.Second)
 	if err := h.accounts.PurgeDue(ctx); err != nil {
@@ -132,22 +132,22 @@ func TestAccountPurgeWithCharacters(t *testing.T) {
 	}
 	at := h.clock.Now()
 	if h.count(`select count(*) from accounts where account_id = $1 and status = 'purged'`, p.id) != 1 {
-		t.Fatal("la cuenta no se purgó")
+		t.Fatal("the account was not purged")
 	}
 	if h.count(`select count(*) from characters where account_id = $1 and purged_at = $2 and name is null`, p.id, at) != 2 ||
 		h.count(`select count(*) from purge_log where kind = 'character'`) != 2 ||
 		h.progress.Has(alive) || h.progress.Has(deleted) {
-		t.Fatal("los personajes de la cuenta no quedan como lápida")
+		t.Fatal("the account's characters are not left as tombstones")
 	}
 	var reserved time.Time
 	h.scalar(&reserved, `select reserved_until from character_names where name_key = 'aneira' and status = 'reserved'
 		and character_id is null`)
 	if !reserved.Equal(at.Add(30 * day)) {
-		t.Errorf("el nombre del vivo, reservado hasta %v", reserved)
+		t.Errorf("the live one's name, reserved until %v", reserved)
 	}
 	// The deleted one keeps its reservation (restore_until + 30 days).
 	h.scalar(&reserved, `select reserved_until from character_names where name_key = 'brenna'`)
 	if !reserved.After(at.Add(15 * day)) {
-		t.Errorf("el nombre del borrado, reservado hasta %v", reserved)
+		t.Errorf("the deleted one's name, reserved until %v", reserved)
 	}
 }

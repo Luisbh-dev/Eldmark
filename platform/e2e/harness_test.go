@@ -129,12 +129,12 @@ func requireGodot(t *testing.T) {
 	t.Helper()
 	if godotBin == "" {
 		if os.Getenv(requireGodotVar) == "1" {
-			t.Fatalf("%s no está puesta y %s=1", godotVar, requireGodotVar)
+			t.Fatalf("%s is not set and %s=1", godotVar, requireGodotVar)
 		}
-		t.Skipf("%s no está puesta (la ruta del ejecutable de Godot 4.7.2): sin Godot no hay extremo a extremo", godotVar)
+		t.Skipf("%s is not set (the path to the Godot 4.7.2 executable): without Godot there is no end-to-end", godotVar)
 	}
 	if importErr != nil {
-		t.Fatalf("la importación del proyecto falló: %v\n%s", importErr, tail(importLog, tailLines))
+		t.Fatalf("the project import failed: %v\n%s", importErr, tail(importLog, tailLines))
 	}
 }
 
@@ -243,10 +243,10 @@ func (h *Harness) startPlatform() {
 		select {
 		case err := <-done:
 			if err != nil {
-				t.Errorf("la plataforma se ha parado con un error: %v", err)
+				t.Errorf("the platform stopped with an error: %v", err)
 			}
 		case <-time.After(stopTimeout):
-			t.Errorf("la plataforma no se para en %v", stopTimeout)
+			t.Errorf("the platform does not stop within %v", stopTimeout)
 		}
 		closeServices()
 		_ = logFile.Close()
@@ -255,15 +255,15 @@ func (h *Harness) startPlatform() {
 	for !a.Started() {
 		select {
 		case err := <-done:
-			t.Fatalf("la plataforma se ha parado al arrancar: %v", err)
+			t.Fatalf("the platform stopped at startup: %v", err)
 		default:
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("la plataforma no termina de arrancar en %v", bootTimeout)
+			t.Fatalf("the platform does not finish starting within %v", bootTimeout)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	h.Logf("plataforma lista (pública %s, interna %s)", h.PublicURL, h.InternalURL)
+	h.Logf("platform ready (public %s, internal %s)", h.PublicURL, h.InternalURL)
 }
 
 // artifactsDir is the test's log folder: ELDMARK_E2E_ARTIFACTS/<test> (emptied) or a temporary one.
@@ -311,7 +311,7 @@ func (h *Harness) dumpLogsOnFailure() {
 	for _, name := range names {
 		h.T.Logf("--- %s (final)\n%s", name, tail(filepath.Join(h.Dir, name), tailLines))
 	}
-	h.T.Logf("registros en %s", h.Dir)
+	h.T.Logf("logs in %s", h.Dir)
 }
 
 // tail is the last n lines of the file path.
@@ -359,7 +359,7 @@ func (h *Harness) NewAccount(email string) *Account {
 		"consents": map[string]any{"crash_reports": false, "analytics": false}}
 	status, raw := h.PublicJSON(http.MethodPost, "/v1/accounts", body)
 	if status != http.StatusAccepted {
-		t.Fatalf("registro de %s: %d %s", email, status, raw)
+		t.Fatalf("registration of %s: %d %s", email, status, raw)
 	}
 	h.Scalar(&acc.ID, `select account_id from accounts where email = $1`, email)
 	acc.PasswordFile = filepath.Join(h.Dir, fmt.Sprintf("cuenta%d.pw", acc.ID))
@@ -425,7 +425,7 @@ func (h *Harness) WaitFor(timeout time.Duration, what string, cond func() bool) 
 	deadline := time.Now().Add(timeout)
 	for !cond() {
 		if time.Now().After(deadline) {
-			h.T.Fatalf("no llega %s en %v", what, timeout)
+			h.T.Fatalf("%s does not arrive within %v", what, timeout)
 		}
 		time.Sleep(pollEvery)
 	}
@@ -460,15 +460,15 @@ func (h *Harness) CheckBooks(characterID int64) {
 			t.Fatal(err)
 		}
 		if len(bad) > 0 {
-			t.Fatalf("%s del personaje %d no cuadran: %s", what, characterID, strings.Join(bad, "; "))
+			t.Fatalf("%s of character %d do not add up: %s", what, characterID, strings.Join(bad, "; "))
 		}
 	}
-	mismatches("los objetos", `select coalesce(e.def_id, i.def_id), coalesce(e.n, 0), coalesce(i.n, 0)
+	mismatches("the objects", `select coalesce(e.def_id, i.def_id), coalesce(e.n, 0), coalesce(i.n, 0)
 		from (select def_id, sum(count_delta) n from item_events where character_id = $1 group by def_id) e
 		full join (select def_id, sum(count) n from item_instances where character_id = $1 and retired_at is null
 			group by def_id) i on i.def_id = e.def_id
 		where coalesce(e.n, 0) <> coalesce(i.n, 0)`)
-	mismatches("los saldos", `select coalesce(l.currency, w.currency)::text, coalesce(l.n, 0), coalesce(w.balance, 0)
+	mismatches("the balances", `select coalesce(l.currency, w.currency)::text, coalesce(l.n, 0), coalesce(w.balance, 0)
 		from (select currency, sum(delta) n from ledger_entries where character_id = $1 group by currency) l
 		full join (select currency, balance from character_wallets where character_id = $1) w on w.currency = l.currency
 		where coalesce(l.n, 0) <> coalesce(w.balance, 0)`)
@@ -477,7 +477,7 @@ func (h *Harness) CheckBooks(characterID int64) {
 		where p.character_id = $1 and o.kind = 3`, characterID)
 	h.Scalar(&alive, `select count(*) from item_instances where character_id = $1 and retired_at is null`, characterID)
 	if kits != 1 || alive == 0 {
-		t.Fatalf("el personaje %d tiene %d operaciones STARTER_KIT y %d objetos vivos (se esperaba 1 y alguno)",
+		t.Fatalf("character %d has %d STARTER_KIT operations and %d live items (expected 1 and some)",
 			characterID, kits, alive)
 	}
 }
@@ -487,7 +487,7 @@ func (h *Harness) CheckBooks(characterID int64) {
 func (h *Harness) WaitCharacter(name string, timeout time.Duration, procs ...*Process) int64 {
 	h.T.Helper()
 	var id int64
-	h.WaitFor(timeout, "el personaje "+name, func() bool {
+	h.WaitFor(timeout, "character "+name, func() bool {
 		requireRunning(h.T, procs...)
 		err := h.Pool.QueryRow(context.Background(), `select character_id from characters
 			where world_id = $1 and name = $2 and deleted_at is null`, WorldID, name).Scan(&id)
@@ -526,7 +526,7 @@ func (h *Harness) start(name string, env []string, args ...string) *Process {
 	setDeathSignal(p.cmd)
 	if err := p.cmd.Start(); err != nil {
 		_ = f.Close()
-		t.Fatalf("no arranca %s: %v", name, err)
+		t.Fatalf("%s does not start: %v", name, err)
 	}
 	go func() {
 		err := p.cmd.Wait()
@@ -545,7 +545,7 @@ func (h *Harness) start(name string, env []string, args ...string) *Process {
 	h.mu.Lock()
 	h.procs = append(h.procs, p)
 	h.mu.Unlock()
-	h.Logf("%s arrancado: %s", name, strings.Join(args, " "))
+	h.Logf("%s started: %s", name, strings.Join(args, " "))
 	return p
 }
 
@@ -594,7 +594,7 @@ func (p *Process) Wait(t *testing.T, timeout time.Duration) int {
 	case <-p.done:
 	case <-time.After(timeout):
 		p.Kill()
-		t.Fatalf("%s no termina en %v", p.Name, timeout)
+		t.Fatalf("%s does not finish within %v", p.Name, timeout)
 	}
 	if p.err != nil {
 		t.Fatalf("%s: %v", p.Name, p.err)
@@ -619,7 +619,7 @@ func requireRunning(t *testing.T, procs ...*Process) {
 	t.Helper()
 	for _, p := range procs {
 		if p != nil && p.Exited() {
-			t.Fatalf("%s ha terminado antes de tiempo con el código %d", p.Name, p.code)
+			t.Fatalf("%s ended early with code %d", p.Name, p.code)
 		}
 	}
 }
@@ -681,13 +681,13 @@ func (h *Harness) StartZone(args ...string) *Zone {
 func (z *Zone) WaitLive(timeout time.Duration) string {
 	h := z.h
 	h.T.Helper()
-	h.WaitFor(timeout, z.Name+" en live", func() bool {
+	h.WaitFor(timeout, z.Name+" in live", func() bool {
 		requireRunning(h.T, z.Process)
 		err := h.Pool.QueryRow(context.Background(), `select zone_instance_id::text from zone_instances
 			where public_port = $1 and status = 'live'`, z.Port).Scan(&z.Instance)
 		return err == nil
 	})
-	h.Logf("%s en live (instancia %s)", z.Name, z.Instance)
+	h.Logf("%s in live (instance %s)", z.Name, z.Instance)
 	return z.Instance
 }
 
@@ -699,7 +699,7 @@ func (z *Zone) Stop(timeout time.Duration) int {
 		z.h.T.Fatal(err)
 	}
 	code := z.Wait(z.h.T, timeout)
-	z.h.Logf("%s cerrada con el código %d", z.Name, code)
+	z.h.Logf("%s closed with code %d", z.Name, code)
 	return code
 }
 
@@ -752,14 +752,14 @@ func (b *Bot) ReadReport(t *testing.T) *BotReport {
 	t.Helper()
 	data, err := os.ReadFile(b.Report)
 	if err != nil {
-		t.Fatalf("informe de %s: %v", b.Name, err)
+		t.Fatalf("report of %s: %v", b.Name, err)
 	}
 	r := &BotReport{}
 	if err := json.Unmarshal(data, &r.Raw); err != nil {
-		t.Fatalf("informe de %s: %v", b.Name, err)
+		t.Fatalf("report of %s: %v", b.Name, err)
 	}
 	if err := json.Unmarshal(data, r); err != nil {
-		t.Fatalf("informe de %s: %v", b.Name, err)
+		t.Fatalf("report of %s: %v", b.Name, err)
 	}
 	return r
 }

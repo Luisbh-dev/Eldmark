@@ -27,20 +27,20 @@ func TestPurgeKeepsLedger(t *testing.T) {
 	var purged bool
 	w.scalar(&purged, `select name is null and purged_at is not null from characters where character_id = 42`)
 	if !purged {
-		t.Fatal("la fila de characters no es una lápida")
+		t.Fatal("the characters row is not a tombstone")
 	}
 	for _, table := range []string{"character_progress", "character_wallets", "item_instances", "character_timers"} {
 		if n := w.count(`select count(*) from ` + table + ` where character_id = 42`); n != 0 {
-			t.Errorf("%s: quedan %d filas", table, n)
+			t.Errorf("%s: %d rows remain", table, n)
 		}
 	}
 	for table, want := range map[string]int{"op_participants": 5, "ledger_entries": 4, "item_events": 7} {
 		if n := w.count(`select count(*) from ` + table + ` where character_id = 42`); n != want {
-			t.Errorf("%s: %d filas, se esperaban %d", table, n, want)
+			t.Errorf("%s: %d rows, expected %d", table, n, want)
 		}
 	}
 	if n := w.count(`select count(*) from economy_ops`); n != 5 || w.count(`select count(*) from op_reversals`) != 1 {
-		t.Errorf("operaciones: %d", n)
+		t.Errorf("operations: %d", n)
 	}
 	ctx := context.Background()
 	for _, sql := range []string{
@@ -52,11 +52,11 @@ func TestPurgeKeepsLedger(t *testing.T) {
 		`truncate op_participants cascade`,
 	} {
 		if _, err := w.pool.Exec(ctx, sql); db.SQLState(err) != "P0001" {
-			t.Errorf("%s: %v (se esperaba P0001, de solo añadir)", sql, err)
+			t.Errorf("%s: %v (expected P0001, from append-only)", sql, err)
 		}
 	}
 	if _, err := w.pool.Exec(ctx, `delete from characters where character_id = 42`); db.SQLState(err) != "23503" {
-		t.Errorf("borrar la lápida con libro: %v", err)
+		t.Errorf("deleting the tombstone with ledger: %v", err)
 	}
 	// The flag is only valid within its transaction.
 	w.tx(func(tx pgx.Tx) error {
@@ -64,7 +64,7 @@ func TestPurgeKeepsLedger(t *testing.T) {
 		return err
 	})
 	if _, err := w.pool.Exec(ctx, `delete from item_events where character_id = 42`); db.SQLState(err) != "P0001" {
-		t.Errorf("tras una transacción con la marca: %v", err)
+		t.Errorf("after a transaction with the mark: %v", err)
 	}
 	// An hourly purge of the already purged character does nothing (and Purge on nothing does not fail).
 	w.tx(func(tx pgx.Tx) error { return w.store.Purge(ctx, tx, 42) })
@@ -130,17 +130,17 @@ func TestRetention(t *testing.T) {
 		}
 	}
 	if deleted, emptied := retention(); deleted != 0 || len(emptied) != 0 {
-		t.Fatalf("antes del año: %d borrados, vacías %v", deleted, emptied)
+		t.Fatalf("before the year: %d deleted, empty ones %v", deleted, emptied)
 	}
 	w.clock.advance(366 * 24 * time.Hour)
 	w.exec(`update characters set purged_at = $1 where character_id = 49`, w.clock.now().Add(-366*24*time.Hour))
 	deleted, emptied := retention()
 	// 42: 5 entries, 7 events and 6 participations; 5 operations that are only theirs and 1 reversal.
 	if deleted != 5+7+6+5+1 {
-		t.Errorf("borrados: %d", deleted)
+		t.Errorf("deleted: %d", deleted)
 	}
 	if !reflect.DeepEqual(emptied, []int64{42, 49}) {
-		t.Errorf("lápidas vacías: %v", emptied)
+		t.Errorf("empty tombstones: %v", emptied)
 	}
 	for table, want := range map[string]int{"ledger_entries": 0, "item_events": 0, "op_participants": 0} {
 		if n := w.count(`select count(*) from ` + table + ` where character_id = 42`); n != want {
@@ -148,10 +148,10 @@ func TestRetention(t *testing.T) {
 		}
 	}
 	if n := w.count(`select count(*) from characters where character_id in (42, 49)`); n != 0 {
-		t.Errorf("las lápidas vacías siguen: %d", n)
+		t.Errorf("the empty tombstones remain: %d", n)
 	}
 	if n := w.count(`select count(*) from economy_ops`); n != 2 {
-		t.Errorf("operaciones que quedan: %d (las de 43: 1500 y la de dos, 1600)", n)
+		t.Errorf("operations remaining: %d (the ones from 43: 1500, and the two-party one, 1600)", n)
 	}
 	var participants []int64
 	rows, err := w.pool.Query(context.Background(), `select character_id from op_participants where op_id = 1600`)
@@ -159,13 +159,13 @@ func TestRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	if participants, err = pgx.CollectRows(rows, pgx.RowTo[int64]); err != nil || !reflect.DeepEqual(participants, []int64{43}) {
-		t.Errorf("participantes de la operación de dos: %v %v", participants, err)
+		t.Errorf("participants of the two-party operation: %v %v", participants, err)
 	}
 	if n := w.count(`select count(*) from ledger_entries where character_id = 43`); n != 1 {
-		t.Errorf("el libro de 43: %d", n)
+		t.Errorf("43's ledger: %d", n)
 	}
 	// Nothing is left to delete.
 	if deleted, emptied := retention(); deleted != 0 || len(emptied) != 0 {
-		t.Errorf("otra vuelta: %d, %v", deleted, emptied)
+		t.Errorf("another round: %d, %v", deleted, emptied)
 	}
 }

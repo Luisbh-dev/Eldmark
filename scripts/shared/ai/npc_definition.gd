@@ -23,7 +23,7 @@ extends Resource
 ## true: it is a boss (the client gives it a boss bar).
 @export var is_boss: bool = false
 ## true: attacks enemies inside the safe zone of its own realm and can attack from it (the
-## Gate Guardians, docs/combate.md 5). It only attacks enemies that are inside that zone.
+## Gate Guardians, docs/combat.md 5). It only attacks enemies that are inside that zone.
 @export var ignores_safe_area: bool = false
 
 @export_group("Movimiento")

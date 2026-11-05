@@ -1,0 +1,30 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_shape_add.gdshader" id="1_5ftfg"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/noise.png" id="2_nnh5n"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_5ftfg")
+shader_parameter/noise_tex = ExtResource("2_nnh5n")
+shader_parameter/mode = 1
+shader_parameter/billboard = false
+shader_parameter/intensity = 2.4
+shader_parameter/cover = null
+shader_parameter/start_scale = 0.9
+shader_parameter/end_scale = 1.0
+shader_parameter/push = 0.0
+shader_parameter/spin = null
+shader_parameter/fade_power = 0.9
+shader_parameter/attack = 0.08
+shader_parameter/ring_start_radius = 0.62
+shader_parameter/ring_width_start = 0.1
+shader_parameter/ring_width_end = 0.07
+shader_parameter/ring_line = 0.055
+shader_parameter/ring_tail = 0.5
+shader_parameter/ring_fill = 0.28
+shader_parameter/ring_arc = 0.5
+shader_parameter/ring_squash = 0.78
+shader_parameter/runes = null
+shader_parameter/lens_thick_start = null
+shader_parameter/lens_thick_end = null

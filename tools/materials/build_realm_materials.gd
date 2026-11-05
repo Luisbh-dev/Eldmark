@@ -1,14 +1,14 @@
 extends SceneTree
-## Genera los materiales de reino (assets/materials/realms/<reino>/*.tres) y el del agua a partir
-## de una tabla: la misma textura del kit, recoloreada con realm_surface.gdshader hacia la paleta
-## de docs/mundo.md ("Paleta por material").
+## Generates the realm materials (assets/materials/realms/<realm>/*.tres) and the water one from
+## a table: the same kit texture, recolored with realm_surface.gdshader toward the palette
+## of docs/world.md ("Palette per material").
 ##
-## Uso: [code]godot --headless --path . -s res://tools/materials/build_realm_materials.gd[/code]
-## Es determinista; repetirlo sobrescribe los .tres con los valores de la tabla. Para ajustar un
-## color se cambia aquí, no a mano en el .tres.
+## Usage: [code]godot --headless --path . -s res://tools/materials/build_realm_materials.gd[/code]
+## It is deterministic; running it again overwrites the .tres files with the values of the table. To tweak a
+## color, change it here, not by hand in the .tres.
 
 const REALM_SHADER: String = "res://assets/materials/shaders/realm_surface.gdshader"
-## Variante con cull_back para mallas cerradas (extra "closed" en la tabla).
+## Variant with cull_back for closed meshes (extra "closed" in the table).
 const REALM_SHADER_CLOSED: String = "res://assets/materials/shaders/realm_surface_closed.gdshader"
 const WATER_SHADER: String = "res://assets/materials/shaders/water.gdshader"
 const OUT_DIR: String = "res://assets/materials/realms"
@@ -19,7 +19,7 @@ const CW: String = "res://assets/models/environment/castle_wall/textures/"
 const VIL: String = "res://assets/models/environment/village/"
 const NAT: String = "res://assets/models/environment/nature/"
 
-## Texturas base: [albedo, normal o ""].
+## Base textures: [albedo, normal or ""].
 const TEXTURES: Dictionary = {
 	"stone_wall": [CW + "brick_wall_albedo.png", CW + "brick_wall_normal.png"],
 	"stone_trim": [CW + "brick_trims_albedo.png", CW + "brick_trims_normal.png"],
@@ -37,23 +37,22 @@ const TEXTURES: Dictionary = {
 	"cloth": ["", ""],
 }
 
-## Capas por reino: [color, cantidad, umbral]. El musgo de Solmarch, poco saturado y solo en
-## caras casi horizontales: más daba un tinte verde a toda la caliza.
+## Layers per realm: [color, amount, threshold]. Solmarch's moss, barely saturated and only on
+## nearly horizontal faces: more of it gave a green tint to all the limestone.
 const LAYERS: Dictionary = {
 	"vardheim": [Color("#e6edf1"), 0.75, 0.55],
 	"solmarch": [Color("#6b7350"), 0.28, 0.78],
 	"eldrun": [Color("#8f8a82"), 0.35, 0.6],
 }
 
-## Materiales: nombre -> [textura base, color objetivo, colorear, extras].
-## Extras admitidos: hue, sat, bright, contrast, rough, metal, layer (multiplica la capa del
-## reino; 1 por defecto), triplanar (repeticiones por metro), faction (0..1), scissor, uv, emission, energy,
-## detail, gain (ganancia final del albedo), closed (true: malla cerrada, shader con cull_back).
-## Solo están los materiales que usan las escenas (test_vado_gris_zone comprueba que no sobra
-## ninguno).
+## Materials: name -> [base texture, target color, colorize, extras].
+## Supported extras: hue, sat, bright, contrast, rough, metal, layer (multiplies the realm's
+## layer; 1 by default), triplanar (repetitions per meter), faction (0..1), scissor, uv, emission, energy,
+## detail, gain (final albedo gain), closed (true: closed mesh, shader with cull_back).
+## Only the materials used by the scenes are here (test_vado_gris_zone checks that none is
+## left over).
 const REALMS: Dictionary = {
 	"eldrun": {
-		"stone_wall": ["stone_wall", Color("#8c8d84"), 0.78, {"detail": 0.8}],
 		"stone_trim": ["stone_trim", Color("#a3a39a"), 0.72, {"detail": 0.8}],
 		"stone_floor": ["stone_floor", Color("#8f8a82"), 0.6, {}],
 		"stone_bridge": ["stone_wall", Color("#949389"), 0.75, {"uv": Vector2(1.0, 1.0), "detail": 0.8}],
@@ -65,7 +64,6 @@ const REALMS: Dictionary = {
 		"ruin_trim": ["rock_trim", Color("#8f8d85"), 0.65, {}],
 		"ruin_brick": ["brick", Color("#8f8a82"), 0.65, {}],
 		"metal": ["metal", Color("#6e4a35"), 0.6, {"metal": 0.5, "rough": 0.6, "layer": 0.0}],
-		"door": ["door", Color("#5e5850"), 0.5, {"scissor": 0.5, "layer": 0.0}],
 		"banner": ["cloth", RealmCatalog.HUECOS_COLOR, 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
 		"ember": ["cloth", Color("#3a2a20"), 1.0, {"emission": Color("#ff8a2a"), "energy": 3.0, "layer": 0.0, "closed": true}],
 	},
@@ -73,7 +71,7 @@ const REALMS: Dictionary = {
 		"stone_wall": ["stone_wall", Color("#737a80"), 0.8, {"detail": 0.8}],
 		"stone_trim": ["stone_trim", Color("#8e959a"), 0.75, {"detail": 0.8}],
 		"wood": ["wood", Color("#3a2f28"), 0.85, {"layer": 0.6}],
-		# Cadalsos: madera muy oscura, pero con la veta visible (el tono anterior se leía negro).
+		# Hoardings: very dark wood, but with the grain visible (the earlier tone read as black).
 		"planks": ["planks", Color("#4a3c31"), 0.8, {"layer": 0.8}],
 		"door": ["door", Color("#3a2f28"), 0.55, {"scissor": 0.5, "layer": 0.0}],
 		"metal": ["metal", Color("#3f4448"), 0.7, {"metal": 0.6, "rough": 0.5, "layer": 0.0}],
@@ -81,8 +79,8 @@ const REALMS: Dictionary = {
 		"banner": ["cloth", RealmCatalog.VARDHEIM_COLOR, 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
 	},
 	"solmarch": {
-		# Caliza clara de la paleta: detalle suave y algo de ganancia para que una cara iluminada
-		# llegue al tono de la paleta sin quemar las juntas.
+		# Light limestone of the palette: soft detail and some gain so that a lit face
+		# reaches the palette tone without burning out the joints.
 		"stone_wall": ["stone_wall", Color("#e8d8b6"), 0.94, {"detail": 0.6, "gain": 1.2}],
 		"stone_trim": ["stone_trim", Color("#d6c6a4"), 0.88, {"detail": 0.6, "gain": 1.14}],
 		"roof_slate": ["roof_tiles", Color("#46566e"), 0.97, {"layer": 0.6}],
@@ -177,7 +175,7 @@ func _build_water() -> void:
 	foam_noise.fractal_octaves = 3
 	foam.noise = foam_noise
 	material.set_shader_parameter(&"foam_noise", foam)
-	# Río gris de Eldrun (#5F7A86), algo más claro en las orillas.
+	# Gray river of Eldrun (#5F7A86), slightly lighter at the banks.
 	material.set_shader_parameter(&"shallow_color", Color("#8aa39c"))
 	material.set_shader_parameter(&"deep_color", Color("#3c5560"))
 	material.set_shader_parameter(&"min_alpha", 0.3)
@@ -187,14 +185,14 @@ func _build_water() -> void:
 	_save(material, WATER_OUT)
 
 
-## Materiales del instanciador de Terrain3D: la hierba del kit recoloreada (Eldrun) y las losas
-## de las calzadas en el gris de la piedra de Eld.
+## Materials of the Terrain3D instancer: the kit's grass recolored (Eldrun) and the road
+## slabs in the gray of Eld stone.
 func _build_vegetation() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(VEGETATION_DIR))
 	var grass_path: String = NAT + "grass.png"
-	# Hierba gris verdosa y seca de la frontera de Eldrun. La textura del kit es un verde muy vivo
-	# y multiplicar no la desatura: se colorea con realm_surface (con recorte por alfa), y el
-	# color base lo sigue poniendo el terreno.
+	# Dry, greenish-gray grass of the Eldrun frontier. The kit texture is a very vivid green
+	# and multiplying does not desaturate it: it is colorized with realm_surface (with alpha scissor), and the
+	# base color is still set by the terrain.
 	var shader: Shader = load(REALM_SHADER) as Shader
 	for spec: Array in [["grass_green", Color("#66704a"), 0.6], ["grass_dry", Color("#877c5e"), 0.7]]:
 		var material := ShaderMaterial.new()
@@ -209,8 +207,8 @@ func _build_vegetation() -> void:
 		material.set_shader_parameter(&"roughness", 1.0)
 		material.set_shader_parameter(&"specular", 0.15)
 		_save(material, VEGETATION_DIR.path_join(spec[0] + ".tres"))
-	# Helechos y plantas del sotobosque (ART-59): las hojas del kit (un atlas con verdes muy vivos y
-	# algunas hojas azules y naranjas) llevadas al verde grisáceo de la hierba.
+	# Ferns and undergrowth plants (ART-59): the kit's leaves (an atlas with very vivid greens and
+	# some blue and orange leaves) taken to the grayish green of the grass.
 	var leaves := ShaderMaterial.new()
 	leaves.shader = shader
 	leaves.set_shader_parameter(&"albedo_texture", load(NAT + "leaves.png"))
@@ -229,8 +227,8 @@ func _build_vegetation() -> void:
 	stones.roughness = 0.95
 	_save(stones, VEGETATION_DIR.path_join("path_stones.tres"))
 	_build_bark()
-	# Hojas de los árboles retorcidos (ART-59): el pack las trae rojas y rosas (otoño) y desentonan en
-	# el valle gris; se llevan a un verde oliva apagado conservando el detalle de la textura.
+	# Leaves of the twisted trees (ART-59): the pack ships them red and pink (autumn) and they clash with
+	# the gray valley; they are taken to a muted olive green while keeping the texture detail.
 	var twisted := ShaderMaterial.new()
 	twisted.shader = shader
 	var twisted_path: String = NAT + "leaves_twisted_tree_c.png"
@@ -246,11 +244,11 @@ func _build_vegetation() -> void:
 	_save(twisted, VEGETATION_DIR.path_join("leaves_twisted.tres"))
 
 
-## Corteza de los árboles (ART-59). La del kit es terracota (media #8C5843): en el valle gris se
-## veía salmón. Se lleva a un pardo grisáceo de la paleta de Eldrun conservando el detalle de la
-## textura, con la variante de mallas cerradas (cull_back, la mitad de rasterizado en las sombras).
-## Los glTF de los árboles las usan como material externo (tools/assets/apply_nature_materials.gd).
-## Cada especie tiene su textura: [archivo, color objetivo, colorear].
+## Tree bark (ART-59). The kit's is terracotta (average #8C5843): in the gray valley it
+## looked salmon. It is taken to a grayish brown from the Eldrun palette while keeping the texture
+## detail, with the closed-mesh variant (cull_back, half the rasterization in the shadows).
+## The tree glTFs use them as an external material (tools/assets/apply_nature_materials.gd).
+## Each species has its own texture: [file, target color, colorize].
 func _build_bark() -> void:
 	var shader: Shader = load(REALM_SHADER_CLOSED) as Shader
 	for spec: Array in [
@@ -305,8 +303,8 @@ func _make_cloth_noise() -> NoiseTexture2D:
 	return texture
 
 
-## Luminancia media de la textura (sobre una versión pequeña), para que "colorear" conserve el
-## brillo medio del color objetivo.
+## Average luminance of the texture (over a small version), so that "colorize" keeps the
+## average brightness of the target color.
 func _mean_luminance(path: String) -> float:
 	if _luminance_cache.has(path):
 		return _luminance_cache[path]
@@ -323,7 +321,7 @@ func _mean_luminance(path: String) -> float:
 			var c: Color = image.get_pixel(x, y)
 			if c.a < 0.5:
 				continue
-			# Luminancia en espacio lineal, como la ve el shader (source_color).
+			# Luminance in linear space, as the shader sees it (source_color).
 			var linear: Color = c.srgb_to_linear()
 			total += linear.r * 0.299 + linear.g * 0.587 + linear.b * 0.114
 			count += 1

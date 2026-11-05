@@ -1,5 +1,5 @@
 extends TestCase
-## Combat end to end with real ENet over 127.0.0.1, in a single process (docs/combate.md,
+## Combat end to end with real ENet over 127.0.0.1, in a single process (docs/combat.md,
 ## sections 4 to 6; CMB-10): a [ZoneServer] and several bot [NetClient]s, each in its own
 ## [SubViewport] with its own physics world and its own [NetTransport].
 ## [br][br]
@@ -11,7 +11,7 @@ extends TestCase
 ## The bots do not read the ENTITY_EVENTs (that belongs to the combat client): the test listens to the transport
 ## packets of each one.
 ## [br][br]
-## [b]Rewind with a bad network[/b] (CMB-09, TEC-14; docs/combate.md, sections 4.3 and 4.5): the server
+## [b]Rewind with a bad network[/b] (CMB-09, TEC-14; docs/combat.md, sections 4.3 and 4.5): the server
 ## carries a [NetSim] of 150 ms RTT and 30 ms jitter (the client's does not count towards the cap: networking.md,
 ## section 10) and two attackers hit a target running sideways. [SwingRecorder] stores, in each
 ## input the attacker generates, where it draws the target (its [code]render_tick[/code]) and, with its predicted

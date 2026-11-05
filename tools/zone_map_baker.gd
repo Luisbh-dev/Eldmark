@@ -1,32 +1,32 @@
 class_name ZoneMapBaker
 extends RefCounted
-## Hornea la imagen cenital de una zona sin GPU (docs/fuerte.md, sección 6; UI-20). La usa
-## [code]tools/bake_zone_map.gd[/code]; las pruebas la usan con datos pequeños y con la zona entera.
+## Bakes the top-down image of a zone without a GPU (docs/fortress.md, section 6; UI-20). Used by
+## [code]tools/bake_zone_map.gd[/code]; the tests use it with small data and with the whole zone.
 ## [br][br]
-## Todo se calcula en la CPU a partir de los datos de la escena (nada se renderiza, así que vale en
-## headless y da el mismo resultado en cualquier máquina):
-## [br]- [b]Relieve[/b]: la altura de [code]Terrain3D.data.get_height[/code] en cada píxel, con
-## sombreado de ladera (luz del noroeste) y un tinte según la altura.
-## [br]- [b]Suelo[/b]: el color de la textura pintada en el terreno ([code]get_texture_id[/code]:
-## base, superpuesta y mezcla) con una paleta propia por id de textura ([constant TEXTURE_COLORS]).
-## [br]- [b]Agua[/b]: los triángulos de las mallas de los hijos del nodo [code]Agua[/code], proyectados
-## sobre el plano (las MultiMesh no se leen en headless, pero la malla del río sí).
-## [br]- [b]Estructuras[/b]: el contorno en planta de las colisiones estáticas de la capa del mundo
-## (cajas, cilindros de troncos y rocas, mallas cóncavas y convexas) y de las instancias de los
-## [BakedMultiMesh] (empalizada, murallas, postes), que en headless devuelven la identidad si se les
-## pide el MultiMesh: se leen de [code]instance_transforms[/code]. Las capas de bloqueos invisibles,
-## estructuras y reino quedan fuera.
+## Everything is computed on the CPU from the scene data (nothing is rendered, so it works in
+## headless and gives the same result on any machine):
+## [br]- [b]Relief[/b]: the height from [code]Terrain3D.data.get_height[/code] at each pixel, with
+## slope shading (northwest light) and a tint according to height.
+## [br]- [b]Ground[/b]: the color of the texture painted on the terrain ([code]get_texture_id[/code]:
+## base, overlay and blend) with its own palette per texture id ([constant TEXTURE_COLORS]).
+## [br]- [b]Water[/b]: the triangles of the meshes of the children of the [code]Agua[/code] node, projected
+## onto the plane (MultiMeshes are not read in headless, but the river mesh is).
+## [br]- [b]Structures[/b]: the footprint outline of the static collisions of the world layer
+## (boxes, trunk and rock cylinders, concave and convex meshes) and of the instances of the
+## [BakedMultiMesh] (palisade, walls, posts), which in headless return the identity if asked
+## for the MultiMesh: they are read from [code]instance_transforms[/code]. The layers of invisible blockers,
+## structures and realm are left out.
 ## [br][br]
-## Las medidas de la imagen y de la zona salen de la [ZoneMapDefinition] que se pasa. Los colores y
-## el estilo son provisionales (arte de interfaz, ART-12).
+## The measurements of the image and of the zone come from the [ZoneMapDefinition] that is passed in. The colors and
+## the style are provisional (interface art, ART-12).
 
-## Capa del mundo estático, la única que se dibuja.
+## Layer of the static world, the only one that is drawn.
 const WORLD_LAYER: int = 1
-## Mallas repetidas más bajas que esto (m) no se dibujan (suelos y tableros).
+## Repeated meshes lower than this (m) are not drawn (floors and decks).
 const MIN_INSTANCE_HEIGHT: float = 0.15
 
-## Color de cada textura del terreno del Vado Gris (ids de su Terrain3DAssets). Una zona con otros ids
-## usa [constant UNKNOWN_TEXTURE_COLOR].
+## Color of each Vado Gris terrain texture (ids of its Terrain3DAssets). A zone with other ids
+## uses [constant UNKNOWN_TEXTURE_COLOR].
 const TEXTURE_COLORS: Dictionary[int, Color] = {
 	0: Color(0.45, 0.58, 0.32),
 	1: Color(0.62, 0.60, 0.35),
@@ -35,6 +35,9 @@ const TEXTURE_COLORS: Dictionary[int, Color] = {
 	4: Color(0.52, 0.50, 0.50),
 	5: Color(0.38, 0.55, 0.30),
 	6: Color(0.40, 0.42, 0.46),
+	7: Color(0.36, 0.33, 0.28),
+	8: Color(0.88, 0.90, 0.92),
+	9: Color(0.27, 0.26, 0.20),
 }
 const UNKNOWN_TEXTURE_COLOR: Color = Color(0.5, 0.5, 0.45)
 const WATER_COLOR: Color = Color(0.20, 0.42, 0.62)
@@ -44,22 +47,22 @@ const BUILDING_FILL: Color = Color(0.44, 0.38, 0.32)
 const OUTLINE: Color = Color(0.10, 0.09, 0.08)
 const TREE_FILL: Color = Color(0.16, 0.34, 0.19)
 const ROCK_FILL: Color = Color(0.55, 0.54, 0.55)
-## Un cilindro de este radio (m) o más es una roca; menos, el tronco de un árbol.
+## A cylinder of this radius (m) or more is a rock; less, the trunk of a tree.
 const ROCK_MIN_RADIUS: float = 1.0
-## Radio mínimo (m) con el que se dibuja el tronco de un árbol (la copa no se conoce).
+## Minimum radius (m) with which a tree trunk is drawn (the crown is not known).
 const TREE_DRAW_RADIUS: float = 1.1
-## Exageración del relieve en el sombreado y rango del brillo.
+## Relief exaggeration in the shading and brightness range.
 const RELIEF_EXAGGERATION: float = 2.2
 const SHADE_MIN: float = 0.6
 const SHADE_MAX: float = 1.35
-## Hacia dónde está la luz (noroeste y arriba; norte = -Z).
+## Where the light is (northwest and up; north = -Z).
 const LIGHT_DIRECTION: Vector3 = Vector3(-0.55, 0.70, -0.55)
-## Segmentos con los que se aproxima un círculo.
+## Segments used to approximate a circle.
 const CIRCLE_SEGMENTS: int = 14
 
 
-## Contorno en planta de algo de la escena: un polígono convexo en coordenadas del mundo (x, z) y su
-## clase, que decide cómo se dibuja.
+## Footprint outline of something in the scene: a convex polygon in world coordinates (x, z) and its
+## class, which decides how it is drawn.
 class Footprint extends RefCounted:
 	const WALL: StringName = &"wall"
 	const BUILDING: StringName = &"building"
@@ -77,11 +80,11 @@ class Footprint extends RefCounted:
 		return footprint
 
 
-# --- Definición -------------------------------------------------------------------------------
+# --- Definition -------------------------------------------------------------------------------
 
-## La [ZoneMapDefinition] de la zona en [param zone]: [param zone_id], el trozo de mundo
-## ([param world_origin], [param world_size] en metros), el tamaño de la imagen y los lugares fijos
-## que salen de la escena (el fuerte, los campamentos y las puertas de las murallas).
+## The [ZoneMapDefinition] of the zone in [param zone]: [param zone_id], the world piece
+## ([param world_origin], [param world_size] in meters), the image size and the fixed places
+## that come from the scene (the fort, the camps and the wall gates).
 static func build_definition(zone: Node3D, zone_id: StringName, world_origin: Vector2,
 		world_size: Vector2, image_size: Vector2i) -> ZoneMapDefinition:
 	var definition := ZoneMapDefinition.new()
@@ -91,15 +94,15 @@ static func build_definition(zone: Node3D, zone_id: StringName, world_origin: Ve
 	definition.world_size = world_size
 	definition.image_size = image_size
 	definition.landmarks = collect_landmarks(zone)
-	# Ids de subrecurso fijos: el .tres sale igual en cada horneado (sin ellos Godot los sortea).
+	# Fixed subresource ids: the .tres comes out the same on every bake (without them Godot draws them at random).
 	for index: int in definition.landmarks.size():
 		definition.landmarks[index].resource_scene_unique_id = "lugar%d" % index
 	return definition
 
 
-## Lugares fijos de la zona: el nodo de cada fortaleza, las zonas seguras con reino (los campamentos) y
-## las puertas de las murallas ([code]Murallas/<muralla>/Puerta[/code]). Los nombres de las murallas
-## son de la zona (tabla [constant WALL_PASSES]); hasta que las zonas declaren sus pasos, esto basta.
+## Fixed places of the zone: the node of each fortress, the safe zones with a realm (the camps) and
+## the wall gates ([code]Murallas/<wall>/Puerta[/code]). The wall names
+## belong to the zone ([constant WALL_PASSES] table); until zones declare their passes, this is enough.
 static func collect_landmarks(zone: Node3D) -> Array[MapLandmark]:
 	var landmarks: Array[MapLandmark] = []
 	for node: Node in zone.get_tree().get_nodes_in_group(Zones.FORTRESS_GROUP):
@@ -129,17 +132,17 @@ static func collect_landmarks(zone: Node3D) -> Array[MapLandmark]:
 	return landmarks
 
 
-## Murallas del Vado Gris: nombre del nodo -> [nombre del paso, reino al que lleva (código de red)].
+## Vado Gris walls: node name -> [name of the pass, realm it leads to (network code)].
 const WALL_PASSES: Dictionary = {
 	"MuroDeEscarcha": ["Puerta del Muro de Escarcha", NetProtocol.Realm.VARDHEIM],
 	"MurallaDelAlba": ["Puerta de la Muralla del Alba", NetProtocol.Realm.SOLMARCH],
 }
 
 
-# --- Horneado ---------------------------------------------------------------------------------
+# --- Baking -----------------------------------------------------------------------------------
 
-## Hornea la imagen del mapa de [param zone] (en el árbol) con las medidas de [param definition]. Devuelve
-## null si la zona no tiene un [Terrain3D] con datos.
+## Bakes the map image of [param zone] (in the tree) with the measurements of [param definition]. Returns
+## null if the zone has no [Terrain3D] with data.
 static func bake(zone: Node3D, definition: ZoneMapDefinition) -> Image:
 	var terrain: Terrain3D = zone.get_node_or_null(^"Terrain3D") as Terrain3D
 	if terrain == null or terrain.data == null:
@@ -176,8 +179,8 @@ static func bake(zone: Node3D, definition: ZoneMapDefinition) -> Image:
 	return image
 
 
-## Altura del terreno en el centro de cada píxel (metros), fila a fila. Donde Terrain3D no tiene datos
-## (NAN) se usa la mínima de las demás.
+## Terrain height at the center of each pixel (meters), row by row. Where Terrain3D has no data
+## (NAN) the minimum of the others is used.
 static func sample_heights(terrain: Terrain3D, definition: ZoneMapDefinition) -> PackedFloat32Array:
 	var width: int = definition.image_size.x
 	var height: int = definition.image_size.y
@@ -202,8 +205,8 @@ static func sample_heights(terrain: Terrain3D, definition: ZoneMapDefinition) ->
 	return heights
 
 
-## Color del suelo en [param world]: el de la textura base mezclado con el de la superpuesta según la
-## mezcla pintada.
+## Ground color at [param world]: the base texture's blended with the overlay's according to the
+## painted blend.
 static func ground_color(terrain: Terrain3D, world: Vector3) -> Color:
 	var ids: Vector3 = terrain.data.get_texture_id(world)
 	var base: Color = TEXTURE_COLORS.get(roundi(ids.x), UNKNOWN_TEXTURE_COLOR)
@@ -211,10 +214,10 @@ static func ground_color(terrain: Terrain3D, world: Vector3) -> Color:
 	return base.lerp(overlay, clampf(ids.z, 0.0, 1.0))
 
 
-# --- Estructuras ------------------------------------------------------------------------------
+# --- Structures -------------------------------------------------------------------------------
 
-## Contornos en planta de las colisiones estáticas de la capa del mundo bajo [param zone] y de las
-## instancias de sus [BakedMultiMesh] (ver la descripción de la clase).
+## Footprint outlines of the static collisions of the world layer under [param zone] and of the
+## instances of its [BakedMultiMesh] (see the class description).
 static func collect_footprints(zone: Node) -> Array[Footprint]:
 	var footprints: Array[Footprint] = []
 	for node: Node in zone.find_children("*", "CollisionShape3D", true, false):
@@ -235,8 +238,8 @@ static func collect_footprints(zone: Node) -> Array[Footprint]:
 	return footprints
 
 
-## Contorno en planta de una forma de colisión colocada en [param shape_transform] (mundo), o null si no
-## se dibuja (terreno, formas sin volumen).
+## Footprint outline of a collision shape placed at [param shape_transform] (world), or null if
+## it is not drawn (terrain, shapes without volume).
 static func footprint_of_shape(shape: Shape3D, shape_transform: Transform3D) -> Footprint:
 	var points := PackedVector2Array()
 	var kind: StringName = Footprint.BUILDING
@@ -270,10 +273,10 @@ static func footprint_of_shape(shape: Shape3D, shape_transform: Transform3D) -> 
 	return Footprint.make(hull, kind)
 
 
-## Contornos de las instancias de una malla repetida: [param mesh_bounds] es la caja de la malla,
-## [param packed_transforms] las transformaciones locales ([constant BakedMultiMesh.FLOATS_PER_INSTANCE]
-## números por instancia) y [param node_transform] la del nodo. Las mallas más bajas que
-## [constant MIN_INSTANCE_HEIGHT] no se dibujan.
+## Outlines of the instances of a repeated mesh: [param mesh_bounds] is the mesh's box,
+## [param packed_transforms] the local transforms ([constant BakedMultiMesh.FLOATS_PER_INSTANCE]
+## numbers per instance) and [param node_transform] the node's. Meshes lower than
+## [constant MIN_INSTANCE_HEIGHT] are not drawn.
 static func footprints_of_instances(mesh_bounds: AABB, packed_transforms: PackedFloat32Array,
 		node_transform: Transform3D) -> Array[Footprint]:
 	var footprints: Array[Footprint] = []
@@ -298,8 +301,8 @@ static func footprints_of_instances(mesh_bounds: AABB, packed_transforms: Packed
 	return footprints
 
 
-## Casco convexo de [param points] sin el vértice repetido del final (menos de 3 puntos distintos dan
-## un polígono vacío).
+## Convex hull of [param points] without the repeated vertex at the end (fewer than 3 distinct points give
+## an empty polygon).
 static func convex_hull(points: PackedVector2Array) -> PackedVector2Array:
 	var hull: PackedVector2Array = Geometry2D.convex_hull(points)
 	if hull.size() > 1 and hull[0] == hull[hull.size() - 1]:
@@ -339,9 +342,9 @@ static func _circle_footprint(center: Vector2, radius: float) -> Footprint:
 	return Footprint.make(polygon, kind)
 
 
-# --- Dibujo -----------------------------------------------------------------------------------
+# --- Drawing ----------------------------------------------------------------------------------
 
-# Pinta los triángulos de las mallas de los hijos del nodo «Agua» proyectados sobre el plano.
+# Paints the triangles of the meshes of the children of the «Agua» node projected onto the plane.
 static func _draw_water(image: Image, zone: Node3D, definition: ZoneMapDefinition) -> void:
 	var water: Node = zone.get_node_or_null(^"Agua")
 	if water == null:
@@ -365,7 +368,7 @@ static func _draw_water(image: Image, zone: Node3D, definition: ZoneMapDefinitio
 				_fill_triangle(image, a, b, c, WATER_COLOR, WATER_OPACITY)
 
 
-# Rellena un triángulo (píxeles) mezclando [param color] con lo que ya hay.
+# Fills a triangle (pixels) blending [param color] with what is already there.
 static func _fill_triangle(image: Image, a: Vector2, b: Vector2, c: Vector2, color: Color, opacity: float) -> void:
 	var min_x: int = maxi(floori(minf(a.x, minf(b.x, c.x))), 0)
 	var max_x: int = mini(ceili(maxf(a.x, maxf(b.x, c.x))), image.get_width() - 1)
@@ -384,7 +387,7 @@ static func _fill_triangle(image: Image, a: Vector2, b: Vector2, c: Vector2, col
 				image.set_pixel(x, y, image.get_pixel(x, y).lerp(color, opacity))
 
 
-# Pinta los contornos: primero los árboles y las rocas, luego las estructuras (con su borde oscuro).
+# Paints the outlines: first the trees and rocks, then the structures (with their dark edge).
 static func _draw_footprints(image: Image, footprints: Array[Footprint], definition: ZoneMapDefinition) -> void:
 	for pass_kinds: Array in [[Footprint.TREE, Footprint.ROCK], [Footprint.BUILDING], [Footprint.WALL]]:
 		for footprint: Footprint in footprints:
@@ -398,7 +401,7 @@ static func _draw_footprints(image: Image, footprints: Array[Footprint], definit
 			draw_outline(image, polygon, OUTLINE if footprint.kind != Footprint.TREE else fill.darkened(0.35))
 
 
-## Color de relleno de una clase de contorno.
+## Fill color of an outline class.
 static func fill_color(kind: StringName) -> Color:
 	match kind:
 		Footprint.TREE:
@@ -410,7 +413,7 @@ static func fill_color(kind: StringName) -> Color:
 	return BUILDING_FILL
 
 
-## Rellena un polígono convexo (en píxeles) con [param color].
+## Fills a convex polygon (in pixels) with [param color].
 static func fill_convex(image: Image, polygon: PackedVector2Array, color: Color) -> void:
 	if polygon.size() < 3:
 		return
@@ -436,7 +439,7 @@ static func fill_convex(image: Image, polygon: PackedVector2Array, color: Color)
 			image.set_pixel(x, y, color)
 
 
-## Dibuja el borde de un polígono (en píxeles) con [param color], un píxel de grosor.
+## Draws the border of a polygon (in pixels) with [param color], one pixel thick.
 static func draw_outline(image: Image, polygon: PackedVector2Array, color: Color) -> void:
 	for i: int in polygon.size():
 		var p: Vector2 = polygon[i]

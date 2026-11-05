@@ -1,6 +1,6 @@
 class_name DamageFormula
 extends RefCounted
-## Combat damage formula (docs/combate.md, section 4.4): integers, no randomness and stateless.
+## Combat damage formula (docs/combat.md, section 4.4): integers, no randomness and stateless.
 ## Only the server evaluates it, but it is shared so that tests and tools (the
 ## DPS meter, the balancing UI) use the same one.
 ## [br][br]

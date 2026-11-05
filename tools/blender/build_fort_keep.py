@@ -42,7 +42,7 @@ glTF/Godot, so the door faces -X in Godot (toward the fort's gate). Origin: cent
 keep at ground level; the plinth goes 1.2 m below the origin to bury itself in the hill.
 Footprint: 9.1 m of plinth (with the porch, 10.0 m on the door axis; the fallen stones add
 about 0.5 m): before connecting it you have to reposition the CaptureCircle (radius 5 m, center at
-x = -8.5) and the CaptainSpawn, re-bake vado_gris_navmesh.tres and fix docs/zonas/vado_gris.md
+x = -8.5) and the CaptainSpawn, re-bake vado_gris_navmesh.tres and fix docs/zones/vado_gris.md
 (it says a tower of 6 x 6 x 12 m).
 
 Vertex color (COLOR_0, linear), which fort_keep_surface.gdshader reads:

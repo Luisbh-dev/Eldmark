@@ -1,6 +1,6 @@
 class_name DamageLedger
 extends RefCounted
-## Log of the damage a victim has received (docs/combate.md, section 5; GUE-05): who did it
+## Log of the damage a victim has received (docs/combat.md, section 5; GUE-05): who did it
 ## how much and when, during the last [constant WINDOW_TICKS] ticks (15 s).
 ## [br][br]
 ## With it, on death, the server splits the credit: the killing blow goes to whoever dealt the lethal

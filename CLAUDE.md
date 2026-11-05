@@ -4,7 +4,7 @@ A 3D medieval fantasy MMORPG in Godot 4.7 (GDScript). Third-person action combat
 
 Three realms, each with its own zones, cities and a wall surrounding it, plus a central war zone with capturable forts and castles. Design and roadmap in `docs/vision.md`: read it before making design decisions.
 
-Eldmark is an open source project: the code is MIT-licensed, the assets made by the project are CC BY 4.0, and third-party assets keep their own license as recorded in `assets/LICENCIAS.md`.
+Eldmark is an open source project: the code is MIT-licensed, the assets made by the project are CC BY 4.0, and third-party assets keep their own license as recorded in `assets/LICENSES.md`.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ Eldmark is an open source project: the code is MIT-licensed, the assets made by 
 
 - Follow the official GDScript style guide: files and variables in `snake_case`, `class_name` in `PascalCase`, tabs.
 - Always use static typing (`var speed: float = 5.0`, `func move(dir: Vector3) -> void`).
-- Identifiers, comments, doc comments and documentation in English. UI text and runtime log messages stay in Spanish until localization lands (see the backlog). Files changed by the pending quality-waves branch (wip/o2-integracion) still have Spanish comments and docs; translate them with tools/i18n after merging.
+- Identifiers, comments, doc comments and documentation in English. UI text and runtime log messages stay in Spanish until localization lands (see the backlog).
 - Scenes and resources in text format (`.tscn`, `.tres`). No binary `.scn`/`.res`. The only exception: the Terrain3D region `.res` files, which go through Git LFS.
 - Large binaries (models, textures, audio, GDExtension DLLs) go through Git LFS; see `.gitattributes`.
 
@@ -27,7 +27,7 @@ Eldmark is an open source project: the code is MIT-licensed, the assets made by 
 
 - Art direction: the Quaternius "Universal + MegaKit" family (stylized with textures, heroic proportions), a single kit recolored per realm. Details in `docs/art.md`.
 - The original zips are kept outside the repo, in `../Eldmark-raw/<pack>/`. Only the glTF files and textures that are used go into the repo.
-- Every pack that enters the repo is recorded in `assets/LICENCIAS.md` (author, version, date, URL, license).
+- Every pack that enters the repo is recorded in `assets/LICENSES.md` (author, version, date, URL, license).
 - Animations: variants without root motion. Movement is decided by the shared simulation, not by the animation. The server does not play animations.
 
 ## Running Godot from the terminal

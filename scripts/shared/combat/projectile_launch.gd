@@ -8,7 +8,7 @@ extends RefCounted
 ## [b]What comes out[/b] ([method from_state]): on the commit tick ([method ActionMachine.is_commit_tick])
 ## of a LIGHT or HEAVY whose attack has [member AttackTicks.projectile_id], or of an ABILITY with
 ## [member AbilityTicks.projectile_id]. The speed is [code]projectile_speed_mps ·
-## lerp(1, charge_speed_scale, f)[/code] with the [code]f[/code] of the damage charge (combate.md, section
+## lerp(1, charge_speed_scale, f)[/code] with the [code]f[/code] of the damage charge (combat.md, section
 ## 4.4; 0 with no charge and in abilities).
 ## [br][br]
 ## [b]Direction[/b] ([method launch]): canonical camera ray ([method AimRay.canonical]) with the
@@ -78,7 +78,7 @@ static func for_ability(ability: AbilityTicks) -> ProjectileLaunch:
 	return launch
 
 
-## The [code]f[/code] of the charge (combate.md, section 4.4): [code](charge − min) / (max − min)[/code]
+## The [code]f[/code] of the charge (combat.md, section 4.4): [code](charge − min) / (max − min)[/code]
 ## clamped to [0, 1]; 0 if the attack is not charged.
 static func charge_progress(charge_ticks: int, charge_min_ticks: int, charge_max_ticks: int) -> float:
 	if charge_max_ticks <= charge_min_ticks:

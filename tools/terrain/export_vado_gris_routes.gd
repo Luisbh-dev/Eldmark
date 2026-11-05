@@ -21,9 +21,9 @@ const OUTPUT_PATH: String = "res://data/routes/vado_gris.tres"
 const GATE_POINT: Vector2 = Vector2(-20.0, 0.0)
 const CIRCLE_POINT: Vector2 = Vector2(-8.5, 0.0)
 const CIRCLE_RADIUS: float = 5.0
-## The palisade enclosure (40 x 40 m, docs/zonas/vado_gris.md), measured from the gate: depth and width.
+## The palisade enclosure (40 x 40 m, docs/zones/vado_gris.md), measured from the gate: depth and width.
 const ENCLOSURE_SIZE: Vector2 = Vector2(40.0, 40.0)
-## The walkway (GUE-45; docs/zonas/vado_gris.md): its floor is 3.35 m above the fort plateau (10.2 m: at 13.55 m) and its axis
+## The walkway (GUE-45; docs/zones/vado_gris.md): its floor is 3.35 m above the fort plateau (10.2 m: at 13.55 m) and its axis
 ## at 18.77 m from the center (the 20 m half side, minus the radius of the logs and half of their 2 m width). The bots
 ## walk along the axis from the top of the north ramp to that of the south one, passing over the gate (west face).
 const WALKWAY_HEIGHT: float = 13.55

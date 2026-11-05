@@ -141,7 +141,7 @@ extends Node
 ## server and the combat ones revive knocked-down allies (the siege ones follow their plan). The siege
 ## ones also avoid the telegraphed strikes of NPCs and count their own in the rally (F6b).
 ## [br][br]
-## [b]Combat[/b] (docs/combate.md): a [CombatDirector] carries health, hits with rewind, deaths and
+## [b]Combat[/b] (docs/combat.md): a [CombatDirector] carries health, hits with rewind, deaths and
 ## respawns; NPCs ([method add_npc], the training dummy) are bodies simulated in the same loop as
 ## players; the debug commands and the console go through the [CommandRegistry] and
 ## [code]--combat-log[/code] leaves one line per resolved hit. An [NpcSpawnerSystem]

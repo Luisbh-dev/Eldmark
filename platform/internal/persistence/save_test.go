@@ -52,7 +52,7 @@ func expectSave(t *testing.T, res *platformtest.Response, applied, duplicate boo
 	platformtest.Expect(t, res, 200, "")
 	if res.Body["applied"] != applied || res.Body["duplicate"] != duplicate || res.Int("save_version") != version ||
 		res.String("instance_status") == "" {
-		t.Fatalf("se esperaba applied=%v duplicate=%v save_version=%d: %s", applied, duplicate, version, res.Raw)
+		t.Fatalf("expected applied=%v duplicate=%v save_version=%d: %s", applied, duplicate, version, res.Raw)
 	}
 }
 
@@ -72,7 +72,7 @@ func TestSaveSeqIdempotency(t *testing.T) {
 	second["progress"].(map[string]any)["ops"] = []any{map[string]any{"op_id": "6"}}
 	expectSave(t, w.z.Save(w.id, second), true, false, 2)
 	if seq, version := w.leaseState(); seq != 2 || version != 2 {
-		t.Fatalf("arrendamiento: seq %d, versión %d", seq, version)
+		t.Fatalf("lease: seq %d, version %d", seq, version)
 	}
 	other := w.body(2)
 	other["reason"] = 2
@@ -87,10 +87,10 @@ func TestSaveSeqIdempotency(t *testing.T) {
 		t.Fatal(res.Raw)
 	}
 	if seq, _ := w.leaseState(); seq != 2 {
-		t.Fatal("un invalid_save no escribe")
+		t.Fatal("an invalid_save does not write")
 	}
 	if !strings.Contains(w.p.Logs.String(), "guardado rechazado") {
-		t.Fatal("se registra")
+		t.Fatal("it is logged")
 	}
 }
 
@@ -106,7 +106,7 @@ func TestDuplicateKeepsItsSaveVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	if w.p.Progress.SaveVersion(w.id) != 2 {
-		t.Fatal("el almacén sigue")
+		t.Fatal("the store keeps going")
 	}
 	expectSave(t, w.z.Save(w.id, raw), false, true, 1)
 }
@@ -143,12 +143,12 @@ func TestLateSaveAfterReleaseAndAfterAnotherClaim(t *testing.T) {
 	var free bool
 	w.p.Scalar(&free, `select zone_instance_id is null from character_leases where character_id = $1`, w.id)
 	if !free {
-		t.Fatal("el guardado tardío no vuelve a tomar el arrendamiento")
+		t.Fatal("the late save does not take the lease again")
 	}
 	old := w.lease
 	w.lease = w.z.Join(w.pl, w.id)
 	if w.lease == old {
-		t.Fatal("una reclamación cambia el lease_id")
+		t.Fatal("a claim changes the lease_id")
 	}
 	b := w.z.SaveBody(w.id, old, 2)
 	platformtest.Expect(t, w.z.Save(w.id, b), 409, "lease_lost")
@@ -169,7 +169,7 @@ func TestSaveWithReleaseLease(t *testing.T) {
 	w.p.Scalar(&free, `select zone_instance_id is null and released_at = $2 from character_leases where character_id = $1`,
 		w.id, w.p.Clock.Now())
 	if !free {
-		t.Fatal("liberado")
+		t.Fatal("released")
 	}
 	platformtest.Expect(t, w.p.Enter(w.pl, w.id), 200, "")
 }
@@ -215,7 +215,7 @@ func TestEnvelopeErrors(t *testing.T) {
 	res := w.z.Do("PUT", "/internal/v1/characters/x/state", w.body(1))
 	platformtest.Expect(t, res, 400, "invalid_save")
 	if seq, _ := w.leaseState(); seq != 0 || w.p.Progress.SaveVersion(w.id) != 0 {
-		t.Fatal("nada escrito")
+		t.Fatal("nothing written")
 	}
 }
 
@@ -246,7 +246,7 @@ func TestSavePvP(t *testing.T) {
 	}
 	expectSave(t, w.z.Save(w.id, w.body(2)), true, false, 2) // without pvp
 	if got := stats(); !equal(got, want) {
-		t.Fatalf("sin pvp no cambia: %v", got)
+		t.Fatalf("without pvp it does not change: %v", got)
 	}
 	b := w.body(3)
 	b["pvp"] = map[string]any{"kills": 2, "deaths": 5, "assists": 0, "captures": 1, "gate_damage": 100, "defend_s": 130}
@@ -298,7 +298,7 @@ func TestInvalidSaveFromTheStore(t *testing.T) {
 		t.Fatal(res.Raw)
 	}
 	if seq, _ := w.leaseState(); seq != 0 || w.p.Count(`select kills from character_pvp_stats where character_id = $1`, w.id) != 0 {
-		t.Fatal("nada escrito")
+		t.Fatal("nothing written")
 	}
 }
 
@@ -322,7 +322,7 @@ func TestDeferredConstraintAtCommit(t *testing.T) {
 	}
 	if seq, _ := w.leaseState(); seq != 0 || w.p.Count(`select count(*) from test_slots`) != 0 ||
 		w.p.Count(`select kills from character_pvp_stats where character_id = $1`, w.id) != 0 {
-		t.Fatal("nada escrito")
+		t.Fatal("nothing written")
 	}
 }
 
@@ -338,10 +338,10 @@ func TestSerializationFailureThatRepeats(t *testing.T) {
 	res := w.z.Save(w.id, w.body(1))
 	platformtest.Expect(t, res, 503, "db_unavailable")
 	if calls.Load() != 4 {
-		t.Fatalf("intentos: %d", calls.Load())
+		t.Fatalf("attempts: %d", calls.Load())
 	}
 	if seq, _ := w.leaseState(); seq != 0 {
-		t.Fatal("nada escrito")
+		t.Fatal("nothing written")
 	}
 	// One that clashes once and then goes through: it is applied.
 	calls.Store(0)
@@ -395,10 +395,10 @@ func TestConcurrentSaves(t *testing.T) {
 	seq, version := w.leaseState()
 	if int64(applied.Load()) != version || w.p.Progress.SaveVersion(w.id) != version || applied.Load()+stale.Load() != 100 ||
 		seq != 100 {
-		t.Fatalf("aplicados %d, viejos %d, save_version %d (almacén %d), seq %d", applied.Load(), stale.Load(), version,
+		t.Fatalf("applied %d, stale %d, save_version %d (store %d), seq %d", applied.Load(), stale.Load(), version,
 			w.p.Progress.SaveVersion(w.id), seq)
 	}
-	t.Logf("aplicados %d de 100", applied.Load())
+	t.Logf("applied %d of 100", applied.Load())
 }
 
 // After replace, the replaced instance sends its final save and it is valid (instance_status
@@ -431,7 +431,7 @@ func TestReplacedInstanceFinalSave(t *testing.T) {
 	res = fresh.Claim(77, w.id)
 	platformtest.Expect(t, res, 200, "")
 	if res.Body["progress"].(map[string]any)["level"].(json.Number).String() != "9" {
-		t.Fatalf("la reclamación trae el final: %s", res.Raw)
+		t.Fatalf("the claim brings the final state: %s", res.Raw)
 	}
 }
 
@@ -483,7 +483,7 @@ func TestSaveMany(t *testing.T) {
 		t.Fatal(res.Raw)
 	}
 	if seq, _ := w.leaseState(); seq != 1 {
-		t.Fatal("todo o nada")
+		t.Fatal("all or nothing")
 	}
 	// The same character twice and an envelope from another instance: envelope.
 	platformtest.Expect(t, w.z.Do("POST", "/internal/v1/saves", batch(w.body(2), w.body(3))), 400, "invalid_save")

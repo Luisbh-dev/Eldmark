@@ -5,7 +5,7 @@ It covers the platform service and everything that goes through it: TEC-22 to TE
 PRG-41, SOC-13 to SOC-18, GUE-19 and the client side of UI-22 to UI-24.
 
 It builds on networking ([networking.md](networking.md): §3 connection, §5.3 authentication, §12 security, §15 extension, §17
-contracts), combat ([combate.md](combate.md) §1 and §5), the fort ([fortress.md](fortress.md) §5) and social features
+contracts), combat ([combat.md](combat.md) §1 and §5), the fort ([fortress.md](fortress.md) §5) and social features
 ([social.md](social.md) §8 to §11). Items, inventory, currencies, levels, races, appearance and the saved combat
 configuration (CMB-30) belong to `docs/progression.md` (PRG-02, PRG-10 to PRG-16, CMB-30, ART-19, in progress at the
 same time). The boundary is here (§7.5); what was agreed with that document and where each rule lives is in §17.
@@ -2043,7 +2043,7 @@ preservation test picks it up by itself and fails if any table is left without r
   `\restrict`/`\unrestrict` lines, which PostgreSQL 16.10 and later put with a different key in every dump.
   `max_connections = 200`.
 - **`TMPDIR` must be accessible to the `postgres` user** when tests run as root. On this machine, under the session's
-  scratchpad the server dies mid-test (`/tmp/claude-0` goes back to 0700 while it runs); with the default `TMPDIR`
+  scratchpad the server dies mid-test (a session-specific `TMPDIR` goes back to 0700 while it runs); with the default `TMPDIR`
   (`/tmp`) it works fine.
 - **`db.InTx`:** the "three times" of §7.3 are three retries, four attempts in total (`MaxAttempts`).
 - **413:** code `too_large` ("La petición es demasiado grande", i.e. the request is too large), which §4.1 did not

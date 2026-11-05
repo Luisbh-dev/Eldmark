@@ -1,7 +1,7 @@
 class_name ActionWire
 extends RefCounted
 ## The action byte of the network record ([member EntityRecord.action]) as published by the
-## server and read by the client (docs/combate.md, sections 3.4 and 6).
+## server and read by the client (docs/combat.md, sections 3.4 and 6).
 ## [br][br]
 ## It starts from the byte of [method ActionMachine.action_byte] (bits 0-3 the action, 4-5 the phase, 6-7 the combo
 ## step of the light attack in progress or the ability slot: 0-2, or 3 if it is a consumable) and fills

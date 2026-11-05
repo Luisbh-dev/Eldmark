@@ -1,52 +1,60 @@
 class_name ActionBar
 extends Control
-## Barra de acciones (UI-11, docs/habilidades.md, sección 6.3): abajo al centro, sobre la vida y la
-## resistencia. Casillas ([UIIconSlot]) para el ataque ligero y fuerte (con el arco, el disparo rápido y el
-## tensado), el bloqueo (oculto si el arma no bloquea), la esquiva, las habilidades 1–3 del arma activa,
-## las dos pociones con sus cargas y el cambio de arma con el icono del arma de la otra ranura.
+## Action bar (UI-11, docs/abilities.md, section 6.3): bottom center, above health and
+## stamina. Slots ([UIIconSlot]) for the light and heavy attack (with the bow, the quick shot and the
+## draw), the block (hidden if the weapon cannot block), the dodge, abilities 1-3 of the active weapon,
+## the two potions with their charges and the weapon swap with the icon of the weapon in the other slot.
 ## [br][br]
-## [b]Lee el estado predicho cada fotograma[/b] ([member PlayerCharacter.combat] en el tick
-## [member PlayerCharacter.last_input_tick], el último predicho): la reutilización de cada casilla es
-## [code]ability_ready[i] − tick[/code] (o la compartida de las pociones), con barrido y segundos, y
-## destello al quedar lista. No predice nada por su cuenta: un rechazo del servidor (la reconciliación
-## quita la habilidad y devuelve [code]ability_ready[/code] a su valor) deja la casilla lista en el
-## fotograma siguiente, sin destello. [method ActionMachine.ability_status] apaga las casillas que ahora
-## no se pueden usar (BLOCKED) y tacha las pociones sin cargas (NO_CHARGES); la esquiva y el bloqueo se
-## apagan agotado y la esquiva parpadea cuando una acción falla por falta de resistencia
-## ([method notify_no_stamina], el bit 1 de [member CombatState.combat_flags], como la barra de
-## resistencia). Al cambiar de arma cambian los iconos.
+## [b]It reads the predicted state every frame[/b] ([member PlayerCharacter.combat] at tick
+## [member PlayerCharacter.last_input_tick], the last predicted one): the cooldown of each slot is
+## [code]ability_ready[i] - tick[/code] (or the shared one of the potions), with a sweep and seconds, and
+## a flash when it becomes ready. It predicts nothing on its own: a server rejection (reconciliation
+## removes the ability and returns [code]ability_ready[/code] to its value) leaves the slot ready on the
+## next frame, with no flash. [method ActionMachine.ability_status] dims the slots that cannot be used
+## right now (BLOCKED) and crosses out potions without charges (NO_CHARGES); the dodge and the block are
+## dimmed when exhausted, and the dodge blinks when an action fails for lack of stamina
+## ([method notify_no_stamina], bit 1 of [member CombatState.combat_flags], like the stamina bar).
+## The icons change when the weapon changes.
 ## [br][br]
-## [b]Pulsar en reutilización[/b] (o una poción sin cargas) hace parpadear la casilla: lo ve el cliente
-## en las entradas que genera su controlador ([signal LocalPlayerController.input_generated],
-## [method handle_input]); no viaja.
+## [b]Pressing during a cooldown[/b] (or a potion without charges) makes the slot blink: the client sees
+## it in the inputs its controller generates ([signal LocalPlayerController.input_generated],
+## [method handle_input]); it is not sent over the network.
 ## [br][br]
-## Iconos provisionales hasta ART-12: cuadros con la inicial y el color del arma ([CombatIcons]). Solo
-## cliente.
+## Placeholder icons until ART-12: squares with the weapon's initial and color ([CombatIcons]). Client
+## only.
 
-## Casillas, en el orden en que se ven.
+## Slots, in the order they are shown.
 enum Slot { PRIMARY, BLOCK, DODGE, ABILITY_1, ABILITY_2, ABILITY_3, CONSUMABLE_1, CONSUMABLE_2, SWAP }
 
-## Acción del [InputMap] de cada casilla (el glifo de su tecla).
+## [InputMap] action of each slot (the glyph of its key).
 const SLOT_ACTIONS: Array[StringName] = [
 	&"primary_attack", &"block", &"dodge", &"ability_1", &"ability_2", &"ability_3",
 	&"consumable_1", &"consumable_2", &"swap_weapon",
 ]
-## Separación (px) entre casillas y entre grupos (ataques, habilidades, pociones, cambio).
+## Gap (px) between slots and between groups (attacks, abilities, potions, swap).
 const SLOT_GAP: int = 6
 const GROUP_GAP: float = 16.0
-## Segundos que parpadea una casilla pulsada a destiempo.
+## Translucent band behind the slots: margin (px) around them and color.
+const BACKDROP_PADDING: Vector2 = Vector2(10.0, 6.0)
+const BACKDROP_COLOR: Color = Color(0.03, 0.035, 0.045, 0.58)
+## Seconds a slot blinks when pressed at the wrong time.
 const BLINK_SECONDS: float = 0.45
 const BLINK_HERTZ: float = 8.0
 const BLINK_COLOR: Color = Color(1.0, 0.2, 0.15, 1.0)
 const CROSS_COLOR: Color = Color(0.9, 0.15, 0.12, 0.9)
-## Letra de las casillas que no son habilidades.
+## Letter of the slots that are not abilities.
+const ICON_ATTACK: StringName = &"sword_light"
+const ICON_SHOT: StringName = &"bow_quick"
+const ICON_BLOCK: StringName = &"block"
+const ICON_DODGE: StringName = &"dodge"
+## Fallback letters (if an icon's drawing is missing).
 const LETTER_ATTACK: String = "A"
 const LETTER_SHOT: String = "D"
 const LETTER_BLOCK: String = "B"
 const LETTER_DODGE: String = "E"
 
-## Botones de [PlayerInput] de las casillas con reutilización, y la casilla de
-## [method ActionMachine.ability_status] que les toca.
+## [PlayerInput] buttons of the slots with a cooldown, and the [method ActionMachine.ability_status]
+## slot that corresponds to them.
 const _COOLDOWN_BUTTONS: Dictionary[int, Vector2i] = {
 	PlayerInput.ABILITY_1: Vector2i(Slot.ABILITY_1, 0),
 	PlayerInput.ABILITY_2: Vector2i(Slot.ABILITY_2, 1),
@@ -56,17 +64,17 @@ const _COOLDOWN_BUTTONS: Dictionary[int, Vector2i] = {
 }
 
 
-## Una casilla de la barra: un [UIIconSlot] que además se tacha (poción sin cargas), parpadea en rojo
-## (pulsada a destiempo, o la esquiva sin resistencia) y enseña las cargas aunque quede una. No toma el
-## foco del teclado: la barra no debe quedarse con Intro ni con la barra espaciadora.
+## A slot of the bar: a [UIIconSlot] that also gets crossed out (potion without charges), blinks red
+## (pressed at the wrong time, or the dodge without stamina) and shows the charges even when one is left. It does
+## not take keyboard focus: the bar must not hold on to Enter or the space bar.
 class ActionSlot extends UIIconSlot:
-	## Tachada: no hay cargas.
+	## Crossed out: there are no charges.
 	var crossed: bool = false:
 		set(value):
 			if crossed != value:
 				crossed = value
 				queue_redraw()
-	## Enseña [member UIIconSlot.count] también cuando es 1 (las cargas de una poción).
+	## Shows [member UIIconSlot.count] even when it is 1 (a potion's charges).
 	var always_show_count: bool = false
 	var _blink_left: float = 0.0
 	var _blink_clock: float = 0.0
@@ -77,7 +85,7 @@ class ActionSlot extends UIIconSlot:
 		focus_mode = Control.FOCUS_NONE
 		mouse_filter = Control.MOUSE_FILTER_PASS
 
-	## Parpadea en rojo [constant BLINK_SECONDS] s.
+	## Blinks red for [constant BLINK_SECONDS] s.
 	func blink() -> void:
 		_blink_left = BLINK_SECONDS
 		_blink_clock = 0.0
@@ -87,11 +95,11 @@ class ActionSlot extends UIIconSlot:
 	func is_blinking() -> bool:
 		return _blink_left > 0.0
 
-	## Veces que ha parpadeado desde que existe.
+	## Number of times it has blinked since it was created.
 	func get_blink_count() -> int:
 		return _blinks
 
-	## Avanza el parpadeo [param delta] segundos.
+	## Advances the blink by [param delta] seconds.
 	func advance_blink(delta: float) -> void:
 		if _blink_left <= 0.0:
 			return
@@ -118,8 +126,8 @@ var _character: PlayerCharacter = null
 var _controller: LocalPlayerController = null
 var _row: HBoxContainer = null
 var _slots: Array[ActionSlot] = []
-# Último tick de «lista» visto en cada casilla (-1 = ninguno): si no cambia y se alcanza, la
-# reutilización acabó sola (destello); si cambia a menos, fue un rechazo o un cambio de arma (sin él).
+# Last "ready" tick seen in each slot (-1 = none): if it does not change and is reached, the
+# cooldown ended on its own (flash); if it changes to a lower value, it was a rejection or a weapon swap (no flash).
 var _last_ready: PackedInt64Array = PackedInt64Array()
 var _shown_weapon: int = -1
 var _shown_alt_weapon: int = -1
@@ -141,8 +149,30 @@ func _exit_tree() -> void:
 	_disconnect_controller()
 
 
-## Conecta la barra con el personaje local (su estado predicho) y, si se da, con su controlador (para
-## que una pulsación a destiempo haga parpadear la casilla). Con null la barra se queda quieta.
+# The dark band behind the slots (UI-55): the bottom block reads as a single piece with the health bar.
+func _draw() -> void:
+	if _row == null:
+		return
+	var width: float = _row.get_combined_minimum_size().x
+	var band := Rect2((size.x - width) * 0.5, 0.0, width, size.y).grow_individual(
+			BACKDROP_PADDING.x, BACKDROP_PADDING.y, BACKDROP_PADDING.x, BACKDROP_PADDING.y)
+	var box := StyleBoxFlat.new()
+	box.bg_color = BACKDROP_COLOR
+	box.border_color = UIPalette.BORDER_DIM
+	box.set_border_width_all(1)
+	box.border_width_top = 2
+	box.set_corner_radius_all(6)
+	box.anti_aliasing = true
+	draw_style_box(box, band)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		queue_redraw()
+
+
+## Connects the bar to the local character (its predicted state) and, if given, to its controller (so
+## that a press at the wrong time makes the slot blink). With null the bar stays still.
 func bind(character: PlayerCharacter, controller: LocalPlayerController = null) -> void:
 	_character = character
 	_disconnect_controller()
@@ -155,19 +185,19 @@ func bind(character: PlayerCharacter, controller: LocalPlayerController = null) 
 	_previous_buttons = 0
 
 
-## La casilla [param kind] ([enum Slot]).
+## The [param kind] slot ([enum Slot]).
 func get_slot(kind: int) -> ActionSlot:
 	return _slots[kind] if kind >= 0 and kind < _slots.size() else null
 
 
-## Arma cuyos iconos se enseñan ahora (-1 antes del primer [method refresh]).
+## Weapon whose icons are shown now (-1 before the first [method refresh]).
 func get_shown_weapon() -> int:
 	return _shown_weapon
 
 
-## Pone la barra al día con el estado [param state] en el tick [param tick] (el predicho) y avanza
-## [param delta] segundos los parpadeos. [method _process] lo llama cada fotograma con el personaje de
-## [method bind]; las pruebas, con estados y ticks exactos.
+## Brings the bar up to date with the state [param state] at tick [param tick] (the predicted one) and advances
+## the blinks by [param delta] seconds. [method _process] calls it every frame with the character from
+## [method bind]; the tests, with exact states and ticks.
 func refresh(state: CombatState, tick: int, delta: float = 0.0) -> void:
 	if state == null:
 		return
@@ -177,7 +207,7 @@ func refresh(state: CombatState, tick: int, delta: float = 0.0) -> void:
 	var exhausted: bool = state.is_exhausted()
 	var data: CombatTables = CombatCatalog.tables()
 	var no_cooldowns: bool = (state.combat_flags2 & CombatState.FLAG2_NO_COOLDOWNS) != 0
-	# Habilidades del arma activa.
+	# Abilities of the active weapon.
 	for index: int in CombatState.ABILITY_SLOTS:
 		var slot: ActionSlot = _slots[Slot.ABILITY_1 + index]
 		var status: int = ActionMachine.ability_status(state, index, tick)
@@ -188,7 +218,7 @@ func refresh(state: CombatState, tick: int, delta: float = 0.0) -> void:
 		_set_flags(slot, status == ActionMachine.AbilityStatus.READY
 				or status == ActionMachine.AbilityStatus.COOLDOWN,
 				state.action == CombatState.Action.ABILITY and ability != null and state.action_id == ability.id)
-	# Pociones (reutilización compartida y cargas).
+	# Potions (shared cooldown and charges).
 	for index: int in CombatState.CONSUMABLE_SLOTS:
 		var kind: int = Slot.CONSUMABLE_1 + index
 		var slot: ActionSlot = _slots[kind]
@@ -205,10 +235,11 @@ func refresh(state: CombatState, tick: int, delta: float = 0.0) -> void:
 				or status == ActionMachine.AbilityStatus.COOLDOWN,
 				state.action == CombatState.Action.ABILITY and has_potion
 				and state.action_id == data.consumable_ids[index])
-	# Ataque, bloqueo, esquiva y cambio de arma.
+	# Attack, block, dodge and weapon swap.
 	var can_block: bool = weapon == null or weapon.can_block
 	if _slots[Slot.BLOCK].visible != can_block:
 		_slots[Slot.BLOCK].visible = can_block
+		queue_redraw()
 	_set_flags(_slots[Slot.BLOCK], not exhausted, false)
 	_set_flags(_slots[Slot.DODGE], not exhausted, false)
 	_set_flags(_slots[Slot.SWAP], state.alt_weapon_id != 0, state.action == CombatState.Action.SWAP)
@@ -216,9 +247,8 @@ func refresh(state: CombatState, tick: int, delta: float = 0.0) -> void:
 		slot.advance_blink(delta)
 
 
-## La entrada [param input] que acaba de generar el controlador: las pulsaciones (flancos) de una
-## habilidad en reutilización o de una poción sin cargas o en reutilización hacen parpadear su casilla.
-## Las entradas sustituidas no cuentan.
+## The input [param input] the controller has just generated: presses (edges) of an ability on cooldown
+## or of a potion without charges or on cooldown make its slot blink. Replaced inputs do not count.
 func handle_input(input: PlayerInput) -> void:
 	if input == null:
 		return
@@ -236,12 +266,12 @@ func handle_input(input: PlayerInput) -> void:
 			_slots[target.x].blink()
 
 
-## Una acción ha fallado por falta de resistencia: la esquiva parpadea (como la barra de resistencia).
+## An action has failed for lack of stamina: the dodge blinks (like the stamina bar).
 func notify_no_stamina() -> void:
 	_slots[Slot.DODGE].blink()
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ---------------------------------------------------------------------------------
 
 func _build() -> void:
 	_row = HBoxContainer.new()
@@ -272,21 +302,22 @@ func _disconnect_controller() -> void:
 		_controller.input_generated.disconnect(handle_input)
 
 
-# Iconos y tooltips del arma activa, de sus habilidades, de las pociones y del arma de la otra ranura.
+# Icons and tooltips of the active weapon, its abilities, the potions and the weapon in the other slot.
 func _show_weapons(state: CombatState) -> void:
 	_shown_weapon = state.weapon_id
 	_shown_alt_weapon = state.alt_weapon_id
 	var weapon: WeaponTicks = CombatCatalog.weapon(state.weapon_id)
 	var ranged: bool = is_ranged(weapon)
 	var primary: ActionSlot = _slots[Slot.PRIMARY]
-	primary.icon = CombatIcons.icon(LETTER_SHOT if ranged else LETTER_ATTACK, CombatIcons.weapon_color(state.weapon_id))
+	primary.icon = CombatIcons.named_or_letter(ICON_SHOT if ranged else ICON_ATTACK,
+			LETTER_SHOT if ranged else LETTER_ATTACK, CombatIcons.weapon_color(state.weapon_id))
 	_set_tooltip(primary, CombatText.TEXT_QUICK_SHOT if ranged else CombatText.TEXT_LIGHT,
 			CombatText.TEXT_DRAWN_SHOT if ranged else CombatText.TEXT_HEAVY)
 	var block: ActionSlot = _slots[Slot.BLOCK]
-	block.icon = CombatIcons.icon(LETTER_BLOCK, CombatIcons.weapon_color(state.weapon_id))
+	block.icon = CombatIcons.named_or_letter(ICON_BLOCK, LETTER_BLOCK, CombatIcons.weapon_color(state.weapon_id))
 	_set_tooltip(block, CombatText.TEXT_BLOCK)
 	var dodge: ActionSlot = _slots[Slot.DODGE]
-	dodge.icon = CombatIcons.icon(LETTER_DODGE, CombatIcons.NEUTRAL_COLOR)
+	dodge.icon = CombatIcons.named_or_letter(ICON_DODGE, LETTER_DODGE, CombatIcons.NEUTRAL_COLOR)
 	_set_tooltip(dodge, CombatText.TEXT_DODGE)
 	for index: int in CombatState.ABILITY_SLOTS:
 		var slot: ActionSlot = _slots[Slot.ABILITY_1 + index]
@@ -309,12 +340,12 @@ func _show_weapons(state: CombatState) -> void:
 	else:
 		swap.icon = null
 		_set_tooltip(swap, CombatText.TEXT_SWAP, CombatText.TEXT_NO_SECOND_WEAPON)
-	# Las reutilizaciones son de otra arma: ninguna acaba «sola» en este cambio.
+	# The cooldowns belong to another weapon: none ends "on its own" on this swap.
 	for kind: int in [Slot.ABILITY_1, Slot.ABILITY_2, Slot.ABILITY_3]:
 		_last_ready[kind] = -1
 
 
-## true si [param weapon] dispara (su fuerte lleva proyectil): el arco.
+## true if [param weapon] shoots (its heavy attack carries a projectile): the bow.
 static func is_ranged(weapon: WeaponTicks) -> bool:
 	if weapon == null:
 		return false
@@ -322,8 +353,8 @@ static func is_ranged(weapon: WeaponTicks) -> bool:
 	return heavy != null and heavy.projectile_id != 0
 
 
-# Cambia [member UIIconSlot.enabled] y [member UIIconSlot.selected] solo si cambian (cada asignación vuelve a
-# dibujar la casilla, y la barra se pone al día cada fotograma).
+# Changes [member UIIconSlot.enabled] and [member UIIconSlot.selected] only if they change (every assignment redraws
+# the slot, and the bar is brought up to date every frame).
 static func _set_flags(slot: ActionSlot, enabled: bool, selected: bool) -> void:
 	if slot.enabled != enabled:
 		slot.enabled = enabled
@@ -336,7 +367,7 @@ static func _set_tooltip(slot: ActionSlot, title: String, body: String = "") -> 
 	slot.tooltip_text = title if body.is_empty() else "%s\n%s" % [title, body]
 
 
-# Reutilización de la casilla [param kind]: lista en [param ready_tick], de [param total_ticks].
+# Cooldown of slot [param kind]: ready at [param ready_tick], out of [param total_ticks].
 func _apply_cooldown(kind: int, ready_tick: int, total_ticks: int, tick: int, no_cooldowns: bool) -> void:
 	var slot: ActionSlot = _slots[kind]
 	var previous_ready: int = _last_ready[kind]
@@ -347,8 +378,8 @@ func _apply_cooldown(kind: int, ready_tick: int, total_ticks: int, tick: int, no
 		slot.set_cooldown(float(remaining) / rate, float(maxi(total_ticks, remaining)) / rate)
 	elif slot.is_on_cooldown():
 		if ready_tick == previous_ready and not no_cooldowns:
-			# Acabó sola: termina el barrido con su destello.
+			# Ended on its own: the sweep finishes with its flash.
 			slot.advance(slot.get_cooldown_remaining())
 		else:
-			# Un rechazo (la reconciliación quitó la habilidad) o un cambio de arma: lista sin destello.
+			# A rejection (reconciliation removed the ability) or a weapon swap: ready with no flash.
 			slot.clear_cooldown()

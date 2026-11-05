@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [Combatant] (docs/combate.md, section 5): health, \"in combat\" state, protection,
+## Tests for [Combatant] (docs/combat.md, section 5): health, \"in combat\" state, protection,
 ## control chain with its immunity, regeneration, immortal dummy, death and respawn, the
 ## frozen sample and what is published on the entity for the snapshots.
 

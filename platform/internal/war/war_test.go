@@ -37,7 +37,7 @@ func TestFortresses(t *testing.T) {
 	vado := p.NewZone(1, "vado_gris", 0)
 	platformtest.Expect(t, vado.Register(nil), 200, "")
 	if got := list(t, vado); len(got) != 0 {
-		t.Fatal("primer arranque: lista vacía")
+		t.Fatal("first startup: empty list")
 	}
 	platformtest.Expect(t, put(vado, "fuerte_norte", 0, record(1)), 409, "instance_not_live")
 	platformtest.Expect(t, vado.Live(), 204, "")
@@ -50,7 +50,7 @@ func TestFortresses(t *testing.T) {
 	res = put(vado, "fuerte_norte", 0, record(2))
 	platformtest.Expect(t, res, 409, "version_conflict")
 	if res.ErrValue("version").(json.Number).String() != "1" {
-		t.Fatalf("la versión actual en el error: %s", res.Raw)
+		t.Fatalf("the current version in the error: %s", res.Raw)
 	}
 	res = put(vado, "fuerte_norte", 1, record(2))
 	platformtest.Expect(t, res, 200, "")
@@ -65,15 +65,15 @@ func TestFortresses(t *testing.T) {
 
 	got := list(t, vado)
 	if len(got) != 1 {
-		t.Fatalf("solo las de la zona: %v", got)
+		t.Fatalf("only the zone's own: %v", got)
 	}
 	f := got[0].(map[string]any)
 	if f["fortress_id"] != "fuerte_norte" || f["version"].(json.Number).String() != "2" ||
 		f["record"].(map[string]any)["owner"].(json.Number).String() != "2" {
-		t.Fatalf("registro: %v", f)
+		t.Fatalf("log: %v", f)
 	}
 	if got := list(t, other); len(got) != 1 || got[0].(map[string]any)["fortress_id"] != "fuerte_oeste" {
-		t.Fatalf("la otra zona: %v", got)
+		t.Fatalf("the other zone: %v", got)
 	}
 	var updatedBy string
 	p.Scalar(&updatedBy, `select updated_by::text from fortresses where fortress_id = 'fuerte_norte'`)
@@ -91,7 +91,7 @@ func TestFortresses(t *testing.T) {
 	// A zone of another world with the same zone_id does not see those of world 1.
 	w2 := p.NewZone(2, "vado_gris", 0).Start()
 	if got := list(t, w2); len(got) != 0 {
-		t.Fatalf("otro mundo: %v", got)
+		t.Fatalf("another world: %v", got)
 	}
 	platformtest.Expect(t, put(w2, "fuerte_norte", 0, record(1)), 200, "")
 }
@@ -135,18 +135,18 @@ func TestWarEvents(t *testing.T) {
 	}
 	for i, k := range want {
 		if rejected[i] != k {
-			t.Fatalf("rejected[%d] = %v, se esperaba %q", i, rejected[i], k)
+			t.Fatalf("rejected[%d] = %v, expected %q", i, rejected[i], k)
 		}
 	}
 	if n := p.Count(`select count(*) from fortress_events where world_id = 1 and zone_instance_id = $1`, vado.ID); n != 2 {
-		t.Fatalf("insertados: %d", n)
+		t.Fatalf("inserted: %d", n)
 	}
 	// Resending the batch does not duplicate anything; a clean batch gives 204.
 	vado.Do("POST", "/internal/v1/war-events", batch)
 	platformtest.Expect(t, vado.Do("POST", "/internal/v1/war-events", map[string]any{"zone_instance_id": vado.ID,
 		"events": []any{ev(vado.ID+":1", "fuerte_norte", 3)}}), 204, "")
 	if n := p.Count(`select count(*) from fortress_events`); n != 2 {
-		t.Fatalf("sin duplicados: %d", n)
+		t.Fatalf("no duplicates: %d", n)
 	}
 	// A batch with a broken outer object: 400.
 	platformtest.Expect(t, vado.Do("POST", "/internal/v1/war-events", map[string]any{"zone_instance_id": vado.ID}), 400,

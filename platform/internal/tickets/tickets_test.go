@@ -53,10 +53,10 @@ func TestSpecVector(t *testing.T) {
 	}
 	signed := specTicket().Sign(key1)
 	if got := hex.EncodeToString(signed[:]); got != specHex {
-		t.Fatalf("vector de §5.1:\n got %s\nwant %s", got, specHex)
+		t.Fatalf("vector from §5.1:\n got %s\nwant %s", got, specHex)
 	}
 	if got := base64.StdEncoding.EncodeToString(signed[:]); got != specBase64 {
-		t.Errorf("base64 de §4.5: %s", got)
+		t.Errorf("base64 from §4.5: %s", got)
 	}
 	parsed, err := tickets.Parse(signed[:], keys)
 	if err != nil {
@@ -91,16 +91,16 @@ func TestParseErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		if _, err := tickets.Parse(c.b, keys); !errors.Is(err, c.want) {
-			t.Errorf("%s: %v, se esperaba %v", c.name, err, c.want)
+			t.Errorf("%s: %v, expected %v", c.name, err, c.want)
 		}
 	}
 	// Signed with a different key than the one for its key_id.
 	other := specTicket().Sign(key2)
 	if _, err := tickets.Parse(other[:], keys); !errors.Is(err, tickets.ErrMAC) {
-		t.Errorf("otra clave: %v", err)
+		t.Errorf("another key: %v", err)
 	}
 	if _, err := tickets.Parse(good[:], map[uint8][]byte{2: key2}); !errors.Is(err, tickets.ErrKey) {
-		t.Errorf("sin la clave 1: %v", err)
+		t.Errorf("without key 1: %v", err)
 	}
 }
 
@@ -126,10 +126,10 @@ func TestNewID(t *testing.T) {
 			t.Fatal(err)
 		}
 		if id == 0 || id>>63 != 0 {
-			t.Fatalf("id fuera de rango: %d", id)
+			t.Fatalf("id out of range: %d", id)
 		}
 		if seen[id] {
-			t.Fatalf("id repetido: %d", id)
+			t.Fatalf("repeated id: %d", id)
 		}
 		seen[id] = true
 	}
@@ -184,7 +184,7 @@ func (c validCase) ticket(t *testing.T) tickets.Ticket {
 	ticketID, err1 := strconv.ParseUint(c.TicketID, 10, 64)
 	characterID, err2 := strconv.ParseUint(c.CharacterID, 10, 64)
 	if err1 != nil || err2 != nil {
-		t.Fatalf("%s: ids que no se leen", c.Name)
+		t.Fatalf("%s: ids that cannot be read", c.Name)
 	}
 	return tickets.Ticket{Version: tickets.Version, KeyID: c.KeyID, WorldID: c.WorldID, TicketID: ticketID,
 		CharacterID: characterID, ZoneKey: c.ZoneKey, Channel: c.Channel, Realm: c.Realm, Arrival: c.Arrival,
@@ -267,14 +267,14 @@ func TestSharedVectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Fatalf("%s no está al día: go test ./internal/tickets -run TestSharedVectors -update", vectorsPath)
+		t.Fatalf("%s is not up to date: go test ./internal/tickets -run TestSharedVectors -update", vectorsPath)
 	}
 	var f vectorFile
 	if err := json.Unmarshal(got, &f); err != nil {
 		t.Fatal(err)
 	}
 	if f.Valid[0].Hex != specHex {
-		t.Errorf("el primer vector no es el de §5.1")
+		t.Errorf("the first vector is not the one from §5.1")
 	}
 	for _, z := range f.ZoneKeys {
 		if tickets.ZoneKey(z.ZoneID) != z.ZoneKey {
@@ -293,7 +293,7 @@ func TestSharedVectors(t *testing.T) {
 	for _, c := range f.Invalid {
 		b, _ := hex.DecodeString(c.Hex)
 		if _, err := tickets.Parse(b, keys); !errors.Is(err, errs[c.Error]) {
-			t.Errorf("%s: %v, se esperaba %s", c.Name, err, c.Error)
+			t.Errorf("%s: %v, expected %s", c.Name, err, c.Error)
 		}
 	}
 }

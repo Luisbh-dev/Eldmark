@@ -34,7 +34,7 @@ extends Node
 ## [method get_stats]. With [member ClientConfig.state_log_path],
 ## [code]server_tick,hex(predicted),hex(server)[/code] is written for every snapshot with own state.
 ## [br][br]
-## [b]Combat[/b] (docs/combate.md, sections 5 and 6): from each snapshot with own state the
+## [b]Combat[/b] (docs/combat.md, sections 5 and 6): from each snapshot with own state the
 ## extra block is stored (health, max health, status and respawn tick; see [method get_health]) and
 ## ENTITY_EVENTs are distributed through [signal combat_event]. An [b]own[/b] event (the local player is
 ## attacker, victim, killer or assistant) is delivered as soon as it arrives; the others wait in a
@@ -489,7 +489,7 @@ func send_debug_command(command: int, payload: PackedByteArray) -> void:
 
 
 ## Asks to respawn at point [param point_index] of the realm's list of points (RESPAWN_REQUEST,
-## docs/combate.md section 5). It only makes sense when dead and past [method get_respawn_tick]: the
+## docs/combat.md section 5). It only makes sense when dead and past [method get_respawn_tick]: the
 ## server ignores (with a warning) whatever arrives out of time. Returns false if there is no session in the
 ## world or it could not be sent.
 func send_respawn_request(point_index: int) -> bool:

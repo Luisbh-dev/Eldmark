@@ -1,6 +1,6 @@
 class_name ActionMachine
 extends RefCounted
-## Combat action machine (docs/combate.md, section 3, and docs/abilities.md, section 3):
+## Combat action machine (docs/combat.md, section 3, and docs/abilities.md, section 3):
 ## chained light attacks, charged heavy attack, block with parry, dodge, stamina,
 ## abilities, consumables, weapon swap, movement effects and what the server imposes
 ## (controls, death, knocked down, revive and execute). It is a deterministic function of
@@ -979,7 +979,7 @@ static func _run_block(c: CombatState, t: int, rules: CombatRules, weapon: Weapo
 
 # --- Allowed movement -------------------------------------------------------------------------
 
-# Step 6: the movement table from docs/combate.md, section 3.3, extended in docs/abilities.md,
+# Step 6: the movement table from docs/combat.md, section 3.3, extended in docs/abilities.md,
 # section 3.4, for the current action.
 static func _fill_output(c: CombatState, out: Output, data: CombatTables,
 		weapon: WeaponTicks, t: int) -> void:

@@ -2,8 +2,8 @@
 
 Design of step 4 of the [roadmap](vision.md#roadmap): the first playable objective, the
 fort of the Vado Gris contested between Vardheim and Solmarch ([world.md](world.md),
-[zone](zonas/vado_gris.md)). It builds on the networking ([networking.md](networking.md)) and the combat
-([combate.md](combate.md)).
+[zone](zones/vado_gris.md)). It builds on the networking ([networking.md](networking.md)) and the combat
+([combat.md](combat.md)).
 
 Version 2, after a skeptical review that checked the technical assumptions (navigation, collision
 layers, GPU-less map) in Godot 4.7.2 and Terrain3D 1.0.2 and closed the gaps in the capture rules,
@@ -20,7 +20,7 @@ Two blocks:
 
 ## 0. Decisions
 
-Provisional, made overnight, from the recommendations in [backlog.md](backlog.md#decisiones-pendientes):
+Provisional, made overnight, from the recommendations in [backlog.md](backlog.md#pending-decisions):
 
 | Question | Decision |
 |---|---|
@@ -28,7 +28,7 @@ Provisional, made overnight, from the recommendations in [backlog.md](backlog.md
 | Immediate recapture | No: 2 min of consolidation (circle inactive, gate damageable) until the garrison arrives. |
 | AI architecture | Own hierarchical state machine, parameters in `NpcDefinition`. |
 | Model of the Hollow | Plan B (base body, bone material); for now, the humanoid with a gray material. |
-| Camp | Safe zone for its own realm only (combate.md §5) and two Gate Guardians. |
+| Camp | Safe zone for its own realm only (combat.md §5) and two Gate Guardians. |
 | Match structure | In tests, the fort returns to neutral every 30 min. |
 | Minimap | Top-down image baked without a GPU; enemies only if revealed. |
 | Merits and realm points | Two counters from the same event (PRG-09); in phase 4 they are only counted for the scoreboard. |
@@ -128,7 +128,7 @@ owner (with a neutral fort, `D` is false).
   `DebugCommand.decode` (F2): 8 and 10, none; 9, `u8` with the realm (0 to 3); 11, `u8` with the factor
   (1 to 255).
 
-### 1.7 Tick order (completes combate.md §4.2)
+### 1.7 Tick order (completes combat.md §4.2)
 
 0. **NPC brains**: with the state after `s − 1`, each NPC brain (`HfsmBrain`, and the dummy's
    `NpcBrain`) pushes its input for `s` into its `InputQueue` (the `HfsmBrain` thinks every 6 ticks; in
@@ -225,7 +225,7 @@ client in the same process, the client's hook moved the server's gate.
 - **Repair** on owner change, with `fort_reset` or after 5 min without damage, but **not while
   a character overlaps the doorway of the broken gate**: it is postponed tick by tick until it is free. The repair of
   a whole (damaged) gate does not change the collision and is done immediately (phase 4 review).
-- It is **closed by default** (corrects `docs/zonas/vado_gris.md`).
+- It is **closed by default** (corrects `docs/zones/vado_gris.md`).
 
 ---
 
@@ -326,7 +326,7 @@ of the owner realm; each query (`NavigationPathQueryParameters3D`) filters with
   is removed when the attack's active window ends. It is only drawn for whoever the NPC can damage (`FactionRules`,
   the bots' rule): the garrison and captain of the owner realm paint no danger for their defenders
   (phase 4 review, client).
-- **Respawn** (extends combate.md §5):
+- **Respawn** (extends combat.md §5):
   - **Static** index over all the `respawn_points` markers in the scene, in
     scene order (camps included: the generator adds those of each camp). Metadata `realm` or
     `fortress`.
@@ -534,7 +534,7 @@ touches the NPCs) will find this:
 - The Vado Gris generator **can be run here** (the assets are in the repo): the scene
   comes out the same as the saved one except for the `unique_id`s, the resource identifiers and the noise in the
   last decimal digit of some transforms (Linux versus Windows); the region `.res` files and
-  the water mesh do come out with other bytes, so they are not touched (docs/zonas/vado_gris.md,
+  the water mesh do come out with other bytes, so they are not touched (docs/zones/vado_gris.md,
   "Cómo regenerar", how to regenerate). `vado_gris.tscn` has been regenerated, not hand-edited.
 - The fortress node is the `Fuerte` itself (group `fortresses`, metadata `definition`), and its
   children carry the fixed names `CaptureCircle`, `CaptainSpawn`, `GuardSpawn1..4`, `FortGate`,
@@ -843,7 +843,7 @@ touches the NPCs) will find this:
   gathers fort, gate, circle, camps and passes), `Minimap` and `KillFeed`. The `HUD` also mounts, above the death screen,
   `HintToasts` (without dimming), `WorldMap` and `ScoreboardPanel`, in that order.
 - **Map** (`tools/bake_zone_map.gd` and `ZoneMapBaker`): `assets/maps/vado_gris.png` (1024 x 1024 px, 0.6 MB, through LFS) and
-  `vado_gris_map.tres` (`ZoneMapDefinition`: origin (−160, −160), 320 x 320 m and the fixed places); see docs/zonas/vado_gris.md. The
+  `vado_gris_map.tres` (`ZoneMapDefinition`: origin (−160, −160), 320 x 320 m and the fixed places); see docs/zones/vado_gris.md. The
   minimap goes bottom right (the top corner belongs to the F3 debug panel) and zooms in and out with `map_zoom_in` and
   `map_zoom_out`.
 - **Respawn:** `RespawnPointList.options` groups contiguous markers of the same site (the four of a camp, those of the courtyard)

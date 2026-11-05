@@ -226,7 +226,7 @@ func (h *harness) do(c call) *response {
 func (h *harness) expect(res *response, status int, code string) {
 	h.t.Helper()
 	if res.status != status || res.errCode() != code {
-		h.t.Fatalf("se esperaba %d %q y llega %d %q: %s", status, code, res.status, res.errCode(), res.raw)
+		h.t.Fatalf("expected %d %q and got %d %q: %s", status, code, res.status, res.errCode(), res.raw)
 	}
 }
 
@@ -243,7 +243,7 @@ func (h *harness) register(email string) int64 {
 	h.t.Helper()
 	res := h.do(call{method: "POST", path: "/v1/accounts", body: registerBody(email, password), ip: h.nextIP()})
 	if res.status != http.StatusAccepted || res.raw != "{}\n" {
-		h.t.Fatalf("registro de %s: %d %s", email, res.status, res.raw)
+		h.t.Fatalf("registration of %s: %d %s", email, res.status, res.raw)
 	}
 	return h.accountID(email)
 }
@@ -252,7 +252,7 @@ func (h *harness) accountID(email string) int64 {
 	h.t.Helper()
 	var id int64
 	if err := h.pool.QueryRow(context.Background(), `select account_id from accounts where email = $1`, email).Scan(&id); err != nil {
-		h.t.Fatalf("cuenta %s: %v", email, err)
+		h.t.Fatalf("account %s: %v", email, err)
 	}
 	return id
 }
@@ -272,7 +272,7 @@ func (h *harness) login(email, pw string) session {
 	h.t.Helper()
 	res := h.loginFrom(email, pw, h.nextIP())
 	if res.status != http.StatusOK {
-		h.t.Fatalf("inicio de sesión de %s: %d %s", email, res.status, res.raw)
+		h.t.Fatalf("login of %s: %d %s", email, res.status, res.raw)
 	}
 	return session{access: res.str("access_token"), refresh: res.str("refresh_token"), res: res}
 }
@@ -285,7 +285,7 @@ func (h *harness) mailTo(email, template string) (body, token string) {
 	err := h.pool.QueryRow(context.Background(), `select body from outbound_mail where to_email = $1 and template = $2
 		order by id desc limit 1`, email, template).Scan(&body)
 	if err != nil {
-		h.t.Fatalf("no hay correo %s para %s: %v", template, email, err)
+		h.t.Fatalf("no %s email for %s: %v", template, email, err)
 	}
 	if m := tokenInBody.FindStringSubmatch(body); m != nil {
 		token = m[1]

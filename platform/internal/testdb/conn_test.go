@@ -10,7 +10,7 @@ func TestWithDatabase(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := withDatabase(in, "t_1"); got != want {
-			t.Errorf("withDatabase(%q) = %q, se esperaba %q", in, got, want)
+			t.Errorf("withDatabase(%q) = %q, expected %q", in, got, want)
 		}
 	}
 }

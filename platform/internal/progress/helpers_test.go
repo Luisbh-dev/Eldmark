@@ -79,7 +79,7 @@ func loadCases(t testing.TB) *saveCases {
 		t.Fatal(err)
 	}
 	if c.Format != 1 || len(c.Cases) == 0 {
-		t.Fatalf("save_cases.json: formato %d, %d casos", c.Format, len(c.Cases))
+		t.Fatalf("save_cases.json: format %d, %d cases", c.Format, len(c.Cases))
 	}
 	return &c
 }
@@ -119,7 +119,7 @@ func newWorld(t testing.TB, c *saveCases) *world {
 	}
 	for _, b := range c.IDBlocks {
 		if b.Count != zones.BlockSize {
-			t.Fatalf("bloque de %d ids", b.Count)
+			t.Fatalf("block of %d ids", b.Count)
 		}
 		w.exec(`insert into id_blocks (first_id, zone_instance_id, granted_at) values ($1, $2, to_timestamp($3))`,
 			int64(b.First), b.InstanceID, b.GrantedAtUnix)
@@ -131,10 +131,10 @@ func newWorld(t testing.TB, c *saveCases) *world {
 			fmt.Sprintf("p%d", id), ch.Realm)
 		appearance, err := base64.StdEncoding.DecodeString(ch.Appearance)
 		if err != nil || len(appearance) != 8 {
-			t.Fatalf("apariencia %q", ch.Appearance)
+			t.Fatalf("appearance %q", ch.Appearance)
 		}
 		if err := w.rules.ValidateCreate(ch.Realm, ch.RaceID, [8]byte(appearance), ch.StarterTemplateID); err != nil {
-			t.Fatalf("el personaje %d de los casos no valdría al crearlo: %v", id, err)
+			t.Fatalf("character %d from the cases would not be valid when created: %v", id, err)
 		}
 		w.tx(func(tx pgx.Tx) error {
 			return w.store.Create(context.Background(), tx, c.WorldID, id, persistence.CreateParams{RaceID: ch.RaceID,
@@ -223,7 +223,7 @@ func outcome(t testing.TB, err error) string {
 	case db.Deterministic(err):
 		return "S8"
 	}
-	t.Fatalf("error inesperado: %v", err)
+	t.Fatalf("unexpected error: %v", err)
 	return ""
 }
 
@@ -235,7 +235,7 @@ func (c *saveCases) step(t testing.TB, name string, i int) (int64, json.RawMessa
 			return int64(sc.Steps[i].CharacterID), sc.Steps[i].Progress
 		}
 	}
-	t.Fatalf("no hay caso %s", name)
+	t.Fatalf("no case %s", name)
 	return 0, nil
 }
 

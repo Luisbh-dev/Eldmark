@@ -111,7 +111,7 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 	}
 	if n := p.Count(`select count(*) from characters where character_id = any($1) and purged_at is not null`,
 		[]int64{ledgered, bare}); n != 2 {
-		t.Fatalf("lápidas: %d", n)
+		t.Fatalf("tombstones: %d", n)
 	}
 
 	p.Login(pl)
@@ -120,14 +120,14 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 	for _, secret := range []string{"devolución", "currency_add", "actor_account_id", `"detail"`, `"note"`, "argon2",
 		"gm@example.org", "author"} {
 		if strings.Contains(res.Raw, secret) {
-			t.Errorf("la exportación lleva %q: %s", secret, res.Raw)
+			t.Errorf("the export carries %q: %s", secret, res.Raw)
 		}
 	}
 	for _, key := range []string{"account", "legal_acceptances", "consents", "sessions", "access_events", "entitlements",
 		"realms", "characters", "ignores", "sanctions", "reports", "chat"} {
 		v, ok := res.Body[key]
 		if list, isList := v.([]any); !ok || v == nil || (isList && len(list) == 0) {
-			t.Errorf("sección %s vacía: %v", key, v)
+			t.Errorf("section %s is empty: %v", key, v)
 		}
 	}
 	chars := map[string]map[string]any{}
@@ -136,7 +136,7 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 		chars[row["character_id"].(string)] = row
 	}
 	if len(chars) != 3 {
-		t.Fatalf("personajes: %v", res.Body["characters"])
+		t.Fatalf("characters: %v", res.Body["characters"])
 	}
 	opsOf := func(prog map[string]any) map[string]map[string]any {
 		out := map[string]map[string]any{}
@@ -150,41 +150,41 @@ func TestExportHasEverySectionAndTheProgress(t *testing.T) {
 	// Aneira: the record and her two operations; the GM one, with the type, the date and the note.
 	prog, ok := chars[idText(alive)]["progress"].(map[string]any)
 	if !ok {
-		t.Fatalf("Aneira sin progreso: %v", chars[idText(alive)])
+		t.Fatalf("Aneira without progress: %v", chars[idText(alive)])
 	}
 	if rec, ok := prog["record"].(map[string]any); !ok || rec["race_id"] != "race_vardheim" {
-		t.Fatalf("registro de Aneira: %v", prog["record"])
+		t.Fatalf("Aneira's log: %v", prog["record"])
 	}
 	ops := opsOf(prog)
 	gmOp := ops["5002"]
 	if len(ops) != 2 || gmOp == nil || gmOp["kind"].(json.Number).String() != "4" || gmOp["created_at_unix"] == nil {
-		t.Fatalf("operaciones de Aneira: %v", prog["ops"])
+		t.Fatalf("Aneira's operations: %v", prog["ops"])
 	}
 	if want := []string{"created_at_unix", "items", "kind", "ledger", "op_id", "ref_op_id", "zone_id"}; !reflect.DeepEqual(
 		sortedKeys(gmOp), want) {
-		t.Errorf("claves de la GM: %v", sortedKeys(gmOp))
+		t.Errorf("the GM's keys: %v", sortedKeys(gmOp))
 	}
 	if entries := gmOp["ledger"].([]any); len(entries) != 1 || entries[0].(map[string]any)["delta"].(json.Number).String() != "50" {
-		t.Errorf("apunte de la GM: %v", gmOp["ledger"])
+		t.Errorf("the GM's entry: %v", gmOp["ledger"])
 	}
 	if items := ops["5001"]["items"].([]any); len(items) != 1 || items[0].(map[string]any)["def_id"] != "potion_health" {
-		t.Errorf("evento de objeto: %v", ops["5001"])
+		t.Errorf("item event: %v", ops["5001"])
 	}
 
 	// Brenna: tombstone with a ledger → no record and with her operation. Cora: tombstone without a ledger → null.
 	tomb := chars[idText(ledgered)]
 	prog, ok = tomb["progress"].(map[string]any)
 	if !ok || prog["record"] != nil || tomb["purged_at"] == nil || tomb["name"] != nil {
-		t.Fatalf("lápida con libro: %v", tomb)
+		t.Fatalf("tombstone with ledger: %v", tomb)
 	}
 	if ops := opsOf(prog); len(ops) != 1 || ops["5003"] == nil {
-		t.Fatalf("libro de la lápida: %v", prog["ops"])
+		t.Fatalf("the tombstone's ledger: %v", prog["ops"])
 	}
 	if v, has := chars[idText(bare)]["progress"]; !has || v != nil {
-		t.Fatalf("lápida sin libro: %v", chars[idText(bare)])
+		t.Fatalf("tombstone without ledger: %v", chars[idText(bare)])
 	}
 	if len(res.Body["ignores"].([]any)) != 1 || res.Body["ignores"].([]any)[0].(map[string]any)["ignored_name"] != "Odalys" {
-		t.Errorf("ignorados: %v", res.Body["ignores"])
+		t.Errorf("ignored: %v", res.Body["ignores"])
 	}
 }
 
@@ -313,7 +313,7 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 		privacy.StepSessions: 1, privacy.StepTokens: 1, privacy.StepTickets: 1, privacy.StepInstances: 2,
 		privacy.StepMail: 1, privacy.StepNames: 1, privacy.StepLedger: 0, privacy.StepLedgerTombstones: 0}
 	if !reflect.DeepEqual(res, want) {
-		t.Fatalf("vuelta: %v\nse esperaba %v", res, want)
+		t.Fatalf("round: %v\nexpected %v", res, want)
 	}
 	for _, c := range []struct {
 		what string
@@ -368,17 +368,17 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 		{"el personaje", `select count(*) from characters where character_id = $1 and purged_at is null`, []any{id}, 1},
 	} {
 		if got := p.Count(c.sql, c.args...); got != c.want {
-			t.Errorf("%s: %d, se esperaban %d", c.what, got, c.want)
+			t.Errorf("%s: %d, expected %d", c.what, got, c.want)
 		}
 	}
 	if again := run(t, p); again.Total() != 0 {
-		t.Fatalf("una segunda vuelta borra más: %v", again)
+		t.Fatalf("a second round deletes more: %v", again)
 	}
 	// A year after the automatic close, the expired report is deleted like any closed one.
 	p.Clock.Advance(privacy.ReportRetention + time.Second)
 	run(t, p)
 	if n := p.Count(`select count(*) from reports where report_id = $1`, r3); n != 0 {
-		t.Fatal("el reporte caducado no se borra al año de cerrarse")
+		t.Fatal("the expired report is not deleted a year after closing")
 	}
 }
 
@@ -422,19 +422,19 @@ func TestLedgerRetentionEmptiesAndRemovesTombstones(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := p.Count(`select count(*) from characters where purged_at is not null`); n != 3 {
-		t.Fatalf("lápidas: %d", n)
+		t.Fatalf("tombstones: %d", n)
 	}
 
 	// Before the year, nothing is deleted.
 	p.Clock.Set(purgedAt.Add(progress.Retention - time.Second))
 	if res := run(t, p); res[privacy.StepLedger] != 0 || res[privacy.StepLedgerTombstones] != 0 {
-		t.Fatalf("antes del año: %v", res)
+		t.Fatalf("before the year: %v", res)
 	}
 	p.Clock.Set(purgedAt.Add(progress.Retention + time.Second))
 	res := run(t, p)
 	// Brenna: her entries, the event, her two participations and operation 7001 (7002 also belongs to Aneira).
 	if want := int64(entries + 1 + 1 + 2 + 1); res[privacy.StepLedger] != want || res[privacy.StepLedgerTombstones] != 2 {
-		t.Fatalf("al año: %v (se esperaban %d filas del libro y 2 lápidas)", res, want)
+		t.Fatalf("at the year: %v (expected %d ledger rows and 2 tombstones)", res, want)
 	}
 	for _, c := range []struct {
 		what string
@@ -454,15 +454,15 @@ func TestLedgerRetentionEmptiesAndRemovesTombstones(t *testing.T) {
 		{"la cuenta", `select count(*) from accounts where account_id = $1 and status = 'active'`, []any{pl.ID}, 1},
 	} {
 		if got := p.Count(c.sql, c.args...); got != c.want {
-			t.Errorf("%s: %d, se esperaban %d", c.what, got, c.want)
+			t.Errorf("%s: %d, expected %d", c.what, got, c.want)
 		}
 	}
 	if again := run(t, p); again.Total() != 0 {
-		t.Fatalf("una segunda vuelta borra más: %v", again)
+		t.Fatalf("a second round deletes more: %v", again)
 	}
 	// The retention flag does not survive its transaction: outside it, the ledger remains append-only.
 	if _, err := p.Pool.Exec(ctx, `delete from ledger_entries where character_id = $1`, alive); err == nil {
-		t.Fatal("se pudo borrar el libro fuera de la retención")
+		t.Fatal("the ledger could be deleted outside the retention period")
 	}
 }
 
@@ -513,19 +513,19 @@ func TestRestoreAtTheLimitRacesTheHourlyPurge(t *testing.T) {
 		switch status {
 		case http.StatusOK:
 			if whole != 1 || purged != 0 || state != 1 || logged != 0 {
-				t.Fatalf("ronda %d: restaurado a medias (entero %d, lápida %d, progreso %d, purge_log %d)", round, whole,
+				t.Fatalf("round %d: half restored (whole %d, tombstone %d, progress %d, purge_log %d)", round, whole,
 					purged, state, logged)
 			}
 		case http.StatusNotFound:
 			if whole != 0 || purged != 1 || state != 0 || logged != 1 {
-				t.Fatalf("ronda %d: purgado a medias (entero %d, lápida %d, progreso %d, purge_log %d)", round, whole,
+				t.Fatalf("round %d: half purged (whole %d, tombstone %d, progress %d, purge_log %d)", round, whole,
 					purged, state, logged)
 			}
 		default:
-			t.Fatalf("ronda %d: la restauración da %d", round, status)
+			t.Fatalf("round %d: the restore gives %d", round, status)
 		}
 	}
-	t.Logf("restaurados %d, purgados %d", outcomes[http.StatusOK], outcomes[http.StatusNotFound])
+	t.Logf("restored %d, purged %d", outcomes[http.StatusOK], outcomes[http.StatusNotFound])
 }
 
 // A banned account exports and requests deletion with its privacy session, and is purged; its
@@ -552,14 +552,14 @@ func TestSanctionedAccountsArePurgedAndTheirEmailWaits(t *testing.T) {
 	p.Login(banned)
 	if scope := p.Count(`select count(*) from sessions where account_id = $1 and scope = 'privacy' and revoked_at is null`,
 		banned.ID); scope != 1 {
-		t.Fatal("sin sesión de privacidad")
+		t.Fatal("no privacy session")
 	}
 	exp := p.PublicDo("POST", "/v1/account/export", banned.Token, map[string]any{"password": platformtest.Password})
 	platformtest.Expect(t, exp, http.StatusOK, "")
 	chars := exp.Body["characters"].([]any)
 	if len(chars) != 1 || chars[0].(map[string]any)["progress"].(map[string]any)["record"] == nil ||
 		len(exp.Body["sanctions"].([]any)) != 1 {
-		t.Fatalf("exportación de la expulsada: %s", exp.Raw)
+		t.Fatalf("export of the banned account: %s", exp.Raw)
 	}
 	platformtest.Expect(t, p.PublicDo("POST", "/v1/account/deletion", banned.Token,
 		map[string]any{"password": platformtest.Password}), http.StatusAccepted, "")
@@ -570,29 +570,29 @@ func TestSanctionedAccountsArePurgedAndTheirEmailWaits(t *testing.T) {
 	purgedAt := p.Clock.Now()
 	if n := p.Count(`select count(*) from accounts where account_id = $1 and status = 'purged' and email is null`,
 		banned.ID); n != 1 {
-		t.Fatal("la expulsada no se purga")
+		t.Fatal("the banned account is not purged")
 	}
 	if n := p.Count(`select count(*) from characters where character_id = $1 and purged_at = $2`, char, purgedAt); n != 1 {
-		t.Fatal("su personaje no queda como lápida")
+		t.Fatal("its character is not left as a tombstone")
 	}
 	var until time.Time
 	p.Scalar(&until, `select until from sanctioned_email_hashes`)
 	if !until.Equal(purgedAt.Add(365 * day)) {
-		t.Fatalf("huella de la expulsada hasta %v", until)
+		t.Fatalf("fingerprint of the banned account until %v", until)
 	}
 	if register("expulsada@example.org") {
-		t.Fatal("el correo de la expulsada vuelve a registrarse")
+		t.Fatal("the banned account's email can register again")
 	}
 	p.Clock.Set(until.Add(-time.Second))
 	if res := run(t, p); res[privacy.StepSanctionedEmails] != 0 || register("expulsada@example.org") {
-		t.Fatal("la huella vence antes de tiempo")
+		t.Fatal("the fingerprint expires too early")
 	}
 	p.Clock.Set(until)
 	if res := run(t, p); res[privacy.StepSanctionedEmails] != 1 {
-		t.Fatalf("la huella vencida no se borra: %v", res)
+		t.Fatalf("the expired fingerprint is not deleted: %v", res)
 	}
 	if !register("expulsada@example.org") {
-		t.Fatal("pasado su plazo, el correo no se registra")
+		t.Fatal("past its term, the email is not registered")
 	}
 
 	// Suspended for three days and deleted with purge-now.
@@ -606,15 +606,15 @@ func TestSanctionedAccountsArePurgedAndTheirEmailWaits(t *testing.T) {
 	}
 	p.Scalar(&until, `select until from sanctioned_email_hashes`)
 	if !until.Equal(ends.Add(90 * day)) {
-		t.Fatalf("huella de la suspendida hasta %v, se esperaba %v", until, ends.Add(90*day))
+		t.Fatalf("fingerprint of the suspended account until %v, expected %v", until, ends.Add(90*day))
 	}
 	p.Clock.Advance(4 * day)
 	if register("suspendida@example.org") {
-		t.Fatal("el correo de la suspendida vuelve a registrarse")
+		t.Fatal("the suspended account's email can register again")
 	}
 	p.Clock.Set(until.Add(time.Second))
 	run(t, p)
 	if n := p.Count(`select count(*) from sanctioned_email_hashes`); n != 0 || !register("suspendida@example.org") {
-		t.Fatal("pasado su plazo, la huella de la suspendida sigue")
+		t.Fatal("past its term, the suspended account's fingerprint remains")
 	}
 }

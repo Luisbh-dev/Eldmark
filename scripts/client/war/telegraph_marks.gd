@@ -1,44 +1,47 @@
 class_name TelegraphMarks
 extends Node3D
-## Marcas en el suelo de los ataques de los PNJ (UI-18, GUE: TELEGRAPH de docs/fuerte.md sección 5). El
-## servidor avisa unos ticks antes del golpe ([signal NetClient.telegraph_received]: forma, origen,
-## orientación, radio y ticks hasta el impacto) y aquí se dibuja la zona de peligro sobre el suelo:
-## un círculo o un sector rojo translúcido, con un relleno más intenso que crece desde el centro hasta
-## llenarla justo en el impacto, y que desaparece enseguida después.
+## Ground marks for NPC attacks (UI-18, GUE: TELEGRAPH in docs/fortress.md section 5). The
+## server warns a few ticks before the hit ([signal NetClient.telegraph_received]: shape, origin,
+## orientation, radius and ticks until impact) and here the danger zone is drawn on the ground:
+## a translucent red circle or sector, with a more intense fill that grows from the center until
+## it fills the shape exactly at impact, and that disappears right after.
 ## [br][br]
-## [b]Provisional.[/b] Es una malla plana sin sombreado, a [constant LIFT] m del origen que manda el
-## servidor (los pies del PNJ): sobre terreno inclinado se hunde o flota. Un [Decal] proyectado seguiría
-## el relieve, pero depende del renderizador; queda para el arte (ART-17). El ángulo del sector sale del
-## ataque del catálogo de combate ([member HitShape.angle_deg]) y, si no se conoce, es
+## [b]Provisional.[/b] It is a flat, unshaded mesh, [constant LIFT] m above the origin sent by the
+## server (the NPC's feet): on sloped terrain it sinks or floats. A projected [Decal] would follow
+## the relief, but it depends on the renderer; it is left for the art pass (ART-17). The sector angle comes from the
+## attack in the combat catalog ([member HitShape.angle_deg]) and, if unknown, is
 ## [constant DEFAULT_SECTOR_DEGREES].
 ## [br][br]
-## [b]Reloj.[/b] El golpe cae en el tick del aviso más [code]impact_in_ticks[/code] (la carga) y lo esquiva la
-## entrada del jugador para ese tick, que el cliente genera con su tick predicho; cuando llega el aviso, ese reloj ya
-## va un RTT y el margen de [TickSync] por delante. Por eso la marca se llena con el tiempo predicho local
-## ([method ClientPrediction.get_predicted_tick] menos uno más la fracción del tick, el instante en que el jugador ve
-## su personaje, como [ProjectileWorld]): al llegar ya va por esa parte, está llena justo en el último tick en que
-## salir aún evita el golpe y se quita cuando acaba la ventana activa del golpe ([member AttackTicks.active_ticks]).
-## Un aviso que llega con su golpe ya pasado no se dibuja. Sin predicción en marcha (pruebas, espectador), cuenta el
-## tiempo desde que llegó, con el delta de cada fotograma ([method advance]), y se quita
-## [constant TAIL_SECONDS] s después del impacto (revisión de la fase 4, cliente).
+## [b]Clock.[/b] The hit lands on the warning tick plus [code]impact_in_ticks[/code] (the windup) and the player's
+## input for that tick dodges it; the client generates that input with its predicted tick. When the warning arrives, that clock is
+## already ahead by one RTT plus the [TickSync] margin. That is why the mark fills with the local predicted time
+## ([method ClientPrediction.get_predicted_tick] minus one plus the tick fraction, the instant at which the player sees
+## their character, like [ProjectileWorld]): on arrival it is already that far along, it is full exactly on the last tick on which
+## dodging still avoids the hit, and it is removed when the hit's active window ends ([member AttackTicks.active_ticks]).
+## A warning that arrives with its hit already past is not drawn. With no prediction running (tests, spectator), it counts
+## time from when it arrived, with each frame's delta ([method advance]), and is removed
+## [constant TAIL_SECONDS] s after the impact (phase 4 review, client).
 ## [br][br]
-## [b]Solo lo que te puede dañar.[/b] El servidor avisa los golpes fuertes de todos los PNJ, también los de la
-## guarnición y el capitán del reino dueño del fuerte; al defensor de ese reino no se le dibujan ([method threatens]:
-## la regla de [FactionRules], la misma de los bots). Solo cliente.
+## [b]Only what can hurt you.[/b] The server warns about the heavy hits of all NPCs, including those of the
+## garrison and the captain of the realm that owns the fort; they are not drawn for a defender of that realm ([method threatens]:
+## the [FactionRules] rule, the same one the bots use). Client only.
 
-## Altura sobre el origen (m) y vértices por vuelta de la malla.
+## Height above the origin (m) and vertices per turn of the mesh.
 const LIFT: float = 0.06
 const SEGMENTS: int = 40
-## Ángulo (grados) de un sector cuyo ataque no está en el catálogo.
+## Angle (degrees) of a sector whose attack is not in the catalog.
 const DEFAULT_SECTOR_DEGREES: float = 100.0
-## Segundos que se queda la marca tras el impacto sin reloj predicho.
+## Seconds the mark stays after impact when there is no predicted clock.
 const TAIL_SECONDS: float = 0.35
-## Ticks que sigue activo un golpe cuyo ataque no está en el catálogo (con reloj predicho).
+## Ticks a hit stays active when its attack is not in the catalog (with a predicted clock).
 const DEFAULT_ACTIVE_TICKS: int = 12
-## Marcas a la vez como mucho (al llegar otra de más, se quita la más antigua).
+## Maximum marks at once (when one more arrives, the oldest is removed).
 const MAX_MARKS: int = 24
-const BASE_COLOR: Color = Color(0.9, 0.18, 0.12, 0.28)
-const FILL_COLOR: Color = Color(0.95, 0.2, 0.1, 0.5)
+## Amber of [UIPalette.TELEGRAPH]: the color reserved for NPC danger, distinct from the red of damage (UI-50).
+const BASE_COLOR: Color = Color(UIPalette.TELEGRAPH.r, UIPalette.TELEGRAPH.g, UIPalette.TELEGRAPH.b, 0.26)
+const FILL_COLOR: Color = Color(UIPalette.TELEGRAPH.r, UIPalette.TELEGRAPH.g, UIPalette.TELEGRAPH.b, 0.5)
+const EDGE_COLOR: Color = Color(UIPalette.TELEGRAPH_EDGE.r, UIPalette.TELEGRAPH_EDGE.g,
+		UIPalette.TELEGRAPH_EDGE.b, 0.92)
 
 class Mark extends RefCounted:
 	var node: Node3D = null
@@ -46,25 +49,26 @@ class Mark extends RefCounted:
 	var age: float = 0.0
 	var impact_seconds: float = 0.0
 	var npc_id: int = 0
-	## Tick del servidor del aviso, ticks hasta el impacto y ticks que sigue activo el golpe tras él.
+	## Server tick of the warning, ticks until impact and ticks the hit stays active after it.
 	var event_tick: int = 0
 	var impact_ticks: int = 0
 	var active_ticks: int = 0
 
-## Reloj predicho local ([code]() -> float[/code], en ticks con fracción; negativo = sin reloj). Sin él, el del
-## cliente enlazado. Es para las pruebas.
+## Local predicted clock ([code]() -> float[/code], in ticks with fraction; negative = no clock). Without it, the
+## linked client's clock is used. It is for tests.
 var clock: Callable = Callable()
 
 var _marks: Array[Mark] = []
 var _client: NetClient = null
 var _base_material: StandardMaterial3D = null
 var _fill_material: StandardMaterial3D = null
+var _edge_material: StandardMaterial3D = null
 var _added: int = 0
 
 
 func _init() -> void:
 	name = "TelegraphMarks"
-	# Las marcas se colocan en el mundo con global_position; el propio nodo no se mueve.
+	# The marks are placed in the world with global_position; the node itself does not move.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 
 
@@ -77,7 +81,7 @@ func _exit_tree() -> void:
 		_client.telegraph_received.disconnect(add_telegraph)
 
 
-## Escucha los TELEGRAPH de [param client].
+## Listens to the TELEGRAPHs of [param client].
 func bind(client: NetClient) -> void:
 	if is_instance_valid(_client) and _client.telegraph_received.is_connected(add_telegraph):
 		_client.telegraph_received.disconnect(add_telegraph)
@@ -86,9 +90,9 @@ func bind(client: NetClient) -> void:
 		_client.telegraph_received.connect(add_telegraph)
 
 
-## true si el PNJ [param npc_id] del aviso puede dañar al jugador de [param client]: [method FactionRules.can_damage]
-## con el reino de su vista en el [RemoteWorld], el del jugador y la zona del WELCOME. Sin cliente, sin reino propio o
-## sin el alta del PNJ (no se sabe de quién es), true: ante la duda, la marca se dibuja.
+## true if the NPC [param npc_id] of the warning can damage the player of [param client]: [method FactionRules.can_damage]
+## with the realm of its view in the [RemoteWorld], the player's realm and the WELCOME zone. With no client, no own realm or
+## no spawn record for the NPC (its owner is unknown), true: when in doubt, the mark is drawn.
 static func threatens(client: NetClient, npc_id: int) -> bool:
 	if not is_instance_valid(client) or client.get_config() == null or client.get_remote_world() == null:
 		return true
@@ -100,8 +104,8 @@ static func threatens(client: NetClient, npc_id: int) -> bool:
 	return FactionRules.can_damage(view.get_realm(), client.get_config().realm, zone_id)
 
 
-## Dibuja la zona de peligro de un TELEGRAPH. Una forma desconocida, un radio de 0, el golpe de quien no puede dañar al
-## jugador ([method threatens]) o uno que ya ha pasado no dibujan nada. Devuelve true si se ha creado la marca.
+## Draws the danger zone of a TELEGRAPH. An unknown shape, a radius of 0, the hit of someone who cannot damage the
+## player ([method threatens]) or one that has already passed draw nothing. Returns true if the mark was created.
 func add_telegraph(event: NetMessages.EntityEvent) -> bool:
 	if event == null or event.event != NetMessages.EntityEvent.Kind.TELEGRAPH or event.radius_cm <= 0:
 		return false
@@ -132,6 +136,13 @@ func add_telegraph(event: NetMessages.EntityEvent) -> bool:
 	base.material_override = _get_base_material()
 	base.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(base)
+	var edge := MeshInstance3D.new()
+	edge.name = "Borde"
+	edge.mesh = build_edge_mesh(radius, angle, SEGMENTS)
+	edge.material_override = _get_edge_material()
+	edge.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	edge.position.y = 0.02
+	root.add_child(edge)
 	var fill := MeshInstance3D.new()
 	fill.name = "Relleno"
 	fill.mesh = base.mesh
@@ -154,8 +165,8 @@ func add_telegraph(event: NetMessages.EntityEvent) -> bool:
 	return true
 
 
-## Avanza [param delta] segundos: crece el relleno y se quitan las marcas que acaban. Con reloj predicho manda él (el
-## delta solo cuenta sin reloj).
+## Advances [param delta] seconds: the fill grows and the marks that end are removed. With a predicted clock it rules (the
+## delta only counts without a clock).
 func advance(delta: float) -> void:
 	var now: float = get_clock_time()
 	var index: int = _marks.size() - 1
@@ -169,8 +180,8 @@ func advance(delta: float) -> void:
 		index -= 1
 
 
-## Instante del reloj predicho local en ticks con fracción ([member clock] o el de la predicción del cliente), o -1
-## si no hay ninguno en marcha.
+## Instant of the local predicted clock in ticks with fraction ([member clock] or the client's prediction), or -1
+## if none is running.
 func get_clock_time() -> float:
 	if clock.is_valid():
 		return float(clock.call())
@@ -182,23 +193,23 @@ func get_clock_time() -> float:
 	return float(prediction.get_predicted_tick() - 1) + Engine.get_physics_interpolation_fraction()
 
 
-## Ticks que sigue activo tras el impacto el golpe del ataque [param attack_id] del catálogo
-## ([constant DEFAULT_ACTIVE_TICKS] si no se conoce).
+## Ticks the hit of attack [param attack_id] from the catalog stays active after impact
+## ([constant DEFAULT_ACTIVE_TICKS] if unknown).
 static func active_ticks_of(attack_id: int) -> int:
 	var attack: AttackTicks = CombatCatalog.attack(attack_id)
 	return attack.active_ticks if attack != null and attack.active_ticks > 0 else DEFAULT_ACTIVE_TICKS
 
 
-## Fracción (0 a 1) que lleva el relleno de una marca con [param age] de edad y [param impact_seconds]
-## hasta el impacto (en segundos o en ticks, las dos en la misma unidad): crece linealmente y se queda llena.
+## Fraction (0 to 1) of the fill of a mark with age [param age] and [param impact_seconds]
+## until impact (in seconds or in ticks, both in the same unit): it grows linearly and stays full.
 static func fill_progress(age: float, impact_seconds: float) -> float:
 	if impact_seconds <= 0.0:
 		return 1.0
 	return clampf(age / impact_seconds, 0.0, 1.0)
 
 
-## Ángulo total (grados) del sector del ataque [param attack_id] del catálogo de combate, o
-## [constant DEFAULT_SECTOR_DEGREES] si no se conoce.
+## Total angle (degrees) of the sector of attack [param attack_id] in the combat catalog, or
+## [constant DEFAULT_SECTOR_DEGREES] if unknown.
 static func sector_degrees(attack_id: int) -> float:
 	var attack: AttackTicks = CombatCatalog.attack(attack_id)
 	if attack != null and attack.shape != null and attack.shape.angle_deg > 0.0:
@@ -206,9 +217,9 @@ static func sector_degrees(attack_id: int) -> float:
 	return DEFAULT_SECTOR_DEGREES
 
 
-## Malla plana (y = 0) de un círculo o sector de [param radius] m y [param angle] rad (TAU = círculo
-## entero), centrado en el eje -Z (el «delante» del PNJ con yaw 0), con [param segments] vértices por
-## vuelta completa. Es un abanico de triángulos desde el origen.
+## Flat mesh (y = 0) of a circle or sector of [param radius] m and [param angle] rad (TAU = full
+## circle), centered on the -Z axis (the NPC's "forward" at yaw 0), with [param segments] vertices per
+## full turn. It is a triangle fan from the origin.
 static func build_mesh(radius: float, angle: float, segments: int) -> ArrayMesh:
 	var steps: int = maxi(ceili(float(segments) * minf(angle, TAU) / TAU), 1)
 	var vertices := PackedVector3Array()
@@ -222,7 +233,7 @@ static func build_mesh(radius: float, angle: float, segments: int) -> ArrayMesh:
 		vertices.append(Vector3(sin(direction) * radius, 0.0, -cos(direction) * radius))
 		normals.append(Vector3.UP)
 	for i: int in steps:
-		# Sentido horario visto desde arriba: la cara visible mira a +Y.
+		# Clockwise seen from above: the visible face looks toward +Y.
 		indices.append(0)
 		indices.append(i + 2)
 		indices.append(i + 1)
@@ -236,27 +247,70 @@ static func build_mesh(radius: float, angle: float, segments: int) -> ArrayMesh:
 	return mesh
 
 
-## Marcas que se ven ahora.
+## Flat mesh (y = 0) of the edge of the same zone as [method build_mesh]: a strip [param width] m wide along
+## the arc and, in a sector, also along its two straight sides. It gives the mark its amber edge (UI-50).
+static func build_edge_mesh(radius: float, angle: float, segments: int, width: float = 0.14) -> ArrayMesh:
+	var steps: int = maxi(ceili(float(segments) * minf(angle, TAU) / TAU), 1)
+	var start: float = -angle * 0.5
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+	var inner_radius: float = maxf(radius - width, 0.0)
+	for i: int in steps + 1:
+		var direction: float = start + angle * float(i) / float(steps)
+		var radial := Vector3(sin(direction), 0.0, -cos(direction))
+		vertices.append(radial * inner_radius)
+		vertices.append(radial * radius)
+		normals.append(Vector3.UP)
+		normals.append(Vector3.UP)
+	for i: int in steps:
+		var a: int = i * 2
+		indices.append_array(PackedInt32Array([a, a + 3, a + 1, a, a + 2, a + 3]))
+	if angle < TAU - 0.001:
+		# The two straight sides: a rectangle from the center to the arc, [param width] thick.
+		for side: int in 2:
+			var direction: float = start if side == 0 else start + angle
+			var radial := Vector3(sin(direction), 0.0, -cos(direction))
+			var across := Vector3(radial.z, 0.0, -radial.x) * (width * 0.5)
+			var base: int = vertices.size()
+			vertices.append(-across)
+			vertices.append(across)
+			vertices.append(radial * radius + across)
+			vertices.append(radial * radius - across)
+			for _n: int in 4:
+				normals.append(Vector3.UP)
+			indices.append_array(PackedInt32Array([base, base + 2, base + 1, base, base + 3, base + 2]))
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+## Marks visible now.
 func get_mark_count() -> int:
 	return _marks.size()
 
 
-## Marcas creadas desde que existe.
+## Marks created since it exists.
 func get_added_count() -> int:
 	return _added
 
 
-## Id de red del PNJ de la marca [param index] (0 si no existe).
+## Network id of the NPC of mark [param index] (0 if it does not exist).
 func get_mark_npc(index: int) -> int:
 	return _marks[index].npc_id if index >= 0 and index < _marks.size() else 0
 
 
-## Nodo de la marca [param index] (null si no existe).
+## Node of mark [param index] (null if it does not exist).
 func get_mark_node(index: int) -> Node3D:
 	return _marks[index].node if index >= 0 and index < _marks.size() else null
 
 
-## Fracción de relleno de la marca [param index] (0 a 1).
+## Fill fraction of mark [param index] (0 to 1).
 func get_mark_fill(index: int) -> float:
 	if index < 0 or index >= _marks.size():
 		return 0.0
@@ -268,14 +322,14 @@ func clear() -> void:
 		_remove(0)
 
 
-# Relleno de [param mark] en el instante [param now] del reloj predicho (negativo: sin reloj, por su edad).
+# Fill of [param mark] at instant [param now] of the predicted clock (negative: no clock, by its age).
 func _progress_of(mark: Mark, now: float) -> float:
 	if now < 0.0:
 		return fill_progress(mark.age, mark.impact_seconds)
 	return fill_progress(now - float(mark.event_tick), float(mark.impact_ticks))
 
 
-# true si [param mark] ya ha acabado en el instante [param now] del reloj predicho (negativo: sin reloj, por su edad).
+# true if [param mark] has already ended at instant [param now] of the predicted clock (negative: no clock, by its age).
 func _is_over(mark: Mark, now: float) -> bool:
 	if now < 0.0:
 		return mark.age >= mark.impact_seconds + TAIL_SECONDS
@@ -305,6 +359,12 @@ func _get_fill_material() -> StandardMaterial3D:
 	if _fill_material == null:
 		_fill_material = _make_material(FILL_COLOR)
 	return _fill_material
+
+
+func _get_edge_material() -> StandardMaterial3D:
+	if _edge_material == null:
+		_edge_material = _make_material(EDGE_COLOR)
+	return _edge_material
 
 
 func _make_material(color: Color) -> StandardMaterial3D:

@@ -30,12 +30,12 @@ func TestCreateLoad(t *testing.T) {
 		"wallets": []any{map[string]any{"currency": json.Number("1"), "balance": json.Number("0")},
 			map[string]any{"currency": json.Number("2"), "balance": json.Number("0")}}}
 	if !reflect.DeepEqual(fresh, want) {
-		t.Fatalf("personaje nuevo:\n%v\nse esperaba\n%v", fresh, want)
+		t.Fatalf("new character:\n%v\nexpected\n%v", fresh, want)
 	}
 	for i := 0; i < 2; i++ {
 		_, body := c.step(t, "valid_kit_and_play", i)
 		if got, version := w.apply(42, body); got != "applied" || version != int64(i+1) {
-			t.Fatalf("paso %d: %s, save_version %d", i, got, version)
+			t.Fatalf("step %d: %s, save_version %d", i, got, version)
 		}
 	}
 	_, play := c.step(t, "valid_kit_and_play", 1)
@@ -46,11 +46,11 @@ func TestCreateLoad(t *testing.T) {
 	expected["location"].(map[string]any)["saved_at_unix"] = json.Number(id(c.NowUnix))
 	for k, v := range expected {
 		if !sameJSON(t, saved[k], v) {
-			t.Errorf("%s: %v, se esperaba %v", k, saved[k], v)
+			t.Errorf("%s: %v, expected %v", k, saved[k], v)
 		}
 	}
 	if len(saved) != len(expected) {
-		t.Errorf("claves: %d, se esperaban %d", len(saved), len(expected))
+		t.Errorf("keys: %d, expected %d", len(saved), len(expected))
 	}
 }
 
@@ -102,7 +102,7 @@ func TestValidateCreate(t *testing.T) {
 		}
 		var ve *persistence.ValidationError
 		if !errors.As(err, &ve) {
-			t.Fatalf("no es un *persistence.ValidationError: %v", err)
+			t.Fatalf("not a *persistence.ValidationError: %v", err)
 		}
 		return ve.Fields
 	}
@@ -124,7 +124,7 @@ func TestValidateCreate(t *testing.T) {
 			}
 		}
 		if !reflect.DeepEqual(got, want) {
-			t.Errorf("caso «%s»: %v, se esperaba %v", c.Case, got, want)
+			t.Errorf("case \"%s\": %v, expected %v", c.Case, got, want)
 		}
 	}
 	vardheim := [8]byte{1, 0, 0, 1, 1, 3, 2, 1}
@@ -144,7 +144,7 @@ func TestValidateCreate(t *testing.T) {
 			map[string]string{"race_id": "wrong_realm", "starter_template_id": "not_selectable"}},
 	} {
 		if got := fieldsOf(r.ValidateCreate(c.realm, c.race, vardheim, c.template)); !reflect.DeepEqual(got, c.want) {
-			t.Errorf("%s: %v, se esperaba %v", c.name, got, c.want)
+			t.Errorf("%s: %v, expected %v", c.name, got, c.want)
 		}
 	}
 }
@@ -163,7 +163,7 @@ func TestSummaries(t *testing.T) {
 		m["location"].(map[string]any)["channel"] = 3
 	})
 	if got, _ := w.apply(42, level2); got != "applied" {
-		t.Fatalf("subir de nivel: %s", got)
+		t.Fatalf("level up: %s", got)
 	}
 	sums, err := w.store.Summaries(context.Background(), w.pool, []int64{42, 43, 999})
 	if err != nil {
@@ -176,10 +176,10 @@ func TestSummaries(t *testing.T) {
 		43: {RaceID: "race_vardheim", Appearance: appearance, Level: 1},
 	}
 	if !reflect.DeepEqual(sums, want) {
-		t.Fatalf("resúmenes:\n%+v\nse esperaba\n%+v", sums, want)
+		t.Fatalf("summaries:\n%+v\nexpected\n%+v", sums, want)
 	}
 	if empty, err := w.store.Summaries(context.Background(), w.pool, nil); err != nil || len(empty) != 0 {
-		t.Fatalf("sin ids: %v %v", empty, err)
+		t.Fatalf("without ids: %v %v", empty, err)
 	}
 }
 
@@ -192,7 +192,7 @@ func TestExport(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		_, body := c.step(t, "valid_reversal", i)
 		if got, _ := w.apply(42, body); got != "applied" {
-			t.Fatalf("paso %d: %s", i, got)
+			t.Fatalf("step %d: %s", i, got)
 		}
 	}
 	export := func() map[string]any {
@@ -202,14 +202,14 @@ func TestExport(t *testing.T) {
 		}
 		if bytes.Contains(raw, []byte("actor_account_id")) || bytes.Contains(raw, []byte("devolución")) ||
 			bytes.Contains(raw, []byte("currency_add")) || bytes.Contains(raw, []byte(`"detail"`)) {
-			t.Fatalf("la exportación lleva datos del personal: %s", raw)
+			t.Fatalf("the export carries staff data: %s", raw)
 		}
 		return decodeMap(t, raw)
 	}
 	out := export()
 	rec, ok := out["record"].(map[string]any)
 	if !ok || rec["race_id"] != "race_vardheim" || len(rec["items"].([]any)) != 4 {
-		t.Fatalf("registro: %v", out["record"])
+		t.Fatalf("log: %v", out["record"])
 	}
 	ops := out["ops"].([]any)
 	kinds := map[string]string{}
@@ -217,12 +217,12 @@ func TestExport(t *testing.T) {
 		op := o.(map[string]any)
 		kinds[op["op_id"].(string)] = op["kind"].(json.Number).String()
 		if len(op) != 7 {
-			t.Errorf("operación con otras claves: %v", op)
+			t.Errorf("operation with other keys: %v", op)
 		}
 	}
 	want := map[string]string{"1025": "3", "1030": "1", "1031": "2", "1032": "4", "1033": "5"}
 	if !reflect.DeepEqual(kinds, want) {
-		t.Fatalf("operaciones: %v, se esperaban %v", kinds, want)
+		t.Fatalf("operations: %v, expected %v", kinds, want)
 	}
 	for _, o := range ops {
 		op := o.(map[string]any)
@@ -242,13 +242,13 @@ func TestExport(t *testing.T) {
 	w.purgeAccount(7)
 	out = export()
 	if out["record"] != nil || len(out["ops"].([]any)) != 5 {
-		t.Fatalf("lápida: %v", out)
+		t.Fatalf("tombstone: %v", out)
 	}
 	if _, err := w.store.Load(context.Background(), w.pool, 42); !errors.Is(err, persistence.ErrNotFound) {
-		t.Fatalf("Load de una lápida: %v", err)
+		t.Fatalf("Load of a tombstone: %v", err)
 	}
 	if raw, err := w.store.Export(context.Background(), w.pool, 4242); err != nil ||
 		!strings.Contains(string(raw), `"record":null`) || !strings.Contains(string(raw), `"ops":[]`) {
-		t.Fatalf("un personaje sin nada: %s %v", raw, err)
+		t.Fatalf("a character with nothing: %s %v", raw, err)
 	}
 }

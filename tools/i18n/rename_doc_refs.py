@@ -30,12 +30,18 @@ DOC_RENAMES = {
 	"progresion.md": "progression.md",
 	"red.md": "networking.md",
 	"mapa_mundo.svg": "world_map.svg",
+	"calidad.md": "quality.md",
+	"combate.md": "combat.md",
+	"LICENCIAS.md": "LICENSES.md",
 }
-DIR_RENAMES = {"capturas": "screenshots"}
+DIR_RENAMES = {"capturas": "screenshots", "zonas": "zones"}
 
 _NAMES = "|".join(re.escape(n) for n in sorted(DOC_RENAMES, key=len, reverse=True))
 FILE_RE = re.compile(r"(?P<lead>(?:\.{1,2}/)*(?:docs/)?)(?P<name>" + _NAMES + r")(?![\w-])")
-DIR_RE = re.compile(r"(?P<lead>(?:\.{1,2}/)*(?:docs/)?)capturas(?P<tail>/|(?![\w-]))")
+_DIRS = "|".join(re.escape(n) for n in DIR_RENAMES)
+DIR_RE = re.compile(r"(?P<lead>(?:\.{1,2}/)*(?:docs/)?)(?P<name>" + _DIRS + r")(?P<tail>/|(?![\w-]))")
+# "assets/LICENCIAS.md": the file lives in assets/, so the "/" before the name would block the bare rule.
+ASSETS_RE = re.compile(r"(?<![\w-])assets/LICENCIAS\.md(?![\w-])")
 
 BARE_PREV = set(" \t\n\"'`([<*|=,;:>{«“‘¿¡")
 BINARY_SUFFIXES = {
@@ -89,7 +95,9 @@ def rewrite(rel: str, text: str) -> tuple[str, list[tuple[int, str, str]]]:
 			# Bare "capturas/" only as a link or an HTML attribute target inside the docs.
 			if not (in_docs and prev in "(\"'" and m.group("tail") == "/"):
 				continue
-		edits.append((m.start(), m.end(), lead + "screenshots" + m.group("tail")))
+		edits.append((m.start(), m.end(), lead + DIR_RENAMES[m.group("name")] + m.group("tail")))
+	for m in ASSETS_RE.finditer(text):
+		edits.append((m.start(), m.end(), "assets/LICENSES.md"))
 
 	if not edits:
 		return text, changes

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for hit geometry ([HitShapes], docs/combate.md section 4.1): annular sector
+## Tests for hit geometry ([HitShapes], docs/combat.md section 4.1): annular sector
 ## with height against vertical capsule (angle edge, reach with the radius, inner gap,
 ## height), segment against capsule, frontal cone and line of sight against a real wall in its own
 ## physics space.

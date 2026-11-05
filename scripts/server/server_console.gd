@@ -1,6 +1,6 @@
 class_name ServerConsole
 extends RefCounted
-## The server's standard input console (docs/combate.md, section 6; TEC-19): reads lines from [code]stdin[/code] in a
+## The server's standard input console (docs/combat.md, section 6; TEC-19): reads lines from [code]stdin[/code] in a
 ## separate thread, so that waiting for the keyboard never blocks the tick, and leaves them in a protected queue. The
 ## server collects them once per tick with [method take_lines] and runs them on the main thread
 ## ([method CommandRegistry.execute_console]).

@@ -1,6 +1,6 @@
 class_name CombatTiming
 extends RefCounted
-## Combat time limits used only by the server, already in ticks (docs/combate.md, section 2). They come from
+## Combat time limits used only by the server, already in ticks (docs/combat.md, section 2). They come from
 ## [CombatRules] (seconds in the [code].tres[/code] files) with [code]roundi(s · 60)[/code], like the rest
 ## of the catalog.
 ## [br][br]

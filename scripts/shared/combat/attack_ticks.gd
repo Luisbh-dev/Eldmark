@@ -1,6 +1,6 @@
 class_name AttackTicks
 extends RefCounted
-## An [AttackDefinition] already converted to ticks by [CombatCatalog] (docs/combate.md, section 2).
+## An [AttackDefinition] already converted to ticks by [CombatCatalog] (docs/combat.md, section 2).
 ## [br][br]
 ## The windows are [code][from, to)[/code] intervals of ticks counted from the action's
 ## [code]action_tick[/code]: windup [code][0, windup_ticks)[/code], active

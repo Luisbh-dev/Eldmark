@@ -1,30 +1,30 @@
 class_name CapturePanel
 extends PanelContainer
-## Panel de captura del fuerte (UI-18, docs/fuerte.md sección 6): dueño con su color y emblema, fase,
-## barra de progreso con el color del captor, «disputado», jugadores presentes de cada bando en el
-## círculo, vida de la puerta y si el fuerte está atacado.
+## Fort capture panel (UI-18, docs/fortress.md section 6): owner with their color and emblem, phase,
+## progress bar in the capturer's color, "contested", players present from each faction in the
+## circle, gate health and whether the fort is under attack.
 ## [br][br]
-## [b]Cuándo se ve.[/b] A menos de [constant NEAR_DISTANCE] m del fuerte, o combatiendo a menos de
-## [constant COMBAT_DISTANCE] m ([method should_show]); en cualquier otro caso se oculta. El resto de
-## UI-18 (los banners de aviso, la barra de jefe y la marca de los ataques) vive en [WarBanners],
-## [BossBar] y [TelegraphMarks].
+## [b]When it is visible.[/b] Within [constant NEAR_DISTANCE] m of the fort, or in combat within
+## [constant COMBAT_DISTANCE] m ([method should_show]); otherwise it is hidden. The rest of
+## UI-18 (the warning banners, the boss bar and the attack marker) lives in [WarBanners],
+## [BossBar] and [TelegraphMarks].
 ## [br][br]
-## [b]De dónde sale.[/b] [method bind] lo conecta con la [FortressView] (estado en pantalla y progreso
-## con la fórmula en el instante de dibujo) y el [NetClient] (posición, combate y tick); cada
-## fotograma [method refresh] pregunta y llama a [method show_state]. [method show_state] es la parte
-## pura (un [FortressState] y unos números en, textos y barras fuera): las pruebas la usan con estados
-## falsos.
+## [b]Where it comes from.[/b] [method bind] connects it to the [FortressView] (on-screen state and progress
+## with the formula at the draw instant) and the [NetClient] (position, combat and tick); every
+## frame [method refresh] asks and calls [method show_state]. [method show_state] is the pure
+## part (a [FortressState] and some numbers in, texts and bars out): tests use it with fake
+## states.
 ## [br][br]
-## Todas las medidas, colores y textos de aquí son provisionales: la presentación definitiva
-## (ART-17, UI-02) es del usuario. Solo cliente.
+## All the sizes, colors and texts here are provisional: the final presentation
+## (ART-17, UI-02) belongs to the user. Client only.
 
-## Metros del fuerte a los que se ve el panel, y a los que se ve combatiendo.
+## Meters from the fort at which the panel is visible, and at which it is visible while in combat.
 const NEAR_DISTANCE: float = 80.0
 const COMBAT_DISTANCE: float = 200.0
 const PANEL_WIDTH: float = 440.0
-const TOP_MARGIN: float = 44.0
+const TOP_MARGIN: float = 68.0
 const EMBLEM_SIZE: float = 30.0
-## Parpadeos por segundo de «Disputado».
+## Blinks per second of "Disputado" ("Contested").
 const CONTESTED_BLINK_HERTZ: float = 1.5
 const GATE_COLOR: Color = Color(0.66, 0.46, 0.26, 1.0)
 const GATE_BROKEN_COLOR: Color = Color(0.45, 0.2, 0.18, 1.0)
@@ -78,9 +78,9 @@ func _process(delta: float) -> void:
 	refresh(delta)
 
 
-## Conecta el panel con la vista del fuerte ([param view]) y el cliente ([param client], para saber
-## dónde está el jugador, si combate y en qué tick va el servidor) y el reino del jugador
-## ([param own_realm], un [enum NetProtocol.Realm]).
+## Connects the panel to the fort view ([param view]) and the client ([param client], to know
+## where the player is, whether they are in combat and what tick the server is on) and the player's realm
+## ([param own_realm], an [enum NetProtocol.Realm]).
 func bind(view: FortressView, client: NetClient, own_realm: int) -> void:
 	_view = view
 	_client = client
@@ -89,8 +89,8 @@ func bind(view: FortressView, client: NetClient, own_realm: int) -> void:
 	_ensure_built()
 
 
-## Cada fotograma: decide si se ve y, si es así, lo pinta con el estado en pantalla de la fortaleza.
-## [param delta] mueve el parpadeo de «disputado».
+## Every frame: decides whether it is visible and, if so, paints it with the fortress's on-screen state.
+## [param delta] drives the "contested" blink.
 func refresh(delta: float = 0.0) -> void:
 	_contested_clock += delta
 	if not is_instance_valid(_view):
@@ -112,22 +112,22 @@ func refresh(delta: float = 0.0) -> void:
 	var estimated_tick: int = _client.get_estimated_server_tick() if is_instance_valid(_client) else 0
 	show_state(state, _view.get_progress_fraction_now(_fortress_id), fortress_name, estimated_tick)
 	if _status.visible and _status.text == TEXT_CONTESTED:
-		# «Disputado» parpadea.
+		# "Disputado" ("Contested") blinks.
 		_status.modulate.a = 0.65 + 0.35 * sin(_contested_clock * TAU * CONTESTED_BLINK_HERTZ)
 	_set_shown(true)
 
 
-## true si el panel debe verse a [param distance] metros del fuerte ([constant Vector3.INF] si no se
-## sabe dónde está) [param in_combat].
+## true if the panel should be visible at [param distance] meters from the fort ([constant Vector3.INF] if it is
+## not known where it is) given [param in_combat].
 static func should_show(distance: float, in_combat: bool) -> bool:
 	if not is_finite(distance):
 		return false
 	return distance <= NEAR_DISTANCE or (in_combat and distance <= COMBAT_DISTANCE)
 
 
-## Pinta [param state]: [param progress_fraction] es el progreso de la captura (0 a 1) en el instante
-## de dibujo, [param fortress_name] el nombre del fuerte y [param estimated_tick] el tick del
-## servidor, para saber si está «atacado». No decide si se ve ([method refresh]).
+## Paints [param state]: [param progress_fraction] is the capture progress (0 to 1) at the draw
+## instant, [param fortress_name] the fort's name and [param estimated_tick] the server
+## tick, to know whether it is "under attack". It does not decide whether it is visible ([method refresh]).
 func show_state(state: FortressState, progress_fraction: float, fortress_name: String,
 		estimated_tick: int = 0) -> void:
 	_ensure_built()
@@ -154,7 +154,7 @@ func show_state(state: FortressState, progress_fraction: float, fortress_name: S
 	_show_gate(state)
 
 
-## Texto de la fase para un jugador del reino [param own_realm].
+## Phase text for a player of realm [param own_realm].
 static func phase_text(state: FortressState, own_realm: int) -> String:
 	var own: bool = own_realm != NetProtocol.Realm.NONE and state.owner == own_realm
 	match state.phase:
@@ -169,7 +169,7 @@ static func phase_text(state: FortressState, own_realm: int) -> String:
 	return ""
 
 
-## Estado de la captura: «Disputado», «Congelado» (nadie la hace avanzar), «Retrocede» o vacío.
+## Capture status: "Disputado" ("Contested"), "Congelado" ("Frozen", nobody is advancing it), "Retrocede" ("Receding") or empty.
 static func status_text(state: FortressState) -> String:
 	if state.contested and (state.phase == FortressState.Phase.VULNERABLE \
 			or state.phase == FortressState.Phase.CAPTURING):
@@ -182,9 +182,9 @@ static func status_text(state: FortressState) -> String:
 	return ""
 
 
-# --- Accesos (para las pruebas y para quien monta la interfaz) --------------------------------
+# --- Accessors (for tests and for whoever builds the interface) -------------------------------
 
-## true si el panel se está mostrando.
+## true if the panel is being shown.
 func is_shown() -> bool:
 	return _shown
 
@@ -233,7 +233,7 @@ func is_presence_shown() -> bool:
 	return _present_row != null and _present_row.visible
 
 
-## Texto del recuento de presentes de un bando (código de red 1 a 3) o vacío si no se muestra.
+## Text of the count of those present from a faction (network code 1 to 3) or empty if not shown.
 func get_presence_text(realm_code: int) -> String:
 	var label: Label = _present_label(realm_code)
 	return label.text if label != null and label.visible else ""
@@ -260,7 +260,7 @@ func get_gate_color() -> Color:
 	return _gate.fill_color if _gate != null else Color.WHITE
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ---------------------------------------------------------------------------------
 
 func _set_shown(shown: bool) -> void:
 	_shown = shown
@@ -284,8 +284,8 @@ func _distance_to_fortress() -> float:
 	return Vector2(here.x - anchor.x, here.z - anchor.z).length()
 
 
-# Presentes de cada bando en el círculo (solo con el círculo activo). Vardheim y Solmarch siempre;
-# Askarra solo si hay alguien o es el reino del jugador.
+# Those present from each faction in the circle (only with the circle active). Vardheim and Solmarch always;
+# Askarra only if someone is there or it is the player's realm.
 func _show_presence(state: FortressState) -> void:
 	var active: bool = state.is_circle_active()
 	_present_row.visible = active
@@ -323,7 +323,7 @@ func _ensure_built() -> void:
 
 func _build() -> void:
 	custom_minimum_size = Vector2(PANEL_WIDTH, 0.0)
-	# Centrado arriba (UI-49): con el preset de tamaño mínimo quedaba con el borde izquierdo en el centro.
+	# Centered at the top (UI-49): with the minimum-size preset it ended up with its left edge at the center.
 	UILayout.anchor_top_center(self, PANEL_WIDTH, TOP_MARGIN)
 	var column := VBoxContainer.new()
 	column.name = "Columna"

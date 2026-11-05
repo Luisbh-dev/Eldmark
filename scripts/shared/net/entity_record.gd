@@ -1,7 +1,7 @@
 class_name EntityRecord
 extends RefCounted
 ## Record of an entity in a SNAPSHOT: fixed size of [constant SIZE] bytes
-## (docs/networking.md, section 5.5 and docs/combate.md, section 6). Used for players and NPCs.
+## (docs/networking.md, section 5.5 and docs/combat.md, section 6). Used for players and NPCs.
 ## [br][br]
 ## Format (little-endian):
 ## [codeblock]

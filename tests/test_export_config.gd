@@ -29,7 +29,7 @@ const REQUIRED_PATHS: Array[String] = [
 	"data/items/consumable/potion_health.tres",
 	"assets/ui/theme/eldmark_theme.tres", "assets/emblems/vardheim.svg",
 	"addons/terrain_3d/terrain.gdextension", "addons/terrain_3d/LICENSE.txt",
-	"addons/proton_scatter/LICENSE", "assets/LICENCIAS.md",
+	"addons/proton_scatter/LICENSE", "assets/LICENSES.md",
 ]
 const PACK_PATH: String = "res://build/export_test/server_pack.zip"
 ## Maximum seconds to wait for the exporting process (a test phase allows 30).
@@ -143,7 +143,8 @@ func test_both_presets_keep_the_development_folders_out_but_the_licences_in() ->
 		for pattern: String in String(_value(section, "include_filter")).split(","):
 			includes.append(pattern.strip_edges())
 		for licence: String in ["addons/terrain_3d/LICENSE.txt", "addons/proton_scatter/LICENSE",
-				"assets/LICENCIAS.md"]:
+				"LICENSE", "LICENSE-ASSETS.md", "assets/LICENSES.md", "assets/fonts/OFL-Cinzel.txt", "assets/fonts/OFL-IMFellEnglishSC.txt",
+				"assets/fonts/OFL-NotoSans.txt"]:
 			assert_true(_matches_any(licence, includes), "%s carries %s (the MIT license requires it)" % [preset_name, licence])
 			assert_true(FileAccess.file_exists("res://" + licence), "%s exists" % licence)
 
@@ -277,7 +278,7 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 				fail("the pack carries %s" % file_name)
 				break
 	for required: String in ["project.binary", "addons/terrain_3d/terrain.gdextension",
-			"addons/terrain_3d/LICENSE.txt", "assets/LICENCIAS.md",
+			"addons/terrain_3d/LICENSE.txt", "assets/LICENSES.md",
 			"scenes/world/zones/vado_gris/vado_gris.tscn.remap",
 			"scenes/world/zones/vado_gris/terrain/terrain3d_00_00.res",
 			"scenes/server/server_main.tscn.remap", "scripts/server/zone_server.gd.remap",

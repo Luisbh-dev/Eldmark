@@ -1,55 +1,55 @@
 class_name UIPalette
 extends RefCounted
-## Paleta de la interfaz (UI-02): los colores que usan el tema ([UIThemeBuilder]), los componentes
-## comunes y el HUD.
+## UI palette (UI-02): the colors used by the theme ([UIThemeBuilder]), the common
+## components and the HUD.
 ## [br][br]
-## Estilo (decisión del backlog): minimalista oscuro y translúcido, con remates de metal y piedra de
-## Eld y acentos del color del bando. Lo fuerte (el color) queda para los bandos, que salen de
-## [RealmCatalog] (mundo.md, «Colores de bando»); el resto de la interfaz es neutro, y el acento
-## neutro son las Brasas de Eld.
+## Style (backlog decision): dark, minimalist and translucent, with metal and Eld stone
+## trim and accents in the faction color. The loud part (color) is left to the factions, which come from
+## [RealmCatalog] (world.md, "Colores de bando", i.e. "Faction colors"); the rest of the interface is neutral, and the neutral
+## accent is the Embers of Eld.
 ## [br][br]
-## Solo cliente. Todo son constantes y funciones estáticas, sin estado.
+## Client only. Everything is constants and static functions, with no state.
 
-## Rarezas de los objetos (borde y contador de las casillas, tooltips). Se ordenan de peor a mejor.
+## Item rarities (slot border and counter, tooltips). Ordered from worst to best.
 enum Rarity { COMMON, UNCOMMON, RARE, EPIC, LEGENDARY }
 
-# --- Superficies ------------------------------------------------------------------------------
+# --- Surfaces ---------------------------------------------------------------------------------
 
-## Fondo de un panel: casi negro azulado y translúcido, para que se vea el mundo detrás.
+## Panel background: near-black bluish and translucent, so the world shows behind it.
 const PANEL_BG: Color = Color(0.055, 0.06, 0.075, 0.84)
-## Fondo de lo hundido dentro de un panel (campos de texto, huecos de casilla, pistas de barra).
+## Background of what is recessed inside a panel (text fields, slot wells, bar tracks).
 const INSET_BG: Color = Color(0.025, 0.028, 0.036, 0.9)
-## Fondo de una ventana: más opaco que el de un panel de juego.
+## Window background: more opaque than a game panel's.
 const WINDOW_BG: Color = Color(0.06, 0.065, 0.082, 0.96)
-## Fondo de un botón en reposo y con el ratón encima.
+## Background of a button at rest and with the mouse over it.
 const BUTTON_BG: Color = Color(0.1, 0.108, 0.132, 0.92)
 const BUTTON_BG_HOVER: Color = Color(0.15, 0.158, 0.19, 0.95)
 const BUTTON_BG_PRESSED: Color = Color(0.05, 0.054, 0.068, 0.96)
 const BUTTON_BG_DISABLED: Color = Color(0.07, 0.074, 0.09, 0.7)
-## Velo que atenúa el juego detrás de un diálogo modal.
+## Veil that dims the game behind a modal dialog.
 const MODAL_DIM: Color = Color(0.0, 0.0, 0.0, 0.55)
-## Panel de depuración (el del HUD): el de antes de UI-02, un poco más translúcido que un panel.
+## Debug panel (the HUD's): the pre-UI-02 one, slightly more translucent than a panel.
 const DEBUG_BG: Color = Color(0.05, 0.06, 0.08, 0.62)
 
-# --- Remates (metal y piedra) -----------------------------------------------------------------
+# --- Trim (metal and stone) -------------------------------------------------------------------
 
-## Borde de metal oscuro y de piedra clara.
+## Border of dark metal and of light stone.
 const BORDER: Color = Color(0.3, 0.285, 0.26, 0.95)
 const BORDER_LIGHT: Color = Color(0.5, 0.47, 0.42, 1.0)
 const BORDER_DIM: Color = Color(0.2, 0.195, 0.185, 0.9)
 
-# --- Texto ------------------------------------------------------------------------------------
+# --- Text -------------------------------------------------------------------------------------
 
 const TEXT: Color = Color(0.91, 0.9, 0.88, 1.0)
 const TEXT_DIM: Color = Color(0.64, 0.62, 0.58, 1.0)
 const TEXT_DISABLED: Color = Color(0.42, 0.41, 0.39, 1.0)
-## Títulos: hueso cálido.
+## Titles: warm bone.
 const TITLE: Color = Color(0.85, 0.79, 0.64, 1.0)
 const OUTLINE: Color = Color(0.0, 0.0, 0.0, 0.85)
 
-# --- Acentos y estados ------------------------------------------------------------------------
+# --- Accents and states -----------------------------------------------------------------------
 
-## Acento neutro (sin bando): las Brasas de Eld.
+## Neutral accent (no faction): the Embers of Eld.
 const ACCENT: Color = Color(0.88, 0.51, 0.18, 1.0)
 const HEALTH: Color = Color(0.78, 0.13, 0.15, 1.0)
 const STAMINA: Color = Color(0.58, 0.82, 0.3, 1.0)
@@ -57,46 +57,61 @@ const SUCCESS: Color = Color(0.42, 0.78, 0.4, 1.0)
 const WARNING: Color = Color(1.0, 0.72, 0.4, 1.0)
 const DANGER: Color = Color(0.9, 0.3, 0.26, 1.0)
 
-## Color de cada rareza, en el orden de [enum Rarity]: gris, verde, azul, morado y naranja.
+# --- Combat semantic palette (UI-50): one color per meaning -----------------------------------
+
+## Danger from NPCs (the telegraph of their strikes): amber with a lighter border. Red is kept for damage
+## taken and health; this way "it is about to hit you" and "you have been hit" are not confused.
+const TELEGRAPH: Color = Color(1.0, 0.6, 0.08, 1.0)
+const TELEGRAPH_EDGE: Color = Color(1.0, 0.84, 0.35, 1.0)
+## Health bar of an ally and of an enemy on nameplates.
+const ALLY: Color = Color(0.36, 0.8, 0.38, 1.0)
+const ENEMY: Color = Color(0.86, 0.2, 0.18, 1.0)
+## Boss bar.
+const BOSS: Color = Color(0.72, 0.1, 0.12, 1.0)
+## Own damage text (cream) and damage taken (red).
+const DAMAGE_DEALT: Color = Color(1.0, 0.95, 0.75, 1.0)
+const DAMAGE_TAKEN: Color = Color(1.0, 0.28, 0.28, 1.0)
+
+## Color of each rarity, in the order of [enum Rarity]: gray, green, blue, purple and orange.
 const RARITY_COLORS: Array[Color] = [
 	Color(0.66, 0.66, 0.66, 1.0), Color(0.37, 0.72, 0.35, 1.0), Color(0.3, 0.56, 0.84, 1.0),
 	Color(0.64, 0.37, 0.82, 1.0), Color(0.88, 0.54, 0.18, 1.0),
 ]
-## Nombre en español de cada rareza, en el mismo orden.
+## Spanish name of each rarity, in the same order.
 const RARITY_NAMES: Array[String] = ["Común", "Poco común", "Raro", "Épico", "Legendario"]
 
 
-# --- Bandos -----------------------------------------------------------------------------------
+# --- Factions ---------------------------------------------------------------------------------
 
-## Color de bando de [param faction_id] (los tres reinos y los Huecos), de [RealmCatalog].
-## Blanco si el bando no existe.
+## Faction color of [param faction_id] (the three realms and the Hollow), from [RealmCatalog].
+## White if the faction does not exist.
 static func faction_color(faction_id: StringName) -> Color:
 	return RealmCatalog.color_of(faction_id)
 
 
-## Color del bando con código de red [param code] (1 a 3 los reinos, 0 los Huecos).
+## Color of the faction with network code [param code] (1 to 3 the realms, 0 the Hollow).
 static func faction_color_of_code(code: int) -> Color:
 	return RealmCatalog.color_of(RealmCatalog.id_of_code(code))
 
 
-## Acento para un bando: su color si existe y, si no, el acento neutro.
+## Accent for a faction: its color if it exists and, if not, the neutral accent.
 static func accent_for(faction_id: StringName) -> Color:
 	return RealmCatalog.color_of(faction_id) if RealmCatalog.has_faction(faction_id) else ACCENT
 
 
-## El color de bando oscurecido para usarlo como borde o fondo de acento sin que grite.
+## The faction color darkened to use as a border or accent background without it shouting.
 static func faction_border(faction_id: StringName) -> Color:
 	var color: Color = accent_for(faction_id)
 	return Color(color.r * 0.8, color.g * 0.8, color.b * 0.8, 0.95)
 
 
-## Ruta del emblema del bando (puede no existir hasta que lo aporte el arte; ver [method
+## Path of the faction's emblem (it may not exist until the art provides it; see [method
 ## load_emblem]).
 static func emblem_path(faction_id: StringName) -> String:
 	return RealmCatalog.emblem_path(faction_id)
 
 
-## Carga el emblema de [param faction_id]; null si el bando no existe o su archivo todavía no está.
+## Loads the emblem of [param faction_id]; null if the faction does not exist or its file is not there yet.
 static func load_emblem(faction_id: StringName) -> Texture2D:
 	var path: String = RealmCatalog.emblem_path(faction_id)
 	if path.is_empty() or not ResourceLoader.exists(path):
@@ -104,36 +119,36 @@ static func load_emblem(faction_id: StringName) -> Texture2D:
 	return load(path) as Texture2D
 
 
-# --- Rarezas ----------------------------------------------------------------------------------
+# --- Rarities ---------------------------------------------------------------------------------
 
-## Color de la rareza [param rarity] (un valor de [enum Rarity]); el de común si se sale del rango.
+## Color of rarity [param rarity] (a value of [enum Rarity]); the common one if out of range.
 static func rarity_color(rarity: int) -> Color:
 	if rarity < 0 or rarity >= RARITY_COLORS.size():
 		return RARITY_COLORS[Rarity.COMMON]
 	return RARITY_COLORS[rarity]
 
 
-## Nombre en español de la rareza [param rarity]; «Común» si se sale del rango.
+## Spanish name of rarity [param rarity]; "Común" ("Common") if out of range.
 static func rarity_name(rarity: int) -> String:
 	if rarity < 0 or rarity >= RARITY_NAMES.size():
 		return RARITY_NAMES[Rarity.COMMON]
 	return RARITY_NAMES[rarity]
 
 
-# --- Utilidades -------------------------------------------------------------------------------
+# --- Utilities --------------------------------------------------------------------------------
 
-## [param color] con la opacidad [param alpha].
+## [param color] with opacity [param alpha].
 static func with_alpha(color: Color, alpha: float) -> Color:
 	return Color(color.r, color.g, color.b, alpha)
 
 
-## Luminancia relativa (0 a 1) de [param color], para decidir si el texto encima debe ser claro u
-## oscuro.
+## Relative luminance (0 to 1) of [param color], to decide whether the text on top should be light or
+## dark.
 static func luminance(color: Color) -> float:
 	return 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b
 
 
-## Color de texto legible sobre [param background]: el claro de la paleta sobre fondos oscuros y casi
-## negro sobre los claros.
+## Readable text color over [param background]: the palette's light one over dark backgrounds and near
+## black over light ones.
 static func text_on(background: Color) -> Color:
 	return TEXT if luminance(background) < 0.55 else Color(0.07, 0.07, 0.08, 1.0)

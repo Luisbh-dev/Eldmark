@@ -18,7 +18,7 @@ has chat and parties **unreviewed and unmerged**.
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Done and pushed |
 | Phase 2: networking | `fase2-red` | Implemented (594 tests green, GitHub CI green); adversarial review done and its 19 findings fixed, each with its test (656 tests green) |
-| Phase 3: combat | `fase3-combate` (from `fase2-red`, which is merged into it) | Design reviewed (`docs/combate.md`); K1–K5 and the audio, theme, settings, social document and export lanes integrated; adversarial review done and its 18 findings fixed with tests (1262 tests green) |
+| Phase 3: combat | `fase3-combate` (from `fase2-red`, which is merged into it) | Design reviewed (`docs/combat.md`); K1–K5 and the audio, theme, settings, social document and export lanes integrated; adversarial review done and its 18 findings fixed with tests (1262 tests green) |
 | Phase 4: fort | `fase4-fuerte` (from `fase3-combate`) | Design v2 reviewed (`docs/fortress.md`); F0 to F5 and F6a integrated (scene, pure fortress, protocol 4, fort server, NPCs, client, siege bots, realm balance, load). Full suite green with F4 and F6a (1747 tests). Ability design reviewed (`docs/abilities.md`), not implemented. F6b done on the `wip/f6b` branch (packages A to E, unmerged). Abilities (H1–H5) and the adversarial review of phase 4 are missing |
 | Phase 4: chat and parties | `fase4-chat-grupos` (from `fase4-fuerte` a150b78) | SOC-03 to SOC-08 implemented (protocol 5, `ChatRouter`, chat box, `PartyManager`, party frames, social menu), with their suite; **without the adversarial review and unmerged** (the session was closed during the review) |
 | Phase 5: design | `fase5-cuentas` (from `fase4-fuerte`) | `docs/platform.md` and `docs/progression.md` written and reviewed through three lenses each (45 and 41 findings); **they still need to be reconciled with each other** (each lists in its interface section what it asks of the other). No code |
@@ -182,7 +182,7 @@ S1, S2, S3 and A1 are real failures in production or in daily use of `--local` o
 
 ## Phase 3: progress
 
-Design in [combate.md](../combate.md): reviewed through two lenses before implementing (2 blockers and
+Design in [combat.md](../combat.md): reviewed through two lenses before implementing (2 blockers and
 ~25 important issues fixed in version 2) and with a §11 that records what was settled during implementation.
 
 | Package | Contents | New tests |
@@ -245,7 +245,7 @@ client), with verifiers who tried to refute each finding: 19 findings, 18 confir
   lead time that counts toward the cap is bounded by the recent median + 3 (and 8 at most). A
   cheater with all inputs early and `interp_delay_q` at the maximum still reaches the cap
   of 24 ticks with LAN ping, because the server cannot verify the declared interpolation.
-  Documented in combate.md §4.3 and networking.md §10.
+  Documented in combat.md §4.3 and networking.md §10.
 - R4: an enemy's SPAWN carries a neutral `CombatState` (only action and weapon).
 - T2: remotes see a second consecutive dodge or stagger thanks to a reset counter
   in the action byte (`ActionWire`).
@@ -505,7 +505,7 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
    `& $godot --path . res://scenes/tests/combat_preview.tscn`. The weapons are a box and a
    cylinder (provisional).
 7. **Interface**: theme (`scenes/tests/ui_gallery.tscn`), settings with F10, provisional SVG
-   emblems. The OFL fonts are missing (see `assets/LICENCIAS.md`).
+   emblems. The OFL fonts are missing (see `assets/LICENSES.md`).
 8. **Export** (TEC-12): install the 4.7.2 templates from the editor and run
    `tools\export.ps1` (it could not be run here).
 9. From the editor: *Debug ▸ Customize Run Instances* (instance 1:
@@ -660,7 +660,7 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
   With the NPCs (F6b) it does not change: 15.2–17.4 ms on a quiet machine, and the NPCs cost ~1 ms.
   To raise it: `simulate()` in C++ (GDExtension) or a per-zone budget.
 - **Combat**: `MAX_REWIND_TICKS` for a 200 ms RTT and the P1 balance of
-  `combate.md` §12 remain open.
+  `combat.md` §12 remain open.
 - **Phase 5**:
   - the business model (PRG-41);
   - the VPS provider and region;

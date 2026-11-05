@@ -89,7 +89,7 @@ static func for_zone(zone_id: StringName, realm: StringName) -> DemoInput:
 	return fallback
 
 
-## Vado Gris route (see docs/zonas/vado_gris.md): from the player's own camp along the causeway, a run
+## Vado Gris route (see docs/zones/vado_gris.md): from the player's own camp along the causeway, a run
 ## with a jump, crossing the realm's own bridge, two jumps on the fort's slope, a strafe, going around
 ## the corner of the palisade to the gate esplanade (facing the ford) and, there, the combat
 ## ([CombatDemoScript]: a 3-hit light combo, a charged heavy attack, a block and a dodge) while the

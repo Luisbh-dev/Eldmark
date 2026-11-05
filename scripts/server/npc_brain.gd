@@ -1,6 +1,6 @@
 class_name NpcBrain
 extends BotBrain
-## Brain of a very simple humanoid NPC (docs/combate.md, section 7): the training dummy's. It generates player inputs that enter the NPC's [InputQueue] like those of a
+## Brain of a very simple humanoid NPC (docs/combat.md, section 7): the training dummy's. It generates player inputs that enter the NPC's [InputQueue] like those of a
 ## fake player, so its body is a [PlayerCharacter] simulated in the same loop.
 ## [br][br]
 ## Modes ([enum Mode]):

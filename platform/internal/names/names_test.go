@@ -38,24 +38,24 @@ func loadCases(t *testing.T) []nameCase {
 func TestSharedCasesWithGodot(t *testing.T) {
 	cases := loadCases(t)
 	if len(cases) < 100 {
-		t.Fatalf("solo %d casos", len(cases))
+		t.Fatalf("only %d cases", len(cases))
 	}
 	seen := map[string]bool{}
 	for _, c := range cases {
 		if _, ok := names.ParseReason(c.Reason); !ok {
-			t.Errorf("%q: motivo desconocido %q", c.Name, c.Reason)
+			t.Errorf("%q: unknown reason %q", c.Name, c.Reason)
 		}
 		if got := names.Validate(c.Name).String(); got != c.Reason {
-			t.Errorf("Validate(%q) = %s, se esperaba %s", c.Name, got, c.Reason)
+			t.Errorf("Validate(%q) = %s, expected %s", c.Name, got, c.Reason)
 		}
 		if got := names.NormalizeKey(c.Name); got != c.Key {
-			t.Errorf("NormalizeKey(%q) = %q, se esperaba %q", c.Name, got, c.Key)
+			t.Errorf("NormalizeKey(%q) = %q, expected %q", c.Name, got, c.Key)
 		}
 		seen[c.Reason] = true
 	}
 	for r := names.OK; r < names.Taken; r++ {
 		if !seen[r.String()] {
-			t.Errorf("no hay casos de %s", r)
+			t.Errorf("no cases for %s", r)
 		}
 	}
 }
@@ -68,10 +68,10 @@ func TestCollisionsByAccentAndCase(t *testing.T) {
 		}
 	}
 	if names.NormalizeKey("Peña") != names.NormalizeKey("Pena") || names.NormalizeKey("Güenda") != names.NormalizeKey("Guenda") {
-		t.Error("la ñ y la ü se pliegan")
+		t.Error("ñ and ü are folded")
 	}
 	if names.NormalizeKey("Álvaro") == names.NormalizeKey("Alvara") {
-		t.Error("otra letra no choca")
+		t.Error("another letter does not collide")
 	}
 }
 
@@ -81,7 +81,7 @@ func TestReasons(t *testing.T) {
 	for reason := names.OK; reason <= names.Taken; reason++ {
 		code := reason.String()
 		if seen[code] {
-			t.Errorf("código repetido %s", code)
+			t.Errorf("repeated code %s", code)
 		}
 		seen[code] = true
 		back, ok := names.ParseReason(code)
@@ -89,20 +89,20 @@ func TestReasons(t *testing.T) {
 			t.Errorf("ParseReason(%q) = %v, %v", code, back, ok)
 		}
 		if r.ReasonText(reason) == "" {
-			t.Errorf("sin texto: %s", code)
+			t.Errorf("without text: %s", code)
 		}
 	}
 	if _, ok := names.ParseReason("nada"); ok {
-		t.Error("un código desconocido no vale")
+		t.Error("an unknown code is not valid")
 	}
 	if names.Reason(42).String() != "reason(42)" {
-		t.Error("un motivo desconocido")
+		t.Error("an unknown reason")
 	}
 	if !strings.Contains(r.ReasonText(names.TooShort), "3") || !strings.Contains(r.ReasonText(names.TooLong), "16") {
-		t.Error("los textos dicen las longitudes")
+		t.Error("the texts state the lengths")
 	}
 	if r.MinLength() != 3 || r.MaxLength() != 16 {
-		t.Error("longitudes")
+		t.Error("lengths")
 	}
 }
 
@@ -112,7 +112,7 @@ func TestRulesComeFromTheData(t *testing.T) {
 	sec := gamedata.MustLoad().Names
 	for _, n := range sec.Reserved {
 		if !names.Default().IsReserved(n) {
-			t.Errorf("%q no se reconoce como reservado", n)
+			t.Errorf("%q is not recognized as reserved", n)
 		}
 	}
 	custom := sec
@@ -126,28 +126,28 @@ func TestRulesComeFromTheData(t *testing.T) {
 	for name, want := range map[string]names.Reason{"Al": names.OK, "Bo": names.Reserved, "BÓ": names.OK,
 		"Admin": names.TooLong, "A": names.TooShort} {
 		if got := r.Validate(name); got != want {
-			t.Errorf("con otras reglas, Validate(%q) = %s, se esperaba %s", name, got, want)
+			t.Errorf("with other rules, Validate(%q) = %s, expected %s", name, got, want)
 		}
 	}
 	if r.NormalizeKey("Peña") != "peña" {
-		t.Error("sin plegado, la ñ se queda")
+		t.Error("without folding, the ñ stays")
 	}
 	bad := sec
 	bad.LowerLetters = "abc"
 	if _, err := names.New(bad); err == nil {
-		t.Error("mayúsculas y minúsculas desparejadas")
+		t.Error("mismatched uppercase and lowercase")
 	}
 	bad = sec
 	bad.Folded = map[string]string{"ñ": "nn"}
 	if _, err := names.New(bad); err == nil {
-		t.Error("plegado de dos letras")
+		t.Error("two-letter folding")
 	}
 }
 
 // Text that is not valid UTF-8 (the name-check query arrives as is) is not a name.
 func TestInvalidUTF8(t *testing.T) {
 	if got := names.Validate("Ana\xff"); got != names.InvalidCharacter {
-		t.Errorf("Validate con un byte suelto = %s", got)
+		t.Errorf("Validate with a stray byte = %s", got)
 	}
 	if got := names.Validate("\xc3\xb1ana"); got != names.NotCapitalized {
 		t.Errorf("ñana = %s", got)

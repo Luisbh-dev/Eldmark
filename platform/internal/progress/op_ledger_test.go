@@ -38,7 +38,7 @@ func TestOpLedger(t *testing.T) {
 			})
 		}
 		if got, _ := w.apply(42, body); got != "applied" {
-			t.Fatalf("paso %d: %s", i, got)
+			t.Fatalf("step %d: %s", i, got)
 		}
 	}
 	ctx := context.Background()
@@ -53,7 +53,7 @@ func TestOpLedger(t *testing.T) {
 	}
 	// With no lease on the instance, nothing.
 	if _, err := op(1032, inst); !errors.Is(err, persistence.ErrNotFound) {
-		t.Fatalf("sin arrendamiento: %v", err)
+		t.Fatalf("without a lease: %v", err)
 	}
 	w.exec(`insert into character_leases (character_id, world_id, lease_id, zone_instance_id, claimed_by, expires_at)
 		values (42, 1, gen_random_uuid(), $1, $1, now() + interval '30 s')`, c.InstanceID)
@@ -111,7 +111,7 @@ func TestOpLedger(t *testing.T) {
 	}
 	// Most recent first: the REVERSAL, the GM and the two GAMEPLAY entries (merits and gold).
 	if !reflect.DeepEqual(ops, []string{"1033", "1032", "1031", "1031"}) {
-		t.Fatalf("libro: %v", ops)
+		t.Fatalf("ledger: %v", ops)
 	}
 	first := ledger(2, 0)
 	cursor := first[1].(map[string]any)["entry_id"].(string)
@@ -121,21 +121,21 @@ func TestOpLedger(t *testing.T) {
 	}
 	next := ledger(2, before)
 	if len(first) != 2 || len(next) != 2 || !reflect.DeepEqual(append(first, next...), all) {
-		t.Fatalf("paginación: %v y %v", first, next)
+		t.Fatalf("pagination: %v and %v", first, next)
 	}
 	if e := all[0].(map[string]any); e["delta"].(json.Number).String() != "-50" || e["seq"].(json.Number).String() != "3" ||
 		e["created_at_unix"].(json.Number).String() != id(c.NowUnix) || len(e) != 10 {
-		t.Fatalf("apunte: %v", e)
+		t.Fatalf("entry: %v", e)
 	}
 	for _, limit := range []int{0, 101} {
 		if _, err := w.store.Ledger(ctx, w.pool, 42, limit, 0); err == nil {
-			t.Errorf("limit %d sin error", limit)
+			t.Errorf("limit %d without error", limit)
 		}
 	}
 	if _, err := w.store.Ledger(ctx, w.pool, 4242, 20, 0); !errors.Is(err, persistence.ErrNotFound) {
-		t.Errorf("un personaje sin progreso: %v", err)
+		t.Errorf("a character without progress: %v", err)
 	}
 	if got := ledger(20, 1); len(got) != 0 {
-		t.Errorf("antes del primero: %v", got)
+		t.Errorf("before the first: %v", got)
 	}
 }

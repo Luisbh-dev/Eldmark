@@ -126,7 +126,7 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 ## [PlayerState]; that of another's entity carries only what its 21 B record already shows
 ## (position, velocity, turn, ground, action, the two weapons and the active slot): not its exact
 ## stamina, exhaustion, parry cooldown, buffer, controls, held buttons,
-## cooldowns, charges or movement effects (docs/combate.md, sections 1 and 6, and
+## cooldowns, charges or movement effects (docs/combat.md, sections 1 and 6, and
 ## docs/abilities.md, section 5.2).
 ## [br][br]
 ## A player also carries their appearance and level (protocol 7, docs/progression.md §7.3); the real level only

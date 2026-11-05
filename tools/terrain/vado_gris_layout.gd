@@ -4,7 +4,7 @@ extends RefCounted
 ## It is the single source of truth shared by the terrain generator and the scene assembly
 ## (tools/terrain/generate_vado_gris.gd). Coordinates in metres with the origin at the center of the
 ## fort; north is -Z. Vardheim (Muro de Escarcha, "Frost Wall") is to the north and Solmarch (Muralla del
-## Alba, "Dawn Wall") to the south. Design and rationale in docs/zonas/vado_gris.md.
+## Alba, "Dawn Wall") to the south. Design and rationale in docs/zones/vado_gris.md.
 ##
 ## Fairness: everything playable is symmetric about the z = 0 axis (north-south mirror). The height
 ## function uses symmetrised noise (n(x, z) + n(x, -z)) inside the playable area and the river, the

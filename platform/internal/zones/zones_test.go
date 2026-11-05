@@ -40,13 +40,13 @@ func TestUUID(t *testing.T) {
 		seen[s] = true
 		back, ok := zones.ParseUUID(s)
 		if !ok || back != u {
-			t.Fatalf("ida y vuelta de %s", s)
+			t.Fatalf("round trip of %s", s)
 		}
 	}
 	for _, bad := range []string{"", "0123", "01234567-89ab-cdef-0123-456789ABCDEF", "01234567-89ab-cdef-0123_456789abcdef",
 		"01234567089ab-cdef-0123-456789abcdef", "0123456g-89ab-cdef-0123-456789abcdef"} {
 		if _, ok := zones.ParseUUID(bad); ok {
-			t.Errorf("%q no vale", bad)
+			t.Errorf("%q is not valid", bad)
 		}
 	}
 }
@@ -61,7 +61,7 @@ func TestRegistryAuthenticate(t *testing.T) {
 	}
 	for _, bad := range []string{"", "tok-1-vado_gris-9", "Tok-1-vado_gris-0"} {
 		if _, ok := r.Authenticate(bad); ok {
-			t.Errorf("%q no es un token", bad)
+			t.Errorf("%q is not a token", bad)
 		}
 	}
 }
@@ -95,7 +95,7 @@ func TestTokenScope(t *testing.T) {
 	bad.Token = ""
 	platformtest.Expect(t, bad.Register(nil), 401, "bad_token")
 	if got := p.Count(`select count(*) from zone_instances`); got != 1 {
-		t.Fatalf("solo se registró z1: %d", got)
+		t.Fatalf("only z1 was registered: %d", got)
 	}
 	// The zone's own instance is.
 	platformtest.Expect(t, z0Fresh(p).Register(nil), 200, "")
@@ -165,12 +165,12 @@ func TestRegisterInStagingNeedsCertificate(t *testing.T) {
 	platformtest.Expect(t, res, 200, "")
 	if res.String("env") != "staging" || res.Int("heartbeat_s") != 5 || res.Int("lease_ttl_s") != 30 ||
 		res.Int("now_unix") != p.Clock.Now().Unix() {
-		t.Fatalf("respuesta del registro: %s", res.Raw)
+		t.Fatalf("registration response: %s", res.Raw)
 	}
 	var stored string
 	p.Scalar(&stored, `select dtls_cert_pem from zone_instances where zone_instance_id = $1`, z.ID)
 	if stored != cert {
-		t.Fatal("certificado guardado")
+		t.Fatal("certificate stored")
 	}
 }
 
@@ -196,11 +196,11 @@ func TestRegisterAliveAndReplace(t *testing.T) {
 	}
 	if n := p.Count(`select count(*) from audit_log where source = 'platform' and command = 'zone_replace'
 		and args->>'replaced' = $1 and args->>'by' = $2`, old.ID, fresh.ID); n != 1 {
-		t.Fatalf("fila de la auditoría: %d", n)
+		t.Fatalf("audit row: %d", n)
 	}
 	if n := p.Count(`select count(*) from character_leases where character_id = $1 and zone_instance_id = $2`,
 		id, old.ID); n != 1 {
-		t.Fatal("la sustitución no libera los arrendamientos de la vieja")
+		t.Fatal("the replacement does not release the old one's leases")
 	}
 	platformtest.Expect(t, old.Heartbeat(1, platformtest.Lease{CharacterID: id, LeaseID: lease}), 409, "instance_replaced")
 	platformtest.Expect(t, old.Live(), 409, "instance_replaced")
@@ -228,11 +228,11 @@ func TestRegisterOverASilentInstance(t *testing.T) {
 	p.Scalar(&free, `select zone_instance_id is null and released_at is not null from character_leases
 		where character_id = $1`, id)
 	if !free {
-		t.Fatal("arrendamiento libre")
+		t.Fatal("free lease")
 	}
 	platformtest.Expect(t, old.Heartbeat(0), 409, "instance_lost")
 	if n := p.Count(`select count(*) from audit_log where command = 'zone_replace'`); n != 0 {
-		t.Fatal("perder no es sustituir")
+		t.Fatal("losing is not replacing")
 	}
 }
 
@@ -257,14 +257,14 @@ func TestTwoRegistrationsAtOnce(t *testing.T) {
 			case r.Status == 200:
 				ok++
 			case r.Status != 409 || r.Code() != "instance_alive":
-				t.Fatalf("ronda %d: %d %s", round, r.Status, r.Raw)
+				t.Fatalf("round %d: %d %s", round, r.Status, r.Raw)
 			}
 		}
 		if ok != 1 {
-			t.Fatalf("ronda %d: %d ganadores", round, ok)
+			t.Fatalf("round %d: %d winners", round, ok)
 		}
 		if n := p.Count(`select count(*) from zone_instances where zone_id = 'test_world' and status in ('starting', 'live')`); n != 1 {
-			t.Fatalf("ronda %d: %d vivas", round, n)
+			t.Fatalf("round %d: %d alive", round, n)
 		}
 		p.Exec(`update zone_instances set status = 'stopped' where zone_id = 'test_world'`)
 	}
@@ -286,7 +286,7 @@ func TestLiveAndStop(t *testing.T) {
 	var free bool
 	p.Scalar(&free, `select zone_instance_id is null from character_leases where character_id = $1`, id)
 	if status != "stopped" || !free {
-		t.Fatalf("baja: %s libre=%v", status, free)
+		t.Fatalf("deregistration: %s free=%v", status, free)
 	}
 	platformtest.Expect(t, z.Do("DELETE", "/internal/v1/zone-instances/"+z.ID, nil), 204, "")
 	platformtest.Expect(t, z.Heartbeat(0, platformtest.Lease{CharacterID: id, LeaseID: lease}), 409, "instance_stopped")
@@ -360,7 +360,7 @@ func TestInstanceStateTable(t *testing.T) {
 		// Batches are valid in every state.
 		for i, b := range batches {
 			if res := b(); res.Status != 204 {
-				t.Errorf("lote %d en %s: %d %s", i, status, res.Status, res.Raw)
+				t.Errorf("batch %d in %s: %d %s", i, status, res.Status, res.Raw)
 			}
 		}
 	}
@@ -381,12 +381,12 @@ func TestIDBlocks(t *testing.T) {
 		}
 		first := res.String("first")
 		if first == "" || (i > 0 && first == firsts[i-1]) {
-			t.Fatalf("first en cadena: %s", res.Raw)
+			t.Fatalf("first in chain: %s", res.Raw)
 		}
 		firsts = append(firsts, first)
 	}
 	if firsts[0] != "1" || firsts[1] != "1025" || firsts[2] != "2049" {
-		t.Fatalf("bloques %v", firsts)
+		t.Fatalf("blocks %v", firsts)
 	}
 	if n := p.Count(`select count(*) from id_blocks where zone_instance_id = $1`, z.ID); n != 2 {
 		t.Fatal(n)
@@ -418,16 +418,16 @@ func TestHeartbeatRenewsOnlyMatchingLeases(t *testing.T) {
 	r := revoked[0].(map[string]any)
 	if r["character_id"] != strconv.FormatInt(idB, 10) || r["lease_id"] != stale || r["reason"] != "lease_lost" ||
 		r["text"] == "" {
-		t.Fatalf("lease_lost con el lease_id del latido: %v", r)
+		t.Fatalf("lease_lost with the heartbeat's lease_id: %v", r)
 	}
 	var expiresA, expiresB time.Time
 	p.Scalar(&expiresA, `select expires_at from character_leases where character_id = $1`, idA)
 	p.Scalar(&expiresB, `select expires_at from character_leases where character_id = $1`, idB)
 	if !expiresA.Equal(p.Clock.Now().Add(30*time.Second)) || !expiresB.Before(p.Clock.Now().Add(15*time.Second)) {
-		t.Fatalf("renovación: A %s, B %s (ahora %s)", expiresA, expiresB, p.Clock.Now())
+		t.Fatalf("renewal: A %s, B %s (now %s)", expiresA, expiresB, p.Clock.Now())
 	}
 	if n := p.Count(`select players from zone_instances where zone_instance_id = $1`, z.ID); n != 2 {
-		t.Fatalf("jugadores: %d", n)
+		t.Fatalf("players: %d", n)
 	}
 	// B is not in the heartbeats: 30 s after its claim it expires and can enter again.
 	platformtest.Expect(t, p.Enter(b, idB), 409, "character_busy")
@@ -435,10 +435,10 @@ func TestHeartbeatRenewsOnlyMatchingLeases(t *testing.T) {
 	platformtest.Expect(t, z.Heartbeat(1, platformtest.Lease{CharacterID: idA, LeaseID: leaseA}), 200, "")
 	p.Login(b)
 	if res := p.Enter(b, idB); res.Status != 200 {
-		t.Fatalf("B tras el TTL: %d %s", res.Status, res.Raw)
+		t.Fatalf("B after the TTL: %d %s", res.Status, res.Raw)
 	}
 	if res := p.Enter(a, idA); res.Code() != "character_busy" {
-		t.Fatalf("A sigue dentro: %s", res.Raw)
+		t.Fatalf("A is still inside: %s", res.Raw)
 	}
 	if !json.Valid([]byte(res.Raw)) {
 		t.Fatal("JSON")
@@ -469,7 +469,7 @@ func TestHeartbeatRevocations(t *testing.T) {
 	res := z.Heartbeat(5, leases...)
 	platformtest.Expect(t, res, 200, "")
 	if len(res.Body["revoked"].([]any)) != 0 || len(res.Body["mutes"].([]any)) != 0 || res.Body["maintenance"] != nil {
-		t.Fatalf("latido limpio: %s", res.Raw)
+		t.Fatalf("clean heartbeat: %s", res.Raw)
 	}
 
 	// 0: refreshes the ticket's session, the one the lease holds (it does not remove: the refresh
@@ -480,17 +480,17 @@ func TestHeartbeatRevocations(t *testing.T) {
 		platformtest.Expect(t, p.RefreshSession(all[0].pl), 200, "")
 		res = z.Heartbeat(5, leases...)
 		if len(res.Body["revoked"].([]any)) != 0 {
-			t.Fatalf("refrescar no expulsa: %s", res.Raw)
+			t.Fatalf("refreshing does not kick out: %s", res.Raw)
 		}
 	}
 	var rotated int
 	p.Scalar(&rotated, `select count(*) from sessions where session_id = $1 and rotated_at is not null and revoked_at is null`, session)
 	if rotated != 1 || p.Count(`select count(*) from character_leases where character_id = $1 and session_id = $2`,
 		all[0].id, session) != 1 {
-		t.Fatal("el refresco tenía que rotar la sesión del arrendamiento sin cambiarla")
+		t.Fatal("the refresh had to rotate the lease's session without changing it")
 	}
 	if res := p.PublicDo("GET", "/v1/account", all[0].pl.Token, nil); res.Status != 200 {
-		t.Fatalf("el acceso refrescado vale: %s", res.Raw)
+		t.Fatalf("the refreshed access is valid: %s", res.Raw)
 	}
 	p.Login(all[0].pl)
 	// 1: suspended with a long reason; 2: banned; 3: deletion requested; 4: muted.
@@ -522,14 +522,14 @@ func TestHeartbeatRevocations(t *testing.T) {
 		}
 		text := m["text"].(string)
 		if text == "" || len(text) > 255 {
-			t.Fatalf("%d: texto %q", i, text)
+			t.Fatalf("%d: text %q", i, text)
 		}
 	}
 	if !strings.Contains(got[strconv.FormatInt(all[0].id, 10)]["text"].(string), "otro lugar") ||
 		!strings.Contains(got[strconv.FormatInt(all[1].id, 10)]["text"].(string), "suspendida hasta el") ||
 		!strings.Contains(got[strconv.FormatInt(all[2].id, 10)]["text"].(string), "expulsada: trampas") ||
 		!strings.Contains(got[strconv.FormatInt(all[3].id, 10)]["text"].(string), "se borrará el") {
-		t.Fatalf("textos: %s", res.Raw)
+		t.Fatalf("texts: %s", res.Raw)
 	}
 	mutes := res.Body["mutes"].([]any)
 	if len(mutes) != 1 {
@@ -538,14 +538,14 @@ func TestHeartbeatRevocations(t *testing.T) {
 	m := mutes[0].(map[string]any)
 	if m["account_id"] != strconv.FormatInt(all[4].pl.ID, 10) || m["until_unix"].(json.Number).String() !=
 		strconv.FormatInt(now.Add(10*time.Minute).Unix(), 10) {
-		t.Fatalf("silencio: %v", m)
+		t.Fatalf("mute: %v", m)
 	}
 	// Those removed stay renewed: the zone still sends its final save.
 	var alive int
 	p.Scalar(&alive, `select count(*) from character_leases where zone_instance_id = $1 and expires_at > $2`,
 		z.ID, p.Clock.Now())
 	if alive != 5 {
-		t.Fatalf("renovados: %d", alive)
+		t.Fatalf("renewed: %d", alive)
 	}
 }
 
@@ -577,7 +577,7 @@ func TestLateHeartbeatDoesNotRenewExpiredLeases(t *testing.T) {
 			where c.account_id = $1 and l.zone_instance_id is not null and l.expires_at > $2`, pl.ID, p.Clock.Now())
 	}
 	if n := alive(); n != 1 {
-		t.Fatalf("arrendamientos vivos de la cuenta: %d", n)
+		t.Fatalf("the account's live leases: %d", n)
 	}
 	// With B outside the heartbeat and expired, it can be deleted; the late heartbeat does not bring
 	// it back into the world.
@@ -586,10 +586,10 @@ func TestLateHeartbeatDoesNotRenewExpiredLeases(t *testing.T) {
 	platformtest.Expect(t, res, 200, "")
 	res = z.Heartbeat(1, platformtest.Lease{CharacterID: idB, LeaseID: leaseB})
 	if revoked := res.Body["revoked"].([]any); len(revoked) != 1 || revoked[0].(map[string]any)["reason"] != "lease_lost" {
-		t.Fatalf("el borrado sigue en el mundo: %s", res.Raw)
+		t.Fatalf("the deletion is still in the world: %s", res.Raw)
 	}
 	if n := alive(); n != 0 {
-		t.Fatalf("arrendamientos vivos tras el borrado: %d", n)
+		t.Fatalf("live leases after the deletion: %d", n)
 	}
 }
 
@@ -611,7 +611,7 @@ func TestLostInstance(t *testing.T) {
 	var status string
 	p.Scalar(&status, `select status from zone_instances where zone_instance_id = $1`, z.ID)
 	if status != "live" {
-		t.Fatal("a los 14 s sigue viva")
+		t.Fatal("at 14 s it is still alive")
 	}
 	p.Clock.Advance(time.Second)
 	if err := p.Zones.MarkLost(ctx); err != nil {
@@ -621,13 +621,13 @@ func TestLostInstance(t *testing.T) {
 	var free bool
 	p.Scalar(&free, `select zone_instance_id is null from character_leases where character_id = $1`, id)
 	if status != "lost" || !free {
-		t.Fatalf("perdida: %s libre=%v", status, free)
+		t.Fatalf("lost: %s free=%v", status, free)
 	}
 	platformtest.Expect(t, z.Heartbeat(1, platformtest.Lease{CharacterID: id, LeaseID: lease}), 409, "instance_lost")
 	platformtest.Expect(t, z.Live(), 409, "instance_lost")
 	platformtest.Expect(t, z.Do("DELETE", "/internal/v1/zone-instances/"+z.ID, nil), 409, "instance_lost")
 	if !strings.Contains(p.Logs.String(), "instancia perdida") {
-		t.Fatal("registro")
+		t.Fatal("log")
 	}
 	// Another instance of the zone and the character enters it.
 	fresh := p.NewZone(1, "vado_gris", 0).Start()

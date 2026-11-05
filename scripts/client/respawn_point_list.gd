@@ -1,6 +1,6 @@
 class_name RespawnPointList
 extends RefCounted
-## List of respawn points offered by the death screen and the map (docs/combate.md, section 5;
+## List of respawn points offered by the death screen and the map (docs/combat.md, section 5;
 ## docs/fortress.md, section 5; UI-14, UI-21).
 ## [br][br]
 ## [b]Valid options (phase 4).[/b] A point's index is its position in the list of [i]all[/i] the markers

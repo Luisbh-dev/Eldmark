@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [CommandRegistry] (docs/combate.md, section 6; TEC-19): the single registry of
+## Tests for [CommandRegistry] (docs/combat.md, section 6; TEC-19): the single registry of
 ## network commands (with fixed ids from [constant NetProtocol.DEBUG_COMMAND_IDS]) and console
 ## commands, execution, results and the audit of each use.
 

@@ -1,5 +1,5 @@
 extends TestCase
-## Reconciliation in a melee with a bad network (TEC-15; docs/combate.md, sections 1 and 3.4): four
+## Reconciliation in a melee with a bad network (TEC-15; docs/combat.md, sections 1 and 3.4): four
 ## combat bots ([code]--bot-brain=combat[/code], two per realm) fight each other with real ENet over
 ## 127.0.0.1 and a [NetSim] of 120 ms RTT, 20 ms jitter and 5 % loss on each.
 ## [br][br]

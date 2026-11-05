@@ -6,7 +6,7 @@ extends RefCounted
 ## the clock or depends on [code]scripts/client/[/code].
 
 ## Protocol version. Any change to the formats or the simulation bumps it.
-## [br]- 2: phase 3 combat (docs/combate.md).
+## [br]- 2: phase 3 combat (docs/combat.md).
 ## [br]- 3: phase 3 review (the action machine and air movement change the predicted
 ## simulation: bit 6 of [code]combat_flags[/code], charge canceled after silence, combo reset).
 ## [br]- 4: phase 4 fortress (docs/fortress.md, section 2): OBJECT_STATE, ENTITY_SPAWN of
@@ -121,7 +121,7 @@ const MSG_WALLET_UPDATE: int = 0x54
 const MSG_PROGRESS_UPDATE: int = 0x55
 
 # Debug commands (byte 1 of a DEBUG_COMMAND, only with --debug-commands). The ids are
-# fixed: they are not reused or reordered (docs/combate.md, section 6).
+# fixed: they are not reused or reordered (docs/combat.md, section 6).
 ## Teleport the player (3 × f32 of position).
 const DEBUG_TELEPORT: int = 1
 ## Fully heal the player.

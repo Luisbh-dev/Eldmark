@@ -1,7 +1,7 @@
 class_name HitShape
 extends Resource
 ## Shape of a melee hit: an annular sector with height in front of the attacker
-## (docs/combate.md, section 2). The geometry that tests it against a capsule lives in
+## (docs/combat.md, section 2). The geometry that tests it against a capsule lives in
 ## [code]hit_shapes.gd[/code]; only the data is here.
 ## [br][br]
 ## It is server-only data: it is not part of [method CombatCatalog.prediction_hash].

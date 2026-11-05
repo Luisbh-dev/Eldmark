@@ -1,6 +1,6 @@
 class_name Combatant
 extends RefCounted
-## What the server knows about the combat of an entity with a body (docs/combate.md, section 5): player,
+## What the server knows about the combat of an entity with a body (docs/combat.md, section 5): player,
 ## fake player or NPC. One per entity that can take damage.
 ## [br][br]
 ## It carries health (authoritative, not predicted: it is not in [PlayerState]), the "in combat" state, respawn
@@ -9,7 +9,7 @@ extends RefCounted
 ## change the simulation (action, stamina, controls) lives in [member PlayerCharacter.combat] and
 ## travels in [PlayerState].
 ## [br][br]
-## [member frozen] is the "current-tick sample" (docs/combate.md, 4.2): the entity's position, turn,
+## [member frozen] is the "current-tick sample" (docs/combat.md, 4.2): the entity's position, turn,
 ## defensive flags and action right after simulating the tick, which the
 ## [CombatResolver] uses so that all the hits of a tick are simultaneous. Since phase 4
 ## (docs/abilities.md, section 4.1, step 2) it also freezes the active hit (an attack or an ability's
@@ -77,7 +77,7 @@ var max_health: int = 0
 ## A dummy: health does not drop below 1, it does not die and it fully heals after [member CombatTiming.dummy_heal].
 var immortal: bool = false
 ## A Gate Guardian: it can attack from the safe zone of its own realm and attacks the enemies
-## inside it (docs/combate.md, section 5). Set by whoever creates the NPC, according to its [code]NpcDefinition[/code].
+## inside it (docs/combat.md, section 5). Set by whoever creates the NPC, according to its [code]NpcDefinition[/code].
 var ignores_safe_area: bool = false
 var in_combat_until: int = 0
 var protected_until: int = 0
@@ -355,7 +355,7 @@ func has_recent_enemy(tick: int) -> bool:
 
 
 ## Tries to impose a control (stagger, stun...) on it at [param tick]. Control chain
-## (docs/combate.md, 4.4): those of the last [member CombatTiming.cc_window] ticks are counted; the
+## (docs/combat.md, 4.4): those of the last [member CombatTiming.cc_window] ticks are counted; the
 ## third does not go through and opens [member CombatTiming.cc_immunity] ticks of immunity to controls.
 ## Returns false if the control does not go through.
 func try_control(tick: int) -> bool:

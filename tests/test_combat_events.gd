@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the client combat events (docs/combate.md, sections 5 and 6): the queue
+## Tests for the client combat events (docs/combat.md, sections 5 and 6): the queue
 ## ordered by draw tick ([CombatEventQueue]) and [NetClient] against a fake server that
 ## sends the extra snapshot block (health, state, respawn tick) and ENTITY_EVENT.
 ## [br]- An own event (attacker, victim, killer or assister) is delivered on arrival.

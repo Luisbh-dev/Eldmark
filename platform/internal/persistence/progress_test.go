@@ -15,7 +15,7 @@ func TestErrorsAreMatchedByPointer(t *testing.T) {
 	var err error = fmt.Errorf("guardado: %w", &persistence.InvalidSaveError{Check: "S4", Detail: "objetos"})
 	var invalid *persistence.InvalidSaveError
 	if !errors.As(err, &invalid) || invalid.Check != "S4" || invalid.Detail != "objetos" {
-		t.Errorf("errors.As con *InvalidSaveError: %v", err)
+		t.Errorf("errors.As with *InvalidSaveError: %v", err)
 	}
 	if invalid.Error() != "invalid_save S4: objetos" {
 		t.Errorf("Error() = %q", invalid.Error())
@@ -24,13 +24,13 @@ func TestErrorsAreMatchedByPointer(t *testing.T) {
 		"appearance": "invalid"}})
 	var validation *persistence.ValidationError
 	if !errors.As(err, &validation) || validation.Fields["race_id"] != "wrong_realm" {
-		t.Errorf("errors.As con *ValidationError: %v", err)
+		t.Errorf("errors.As with *ValidationError: %v", err)
 	}
 	if validation.Error() != "validation: appearance=invalid, race_id=wrong_realm" {
 		t.Errorf("Error() = %q", validation.Error())
 	}
 	if !errors.Is(fmt.Errorf("op: %w", persistence.ErrNotFound), persistence.ErrNotFound) {
-		t.Error("ErrNotFound con errors.Is")
+		t.Error("ErrNotFound with errors.Is")
 	}
 }
 
@@ -64,7 +64,7 @@ func TestProvisionalValidator(t *testing.T) {
 		}
 		var ve *persistence.ValidationError
 		if !errors.As(err, &ve) || fmt.Sprint(ve.Fields) != fmt.Sprint(c.want) {
-			t.Errorf("%d %q %q: %v, se esperaba %v", c.realm, c.race, c.template, err, c.want)
+			t.Errorf("%d %q %q: %v, expected %v", c.realm, c.race, c.template, err, c.want)
 		}
 	}
 }
@@ -78,7 +78,7 @@ func TestMemoryProgressStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := m.Create(ctx, nil, 1, 41, params); err == nil {
-		t.Error("crear dos veces el mismo personaje")
+		t.Error("creating the same character twice")
 	}
 	raw, err := m.Load(ctx, nil, 41)
 	if err != nil {
@@ -90,11 +90,11 @@ func TestMemoryProgressStore(t *testing.T) {
 	}
 	if rec["race_id"] != "race_vardheim" || rec["appearance"] != "AQACAQADAiE=" || rec["starter_template_id"] != "squire" ||
 		rec["level"] != 1.0 || rec["location"] != nil || rec["progress_format"] != 1.0 {
-		t.Errorf("registro nuevo: %v", rec)
+		t.Errorf("new record: %v", rec)
 	}
 	sums, _ := m.Summaries(ctx, nil, []int64{41, 99})
 	if len(sums) != 1 || sums[41].Level != 1 || sums[41].RaceID != "race_vardheim" || sums[41].Appearance != params.Appearance {
-		t.Errorf("resumen: %+v", sums)
+		t.Errorf("summary: %+v", sums)
 	}
 
 	key := persistence.SaveKey{WorldID: 1, CharacterID: 41, ZoneID: "vado_gris"}
@@ -107,21 +107,21 @@ func TestMemoryProgressStore(t *testing.T) {
 	// Like S2: an op_id already stored is no longer valid; a new one is.
 	var invalidS2 *persistence.InvalidSaveError
 	if _, err := m.Apply(ctx, nil, key, json.RawMessage(body)); !errors.As(err, &invalidS2) || invalidS2.Check != "S2" {
-		t.Errorf("op_id repetido: %v", err)
+		t.Errorf("repeated op_id: %v", err)
 	}
 	body = strings.Replace(body, `"5120"`, `"5121"`, 1)
 	if v, _ := m.Apply(ctx, nil, key, json.RawMessage(body)); v != 2 {
-		t.Errorf("save_version sube: %d", v)
+		t.Errorf("save_version goes up: %d", v)
 	}
 	sums, _ = m.Summaries(ctx, nil, []int64{41})
 	if s := sums[41]; s.Level != 7 || s.PlayedSeconds != 5400 || s.LastZoneID != "vado_gris" || s.LastChannel != 2 {
-		t.Errorf("resumen tras guardar: %+v", s)
+		t.Errorf("summary after saving: %+v", s)
 	}
 	raw, _ = m.Load(ctx, nil, 41)
 	rec = nil
 	_ = json.Unmarshal(raw, &rec)
 	if _, ok := rec["ops"]; ok || rec["level"] != 7.0 || rec["race_id"] != "race_vardheim" {
-		t.Errorf("la reclamación siguiente trae lo aplicado sin ops: %v", rec)
+		t.Errorf("the next claim brings what was applied without ops: %v", rec)
 	}
 	for _, bad := range []string{`[]`, `{"level": 2}`, `{"progress_format": 2}`, `nope`} {
 		var invalid *persistence.InvalidSaveError
@@ -133,7 +133,7 @@ func TestMemoryProgressStore(t *testing.T) {
 		return &persistence.InvalidSaveError{Check: "S4", Detail: "de prueba"}
 	})
 	if _, err := m.Apply(ctx, nil, key, json.RawMessage(body)); err == nil {
-		t.Error("el gancho decide")
+		t.Error("the hook decides")
 	}
 	m.SetApplyHook(nil)
 
@@ -151,17 +151,17 @@ func TestMemoryProgressStore(t *testing.T) {
 		t.Fatal("Purge")
 	}
 	if _, err := m.Load(ctx, nil, 41); !errors.Is(err, persistence.ErrNotFound) {
-		t.Error("Load de un purgado")
+		t.Error("Load of a purged one")
 	}
 	if _, err := m.Ledger(ctx, nil, 41, 20, 0); !errors.Is(err, persistence.ErrNotFound) {
-		t.Error("Ledger de un purgado")
+		t.Error("Ledger of a purged one")
 	}
 	raw, _ = m.Export(ctx, nil, 41)
 	if string(raw) != `{"ops":[],"record":null}` {
-		t.Errorf("Export de una lápida: %s", raw)
+		t.Errorf("Export of a tombstone: %s", raw)
 	}
 	if err := m.Create(ctx, nil, 1, 41, params); err != nil {
-		t.Error("un id purgado se puede volver a crear en el falso")
+		t.Error("a purged id can be created again in the fake")
 	}
 	if n, emptied, err := m.PurgeRetention(ctx, nil); n != 0 || emptied != nil || err != nil {
 		t.Error("PurgeRetention")

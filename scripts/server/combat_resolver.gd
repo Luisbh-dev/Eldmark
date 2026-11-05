@@ -1,6 +1,6 @@
 class_name CombatResolver
 extends RefCounted
-## Authoritative resolution of hits with hitbox rewind (docs/combate.md, section 4.3;
+## Authoritative resolution of hits with hitbox rewind (docs/combat.md, section 4.3;
 ## CMB-09 and TEC-14).
 ## [br][br]
 ## [method resolve] is called once per tick, after simulating all entities and freezing
@@ -270,7 +270,7 @@ func _swing_rewind(attacker: Combatant, s: int) -> float:
 	return fixed.x
 
 
-## The rewind of a hit or shot by [param attacker] that starts at [param s] (docs/combate.md,
+## The rewind of a hit or shot by [param attacker] that starts at [param s] (docs/combat.md,
 ## 4.3, step 2), without fixing it anywhere: [code]x[/code] is the ticks it looks back (clipped to the cap;
 ## NAN if it asks for more than [code]allowed + [/code][constant REWIND_REJECT_SLACK_TICKS]) and [code]y[/code] the ones
 ## looked back at for parry, block and invulnerability (at least the minimum consistent with the measured
@@ -387,7 +387,7 @@ func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tic
 	return hit
 
 
-# Defense precedence (docs/combate.md, 4.3, step 6). [param defense_tick] is the oldest
+# Defense precedence (docs/combat.md, 4.3, step 6). [param defense_tick] is the oldest
 # instant looked at for retroactive defenses: view_tick, or earlier if the server imposes a
 # minimum rewind (the client does not escape them by asking for 0). A shield wall block marks
 # [member Hit.wide_block] on [param hit].

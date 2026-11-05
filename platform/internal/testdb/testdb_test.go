@@ -21,29 +21,29 @@ func TestNewGivesIsolatedMigratedDatabases(t *testing.T) {
 	ctx := context.Background()
 	a, b := testdb.New(t), testdb.New(t)
 	if a.Config().ConnConfig.Database == b.Config().ConnConfig.Database {
-		t.Fatal("cada prueba tiene su base")
+		t.Fatal("each test has its own database")
 	}
 	testdb.Exec(t, a, "insert into accounts (email, age_confirmed_at) values ('a@eldmark.test', now())")
 	var n int
 	if err := b.QueryRow(ctx, "select count(*) from accounts").Scan(&n); err != nil || n != 0 {
-		t.Fatalf("la otra base no ve la fila: %d %v", n, err)
+		t.Fatalf("the other database does not see the row: %d %v", n, err)
 	}
 	ms, err := migrate.Load(migrate.FS())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := b.QueryRow(ctx, "select count(*) from schema_migrations").Scan(&n); err != nil || n != len(ms) {
-		t.Fatalf("la plantilla tiene todas las migraciones: %d de %d (%v)", n, len(ms), err)
+		t.Fatalf("the template has all the migrations: %d of %d (%v)", n, len(ms), err)
 	}
 	if !strings.Contains(strings.Join(testdb.Tables(t, b), ","), "character_leases") {
-		t.Fatal("Tables lista las tablas del esquema")
+		t.Fatal("Tables lists the schema's tables")
 	}
 }
 
 func TestNewEmptyHasNoSchema(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	if tables := testdb.Tables(t, pool); len(tables) != 0 {
-		t.Fatalf("base vacía: %v", tables)
+		t.Fatalf("empty database: %v", tables)
 	}
 }
 
@@ -51,10 +51,10 @@ func TestDumpSchemaIsStable(t *testing.T) {
 	pool := testdb.New(t)
 	first, second := testdb.DumpSchema(t, pool), testdb.DumpSchema(t, pool)
 	if first != second || strings.Contains(first, `\restrict`) {
-		t.Fatal("dos volcados seguidos son iguales y sin las líneas \\restrict")
+		t.Fatal("two consecutive dumps are equal and have no \\restrict lines")
 	}
 	if strings.Contains(first, "OWNER TO") || strings.Contains(first, "GRANT ") {
-		t.Fatal("sin dueños ni privilegios")
+		t.Fatal("no owners or privileges")
 	}
 }
 
@@ -67,10 +67,10 @@ func TestClusterDiesWithTheProcess(t *testing.T) {
 		panic("el proceso de pruebas muere sin pasar por el final de Main")
 	}
 	if runtime.GOOS == "windows" {
-		t.Skip("el vigilante es de Unix")
+		t.Skip("the watchdog is Unix-only")
 	}
 	if os.Getenv("ELDMARK_TEST_DATABASE_URL") != "" {
-		t.Skip("con un servidor compartido no hay clúster")
+		t.Skip("with a shared server there is no cluster")
 	}
 	testdb.New(t) // without PostgreSQL, it is skipped (or fails with ELDMARK_REQUIRE_PG=1) like the others
 	// A temporary folder of its own for the child (the postgres user must be able to enter it).
@@ -86,7 +86,7 @@ func TestClusterDiesWithTheProcess(t *testing.T) {
 	cmd.Env = append(os.Environ(), "ELDMARK_TESTDB_CHILD=1", "TMPDIR="+tmp)
 	out, err := cmd.CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "muere sin pasar") {
-		t.Fatalf("el hijo tenía que morir con el pánico: %v\n%s", err, out)
+		t.Fatalf("the child had to die with the panic: %v\n%s", err, out)
 	}
 	deadline := time.Now().Add(15 * time.Second)
 	for {
@@ -104,7 +104,7 @@ func TestClusterDiesWithTheProcess(t *testing.T) {
 					}
 				}
 			}
-			t.Fatalf("el clúster del hijo sigue ahí: %v", left)
+			t.Fatalf("the child's cluster is still there: %v", left)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

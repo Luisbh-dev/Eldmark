@@ -56,9 +56,9 @@ func requireTool(t *testing.T, name string) string {
 	path, err := exec.LookPath(name)
 	if err != nil {
 		if os.Getenv("ELDMARK_REQUIRE_DEPLOY_TOOLS") == "1" {
-			t.Fatalf("falta %s (ELDMARK_REQUIRE_DEPLOY_TOOLS=1)", name)
+			t.Fatalf("missing %s (ELDMARK_REQUIRE_DEPLOY_TOOLS=1)", name)
 		}
-		t.Skipf("falta %s", name)
+		t.Skipf("missing %s", name)
 	}
 	return path
 }
@@ -70,9 +70,9 @@ func requirePG(t *testing.T) string {
 	dir := testdb.BinDir()
 	if dir == "" {
 		if os.Getenv("ELDMARK_REQUIRE_PG") == "1" {
-			t.Fatal("no se encuentran los binarios de PostgreSQL (ELDMARK_REQUIRE_PG=1)")
+			t.Fatal("PostgreSQL binaries not found (ELDMARK_REQUIRE_PG=1)")
 		}
-		t.Skip("no se encuentran los binarios de PostgreSQL")
+		t.Skip("PostgreSQL binaries not found")
 	}
 	return dir
 }
@@ -154,7 +154,7 @@ func mustScript(t *testing.T, env map[string]string, name string, args ...string
 	t.Helper()
 	code, out := script(t, env, name, args...)
 	if code != 0 {
-		t.Fatalf("%s %v: código %d\n%s", name, args, code, out)
+		t.Fatalf("%s %v: code %d\n%s", name, args, code, out)
 	}
 	return out
 }
@@ -163,7 +163,7 @@ func mustContain(t *testing.T, out string, want ...string) {
 	t.Helper()
 	for _, w := range want {
 		if !strings.Contains(out, w) {
-			t.Fatalf("falta %q en la salida:\n%s", w, out)
+			t.Fatalf("missing %q in the output:\n%s", w, out)
 		}
 	}
 }
@@ -201,7 +201,7 @@ func TestScriptsPassShellcheck(t *testing.T) {
 		}
 		info, err := os.Stat(s)
 		if err != nil || info.Mode()&0o111 == 0 && s != "pglib.sh" {
-			t.Errorf("%s no es ejecutable", s)
+			t.Errorf("%s is not executable", s)
 		}
 	}
 	shellcheck := requireTool(t, "shellcheck")
@@ -249,7 +249,7 @@ func TestBackupAndRestoreCheck(t *testing.T) {
 	mustContain(t, mustScript(t, env, "backup.sh"), "(0 purgas)", "también semanal")
 	first := files(t, filepath.Join(dir, "daily"), "*.dump")
 	if len(first) != 1 {
-		t.Fatalf("copias: %v", first)
+		t.Fatalf("copies: %v", first)
 	}
 
 	// After the copy, b deletes Dairine and requests erasure right away (purge-now): Corwin, who was
@@ -262,17 +262,17 @@ func TestBackupAndRestoreCheck(t *testing.T) {
 	out := mustScript(t, env, "backup.sh")
 	mustContain(t, out, "(3 purgas)")
 	if strings.Contains(out, "también semanal") {
-		t.Fatalf("dos semanales en el mismo día:\n%s", out)
+		t.Fatalf("two weekly ones on the same day:\n%s", out)
 	}
 	latest := filepath.Join(dir, "purges.txt")
 	if n := lines(t, latest); n != 3 {
-		t.Fatalf("purges.txt con %d líneas", n)
+		t.Fatalf("purges.txt with %d lines", n)
 	}
 	if d, w := files(t, filepath.Join(dir, "daily"), "*"), files(t, filepath.Join(dir, "weekly"), "*"); len(d) != 4 || len(w) != 2 {
-		t.Fatalf("diarias %v, semanales %v", d, w)
+		t.Fatalf("daily %v, weekly %v", d, w)
 	}
 	if strings.Contains(string(readFile(t, latest)), "@") {
-		t.Fatal("purges.txt lleva correos")
+		t.Fatal("purges.txt carries emails")
 	}
 
 	// The copy from before purging, with the most recent purges.txt.
@@ -297,7 +297,7 @@ func TestBackupAndRestoreCheck(t *testing.T) {
 	mustScript(t, env, "backup.sh")
 	code, out := script(t, rc, "restore_check.sh", withEmail[len(withEmail)-1], latest)
 	if code != 1 {
-		t.Fatalf("restore_check.sh con un correo en la auditoría: código %d\n%s", code, out)
+		t.Fatalf("restore_check.sh with an email in the audit: code %d\n%s", code, out)
 	}
 	mustContain(t, out, "MAL: filas de audit_log con el correo de una cuenta purgada: 1")
 
@@ -306,13 +306,13 @@ func TestBackupAndRestoreCheck(t *testing.T) {
 	mustContain(t, mustScript(t, env, "backup.sh"), "rotada:")
 	dumps := files(t, filepath.Join(dir, "daily"), "*.dump")
 	if len(dumps) != 2 || len(files(t, filepath.Join(dir, "daily"), "*.purges.txt")) != 2 {
-		t.Fatalf("tras rotar: %v", files(t, filepath.Join(dir, "daily"), "*"))
+		t.Fatalf("after rotating: %v", files(t, filepath.Join(dir, "daily"), "*"))
 	}
 	if n := lines(t, latest); n != 5 {
-		t.Fatalf("el purges.txt más reciente tiene %d líneas", n)
+		t.Fatalf("the most recent purges.txt has %d lines", n)
 	}
 	if len(files(t, filepath.Join(dir, "weekly"), "*.dump")) != 1 {
-		t.Fatal("la rotación de las diarias ha tocado la semanal")
+		t.Fatal("rotating the daily ones touched the weekly one")
 	}
 }
 
@@ -329,15 +329,15 @@ func readFile(t *testing.T, path string) []byte {
 func TestRestoreCheckUsage(t *testing.T) {
 	for _, args := range [][]string{{}, {"solo-uno"}, {"--dir"}, {"a", "b", "c"}} {
 		if code, out := script(t, nil, "restore_check.sh", args...); code != 2 {
-			t.Errorf("%v: código %d\n%s", args, code, out)
+			t.Errorf("%v: code %d\n%s", args, code, out)
 		}
 	}
 	if code, out := script(t, nil, "restore_check.sh", "/no/existe.dump", "/no/purges.txt"); code != 1 ||
 		!strings.Contains(out, "no se puede leer la copia") {
-		t.Errorf("sin copia: %d\n%s", code, out)
+		t.Errorf("no backup: %d\n%s", code, out)
 	}
 	if code, out := script(t, nil, "backup.sh"); code != 1 || !strings.Contains(out, "ELDMARK_BACKUP_DIR") {
-		t.Errorf("backup.sh sin carpeta: %d\n%s", code, out)
+		t.Errorf("backup.sh without a folder: %d\n%s", code, out)
 	}
 }
 
@@ -375,7 +375,7 @@ func TestDevScript(t *testing.T) {
 	envFile := string(readFile(t, filepath.Join(dir, "dev_platform.env")))
 	for _, secret := range []string{"ELDMARK_TICKET_KEYS=", "ELDMARK_ZONE_TOKENS="} {
 		if strings.Contains(envFile, secret) {
-			t.Fatalf("dev_platform.env lleva %s en claro:\n%s", secret, envFile)
+			t.Fatalf("dev_platform.env carries %s in plain text:\n%s", secret, envFile)
 		}
 	}
 	tokens := string(readFile(t, filepath.Join(dir, "dev_secrets", "zone_tokens")))
@@ -384,7 +384,7 @@ func TestDevScript(t *testing.T) {
 	}
 	out = mustScript(t, env, "dev.sh", "prepare")
 	if strings.Contains(out, "cuenta admin:") || strings.Contains(out, "entorno nuevo") {
-		t.Fatalf("la segunda vez repite:\n%s", out)
+		t.Fatalf("the second time it repeats:\n%s", out)
 	}
 	exports := mustScript(t, env, "dev.sh", "env")
 	mustContain(t, exports, "export ELDMARK_ENV=dev", "export ELDMARK_ZONE_TOKENS_FILE=")
@@ -398,7 +398,7 @@ func TestDevScript(t *testing.T) {
 		from accounts`).Scan(&admins, &players)
 	_ = conn.Close(ctx)
 	if err != nil || admins != 1 || players != 1 {
-		t.Fatalf("cuentas: %d admin, %d de prueba (%v)", admins, players, err)
+		t.Fatalf("accounts: %d admin, %d test (%v)", admins, players, err)
 	}
 
 	up := scriptCmd(t, env, "dev.sh", "up")
@@ -426,19 +426,19 @@ func TestDevScript(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil || !ready {
-			t.Fatalf("dev.sh up: listo %v, salida %v\n%s", ready, err, upOut.String())
+			t.Fatalf("dev.sh up: ready %v, output %v\n%s", ready, err, upOut.String())
 		}
 	case <-time.After(20 * time.Second):
 		_ = up.Process.Kill()
-		t.Fatalf("dev.sh up no para con TERM\n%s", upOut.String())
+		t.Fatalf("dev.sh up does not stop on TERM\n%s", upOut.String())
 	}
 	if _, err := os.Stat(filepath.Join(dir, "dev_pg", "data", "postmaster.pid")); !os.IsNotExist(err) {
-		t.Fatalf("PostgreSQL sigue en marcha tras parar up (%v)", err)
+		t.Fatalf("PostgreSQL is still running after stopping up (%v)", err)
 	}
 	mustScript(t, env, "dev.sh", "reset")
 	for _, gone := range []string{"dev_pg", "dev_secrets", "dev_platform.env"} {
 		if _, err := os.Stat(filepath.Join(dir, gone)); !os.IsNotExist(err) {
-			t.Fatalf("reset deja %s", gone)
+			t.Fatalf("reset leaves %s", gone)
 		}
 	}
 }
@@ -476,7 +476,7 @@ func TestComposeConfig(t *testing.T) {
 		if os.Getenv("ELDMARK_REQUIRE_DEPLOY_TOOLS") == "1" {
 			t.Fatalf("docker compose: %v: %s", err, out)
 		}
-		t.Skipf("falta docker compose: %s", out)
+		t.Skipf("docker compose missing: %s", out)
 	}
 	compose := func(args ...string) ([]byte, error) {
 		cmd := exec.Command(docker, append([]string{"compose"}, args...)...)
@@ -489,7 +489,7 @@ func TestComposeConfig(t *testing.T) {
 		return out, nil
 	}
 	if _, err := compose("config", "-q"); err == nil {
-		t.Fatal("el compose vale sin las variables del entorno")
+		t.Fatal("the compose file is valid without the environment variables")
 	}
 	for _, envFile := range []string{"staging.env.example", "production.env.example"} {
 		if _, err := compose("--env-file", envFile, "--profile", "*", "config", "-q"); err != nil {
@@ -504,45 +504,45 @@ func TestComposeConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(cfg.Services) != 7 {
-			t.Fatalf("%s: servicios %d", envFile, len(cfg.Services))
+			t.Fatalf("%s: services %d", envFile, len(cfg.Services))
 		}
 		for name, s := range cfg.Services {
 			if s.Logging.Driver != "journald" || s.Logging.Options["tag"] != "{{.Name}}" {
-				t.Errorf("%s: %s no escribe en journald con su nombre: %+v", envFile, name, s.Logging)
+				t.Errorf("%s: %s does not write to journald under its name: %+v", envFile, name, s.Logging)
 			}
 			if len(s.Ports) > 0 && name != "caddy" && name != "zone-vado-gris" {
-				t.Errorf("%s: %s publica puertos %v", envFile, name, s.Ports)
+				t.Errorf("%s: %s publishes ports %v", envFile, name, s.Ports)
 			}
 			for k, v := range s.Environment {
 				for _, secret := range []string{"ELDMARK_DATABASE_URL", "ELDMARK_TICKET_KEYS", "ELDMARK_ZONE_TOKENS",
 					"ELDMARK_ZONE_TOKEN", "ELDMARK_SMTP_URL", "ELDMARK_EMAIL_HMAC_KEY", "POSTGRES_PASSWORD"} {
 					if k == secret {
-						t.Errorf("%s: %s lleva %s en claro (%v)", envFile, name, k, v != nil)
+						t.Errorf("%s: %s carries %s in plain text (%v)", envFile, name, k, v != nil)
 					}
 				}
 			}
 		}
 		db := cfg.Services["db"]
 		if _, onData := db.Networks["data"]; len(db.Networks) != 1 || !onData || !cfg.Networks["data"].Internal {
-			t.Errorf("%s: la base no está sola en la red interna data: %v", envFile, db.Networks)
+			t.Errorf("%s: the database is not alone on the internal data network: %v", envFile, db.Networks)
 		}
 		platform := cfg.Services["platform"]
 		caddyIP := cfg.Services["caddy"].Networks["edge"]["ipv4_address"]
 		if trusted := platform.Environment["ELDMARK_TRUSTED_PROXIES"]; trusted == nil || caddyIP == nil ||
 			*trusted != fmt.Sprint(caddyIP)+"/32" {
-			t.Errorf("%s: ELDMARK_TRUSTED_PROXIES %v y la IP de Caddy %v", envFile, trusted, caddyIP)
+			t.Errorf("%s: ELDMARK_TRUSTED_PROXIES %v and the Caddy IP %v", envFile, trusted, caddyIP)
 		}
 		if len(platform.Secrets) != 5 {
-			t.Errorf("%s: secretos de la plataforma %v", envFile, platform.Secrets)
+			t.Errorf("%s: platform secrets %v", envFile, platform.Secrets)
 		}
 		for name, s := range cfg.Secrets {
 			if filepath.Base(s.File) != name || filepath.Base(filepath.Dir(s.File)) != "secrets" {
-				t.Errorf("%s: el secreto %s sale de %s", envFile, name, s.File)
+				t.Errorf("%s: the secret %s comes from %s", envFile, name, s.File)
 			}
 		}
 		for _, ops := range []string{"backup", "restore-check", "pitr-check"} {
 			if p := cfg.Services[ops].Profiles; len(p) != 1 || p[0] != "ops" {
-				t.Errorf("%s: %s sin el perfil ops: %v", envFile, ops, p)
+				t.Errorf("%s: %s without the ops profile: %v", envFile, ops, p)
 			}
 		}
 	}
@@ -555,16 +555,16 @@ func TestCaddyfile(t *testing.T) {
 	for _, want := range []string{"reverse_proxy platform:24680", "header_up X-Real-IP {remote_host}",
 		"{$ELDMARK_DOMAIN}", "email {$ELDMARK_ACME_EMAIL}"} {
 		if !strings.Contains(text, want) {
-			t.Errorf("el Caddyfile no tiene %q", want)
+			t.Errorf("the Caddyfile does not have %q", want)
 		}
 	}
 	if regexp.MustCompile(`(?m)^\s*log(\s|$|\{)`).MatchString(text) {
-		t.Error("el Caddyfile tiene una directiva log")
+		t.Error("the Caddyfile has a log directive")
 	}
 	// caddy does not come on the CI machines: without it, only the above.
 	caddy, err := exec.LookPath("caddy")
 	if err != nil {
-		t.Skip("falta caddy: no se adapta el Caddyfile")
+		t.Skip("caddy missing: the Caddyfile is not adapted")
 	}
 	cmd := exec.Command(caddy, "adapt", "--config", "Caddyfile", "--adapter", "caddyfile")
 	cmd.Env = append(os.Environ(), "ELDMARK_DOMAIN=staging.eldmark.example", "ELDMARK_ACME_EMAIL=ops@eldmark.example")
@@ -573,7 +573,7 @@ func TestCaddyfile(t *testing.T) {
 		t.Fatalf("caddy adapt: %v", err)
 	}
 	if strings.Contains(string(out), `"logs"`) || !strings.Contains(string(out), `"X-Real-Ip"`) {
-		t.Fatalf("configuración adaptada:\n%s", out)
+		t.Fatalf("adapted configuration:\n%s", out)
 	}
 }
 
@@ -624,30 +624,30 @@ func TestCheckSecrets(t *testing.T) {
 	}
 	run("add", "-A")
 	if code, out := checkRepo(); code != 0 {
-		t.Fatalf("los ejemplos de verdad no pasan: %d\n%s", code, out)
+		t.Fatalf("the real examples do not pass: %d\n%s", code, out)
 	}
 	write("platform/deploy/staging.env", "ELDMARK_ENV=staging\n")
 	run("add", "-f", "platform/deploy/staging.env")
 	if code, out := checkRepo(); code != 1 || !strings.Contains(out, "platform/deploy/staging.env") {
-		t.Fatalf("staging.env en el índice: %d\n%s", code, out)
+		t.Fatalf("staging.env in the index: %d\n%s", code, out)
 	}
 	run("rm", "-q", "--cached", "platform/deploy/staging.env")
 	write("platform/deploy/secrets/ticket_keys", "1:AAAA\n")
 	run("add", "-f", "platform/deploy/secrets/ticket_keys")
 	if code, out := checkRepo(); code != 1 || !strings.Contains(out, "secrets/ticket_keys") {
-		t.Fatalf("secrets/ en el índice: %d\n%s", code, out)
+		t.Fatalf("secrets/ in the index: %d\n%s", code, out)
 	}
 	run("rm", "-q", "--cached", "platform/deploy/secrets/ticket_keys")
 	write("platform/deploy/staging.env.example", string(readFile(t, "staging.env.example"))+
 		"ELDMARK_TICKET_KEYS=1:c2VjcmV0by1kZS1wcnVlYmE=\n")
 	if code, out := checkRepo(); code != 1 || !strings.Contains(out, "staging.env.example") ||
 		strings.Contains(out, "c2VjcmV0") {
-		t.Fatalf("ejemplo con un secreto: %d\n%s", code, out)
+		t.Fatalf("example with a secret: %d\n%s", code, out)
 	}
 	// This repository's index (if tested from a clone).
 	if err := exec.Command(git, "-C", "../..", "rev-parse", "--git-dir").Run(); err == nil {
 		if out, err := exec.Command(bash, check, "../..").CombinedOutput(); err != nil {
-			t.Fatalf("el repositorio no pasa la comprobación de secretos: %v\n%s", err, out)
+			t.Fatalf("the repository does not pass the secrets check: %v\n%s", err, out)
 		}
 	}
 }

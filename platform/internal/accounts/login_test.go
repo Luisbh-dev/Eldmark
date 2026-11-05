@@ -19,21 +19,21 @@ func TestLoginDoesNotRevealAccounts(t *testing.T) {
 	ok := h.loginFrom("Aneira@Example.org ", password, h.nextIP())
 	if ok.status != 200 || ok.str("scope") != "game" || ok.body["restriction"] != nil ||
 		len(ok.str("access_token")) != 43 || len(ok.str("refresh_token")) != 43 {
-		t.Fatalf("contraseña buena (correo normalizado): %d %s", ok.status, ok.raw)
+		t.Fatalf("good password (normalized email): %d %s", ok.status, ok.raw)
 	}
 	if ok.body["access_expires_in"] != 900.0 || ok.body["refresh_expires_in"] != 43200.0 {
-		t.Fatalf("plazos: %v %v", ok.body["access_expires_in"], ok.body["refresh_expires_in"])
+		t.Fatalf("lifetimes: %v %v", ok.body["access_expires_in"], ok.body["refresh_expires_in"])
 	}
 	account := ok.body["account"].(map[string]any)
 	if account["email"] != "aneira@example.org" || account["role"] != "player" || account["email_verified"] != false ||
 		account["account_id"] != fmt.Sprint(h.accountID("aneira@example.org")) {
-		t.Fatalf("cuenta: %v", account)
+		t.Fatalf("account: %v", account)
 	}
 	bad := h.loginFrom("aneira@example.org", "otra contraseña", h.nextIP())
 	unknown := h.loginFrom("nadie@example.org", "otra contraseña", h.nextIP())
 	h.expect(bad, 401, "invalid_credentials")
 	if bad.raw != unknown.raw || bad.status != unknown.status {
-		t.Fatalf("mala y desconocido, distinto:\n%s\n%s", bad.raw, unknown.raw)
+		t.Fatalf("wrong and unknown, different:\n%s\n%s", bad.raw, unknown.raw)
 	}
 	var kinds string
 	h.scalar(&kinds, `select string_agg(kind, ',' order by id) from auth_events where kind like 'login%'`)
@@ -43,7 +43,7 @@ func TestLoginDoesNotRevealAccounts(t *testing.T) {
 	// No passwords or tokens in the log.
 	for _, secret := range []string{password, "otra contraseña", ok.str("access_token"), ok.str("refresh_token")} {
 		if strings.Contains(h.logs.String(), secret) {
-			t.Fatalf("el registro lleva un secreto: %q", secret)
+			t.Fatalf("the log carries a secret: %q", secret)
 		}
 	}
 }
@@ -58,26 +58,26 @@ func TestFailuresLockTheGroupNotTheOwner(t *testing.T) {
 		h.expect(h.loginFrom("dueno@example.org", "contraseña mala", ipB), 401, "invalid_credentials")
 	}
 	if h.mailCount("dueno@example.org", "login_failures") != 1 {
-		t.Fatal("al 5.º fallo, un aviso al dueño")
+		t.Fatal("on the 5th failure, a notice to the owner")
 	}
 	res := h.loginFrom("dueno@example.org", password, ipB)
 	h.expect(res, 429, "rate_limited")
 	if res.header.Get("Retry-After") == "" || res.body["error"].(map[string]any)["retry_after_s"].(float64) < 1 {
-		t.Fatalf("429 con espera: %s", res.raw)
+		t.Fatalf("429 with a wait: %s", res.raw)
 	}
 	// The account, from any IP: one attempt every 30 s.
 	h.expect(h.loginFrom("dueno@example.org", password, ipA), 429, "rate_limited")
 	h.clock.Advance(31 * time.Second)
 	h.expect(h.loginFrom("dueno@example.org", password, ipB), 429, "rate_limited") // B, 15 min
 	if res := h.loginFrom("dueno@example.org", password, ipA); res.status != 200 {
-		t.Fatalf("el dueño entra desde A: %d %s", res.status, res.raw)
+		t.Fatalf("the owner logs in from A: %d %s", res.status, res.raw)
 	}
 	// A success resets both: B can already try.
 	if res := h.loginFrom("dueno@example.org", password, ipB); res.status != 200 {
-		t.Fatalf("tras acertar, B: %d %s", res.status, res.raw)
+		t.Fatalf("after succeeding, B: %d %s", res.status, res.raw)
 	}
 	if h.mailCount("dueno@example.org", "login_failures") != 1 {
-		t.Fatal("un solo aviso")
+		t.Fatal("a single notice")
 	}
 }
 
@@ -100,7 +100,7 @@ func TestTenFailuresLockForAnHour(t *testing.T) {
 	res := h.loginFrom("diez@example.org", password, ip)
 	h.expect(res, 429, "rate_limited")
 	if wait := res.body["error"].(map[string]any)["retry_after_s"].(float64); wait < 2000 {
-		t.Fatalf("tras 10 fallos, cerca de una hora: %v", wait)
+		t.Fatalf("after 10 failures, about an hour: %v", wait)
 	}
 }
 
@@ -118,7 +118,7 @@ func TestUnknownEmailsHaveTheirOwnCounters(t *testing.T) {
 	c := h.loginFrom("c@example.org", "contraseña mala", x)
 	h.expect(b, 401, "invalid_credentials")
 	if b.raw != c.raw {
-		t.Fatalf("B y C, distinto:\n%s\n%s", b.raw, c.raw)
+		t.Fatalf("B and C, different:\n%s\n%s", b.raw, c.raw)
 	}
 }
 
@@ -156,16 +156,16 @@ func TestConcurrentAttemptsRespectTheThrottle(t *testing.T) {
 	}
 	h.clock.Advance(31 * time.Second)
 	if got := h.burst("rafaga@example.org", 30, h.nextIP); got[401] != 1 || got[429] != 29 {
-		t.Fatalf("freno de la cuenta con 30 a la vez: %v", got)
+		t.Fatalf("account brake with 30 at once: %v", got)
 	}
 	h.register("grupo@example.org")
 	ip := h.nextIP()
 	if got := h.burst("grupo@example.org", 10, func() string { return ip }); got[401] != 5 || got[429] != 5 {
-		t.Fatalf("bloqueo del grupo con 10 a la vez: %v", got)
+		t.Fatalf("group lockout with 10 at once: %v", got)
 	}
 	// An email without an account has the same brake.
 	if got := h.burst("nadie@example.org", 10, func() string { return h.nextIP() }); got[401] != 5 || got[429] != 5 {
-		t.Fatalf("correo sin cuenta: %v", got)
+		t.Fatalf("email without an account: %v", got)
 	}
 }
 
@@ -227,16 +227,16 @@ func TestExpiredAccessAndRefresh(t *testing.T) {
 	h.register("refresco@example.org")
 	s := h.login("refresco@example.org", password)
 	if res := h.do(call{method: "GET", path: "/v1/account", token: s.access}); res.status != 200 {
-		t.Fatalf("con acceso: %d", res.status)
+		t.Fatalf("with access: %d", res.status)
 	}
 	h.clock.Advance(16 * time.Minute)
 	h.expect(h.do(call{method: "GET", path: "/v1/account", token: s.access}), 401, "unauthorized")
 	res := h.do(call{method: "POST", path: "/v1/sessions/refresh", body: map[string]any{"refresh_token": s.refresh}})
 	if res.status != 200 || res.str("scope") != "game" || res.str("access_token") == s.access {
-		t.Fatalf("refresco: %d %s", res.status, res.raw)
+		t.Fatalf("refresh: %d %s", res.status, res.raw)
 	}
 	if res := h.do(call{method: "GET", path: "/v1/account", token: res.str("access_token")}); res.status != 200 {
-		t.Fatalf("acceso nuevo: %d", res.status)
+		t.Fatalf("new access: %d", res.status)
 	}
 	h.expect(h.do(call{method: "GET", path: "/v1/account", token: s.access}), 401, "unauthorized")
 	h.expect(h.do(call{method: "GET", path: "/v1/account"}), 401, "unauthorized")
@@ -257,7 +257,7 @@ func TestRefreshReuseRevokesTheSession(t *testing.T) {
 	var reason string
 	h.scalar(&reason, `select revoke_reason from sessions`)
 	if reason != "refresh_reuse" {
-		t.Fatalf("revocada por reutilización: %q", reason)
+		t.Fatalf("revoked for reuse: %q", reason)
 	}
 	h.expect(h.do(call{method: "POST", path: "/v1/sessions/refresh", body: map[string]any{"refresh_token": r1.str("refresh_token")}}),
 		401, "unauthorized")
@@ -283,12 +283,12 @@ func TestRefreshFromTwoRotationsAgo(t *testing.T) {
 		401, "unauthorized")
 	r3 := h.do(call{method: "POST", path: "/v1/sessions/refresh", body: map[string]any{"refresh_token": r2.str("refresh_token")}})
 	if r3.status != 200 {
-		t.Fatalf("la sesión sigue viva: %d %s", r3.status, r3.raw)
+		t.Fatalf("the session is still alive: %d %s", r3.status, r3.raw)
 	}
 	var revoked bool
 	h.scalar(&revoked, `select revoked_at is not null from sessions`)
 	if revoked {
-		t.Fatal("no se revoca")
+		t.Fatal("it is not revoked")
 	}
 }
 
@@ -303,15 +303,15 @@ func TestRotationDoesNotExtendTheSession(t *testing.T) {
 		h.clock.Advance(14 * time.Minute)
 		last = h.do(call{method: "POST", path: "/v1/sessions/refresh", body: map[string]any{"refresh_token": refresh}})
 		if last.status != 200 {
-			t.Fatalf("a las %s: %d %s", elapsed, last.status, last.raw)
+			t.Fatalf("at %s: %d %s", elapsed, last.status, last.raw)
 		}
 		refresh = last.str("refresh_token")
 		remaining := (12*time.Hour - elapsed).Seconds()
 		if got := last.body["refresh_expires_in"].(float64); got != remaining {
-			t.Fatalf("a las %s quedan %v s, no %v", elapsed, got, remaining)
+			t.Fatalf("at %s there are %v s left, not %v", elapsed, got, remaining)
 		}
 		if got := last.body["access_expires_in"].(float64); got > remaining || got > 900 {
-			t.Fatalf("el acceso no pasa del fin de la sesión: %v", got)
+			t.Fatalf("the access does not outlast the end of the session: %v", got)
 		}
 	}
 	h.clock.Advance(14 * time.Minute)
@@ -359,7 +359,7 @@ func TestPrivacySessionForSanctionedAccounts(t *testing.T) {
 	restriction, _ := s.res.body["restriction"].(map[string]any)
 	if s.res.str("scope") != "privacy" || restriction["code"] != "account_suspended" || restriction["reason"] != "spam" ||
 		restriction["until"] != float64(until.Unix()) {
-		t.Fatalf("suspendida: %s", s.res.raw)
+		t.Fatalf("suspended: %s", s.res.raw)
 	}
 	var scope string
 	h.scalar(&scope, `select scope from sessions where account_id = $1`, suspended)
@@ -369,7 +369,7 @@ func TestPrivacySessionForSanctionedAccounts(t *testing.T) {
 
 	b := h.login("expulsada@example.org", password)
 	if b.res.str("scope") != "privacy" || b.res.body["restriction"].(map[string]any)["code"] != "account_banned" {
-		t.Fatalf("expulsada: %s", b.res.raw)
+		t.Fatalf("banned: %s", b.res.raw)
 	}
 	for _, c := range []call{
 		{method: "POST", path: "/v1/characters/42/enter"},
@@ -388,21 +388,21 @@ func TestPrivacySessionForSanctionedAccounts(t *testing.T) {
 	}
 	if res := h.do(call{method: "GET", path: "/v1/account", token: b.access}); res.status != 200 ||
 		res.body["restriction"].(map[string]any)["code"] != "account_banned" {
-		t.Fatalf("la cuenta, con la sesión de privacidad: %s", res.raw)
+		t.Fatalf("the account, with the privacy session: %s", res.raw)
 	}
 	r := h.do(call{method: "POST", path: "/v1/sessions/refresh", body: map[string]any{"refresh_token": b.refresh}})
 	if r.status != 200 || r.str("scope") != "privacy" {
-		t.Fatalf("el refresco conserva el ámbito: %s", r.raw)
+		t.Fatalf("the refresh keeps the scope: %s", r.raw)
 	}
 	access := r.str("access_token")
 	if res := h.do(call{method: "POST", path: "/v1/account/export", token: access, body: map[string]any{"password": password}}); res.status != 200 {
-		t.Fatalf("exportar con la sesión de privacidad: %d %s", res.status, res.raw)
+		t.Fatalf("export with the privacy session: %d %s", res.status, res.raw)
 	}
 	if res := h.do(call{method: "POST", path: "/v1/account/deletion", token: access, body: map[string]any{"password": password}}); res.status != 202 {
-		t.Fatalf("supresión: %d %s", res.status, res.raw)
+		t.Fatalf("deletion: %d %s", res.status, res.raw)
 	}
 	if res := h.do(call{method: "DELETE", path: "/v1/sessions/current", token: access}); res.status != 204 {
-		t.Fatalf("cerrar sesión: %d %s", res.status, res.raw)
+		t.Fatalf("log out: %d %s", res.status, res.raw)
 	}
 	h.expect(h.do(call{method: "GET", path: "/v1/account", token: access}), 401, "unauthorized")
 
@@ -420,7 +420,7 @@ func TestPrivacySessionForSanctionedAccounts(t *testing.T) {
 	h.exec(`update sanctions set revoked_at = $2 where account_id = $1`, suspended, now)
 	h.expect(h.do(call{method: "POST", path: "/v1/characters/1/enter", token: s.access}), 401, "unauthorized")
 	if g2 := h.login("suspendida@example.org", password); g2.res.str("scope") != "game" {
-		t.Fatalf("sin sanción, sesión de juego: %s", g2.res.raw)
+		t.Fatalf("no sanction, game session: %s", g2.res.raw)
 	}
 }
 
@@ -436,7 +436,7 @@ func TestLoginRehashes(t *testing.T) {
 	h.scalar(&phc, `select password_hash from accounts where account_id = $1`, id)
 	p, err := passwords.ParamsOf(phc)
 	if err != nil || p.MemoryKiB != 16 {
-		t.Fatalf("reescrita con m=16: %s %v", phc, err)
+		t.Fatalf("rewritten with m=16: %s %v", phc, err)
 	}
 	h.login("rehash@example.org", password)
 }
@@ -458,7 +458,7 @@ func TestStatusAndProtocol(t *testing.T) {
 	w := worlds[0].(map[string]any)
 	if res.status != 200 || res.str("status") != "ok" || res.body["min_protocol"] != 7.0 || len(worlds) != 1 ||
 		w["name"] != "Eld" || w["load"] != "medium" || w["world_id"] != 1.0 {
-		t.Fatalf("estado: %s", res.raw)
+		t.Fatalf("state: %s", res.raw)
 	}
 	h.exec(`update worlds set status = 'maintenance'`)
 	if res := h.do(call{method: "GET", path: "/v1/status"}); res.str("status") != "maintenance" {
@@ -476,7 +476,7 @@ func TestLegalEndpoints(t *testing.T) {
 	text := h.do(call{method: "GET", path: "/v1/legal/privacy"})
 	if text.status != 200 || !strings.HasPrefix(text.header.Get("Content-Type"), "text/markdown") ||
 		!strings.Contains(text.raw, "Borrador pendiente de revisión legal") {
-		t.Fatalf("texto: %d %s", text.status, text.header)
+		t.Fatalf("text: %d %s", text.status, text.header)
 	}
 	h.expect(h.do(call{method: "GET", path: "/v1/legal/otro"}), 404, "not_found")
 }
@@ -494,13 +494,13 @@ func TestCheckPasswordDirect(t *testing.T) {
 	}
 	ok, err = h.svc.CheckPassword(ctx, 0, "nadie@example.org", password, ip)
 	if err != nil || ok {
-		t.Fatal("sin cuenta nunca vale", ok, err)
+		t.Fatal("without an account it is never valid", ok, err)
 	}
 	h.exec(`update accounts set password_hash = 'roto' where account_id = $1`, id)
 	if ok, err := h.svc.CheckPassword(ctx, id, "directa@example.org", password, ip); ok || err != nil {
-		t.Fatal("una cadena rota cuenta como fallo", ok, err)
+		t.Fatal("a broken chain counts as a failure", ok, err)
 	}
 	if !strings.Contains(h.logs.String(), "hash de contraseña no válido") {
-		t.Fatal("y se registra")
+		t.Fatal("and it is logged")
 	}
 }

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for combat inside the [ZoneServer] (docs/combate.md, sections 4 to 7), without a network: fake
+## Tests for combat inside the [ZoneServer] (docs/combat.md, sections 4 to 7), without a network: fake
 ## players with input scripts in a [SubViewport] with its own physics world.
 ## [br][br]
 ## The whole pipe is checked (input -> simulation -> hit -> event -> published health), defense

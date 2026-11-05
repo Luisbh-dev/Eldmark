@@ -1,6 +1,6 @@
 class_name FactionRules
 extends RefCounted
-## Who can damage whom (docs/combate.md, section 5): a pure rule over the [RealmCatalog] network
+## Who can damage whom (docs/combat.md, section 5): a pure rule over the [RealmCatalog] network
 ## side codes (1 Vardheim, 2 Solmarch, 3 Askarra, 0 the neutral Hollow) and the zone's PvP mode
 ## ([method Zones.get_pvp_mode]).
 ## [br][br]

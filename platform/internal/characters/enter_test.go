@@ -19,7 +19,7 @@ func TestEnterWithoutLiveZone(t *testing.T) {
 	res := h.enter(p, id)
 	h.expect(res, http.StatusServiceUnavailable, "zone_unavailable")
 	if res.header.Get("Retry-After") == "" {
-		t.Error("503 sin Retry-After")
+		t.Error("503 without Retry-After")
 	}
 	// Instances that are not valid: starting, lost, full or not admitting the realm.
 	h.zone("vado_gris", 0, []int16{1, 2}, 0, 64, "starting")
@@ -29,7 +29,7 @@ func TestEnterWithoutLiveZone(t *testing.T) {
 	h.zone("otra_zona", 0, []int16{1, 2}, 0, 64, "live")
 	h.expect(h.enter(p, id), http.StatusServiceUnavailable, "zone_unavailable")
 	if h.count(`select count(*) from enter_tickets`) != 0 {
-		t.Error("un enter fallido dejó un billete")
+		t.Error("a failed enter left a ticket")
 	}
 }
 
@@ -46,16 +46,16 @@ func TestEnterIssuesTheTicket(t *testing.T) {
 	zone := res.body["zone"].(map[string]any)
 	if zone["zone_id"] != "vado_gris" || zone["channel"] != 0.0 || zone["host"] != "203.0.113.5" || zone["port"] != 24600.0 ||
 		zone["dtls"] != nil {
-		t.Fatalf("zona: %s", res.raw)
+		t.Fatalf("zone: %s", res.raw)
 	}
 	character := res.body["character"].(map[string]any)
 	if character["character_id"] != strconv.FormatInt(id, 10) || character["name"] != "Aneira" || character["realm"] != "vardheim" ||
 		res.body["expires_in_s"] != 10.0 {
-		t.Fatalf("personaje: %s", res.raw)
+		t.Fatalf("character: %s", res.raw)
 	}
 	raw, err := base64.StdEncoding.DecodeString(res.body["ticket"].(string))
 	if err != nil || len(raw) != tickets.Size {
-		t.Fatalf("billete: %v %d", err, len(raw))
+		t.Fatalf("ticket: %v %d", err, len(raw))
 	}
 	tk, err := tickets.Parse(raw, map[uint8][]byte{1: ticketKey})
 	if err != nil {
@@ -66,7 +66,7 @@ func TestEnterIssuesTheTicket(t *testing.T) {
 		tk.ZoneKey != tickets.ZoneKey("vado_gris") || tk.Channel != 0 || tk.Realm != 1 || tk.Arrival != 0 ||
 		tk.Flags != tickets.FlagFromMenu || tk.IssuedAt != now || tk.ExpiresAt != now+10 || tk.TicketID == 0 ||
 		tk.TicketID>>63 != 0 {
-		t.Fatalf("campos del billete: %+v", tk)
+		t.Fatalf("ticket fields: %+v", tk)
 	}
 	var sessionOK bool
 	var expires time.Time
@@ -75,13 +75,13 @@ func TestEnterIssuesTheTicket(t *testing.T) {
 		  and t.consumed_at is null and s.revoked_at is null`, int64(tk.TicketID), id, instance)
 	h.scalar(&expires, `select expires_at from enter_tickets where ticket_id = $1`, int64(tk.TicketID))
 	if !sessionOK || !expires.Equal(h.clock.Now().Add(10*time.Second)) {
-		t.Fatalf("fila de enter_tickets: %v %v", sessionOK, expires)
+		t.Fatalf("enter_tickets row: %v %v", sessionOK, expires)
 	}
 	// Another enter gives another ticket.
 	again := h.enter(p, id)
 	h.expect(again, http.StatusOK, "")
 	if again.body["ticket"] == res.body["ticket"] || h.count(`select count(*) from enter_tickets`) != 2 {
-		t.Error("dos enter, dos billetes")
+		t.Error("two enters, two tickets")
 	}
 	// With DTLS, the zone's certificate.
 	h.exec(`update zone_instances set dtls_cert_pem = '-----BEGIN CERTIFICATE-----x', dtls_name = 'vado-gris.eldmark'`)
@@ -114,27 +114,27 @@ func TestEnterChoosesTheZone(t *testing.T) {
 	}
 	// Never entered: its realm's entry zone, in the channel with the fewest players.
 	if zone, ch := zoneOf(); zone != "vado_gris" || ch != 1 {
-		t.Fatalf("sin última zona: %s %v", zone, ch)
+		t.Fatalf("no last zone: %s %v", zone, ch)
 	}
 	// Its last zone, in its last channel even if it has more players.
 	h.progress.SetSummary(id, persistence.Summary{RaceID: "race_vardheim", Level: 3, LastZoneID: "eldrun", LastChannel: 1})
 	if zone, ch := zoneOf(); zone != "eldrun" || ch != 1 {
-		t.Fatalf("última zona y canal: %s %v", zone, ch)
+		t.Fatalf("last zone and channel: %s %v", zone, ch)
 	}
 	// The last channel full: another channel of the same zone.
 	h.exec(`update zone_instances set players = max_players where zone_id = 'eldrun' and channel = 1`)
 	if zone, ch := zoneOf(); zone != "eldrun" || ch != 0 {
-		t.Fatalf("último canal lleno: %s %v", zone, ch)
+		t.Fatalf("last channel full: %s %v", zone, ch)
 	}
 	// The last zone no longer admits its realm: the entry one.
 	h.exec(`update zone_instances set realms = '{2,3}' where zone_id = 'eldrun'`)
 	if zone, _ := zoneOf(); zone != "vado_gris" {
-		t.Fatalf("la última zona no admite el reino: %s", zone)
+		t.Fatalf("the last zone does not admit the realm: %s", zone)
 	}
 	// The last zone without live instances: the entry one.
 	h.exec(`update zone_instances set realms = '{1,2,3}', status = 'stopped' where zone_id = 'eldrun'`)
 	if zone, _ := zoneOf(); zone != "vado_gris" {
-		t.Fatalf("la última zona parada: %s", zone)
+		t.Fatalf("the last zone stopped: %s", zone)
 	}
 	// The entry zone with nothing alive: 503.
 	h.exec(`update zone_instances set status = 'stopped'`)

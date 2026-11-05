@@ -69,10 +69,10 @@ func TestReports(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := p.Admin.CloseReport(ctx, mod, id, "dismissed", ""); !errors.As(err, &actorErr) {
-		t.Fatalf("un moderador no cierra: %v", err)
+		t.Fatalf("a moderator cannot close: %v", err)
 	}
 	if err := p.Admin.CloseReport(ctx, adm, id, "open", ""); err == nil {
-		t.Fatal("estado de cierre")
+		t.Fatal("closing state")
 	}
 	if err := p.Admin.CloseReport(ctx, adm, id, "actioned", "silencio de 24 h"); err != nil {
 		t.Fatal(err)
@@ -92,13 +92,13 @@ func TestReports(t *testing.T) {
 		t.Fatalf("%+v", row)
 	}
 	if list, _ := p.Admin.Reports(ctx, mod, admin.ReportFilter{}); len(list) != 0 {
-		t.Fatal("cerrado no está en la cola")
+		t.Fatal("a closed one is not in the queue")
 	}
 	if list, _ := p.Admin.Reports(ctx, mod, admin.ReportFilter{Status: "all"}); len(list) != 1 {
 		t.Fatal("all")
 	}
 	if _, err := p.Admin.Reports(ctx, mod, admin.ReportFilter{Status: "raro"}); err == nil {
-		t.Fatal("estado desconocido")
+		t.Fatal("unknown state")
 	}
 }
 
@@ -139,11 +139,11 @@ func TestChatHistoryAndRetention(t *testing.T) {
 	}
 	if lines[0].Text != "hace diez días" || lines[1].Text != "susurro a Bran" || *lines[1].TargetName != "Bran" ||
 		*lines[1].SenderName != "Aneira" || lines[2].Text != "hace una hora" {
-		t.Fatalf("orden y contenido: %+v", lines)
+		t.Fatalf("order and content: %+v", lines)
 	}
 	for _, l := range lines {
 		if l.ZoneID != "vado_gris" || l.ZoneChannel != 1 {
-			t.Fatalf("zona y copia: %+v", l)
+			t.Fatalf("zone and copy: %+v", l)
 		}
 	}
 	row := lastAudit(t, p, "chat")
@@ -153,26 +153,26 @@ func TestChatHistoryAndRetention(t *testing.T) {
 	}
 	all := admin.ChatQuery{World: 1, Character: "Bran", From: now.Add(-50 * 24 * time.Hour), To: now.Add(time.Hour)}
 	if _, lines, _ := p.Admin.Chat(ctx, mod, all); len(lines) != 4 {
-		t.Fatalf("con lo de hace cuarenta días: %d", len(lines))
+		t.Fatalf("with the one from forty days ago: %d", len(lines))
 	}
 	// The retention (hourly job chat_retention) deletes what is older than 30 days and nothing else.
 	deleted, err := p.Social.PurgeChat(ctx)
 	if err != nil || deleted != 1 {
-		t.Fatalf("borrados %d: %v", deleted, err)
+		t.Fatalf("deleted %d: %v", deleted, err)
 	}
 	if _, lines, _ := p.Admin.Chat(ctx, mod, all); len(lines) != 3 {
-		t.Fatalf("lo caducado desaparece: %d", len(lines))
+		t.Fatalf("the expired ones disappear: %d", len(lines))
 	}
 	p.Clock.Advance(20*24*time.Hour + time.Second)
 	if deleted, _ := p.Social.PurgeChat(ctx); deleted != 1 {
-		t.Fatalf("a los 20 días más, el de hace diez: %d", deleted)
+		t.Fatalf("20 days later, the one from ten days ago: %d", deleted)
 	}
 	if n := p.Count(`select count(*) from chat_messages`); n != 3 {
 		t.Fatal(n)
 	}
 	// Dates reversed, character that does not exist.
 	if _, _, err := p.Admin.Chat(ctx, mod, admin.ChatQuery{World: 1, Character: "Bran", From: now, To: now}); err == nil {
-		t.Fatal("rango vacío")
+		t.Fatal("empty range")
 	}
 	q := all
 	q.Character = "Nadie"
@@ -207,12 +207,12 @@ func TestAuditQuery(t *testing.T) {
 	}}), 204, "")
 	rows, err := p.Admin.Audit(ctx, mod, admin.AuditQuery{Since: since, World: 1})
 	if err != nil || len(rows) != 2 {
-		t.Fatalf("desde hace una hora: %d %v", len(rows), err)
+		t.Fatalf("from an hour ago: %d %v", len(rows), err)
 	}
 	rows, _ = p.Admin.Audit(ctx, mod, admin.AuditQuery{Since: since.Add(-2 * time.Hour), World: 1, ActorName: "Celadora",
 		Target: "bran"})
 	if len(rows) != 2 || rows[0].Command != "teleport" || *rows[1].ActorName != "Celadora" || *rows[1].TargetName != "Bran" {
-		t.Fatalf("filtros: %+v", rows)
+		t.Fatalf("filters: %+v", rows)
 	}
 	row := lastAudit(t, p, "audit")
 	if !is(row.TargetCharacter, idB) || !is(row.TargetAccount, b.ID) || row.Args["actor_account_id"] != idStr(gm.ID) {
@@ -221,10 +221,10 @@ func TestAuditQuery(t *testing.T) {
 	// The previous queries are also in the audit.
 	rows, _ = p.Admin.Audit(ctx, mod, admin.AuditQuery{Since: since, World: 1, Command: "audit"})
 	if len(rows) != 2 || rows[0].Source != "cli" || !is(rows[0].ActorAccountID, mod.AccountID) {
-		t.Fatalf("las lecturas se auditan: %+v", rows)
+		t.Fatalf("reads are audited: %+v", rows)
 	}
 	if _, err := p.Admin.Audit(ctx, mod, admin.AuditQuery{World: 1}); err == nil {
-		t.Fatal("sin --since")
+		t.Fatal("without --since")
 	}
 }
 
@@ -240,13 +240,13 @@ func TestPurgeNow(t *testing.T) {
 	lease := z.Join(pl, id)
 	res, err := p.Admin.PurgeNow(ctx, adm, "borrar@example.org", 50*time.Millisecond)
 	if !errors.Is(err, admin.ErrBusy) || res.Revoked != 1 {
-		t.Fatalf("con el personaje dentro: %+v %v", res, err)
+		t.Fatalf("with the character inside: %+v %v", res, err)
 	}
 	if n := p.Count(`select count(*) from sessions where account_id = $1 and revoke_reason = 'deletion'`, pl.ID); n != 1 {
-		t.Fatal("sesiones")
+		t.Fatal("sessions")
 	}
 	if n := p.Count(`select count(*) from accounts where account_id = $1 and status = 'active'`, pl.ID); n != 1 {
-		t.Fatal("no se purga nada")
+		t.Fatal("nothing is purged")
 	}
 	// The heartbeat kicks out (session_revoked) and the zone releases after the final save.
 	hb := z.Heartbeat(1, platformtest.Lease{CharacterID: id, LeaseID: lease})
@@ -259,10 +259,10 @@ func TestPurgeNow(t *testing.T) {
 		t.Fatalf("%+v %v", res, err)
 	}
 	if n := p.Count(`select count(*) from accounts where account_id = $1 and status = 'purged' and email is null`, pl.ID); n != 1 {
-		t.Fatal("cuenta purgada")
+		t.Fatal("purged account")
 	}
 	if n := p.Count(`select count(*) from characters where character_id = $1 and purged_at is not null and name is null`, id); n != 1 {
-		t.Fatal("lápida del personaje")
+		t.Fatal("character tombstone")
 	}
 	if n := p.Count(`select count(*) from purge_log`); n != 2 {
 		t.Fatal(n)
@@ -311,7 +311,7 @@ func TestCreateAccountAndBootstrap(t *testing.T) {
 	acc := p.PublicDo("GET", "/v1/account", login.String("access_token"), nil)
 	pending := acc.Body["pending"].(map[string]any)
 	if acc.Body["email_verified"] != true || acc.Body["role"] != "gm" || pending["terms_required"] != false {
-		t.Fatalf("cuenta creada: %s", acc.Raw)
+		t.Fatalf("account created: %s", acc.Raw)
 	}
 	// An email reserved by another account's live revert_email (platform.md §4.3) is not valid
 	// either.
@@ -406,18 +406,18 @@ func TestAuditHasNoPersonalData(t *testing.T) {
 		lower := strings.ToLower(args)
 		for _, s := range secrets {
 			if strings.Contains(lower, s) {
-				t.Errorf("%s (%s): args con %q: %s", command, source, s, args)
+				t.Errorf("%s (%s): args with %q: %s", command, source, s, args)
 			}
 		}
 		if source == "cli" {
 			cli++
 			if !strings.Contains(args, `"os_user": "prueba"`) || !hasActor {
-				t.Errorf("%s sin os_user o sin actor: %s", command, args)
+				t.Errorf("%s without os_user or without actor: %s", command, args)
 			}
 		}
 	}
 	must(rows.Err())
 	if cli < 10 {
-		t.Fatalf("filas de la CLI: %d", cli)
+		t.Fatalf("CLI rows: %d", cli)
 	}
 }

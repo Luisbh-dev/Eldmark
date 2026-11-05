@@ -18,15 +18,15 @@ func TestCreateAndList(t *testing.T) {
 	if c["name"] != "Aneira" || c["realm"] != "vardheim" || c["race_id"] != "race_vardheim" || c["appearance"] != appearance ||
 		c["level"] != 1.0 || c["last_zone_id"] != nil || c["played_seconds"] != 0.0 || c["must_rename"] != false ||
 		c["deleted_at"] != nil || c["restore_until"] != nil || c["created_at"] != float64(h.clock.Now().Unix()) {
-		t.Fatalf("personaje creado: %v", c)
+		t.Fatalf("character created: %v", c)
 	}
 	list := h.list(p)
 	if list.body["realm"] != "vardheim" || list.body["unlock_at"] != nil || list.body["slots"] != 6.0 || list.body["used"] != 1.0 {
-		t.Fatalf("lista: %s", list.raw)
+		t.Fatalf("list: %s", list.raw)
 	}
 	chars := list.body["characters"].([]any)
 	if len(chars) != 1 || chars[0].(map[string]any)["name"] != "Aneira" {
-		t.Fatalf("lista: %s", list.raw)
+		t.Fatalf("list: %s", list.raw)
 	}
 	// The identity in the database, the name's key, the account's realm and the limit entry.
 	if h.count(`select count(*) from characters where character_id = $1 and name_key = 'aneira' and realm = 1
@@ -36,10 +36,10 @@ func TestCreateAndList(t *testing.T) {
 		h.count(`select count(*) from account_realms where account_id = $1 and world_id = 1 and realm = 1`, p.id) != 1 ||
 		h.count(`select count(*) from character_pvp_stats where character_id = $1`, id) != 1 ||
 		h.count(`select count(*) from auth_events where account_id = $1 and kind = 'character_create'`, p.id) != 1 {
-		t.Fatal("faltan filas de la creación")
+		t.Fatal("creation rows are missing")
 	}
 	if !h.progress.Has(id) {
-		t.Error("ProgressStore.Create no se llamó")
+		t.Error("ProgressStore.Create was not called")
 	}
 	account := h.do(call{method: "GET", path: "/v1/account", token: p.token})
 	if realms, _ := account.body["realms"].(map[string]any); realms["1"] != "vardheim" {
@@ -48,7 +48,7 @@ func TestCreateAndList(t *testing.T) {
 	// Another account does not see this one's characters.
 	other := h.newPlayer("otra@example.org")
 	if l := h.list(other); l.body["used"] != 0.0 || l.body["realm"] != nil {
-		t.Errorf("lista de otra cuenta: %s", l.raw)
+		t.Errorf("another account's list: %s", l.raw)
 	}
 }
 
@@ -86,7 +86,7 @@ func TestNameCollisionsByAccentAndCase(t *testing.T) {
 	h.expect(h.create(a, "Aneira", "vardheim"), http.StatusConflict, "name_taken")
 	res := h.nameCheck(b, "Bruno")
 	if res.body["available"] != true || res.body["code"] != "" {
-		t.Errorf("name-check libre: %s", res.raw)
+		t.Errorf("name-check free: %s", res.raw)
 	}
 	h.mustCreate(b, "Bruno", "solmarch")
 }
@@ -121,14 +121,14 @@ func TestConcurrentCreationsWithTheSameName(t *testing.T) {
 				created++
 			case res.status == http.StatusConflict && res.errCode() == "name_taken":
 			default:
-				t.Fatalf("ronda %d: %d %s", round, res.status, res.raw)
+				t.Fatalf("round %d: %d %s", round, res.status, res.raw)
 			}
 		}
 		if created != 1 {
-			t.Fatalf("ronda %d (%s): %d creaciones", round, name, created)
+			t.Fatalf("round %d (%s): %d creations", round, name, created)
 		}
 		if h.count(`select count(*) from characters where name_key = lower($1)`, name) != 1 {
-			t.Fatalf("ronda %d: más de una fila en characters", round)
+			t.Fatalf("round %d: more than one row in characters", round)
 		}
 	}
 }
@@ -160,7 +160,7 @@ func TestNameInvalidAndBlacklist(t *testing.T) {
 	}
 	// None spent the daily limit or left rows.
 	if h.count(`select count(*) from characters`) != 0 || h.count(`select count(*) from character_names`) != 0 {
-		t.Error("una creación rechazada dejó filas")
+		t.Error("a rejected creation left rows behind")
 	}
 	h.mustCreate(p, "Valido", "vardheim")
 	// name-check without a name: 400.
@@ -180,7 +180,7 @@ func TestRealmLockedClosedAndUnlocked(t *testing.T) {
 	res = h.create(p, "Brenna", "elfos")
 	h.expect(res, http.StatusBadRequest, "validation")
 	if res.errField("realm") != "invalid" {
-		t.Errorf("reino desconocido: %s", res.raw)
+		t.Errorf("unknown realm: %s", res.raw)
 	}
 	// Deleting the last living one: the realm is freed after 30 days.
 	h.expect(h.remove(p, id, "aneira"), http.StatusOK, "")
@@ -188,16 +188,16 @@ func TestRealmLockedClosedAndUnlocked(t *testing.T) {
 	h.expect(res, http.StatusConflict, "realm_locked")
 	unlock := h.clock.Now().Add(30 * day).Unix()
 	if res.errValue("unlock_at") != float64(unlock) {
-		t.Fatalf("unlock_at: %s (se esperaba %d)", res.raw, unlock)
+		t.Fatalf("unlock_at: %s (expected %d)", res.raw, unlock)
 	}
 	if l := h.list(p); l.body["unlock_at"] != float64(unlock) {
-		t.Errorf("la lista dice unlock_at: %s", l.raw)
+		t.Errorf("the list says unlock_at: %s", l.raw)
 	}
 	// Another one from Vardheim can be created, and it is no longer about to be freed.
 	h.advance(day, p)
 	other := h.mustCreate(p, "Corvo", "vardheim")
 	if l := h.list(p); l.body["unlock_at"] != nil || l.body["realm"] != "vardheim" {
-		t.Errorf("con un vivo, el reino no se libera: %s", l.raw)
+		t.Errorf("with a live one, the realm is not released: %s", l.raw)
 	}
 	h.expect(h.remove(p, other, "Corvo"), http.StatusOK, "")
 	h.advance(30*day-time.Second, p)
@@ -206,7 +206,7 @@ func TestRealmLockedClosedAndUnlocked(t *testing.T) {
 	res = h.create(p, "Brenna", "solmarch")
 	h.expect(res, http.StatusCreated, "")
 	if l := h.list(p); l.body["realm"] != "solmarch" || l.body["unlock_at"] != nil {
-		t.Errorf("reino cambiado: %s", l.raw)
+		t.Errorf("realm changed: %s", l.raw)
 	}
 }
 
@@ -229,13 +229,13 @@ func TestSlots(t *testing.T) {
 	res := h.create(p, "Siete", "vardheim")
 	h.expect(res, http.StatusConflict, "slots_full")
 	if l := h.list(p); l.body["used"] != 6.0 || len(l.body["characters"].([]any)) != 6 {
-		t.Fatalf("el borrado en plazo ocupa hueco y sale en la lista: %s", l.raw)
+		t.Fatalf("a deletion within the window takes a slot and shows up in the list: %s", l.raw)
 	}
 	// An entitlement for one more slot (PRG-41).
 	h.exec(`insert into entitlements (account_id, world_id, kind, quantity, source) values ($1, 1, 'character_slots', 1, 'grant')`, p.id)
 	h.mustCreate(p, "Siete", "vardheim")
 	if l := h.list(p); l.body["slots"] != 7.0 || l.body["used"] != 7.0 {
-		t.Fatalf("huecos con el derecho: %s", l.raw)
+		t.Fatalf("slots with the entitlement: %s", l.raw)
 	}
 	h.expect(h.create(p, "Ocho", "vardheim"), http.StatusConflict, "slots_full")
 	// Once the restore window has passed, the deletion stops occupying a slot (even if it has not yet
@@ -243,12 +243,12 @@ func TestSlots(t *testing.T) {
 	h.advance(7*day+time.Second, p)
 	h.mustCreate(p, "Ocho", "vardheim")
 	if l := h.list(p); l.body["used"] != 7.0 {
-		t.Fatalf("el borrado fuera de plazo no ocupa ni sale: %s", l.raw)
+		t.Fatalf("a deletion outside the window neither takes a slot nor shows up: %s", l.raw)
 	}
 	// An expired or revoked entitlement does not count.
 	h.exec(`update entitlements set revoked_at = $1 where account_id = $2`, h.clock.Now(), p.id)
 	if l := h.list(p); l.body["slots"] != 6.0 {
-		t.Errorf("derecho revocado: %s", l.raw)
+		t.Errorf("entitlement revoked: %s", l.raw)
 	}
 }
 
@@ -283,14 +283,14 @@ func TestCreateValidation(t *testing.T) {
 	res := h.do(call{method: "POST", path: "/v1/worlds/1/characters", token: p.token, body: body})
 	h.expect(res, http.StatusBadRequest, "validation")
 	if res.errField("race_id") != "wrong_realm" {
-		t.Errorf("raza de otro reino: %s", res.raw)
+		t.Errorf("race from another realm: %s", res.raw)
 	}
 	body = createBody("Aneira", "vardheim")
 	body["starter_template_id"] = "Escudero!"
 	res = h.do(call{method: "POST", path: "/v1/worlds/1/characters", token: p.token, body: body})
 	h.expect(res, http.StatusBadRequest, "validation")
 	if res.errField("starter_template_id") != "not_selectable" {
-		t.Errorf("plantilla: %s", res.raw)
+		t.Errorf("template: %s", res.raw)
 	}
 	for _, bad := range []string{"AQID", "no es base64!", "AQIDBAUGBwgJ", ""} {
 		body = createBody("Aneira", "vardheim")
@@ -298,14 +298,14 @@ func TestCreateValidation(t *testing.T) {
 		res = h.do(call{method: "POST", path: "/v1/worlds/1/characters", token: p.token, body: body})
 		h.expect(res, http.StatusBadRequest, "validation")
 		if res.errField("appearance") != "invalid" {
-			t.Errorf("apariencia %q: %s", bad, res.raw)
+			t.Errorf("appearance %q: %s", bad, res.raw)
 		}
 	}
 	res = h.do(call{method: "POST", path: "/v1/worlds/1/characters", token: p.token, body: map[string]any{"name": "Aneira"}})
 	h.expect(res, http.StatusBadRequest, "validation")
 	if res.errField("realm") != "required" || res.errField("appearance") != "required" || res.errField("race_id") != "required" ||
 		res.errField("starter_template_id") != "required" {
-		t.Errorf("campos que faltan: %s", res.raw)
+		t.Errorf("missing fields: %s", res.raw)
 	}
 	body = createBody("Aneira", "vardheim")
 	body["world_id"] = 1
@@ -313,7 +313,7 @@ func TestCreateValidation(t *testing.T) {
 		http.StatusBadRequest, "bad_request")
 	// None of this created rows or spent the limit.
 	if h.count(`select count(*) from characters`) != 0 || h.count(`select count(*) from auth_events where kind = 'character_create'`) != 0 {
-		t.Error("una creación rechazada dejó filas")
+		t.Error("a rejected creation left rows behind")
 	}
 	h.mustCreate(p, "Aneira", "vardheim")
 }
@@ -353,7 +353,7 @@ func TestNameCheckRateLimit(t *testing.T) {
 	p := h.newPlayer("ana@example.org")
 	for i := range 30 {
 		if res := h.nameCheck(p, "Ana"); res.status != http.StatusOK {
-			t.Fatalf("comprobación %d: %s", i, res.raw)
+			t.Fatalf("check %d: %s", i, res.raw)
 		}
 	}
 	h.expect(h.nameCheck(p, "Ana"), http.StatusTooManyRequests, "rate_limited")
@@ -387,7 +387,7 @@ func TestConcurrentCreationsOfDifferentAccounts(t *testing.T) {
 		wg.Wait()
 		for i, res := range results {
 			if res.status != http.StatusCreated {
-				t.Fatalf("ronda %d, jugador %d: %d %s", round, i, res.status, res.raw)
+				t.Fatalf("round %d, player %d: %d %s", round, i, res.status, res.raw)
 			}
 		}
 	}

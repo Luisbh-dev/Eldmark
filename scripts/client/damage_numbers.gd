@@ -1,47 +1,66 @@
 class_name DamageNumbers
 extends Control
-## Números de daño flotantes (UI-12). Se anclan en un punto del mundo (la cabeza de la víctima),
-## se proyectan a la pantalla con la cámara y suben mientras se desvanecen. Solo se crean al
-## recibir el evento que confirma el golpe ([CombatFeedback]); los números nunca se predicen.
+## Floating damage numbers (UI-12). They are anchored at a point in the world (the victim's head),
+## projected onto the screen with the camera and rise while fading. They are only created on
+## receiving the event that confirms the hit ([CombatFeedback]); numbers are never predicted.
 ## [br][br]
-## [b]Pool.[/b] Hay como mucho [constant MAX_NUMBERS] etiquetas, que se crean al hacer falta y se
-## reutilizan; si están todas en uso, un número nuevo recicla la más antigua.
+## [b]Pool.[/b] There are at most [constant MAX_NUMBERS] labels, created as needed and
+## reused; if all are in use, a new number recycles the oldest.
 ## [br][br]
-## [b]Agrupación.[/b] Los golpes sobre el mismo objetivo (y del mismo sentido: dados o recibidos) que
-## llegan en los [constant GROUP_WINDOW_SECONDS] s siguientes al primero de un número se suman en él,
-## en lugar de apilar etiquetas: el número se hace más grande y su vida vuelve a empezar.
+## [b]Legibility (UI-12).[/b] Each number is born shifted to one side, alternating left and right and rising one
+## step more the more numbers of the same victim are still alive, so "225" and "250" are not written on top of each
+## other and read as "2250". It is born 40% larger and shrinks to its size in 80 ms. The critical has its own color and size
+## (lemon yellow, larger, with "!"); death, white with a warm border and the largest size; and damage
+## taken, a red unlike any of the dealt-damage ones.
 ## [br][br]
-## El tiempo lo lleva [method advance] ([method _process] lo llama con el delta de cada fotograma).
+## [b]Grouping.[/b] Hits on the same target (and in the same direction: dealt or taken) that
+## arrive within the [constant GROUP_WINDOW_SECONDS] s after the first one of a number are added to it,
+## instead of stacking labels: the number grows larger and its life starts over.
+## [br][br]
+## Time is driven by [method advance] ([method _process] calls it with each frame's delta).
 
-## Variantes de los números (las mismas que las de [HitMarker]).
-enum Kind { HIT, HEAVY, BLOCKED, KILL }
+## Number variants (the same as those of [HitMarker]).
+enum Kind { HIT, HEAVY, BLOCKED, KILL, PARRY }
 
-## Etiquetas que se crean como mucho.
+## Labels created at most.
 const MAX_NUMBERS: int = 24
-## Ventana (s) desde el primer golpe de un número en la que otro golpe se suma a él.
+## Window (s) from the first hit of a number during which another hit is added to it.
 const GROUP_WINDOW_SECONDS: float = 0.3
-## Vida de un número (s) y velocidad con la que sube (px/s).
+## Life of a number (s) and the speed at which it rises (px/s).
 const LIFETIME_SECONDS: float = 0.9
 const RISE_SPEED: float = 70.0
-## Tamaño de letra base y crecimiento con el daño acumulado (hasta [constant MAX_FONT_SIZE]).
-const BASE_FONT_SIZE: int = 22
-const MAX_FONT_SIZE: int = 40
+## Base font size and growth with the accumulated damage (up to [constant MAX_FONT_SIZE]).
+const BASE_FONT_SIZE: int = 24
+const MAX_FONT_SIZE: int = 44
 const FONT_SIZE_PER_100_DAMAGE: float = 6.0
-## Altura (m) sobre los pies a la que se ancla un número.
+## Height (m) above the feet at which a number is anchored.
 const ANCHOR_HEIGHT: float = 2.15
 const OUTLINE_SIZE: int = 5
-## Colores por variante de los golpes dados.
+## Colors per variant of the dealt hits. Cream, gold, bluish gray, bright gold and white: none is red.
 const COLORS: Dictionary[int, Color] = {
 	Kind.HIT: Color(1.0, 0.95, 0.75, 1.0),
 	Kind.HEAVY: Color(1.0, 0.68, 0.2, 1.0),
 	Kind.BLOCKED: Color(0.65, 0.77, 0.92, 1.0),
-	Kind.KILL: Color(1.0, 0.3, 0.25, 1.0),
+	Kind.KILL: Color(1.0, 1.0, 1.0, 1.0),
+	Kind.PARRY: Color(1.0, 0.86, 0.35, 1.0),
 }
-## Color de los números de daño recibido.
-const TAKEN_COLOR: Color = Color(1.0, 0.28, 0.28, 1.0)
+## Color of the critical hit (lemon yellow) and of the death outline (warm).
+const CRITICAL_COLOR: Color = Color(1.0, 0.92, 0.2, 1.0)
+const KILL_OUTLINE_COLOR: Color = Color(0.85, 0.35, 0.05, 0.95)
+## Color of the damage-taken numbers (a crimson red, darker than that of blood and of death).
+const TAKEN_COLOR: Color = Color(0.95, 0.22, 0.24, 1.0)
 const OUTLINE_COLOR: Color = Color(0.0, 0.0, 0.0, 0.85)
+## Lateral spread at birth (px), vertical step per live number of the same victim (px), size it
+## is born with (1 = no jump) and time (s) it takes to shrink to its size.
+const SPREAD_PX: float = 34.0
+const STACK_STEP_PX: float = 26.0
+## Distance (m) at which two numbers of different victims count as close and are stacked, and maximum steps.
+const NEAR_METERS: float = 1.5
+const MAX_STACK_STEPS: int = 6
+const POP_SCALE: float = 1.4
+const POP_SECONDS: float = 0.08
 
-## false: no se muestra ningún número (opción del jugador).
+## false: no number is shown (player option).
 var enabled: bool = true:
 	set(value):
 		enabled = value
@@ -54,7 +73,7 @@ var _active: Array[_Number] = []
 var _spawned_total: int = 0
 
 
-## Un número en pantalla.
+## A number on screen.
 class _Number:
 	var label: Label = null
 	var target_id: int = 0
@@ -67,11 +86,12 @@ class _Number:
 	var group_age: float = 0.0
 	var hits: int = 1
 	var text_override: String = ""
+	var offset: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Opción «Números de daño» de los ajustes del jugador.
+	# The "Números de daño" (damage numbers) option of the player settings.
 	ClientSettings.bind_visibility(self, ClientSettings.DAMAGE_NUMBERS)
 
 
@@ -79,16 +99,16 @@ func _process(delta: float) -> void:
 	advance(delta)
 
 
-## Cámara con la que se proyectan los números al mundo.
+## Camera used to project the numbers into the world.
 func set_camera(camera: Camera3D) -> void:
 	_camera = camera
 
 
-## Enseña un número de [param amount] de daño sobre [param world_position] (el punto de los pies de
-## la víctima [param target_id]; se sube [constant ANCHOR_HEIGHT]). Si [param taken] es true es daño
-## que recibe el jugador local. Si hay un número del mismo objetivo y sentido que acaba de salir
-## (menos de [constant GROUP_WINDOW_SECONDS] s), se suma a él y no se crea otro. Devuelve la
-## etiqueta, o null con [member enabled] a false.
+## Shows a number of [param amount] damage at [param world_position] (the feet point of
+## the victim [param target_id]; it is raised by [constant ANCHOR_HEIGHT]). If [param taken] is true it is damage
+## received by the local player. If there is a number of the same target and direction that has just come out
+## (less than [constant GROUP_WINDOW_SECONDS] s ago), it is added to it and no other is created. Returns the
+## label, or null with [member enabled] set to false.
 func add_number(target_id: int, world_position: Vector3, amount: int, variant: int = Kind.HIT,
 		taken: bool = false, critical: bool = false, text_override: String = "") -> Label:
 	if not enabled:
@@ -114,6 +134,7 @@ func add_number(target_id: int, world_position: Vector3, amount: int, variant: i
 	created.amount = amount
 	created.world_position = world_position
 	created.text_override = text_override
+	created.offset = _spread_offset(target_id, taken, world_position)
 	_active.append(created)
 	_spawned_total += 1
 	_refresh(created)
@@ -121,7 +142,7 @@ func add_number(target_id: int, world_position: Vector3, amount: int, variant: i
 	return created.label
 
 
-## Avanza [param delta] segundos: envejece los números, los sube y devuelve al pool los que acaban.
+## Advances [param delta] seconds: ages the numbers, raises them and returns to the pool those that finish.
 func advance(delta: float) -> void:
 	if _active.is_empty():
 		return
@@ -137,50 +158,50 @@ func advance(delta: float) -> void:
 	_active = still
 
 
-## Quita todos los números (se conservan las etiquetas del pool).
+## Removes all the numbers (the pool's labels are kept).
 func clear() -> void:
 	for number: _Number in _active:
 		_release(number.label)
 	_active.clear()
 
 
-## Números en pantalla.
+## Numbers on screen.
 func get_active_count() -> int:
 	return _active.size()
 
 
-## Etiquetas creadas (activas y libres): nunca pasa de [constant MAX_NUMBERS].
+## Labels created (active and free): it never exceeds [constant MAX_NUMBERS].
 func get_pool_size() -> int:
 	return _pool.size()
 
 
-## Números creados desde el principio (sin contar los que se sumaron a otro).
+## Numbers created since the start (not counting those that were added to another).
 func get_spawned_count() -> int:
 	return _spawned_total
 
 
-## Texto del número activo [param index] (0 = el más antiguo).
+## Text of the active number [param index] (0 = the oldest).
 func get_number_text(index: int) -> String:
 	return _active[index].label.text if index >= 0 and index < _active.size() else ""
 
 
-## Daño acumulado del número activo [param index].
+## Accumulated damage of the active number [param index].
 func get_number_amount(index: int) -> int:
 	return _active[index].amount if index >= 0 and index < _active.size() else 0
 
 
-## Golpes sumados en el número activo [param index].
+## Hits added into the active number [param index].
 func get_number_hits(index: int) -> int:
 	return _active[index].hits if index >= 0 and index < _active.size() else 0
 
 
-## Etiqueta del número activo [param index] (o null).
+## Label of the active number [param index] (or null).
 func get_number_label(index: int) -> Label:
 	return _active[index].label if index >= 0 and index < _active.size() else null
 
 
-# Etiqueta libre del pool, o una nueva si no se ha llegado al tope; si no, la del número más
-# antiguo, que se recicla.
+# Free label from the pool, or a new one if the cap has not been reached; otherwise, that of the oldest
+# number, which is recycled.
 func _take_label() -> Label:
 	for label: Label in _pool:
 		if not label.visible:
@@ -212,7 +233,26 @@ func _release(label: Label) -> void:
 	label.visible = false
 
 
-# Texto, tamaño y color según el daño acumulado y la variante.
+# Where a number is born relative to the anchor: to one side (alternating) and one step higher for each live number of the
+# same victim and direction, or of another victim less than [constant NEAR_METERS] away (they would be drawn on top of
+# each other), so they do not overlap.
+func _spread_offset(target_id: int, taken: bool, world_position: Vector3 = Vector3.ZERO) -> Vector2:
+	var alive: int = 0
+	for number: _Number in _active:
+		if ((number.target_id == target_id and number.taken == taken)
+				or number.world_position.distance_to(world_position) < NEAR_METERS):
+			alive += 1
+	var side: float = -1.0 if (_spawned_total % 2) == 0 else 1.0
+	return Vector2(side * SPREAD_PX * (0.6 + 0.4 * float(alive % 3 + 1) / 3.0),
+			-STACK_STEP_PX * float(mini(alive, MAX_STACK_STEPS)))
+
+
+## Birth offset of the active number [param index] (for tests).
+func get_number_offset(index: int) -> Vector2:
+	return _active[index].offset if index >= 0 and index < _active.size() else Vector2.ZERO
+
+
+# Text, size and color according to the accumulated damage and the variant.
 func _refresh(number: _Number) -> void:
 	var label: Label = number.label
 	var text: String = number.text_override
@@ -225,13 +265,20 @@ func _refresh(number: _Number) -> void:
 			* float(number.amount) / 100.0), BASE_FONT_SIZE, MAX_FONT_SIZE)
 	if number.variant == Kind.HEAVY or number.critical:
 		font_size = mini(font_size + 4, MAX_FONT_SIZE)
-	label.add_theme_font_size_override(&"font_size", font_size)
 	var color: Color = TAKEN_COLOR if number.taken else COLORS[number.variant]
+	if number.critical and not number.taken and number.variant != Kind.KILL:
+		color = CRITICAL_COLOR
+		font_size = mini(font_size + 4, MAX_FONT_SIZE + 4)
+	if number.variant == Kind.KILL and not number.taken:
+		font_size = MAX_FONT_SIZE
+	label.add_theme_font_size_override(&"font_size", font_size)
 	label.add_theme_color_override(&"font_color", color)
+	label.add_theme_color_override(&"font_outline_color",
+			KILL_OUTLINE_COLOR if number.variant == Kind.KILL and not number.taken else OUTLINE_COLOR)
 	label.modulate.a = 1.0
 
 
-# Coloca la etiqueta en la pantalla: proyecta el ancla, la sube con la edad y la desvanece al final.
+# Places the label on screen: projects the anchor, raises it with age and fades it at the end.
 func _place(number: _Number) -> void:
 	var label: Label = number.label
 	var fade: float = 1.0 - smoothstep(0.55, 1.0, number.age / LIFETIME_SECONDS)
@@ -244,4 +291,7 @@ func _place(number: _Number) -> void:
 			return
 		screen = _camera.unproject_position(anchor)
 	screen.y -= number.age * RISE_SPEED
+	screen += number.offset
 	label.position = screen - label.size * 0.5
+	var pop: float = lerpf(POP_SCALE, 1.0, clampf(number.age / POP_SECONDS, 0.0, 1.0))
+	label.scale = Vector2.ONE * pop

@@ -35,7 +35,7 @@ const AIM_LEFT: int = 1 << 10
 const CONSUMABLE_1: int = 1 << 11
 const CONSUMABLE_2: int = 1 << 12
 ## Bits 13-14 reserved.
-## Substituted-input marker (docs/combate.md, section 3.2): it is not a button. It is set by the
+## Substituted-input marker (docs/combat.md, section 3.2): it is not a button. It is set by the
 ## server's input queue and the client's prediction on the input that repeats the last applied one
 ## when the real one has not arrived. It is outside [constant NetProtocol.VALID_BUTTONS], so the
 ## client cannot set it: the server discards it when decoding. The action machine neither counts

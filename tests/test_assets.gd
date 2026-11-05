@@ -6,7 +6,7 @@ extends TestCase
 ## ([code]scenes/world/zones/<zone>/terrain/*.res[/code]): scenes and resources go as text;
 ## [br]- a texture larger than [constant MAX_TEXTURE_SIZE] px anywhere;
 ## [br]- a folder in [code]assets/models[/code], [code]assets/animations[/code] or
-## [code]assets/textures[/code] with files and no entry in [code]assets/LICENCIAS.md[/code];
+## [code]assets/textures[/code] with files and no entry in [code]assets/LICENSES.md[/code];
 ## [br]- a character scene whose collision capsule is not 1.8 m tall.
 ## [br][br]
 ## Addons ([code]addons/[/code]) are third-party and are not examined. If an already existing asset
@@ -18,11 +18,11 @@ const MAX_TEXTURE_SIZE: int = 2048
 ## Height (m) of the character's collision capsule.
 const CAPSULE_HEIGHT: float = 1.8
 const CHARACTER_SCENE: String = "res://scenes/characters/player_character.tscn"
-const LICENSES_FILE: String = "res://assets/LICENCIAS.md"
+const LICENSES_FILE: String = "res://assets/LICENSES.md"
 ## Folders that are walked to look for [code].scn[/code] and [code].res[/code] (the project
 ## root minus these).
 const SKIPPED_DIRS: Array[String] = ["addons", "build", "exports"]
-## Roots whose subfolders each hold a pack and must be in LICENCIAS.md.
+## Roots whose subfolders each hold a pack and must be in LICENSES.md.
 const PACK_ROOTS: Array[String] = [
 	"res://assets/models", "res://assets/animations", "res://assets/textures",
 ]
@@ -42,7 +42,7 @@ const IGNORED_EXTENSIONS: Array[String] = ["uid", "import"]
 const KNOWN_BINARY_EXCEPTIONS: Dictionary = {}
 ## Textures larger than MAX_TEXTURE_SIZE px allowed.
 const KNOWN_OVERSIZED_TEXTURES: Dictionary = {}
-## Folders with files not listed in LICENCIAS.md (path without res:// or trailing slash).
+## Folders with files not listed in LICENSES.md (path without res:// or trailing slash).
 const KNOWN_UNLISTED_FOLDERS: Dictionary = {}
 
 
@@ -109,7 +109,7 @@ func test_textures_are_at_most_2048_px() -> void:
 				offenders.append("%s (%d x %d)" % [path, size.x, size.y])
 	assert_true(checked > 0, "textures to check have been found")
 	assert_true(offenders.is_empty(),
-			"Textures larger than %d px (they are shrunk before entering, see LICENCIAS.md): %s" % [
+			"Textures larger than %d px (they are shrunk before entering, see LICENSES.md): %s" % [
 			MAX_TEXTURE_SIZE, offenders])
 
 
@@ -137,11 +137,11 @@ func test_image_size_reader() -> void:
 			"the PNGs in assets/ are read (%d; not read: %s)" % [read, unreadable])
 
 
-# --- Pack folders and LICENCIAS.md ----------------------------------------------------------
+# --- Pack folders and LICENSES.md ----------------------------------------------------------
 
 func test_every_pack_folder_has_a_license_entry() -> void:
 	var listed: Array[String] = listed_paths(FileAccess.get_file_as_string(LICENSES_FILE))
-	if not assert_false(listed.is_empty(), "LICENCIAS.md lists asset folders"):
+	if not assert_false(listed.is_empty(), "LICENSES.md lists asset folders"):
 		return
 	var checked: int = 0
 	var offenders: Array[String] = []
@@ -154,7 +154,7 @@ func test_every_pack_folder_has_a_license_entry() -> void:
 			offenders.append(relative)
 	assert_true(checked > 0, "pack folders to check have been found")
 	assert_true(offenders.is_empty(),
-			"Asset folders with no entry in assets/LICENCIAS.md (note author, version, date, "
+			"Asset folders with no entry in assets/LICENSES.md (note author, version, date, "
 			+ "URL and license of the pack): %s" % [offenders])
 
 

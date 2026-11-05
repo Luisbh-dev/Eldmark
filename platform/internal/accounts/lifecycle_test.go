@@ -34,12 +34,12 @@ func TestRegistrationDoesNotRevealAccounts(t *testing.T) {
 		raws = append(raws, res.raw)
 	}
 	if raws[0] != raws[1] || raws[1] != raws[2] || raws[0] != "{}\n" {
-		t.Fatalf("cuerpos distintos: %q", raws)
+		t.Fatalf("different bodies: %q", raws)
 	}
 	var after int
 	h.scalar(&after, `select count(*) from accounts`)
 	if after != before+1 {
-		t.Fatalf("solo se crea la nueva: %d → %d", before, after)
+		t.Fatalf("only the new one is created: %d -> %d", before, after)
 	}
 	if body, _ := h.mailTo("existe@example.org", "register_existing"); !strings.Contains(body, "olvidado la contraseña") {
 		t.Fatal(body)
@@ -48,14 +48,14 @@ func TestRegistrationDoesNotRevealAccounts(t *testing.T) {
 		t.Fatal(body)
 	}
 	if _, token := h.mailTo("nuevo@example.org", "verify_email"); token == "" {
-		t.Fatal("el nuevo recibe su enlace")
+		t.Fatal("the new one receives its link")
 	}
 	// The new account: acceptances of the current versions and consents.
 	var acceptances, consents int
 	h.scalar(&acceptances, `select count(*) from legal_acceptances a join accounts using (account_id) where email = 'nuevo@example.org'`)
 	h.scalar(&consents, `select count(*) from consents c join accounts using (account_id) where email = 'nuevo@example.org'`)
 	if acceptances != 3 || consents != 2 {
-		t.Fatalf("aceptaciones %d, consentimientos %d", acceptances, consents)
+		t.Fatalf("acceptances %d, consents %d", acceptances, consents)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestRegistrationValidation(t *testing.T) {
 		res := h.do(call{method: "POST", path: "/v1/accounts", body: body, ip: h.nextIP()})
 		h.expect(res, 400, c.code)
 		if c.field != "" && res.errField(c.field) != c.reason {
-			t.Errorf("caso %d: %s", i, res.raw)
+			t.Errorf("case %d: %s", i, res.raw)
 		}
 	}
 	// Godot writes integers as 1.0: they are valid.
@@ -149,7 +149,7 @@ func TestRegistrationAndMailLimits(t *testing.T) {
 	h.expect(h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "nadie@example.org"},
 		ip: h.nextIP()}), 429, "rate_limited")
 	if h.mailCount("nadie@example.org", "reset_password") != 0 {
-		t.Fatal("sin cuenta no sale correo")
+		t.Fatal("no email goes out without an account")
 	}
 }
 
@@ -170,7 +170,7 @@ func TestLinksExpireAndAreSingleUse(t *testing.T) {
 	}
 	_, second := h.mailTo("enlace@example.org", "verify_email")
 	if second == first {
-		t.Fatal("enlace nuevo")
+		t.Fatal("new link")
 	}
 	if res := h.do(call{method: "POST", path: "/v1/account/verify-email", body: map[string]any{"token": second}}); res.status != 204 {
 		t.Fatal(res.raw)
@@ -190,7 +190,7 @@ func TestLinksExpireAndAreSingleUse(t *testing.T) {
 	n := h.mailCount("enlace@example.org", "verify_email")
 	h.do(call{method: "POST", path: "/v1/account/verify-email/resend", token: s.access})
 	if h.mailCount("enlace@example.org", "verify_email") != n {
-		t.Fatal("ya verificada")
+		t.Fatal("already verified")
 	}
 	// Recovery: 1 h.
 	h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": "enlace@example.org"}, ip: h.nextIP()})
@@ -221,10 +221,10 @@ func TestPasswordResetWritesEitherWay(t *testing.T) {
 	h.scalar(&withAccount, `select count(*) from auth_events where kind = 'password_reset' and account_id = $1 and ip = $2`, id, ip)
 	h.scalar(&without, `select count(*) from auth_events where kind = 'password_reset' and account_id is null and ip = $1`, ip)
 	if withAccount != 1 || without != 1 {
-		t.Fatalf("filas password_reset: con cuenta %d, sin cuenta %d", withAccount, without)
+		t.Fatalf("password_reset rows: with account %d, without account %d", withAccount, without)
 	}
 	if h.mailCount("nadie@example.org", "reset_password") != 0 || h.mailCount("tiene@example.org", "reset_password") != 1 {
-		t.Fatal("correos")
+		t.Fatal("emails")
 	}
 	// The response does not wait for the database: with the accounts table locked, it returns all the
 	// same (and the rest arrives when it is released).
@@ -246,14 +246,14 @@ func TestPasswordResetWritesEitherWay(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("la respuesta espera a la base")
+		t.Fatal("the response waits for the database")
 	}
 	if err := lock.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
 	h.svc.Wait()
 	if h.mailCount("tiene@example.org", "reset_password") != 2 {
-		t.Fatal("el segundo enlace no llegó")
+		t.Fatal("the second link did not arrive")
 	}
 }
 
@@ -285,7 +285,7 @@ func TestPasswordReset(t *testing.T) {
 	}
 	_, verify := h.mailTo("olvido@example.org", "verify_email")
 	if res := h.do(call{method: "POST", path: "/v1/account/verify-email", body: map[string]any{"token": verify}}); res.errField("token") != "used" {
-		t.Fatalf("los enlaces pendientes dejan de valer: %s", res.raw)
+		t.Fatalf("pending links stop being valid: %s", res.raw)
 	}
 	h.expect(h.loginFrom("olvido@example.org", password, h.nextIP()), 401, "invalid_credentials")
 	h.login("olvido@example.org", "contraseña recuperada")
@@ -307,7 +307,7 @@ func TestEmailChangeAndRevert(t *testing.T) {
 		t.Fatal(res.raw)
 	}
 	if res := h.do(call{method: "GET", path: "/v1/account", token: s.access}); res.status != 200 {
-		t.Fatal("la sesión que cambia sigue viva")
+		t.Fatal("the session that makes the change stays alive")
 	}
 	if res := h.do(call{method: "POST", path: "/v1/account/password-reset/confirm",
 		body: map[string]any{"token": oldReset, "new_password": "otra más larga"}}); res.errField("token") != "used" {
@@ -320,7 +320,7 @@ func TestEmailChangeAndRevert(t *testing.T) {
 		t.Fatal(res.raw)
 	}
 	if h.mailCount("ocupada@example.org", "register_existing") != 1 || h.mailCount("ocupada@example.org", "change_email") != 0 {
-		t.Fatal("al correo con cuenta, register_existing")
+		t.Fatal("to the email with an account, register_existing")
 	}
 	h.expect(h.do(call{method: "POST", path: "/v1/account/email", token: s.access,
 		body: map[string]any{"new_email": "nueva@example.org", "password": "mala"}}), 401, "invalid_credentials")
@@ -345,11 +345,11 @@ func TestEmailChangeAndRevert(t *testing.T) {
 	h.expect(h.do(call{method: "GET", path: "/v1/account", token: s.access}), 401, "unauthorized")
 	if res := h.do(call{method: "POST", path: "/v1/account/password-reset/confirm",
 		body: map[string]any{"token": pendingReset, "new_password": "otra más larga"}}); res.errField("token") != "used" {
-		t.Fatalf("el enlace de recuperación anterior falla: %s", res.raw)
+		t.Fatalf("the previous recovery link fails: %s", res.raw)
 	}
 	notice, revert := h.mailTo("vieja@example.org", "email_changed")
 	if revert == "" || !strings.Contains(notice, "n***@example.org") || strings.Contains(notice, "nueva@example.org") {
-		t.Fatalf("aviso al viejo: %s", notice)
+		t.Fatalf("notice to the old one: %s", notice)
 	}
 
 	// Whoever stole the account changes it again: the owner's revert_email is still valid (7 days).
@@ -401,15 +401,15 @@ func (h *harness) changeEmail(s session, from, to, pw string) string {
 	h.t.Helper()
 	if res := h.do(call{method: "POST", path: "/v1/account/email", token: s.access, ip: h.nextIP(),
 		body: map[string]any{"new_email": to, "password": pw}}); res.status != 202 {
-		h.t.Fatalf("cambio a %s: %s", to, res.raw)
+		h.t.Fatalf("change to %s: %s", to, res.raw)
 	}
 	_, change := h.mailTo(to, "change_email")
 	if res := h.do(call{method: "POST", path: "/v1/account/email/confirm", body: map[string]any{"token": change}}); res.status != 204 {
-		h.t.Fatalf("confirmar %s: %s", to, res.raw)
+		h.t.Fatalf("confirm %s: %s", to, res.raw)
 	}
 	_, revert := h.mailTo(from, "email_changed")
 	if revert == "" {
-		h.t.Fatalf("sin revert_email a %s", from)
+		h.t.Fatalf("no revert_email to %s", from)
 	}
 	return revert
 }
@@ -440,7 +440,7 @@ func TestRevertEmailChain(t *testing.T) {
 	}
 	h.clock.Advance(3 * 24 * time.Hour)
 	if res := h.revert(r2); res.errField("token") != "used" {
-		t.Fatalf("el revert_email del ladrón sigue vivo: %s", res.raw)
+		t.Fatalf("the thief's revert_email is still alive: %s", res.raw)
 	}
 	var email string
 	h.scalar(&email, `select email from accounts where account_id = $1`, id)
@@ -462,7 +462,7 @@ func TestRevertEmailChain(t *testing.T) {
 	}
 	_, thiefReset := h.mailTo("ladrona1@example.org", "email_reverted")
 	if res := h.revert(r1); res.status != 204 {
-		t.Fatalf("el revert_email del dueño tiene que seguir valiendo: %s", res.raw)
+		t.Fatalf("the owner's revert_email has to remain valid: %s", res.raw)
 	}
 	h.scalar(&email, `select email from accounts where account_id = $1`, id)
 	if email != "duena@example.org" {
@@ -470,7 +470,7 @@ func TestRevertEmailChain(t *testing.T) {
 	}
 	if res := h.do(call{method: "POST", path: "/v1/account/password-reset/confirm",
 		body: map[string]any{"token": thiefReset, "new_password": "la de la ladrona"}}); res.errField("token") != "used" {
-		t.Fatalf("la recuperación del ladrón sigue viva: %s", res.raw)
+		t.Fatalf("the thief's recovery is still alive: %s", res.raw)
 	}
 	if res := h.revert(r2); res.errField("token") != "used" {
 		t.Fatal(res.raw)
@@ -503,10 +503,10 @@ func TestOldEmailIsReservedWhileRevertLives(t *testing.T) {
 	var squatters int
 	h.scalar(&squatters, `select count(*) from accounts where email = 'dueno@example.org'`)
 	if squatters != 0 || h.mailCount("dueno@example.org", "register_existing") != 1 {
-		t.Fatalf("el registro tomó el correo reservado: %d cuentas", squatters)
+		t.Fatalf("the registration took the reserved email: %d accounts", squatters)
 	}
 	if res := h.do(call{method: "POST", path: "/v1/account/email/confirm", body: map[string]any{"token": early}}); res.errField("token") != "unavailable" {
-		t.Fatalf("el change_email de antes tomó el correo reservado: %s", res.raw)
+		t.Fatalf("the earlier change_email took the reserved email: %s", res.raw)
 	}
 	h.clock.Advance(time.Hour) // the email limit of dueno@ (3 per hour)
 	other = h.login("otro@example.org", password)
@@ -515,10 +515,10 @@ func TestOldEmailIsReservedWhileRevertLives(t *testing.T) {
 		t.Fatal(res.raw)
 	}
 	if h.mailCount("dueno@example.org", "change_email") != 1 || h.mailCount("dueno@example.org", "register_existing") != 2 {
-		t.Fatal("el cambio de otra cuenta tomó el correo reservado")
+		t.Fatal("another account's change took the reserved email")
 	}
 	if res := h.revert(r1); res.status != 204 {
-		t.Fatalf("el dueño vuelve a su correo: %s", res.raw)
+		t.Fatalf("the owner gets their email back: %s", res.raw)
 	}
 	var email string
 	h.scalar(&email, `select email from accounts where account_id = $1`, id)
@@ -585,7 +585,7 @@ func TestDeletionAndCancellation(t *testing.T) {
 	var logged bool
 	h.scalar(&logged, `select exists (select 1 from purge_log where kind = 'account' and id = $1)`, id)
 	if status != "purged" || gone != 0 || !logged {
-		t.Fatalf("purgada: %s, %d filas personales, purge_log %v", status, gone, logged)
+		t.Fatalf("purged: %s, %d personal rows, purge_log %v", status, gone, logged)
 	}
 	h.expect(h.loginFrom("borrar@example.org", password, h.nextIP()), 401, "invalid_credentials")
 }
@@ -612,13 +612,13 @@ func TestExport(t *testing.T) {
 	account := data["account"].(map[string]any)
 	if account["email"] != "exporta@example.org" || len(data["legal_acceptances"].([]any)) != 3 ||
 		len(data["consents"].([]any)) != 2 || len(data["sessions"].([]any)) != 1 || len(data["sanctions"].([]any)) != 1 {
-		t.Fatalf("exportación: %s", res.raw)
+		t.Fatalf("export: %s", res.raw)
 	}
 	if strings.Contains(res.raw, "argon2") || strings.Contains(res.raw, "password_hash") || strings.Contains(res.raw, "author") {
-		t.Fatal("sin hash ni autor de las sanciones")
+		t.Fatal("no hash or author of the sanctions")
 	}
 	if _, ok := account["created_at"].(string); !ok {
-		t.Fatal("fechas en texto")
+		t.Fatal("dates as text")
 	}
 	h.expect(h.do(call{method: "POST", path: "/v1/account/export", token: s.access, body: map[string]any{"password": password}}),
 		429, "rate_limited")

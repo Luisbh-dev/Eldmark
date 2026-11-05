@@ -1,11 +1,11 @@
 extends TestCase
-## Tests for the damage formula ([DamageFormula], docs/combate.md section 4.4) with a table of
+## Tests for the damage formula ([DamageFormula], docs/combat.md section 4.4) with a table of
 ## hand-computed cases: light, heavy with minimum, half and maximum charge, crit, full and
 ## partial block, block with insufficient stamina (proportional pass-through and guard
 ## break), armor and the minimum of 1. Also the hit from behind ([method
 ## DamageFormula.is_backstab]).
 ##
-## Attack data (the initial values of the sword, docs/combate.md section 2):
+## Attack data (the initial values of the sword, docs/combat.md section 2):
 ## light 1 = 90, light 3 = 130, heavy = 180 with a charge of 21 to 72 ticks (0.35 s to 1.2 s) and ×1.7
 ## at maximum charge. The calculations are in each case.
 

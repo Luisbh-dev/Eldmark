@@ -1,5 +1,5 @@
 extends TestCase
-## The balance pass tool ([code]tools/combat_balance.gd[/code], CMB-29; docs/combate.md,
+## The balance pass tool ([code]tools/combat_balance.gd[/code], CMB-29; docs/combat.md,
 ## section 12), which is launched by hand outside the runner.
 ## [br][br]
 ## [b]Smoke[/b]: the script loads and can be instantiated, so a syntax error in it breaks the

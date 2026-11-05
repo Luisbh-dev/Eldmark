@@ -1,6 +1,6 @@
 class_name RespawnRules
 extends RefCounted
-## Where a player can respawn (docs/fortress.md, section 5; extends docs/combate.md, section 5). A
+## Where a player can respawn (docs/fortress.md, section 5; extends docs/combat.md, section 5). A
 ## pure function that the server uses to validate the choice and the client to offer only valid
 ## points: both compute the same thing from the same marker list.
 ## [br][br]

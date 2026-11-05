@@ -73,8 +73,8 @@ to_s = 1.06
 [sub_resource type="Resource" id="Seg_dead_main"]
 script = ExtResource("3_seg")
 animation = &"ual1/Death01"
-from_s = 0.0
-to_s = 2.4
+from_s = 0.65
+to_s = 1.45
 
 [sub_resource type="Resource" id="Anim_npc_hollow_swipe"]
 script = ExtResource("2_anim")
@@ -139,12 +139,12 @@ blend_out_s = 0.1
 [sub_resource type="Resource" id="Anim_stagger"]
 script = ExtResource("2_anim")
 key = &"stagger"
-upper_body = true
+upper_body = false
 windup = SubResource("Seg_stagger_main")
 contact_s = -1.0
-duration_s = 0.4
-hold_end = false
-blend_in_s = 0.03
+duration_s = 0.35
+hold_end = true
+blend_in_s = 0.05
 blend_out_s = 0.1
 
 [sub_resource type="Resource" id="Anim_stun"]
@@ -164,9 +164,9 @@ key = &"dead"
 upper_body = false
 windup = SubResource("Seg_dead_main")
 contact_s = -1.0
-duration_s = 2.4
+duration_s = 0.6
 hold_end = true
-blend_in_s = 0.08
+blend_in_s = 0.1
 blend_out_s = 0.2
 
 [resource]

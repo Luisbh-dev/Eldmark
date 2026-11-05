@@ -222,7 +222,7 @@ func (h *harness) do(c call) *response {
 func (h *harness) expect(res *response, status int, code string) {
 	h.t.Helper()
 	if res.status != status || res.errCode() != code {
-		h.t.Fatalf("se esperaba %d %q y llega %d %q: %s", status, code, res.status, res.errCode(), res.raw)
+		h.t.Fatalf("expected %d %q and got %d %q: %s", status, code, res.status, res.errCode(), res.raw)
 	}
 }
 
@@ -242,7 +242,7 @@ func (h *harness) newPlayer(email string) *player {
 		"password": password, "age_confirmed": true, "accept": map[string]any{"terms": 1, "privacy": 1, "rules": 1},
 		"consents": map[string]any{"crash_reports": false, "analytics": false}}})
 	if res.status != http.StatusAccepted {
-		h.t.Fatalf("registro de %s: %d %s", email, res.status, res.raw)
+		h.t.Fatalf("registration of %s: %d %s", email, res.status, res.raw)
 	}
 	p := &player{email: email}
 	h.scalar(&p.id, `select account_id from accounts where email = $1`, email)
@@ -256,7 +256,7 @@ func (h *harness) login(p *player) {
 	res := h.do(call{method: "POST", path: "/v1/sessions", ip: h.nextIP(),
 		body: map[string]any{"email": p.email, "password": password}})
 	if res.status != http.StatusOK {
-		h.t.Fatalf("inicio de sesión de %s: %d %s", p.email, res.status, res.raw)
+		h.t.Fatalf("login of %s: %d %s", p.email, res.status, res.raw)
 	}
 	p.token, _ = res.body["access_token"].(string)
 }
@@ -297,7 +297,7 @@ func (h *harness) mustCreate(p *player, name, realm string) int64 {
 	h.t.Helper()
 	res := h.create(p, name, realm)
 	if res.status != http.StatusCreated {
-		h.t.Fatalf("crear %s: %d %s", name, res.status, res.raw)
+		h.t.Fatalf("create %s: %d %s", name, res.status, res.raw)
 	}
 	return idOf(h.t, res.character())
 }
@@ -307,7 +307,7 @@ func idOf(t *testing.T, c map[string]any) int64 {
 	s, ok := c["character_id"].(string)
 	id, err := strconv.ParseInt(s, 10, 64)
 	if !ok || err != nil {
-		t.Fatalf("character_id no es una cadena decimal: %v", c)
+		t.Fatalf("character_id is not a decimal string: %v", c)
 	}
 	return id
 }
@@ -336,7 +336,7 @@ func (h *harness) list(p *player) *response {
 	h.t.Helper()
 	res := h.do(call{method: "GET", path: "/v1/worlds/1/characters", token: p.token})
 	if res.status != http.StatusOK {
-		h.t.Fatalf("lista: %d %s", res.status, res.raw)
+		h.t.Fatalf("list: %d %s", res.status, res.raw)
 	}
 	return res
 }

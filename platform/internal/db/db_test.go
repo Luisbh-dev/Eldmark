@@ -43,7 +43,7 @@ func TestClassifyRealErrors(t *testing.T) {
 			return err
 		})
 		if got := db.Classify(err); got != c.kind || db.SQLState(err) != c.state {
-			t.Errorf("%s: %v (%s), se esperaba %v (%s): %v", name, got, db.SQLState(err), c.kind, c.state, err)
+			t.Errorf("%s: %v (%s), expected %v (%s): %v", name, got, db.SQLState(err), c.kind, c.state, err)
 		}
 	}
 	err := db.InTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -51,10 +51,10 @@ func TestClassifyRealErrors(t *testing.T) {
 		return err
 	})
 	if db.Constraint(err) != "worlds_pkey" {
-		t.Errorf("la restricción que saltó: %q", db.Constraint(err))
+		t.Errorf("the constraint that fired: %q", db.Constraint(err))
 	}
 	if db.Classify(nil) != db.KindOther || db.SQLState(errors.New("x")) != "" {
-		t.Error("sin error de PostgreSQL no hay SQLSTATE")
+		t.Error("without a PostgreSQL error there is no SQLSTATE")
 	}
 }
 
@@ -62,15 +62,15 @@ func TestUnavailableDatabase(t *testing.T) {
 	// A socket in an empty folder: the "stopped" database.
 	pool, err := db.Open(context.Background(), "host="+filepath.Join(t.TempDir(), "nadie")+" user=eldmark dbname=eldmark")
 	if err != nil {
-		t.Fatalf("Open no conecta todavía: %v", err)
+		t.Fatalf("Open does not connect yet: %v", err)
 	}
 	defer pool.Close()
 	err = db.Ping(context.Background(), pool, time.Second)
 	if err == nil || db.Classify(err) != db.KindUnavailable {
-		t.Fatalf("sin servidor, no disponible: %v (%v)", err, db.Classify(err))
+		t.Fatalf("without a server, unavailable: %v (%v)", err, db.Classify(err))
 	}
 	if _, err := db.Open(context.Background(), "postgres://a:b@host:puerto"); err == nil {
-		t.Fatal("una cadena que no se entiende")
+		t.Fatal("a string that is not understood")
 	}
 }
 
@@ -91,11 +91,11 @@ func TestInTxRetriesSerializationFailures(t *testing.T) {
 		return nil
 	})
 	if err != nil || attempts != 3 {
-		t.Fatalf("a la tercera va: %v, %d intentos", err, attempts)
+		t.Fatalf("third time lucky: %v, %d attempts", err, attempts)
 	}
 	var rows, last int
 	if err := pool.QueryRow(ctx, "select count(*), max(n) from intentos").Scan(&rows, &last); err != nil || rows != 1 || last != 3 {
-		t.Fatalf("solo queda el intento bueno: %d filas, el %d (%v)", rows, last, err)
+		t.Fatalf("only the good attempt remains: %d rows, the %d (%v)", rows, last, err)
 	}
 
 	attempts = 0
@@ -108,10 +108,10 @@ func TestInTxRetriesSerializationFailures(t *testing.T) {
 		return err
 	})
 	if !errors.Is(err, db.ErrConflict) || db.Classify(err) != db.KindRetryable || attempts != db.MaxAttempts {
-		t.Fatalf("agotados los reintentos: %v (%v), %d intentos", err, db.Classify(err), attempts)
+		t.Fatalf("retries exhausted: %v (%v), %d attempts", err, db.Classify(err), attempts)
 	}
 	if err := pool.QueryRow(ctx, "select count(*) from intentos where n = 100").Scan(&rows); err != nil || rows != 0 {
-		t.Fatalf("nada escrito: %d (%v)", rows, err)
+		t.Fatalf("nothing written: %d (%v)", rows, err)
 	}
 }
 
@@ -128,7 +128,7 @@ func TestDeferredConstraintFailsAtCommit(t *testing.T) {
 		return err
 	})
 	if db.Classify(err) != db.KindIntegrity || db.Constraint(err) != "ranura_unica" || attempts != 1 {
-		t.Fatalf("el COMMIT falla con la restricción diferida y no se reintenta: %v (%v), %d intentos", err, db.Classify(err), attempts)
+		t.Fatalf("the COMMIT fails with the deferred constraint and is not retried: %v (%v), %d attempts", err, db.Classify(err), attempts)
 	}
 }
 

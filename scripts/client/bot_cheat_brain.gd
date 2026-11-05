@@ -1,6 +1,6 @@
 class_name BotCheatBrain
 extends BotBrain
-## Brain of the cheating bot's combat modes ([BotCheater], docs/combate.md, section 4.5).
+## Brain of the cheating bot's combat modes ([BotCheater], docs/combat.md, section 4.5).
 ## [br][br]
 ## It looks for the nearest enemy (provided by [method BotBrain.set_enemy_finder]) and, depending
 ## on its [enum Style]:
