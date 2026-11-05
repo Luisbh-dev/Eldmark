@@ -1,0 +1,353 @@
+# Eldmark: Spanish catalog.
+#
+# The msgid is the English text and the msgstr is the Spanish text the game shows. There is no English
+# catalog: the msgid is it. Written by hand until the template tools arrive (docs/localization.md).
+msgid ""
+msgstr ""
+"Project-Id-Version: Eldmark\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# --- Settings window: tabs, title and buttons ---
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "settings_tab"
+msgid "Graphics"
+msgstr "Gráficos"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "settings_tab"
+msgid "Audio"
+msgstr "Audio"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "settings_tab"
+msgid "Camera"
+msgstr "Cámara"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "settings_tab"
+msgid "Interface"
+msgstr "Interfaz"
+
+#: scripts/client/ui/settings_menu.gd
+msgid "Settings"
+msgstr "Ajustes"
+
+#. TRANSLATORS: button that resets only the settings of the open tab.
+#: scripts/client/ui/settings_menu.gd
+msgid "Restore tab"
+msgstr "Restaurar pestaña"
+
+#. TRANSLATORS: button that resets the settings of every tab, and the confirm button of its dialog.
+#: scripts/client/ui/settings_menu.gd
+msgid "Restore all"
+msgstr "Restaurar todo"
+
+#: scripts/client/ui/settings_menu.gd
+msgid "Restore all settings"
+msgstr "Restaurar todos los ajustes"
+
+#: scripts/client/ui/settings_menu.gd
+msgid "All settings will return to their default values."
+msgstr "Todos los ajustes volverán a sus valores por defecto."
+
+#: scripts/client/ui/settings_menu.gd
+msgctxt "button"
+msgid "Close"
+msgstr "Cerrar"
+
+#: scripts/client/ui/settings_menu.gd
+#: scripts/client/ui/ui_confirm_dialog.gd
+msgctxt "button"
+msgid "Cancel"
+msgstr "Cancelar"
+
+#: scripts/client/ui/ui_confirm_dialog.gd
+msgctxt "button"
+msgid "Accept"
+msgstr "Aceptar"
+
+# --- Graphics ---
+
+#: scripts/client/ui/client_settings.gd
+msgid "Window mode"
+msgstr "Modo de ventana"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Windowed"
+msgstr "Ventana"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Borderless fullscreen"
+msgstr "Pantalla completa sin bordes"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Exclusive fullscreen"
+msgstr "Pantalla completa exclusiva"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Window resolution"
+msgstr "Resolución de la ventana"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "resolution"
+msgid "{width} x {height}"
+msgstr "{width} x {height}"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Vertical sync"
+msgstr "Sincronía vertical"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "vsync"
+msgid "Off"
+msgstr "Desactivada"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "vsync"
+msgid "On"
+msgstr "Activada"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "vsync"
+msgid "Adaptive"
+msgstr "Adaptativa"
+
+#: scripts/client/ui/client_settings.gd
+msgid "FPS limit"
+msgstr "Límite de FPS"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "fps_limit"
+msgid "No limit"
+msgstr "Sin límite"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "fps_limit"
+msgid "{fps} FPS"
+msgstr "{fps} FPS"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Render scale"
+msgstr "Escala de render"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Shadows"
+msgstr "Sombras"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "shadows"
+msgid "Off"
+msgstr "Desactivadas"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "shadows"
+msgid "Low"
+msgstr "Bajas"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "shadows"
+msgid "Medium"
+msgstr "Medias"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "shadows"
+msgid "High"
+msgstr "Altas"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Grass distance"
+msgstr "Distancia de la hierba"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "grass_distance"
+msgid "Off"
+msgstr "Desactivada"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Antialiasing"
+msgstr "Suavizado de bordes"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "antialiasing"
+msgid "None"
+msgstr "Ninguno"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "antialiasing"
+msgid "FXAA"
+msgstr "FXAA"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "antialiasing"
+msgid "MSAA 2x"
+msgstr "MSAA 2x"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "antialiasing"
+msgid "MSAA 4x"
+msgstr "MSAA 4x"
+
+# --- Audio ---
+
+#: scripts/client/audio/audio_buses.gd
+msgid "Master volume"
+msgstr "Volumen: General"
+
+#: scripts/client/audio/audio_buses.gd
+msgid "Music volume"
+msgstr "Volumen: Música"
+
+#: scripts/client/audio/audio_buses.gd
+msgid "Effects volume"
+msgstr "Volumen: Efectos"
+
+#: scripts/client/audio/audio_buses.gd
+msgid "Ambience volume"
+msgstr "Volumen: Ambiente"
+
+#: scripts/client/audio/audio_buses.gd
+msgid "Interface volume"
+msgstr "Volumen: Interfaz"
+
+#: scripts/client/audio/audio_buses.gd
+msgid "Voices volume"
+msgstr "Volumen: Voces"
+
+# --- Camera ---
+
+#: scripts/client/ui/client_settings.gd
+msgid "Mouse sensitivity"
+msgstr "Sensibilidad del ratón"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Invert vertical axis"
+msgstr "Invertir el eje vertical"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Field of view"
+msgstr "Campo de visión"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Default shoulder"
+msgstr "Hombro por defecto"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "shoulder"
+msgid "Right"
+msgstr "Derecho"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "shoulder"
+msgid "Left"
+msgstr "Izquierdo"
+
+# --- Interface ---
+
+#: scripts/client/ui/client_settings.gd
+msgid "Language"
+msgstr "Idioma"
+
+#. TRANSLATORS: "Automatic" language option. Until the final review of the translation, it means Spanish.
+#: scripts/client/ui/client_settings.gd
+msgctxt "language"
+msgid "Automatic (Spanish)"
+msgstr "Automático (español)"
+
+#. TRANSLATORS: language option. The English text is still incomplete in some screens.
+#: scripts/client/ui/client_settings.gd
+msgctxt "language"
+msgid "English (incomplete)"
+msgstr "English (incompleto)"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Damage numbers"
+msgstr "Números de daño"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Nameplates"
+msgstr "Placas de nombre"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Game hints"
+msgstr "Pistas del juego"
+
+#: scripts/client/ui/client_settings.gd
+msgid "Controls help line (F1)"
+msgstr "Línea de ayuda de controles (F1)"
+
+# --- Values and formatting ---
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "answer"
+msgid "Yes"
+msgstr "Sí"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "answer"
+msgid "No"
+msgstr "No"
+
+#. TRANSLATORS: a percentage; {value} is a whole number.
+#: scripts/client/l10n/l10n.gd
+msgctxt "number"
+msgid "{value}%"
+msgstr "{value} %"
+
+#. TRANSLATORS: a multiplier, such as x1.25.
+#: scripts/client/l10n/l10n.gd
+msgctxt "number"
+msgid "x{value}"
+msgstr "x{value}"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "number"
+msgid "{value}°"
+msgstr "{value}°"
+
+#: scripts/client/ui/client_settings.gd
+msgctxt "number"
+msgid "{value} m"
+msgstr "{value} m"
+
+#. TRANSLATORS: the character that separates groups of thousands in numbers.
+#: scripts/client/l10n/l10n.gd
+msgctxt "thousands_separator"
+msgid ","
+msgstr "."
+
+#. TRANSLATORS: the character that separates the decimals in numbers.
+#: scripts/client/l10n/l10n.gd
+msgctxt "decimal_separator"
+msgid "."
+msgstr ","
+
+#: scripts/client/l10n/l10n.gd
+msgctxt "duration"
+msgid "{seconds} s"
+msgstr "{seconds} s"
+
+#: scripts/client/l10n/l10n.gd
+msgctxt "duration"
+msgid "{minutes} min"
+msgstr "{minutes} min"
+
+#: scripts/client/l10n/l10n.gd
+msgctxt "duration"
+msgid "{hours} h"
+msgstr "{hours} h"
+
+#: scripts/client/l10n/l10n.gd
+msgctxt "duration"
+msgid "{hours} h {minutes} min"
+msgstr "{hours} h {minutes} min"
+
+#. TRANSLATORS: quotation marks around {text}.
+#: scripts/client/l10n/l10n.gd
+msgctxt "quote"
+msgid "“{text}”"
+msgstr "«{text}»"
