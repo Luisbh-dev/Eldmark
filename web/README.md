@@ -1,17 +1,23 @@
 # Eldmark website
 
-The project's website: a single static page in plain HTML, CSS and JavaScript. No framework, no
+The website of [Eldmark](https://github.com/Luisbh-dev/Eldmark), an open-source medieval-fantasy
+MMORPG made with Godot 4. A single static page in plain HTML, CSS and JavaScript: no framework, no
 build step, no external requests (fonts, images, video and sounds are all local).
+
+The site is developed inside the main repository, in its `web/` folder, and mirrored to
+[Eldmark-website](https://github.com/Luisbh-dev/Eldmark-website) with `git subtree` (see
+[Publishing](#publishing)). Change it in the main repository, not in the mirror.
 
 ## Run it
 
-Any static file server works. From the repository root:
+Any static file server works. From this folder (the root of Eldmark-website, or `web/` in the main
+repository):
 
 ```bash
-python -m http.server 8137 --directory web
+python -m http.server 8137
 ```
 
-Then open <http://localhost:8137>. Opening `web/index.html` straight from disk also works (all the
+Then open <http://localhost:8137>. Opening `index.html` straight from disk also works (all the
 scripts are classic scripts, not modules), although some browsers block the sounds from `file://`.
 
 ## What is on the page
@@ -56,10 +62,28 @@ video as short H.264 loops without audio.
 - `fonts/`: Latin subsets of Cinzel, IM Fell English SC and Noto Sans (SIL OFL 1.1, licenses next
   to them).
 
-The `.gdignore` file keeps Godot from importing this folder.
-
 ## Publishing
 
-The page is ready for GitHub Pages or any static host: publish the contents of `web/` as the site
-root. The GitHub links point to `github.com/Luisbh-dev/Eldmark`, so they only work once the
-repository is public.
+The page is ready for GitHub Pages or any static host: this folder is the site root (`.nojekyll`
+tells GitHub Pages to serve it as is). The links to the game's code point to
+`github.com/Luisbh-dev/Eldmark`, so they only work once that repository is public.
+
+To update the mirror after committing changes to `web/` in the main repository, run this from the
+main repository's root:
+
+```bash
+git subtree push --prefix=web https://github.com/Luisbh-dev/Eldmark-website main
+```
+
+The `.gdignore` file only matters inside the main repository, where it keeps Godot from importing
+the site.
+
+## License
+
+- Code (HTML, CSS, JavaScript): MIT, see [LICENSE](LICENSE).
+- Images, video, icons and sounds made by the Eldmark project: CC BY 4.0
+  (credit: Eldmark contributors, https://github.com/Luisbh-dev/Eldmark).
+- Fonts in `assets/fonts/`: SIL Open Font License 1.1, each with its `OFL-*.txt`.
+
+The full licensing notes are in the main repository's
+[LICENSE-ASSETS.md](https://github.com/Luisbh-dev/Eldmark/blob/main/LICENSE-ASSETS.md).

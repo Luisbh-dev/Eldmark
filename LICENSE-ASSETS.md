@@ -48,7 +48,8 @@ Suggested attribution:
 - The project website in `web/`: `web/assets/img/**` (in-game screenshots and the Devlog #0 card),
   `web/assets/video/**` (an in-game flythrough), `web/assets/favicon.svg`, and the copies of project
   assets in `web/assets/icons/**` and `web/assets/sfx/**`. The site's HTML, CSS and JavaScript are
-  code (MIT). **Exception:** `web/assets/fonts/` is third-party (SIL OFL 1.1, see the table below).
+  code (MIT; `web/LICENSE` is a copy of [LICENSE](LICENSE) so the site can be mirrored on its own).
+  **Exception:** `web/assets/fonts/` is third-party (SIL OFL 1.1, see the table below).
 
 Scripts under `tools/` that generate these assets are code, so they are MIT.
 
