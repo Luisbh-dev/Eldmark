@@ -1,14 +1,14 @@
 extends SceneTree
-## Genera las escenas de piezas (scenes/world/props/...) que usa el Vado Gris: cada una es malla
-## del kit + material de reino + colisión simple en la capa 1, para que cliente y servidor
-## carguen las mismas colisiones.
+## Generates the prop scenes (scenes/world/props/...) used by Vado Gris: each one is a kit mesh
+## + realm material + simple collision on layer 1, so that client and server
+## load the same collisions.
 ##
-## Uso, después de copiar los assets, importar, extraer las mallas y generar los materiales:
+## Usage, after copying the assets, importing, extracting the meshes and generating the materials:
 ## [codeblock]
 ## godot --headless --path . -s res://tools/props/build_vado_gris_props.gd
 ## [/codeblock]
-## Determinista (generador con semilla fija). Las piezas propias que no existen en los kits (el
-## puente de piedra) se modelan aquí con las texturas del kit y se guardan en
+## Deterministic (fixed-seed generator). Custom pieces that do not exist in the kits (the
+## stone bridge) are modeled here with the kit textures and saved in
 ## assets/models/environment/custom/.
 
 const PROPS_DIR: String = "res://scenes/world/props"
@@ -21,48 +21,48 @@ const KEN_MESH: String = "res://assets/models/blockout/kenney_castle/meshes/"
 const BAKED_MULTIMESH: GDScript = preload("res://scripts/world/baked_multimesh.gd")
 const FORT_GATE_SCRIPT: GDScript = preload("res://scripts/world/fort_gate.gd")
 
-## Capa de física del mundo estático (la que mira PlayerCharacter; también la cámara).
+## Physics layer of the static world (the one PlayerCharacter looks at; also the camera).
 const WORLD_LAYER: int = PlayerCharacter.WORLD_COLLISION_LAYER
-## Capa de los bloqueos invisibles que solo paran al jugador (no a la cámara ni a los disparos).
+## Layer of the invisible blockers that stop only the player (not the camera or the shots).
 const PLAYER_BLOCKER_LAYER: int = PlayerCharacter.PLAYER_BLOCKER_LAYER
 
-## Distancia (m) a la que dejan de dibujarse las piezas pequeñas (cajas, vallas, escombros...).
+## Distance (m) at which small pieces stop being drawn (crates, fences, rubble...).
 const SMALL_PROP_RANGE: float = 140.0
-## Distancia (m) a la que dejan de dibujarse las piezas medianas (tiendas, carros, hogueras).
+## Distance (m) at which medium pieces stop being drawn (tents, carts, bonfires).
 const MEDIUM_PROP_RANGE: float = 220.0
 
-# Fuerte.
+# Fort.
 const FORT_HALF: float = 20.0
 const LOG_RADIUS: float = 0.23
 const LOG_SPACING: float = 0.46
 const LOG_HEIGHT: float = 4.9
 const LOG_BURY: float = 0.6
 const TIP_HEIGHT: float = 0.7
-## Altura de la pasarela: el parapeto (cima de la empalizada, 4,65 m) queda a 1,3 m, a la altura
-## del pecho, y el pivote de la cámara (1,6 m sobre los pies) por encima de las puntas.
+## Walkway height: the parapet (top of the palisade, 4.65 m) ends up at 1.3 m, chest height,
+## and the camera pivot (1.6 m above the feet) above the tips.
 const WALKWAY_HEIGHT: float = 3.35
 const WALKWAY_WIDTH: float = 2.0
-## Recorrido horizontal de cada rampa (unos 26° de pendiente).
+## Horizontal run of each ramp (about a 26° slope).
 const RAMP_RUN: float = 6.9
 const GATE_HALF_WIDTH: float = 2.0
-## Alto de las hojas de la puerta (llegan al dintel).
+## Height of the gate leaves (they reach the lintel).
 const GATE_LEAF_HEIGHT: float = 4.3
 const TOWER_HALF: float = 3.0
 const STOREY: float = 6.0
 
-# Puente.
+# Bridge.
 const BRIDGE_LENGTH: float = 24.0
 const BRIDGE_DECK_HALF: float = 2.0
 const BRIDGE_PARAPET: float = 0.4
 const BRIDGE_PARAPET_HEIGHT: float = 0.95
 const BRIDGE_CROWN: float = 1.5
-## Altura del tablero en los extremos respecto a la orilla (negativa: queda enterrado).
+## Height of the deck at the ends relative to the bank (negative: it is buried).
 const BRIDGE_END_DEPTH: float = -0.3
 const BRIDGE_SPAN: float = 15.0
-## Tramo final (m) en el que los pretiles bajan hasta el tablero y se meten en la orilla.
+## Final stretch (m) in which the parapets drop down to the deck and sink into the bank.
 const BRIDGE_WING: float = 2.5
-## Alto (m) del bloqueo invisible sobre los pretiles: más que un salto (1,45 m), para que nadie
-## salte al cauce profundo (del que no se sale salvo por el vado).
+## Height (m) of the invisible blocker above the parapets: more than a jump (1.45 m), so nobody
+## jumps into the deep channel (which can only be left through the ford).
 const BRIDGE_JUMP_BLOCK: float = 1.7
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -92,29 +92,29 @@ func _initialize() -> void:
 
 
 # =============================================================================================
-# Fuerte del Vado Gris
+# Vado Gris fort
 # =============================================================================================
 
-## Cara [param side] (0 = sur, 1 = este, 2 = norte, 3 = oeste) de una caja de medio lado
-## [param half]: las piezas Wall_* del kit son planos de 6 x 6 m con origen en una esquina.
+## Face [param side] (0 = south, 1 = east, 2 = north, 3 = west) of a box of half-side
+## [param half]: the kit's Wall_* pieces are 6 x 6 m planes with their origin at a corner.
 func _tower_face_transform(side: int, half: float, y: float) -> Transform3D:
 	var basis: Basis = Basis(Vector3.UP, _side_yaw(side))
 	var corner: Vector3 = basis * Vector3(-half, 0, half)
 	return Transform3D(basis, corner + Vector3(0, y, 0))
 
 
-## Giro que lleva la normal +Z de una pieza a la cara [param side].
+## Rotation that takes the +Z normal of a piece to the face [param side].
 static func _side_yaw(side: int) -> float:
 	return [0.0, PI * 0.5, PI, -PI * 0.5][side]
 
 
-## Puerta de madera del fuerte: dos hojas de tablones verticales (textura de tablas del Castle
-## Wall Kit) con tres flejes de hierro, cuadradas hasta el dintel. Es un nodo aparte (grupo
-## "fort_gate", script FortGate) porque tiene vida y se rompe a golpes. Se guarda cerrada y con dos
-## cuerpos (docs/fuerte.md, sección 3.1; ver scripts/world/fort_gate.gd): el propio nodo es el de
-## movimiento (capas de reino 5 a 7, las tres porque el fuerte nace neutral) y "Vista" es el de
-## vista (capa 4 de estructuras), que ven la cámara y la línea de visión de los golpes. Origen:
-## centro del vano a ras de suelo.
+## Wooden gate of the fort: two leaves of vertical planks (plank texture from the Castle
+## Wall Kit) with three iron straps, square up to the lintel. It is a separate node (group
+## "fort_gate", script FortGate) because it has health and breaks under blows. It is saved closed and with two
+## bodies (docs/fuerte.md, section 3.1; see scripts/world/fort_gate.gd): the node itself is the
+## movement one (realm layers 5 to 7, all three because the fort starts neutral) and "Vista" is the
+## view one (structure layer 4), which the camera and the line of sight of the blows see. Origin:
+## center of the opening at ground level.
 func _build_fort_gate() -> void:
 	var root := StaticBody3D.new()
 	root.name = "FortGate"
@@ -129,7 +129,7 @@ func _build_fort_gate() -> void:
 		leaf.mesh = leaf_mesh
 		leaf.set_surface_override_material(0, _mat("eldrun/planks"))
 		leaf.set_surface_override_material(1, _mat("eldrun/metal"))
-		# La malla va de la bisagra hacia +Z: la hoja sur es la misma girada 180°.
+		# The mesh runs from the hinge toward +Z: the south leaf is the same one rotated 180°.
 		leaf.transform = Transform3D(Basis(Vector3.UP, 0.0 if i == 0 else PI), Vector3(0, 0, -GATE_HALF_WIDTH if i == 0 else GATE_HALF_WIDTH))
 		root.add_child(leaf)
 	var gate_size: Vector3 = Vector3(0.5, GATE_LEAF_HEIGHT, GATE_HALF_WIDTH * 2.0)
@@ -144,16 +144,16 @@ func _build_fort_gate() -> void:
 	_save(root, PROPS_DIR.path_join("fort/fort_gate.tscn"))
 
 
-## Malla de una hoja de la puerta: tablero de 2 m x 4,3 m x 0,14 m (superficie 0, tablas
-## verticales) y tres flejes de hierro por cada cara (superficie 1). Va de la bisagra (z = 0) a
-## z = 2. Se guarda en assets/models/environment/custom/fort_gate_leaf.tres.
+## Mesh of one gate leaf: a 2 m x 4.3 m x 0.14 m board (surface 0, vertical planks)
+## and three iron straps on each face (surface 1). It runs from the hinge (z = 0) to
+## z = 2. Saved in assets/models/environment/custom/fort_gate_leaf.tres.
 func _build_gate_leaf_mesh() -> ArrayMesh:
 	var width: float = GATE_HALF_WIDTH - 0.02
 	var thickness: float = 0.14
 	var planks := SurfaceTool.new()
 	planks.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# U a lo largo de las tablas (vertical), V a lo ancho: la textura trae 12 tablas por
-	# repetición, así que 2,4 m de V dan tablas de 20 cm.
+	# U along the planks (vertical), V across: the texture has 12 planks per
+	# repetition, so 2.4 m of V gives 20 cm planks.
 	_box_faces(planks, Vector3(-thickness * 0.5, 0.0, 0.01), Vector3(thickness * 0.5, GATE_LEAF_HEIGHT, 0.01 + width),
 			func(p: Vector3) -> Vector2: return Vector2(p.y / 3.0, (p.z + p.x) / 2.4))
 	var bands := SurfaceTool.new()
@@ -173,8 +173,8 @@ func _build_gate_leaf_mesh() -> ArrayMesh:
 	return _save_custom_mesh(mesh, "fort_gate_leaf.tres")
 
 
-## Rampa de madera de 2 m de ancho que sube [constant WALKWAY_HEIGHT] m. Origen: pie de la rampa
-## en el suelo; sube hacia -Z.
+## Wooden ramp 2 m wide that rises [constant WALKWAY_HEIGHT] m. Origin: foot of the ramp
+## on the ground; it rises toward -Z.
 func _build_wooden_ramp() -> void:
 	var root := StaticBody3D.new()
 	root.name = "WoodenRamp"
@@ -192,7 +192,7 @@ func _build_wooden_ramp() -> void:
 		var basis: Basis = tilt.scaled(Vector3(1.0, 1.0, length / tiles / 2.0))
 		_mesh(root, "Tablas%d" % i, VIL_MESH + "floor_wood_dark.tres", [wood],
 				Transform3D(basis, center + Vector3(0, 0.02, 0)))
-	# Largueros y pies derechos.
+	# Stringers and posts.
 	var beam := BoxMesh.new()
 	beam.size = Vector3(0.18, 0.25, length)
 	for x: float in [-1.0, 1.0]:
@@ -223,7 +223,7 @@ func _build_wooden_ramp() -> void:
 	_save(root, PROPS_DIR.path_join("fort/wooden_ramp.tscn"))
 
 
-## Mástil con estandarte (color de bando por instancia: faction_color). Origen: pie del mástil.
+## Mast with banner (faction color per instance: faction_color). Origin: foot of the mast.
 func _build_banner_pole() -> void:
 	var root := Node3D.new()
 	root.name = "BannerPole"
@@ -248,16 +248,16 @@ func _build_banner_pole() -> void:
 	_save(root, PROPS_DIR.path_join("fort/banner_pole.tscn"))
 
 
-## Fuerte completo: empalizada de troncos de 40 m de lado, pasarela interior, dos rampas, puerta
-## de madera en la cara oeste y torre central con el estandarte. Origen: centro de la meseta a
-## la altura del suelo. Colisiones: un cuerpo por lado de empalizada y de pasarela.
+## Complete fort: 40 m-per-side log palisade, interior walkway, two ramps, wooden gate
+## on the west face and central tower with the banner. Origin: center of the plateau at
+## ground height. Collisions: one body per side of palisade and of walkway.
 func _build_fort() -> void:
 	var root := Node3D.new()
 	root.name = "VadoGrisFort"
 	var log_material: Material = _mat("eldrun/palisade_log")
 	var wood: Material = _mat("eldrun/wood")
 
-	# --- Empalizada: troncos en MultiMesh (2 llamadas de dibujo para todo el fuerte).
+	# --- Palisade: logs in a MultiMesh (2 draw calls for the whole fort).
 	var log_mesh := CylinderMesh.new()
 	log_mesh.top_radius = LOG_RADIUS
 	log_mesh.bottom_radius = LOG_RADIUS * 1.05
@@ -297,7 +297,7 @@ func _build_fort() -> void:
 	_multimesh(root, "Troncos", log_mesh, log_material, log_xforms)
 	_multimesh(root, "Puntas", tip_mesh, log_material, tip_xforms)
 
-	# Colisión de la empalizada: un cuerpo con una caja por lado (la oeste partida por la puerta).
+	# Palisade collision: one body with one box per side (the west one split by the gate).
 	var palisade_body := StaticBody3D.new()
 	palisade_body.name = "EmpalizadaColision"
 	palisade_body.collision_layer = WORLD_LAYER
@@ -312,7 +312,7 @@ func _build_fort() -> void:
 	_box(palisade_body, "OesteNorte", Vector3(thickness, wall_height, west_len), Vector3(-FORT_HALF, wall_height * 0.5, -GATE_HALF_WIDTH - west_len * 0.5))
 	_box(palisade_body, "OesteSur", Vector3(thickness, wall_height, west_len), Vector3(-FORT_HALF, wall_height * 0.5, GATE_HALF_WIDTH + west_len * 0.5))
 
-	# --- Pasarela interior (Floor_WoodDark de 2 x 2 m) sobre pies derechos.
+	# --- Interior walkway (2 x 2 m Floor_WoodDark) on posts.
 	var walk_center: float = FORT_HALF - LOG_RADIUS - WALKWAY_WIDTH * 0.5
 	var tiles_per_side: int = int(round(walk_center * 2.0 / 2.0)) + 1
 	var floor_mesh: Mesh = load(VIL_MESH + "floor_wood_dark.tres") as Mesh
@@ -325,7 +325,7 @@ func _build_fort() -> void:
 			var along: float = -walk_center + float(i) * step
 			var p: Vector3 = basis * Vector3(along, WALKWAY_HEIGHT, walk_center)
 			floor_xforms.append(Transform3D(basis.scaled(Vector3(step / 2.0, 1.0, 1.0)), p))
-			# Sin pies derechos en el vano de la puerta (cara oeste): se pasa por debajo.
+			# No posts in the gate opening (west face): you pass underneath.
 			if i % 2 == 0 and not (side == 3 and absf(along) < GATE_HALF_WIDTH + 0.4):
 				for offset: float in [-0.85, 0.85]:
 					var q: Vector3 = basis * Vector3(along, 0.0, walk_center + offset)
@@ -350,7 +350,7 @@ func _build_fort() -> void:
 		shape.transform = Transform3D(basis, basis * Vector3(0, WALKWAY_HEIGHT - 0.1, walk_center))
 		walk_body.add_child(shape)
 
-	# --- Dos rampas simétricas (norte y sur) junto a la pasarela, al este de la torre.
+	# --- Two symmetrical ramps (north and south) next to the walkway, east of the tower.
 	var ramp_scene: PackedScene = load(PROPS_DIR.path_join("fort/wooden_ramp.tscn")) as PackedScene
 	var ramp_foot: float = walk_center - WALKWAY_WIDTH * 0.5 - RAMP_RUN
 	var north_ramp: Node3D = ramp_scene.instantiate() as Node3D
@@ -362,7 +362,7 @@ func _build_fort() -> void:
 	south_ramp.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(7.0, 0.0, ramp_foot))
 	root.add_child(south_ramp)
 
-	# --- Puerta: marco de dos postes y dintel; la puerta es su propia escena.
+	# --- Gate: frame of two posts and a lintel; the gate is its own scene.
 	var frame_mat: Material = wood
 	var post := BoxMesh.new()
 	post.size = Vector3(0.7, 5.6, 0.7)
@@ -388,14 +388,14 @@ func _build_fort() -> void:
 	gate.position = Vector3(-FORT_HALF, 0.0, 0.0)
 	root.add_child(gate)
 
-	# --- Torreón central (ART-57): el modelo propio fort_keep.glb, con su estandarte y su colisión de
-	# baja resolución (scripts/world/fort_keep.gd). Sustituye a la torre de dos plantas del Castle Wall Kit.
+	# --- Central keep (ART-57): the custom model fort_keep.glb, with its banner and its low-resolution
+	# collision (scripts/world/fort_keep.gd). It replaces the two-story tower of the Castle Wall Kit.
 	var keep: Node3D = (load(PROPS_DIR.path_join("fort/fort_keep.tscn")) as PackedScene).instantiate() as Node3D
 	keep.name = "FortKeep"
 	root.add_child(keep)
 
-	# --- Vida en el patio: cajas de la vieja guarnición (en espejo norte-sur: las dos pilas dan el
-	# mismo atajo a la pasarela) y una hoguera sobre el eje, al este de la torre.
+	# --- Life in the yard: crates of the old garrison (mirrored north-south: the two piles give the
+	# same shortcut to the walkway) and a bonfire on the axis, east of the tower.
 	var crate_scene: PackedScene = load(PROPS_DIR.path_join("camp/eldrun_crate.tscn")) as PackedScene
 	var crate_spots: Array[Vector4] = [
 		Vector4(14.5, 0.0, -15.0, 0.2), Vector4(15.6, 0.0, -13.9, 0.7), Vector4(15.0, 1.06, -14.5, 0.4),
@@ -415,16 +415,16 @@ func _build_fort() -> void:
 	fire.name = "Hoguera"
 	fire.position = Vector3(8.0, 0.0, 0.0)
 	root.add_child(fire)
-	# Estandartes neutrales a los dos lados de la puerta, fuera de la empalizada (no estorban en
-	# la pasarela ni a las hojas abiertas).
+	# Neutral banners on both sides of the gate, outside the palisade (they do not get in the way on
+	# the walkway or of the open leaves).
 	for zs: float in [-1.0, 1.0]:
 		var gate_banner: Node3D = (load(PROPS_DIR.path_join("fort/banner_pole.tscn")) as PackedScene).instantiate() as Node3D
 		gate_banner.name = "EstandartePuerta%s" % ("N" if zs < 0.0 else "S")
 		gate_banner.position = Vector3(-FORT_HALF - 1.5, 0.0, zs * (GATE_HALF_WIDTH + 1.8))
 		root.add_child(gate_banner)
 
-	# --- Marcadores para la lógica de la fase 4. El círculo de captura queda entre la puerta y
-	# la torre, con su borde a 0,5 m de la torre (x = -3).
+	# --- Markers for the phase 4 logic. The capture circle sits between the gate and
+	# the tower, with its edge 0.5 m from the tower (x = -3).
 	var circle := Marker3D.new()
 	circle.name = "CaptureCircle"
 	circle.position = Vector3(-8.5, 0.05, 0.0)
@@ -445,13 +445,13 @@ func _build_fort() -> void:
 	_save(root, PROPS_DIR.path_join("fort/vado_gris_fort.tscn"))
 
 
-## Marcadores de los PNJ del fuerte (docs/fuerte.md, sección 4.3), solo datos para el servidor:
-## [br]- Rutas de patrulla de los Huecos (grupo patrol_points, metadato route): del patio por la
-## rampa a la pasarela y por ella hacia la puerta, una por el norte y otra por el sur (reflejo).
-## [br]- Un generador (NpcSpawner) por Hueco en cada GuardSpawn, activo con el fuerte neutral; los
-## dos del este (junto a las rampas) patrullan, los dos de la puerta se quedan.
-## [br]- El generador del Capitán del Vado en el CaptainSpawn (dentro del círculo de captura).
-## Todos miran a la puerta (oeste, -X).
+## Markers for the fort NPCs (docs/fuerte.md, section 4.3), data only for the server:
+## [br]- Patrol routes of the Hollow (group patrol_points, metadata route): from the yard up the
+## ramp to the walkway and along it toward the gate, one through the north and another through the south (mirrored).
+## [br]- A spawner (NpcSpawner) per Hollow at each GuardSpawn, active while the fort is neutral; the
+## two on the east (next to the ramps) patrol, the two at the gate stay put.
+## [br]- The Ford Captain's spawner at the CaptainSpawn (inside the capture circle).
+## All of them face the gate (west, -X).
 func _add_fort_npc_markers(root: Node3D, guard_corners: Array[Vector2], captain_position: Vector3) -> void:
 	var walkway_y: float = WALKWAY_HEIGHT + 0.05
 	var walkway_z: float = FORT_HALF - LOG_RADIUS - WALKWAY_WIDTH * 0.5
@@ -496,12 +496,12 @@ func _add_fort_npc_markers(root: Node3D, guard_corners: Array[Vector2], captain_
 
 
 # =============================================================================================
-# Puente de piedra
+# Stone bridge
 # =============================================================================================
 
-## Puente de un arco, estrecho (4 m de tablero) y con pretiles. Malla propia hecha por
-## extrusión de una sección a lo largo del puente, con la textura de piedra del Castle Wall Kit.
-## Origen: centro del vano a la altura de la orilla; el puente va a lo largo de Z.
+## Single-arch bridge, narrow (4 m of deck) and with parapets. Custom mesh made by
+## extruding a section along the bridge, with the stone texture of the Castle Wall Kit.
+## Origin: center of the opening at bank height; the bridge runs along Z.
 func _build_stone_bridge() -> void:
 	var slices: int = 48
 	var outer: float = BRIDGE_DECK_HALF + BRIDGE_PARAPET
@@ -526,10 +526,10 @@ func _build_stone_bridge() -> void:
 			var v0: float = a[e].z / 3.0
 			var v1: float = b[e].z / 3.0
 			_quad(st, a[e], a[e2], b[e2], b[e], Vector2(u0, v0), Vector2(u1, v0), Vector2(u1, v1), Vector2(u0, v1))
-			# Colisión de todo el contorno, también la panza del arco (si no, desde el cauce se
-			# entraba en la fábrica del puente).
+			# Collision of the whole outline, including the belly of the arch (otherwise, from the channel you
+			# could get into the bridge masonry).
 			deck_faces.append_array(PackedVector3Array([a[e], a[e2], b[e2], a[e], b[e2], b[e]]))
-	# Tapas de los extremos (contra la orilla).
+	# End caps (against the bank).
 	for cap: int in 2:
 		var sec: PackedVector3Array = sections[0] if cap == 0 else sections[slices]
 		var centroid: Vector3 = Vector3.ZERO
@@ -572,7 +572,7 @@ func _build_stone_bridge() -> void:
 	concave.set_faces(deck_faces)
 	shape.shape = concave
 	root.add_child(shape)
-	# Bloqueo invisible sobre los pretiles (solo para el jugador): no se puede saltar al cauce.
+	# Invisible blocker above the parapets (player only): you cannot jump into the channel.
 	var blocker := StaticBody3D.new()
 	blocker.name = "BloqueoSalto"
 	blocker.collision_layer = PLAYER_BLOCKER_LAYER
@@ -588,15 +588,15 @@ func _build_stone_bridge() -> void:
 	_save(root, PROPS_DIR.path_join("bridge/stone_bridge.tscn"))
 
 
-## Altura del tablero en z: BRIDGE_CROWN en el centro y algo por debajo de la orilla en los
-## extremos, para que el tablero salga del terreno sin escalón (move_and_slide no sube
-## escalones) y con una pendiente de unos 15° donde se cruzan.
+## Height of the deck at z: BRIDGE_CROWN at the center and somewhat below the bank at the
+## ends, so that the deck comes out of the terrain without a step (move_and_slide does not climb
+## steps) and with a slope of about 15° where you cross.
 static func _deck_height(z: float) -> float:
 	var t: float = z / (BRIDGE_LENGTH * 0.5)
 	return BRIDGE_END_DEPTH + (BRIDGE_CROWN - BRIDGE_END_DEPTH) * (1.0 - t * t)
 
 
-## Intradós: arco rebajado sobre el agua; fuera del vano, estribo macizo hasta bajo tierra.
+## Intrados: a segmental arch over the water; outside the opening, a solid abutment down below ground.
 static func _underside(z: float) -> float:
 	var t: float = z / (BRIDGE_SPAN * 0.5)
 	if absf(t) >= 1.0:
@@ -604,12 +604,12 @@ static func _underside(z: float) -> float:
 	return -1.6 + 2.0 * sqrt(1.0 - t * t)
 
 
-## Sección cerrada (sentido antihorario visto desde +Z): exterior izquierdo, pretil, tablero,
-## pretil derecho, exterior derecho y panza.
+## Closed section (counterclockwise seen from +Z): left outer side, parapet, deck,
+## right parapet, right outer side and belly.
 func _bridge_section(z: float, xs: Array[float]) -> PackedVector3Array:
 	var deck: float = _deck_height(z)
-	# En los extremos los pretiles bajan hasta el tablero (aletas que se meten en la orilla): así
-	# no enmarcan un hoyo de tierra donde el tablero entra en el terreno.
+	# At the ends the parapets drop down to the deck (wings that sink into the bank): this way
+	# they do not frame a pit of earth where the deck enters the terrain.
 	var half: float = BRIDGE_LENGTH * 0.5
 	var top: float = deck + BRIDGE_PARAPET_HEIGHT * smoothstep(half, half - BRIDGE_WING, absf(z))
 	var bottom: float = _underside(z)
@@ -622,7 +622,7 @@ func _bridge_section(z: float, xs: Array[float]) -> PackedVector3Array:
 
 func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
 		ua: Vector2, ub: Vector2, uc: Vector2, ud: Vector2) -> void:
-	# Orden horario visto desde fuera (cara frontal en Godot): normales hacia fuera.
+	# Clockwise order seen from outside (front face in Godot): normals pointing outward.
 	st.set_uv(ua)
 	st.add_vertex(a)
 	st.set_uv(ub)
@@ -644,10 +644,10 @@ func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 
 
 # =============================================================================================
-# Campamentos
+# Camps
 # =============================================================================================
 
-## Tienda de lona a dos aguas (prisma; no hay tiendas en los kits). Origen: centro en el suelo.
+## Gable canvas tent (prism; there are no tents in the kits). Origin: center on the ground.
 func _build_tent(realm: String) -> void:
 	var root := StaticBody3D.new()
 	root.name = "Tent"
@@ -705,7 +705,7 @@ func _build_wagon(realm: String) -> void:
 	_save(root, PROPS_DIR.path_join("camp/%s_wagon.tscn" % realm))
 
 
-## Tramo de valla de 2 m.
+## 2 m fence section.
 func _build_fence(realm: String) -> void:
 	var root := _static_root("Fence")
 	_mesh(root, "Valla", VIL_MESH + "prop_wooden_fence_single.tres", [_mat(realm + "/wood")], Transform3D.IDENTITY).visibility_range_end = SMALL_PROP_RANGE
@@ -713,7 +713,7 @@ func _build_fence(realm: String) -> void:
 	_save(root, PROPS_DIR.path_join("camp/%s_fence.tscn" % realm))
 
 
-## Estandarte del reino sobre un mástil (color de bando por instancia).
+## Realm banner on a mast (faction color per instance).
 func _build_camp_banner(realm: String) -> void:
 	var root := _static_root("CampBanner")
 	var pole := CylinderMesh.new()
@@ -745,7 +745,7 @@ func _build_camp_banner(realm: String) -> void:
 	_save(root, PROPS_DIR.path_join("camp/%s_banner.tscn" % realm))
 
 
-## Hoguera: anillo de piedras, leños y brasas con una luz cálida.
+## Bonfire: ring of stones, logs and embers with a warm light.
 func _build_fire_pit() -> void:
 	var root := _static_root("FirePit")
 	var stone: Material = _mat("eldrun/ruin_trim")
@@ -809,13 +809,13 @@ func _build_fire_pit() -> void:
 
 
 # =============================================================================================
-# Murallas
+# Walls
 # =============================================================================================
 
-## Torre de muralla cuadrada de 6 x 6 m: 18 m sobre el suelo (tres hiladas y un cimiento
-## enterrado), Castle Wall Kit recoloreado.
-## Vardheim: cadalso de madera oscura encima. Solmarch: tejado cónico de pizarra azul.
-## Origen: centro de la base a ras de suelo; la cara trasera (z = -3) se apoya en la muralla.
+## Square wall tower, 6 x 6 m: 18 m above the ground (three courses and a buried
+## foundation), recolored Castle Wall Kit.
+## Vardheim: dark wooden hoarding on top. Solmarch: conical blue slate roof.
+## Origin: center of the base at ground level; the back face (z = -3) rests on the wall.
 func _build_wall_tower(realm: String) -> void:
 	var root := _static_root("WallTower")
 	var stone: Material = _mat(realm + "/stone_wall")
@@ -845,30 +845,30 @@ func _build_wall_tower(realm: String) -> void:
 	_save(root, PROPS_DIR.path_join("walls/%s_wall_tower.tscn" % realm))
 
 
-## Puerta de la muralla: arco con portón cerrado entre dos torres que avanzan hacia el valle.
-## Origen: centro del arco a ras de suelo, cara de la muralla en z = 0, el valle hacia +Z.
+## Wall gate: arch with a closed portcullis door between two towers that jut out toward the valley.
+## Origin: center of the arch at ground level, wall face at z = 0, the valley toward +Z.
 func _build_gatehouse(realm: String) -> void:
 	var root := _static_root("Gatehouse")
 	var stone: Material = _mat(realm + "/stone_wall")
 	var trim: Material = _mat(realm + "/stone_trim")
-	# Cimiento enterrado, arco, muro encima y almenas (la muralla mide 12 m sobre el suelo).
+	# Buried foundation, arch, wall on top and battlements (the wall is 12 m above the ground).
 	_mesh(root, "Cimiento", CW_MESH + "courtine_wall.tres", [stone], Transform3D(Basis(), Vector3(-3, -STOREY, 0)))
 	_mesh(root, "Arco", CW_MESH + "courtine_door_arch.tres", [stone, trim], Transform3D(Basis(), Vector3(-3, 0, 0)))
 	_mesh(root, "SobreArco", CW_MESH + "courtine_wall.tres", [stone], Transform3D(Basis(), Vector3(-3, STOREY, 0)))
 	_mesh(root, "Almenas", CW_MESH + "wall_battlements.tres", [trim], Transform3D(Basis(), Vector3(0, 2.0 * STOREY, 0)))
-	# Portón cerrado (calcomanía de puerta del kit) y rastrillo.
+	# Closed gate (the kit's door decal) and portcullis.
 	var door_mat: Material = _mat(realm + "/door")
 	_mesh(root, "Porton", CW_MESH + "door_sticker_gate_arch.tres", [door_mat], Transform3D(Basis(), Vector3(0, 0, -0.45)))
 	_mesh(root, "Rastrillo", CW_MESH + "door_sticker_portcullis.tres", [_mat(realm + "/metal")], Transform3D(Basis(), Vector3(0, 0, 0.05)))
 	_box(root, "ColisionArco", Vector3(6.0, 19.0, 1.2), Vector3(0, 3.5, -0.4))
-	# Torres a los lados.
+	# Towers on the sides.
 	var tower_scene: PackedScene = load(PROPS_DIR.path_join("walls/%s_wall_tower.tscn" % realm)) as PackedScene
 	for x: float in [-6.0, 6.0]:
 		var tower: Node3D = tower_scene.instantiate() as Node3D
 		tower.name = "Torre%s" % ("O" if x < 0 else "E")
 		tower.position = Vector3(x, 0, 3.0)
 		root.add_child(tower)
-	# Estandartes del reino a ambos lados del arco.
+	# Realm banners on both sides of the arch.
 	var banner_scene: PackedScene = load(PROPS_DIR.path_join("camp/%s_banner.tscn" % realm)) as PackedScene
 	for x: float in [-4.2, 4.2]:
 		var banner: Node3D = banner_scene.instantiate() as Node3D
@@ -879,12 +879,12 @@ func _build_gatehouse(realm: String) -> void:
 
 
 # =============================================================================================
-# Ruinas de la aldea de Eld
+# Ruins of the village of Eld
 # =============================================================================================
 
 func _build_ruin_pieces() -> void:
-	# La pieza del Village MegaKit remata el muro con un durmiente de madera (superficie 0):
-	# en una ruina del viejo Eld se lee como obra intacta, así que lleva piedra de remate gris.
+	# The Village MegaKit piece caps the wall with a wooden sleeper (surface 0):
+	# in a ruin of old Eld it reads as intact work, so it gets gray capstone.
 	var coping: Material = _mat("eldrun/ruin_trim")
 	var plaster: Material = _mat("eldrun/ruin_plaster")
 	var stone: Material = _mat("eldrun/ruin_stone")
@@ -907,7 +907,7 @@ func _build_ruin_pieces() -> void:
 	_mesh(chimney, "Chimenea", VIL_MESH + "prop_chimney.tres", [_mat("eldrun/ruin_trim"), _mat("eldrun/ruin_brick")], Transform3D.IDENTITY)
 	_box(chimney, "Colision", Vector3(0.95, 3.2, 1.0), Vector3(0, 1.6, 0))
 	_save(chimney, PROPS_DIR.path_join("ruins/ruin_chimney.tscn"))
-	# Escombros: sin colisión (se pisan). Las nueve piedras van fundidas en una sola malla.
+	# Rubble: no collision (you walk over it). The nine stones are merged into a single mesh.
 	var rubble := Node3D.new()
 	rubble.name = "Rubble"
 	var parts: Array[Array] = []
@@ -927,7 +927,7 @@ func _build_ruin_pieces() -> void:
 	floor_root.name = "RuinFloor"
 	_mesh(floor_root, "Suelo", VIL_MESH + "floor_uneven_brick.tres", [stone], Transform3D(Basis(), Vector3(0, 0.03, 0))).visibility_range_end = SMALL_PROP_RANGE
 	_save(floor_root, PROPS_DIR.path_join("ruins/ruin_floor.tscn"))
-	# Pilar de la capilla (Castle Wall Kit).
+	# Chapel pillar (Castle Wall Kit).
 	var pillar := _static_root("RuinPillar")
 	_mesh(pillar, "Pilar", CW_MESH + "pillar.tres", [_mat("eldrun/stone_trim")], Transform3D(Basis().scaled(Vector3(0.7, 0.75, 0.7)), Vector3(0.07, -0.3, 0.28)))
 	_box(pillar, "Colision", Vector3(1.3, 4.5, 1.3), Vector3(0, 2.0, 0))
@@ -935,11 +935,11 @@ func _build_ruin_pieces() -> void:
 
 
 # =============================================================================================
-# Utilidades
+# Utilities
 # =============================================================================================
 
-## Funde varias mallas del kit ([ruta, transformación]) en una sola superficie y la guarda en
-## assets/models/environment/custom/[param file_name] (una llamada de dibujo en vez de varias).
+## Merges several kit meshes ([path, transform]) into a single surface and saves it in
+## assets/models/environment/custom/[param file_name] (one draw call instead of several).
 func _merged_mesh(parts: Array[Array], file_name: String) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -956,7 +956,7 @@ func _merged_mesh(parts: Array[Array], file_name: String) -> ArrayMesh:
 	return _save_custom_mesh(merged, file_name)
 
 
-## Guarda una malla propia en assets/models/environment/custom/ y la devuelve cargada.
+## Saves a custom mesh in assets/models/environment/custom/ and returns it loaded.
 func _save_custom_mesh(mesh: ArrayMesh, file_name: String) -> ArrayMesh:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(CUSTOM_DIR))
 	var path: String = CUSTOM_DIR.path_join(file_name)
@@ -967,7 +967,7 @@ func _save_custom_mesh(mesh: ArrayMesh, file_name: String) -> ArrayMesh:
 	return load(path) as ArrayMesh
 
 
-## Las seis caras de una caja alineada con los ejes, con normales hacia fuera y UV de [param uv].
+## The six faces of an axis-aligned box, with outward normals and UVs from [param uv].
 func _box_faces(st: SurfaceTool, lo: Vector3, hi: Vector3, uv: Callable) -> void:
 	var c: Array[Vector3] = [
 		Vector3(lo.x, lo.y, lo.z), Vector3(hi.x, lo.y, lo.z), Vector3(hi.x, hi.y, lo.z), Vector3(lo.x, hi.y, lo.z),
@@ -982,8 +982,8 @@ func _box_faces(st: SurfaceTool, lo: Vector3, hi: Vector3, uv: Callable) -> void
 		var b: Vector3 = c[f[1]]
 		var cc: Vector3 = c[f[2]]
 		var d: Vector3 = c[f[3]]
-		# Cara frontal en Godot = sentido horario visto desde fuera; generate_normals() toma como
-		# normal (a - c) x (a - b): si apunta hacia dentro, se invierte el orden.
+		# Front face in Godot = clockwise seen from outside; generate_normals() takes as the
+		# normal (a - c) x (a - b): if it points inward, the order is reversed.
 		var outward: Vector3 = (a + b + cc + d) * 0.25 - center
 		if (a - cc).cross(a - b).dot(outward) < 0.0:
 			var tmp: Vector3 = b
@@ -1026,8 +1026,8 @@ func _mesh(parent: Node, node_name: String, mesh_path: String, materials: Array,
 	return mi
 
 
-## MultiMesh con las transformaciones guardadas como texto (ver BakedMultiMesh: en headless el
-## búfer de un MultiMesh normal no se guarda).
+## MultiMesh with the transforms saved as text (see BakedMultiMesh: in headless the
+## buffer of a regular MultiMesh is not saved).
 func _multimesh(parent: Node, node_name: String, mesh: Mesh, material: Material, xforms: Array[Transform3D]) -> MultiMeshInstance3D:
 	var mmi := MultiMeshInstance3D.new()
 	mmi.set_script(BAKED_MULTIMESH)
@@ -1063,8 +1063,8 @@ func _save(root: Node, path: String) -> void:
 	root.free()
 
 
-## Hace a [param owner] dueño de todos los descendientes, salvo el interior de las escenas
-## instanciadas (que se guardan como referencia a su archivo).
+## Makes [param owner] the owner of all the descendants, except the inside of the
+## instanced scenes (which are saved as a reference to their file).
 func _own(node: Node, owner: Node) -> void:
 	for child: Node in node.get_children():
 		child.owner = owner

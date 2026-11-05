@@ -1,43 +1,43 @@
 class_name CombatPoseModifier
 extends SkeletonModifier3D
-## Pone sobre el esqueleto la pose de combate de la [CombatAnimationLayer], después de que el
-## [AnimationTree] haya puesto la de la locomoción (como [SpineTwistModifier]). Solo cliente.
+## Puts the combat pose of the [CombatAnimationLayer] on the skeleton, after the
+## [AnimationTree] has put the locomotion one (like [SpineTwistModifier]). Client only.
 ## [br][br]
-## Cada [CombatAnimationLayer.Slot] con peso mayor que 0 aporta su clip, muestreado en su instante
-## ([member CombatAnimationLayer.Slot.time_s]): para cada hueso del clip, la rotación del hueso se
-## mezcla con la actual ([method Quaternion.slerp]) según el peso del clip. Un clip de
-## [b]parte superior[/b] solo toca la columna, los brazos, las manos y la cabeza (todos los huesos
-## que cuelgan de [constant ROOT_OF_UPPER_BODY]), así se ataca y se bloquea andando; uno de cuerpo
-## entero toca todos los huesos y además la posición de las caderas (que es lo que baja el cuerpo al
-## rodar o caer muerto).
+## Each [CombatAnimationLayer.Slot] with a weight greater than 0 contributes its clip, sampled at its instant
+## ([member CombatAnimationLayer.Slot.time_s]): for each bone of the clip, the bone's rotation is
+## blended with the current one ([method Quaternion.slerp]) according to the clip's weight. An
+## [b]upper body[/b] clip only touches the spine, arms, hands and head (all the bones
+## hanging from [constant ROOT_OF_UPPER_BODY]), so you attack and block while walking; a full-body one
+## touches all the bones and also the position of the hips (which is what lowers the body when
+## rolling or falling dead).
 ## [br][br]
-## [b]Ataques con los pies plantados[/b] (ART-46): un clip de parte superior con
-## [member CombatAnimationLayer.Slot.lower_weight] mayor que 0 toma también la cadera y las piernas, con ese
-## peso por lo que quede de [code]1 - move_request[/code] ([member CombatAnimationLayer.move_request]): si la
-## entrada no pide andar, el tajo sale con el cuerpo entero (pies plantados, caderas que giran y bajan); en cuanto
-## pide andar, las piernas vuelven a la locomoción. Con [member CombatAnimationLayer.Slot.keep_left_arm] el clip
-## no toca el brazo izquierdo: lo pone la postura armada, que mantiene el escudo delante del pecho.
+## [b]Attacks with feet planted[/b] (ART-46): an upper body clip with
+## [member CombatAnimationLayer.Slot.lower_weight] greater than 0 also takes the hips and legs, with that
+## weight times whatever is left of [code]1 - move_request[/code] ([member CombatAnimationLayer.move_request]): if the
+## input does not ask to walk, the slash comes out with the whole body (feet planted, hips that turn and lower); as soon as it
+## asks to walk, the legs go back to locomotion. With [member CombatAnimationLayer.Slot.keep_left_arm] the clip
+## does not touch the left arm: the combat stance sets it, keeping the shield in front of the chest.
 ## [br][br]
-## Los clips de UAL son poses locales por hueso, las mismas que el [AnimationPlayer] pone en el
-## esqueleto, así que muestrear sus pistas y aplicarlas directamente es equivalente a reproducirlos.
-## Las pistas se identifican por su ruta [code]%GeneralSkeleton:Hueso[/code]; la tabla de pistas de
-## cada clip se calcula una vez por esqueleto.
+## UAL clips are local per-bone poses, the same ones the [AnimationPlayer] puts on the
+## skeleton, so sampling their tracks and applying them directly is equivalent to playing them.
+## Tracks are identified by their path [code]%GeneralSkeleton:Bone[/code]; the track table of
+## each clip is computed once per skeleton.
 
-## Hueso de cuyo subárbol (él incluido) se compone la parte superior del cuerpo.
+## Bone whose subtree (itself included) makes up the upper body.
 const ROOT_OF_UPPER_BODY: StringName = &"Spine"
-## Hueso cuya posición también se aplica en los clips de cuerpo entero.
+## Bone whose position is also applied in full-body clips.
 const HIPS_BONE: StringName = &"Hips"
-## Hueso de cuyo subárbol (él incluido) es el brazo izquierdo, el del escudo (ART-46).
+## Bone whose subtree (itself included) is the left arm, the shield one (ART-46).
 const LEFT_ARM_ROOT: StringName = &"LeftShoulder"
 
-## Capa de la que se leen los clips. La pone [CharacterAnimator].
+## Layer the clips are read from. [CharacterAnimator] sets it.
 var layer: CombatAnimationLayer = null
 
 var _cached_skeleton: Skeleton3D = null
 var _upper_mask: PackedInt32Array = PackedInt32Array()
 var _is_upper: Dictionary[int, bool] = {}
 var _is_left_arm: Dictionary[int, bool] = {}
-# Animation -> PackedInt32Array de ternas (hueso, pista de rotación o -1, pista de posición o -1).
+# Animation -> PackedInt32Array of triples (bone, rotation track or -1, position track or -1).
 var _track_tables: Dictionary[Animation, PackedInt32Array] = {}
 var _applied_count: int = 0
 
@@ -54,12 +54,12 @@ func _process_modification() -> void:
 		_apply_slot(skeleton, slot)
 
 
-## Huesos de la parte superior del cuerpo del esqueleto actual (índices).
+## Upper body bones of the current skeleton (indices).
 func get_upper_body_bones() -> PackedInt32Array:
 	return _upper_mask
 
 
-## Veces que se ha aplicado un clip a los huesos desde que existe (para las pruebas).
+## Times a clip has been applied to the bones since it exists (for tests).
 func get_applied_count() -> int:
 	return _applied_count
 
@@ -80,7 +80,7 @@ func _apply_slot(skeleton: Skeleton3D, slot: CombatAnimationLayer.Slot) -> void:
 		index += 3
 		var bone_weight: float = weight
 		if slot.upper_body and not _is_upper.get(bone, false):
-			# Cadera y piernas: solo con el peso de parte inferior del tramo.
+			# Hips and legs: only with the span's lower body weight.
 			bone_weight = lower
 			if bone_weight <= 0.001:
 				continue
@@ -97,7 +97,7 @@ func _apply_slot(skeleton: Skeleton3D, slot: CombatAnimationLayer.Slot) -> void:
 	_applied_count += 1
 
 
-# Calcula la máscara de la parte superior del cuerpo del esqueleto: Spine y todo lo que cuelga de él.
+# Computes the skeleton's upper body mask: Spine and everything hanging from it.
 func _cache_skeleton(skeleton: Skeleton3D) -> void:
 	_cached_skeleton = skeleton
 	_track_tables.clear()
@@ -117,7 +117,7 @@ func _cache_skeleton(skeleton: Skeleton3D) -> void:
 			walker = skeleton.get_bone_parent(walker)
 
 
-# Tabla de pistas del clip para este esqueleto (se hace una vez).
+# Track table of the clip for this skeleton (done once).
 func _table_for(skeleton: Skeleton3D, animation: Animation) -> PackedInt32Array:
 	if _track_tables.has(animation):
 		return _track_tables[animation]

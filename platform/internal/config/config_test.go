@@ -43,7 +43,7 @@ func mustLoad(t *testing.T, env map[string]string) *Config {
 	t.Helper()
 	c, err := Load(lookupOf(env))
 	if err != nil {
-		t.Fatalf("la configuración tenía que valer: %v", err)
+		t.Fatalf("the configuration had to be valid: %v", err)
 	}
 	return c
 }
@@ -52,18 +52,18 @@ func mustFail(t *testing.T, env map[string]string, wantInError ...string) string
 	t.Helper()
 	_, err := Load(lookupOf(env))
 	if err == nil {
-		t.Fatalf("la configuración no tenía que arrancar: %v", env)
+		t.Fatalf("the configuration was not supposed to start: %v", env)
 	}
 	msg := err.Error()
 	for _, want := range wantInError {
 		if !strings.Contains(msg, want) {
-			t.Errorf("el error no dice %q:\n%s", want, msg)
+			t.Errorf("the error does not say %q:\n%s", want, msg)
 		}
 	}
 	// No error repeats a secret.
 	for _, secret := range []string{"muy-secreta", goodKey, "token-de-la-zona"} {
 		if strings.Contains(msg, secret) {
-			t.Errorf("el error repite un secreto:\n%s", msg)
+			t.Errorf("the error repeats a secret:\n%s", msg)
 		}
 	}
 	return msg
@@ -72,44 +72,44 @@ func mustFail(t *testing.T, env map[string]string, wantInError ...string) string
 func TestDefaultsInDev(t *testing.T) {
 	c := mustLoad(t, minimal())
 	if c.Env != EnvDev || c.PublicAddr != "127.0.0.1:24680" || c.InternalAddr != "127.0.0.1:24681" {
-		t.Errorf("entorno y direcciones por defecto: %v %s %s", c.Env, c.PublicAddr, c.InternalAddr)
+		t.Errorf("default environment and addresses: %v %s %s", c.Env, c.PublicAddr, c.InternalAddr)
 	}
 	if c.PublicURL.String() != "http://127.0.0.1:24680" {
-		t.Errorf("URL pública por defecto: %s", c.PublicURL)
+		t.Errorf("default public URL: %s", c.PublicURL)
 	}
 	if len(c.ZoneHosts) != 1 || c.ZoneHosts[0] != "127.0.0.1" {
-		t.Errorf("hosts de zona por defecto: %v", c.ZoneHosts)
+		t.Errorf("default zone hosts: %v", c.ZoneHosts)
 	}
 	if len(c.TrustedProxies) != 1 || c.TrustedProxies[0].String() != "127.0.0.1/32" {
-		t.Errorf("proxies de confianza por defecto: %v", c.TrustedProxies)
+		t.Errorf("default trusted proxies: %v", c.TrustedProxies)
 	}
 	if c.TicketSignKey != 1 || len(c.TicketKeys[1]) != 32 {
-		t.Errorf("clave del billete: %d", c.TicketSignKey)
+		t.Errorf("ticket key: %d", c.TicketSignKey)
 	}
 	if !bytes.Equal(c.EmailHMACKey, TestEmailHMACKey) {
-		t.Error("en dev, la clave HMAC de pruebas")
+		t.Error("in dev, the test HMAC key")
 	}
 	if c.Argon2 != (Argon2{MemoryKiB: 19456, Time: 2, Threads: 1}) {
-		t.Errorf("argon2 por defecto: %+v", c.Argon2)
+		t.Errorf("default argon2: %+v", c.Argon2)
 	}
 	if c.MinProtocol != 0 || c.ResolveMinProtocol(7) != 7 {
-		t.Errorf("sin ELDMARK_MIN_PROTOCOL en dev manda el de las reglas: %d", c.MinProtocol)
+		t.Errorf("without ELDMARK_MIN_PROTOCOL in dev the one from the rules applies: %d", c.MinProtocol)
 	}
 	if len(c.OpenRealms) != 2 || c.OpenRealms[0] != RealmVardheim || c.OpenRealms[1] != RealmSolmarch {
-		t.Errorf("reinos abiertos: %v", c.OpenRealms)
+		t.Errorf("open realms: %v", c.OpenRealms)
 	}
 	if c.EntryZones[RealmVardheim] != "vado_gris" || c.EntryZones[RealmSolmarch] != "vado_gris" {
-		t.Errorf("zonas de entrada: %v", c.EntryZones)
+		t.Errorf("entry zones: %v", c.EntryZones)
 	}
 	if c.RequireVerifiedEmail || c.Mail != MailLog || c.SMTPURL != nil {
-		t.Errorf("correo en dev: verificado %v, modo %s", c.RequireVerifiedEmail, c.Mail)
+		t.Errorf("email in dev: verified %v, mode %s", c.RequireVerifiedEmail, c.Mail)
 	}
 	if c.Heartbeat != 5*time.Second || c.LeaseTTL != 30*time.Second || c.LegalDir != "" || c.MailFrom != "no-reply@localhost" {
-		t.Errorf("latido, TTL, textos legales y remitente: %s %s %q %q", c.Heartbeat, c.LeaseTTL, c.LegalDir, c.MailFrom)
+		t.Errorf("heartbeat, TTL, legal texts and sender: %s %s %q %q", c.Heartbeat, c.LeaseTTL, c.LegalDir, c.MailFrom)
 	}
 	z := c.ZoneTokens[0]
 	if z.WorldID != 1 || z.ZoneID != "vado_gris" || z.Channel != 0 || z.Hash != sha256.Sum256([]byte("token-de-la-zona")) {
-		t.Errorf("token de zona: %+v", z)
+		t.Errorf("zone token: %+v", z)
 	}
 }
 
@@ -125,7 +125,7 @@ func TestMissingVariablesDoNotStart(t *testing.T) {
 	// With everything empty, the three problems at once.
 	msg := mustFail(t, map[string]string{})
 	if strings.Count(msg, "\n- ") != 3 {
-		t.Errorf("se dicen todos los problemas a la vez:\n%s", msg)
+		t.Errorf("all the problems are reported at once:\n%s", msg)
 	}
 }
 
@@ -145,18 +145,18 @@ func TestTicketKeys(t *testing.T) {
 	}
 	env["ELDMARK_ENV"] = "test"
 	if c := mustLoad(t, env); !bytes.Equal(c.TicketKeys[1], vector) {
-		t.Error("en test vale la clave del vector")
+		t.Error("in test the vector's key is valid")
 	}
 
 	env = minimal()
 	other := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 48))
 	env["ELDMARK_TICKET_KEYS"] = "1:" + goodKey + ", 2:" + other
 	if c := mustLoad(t, env); c.TicketSignKey != 2 || len(c.TicketKeys) != 2 {
-		t.Errorf("por defecto se firma con la mayor: %d", c.TicketSignKey)
+		t.Errorf("by default it signs with the highest one: %d", c.TicketSignKey)
 	}
 	env["ELDMARK_TICKET_SIGN_KEY"] = "1"
 	if c := mustLoad(t, env); c.TicketSignKey != 1 {
-		t.Errorf("ELDMARK_TICKET_SIGN_KEY elige la clave: %d", c.TicketSignKey)
+		t.Errorf("ELDMARK_TICKET_SIGN_KEY chooses the key: %d", c.TicketSignKey)
 	}
 	env["ELDMARK_TICKET_SIGN_KEY"] = "3"
 	mustFail(t, env, "ELDMARK_TICKET_SIGN_KEY")
@@ -183,7 +183,7 @@ func TestDeployedEnvironmentsAreStrict(t *testing.T) {
 			t.Errorf("%s: %+v", e, c)
 		}
 		if c.Argon2.MemoryKiB != 19456 {
-			t.Errorf("%s: argon2 de producción", e)
+			t.Errorf("%s: production argon2", e)
 		}
 
 		env := deployed(e)
@@ -213,7 +213,7 @@ func TestTestEnvironmentDefaults(t *testing.T) {
 	env["ELDMARK_ENV"] = "test"
 	c := mustLoad(t, env)
 	if c.Argon2 != (Argon2{MemoryKiB: 8, Time: 1, Threads: 1}) || c.RequireVerifiedEmail {
-		t.Errorf("en test, argon2 barato y sin exigir el correo: %+v", c)
+		t.Errorf("in test, cheap argon2 and no email requirement: %+v", c)
 	}
 	env["ELDMARK_ENV"] = "pruebas"
 	mustFail(t, env, "ELDMARK_ENV")
@@ -235,7 +235,7 @@ func TestSecretsFromFiles(t *testing.T) {
 	}
 	c := mustLoad(t, env)
 	if c.DatabaseURL != dbURL || len(c.ZoneTokens) != 2 || len(c.TicketKeys) != 1 {
-		t.Errorf("leídos de archivos: %d tokens, %d claves", len(c.ZoneTokens), len(c.TicketKeys))
+		t.Errorf("read from files: %d tokens, %d keys", len(c.ZoneTokens), len(c.TicketKeys))
 	}
 	env["ELDMARK_DATABASE_URL"] = dbURL
 	mustFail(t, env, "a la vez")
@@ -250,7 +250,7 @@ func TestSecretsFromFiles(t *testing.T) {
 		t.Errorf("LoadDatabase: %v %v", d, err)
 	}
 	if _, err := LoadDatabase(lookupOf(map[string]string{})); err == nil {
-		t.Error("migrate tampoco arranca sin base de datos")
+		t.Error("migrate does not start without a database either")
 	}
 }
 
@@ -288,7 +288,7 @@ func TestMalformedValues(t *testing.T) {
 	mustFail(t, env, "askarra no tiene zona de entrada")
 	env["ELDMARK_ENTRY_ZONES"] = "vardheim=vado_gris,solmarch=vado_gris,askarra=test_world"
 	if c := mustLoad(t, env); c.EntryZones[RealmAskarra] != "test_world" {
-		t.Errorf("zona de entrada de Askarra: %v", c.EntryZones)
+		t.Errorf("Askarra's entry zone: %v", c.EntryZones)
 	}
 }
 
@@ -318,7 +318,7 @@ func TestZoneTokens(t *testing.T) {
 	env["ELDMARK_ZONE_TOKENS"] = zoneEntry("1:vado_gris:0", "a") + "," + zoneEntry("1:test_world:3", "b")
 	c := mustLoad(t, env)
 	if len(c.ZoneTokens) != 2 || c.ZoneTokens[1].ZoneID != "test_world" || c.ZoneTokens[1].Channel != 3 {
-		t.Errorf("dos alcances: %+v", c.ZoneTokens)
+		t.Errorf("two scopes: %+v", c.ZoneTokens)
 	}
 	for _, bad := range []string{
 		"1:vado_gris:0",                   // no hash
@@ -340,11 +340,11 @@ func TestLogValueHasNoSecrets(t *testing.T) {
 	out := buf.String()
 	for _, secret := range []string{"muy-secreta", goodKey, hex.EncodeToString(c.ZoneTokens[0].Hash[:])} {
 		if strings.Contains(out, secret) {
-			t.Errorf("el registro de la configuración lleva un secreto: %s", out)
+			t.Errorf("the configuration log carries a secret: %s", out)
 		}
 	}
 	if !strings.Contains(out, `"env":"dev"`) {
-		t.Errorf("el registro resume la configuración: %s", out)
+		t.Errorf("the log summarizes the configuration: %s", out)
 	}
 }
 
@@ -352,11 +352,11 @@ func TestRealmNames(t *testing.T) {
 	for _, r := range []Realm{RealmVardheim, RealmSolmarch, RealmAskarra} {
 		back, ok := ParseRealm(r.String())
 		if !ok || back != r {
-			t.Errorf("ida y vuelta de %d", r)
+			t.Errorf("round trip of %d", r)
 		}
 	}
 	if _, ok := ParseRealm("Vardheim"); ok {
-		t.Error("los ids de texto van en minúsculas")
+		t.Error("text ids are lowercase")
 	}
 }
 
@@ -364,11 +364,11 @@ func TestMailFromAndLegalDir(t *testing.T) {
 	env := minimal()
 	env["ELDMARK_PUBLIC_URL"] = "https://eldmark.example"
 	if c := mustLoad(t, env); c.MailFrom != "no-reply@eldmark.example" {
-		t.Errorf("remitente por defecto: %q", c.MailFrom)
+		t.Errorf("default sender: %q", c.MailFrom)
 	}
 	env["ELDMARK_MAIL_FROM"] = "cuentas@eldmark.example"
 	if c := mustLoad(t, env); c.MailFrom != "cuentas@eldmark.example" {
-		t.Errorf("remitente: %q", c.MailFrom)
+		t.Errorf("sender: %q", c.MailFrom)
 	}
 	for _, bad := range []string{"Eldmark <a@b.example>", "a@b.example\r\nBcc: c@d.example", "sin-arroba"} {
 		env["ELDMARK_MAIL_FROM"] = bad
@@ -377,7 +377,7 @@ func TestMailFromAndLegalDir(t *testing.T) {
 	env = minimal()
 	env["ELDMARK_LEGAL_DIR"] = t.TempDir()
 	if c := mustLoad(t, env); c.LegalDir != env["ELDMARK_LEGAL_DIR"] {
-		t.Errorf("carpeta legal: %q", c.LegalDir)
+		t.Errorf("legal folder: %q", c.LegalDir)
 	}
 	env["ELDMARK_LEGAL_DIR"] = filepath.Join(t.TempDir(), "no-existe")
 	mustFail(t, env, "ELDMARK_LEGAL_DIR")

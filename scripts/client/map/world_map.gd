@@ -1,26 +1,26 @@
 class_name WorldMap
 extends Control
-## Mapa de la zona a pantalla completa (UI-20, UI-21, docs/fuerte.md sección 6). Se abre con M
-## ([code]open_map[/code]) y se cierra con M o Esc: enseña la imagen cenital horneada con el fuerte (con
-## el color de su dueño y el estado de su captura), su puerta y su círculo, los campamentos, los pasos,
-## tu posición con hacia dónde miras, a tus compañeros a la vista y, a la derecha, una leyenda y el
-## estado del fuerte.
+## Full-screen zone map (UI-20, UI-21, docs/fuerte.md section 6). It opens with M
+## ([code]open_map[/code]) and closes with M or Esc: it shows the baked top-down image with the fort (in
+## its owner's color and its capture state), its gate and its circle, the camps, the passes,
+## your position and the direction you are facing, your party members in view and, on the right, a legend and the
+## fort status.
 ## [br][br]
-## [b]Elección de reaparición (UI-21).[/b] Con [method set_respawn_mode] (la pantalla de muerte lo pone al
-## abrir el mapa) se ven además las [RespawnPointList.Option] de tu reino: las válidas ahora (tu
-## campamento, un fuerte tuyo en reposo y sin ataques, según [RespawnRules]) resaltadas y las demás
-## apagadas. Pulsar una válida emite [signal respawn_option_chosen]; el servidor vuelve a comprobarla y,
-## si ya no vale, te reaparece en el campamento.
+## [b]Respawn choice (UI-21).[/b] With [method set_respawn_mode] (the death screen sets it when
+## opening the map) the [RespawnPointList.Option] entries of your realm are also shown: those valid right now (your
+## camp, a fort of yours that is idle and not under attack, according to [RespawnRules]) highlighted and the others
+## dimmed. Clicking a valid one emits [signal respawn_option_chosen]; the server checks it again and,
+## if it is no longer valid, respawns you at the camp.
 ## [br][br]
-## [b]Ventana legible (UI-53).[/b] Con la rueda se acerca y se aleja ([method zoom_at]), arrastrando con el botón
-## izquierdo (o el central) se desplaza ([method pan_by]) y los rótulos (fuerte, campamentos, pasos y los topónimos de
-## [ZonePlaces]) los coloca [MapLabelPlacer] sin que se pisen, con línea guía si quedan lejos de su icono. El fondo es
-## opaco: con el mapa abierto el HUD no se transparenta. El jugador es una flecha de 15 px con halo y «Tú».
+## [b]Readable window (UI-53).[/b] The wheel zooms in and out ([method zoom_at]), dragging with the left
+## (or middle) button pans ([method pan_by]), and the labels (fort, camps, passes and the place names from
+## [ZonePlaces]) are placed by [MapLabelPlacer] so they do not overlap, with a leader line if they end up far from their icon. The background is
+## opaque: with the map open the HUD does not show through. The player is a 15 px arrow with a halo and "Tú" ("You").
 ## [br][br]
-## Mientras está abierto libera el cursor de la cámara ([method CameraRig.set_ui_cursor_release]). Las
-## medidas, colores y textos son provisionales. Solo cliente.
+## While it is open it releases the camera cursor ([method CameraRig.set_ui_cursor_release]). Sizes,
+## colors and texts are provisional. Client only.
 
-## Se ha elegido una opción de reaparición válida.
+## A valid respawn option has been chosen.
 signal respawn_option_chosen(option: RespawnPointList.Option)
 signal opened
 signal closed
@@ -31,7 +31,7 @@ const GAP: float = 24.0
 const DIM_COLOR: Color = Color(0.035, 0.03, 0.026, 1.0)
 const FRAME_COLOR: Color = Color(0.56, 0.47, 0.34, 1.0)
 const BACK_COLOR: Color = Color(0.075, 0.065, 0.055, 0.98)
-## Tinta de los rótulos sobre el pergamino y su halo claro.
+## Ink of the labels over the parchment and its light halo.
 const INK_COLOR: Color = Color(0.10, 0.075, 0.055, 1.0)
 const INK_HALO: Color = Color(0.86, 0.80, 0.66, 0.9)
 const AREA_COLOR: Color = Color(0.22, 0.17, 0.12, 0.92)
@@ -42,11 +42,11 @@ const VALID_COLOR: Color = Color(0.5, 0.95, 0.5, 1.0)
 const INVALID_COLOR: Color = Color(0.5, 0.5, 0.5, 0.8)
 const ICON_SIZE: float = 9.0
 const PLAYER_SIZE: float = 15.0
-## Zoom de la ventana: 1 enseña todo el mapa; cada paso de la rueda multiplica por [constant ZOOM_STEP].
+## Window zoom: 1 shows the whole map; each wheel step multiplies by [constant ZOOM_STEP].
 const MIN_ZOOM: float = 1.0
 const MAX_ZOOM: float = 6.0
 const ZOOM_STEP: float = 1.25
-## Prioridad de rótulo por tipo (más alta, antes elige sitio).
+## Label priority by type (higher picks its spot first).
 const PRIORITY_PLAYER: int = 120
 const PRIORITY_OPTION: int = 110
 const PRIORITY_FORT: int = 100
@@ -169,9 +169,9 @@ func _gui_input(event: InputEvent) -> void:
 			_dragging = false
 
 
-## Conecta el mapa con el cliente (tu posición y tus compañeros), la vista del fuerte (estado), la cámara
-## (hacia dónde miras y el cursor), el mapa horneado ([param map] puede ser null) y la zona
-## ([param world], de la que salen los puntos de reaparición).
+## Connects the map to the client (your position and your party members), the fort view (state), the camera
+## (where you are looking and the cursor), the baked map ([param map] may be null) and the zone
+## ([param world], which the respawn points come from).
 func bind(client: NetClient, view: FortressView, camera_rig: CameraRig, map: ZoneMapDefinition,
 		world: Node) -> void:
 	_client = client
@@ -184,7 +184,7 @@ func bind(client: NetClient, view: FortressView, camera_rig: CameraRig, map: Zon
 	_options.clear()
 
 
-## Abre el mapa. Con [param respawn] elige además dónde reaparecer ([method set_respawn_mode]).
+## Opens the map. With [param respawn] it also lets you choose where to respawn ([method set_respawn_mode]).
 func open(respawn: bool = false) -> void:
 	_respawn_mode = respawn
 	if _open:
@@ -223,7 +223,7 @@ func is_open() -> bool:
 	return _open
 
 
-## Con [param enabled] el mapa ofrece los puntos de reaparición para elegir.
+## With [param enabled] the map offers the respawn points to choose from.
 func set_respawn_mode(enabled: bool) -> void:
 	_respawn_mode = enabled
 	queue_redraw()
@@ -233,7 +233,7 @@ func is_respawn_mode() -> bool:
 	return _respawn_mode
 
 
-## Vuelve a leer dónde está todo y qué reapariciones valen (cada fotograma mientras está abierto).
+## Re-reads where everything is and which respawns are valid (every frame while it is open).
 func refresh() -> void:
 	var character: PlayerCharacter = _client.get_character() if is_instance_valid(_client) else null
 	_has_player = character != null and is_instance_valid(character)
@@ -254,10 +254,10 @@ func refresh() -> void:
 	queue_redraw()
 
 
-# --- Consultas --------------------------------------------------------------------------------
+# --- Queries --------------------------------------------------------------------------------
 
-## Rectángulo (píxeles del control) donde se pinta la imagen del mapa: un cuadrado a la izquierda, con la
-## leyenda a su derecha, todo centrado.
+## Rectangle (control pixels) where the map image is painted: a square on the left, with the
+## legend to its right, all centered.
 func get_map_rect() -> Rect2:
 	var side: float = maxf(minf(size.y - OUTER_MARGIN * 2.0, size.x - LEGEND_WIDTH - GAP - OUTER_MARGIN * 2.0), 64.0)
 	var total_width: float = side + GAP + LEGEND_WIDTH
@@ -265,13 +265,13 @@ func get_map_rect() -> Rect2:
 	return Rect2(Vector2(left, (size.y - side) * 0.5), Vector2(side, side))
 
 
-## Rectángulo de la leyenda, a la derecha del mapa.
+## Rectangle of the legend, to the right of the map.
 func get_legend_rect() -> Rect2:
 	var map_rect: Rect2 = get_map_rect()
 	return Rect2(Vector2(map_rect.end.x + GAP, map_rect.position.y), Vector2(LEGEND_WIDTH, map_rect.size.y))
 
 
-## Dónde cae [param world] en el control (píxeles). Sin mapa, el centro del rectángulo del mapa.
+## Where [param world] lands on the control (pixels). With no map, the center of the map rectangle.
 func world_to_screen(world: Vector3) -> Vector2:
 	var rect: Rect2 = get_map_rect()
 	if _map == null:
@@ -280,7 +280,7 @@ func world_to_screen(world: Vector3) -> Vector2:
 	return rect.position + (_map.world_to_uv(world) - view_uv.position) / view_uv.size * rect.size
 
 
-## Punto del mundo (y = 0) bajo [param point] (píxeles del control).
+## World point (y = 0) under [param point] (control pixels).
 func screen_to_world(point: Vector2) -> Vector3:
 	var rect: Rect2 = get_map_rect()
 	if _map == null:
@@ -289,7 +289,7 @@ func screen_to_world(point: Vector2) -> Vector3:
 	return _map.uv_to_world(view_uv.position + (point - rect.position) / rect.size * view_uv.size)
 
 
-## Trozo de la imagen que se ve ahora, en coordenadas de textura (0 a 1): con zoom 1 toda la imagen.
+## Piece of the image that is visible now, in texture coordinates (0 to 1): at zoom 1 the whole image.
 func get_view_uv() -> Rect2:
 	var half: float = 0.5 / _zoom
 	return Rect2(_center_uv - Vector2(half, half), Vector2(half, half) * 2.0)
@@ -299,13 +299,13 @@ func get_zoom() -> float:
 	return _zoom
 
 
-## Centro de la vista en coordenadas de textura.
+## Center of the view in texture coordinates.
 func get_view_center() -> Vector2:
 	return _center_uv
 
 
-## Multiplica el zoom por [param factor] (entre [constant MIN_ZOOM] y [constant MAX_ZOOM]) dejando fijo el punto del
-## mundo que hay bajo [param at] (píxeles del control).
+## Multiplies the zoom by [param factor] (between [constant MIN_ZOOM] and [constant MAX_ZOOM]) keeping fixed the world
+## point under [param at] (control pixels).
 func zoom_at(factor: float, at: Vector2) -> void:
 	var rect: Rect2 = get_map_rect()
 	var fixed_fraction: Vector2 = ((at - rect.position) / rect.size).clamp(Vector2.ZERO, Vector2.ONE)
@@ -318,7 +318,7 @@ func zoom_at(factor: float, at: Vector2) -> void:
 	refresh()
 
 
-## Desplaza el mapa [param delta] píxeles del control (como arrastrar la imagen con la mano).
+## Pans the map by [param delta] control pixels (like dragging the image by hand).
 func pan_by(delta: Vector2) -> void:
 	var rect: Rect2 = get_map_rect()
 	_center_uv -= delta / rect.size * get_view_uv().size
@@ -326,35 +326,35 @@ func pan_by(delta: Vector2) -> void:
 	refresh()
 
 
-## Vuelve a enseñar todo el mapa.
+## Shows the whole map again.
 func reset_view() -> void:
 	_zoom = MIN_ZOOM
 	_center_uv = Vector2(0.5, 0.5)
 	_dragging = false
 
 
-## Rótulos de la ventana ahora: [code]{"id", "text", "anchor", "rect", "placed", "leader", "area", "color"}[/code].
+## Labels of the window right now: [code]{"id", "text", "anchor", "rect", "placed", "leader", "area", "color"}[/code].
 func get_labels() -> Array[Dictionary]:
 	return _labels.duplicate()
 
 
-## Topónimos de la zona.
+## Place names of the zone.
 func get_places() -> Array[MapLandmark]:
 	return _places.duplicate()
 
 
-## Opciones de reaparición que se están mostrando (válidas o no).
+## Respawn options being shown (valid or not).
 func get_options() -> Array[RespawnPointList.Option]:
 	return _options.duplicate()
 
 
-## Marcadores que se están dibujando.
+## Markers being drawn.
 func get_markers() -> Array[WorldMarker]:
 	return _markers.duplicate()
 
 
-## Índice (en [method get_options]) de la opción cuyo icono está a menos de [constant PICK_RADIUS] píxeles
-## de [param point], o -1. Solo cuentan en el modo de reaparición.
+## Index (in [method get_options]) of the option whose icon is less than [constant PICK_RADIUS] pixels
+## from [param point], or -1. They only count in respawn mode.
 func get_option_at(point: Vector2) -> int:
 	if not _respawn_mode:
 		return -1
@@ -368,8 +368,8 @@ func get_option_at(point: Vector2) -> int:
 	return best
 
 
-## Pulsa en [param point]: si cae en una opción de reaparición válida emite [signal respawn_option_chosen]
-## y devuelve true.
+## Clicks at [param point]: if it lands on a valid respawn option it emits [signal respawn_option_chosen]
+## and returns true.
 func click_at(point: Vector2) -> bool:
 	var index: int = get_option_at(point)
 	if index < 0 or not _options[index].valid:
@@ -378,12 +378,12 @@ func click_at(point: Vector2) -> bool:
 	return true
 
 
-## Índice de la opción bajo el ratón (-1 si ninguna).
+## Index of the option under the mouse (-1 if none).
 func get_hover_option() -> int:
 	return _hover
 
 
-## Líneas de la leyenda: [code]{"kind": int o StringName, "text": String, "color": Color}[/code].
+## Legend lines: [code]{"kind": int or StringName, "text": String, "color": Color}[/code].
 func get_legend_entries() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	entries.append({"kind": &"player", "text": TEXT_YOU, "color": Color.WHITE})
@@ -402,8 +402,8 @@ func get_legend_entries() -> Array[Dictionary]:
 	return entries
 
 
-## Texto del estado del fuerte para la leyenda: nombre, dueño, fase, captura y puerta (vacío si el cliente
-## aún no conoce ninguna fortaleza).
+## Fort status text for the legend: name, owner, phase, capture and gate (empty if the client
+## does not know any fortress yet).
 func get_fortress_lines() -> PackedStringArray:
 	var lines := PackedStringArray()
 	if not is_instance_valid(_view):
@@ -428,7 +428,7 @@ func get_fortress_lines() -> PackedStringArray:
 	return lines
 
 
-## Título del mapa («Mapa · Vado Gris»).
+## Map title ("Mapa · Vado Gris", i.e. "Map · Vado Gris").
 func get_title_text() -> String:
 	var zone_name: String = String(_map.zone_id).capitalize() if _map != null else ""
 	return TEXT_TITLE % zone_name if not zone_name.is_empty() else "Mapa"
@@ -438,7 +438,7 @@ func get_hint_text() -> String:
 	return TEXT_HINT_RESPAWN if _respawn_mode else TEXT_HINT_OPEN
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ----------------------------------------------------------------------------------
 
 func _clamp_center() -> void:
 	var half: float = 0.5 / _zoom
@@ -474,7 +474,7 @@ func _update_hover() -> void:
 			_hover_marker = i
 
 
-## Reúne todos los rótulos (marcadores, opciones de reaparición, topónimos y «Tú») y los coloca sin que se pisen.
+## Gathers all the labels (markers, respawn options, place names and "Tú" ("You")) and places them so they do not overlap.
 func _build_labels() -> void:
 	_labels.clear()
 	if _map == null:
@@ -483,7 +483,7 @@ func _build_labels() -> void:
 	var font: Font = get_theme_default_font()
 	var items: Array[Dictionary] = []
 	var player_at: Vector2 = world_to_screen(_player_position)
-	# En reaparición el campamento o el fuerte lo rotula su opción (un solo rótulo).
+	# While respawning, the camp or fort is labeled by its option (a single label).
 	var option_spots: Array[Vector3] = []
 	for option: RespawnPointList.Option in _options:
 		option_spots.append(option.position)
@@ -512,7 +512,7 @@ func _build_labels() -> void:
 		var you: Dictionary = _label_item(font, &"player", TEXT_YOU, player_at, PRIORITY_PLAYER, false, INK_COLOR, FONT_SIZE)
 		you["radius"] = PLAYER_SIZE + 5.0
 		items.append(you)
-	# Los iconos de los aliados tampoco se tapan, pero no llevan rótulo: cuentan como obstáculos pequeños.
+	# Ally icons must not be covered either, but they have no label: they count as small obstacles.
 	var extra: Array[Rect2] = []
 	for ally: Vector3 in _allies:
 		extra.append(Rect2(world_to_screen(ally) - Vector2.ONE * 5.0, Vector2.ONE * 10.0))
@@ -546,7 +546,7 @@ static func _near_any(point: Vector3, spots: Array[Vector3], meters: float) -> b
 func _draw() -> void:
 	if not _open:
 		return
-	# Fondo opaco: el HUD de debajo no se transparenta.
+	# Opaque background: the HUD underneath does not show through.
 	draw_rect(Rect2(Vector2.ZERO, size), DIM_COLOR)
 	var rect: Rect2 = get_map_rect()
 	draw_rect(rect.grow(6.0), BACK_COLOR)
@@ -587,7 +587,7 @@ func _draw() -> void:
 	_draw_label(TEXT_CONTROLS, Vector2(rect.end.x - 430.0, rect.end.y + 30.0), FONT_SIZE - 2, TEXT_DIM)
 
 
-# Rótulos de zonas (sierras, bosques, río): van debajo de los iconos, con letra espaciada y sin placa.
+# Area labels (ranges, forests, river): drawn below the icons, with spaced letters and no plate.
 func _draw_area_labels() -> void:
 	var font: Font = get_theme_default_font()
 	for label: Dictionary in _labels:
@@ -600,7 +600,7 @@ func _draw_area_labels() -> void:
 		draw_string(font, at, String(label["text"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, label["color"])
 
 
-# Rótulos de lugares (con línea guía si quedan lejos del icono).
+# Place labels (with a leader line if they end up far from the icon).
 func _draw_point_labels() -> void:
 	var font: Font = get_theme_default_font()
 	for label: Dictionary in _labels:
@@ -625,7 +625,7 @@ static func _is_bright(color: Color) -> bool:
 	return color.get_luminance() > 0.5
 
 
-# Icono de un topónimo puntual: un rombo hueco de tinta.
+# Icon of a point place name: a hollow ink diamond.
 func _draw_place_icon(at: Vector2) -> void:
 	var points := PackedVector2Array([at + Vector2(0.0, -6.0), at + Vector2(6.0, 0.0), at + Vector2(0.0, 6.0),
 			at + Vector2(-6.0, 0.0)])

@@ -1,104 +1,104 @@
 class_name HumanoidVisual
 extends Node3D
-## Aspecto visual de un humanoide (solo cliente): modelo modular + animación.
+## Visual look of a humanoid (client only): modular model + animation.
 ##
-## Raíz de [code]scenes/characters/visuals/humanoid_visual.tscn[/code]. No simula nada: decora un
-## [PlayerCharacter] (cadena esperada: PlayerCharacter > Visual > HumanoidVisual) y su
-## [CharacterAnimator] hijo lee el estado del personaje cada fotograma.
+## Root of [code]scenes/characters/visuals/humanoid_visual.tscn[/code]. It simulates nothing: it decorates a
+## [PlayerCharacter] (expected chain: PlayerCharacter > Visual > HumanoidVisual) and its child
+## [CharacterAnimator] reads the character's state every frame.
 ## [br][br]
-## El modelo base ([code]Pivot/Model[/code]) es un glTF de Quaternius con el esqueleto común UAL ya
-## convertido al perfil humanoide de Godot ([code]%GeneralSkeleton[/code], ver
-## [code]assets/animations/rig/ual_humanoid_bone_map.tres[/code]). Las piezas de
-## [member part_scenes] (cabeza, pelo, barba...) se importan con el mismo BoneMap, así que al
-## arrancar sus mallas se pasan a ese esqueleto y comparten la pose: un solo esqueleto anima todo.
+## The base model ([code]Pivot/Model[/code]) is a Quaternius glTF with the common UAL skeleton already
+## converted to Godot's humanoid profile ([code]%GeneralSkeleton[/code], see
+## [code]assets/animations/rig/ual_humanoid_bone_map.tres[/code]). The pieces of
+## [member part_scenes] (head, hair, beard...) are imported with the same BoneMap, so on
+## startup their meshes are moved to that skeleton and share the pose: a single skeleton animates everything.
 ## [br][br]
-## El modelo mira hacia -Z como el [PlayerCharacter] (los glTF de Quaternius miran hacia +Z y por
-## eso [code]Model[/code] va girado 180°). El origen está en los pies y mide unos 1,8 m.
+## The model faces -Z like the [PlayerCharacter] (Quaternius glTFs face +Z, which is
+## why [code]Model[/code] is rotated 180°). The origin is at the feet and it stands about 1.8 m tall.
 ## [br][br]
-## [b]Piezas por ranura[/b] (docs/progresion.md §7.4, ART-19): las mallas del modelo base son la ranura
-## [code]body[/code] y las de [member part_scenes], las de [member part_slots] ([code]head[/code],
-## [code]hair[/code], [code]beard[/code]). [method set_part] y [method clear_part] cambian una ranura sin
-## recrear el personaje: el nodo, el esqueleto, el animador y las armas se quedan; solo se quitan las mallas de
-## esa ranura y se cuelgan las de la escena nueva (poner la escena que ya está no hace nada). [method set_tint]
-## tiñe piel, pelo (también barba y cejas) y ojos por material, también en las piezas que se monten después.
-## Antes de [method _ready], los cambios se guardan y se aplican al entrar. Lo usa [AppearanceApplier].
+## [b]Pieces per slot[/b] (docs/progresion.md §7.4, ART-19): the base model's meshes are the
+## [code]body[/code] slot and those of [member part_scenes] are those of [member part_slots] ([code]head[/code],
+## [code]hair[/code], [code]beard[/code]). [method set_part] and [method clear_part] change a slot without
+## recreating the character: the node, the skeleton, the animator and the weapons stay; only the meshes of
+## that slot are removed and those of the new scene are attached (setting the scene that is already there does nothing). [method set_tint]
+## tints skin, hair (also beard and eyebrows) and eyes per material, also on pieces mounted later.
+## Before [method _ready], changes are stored and applied on entering. Used by [AppearanceApplier].
 
-## [b]Sonido y efectos de cada personaje[/b] (ART-11, ART-09): los pasos salen de los pies (los huesos
-## [constant FOOT_BONES], con la superficie de [FootstepSurface]), y el salto, el aterrizaje y las acciones de los
-## remotos de las señales del animador; el aura de carga del fuerte se cuelga de la espada y la parada de golpe
-## congela el clip de combate ([method start_hitstop]). Todo es cliente y se pide a [CombatAudio] y [CombatVfx] si
-## existen.
+## [b]Sound and effects of each character[/b] (ART-11, ART-09): footsteps come from the feet (the
+## [constant FOOT_BONES] bones, with the surface from [FootstepSurface]), and the jump, the landing and the actions of
+## remotes from the animator's signals; the fort's charge aura hangs from the sword and the hitstop
+## freezes the combat clip ([method start_hitstop]). It is all client-side and requested from [CombatAudio] and [CombatVfx] if
+## they exist.
 ## [br][br]
-## Escena de este visual (se carga en [method install]; no se precarga para no crear un ciclo
-## escena -> script -> escena).
+## Scene of this visual (loaded in [method install]; not preloaded to avoid creating a
+## scene -> script -> scene cycle).
 const SCENE_PATH: String = "res://scenes/characters/visuals/humanoid_visual.tscn"
-## Nodo del [PlayerCharacter] que agrupa lo visual (la cámara lo oculta cuando se acerca).
+## Node of the [PlayerCharacter] that groups the visuals (the camera hides it when it gets close).
 const VISUAL_NODE: NodePath = ^"Visual"
-## Nombre del esqueleto único que deja el BoneMap al importar (opción "Make Unique").
+## Name of the single skeleton the BoneMap leaves on import ("Make Unique" option).
 const SKELETON_NAME: String = "GeneralSkeleton"
-## Mallas de capucha (se muestran con [member hood_visible]).
+## Hood meshes (shown with [member hood_visible]).
 const HOOD_MESH_PREFIX: String = "Male_Ranger_Head_Hood"
-## Mallas de pelo largo que se ocultan con capucha (las cejas y la barba se quedan).
+## Long hair meshes that are hidden with a hood (eyebrows and beard stay).
 const HAIR_MESH_PREFIXES: PackedStringArray = ["Hair_SimpleParted"]
-## Mallas pequeñas que no proyectan sombra (en una sombra de 1,8 m no se distinguen y cada una
-## cuesta una llamada de dibujo por corte de sombra).
+## Small meshes that cast no shadow (in a 1.8 m shadow they cannot be told apart and each one
+## costs a draw call per shadow split).
 const NO_SHADOW_MESH_PREFIXES: PackedStringArray = [
 	"Eyes", "Eyebrows", "Hair_Beard", "Male_Ranger_Body_Belt",
 ]
 
-## Distancia a la cámara (m) por debajo de la cual un visual ajeno con [member camera_fade] se oculta del
-## todo, y distancia a partir de la cual se ve entero. Entre las dos se difumina con tramado (ART-53).
+## Distance to the camera (m) below which another player's visual with [member camera_fade] is hidden
+## entirely, and distance from which it is seen whole. Between the two it is dithered (ART-53).
 const CAMERA_FADE_HIDDEN: float = 0.5
 const CAMERA_FADE_SOLID: float = 1.2
-## Altura (m) sobre los pies del punto del que se mide la distancia a la cámara.
+## Height (m) above the feet of the point from which the distance to the camera is measured.
 const CAMERA_FADE_CHEST_HEIGHT: float = 1.2
 
-## Huesos de los pies (perfil humanoide de Godot) de los que salen los pasos (ART-11): un paso suena cuando el pie
-## vuelve a posarse en el suelo, no a un ritmo fijo, así que coincide con lo que se ve.
+## Foot bones (Godot humanoid profile) from which footsteps come (ART-11): a step sounds when the foot
+## touches the ground again, not at a fixed rhythm, so it matches what is seen.
 const FOOT_BONES: Array[StringName] = [&"LeftFoot", &"RightFoot"]
-## Altura (m) sobre el punto más bajo que ha tenido el pie a partir de la cual se da por levantado, y por debajo de la
-## cual se da por posado.
+## Height (m) above the lowest point the foot has had from which it counts as lifted, and below which
+## it counts as planted.
 const FOOT_LIFT_HEIGHT: float = 0.075
 const FOOT_PLANT_HEIGHT: float = 0.035
-## Cuánto sube por segundo el mínimo reciente de cada pie (m/s). Va con el tiempo y no con los fotogramas, para que
-## el paso no dependa de los FPS.
+## How much the recent minimum of each foot rises per second (m/s). It goes by time and not by frames, so that
+## the step does not depend on FPS.
 const FOOT_LOW_RATE: float = 0.24
-## Velocidad horizontal (m/s) por debajo de la cual no suenan pasos (un cambio de pose en el sitio no es andar).
+## Horizontal speed (m/s) below which no footsteps sound (a pose change in place is not walking).
 const STEP_MIN_SPEED: float = 0.6
-## Escena del aura de carga del golpe fuerte.
+## Scene of the heavy hit's charge aura.
 const CHARGE_AURA_SCENE: String = "res://scenes/vfx/charge_aura.tscn"
 
-## Ranuras de pieza que admite [method set_part].
+## Piece slots that [method set_part] accepts.
 const PART_SLOTS: Array[StringName] = [&"body", &"head", &"hair", &"beard", &"marks"]
-## Canales de tinte de [method set_tint] y el prefijo del nombre de los materiales de Universal Base
-## Characters que tiñe cada uno (el material de la piel del cuerpo y de la cabeza, el del pelo, la barba y las
-## cejas, y el de los ojos). # TODO(arte): provisional hasta los sombreadores de piel y ojos de ART-20.
-## Sin tipar a propósito: en Godot 4.7.2 un [code]const Dictionary[StringName, PackedStringArray][/code] escrito
-## con literales de array guarda un [Array] con el tipo de [PackedStringArray] y recorrerlo lee basura o se cae.
+## Tint channels of [method set_tint] and the name prefix of the Universal Base
+## Characters materials that each one tints (the skin material of the body and head, that of the hair, beard and
+## eyebrows, and that of the eyes). # TODO(art): provisional until the skin and eye shaders of ART-20.
+## Deliberately untyped: in Godot 4.7.2 a [code]const Dictionary[StringName, PackedStringArray][/code] written
+## with array literals stores an [Array] with the type of [PackedStringArray] and iterating it reads garbage or crashes.
 const TINT_MATERIAL_PREFIXES: Dictionary = {
 	&"skin": ["MI_Regular_", "MI_Superhero_"],
 	&"hair": ["MI_Hair"],
 	&"eyes": ["MI_Eyes"],
 }
 
-## Piezas extra con el mismo esqueleto (escenas glTF importadas con el BoneMap UAL). Sus mallas
-## se mueven al esqueleto del modelo base en [method _ready].
+## Extra pieces with the same skeleton (glTF scenes imported with the UAL BoneMap). Their meshes
+## are moved to the base model's skeleton in [method _ready].
 @export var part_scenes: Array[PackedScene] = []
-## Ranura de cada escena de [member part_scenes], en el mismo orden (las que falten no tienen ranura y no se
-## pueden cambiar con [method set_part]).
+## Slot of each scene in [member part_scenes], in the same order (any missing ones have no slot and cannot
+## be changed with [method set_part]).
 @export var part_slots: Array[StringName] = [&"head", &"hair", &"beard"]
-## Muestra la capucha del traje. Con capucha se oculta el pelo para que no la atraviese.
+## Shows the suit's hood. With a hood the hair is hidden so that it does not clip through it.
 @export var hood_visible: bool = false:
 	set(value):
 		hood_visible = value
 		if is_node_ready():
 			_apply_hood()
 
-## Difumina el visual (transparencia única para todas sus mallas) cuando la cámara está a menos de [constant CAMERA_FADE_SOLID] m, y lo
-## oculta a menos de [constant CAMERA_FADE_HIDDEN] (ART-53). Es para los personajes ajenos: no hay colisión
-## entre personajes, y un torso o un escudo pegado a la cámara llenaba media pantalla en las refriegas. El
-## propio personaje no lo usa (la cámara ya oculta su visual al acercarse). Se aplica con los rangos de
-## visibilidad del motor en todas las mallas, también las de las piezas y las armas que se monten después.
+## Fades the visual (a single transparency for all its meshes) when the camera is closer than [constant CAMERA_FADE_SOLID] m, and
+## hides it closer than [constant CAMERA_FADE_HIDDEN] (ART-53). It is for other players' characters: there is no collision
+## between characters, and a torso or a shield stuck to the camera filled half the screen in melees. The
+## own character does not use it (the camera already hides its visual when approaching). It is applied with the engine's
+## visibility ranges on all meshes, also those of the pieces and weapons mounted later.
 @export var camera_fade: bool = false:
 	set(value):
 		camera_fade = value
@@ -108,13 +108,13 @@ const TINT_MATERIAL_PREFIXES: Dictionary = {
 @onready var _model: Node3D = $Pivot/Model
 
 var _skeleton: Skeleton3D = null
-# true si los rangos de visibilidad de camera_fade están puestos en las mallas.
+# true if the camera_fade visibility ranges are set on the meshes.
 var _camera_fade_applied: bool = false
 var _fade_meshes: Array[MeshInstance3D] = []
 var _fade_value: float = -1.0
-# Perfil visual de PNJ puesto (ART-52) o null.
+# NPC visual profile set (ART-52) or null.
 var _profile: NpcVisualProfile = null
-# Variante de la espada pedida antes de _ready (vacía = ninguna).
+# Sword variant requested before _ready (empty = none).
 var _realm: int = 0
 var _foot_ids: Array[int] = []
 var _foot_low: Array[float] = []
@@ -122,23 +122,23 @@ var _foot_prev: Array[float] = []
 var _foot_planted: Array[bool] = []
 var _charge_aura: ChargeAura = null
 var _pending_sword_variant: StringName = &""
-# Ranura -> sus mallas (colgadas del esqueleto) y la ruta de la escena de la que salieron.
+# Slot -> its meshes (attached to the skeleton) and the path of the scene they came from.
 var _part_meshes: Dictionary[StringName, Array] = {}
 var _part_paths: Dictionary[StringName, String] = {}
-# Cambios pedidos antes de _ready (ranura -> escena; null = quitar).
+# Changes requested before _ready (slot -> scene; null = remove).
 var _pending_parts: Dictionary[StringName, PackedScene] = {}
-# Canal -> color de [method set_tint].
+# Channel -> color of [method set_tint].
 var _tints: Dictionary[StringName, Color] = {}
-# Material base + color -> material teñido, compartido por todos los visuales (los colores son los del
-# catálogo: pocos).
+# Base material + color -> tinted material, shared by all visuals (the colors are those of the
+# catalog: few).
 static var _tinted_materials: Dictionary[String, Material] = {}
 
 
-## Cuelga un HumanoidVisual nuevo bajo el nodo Visual de [param character] y oculta las mallas
-## provisionales que ya hubiera ahí (la cápsula y el visor de la fase 1). Pensado para llamarse
-## desde el cliente justo después de instanciar el personaje, para que la escena compartida
-## [code]player_character.tscn[/code] (que también cargará el servidor) no arrastre modelos ni
-## animaciones. Devuelve el visual creado, o null si no se pudo cargar la escena.
+## Attaches a new HumanoidVisual under the Visual node of [param character] and hides the
+## placeholder meshes that were already there (the phase 1 capsule and visor). Meant to be called
+## from the client right after instantiating the character, so that the shared scene
+## [code]player_character.tscn[/code] (which the server will also load) does not drag models or
+## animations along. Returns the created visual, or null if the scene could not be loaded.
 static func install(character: PlayerCharacter) -> HumanoidVisual:
 	var scene: PackedScene = load(SCENE_PATH) as PackedScene
 	if scene == null or character == null:
@@ -158,10 +158,10 @@ static func install(character: PlayerCharacter) -> HumanoidVisual:
 	return visual
 
 
-## Igual que [method install], pero además quita del nodo Visual las mallas provisionales (la cápsula
-## y el visor de [code]player_character.tscn[/code]), que se quedan ligeras para el servidor. Si el
-## visual no carga, devuelve null y la cápsula se queda para que se vea algo. Lo usan el sandbox
-## ([ClientMain]), el personaje local de [OnlineMain] y los remotos de [RemoteWorld].
+## Same as [method install], but it also removes the placeholder meshes from the Visual node (the capsule
+## and the visor of [code]player_character.tscn[/code]), which stay light for the server. If the
+## visual does not load, it returns null and the capsule stays so that something is visible. Used by the sandbox
+## ([ClientMain]), the local character of [OnlineMain] and the remotes of [RemoteWorld].
 static func install_replacing_placeholder(character: PlayerCharacter) -> HumanoidVisual:
 	var visual: HumanoidVisual = install(character)
 	if visual == null:
@@ -179,7 +179,7 @@ func _ready() -> void:
 	if _skeleton == null:
 		push_error("[HumanoidVisual] El modelo no tiene un Skeleton3D '%s'" % SKELETON_NAME)
 		return
-	# Las mallas del modelo base son la ranura «body».
+	# The base model's meshes are the "body" slot.
 	var body_meshes: Array[MeshInstance3D] = []
 	for child: Node in _skeleton.get_children():
 		if child is MeshInstance3D:
@@ -203,17 +203,17 @@ func _ready() -> void:
 	_apply_hood()
 	_apply_shadow_casting()
 	_apply_tints()
-	# Armas provisionales en las manos (ART-06): hasta que lleguen los modelos definitivos. El animador
-	# avisa del arma que se lleva (la activa del personaje o la del registro de un remoto) y se enseñan
-	# sus accesorios (fase 4: el arco o la espada y el escudo).
+	# Placeholder weapons in the hands (ART-06): until the final models arrive. The animator
+	# reports the weapon being carried (the character's active one or the one in a remote's record) and its props are shown
+	# (phase 4: the bow or the sword and shield).
 	WeaponProps.install(_skeleton)
 	if _pending_sword_variant != &"":
 		WeaponProps.set_sword_variant(_skeleton, _pending_sword_variant)
 	get_animator().weapon_shown.connect(_on_weapon_shown)
-	# La estela de la espada sigue la fase activa del golpe, también la de los remotos.
+	# The sword trail follows the active phase of the hit, also that of remotes.
 	get_animator().swing_active_changed.connect(_on_swing_active_changed)
-	# Postura armada sobre la locomoción (ART-45): el reposo de combate, la capa de brazos y el agarre. Va antes
-	# que la pose de combate, que la pisa cuando hay un golpe o una esquiva.
+	# Combat stance over locomotion (ART-45): the combat idle, the arm layer and the grip. It goes before
+	# the combat pose, which overrides it when there is a hit or a dodge.
 	var stance := ArmedStanceModifier.new()
 	stance.name = "ArmedStance"
 	_skeleton.add_child(stance)
@@ -223,37 +223,37 @@ func _ready() -> void:
 	get_animator().remote_action_started.connect(_on_remote_action_started)
 	get_animator().charge_changed.connect(_on_charge_changed)
 	_setup_feet()
-	# Pose de combate sobre la locomoción (ART-08). Va antes que el giro de la columna, que se
-	# aplica encima.
+	# Combat pose over locomotion (ART-08). It goes before the spine twist, which is
+	# applied on top.
 	var combat := CombatPoseModifier.new()
 	combat.name = "CombatPose"
 	_skeleton.add_child(combat)
 	get_animator().set_combat_modifier(combat)
-	# Reacciones procedurales al golpe recibido o bloqueado y escudo a la altura de la cabeza (ART-48, ART-50).
+	# Procedural reactions to a received or blocked hit and shield at head height (ART-48, ART-50).
 	var reaction := HitReactionModifier.new()
 	reaction.name = "HitReaction"
 	_skeleton.add_child(reaction)
 	get_animator().set_reaction_modifier(reaction)
-	# Giro de la columna hacia el punto de mira (lo conduce el animador).
+	# Spine twist toward the crosshair (driven by the animator).
 	var spine := SpineTwistModifier.new()
 	spine.name = "SpineTwist"
 	_skeleton.add_child(spine)
 	get_animator().set_spine_modifier(spine)
-	# Las armas y los modificadores ya están colgados: los rangos de visibilidad les llegan también.
+	# The weapons and modifiers are already attached: the visibility ranges reach them too.
 	_apply_camera_fade()
 
 
 func _on_weapon_shown(weapon_id: int) -> void:
 	WeaponProps.show_weapon(_skeleton, weapon_id)
-	# Un PNJ con perfil visual (ART-52) cambia el escudo, el color, los ojos, la escala y la postura.
+	# An NPC with a visual profile (ART-52) changes the shield, color, eyes, scale and stance.
 	apply_profile(NpcVisualProfile.for_weapon_id(weapon_id))
-	# El arco se crea la primera vez que hace falta: sus mallas también se difuminan.
+	# The bow is created the first time it is needed: its meshes also get faded.
 	_apply_camera_fade()
 
 
-## Aplica el perfil visual de un tipo de PNJ ([NpcVisualProfile], ART-52), o lo quita con null: escala visual, color
-## de las mallas del cuerpo, brillo de los ojos, escudo y arma de las manos y postura del animador. Es solo visual: la
-## cápsula del personaje y las cajas de golpe no cambian.
+## Applies the visual profile of an NPC type ([NpcVisualProfile], ART-52), or removes it with null: visual scale, color
+## of the body meshes, eye glow, shield and weapon in the hands and the animator's stance. It is visual only: the
+## character's capsule and the hitboxes do not change.
 func apply_profile(profile: NpcVisualProfile) -> void:
 	_profile = profile
 	scale = Vector3.ONE * (profile.scale if profile != null else 1.0)
@@ -265,19 +265,19 @@ func apply_profile(profile: NpcVisualProfile) -> void:
 		animator.set_stance_profile(profile.stance if profile != null else &"shield")
 
 
-## Perfil visual puesto ahora (null si no hay).
+## Visual profile currently set (null if none).
 func get_profile() -> NpcVisualProfile:
 	return _profile
 
 
-## El personaje recibe un golpe de [param amount] de daño desde [param attacker_direction] (vector del mundo, de la
-## víctima hacia el atacante), o lo bloquea con el escudo si [param blocked]: reacción procedural del cuerpo (ART-48,
-## ART-50). Ver [method CharacterAnimator.react_to_hit].
+## The character receives a hit of [param amount] damage from [param attacker_direction] (world vector, from the
+## victim toward the attacker), or blocks it with the shield if [param blocked]: procedural body reaction (ART-48,
+## ART-50). See [method CharacterAnimator.react_to_hit].
 func react_to_hit(attacker_direction: Vector3, amount: float = 0.0, blocked: bool = false) -> void:
 	get_animator().react_to_hit(attacker_direction, amount, blocked)
 
 
-# Escudo y arma de las manos según el perfil: sin escudo en el Hueco y arma mayor en el Capitán.
+# Shield and weapon in the hands according to the profile: no shield on the Hollow and a greater weapon on the Ford Captain.
 func _apply_profile_props() -> void:
 	var shield_node: Node3D = _skeleton.get_node_or_null(NodePath("%s/%s" % [WeaponProps.SHIELD_ATTACHMENT,
 			WeaponProps.SHIELD_MESH])) as Node3D
@@ -295,21 +295,21 @@ func _on_swing_active_changed(active: bool) -> void:
 	WeaponProps.set_swing_active(_skeleton, active, get_animator().get_current_action() == CombatState.Action.HEAVY)
 
 
-## Congela [param seconds] la animación de combate de este personaje (la parada de golpe de ART-09, solo visual).
+## Freezes this character's combat animation for [param seconds] (the hitstop of ART-09, visual only).
 func start_hitstop(seconds: float) -> void:
 	var layer: CombatAnimationLayer = get_animator().get_combat_layer()
 	if layer != null:
 		layer.start_hitstop(seconds)
 
 
-## El [HumanoidVisual] que decora a [param body] (null si no tiene).
+## The [HumanoidVisual] that decorates [param body] (null if it has none).
 static func of_body(body: Node) -> HumanoidVisual:
 	if body == null:
 		return null
 	return body.get_node_or_null(NodePath(String(VISUAL_NODE) + "/HumanoidVisual")) as HumanoidVisual
 
 
-# --- Sonido y efectos --------------------------------------------------------------------------
+# --- Sound and effects -------------------------------------------------------------------------
 
 func _setup_feet() -> void:
 	for bone_name: StringName in FOOT_BONES:
@@ -323,8 +323,8 @@ func _setup_feet() -> void:
 		_skeleton.skeleton_updated.connect(_check_feet)
 
 
-# Un paso suena cuando un pie baja hasta su punto más bajo reciente: se sigue la altura de cada pie en el espacio del
-# esqueleto y se anota el mínimo, y el paso es el flanco de «levantado» a «posado» con el pie bajando.
+# A step sounds when a foot drops to its recent lowest point: the height of each foot is tracked in skeleton
+# space and the minimum is noted, and the step is the "lifted" to "planted" edge with the foot going down.
 func _check_feet() -> void:
 	var animator: CharacterAnimator = get_animator()
 	var character: PlayerCharacter = animator.get_character()
@@ -339,8 +339,8 @@ func _check_feet() -> void:
 			_play_step(_skeleton.global_transform * pose.origin, character)
 
 
-# Sigue la altura [param height] del pie [param index] durante [param step_delta] s y dice si acaba de posarse (el
-# paso). Separado de [method _check_feet] para probarlo con alturas y fotogramas sintéticos.
+# Tracks the height [param height] of foot [param index] over [param step_delta] s and says whether it has just planted (the
+# step). Separate from [method _check_feet] to test it with synthetic heights and frames.
 func _track_foot(index: int, height: float, step_delta: float) -> bool:
 	if _foot_low[index] == INF:
 		_foot_low[index] = height
@@ -387,7 +387,7 @@ func _on_touched_down(strength: float) -> void:
 		vfx.play_land_dust(character.global_position, strength)
 
 
-# Una acción nueva de un remoto: barrido, esquiva o habilidad (lo propio lo reparte CombatFeedback).
+# A new action of a remote: sweep, dodge or ability (the own ones are distributed by CombatFeedback).
 func _on_remote_action_started(action: int, step: int) -> void:
 	var character: PlayerCharacter = get_animator().get_character()
 	if character == null:
@@ -424,8 +424,8 @@ func _on_remote_action_started(action: int, step: int) -> void:
 					vfx.play_ability(ability.name, feet, heading, _realm)
 
 
-# El aura de carga del golpe fuerte: se enciende al empezar a cargar, crece con la carga, pulsa al llegar al máximo
-# y estalla al soltar (o se apaga si se cancela).
+# The heavy hit's charge aura: it lights up on starting to charge, grows with the charge, pulses on reaching the maximum
+# and bursts on release (or goes out if cancelled).
 func _on_charge_changed(active: bool, fraction: float) -> void:
 	if active:
 		if _charge_aura == null:
@@ -446,13 +446,13 @@ func _on_charge_changed(active: bool, fraction: float) -> void:
 			_charge_aura.stop()
 
 
-## El aura de carga (null hasta que se carga por primera vez).
+## The charge aura (null until it is first loaded).
 func get_charge_aura() -> ChargeAura:
 	return _charge_aura
 
 
-# Nodo de la espada con el eje +X a lo largo de la hoja (de la marca de la base a la de la punta del modelo) y la escala
-# que ajusta el brillo del aura (pensado para una hoja de 1 m) a la hoja de verdad. Sin marcas, el nodo de la espada.
+# Sword node with the +X axis along the blade (from the base mark to the tip mark of the model) and the scale
+# that fits the aura's glow (designed for a 1 m blade) to the real blade. Without marks, the sword node.
 func _aura_mount() -> Node3D:
 	var root: Node3D = WeaponProps.get_sword_node(_skeleton)
 	if root == null:
@@ -484,8 +484,8 @@ func _aura_mount() -> Node3D:
 	return mount
 
 
-## Pone la espada del reino [param realm] (código de [enum NetProtocol.Realm]; cualquier otro, la base):
-## el modelo y el color de la estela. Antes de [method _ready] se guarda y se aplica al entrar.
+## Sets the sword of realm [param realm] ([enum NetProtocol.Realm] code; any other, the base one):
+## the model and the trail color. Before [method _ready] it is stored and applied on entering.
 func set_realm(realm: int) -> void:
 	_realm = realm
 	if _charge_aura != null:
@@ -499,32 +499,32 @@ func set_realm(realm: int) -> void:
 	WeaponProps.set_sword_variant(_skeleton, variant)
 
 
-## Esqueleto que anima todas las mallas (perfil humanoide de Godot: Hips, Head, RightHand...).
-## De él cuelgan las armas provisionales ([WeaponProps]) y los modificadores de pose.
+## Skeleton that animates all the meshes (Godot humanoid profile: Hips, Head, RightHand...).
+## The placeholder weapons ([WeaponProps]) and the pose modifiers hang from it.
 func get_skeleton() -> Skeleton3D:
 	return _skeleton
 
 
-## Nodo que gira el animador para orientar el modelo (hijo directo de esta raíz).
+## Node the animator rotates to orient the model (direct child of this root).
 func get_pivot() -> Node3D:
 	return get_node(^"Pivot") as Node3D
 
 
-## Animador que conduce el [AnimationTree] a partir del [PlayerCharacter].
+## Animator that drives the [AnimationTree] from the [PlayerCharacter].
 func get_animator() -> CharacterAnimator:
 	return get_node(^"CharacterAnimator") as CharacterAnimator
 
 
-## Decora [param character]. Si no se llama, el animador busca el [PlayerCharacter] entre sus
-## ancestros al entrar en el árbol. Se puede llamar antes de añadir el visual al árbol.
+## Decorates [param character]. If not called, the animator looks for the [PlayerCharacter] among its
+## ancestors on entering the tree. It can be called before adding the visual to the tree.
 func attach_to(character: PlayerCharacter) -> void:
 	get_animator().set_character(character)
 
 
-## Pone en la ranura [param slot] (una de [constant PART_SLOTS]) las mallas de [param scene], una pieza glTF
-## importada con el BoneMap UAL, y quita las que tenía. No recrea el personaje: el nodo, el esqueleto, el
-## animador y las armas se quedan, y si la ranura ya tiene esa escena no hace nada. Con [param scene] null es
-## [method clear_part]. La capucha, las sombras y los tintes se aplican también a las mallas nuevas.
+## Puts in slot [param slot] (one of [constant PART_SLOTS]) the meshes of [param scene], a glTF piece
+## imported with the UAL BoneMap, and removes those it had. It does not recreate the character: the node, the skeleton, the
+## animator and the weapons stay, and if the slot already has that scene it does nothing. With [param scene] null it is
+## [method clear_part]. The hood, shadows and tints are applied to the new meshes too.
 func set_part(slot: StringName, scene: PackedScene) -> void:
 	if not PART_SLOTS.has(slot):
 		push_warning("[HumanoidVisual] Ranura de pieza desconocida: %s" % slot)
@@ -548,7 +548,7 @@ func set_part(slot: StringName, scene: PackedScene) -> void:
 	_apply_camera_fade()
 
 
-## Quita las mallas de la ranura [param slot] (sin pelo, sin barba...). No hace nada si ya estaba vacía.
+## Removes the meshes of slot [param slot] (no hair, no beard...). Does nothing if it was already empty.
 func clear_part(slot: StringName) -> void:
 	if not PART_SLOTS.has(slot):
 		push_warning("[HumanoidVisual] Ranura de pieza desconocida: %s" % slot)
@@ -559,7 +559,7 @@ func clear_part(slot: StringName) -> void:
 	_free_part(slot)
 
 
-## Las mallas de la ranura [param slot] (vacío si no tiene).
+## The meshes of slot [param slot] (empty if it has none).
 func get_part_meshes(slot: StringName) -> Array[MeshInstance3D]:
 	var result: Array[MeshInstance3D] = []
 	for mesh: Variant in _part_meshes.get(slot, []):
@@ -568,14 +568,14 @@ func get_part_meshes(slot: StringName) -> Array[MeshInstance3D]:
 	return result
 
 
-## Ruta de la escena de la ranura [param slot] (vacía si no tiene ninguna).
+## Scene path of slot [param slot] (empty if it has none).
 func get_part_path(slot: StringName) -> String:
 	return _part_paths.get(slot, "")
 
 
-## Tiñe el canal [param channel] ([code]skin[/code], [code]hair[/code] o [code]eyes[/code], las claves de
-## [constant TINT_MATERIAL_PREFIXES]) con [param color]: el albedo de sus materiales, multiplicado por su
-## textura. Vale también para las piezas que se monten después.
+## Tints channel [param channel] ([code]skin[/code], [code]hair[/code] or [code]eyes[/code], the keys of
+## [constant TINT_MATERIAL_PREFIXES]) with [param color]: the albedo of its materials, multiplied by its
+## texture. It also applies to pieces mounted later.
 func set_tint(channel: StringName, color: Color) -> void:
 	if not TINT_MATERIAL_PREFIXES.has(channel):
 		push_warning("[HumanoidVisual] Canal de tinte desconocido: %s" % channel)
@@ -584,19 +584,19 @@ func set_tint(channel: StringName, color: Color) -> void:
 	_apply_tints()
 
 
-## Color del canal [param channel], o null si no se ha teñido.
+## Color of channel [param channel], or null if it has not been tinted.
 func get_tint(channel: StringName) -> Variant:
 	return _tints.get(channel)
 
 
-## Quita todos los tintes (cada malla vuelve a su material).
+## Removes all tints (each mesh returns to its material).
 func clear_tints() -> void:
 	_tints.clear()
 	_apply_tints()
 
 
-## Pasa las mallas de una pieza al esqueleto del modelo base, descarta el resto de la pieza y devuelve las
-## mallas colgadas.
+## Moves the meshes of a piece to the base model's skeleton, discards the rest of the piece and returns the
+## attached meshes.
 func _attach_part(scene: PackedScene) -> Array[MeshInstance3D]:
 	var meshes: Array[MeshInstance3D] = []
 	if scene == null:
@@ -627,8 +627,8 @@ func _free_part(slot: StringName) -> void:
 	_part_paths.erase(slot)
 
 
-# Los materiales de cada malla del esqueleto según los tintes: el teñido del canal de su material base o, sin
-# tinte, el suyo.
+# The materials of each mesh of the skeleton according to the tints: the tinted version of its base material for the channel or, with no
+# tint, its own.
 func _apply_tints() -> void:
 	if _skeleton == null:
 		return
@@ -667,8 +667,8 @@ static func _tinted(base: Material, color: Color) -> Material:
 	return tinted
 
 
-# Material de [param base] con el color del perfil de PNJ (ART-52) y, en los ojos, su brillo emisivo. Se comparten
-# entre todos los PNJ del mismo perfil.
+# Material of [param base] with the NPC profile's color (ART-52) and, on the eyes, its emissive glow. They are shared
+# among all NPCs of the same profile.
 static func _profiled(base: Material, profile: NpcVisualProfile, is_eye: bool) -> Material:
 	if not (base is BaseMaterial3D):
 		return base
@@ -687,7 +687,7 @@ static func _profiled(base: Material, profile: NpcVisualProfile, is_eye: bool) -
 		glow.albedo_color = profile.eye_glow
 		made = glow
 	elif source.albedo_texture != null and (profile.saturation < 1.0 or profile.tint != Color.WHITE):
-		# Con textura: desaturada y teñida por el sombreado de recoloreado.
+		# With texture: desaturated and tinted by the recolor shader.
 		var shader := Shader.new()
 		shader.code = NpcVisualProfile.RECOLOR_SHADER
 		var recolored := ShaderMaterial.new()
@@ -729,7 +729,7 @@ func _apply_shadow_casting() -> void:
 				mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
-# Pone (o quita) el fundido de cámara en las mallas del visual: transparencia única por distancia al pecho.
+# Sets (or removes) the camera fade on the visual's meshes: a single transparency by distance to the chest.
 func _apply_camera_fade() -> void:
 	if not camera_fade and not _camera_fade_applied:
 		return
@@ -737,8 +737,8 @@ func _apply_camera_fade() -> void:
 	_fade_meshes.clear()
 	_collect_meshes(self, _fade_meshes)
 	set_process(camera_fade)
-	# Una sola distancia por visual (de la cámara al pecho): todas las mallas, también las armas, el escudo y las
-	# botas, se atenúan por igual (antes, un rango de visibilidad por malla dejaba opacos los pies y el escudo).
+	# A single distance per visual (from the camera to the chest): all meshes, also the weapons, the shield and the
+	# boots, fade equally (before, a visibility range per mesh left the feet and the shield opaque).
 	_fade_value = -1.0
 	if camera_fade:
 		_update_camera_fade()
@@ -755,12 +755,12 @@ func _process(_delta: float) -> void:
 		_update_camera_fade()
 
 
-## Transparencia (0 = opaco, 1 = invisible) de un visual con el pecho a [param distance] m de la cámara.
+## Transparency (0 = opaque, 1 = invisible) of a visual with its chest [param distance] m from the camera.
 static func fade_for_distance(distance: float) -> float:
 	return clampf(inverse_lerp(CAMERA_FADE_SOLID, CAMERA_FADE_HIDDEN, distance), 0.0, 1.0)
 
 
-## Transparencia que llevan ahora las mallas por el fundido de cámara (0 si no hay).
+## Transparency the meshes currently have from the camera fade (0 if none).
 func get_camera_fade_value() -> float:
 	return maxf(_fade_value, 0.0)
 

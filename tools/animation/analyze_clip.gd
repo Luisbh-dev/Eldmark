@@ -1,10 +1,10 @@
 extends SceneTree
-## Analiza un clip de UAL sobre el modelo instalado para elegir tramos de recorte: cada [step] segundos
-## imprime la velocidad de las manos (m/s, en el espacio del modelo), su altura y su avance hacia delante,
-## y la altura de la cadera. Sirve para encontrar dónde está el golpe (el pico de velocidad de la mano derecha)
-## y dónde acaba la recuperación.
+## Analyzes a UAL clip on the installed model to choose trim ranges: every [step] seconds
+## it prints the hands' speed (m/s, in model space), their height and their forward advance,
+## and the hip height. It serves to find where the strike is (the right hand's speed peak)
+## and where the recovery ends.
 ## [br][br]
-## Uso (sin ventana):
+## Usage (without a window):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/animation/analyze_clip.gd -- --clip=ual2/Sword_Regular_A [--step=0.05] [--bone=RightHand]
 ## [/codeblock]
@@ -65,7 +65,7 @@ func _analyze(skeleton: Skeleton3D, clip_name: String, step: float, bones: Packe
 			if previous.has(bone_name):
 				speed = position.distance_to(previous[bone_name]) / step
 			previous[bone_name] = position
-			# El modelo mira hacia +Z en el esqueleto (va girado 180 grados en la escena): avance = +z.
+			# The model faces +Z in the skeleton (it is turned 180 degrees in the scene): forward = +z.
 			line += "  | %s v=%.1f y=%.2f z=%.2f x=%.2f" % [bone_name, speed, position.y, position.z, position.x]
 		print(line)
 		t += step

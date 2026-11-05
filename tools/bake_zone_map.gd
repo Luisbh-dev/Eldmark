@@ -1,22 +1,22 @@
 extends SceneTree
-## Hornea el mapa cenital de una zona sin GPU (docs/fuerte.md, sección 6; UI-20) y lo guarda en
-## [code]assets/maps/<zona>.png[/code] (por Git LFS) junto a su escala y sus lugares fijos en
-## [code]assets/maps/<zona>_map.tres[/code] ([ZoneMapDefinition], en texto).
+## Bakes a zone's top-down map without a GPU (docs/fuerte.md, section 6; UI-20) and saves it to
+## [code]assets/maps/<zone>.png[/code] (through Git LFS) together with its scale and its fixed places in
+## [code]assets/maps/<zone>_map.tres[/code] ([ZoneMapDefinition], as text).
 ##
-## Uso (desde la raíz del proyecto, sin ventana; unos segundos):
+## Usage (from the project root, without a window; a few seconds):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/bake_zone_map.gd
 ## godot --headless --path . -s res://tools/bake_zone_map.gd -- --zone=vado_gris --out=user://mapa.png
-## godot --headless --path . --import      # después, para importar el PNG nuevo
+## godot --headless --path . --import      # afterwards, to import the new PNG
 ## [/codeblock]
-## Qué se dibuja y cómo: [ZoneMapBaker]. Es determinista (misma escena, mismo mapa). Hay que repetirlo
-## si cambia el relieve, el agua o las colisiones de la zona; lo comprueba tests/test_zone_map.gd.
-## Con [code]--out=[/code] la imagen y el recurso van a esa ruta (sin tocar los de [code]assets/maps/[/code]).
-## [b]Ya no es el mapa del juego (UI-51)[/b]: el del Vado Gris es el de pergamino de
-## [code]tools/map/bake_parchment_map.gd[/code]. Sin [code]--out=[/code] esta herramienta lo pisaría con el volcado antiguo.
+## What is drawn and how: [ZoneMapBaker]. It is deterministic (same scene, same map). It must be repeated
+## if the zone's relief, water or collisions change; tests/test_zone_map.gd checks it.
+## With [code]--out=[/code] the image and the resource go to that path (without touching those in [code]assets/maps/[/code]).
+## [b]It is no longer the game's map (UI-51)[/b]: Vado Gris's is the parchment one from
+## [code]tools/map/bake_parchment_map.gd[/code]. Without [code]--out=[/code] this tool would overwrite it with the old dump.
 
-## Trozo de mundo y tamaño de la imagen de cada zona: esquina noroeste, tamaño (m) y lado (px). El Vado
-## Gris cubre el área jugable (300 x 300 m) con 10 m de margen, a 3,2 píxeles por metro.
+## Chunk of world and image size for each zone: northwest corner, size (m) and side (px). Vado
+## Gris covers the playable area (300 x 300 m) with a 10 m margin, at 3.2 pixels per meter.
 const ZONE_BAKES: Dictionary = {
 	&"vado_gris": {"origin": Vector2(-160.0, -160.0), "size": Vector2(320.0, 320.0), "pixels": 1024},
 }

@@ -18,20 +18,20 @@ func TestEmbeddedRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r.ProtocolVersion < 5 {
-		t.Errorf("protocol_version = %d; la fase 5 empieza en la 5", r.ProtocolVersion)
+		t.Errorf("protocol_version = %d; phase 5 starts at 5", r.ProtocolVersion)
 	}
 	n := r.Names
 	if n.MinLength != 3 || n.MaxLength != 16 {
-		t.Errorf("longitudes %d–%d, se esperaban 3–16", n.MinLength, n.MaxLength)
+		t.Errorf("lengths %d-%d, expected 3-16", n.MinLength, n.MaxLength)
 	}
 	if !strings.Contains(n.UpperLetters, "Ñ") || !strings.Contains(n.LowerLetters, "ñ") || n.Folded["ñ"] != "n" {
-		t.Errorf("faltan la ñ o su plegado: %+v", n)
+		t.Errorf("the ñ or its folding is missing: %+v", n)
 	}
 	if len(n.Reserved) < 10 {
-		t.Errorf("solo %d reservados", len(n.Reserved))
+		t.Errorf("only %d reserved", len(n.Reserved))
 	}
 	if gamedata.MustLoad() != r {
-		t.Error("Load no devuelve siempre las mismas reglas")
+		t.Error("Load does not always return the same rules")
 	}
 }
 
@@ -43,11 +43,11 @@ func TestProtocolVersionMatchesGodot(t *testing.T) {
 	}
 	m := regexp.MustCompile(`(?m)^const PROTOCOL_VERSION: int = (\d+)$`).FindSubmatch(src)
 	if m == nil {
-		t.Fatal("no se encuentra PROTOCOL_VERSION en net_protocol.gd")
+		t.Fatal("PROTOCOL_VERSION not found in net_protocol.gd")
 	}
 	r := gamedata.MustLoad()
 	if want := string(m[1]); want != strconv.Itoa(r.ProtocolVersion) {
-		t.Errorf("progression_rules.json dice protocol_version %d y net_protocol.gd %s: vuelve a exportar las reglas "+
+		t.Errorf("progression_rules.json says protocol_version %d and net_protocol.gd %s: re-export the rules "+
 			"(tools/progression/export_rules.gd)", r.ProtocolVersion, want)
 	}
 }
@@ -58,7 +58,7 @@ func TestRawIsTheEmbeddedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(disk, gamedata.Raw()) {
-		t.Error("Raw no es el archivo del paquete")
+		t.Error("Raw is not the package's file")
 	}
 }
 
@@ -77,10 +77,10 @@ func TestParseRejectsBrokenFiles(t *testing.T) {
 	}
 	for name, text := range cases {
 		if text == string(good) {
-			t.Fatalf("%s: el caso no cambia el archivo", name)
+			t.Fatalf("%s: the case does not change the file", name)
 		}
 		if _, err := gamedata.Parse([]byte(text)); err == nil {
-			t.Errorf("%s: se esperaba un error", name)
+			t.Errorf("%s: expected an error", name)
 		}
 	}
 	// Other sections (those of progression.md) do not interfere.
@@ -91,6 +91,6 @@ func TestParseRejectsBrokenFiles(t *testing.T) {
 	top["races"] = json.RawMessage(`[{"id": "race_vardheim"}]`)
 	more, _ := json.Marshal(top)
 	if _, err := gamedata.Parse(more); err != nil {
-		t.Errorf("una sección más no debería romper nada: %v", err)
+		t.Errorf("one more section should not break anything: %v", err)
 	}
 }

@@ -1,27 +1,26 @@
 class_name GameIcon
 extends Texture2D
-## Icono de juego (ART-12): una figura de `assets/ui/icons/` (PNG de 128 px sin fondo) sobre el fondo de su
-## categoría (`assets/ui/icons/backgrounds/`, a sangre y sin marco). Es una [Texture2D] que se dibuja a sí
-## misma, así que entra en cualquier [UIIconSlot] igual que un [PlaceholderIcon] y los barridos de
-## reutilización se pintan encima. El fondo se estira a la casilla; la figura, también (los iconos se
-## hicieron cuadrados). Solo cliente.
+## Game icon (ART-12): a figure from `assets/ui/icons/` (128 px PNG with no background) over the background of its
+## category (`assets/ui/icons/backgrounds/`, full-bleed and frameless). It is a [Texture2D] that draws itself,
+## so it fits in any [UIIconSlot] just like a [PlaceholderIcon] and the cooldown sweeps are painted on top. The background is
+## stretched to the slot; so is the figure (the icons were made square). Client only.
 
-## Lado (px) con el que se declara la textura.
+## Side (px) the texture is declared with.
 const SIZE: int = 128
 
-## Figura sin fondo.
+## Figure without background.
 @export var figure: Texture2D = null:
 	set(value):
 		figure = value
 		emit_changed()
-## Fondo de la categoría (puede faltar: la figura se dibuja sola).
+## Category background (may be missing: the figure is drawn alone).
 @export var background: Texture2D = null:
 	set(value):
 		background = value
 		emit_changed()
 
 
-## Un icono con la figura [param figure_texture] sobre [param background_texture].
+## An icon with the figure [param figure_texture] over [param background_texture].
 static func make(figure_texture: Texture2D, background_texture: Texture2D) -> GameIcon:
 	var icon := GameIcon.new()
 	icon.figure = figure_texture

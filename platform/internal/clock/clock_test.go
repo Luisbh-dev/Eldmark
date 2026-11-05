@@ -9,7 +9,7 @@ func TestFake(t *testing.T) {
 	t0 := time.Date(2026, 11, 1, 12, 0, 0, 0, time.FixedZone("CET", 3600))
 	f := NewFake(t0)
 	if !f.Now().Equal(t0) || f.Now().Location() != time.UTC {
-		t.Fatalf("en UTC: %s", f.Now())
+		t.Fatalf("in UTC: %s", f.Now())
 	}
 	f.Advance(90 * time.Second)
 	if got := f.Now().Sub(t0); got != 90*time.Second {
@@ -20,6 +20,6 @@ func TestFake(t *testing.T) {
 		t.Fatal(f.Now())
 	}
 	if (System{}).Now().Location() != time.UTC {
-		t.Fatal("el del sistema, en UTC")
+		t.Fatal("the system one, in UTC")
 	}
 }

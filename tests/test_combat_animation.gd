@@ -1,11 +1,11 @@
 extends TestCase
-## Pruebas de la capa de animación de combate (ART-08) y de las armas provisionales (ART-06).
-## [br]- El recurso de clips ([CombatClipSet]) resuelve todos sus clips de UAL1/UAL2.
-## [br]- [CombatClipPlanner] elige el clip correcto para cada acción y la velocidad de reproducción
-## que encaja cada fase en su duración de los datos de combate.
-## [br]- El fotograma de contacto de cada ataque cae en su ventana activa (con un tick de margen).
-## [br]- La reconciliación (repetir ticks) no reinicia los clips; un remoto se anima con el byte
-## action; el [CombatPoseModifier] pone la pose solo en los huesos que toca.
+## Tests of the combat animation layer (ART-08) and of the provisional weapons (ART-06).
+## [br]- The clip resource ([CombatClipSet]) resolves all its UAL1/UAL2 clips.
+## [br]- [CombatClipPlanner] picks the right clip for each action and the playback speed
+## that fits each phase to its duration in the combat data.
+## [br]- The contact frame of each attack falls within its active window (with a one-tick margin).
+## [br]- Reconciliation (replaying ticks) does not restart the clips; a remote is animated with the
+## action byte; the [CombatPoseModifier] sets the pose only on the bones it touches.
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 const CLIPS_PATH: String = "res://data/animation/sword_shield_clips.tres"
@@ -40,7 +40,7 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
-## Máquina de acciones sin física: un [CombatState] y un reloj, para guionizar botones tick a tick.
+## Physics-free action machine: a [CombatState] and a clock, to script buttons tick by tick.
 class Driver:
 	var c: CombatState
 	var tick: int = START_TICK
@@ -62,20 +62,20 @@ func _attack(attack_name: StringName) -> AttackTicks:
 	return CombatCatalog.attack(CombatCatalog.attack_id(attack_name))
 
 
-# --- El recurso de clips ----------------------------------------------------------------------
+# --- The clip resource ----------------------------------------------------------------------
 
 func test_clip_set_covers_every_attack_and_action() -> void:
-	if not assert_not_null(_clips, "el recurso carga"):
+	if not assert_not_null(_clips, "the resource loads"):
 		return
 	for key: StringName in [&"sword_light_1", &"sword_light_2", &"sword_light_3", &"sword_heavy",
 			&"charge", &"block", &"dodge", &"stagger", &"stun", &"dead"]:
-		assert_not_null(_clips.find(key), "hay entrada para %s" % key)
+		assert_not_null(_clips.find(key), "there is an entry for %s" % key)
 	assert_null(_clips.find(&"no_existe"))
 	for name_of_attack: StringName in [&"sword_light_1", &"sword_light_2", &"sword_light_3",
 			&"sword_heavy"]:
 		var entry: CombatActionAnim = _clips.find(name_of_attack)
-		assert_true(entry.is_attack(), "%s tiene los tres tramos" % name_of_attack)
-		assert_true(entry.upper_body, "y se anima en la parte superior")
+		assert_true(entry.is_attack(), "%s has the three segments" % name_of_attack)
+		assert_true(entry.upper_body, "and is animated on the upper body")
 
 
 func test_every_segment_points_into_an_existing_clip() -> void:
@@ -85,24 +85,24 @@ func test_every_segment_points_into_an_existing_clip() -> void:
 			if segment == null:
 				continue
 			var animation: Animation = _clips.get_animation(segment.animation)
-			if not assert_not_null(animation, "%s: el clip %s existe" % [entry.key, segment.animation]):
+			if not assert_not_null(animation, "%s: the clip %s exists" % [entry.key, segment.animation]):
 				continue
 			checked += 1
 			assert_true(segment.from_s >= 0.0 and segment.to_s <= animation.length + 0.0001,
-					"%s: [%.3f, %.3f] cabe en %s (%.3f s)" % [entry.key, segment.from_s,
+					"%s: [%.3f, %.3f] fits in %s (%.3f s)" % [entry.key, segment.from_s,
 					segment.to_s, segment.animation, animation.length])
-			assert_true(segment.to_s > segment.from_s, "%s: el tramo avanza" % entry.key)
-	assert_true(checked >= 18, "se han comprobado %d tramos" % checked)
-	assert_null(_clips.get_animation(&"ual9/Nada"), "una biblioteca desconocida no resuelve")
+			assert_true(segment.to_s > segment.from_s, "%s: the segment advances" % entry.key)
+	assert_true(checked >= 18, "%d segments were checked" % checked)
+	assert_null(_clips.get_animation(&"ual9/Nada"), "an unknown library does not resolve")
 	assert_null(_clips.get_animation(&"ual1/NoExiste"))
 	assert_null(_clips.get_animation(&"sin_barra"))
 
 
-# --- Elección de clip -------------------------------------------------------------------------
+# --- Clip selection -------------------------------------------------------------------------
 
 func test_planner_picks_the_right_clip_for_each_action() -> void:
 	var expected: Array[Array] = [
-		# acción, fase, paso del combo, clip, parte superior
+		# action, phase, combo step, clip, upper body
 		[CombatState.Action.LIGHT, ActionMachine.PHASE_WINDUP, 0, &"ual2/Sword_Regular_A", true],
 		[CombatState.Action.LIGHT, ActionMachine.PHASE_ACTIVE, 0, &"ual2/Sword_Regular_A", true],
 		[CombatState.Action.LIGHT, ActionMachine.PHASE_RECOVERY, 0, &"ual2/Sword_Regular_A_Rec", true],
@@ -123,12 +123,12 @@ func test_planner_picks_the_right_clip_for_each_action() -> void:
 		var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, int(row[0]),
 				int(row[1]), int(row[2]), 0.0)
 		var label: String = "acción %d fase %d paso %d" % [int(row[0]), int(row[1]), int(row[2])]
-		if not assert_not_null(plan, "%s tiene animación" % label):
+		if not assert_not_null(plan, "%s has an animation" % label):
 			continue
 		assert_eq(plan.animation, row[3], "%s: clip" % label)
-		assert_eq(plan.upper_body, bool(row[4]), "%s: parte superior" % label)
+		assert_eq(plan.upper_body, bool(row[4]), "%s: upper body" % label)
 	assert_null(CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.NONE, 3, 0, 0.0),
-			"sin acción no hay animación de combate")
+			"without an action there is no combat animation")
 	assert_null(CombatClipPlanner.plan(null, _weapon, CombatState.Action.LIGHT, 0, 0, 0.0))
 
 
@@ -136,13 +136,13 @@ func test_planner_keys_follow_the_catalog_names() -> void:
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.LIGHT, 0), &"sword_light_1")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.LIGHT, 2), &"sword_light_3")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.LIGHT, 9), &"sword_light_3",
-			"un paso fuera de rango se recorta")
+			"an out-of-range step is clamped")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.HEAVY, 0), &"sword_heavy")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.NONE, 0), &"")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.DODGE, 0), &"dodge")
 
 
-# --- Velocidad de reproducción ----------------------------------------------------------------
+# --- Playback speed ----------------------------------------------------------------
 
 func test_each_attack_phase_is_stretched_to_its_duration() -> void:
 	for name_of_attack: StringName in [&"sword_light_1", &"sword_light_2", &"sword_light_3",
@@ -157,20 +157,20 @@ func test_each_attack_phase_is_stretched_to_its_duration() -> void:
 			var seconds: float = float(lengths[phase]) / _tick_rate
 			var start: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, action,
 					phase, combo, 0.0)
-			assert_near(start.time_s, segment.from_s, 0.0001, "%s fase %d: empieza al principio del tramo" % [name_of_attack, phase])
+			assert_near(start.time_s, segment.from_s, 0.0001, "%s phase %d: starts at the beginning of the segment" % [name_of_attack, phase])
 			assert_near(start.speed * seconds, segment.length_s(), 0.0001,
-					"%s fase %d: la velocidad (%.3f) recorre el tramo en la duración de la fase" % [name_of_attack, phase, start.speed])
+					"%s phase %d: the speed (%.3f) covers the segment in the phase's duration" % [name_of_attack, phase, start.speed])
 			assert_near(start.duration_s, seconds, 0.0001)
 			var middle: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, action,
 					phase, combo, float(lengths[phase]) * 0.5)
 			assert_near(middle.time_s, (segment.from_s + segment.to_s) * 0.5, 0.0001,
-					"%s fase %d: a media fase, a medio tramo" % [name_of_attack, phase])
+					"%s phase %d: halfway through the phase, halfway through the segment" % [name_of_attack, phase])
 			var finish: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, action,
 					phase, combo, float(lengths[phase]))
-			assert_near(finish.time_s, segment.to_s, 0.0001, "%s fase %d: acaba al final del tramo" % [name_of_attack, phase])
+			assert_near(finish.time_s, segment.to_s, 0.0001, "%s phase %d: ends at the end of the segment" % [name_of_attack, phase])
 			var beyond: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, action,
 					phase, combo, float(lengths[phase]) * 3.0)
-			assert_near(beyond.time_s, segment.to_s, 0.0001, "%s fase %d: no se pasa del final" % [name_of_attack, phase])
+			assert_near(beyond.time_s, segment.to_s, 0.0001, "%s phase %d: does not go past the end" % [name_of_attack, phase])
 
 
 func test_dodge_and_controls_fit_their_durations() -> void:
@@ -178,18 +178,18 @@ func test_dodge_and_controls_fit_their_durations() -> void:
 	var dodge: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon,
 			CombatState.Action.DODGE, ActionMachine.PHASE_NONE, 0, 0.0)
 	var roll: CombatClipSegment = _clips.find(&"dodge").windup
-	assert_near(dodge.duration_s, float(dodge_ticks) / _tick_rate, 0.0001, "la esquiva dura lo que dicen los datos")
+	assert_near(dodge.duration_s, float(dodge_ticks) / _tick_rate, 0.0001, "the dodge lasts what the data says")
 	assert_near(dodge.speed * dodge.duration_s, roll.length_s(), 0.0001)
 	var end: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.DODGE,
 			ActionMachine.PHASE_NONE, 0, float(dodge_ticks))
 	assert_near(end.time_s, roll.to_s, 0.0001)
-	# Un tambaleo de 18 ticks: el clip se estira a esos 0,3 s.
+	# An 18-tick stagger: the clip is stretched to those 0.3 s.
 	var stagger: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon,
 			CombatState.Action.STAGGER, ActionMachine.PHASE_NONE, 0, 0.0, 18)
 	assert_near(stagger.duration_s, 18.0 / _tick_rate, 0.0001)
 	var stagger_clip: CombatClipSegment = _clips.find(&"stagger").windup
 	assert_near(stagger.speed * stagger.duration_s, stagger_clip.length_s(), 0.0001)
-	# Sin duración conocida (un remoto) usa la del recurso.
+	# With no known duration (a remote) it uses the resource's.
 	var remote: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon,
 			CombatState.Action.STAGGER, ActionMachine.PHASE_NONE, 0, 0.0)
 	assert_near(remote.duration_s, _clips.find(&"stagger").duration_s, 0.0001)
@@ -198,52 +198,52 @@ func test_dodge_and_controls_fit_their_durations() -> void:
 func test_charge_and_death_hold_their_last_pose() -> void:
 	for pair: Array in [[CombatState.Action.CHARGE, &"charge"], [CombatState.Action.DEAD, &"dead"]]:
 		var entry: CombatActionAnim = _clips.find(pair[1])
-		assert_true(entry.hold_end, "%s se queda en la última pose" % pair[1])
+		assert_true(entry.hold_end, "%s stays on the last pose" % pair[1])
 		var late: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, int(pair[0]),
 				ActionMachine.PHASE_NONE, 0, 100000.0)
-		# La carga respira (ART-07): se mece hasta sway_s hacia atrás por su tramo y vuelve.
+		# The charge breathes (ART-07): it sways up to sway_s backward through its segment and returns.
 		assert_true(late.time_s <= entry.windup.to_s + 0.0001 and late.time_s >= entry.windup.to_s - entry.sway_s - 0.0001,
-				"%s: mucho después sigue en el final (%.3f)" % [pair[1], late.time_s])
+				"%s: long after, it is still at the end (%.3f)" % [pair[1], late.time_s])
 		assert_true(late.hold)
 
 
-## ART-48: el bloqueo es la guardia del escudo en bucle (no una pose congelada): el escudo queda delante del
-## pecho, el clip no se queda parado y se puede andar bloqueando (solo la parte superior).
+## ART-48: the block is the shield guard on a loop (not a frozen pose): the shield stays in front of the
+## chest, the clip does not stand still and you can walk while blocking (upper body only).
 func test_block_loops_the_shield_guard_instead_of_freezing() -> void:
 	var entry: CombatActionAnim = _clips.find(&"block")
-	assert_true(entry.loop, "el bloqueo se repite")
-	assert_false(entry.hold_end, "y no se queda en la última pose")
-	assert_true(entry.upper_body, "solo la parte superior: se anda bloqueando")
+	assert_true(entry.loop, "the block repeats")
+	assert_false(entry.hold_end, "and does not stay on the last pose")
+	assert_true(entry.upper_body, "upper body only: you walk while blocking")
 	assert_eq(entry.windup.animation, &"ual2/Idle_Shield_Loop")
 	var length: float = _clips.get_animation(entry.windup.animation).length
-	assert_near(entry.windup.length_s(), length, 0.0001, "el bucle completo del clip")
+	assert_near(entry.windup.length_s(), length, 0.0001, "the full loop of the clip")
 	var times: Array[float] = []
 	for ticks: float in [0.0, 40.0, 80.0, 120.0]:
 		var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.BLOCK,
 				ActionMachine.PHASE_NONE, 0, ticks)
 		assert_false(plan.hold)
-		assert_near(plan.speed, 1.0, 0.0001, "a su velocidad original")
+		assert_near(plan.speed, 1.0, 0.0001, "at its original speed")
 		times.append(plan.time_s)
-	assert_true(times[1] > times[0] and times[2] > times[1] and times[3] > times[2], "el instante avanza")
+	assert_true(times[1] > times[0] and times[2] > times[1] and times[3] > times[2], "the instant advances")
 	var wrapped: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.BLOCK,
 			ActionMachine.PHASE_NONE, 0, entry.duration_s * _tick_rate + 30.0)
-	assert_near(wrapped.time_s, entry.windup.from_s + 30.0 / _tick_rate, 0.0001, "y vuelve al principio")
-	# El muro de escudos mantiene la misma guardia en bucle.
+	assert_near(wrapped.time_s, entry.windup.from_s + 30.0 / _tick_rate, 0.0001, "and goes back to the start")
+	# The shield wall keeps the same guard on a loop.
 	var wall: CombatActionAnim = _clips.find(&"shield_wall")
-	assert_true(wall.loop and not wall.hold_end, "el muro de escudos tampoco congela el clip")
+	assert_true(wall.loop and not wall.hold_end, "the shield wall does not freeze the clip either")
 	assert_eq(wall.windup.animation, &"ual2/Idle_Shield_Loop")
 
 
-## ART-49: la esquiva reproduce el Roll recortado a unas 2x como máximo (el único clip que hay; el tope del
-## listón de calidad para la esquiva), no a 3x.
+## ART-49: the dodge plays the trimmed Roll at about 2x at most (the only clip there is; the cap of the
+## quality bar for the dodge), not at 3x.
 func test_the_dodge_clip_plays_at_most_twice_as_fast() -> void:
 	for clips: CombatClipSet in [_clips, load(BOW_CLIPS_PATH) as CombatClipSet]:
 		var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(clips, _weapon, CombatState.Action.DODGE,
 				ActionMachine.PHASE_NONE, 0, 0.0)
-		assert_true(plan.speed <= 2.0001 and plan.speed >= 0.7, "esquiva a %.2fx" % plan.speed)
+		assert_true(plan.speed <= 2.0001 and plan.speed >= 0.7, "dodge at %.2fx" % plan.speed)
 
 
-# --- Contacto dentro de la ventana activa -----------------------------------------------------
+# --- Contact inside the active window -----------------------------------------------------
 
 func test_contact_frame_falls_inside_the_active_window() -> void:
 	for name_of_attack: StringName in [&"sword_light_1", &"sword_light_2", &"sword_light_3",
@@ -253,12 +253,12 @@ func test_contact_frame_falls_inside_the_active_window() -> void:
 		var contact: float = CombatClipPlanner.contact_tick(entry, attack)
 		assert_true(contact >= float(attack.active_from()) - 1.0
 				and contact <= float(attack.active_to()) + 1.0,
-				"%s: el contacto (tick %.1f) cae en la ventana activa [%d, %d) ±1" % [
+				"%s: the contact (tick %.1f) falls in the active window [%d, %d) +-1" % [
 				name_of_attack, contact, attack.active_from(), attack.active_to()])
 		assert_true(entry.contact_s >= entry.active.from_s and entry.contact_s <= entry.active.to_s,
-				"%s: el contacto está dentro del tramo activo del clip" % name_of_attack)
+				"%s: the contact is inside the clip's active segment" % name_of_attack)
 	assert_eq(CombatClipPlanner.contact_tick(_clips.find(&"block"), _attack(&"sword_light_1")), -1.0,
-			"lo que no es un ataque no tiene contacto")
+			"what is not an attack has no contact")
 
 
 func test_layer_reaches_the_contact_frame_within_the_active_window_for_each_light() -> void:
@@ -270,7 +270,7 @@ func test_layer_reaches_the_contact_frame_within_the_active_window_for_each_ligh
 		driver.step()
 		driver.step(PRIMARY)
 		var action_tick: int = driver.c.action_tick
-		assert_eq(driver.c.action_id, attack.id, "%s empieza" % name_of_attack)
+		assert_eq(driver.c.action_id, attack.id, "%s starts" % name_of_attack)
 		var layer := CombatAnimationLayer.new(_clips)
 		var contact_k: int = -1
 		for k: int in attack.total_ticks:
@@ -284,7 +284,7 @@ func test_layer_reaches_the_contact_frame_within_the_active_window_for_each_ligh
 					and slot.time_s >= entry.contact_s - 0.0001:
 				contact_k = k
 		assert_true(contact_k >= attack.active_from() - 1 and contact_k <= attack.active_to() + 1,
-				"%s: el fotograma de contacto sale en el tick %d de la acción (ventana activa [%d, %d) ±1)" % [
+				"%s: the contact frame comes out on tick %d of the action (active window [%d, %d) +-1)" % [
 				name_of_attack, contact_k, attack.active_from(), attack.active_to()])
 
 
@@ -294,7 +294,7 @@ func test_layer_reaches_the_contact_frame_within_the_active_window_for_the_heavy
 	var driver := Driver.new()
 	driver.step()
 	var layer := CombatAnimationLayer.new(_clips)
-	# Mantener PRIMARY: ligero -> carga -> suelta -> fuerte.
+	# Hold PRIMARY: light -> charge -> release -> heavy.
 	var released: bool = false
 	var heavy_tick: int = -1
 	var contact_k: int = -1
@@ -312,9 +312,9 @@ func test_layer_reaches_the_contact_frame_within_the_active_window_for_the_heavy
 					and layer.get_plan().phase >= ActionMachine.PHASE_ACTIVE \
 					and slot.time_s >= entry.contact_s - 0.0001:
 				contact_k = k
-	assert_true(released, "se llegó a lanzar el fuerte")
+	assert_true(released, "the heavy attack was actually launched")
 	assert_true(contact_k >= attack.active_from() - 1 and contact_k <= attack.active_to() + 1,
-			"el fuerte: contacto en el tick %d de la acción (ventana [%d, %d) ±1)" % [
+			"the heavy: contact on tick %d of the action (window [%d, %d) +-1)" % [
 			contact_k, attack.active_from(), attack.active_to()])
 
 
@@ -330,10 +330,10 @@ func test_layer_shows_charge_then_the_heavy_with_a_crossfade() -> void:
 		if current != null and (keys_seen.is_empty() or keys_seen[keys_seen.size() - 1] != current.key):
 			keys_seen.append(current.key)
 	assert_eq(keys_seen, [&"sword_light_1", &"charge", &"sword_heavy"] as Array[StringName],
-			"ligero que se convierte en carga y se suelta como fuerte")
+			"a light attack that turns into a charge and is released as a heavy")
 
 
-# --- La reconciliación no reinicia los clips --------------------------------------------------
+# --- Reconciliation does not restart the clips --------------------------------------------------
 
 func test_replaying_ticks_does_not_restart_the_clip() -> void:
 	var driver := Driver.new()
@@ -350,18 +350,18 @@ func test_replaying_ticks_does_not_restart_the_clip() -> void:
 	var slot_before: CombatAnimationLayer.Slot = layer.get_current()
 	var time_before: float = slot_before.time_s
 	var weight_before: float = slot_before.weight
-	assert_true(weight_before > 0.9, "el clip ya está a pleno peso")
-	# La reconciliación vuelve al estado del tick 12 y repite los mismos ticks.
+	assert_true(weight_before > 0.9, "the clip is already at full weight")
+	# Reconciliation goes back to the state of tick 12 and replays the same ticks.
 	driver.c.copy_from(snapshots[11])
 	driver.tick = START_TICK + 1 + 12
 	for i: int in range(12, 24):
 		driver.step(inputs[i])
 	layer.update_local(driver.c, driver.tick, 0.0, 1.0 / _tick_rate)
 	var slot_after: CombatAnimationLayer.Slot = layer.get_current()
-	assert_true(slot_after == slot_before, "es el mismo clip: no se reinicia")
-	assert_near(slot_after.time_s, time_before, 0.0001, "en el mismo instante")
-	assert_true(slot_after.weight >= weight_before, "y el peso no se reinicia")
-	assert_null(layer.get_previous(), "sin fundido de vuelta")
+	assert_true(slot_after == slot_before, "it is the same clip: it does not restart")
+	assert_near(slot_after.time_s, time_before, 0.0001, "at the same instant")
+	assert_true(slot_after.weight >= weight_before, "and the weight does not restart")
+	assert_null(layer.get_previous(), "no fade back")
 
 
 func test_a_server_imposed_control_changes_the_key_and_crossfades() -> void:
@@ -378,13 +378,13 @@ func test_a_server_imposed_control_changes_the_key_and_crossfades() -> void:
 	driver.step()
 	layer.update_local(driver.c, driver.tick, 0.0, 1.0 / _tick_rate)
 	assert_true(layer.get_current().key == &"stagger" or layer.get_current().key == &"stagger_short"
-			or layer.get_current().key == &"stagger_head", "el tambaleo impuesto cambia el clip")
-	assert_true(layer.get_previous() == attack_slot, "y el ataque se desvanece")
+			or layer.get_current().key == &"stagger_head", "the imposed stagger changes the clip")
+	assert_true(layer.get_previous() == attack_slot, "and the attack fades out")
 	assert_true(layer.get_previous().target == 0.0)
 	for i: int in 20:
 		driver.step()
 		layer.update_local(driver.c, driver.tick, 0.0, 1.0 / _tick_rate)
-	assert_null(layer.get_previous(), "acabado el fundido, solo queda el clip nuevo")
+	assert_null(layer.get_previous(), "once the fade ends, only the new clip remains")
 
 
 func test_layer_fades_out_when_the_action_ends() -> void:
@@ -396,13 +396,13 @@ func test_layer_fades_out_when_the_action_ends() -> void:
 	for i: int in attack.total_ticks + 20:
 		driver.step()
 		layer.update_local(driver.c, driver.tick, 0.0, 1.0 / _tick_rate)
-	assert_eq(driver.c.action, CombatState.Action.NONE, "el ataque ha acabado")
-	assert_eq(layer.get_current(), null, "y la capa se ha vaciado tras el fundido de salida")
+	assert_eq(driver.c.action, CombatState.Action.NONE, "the attack has ended")
+	assert_eq(layer.get_current(), null, "and the layer has emptied after the fade-out")
 	assert_true(layer.get_slots().is_empty())
 	assert_false(layer.is_active())
 
 
-# --- Remotos ----------------------------------------------------------------------------------
+# --- Remotes ----------------------------------------------------------------------------------
 
 func _byte(action: int, phase: int, combo: int = 0) -> int:
 	return (action & 15) | (phase << 4) | (combo << 6)
@@ -412,27 +412,27 @@ func test_remote_action_byte_selects_the_clip_and_restarts_each_phase() -> void:
 	var layer := CombatAnimationLayer.new(_clips)
 	var dt: float = 1.0 / _tick_rate
 	layer.update_remote(_byte(CombatState.Action.NONE, ActionMachine.PHASE_NONE), dt)
-	assert_null(layer.get_current(), "sin acción, nada")
-	# Ligero 2 en anticipación.
+	assert_null(layer.get_current(), "without an action, nothing")
+	# Light 2 in windup.
 	layer.update_remote(_byte(CombatState.Action.LIGHT, ActionMachine.PHASE_WINDUP, 1), dt)
 	var slot: CombatAnimationLayer.Slot = layer.get_current()
 	assert_eq(slot.key, &"sword_light_2")
 	assert_eq(slot.animation_name, &"ual2/Sword_Regular_B")
 	var entry: CombatActionAnim = _clips.find(&"sword_light_2")
-	assert_near(slot.time_s, entry.windup.from_s, 0.0001, "empieza el tramo desde su principio")
+	assert_near(slot.time_s, entry.windup.from_s, 0.0001, "the segment starts from its beginning")
 	for _i: int in 5:
 		layer.update_remote(_byte(CombatState.Action.LIGHT, ActionMachine.PHASE_WINDUP, 1), dt)
-	assert_true(layer.get_current().time_s > entry.windup.from_s, "y avanza con el tiempo real")
-	# Pasa a golpe activo: el tramo activo empieza de cero, aunque lleve tiempo en la fase anterior.
+	assert_true(layer.get_current().time_s > entry.windup.from_s, "and advances with real time")
+	# Moves to active hit: the active segment starts from zero, even if it has spent time in the previous phase.
 	layer.update_remote(_byte(CombatState.Action.LIGHT, ActionMachine.PHASE_ACTIVE, 1), dt)
 	assert_eq(layer.get_current().animation_name, &"ual2/Sword_Regular_B")
 	assert_near(layer.get_current().time_s, entry.active.from_s, 0.0001)
 	layer.update_remote(_byte(CombatState.Action.LIGHT, ActionMachine.PHASE_RECOVERY, 1), dt)
-	assert_eq(layer.get_current().animation_name, &"ual2/Sword_Regular_B_Rec", "recuperación")
-	# El siguiente del combo (paso 2) es otra acción aunque la fase vuelva a la anticipación.
+	assert_eq(layer.get_current().animation_name, &"ual2/Sword_Regular_B_Rec", "recovery")
+	# The next one in the combo (step 2) is another action even if the phase goes back to windup.
 	layer.update_remote(_byte(CombatState.Action.LIGHT, ActionMachine.PHASE_WINDUP, 2), dt)
 	assert_eq(layer.get_current().key, &"sword_light_3")
-	assert_true(layer.get_previous() != null, "con fundido desde el anterior")
+	assert_true(layer.get_previous() != null, "with a fade from the previous one")
 
 
 func test_remote_dead_and_dodge_play_and_hold() -> void:
@@ -440,27 +440,27 @@ func test_remote_dead_and_dodge_play_and_hold() -> void:
 	var dt: float = 1.0 / _tick_rate
 	layer.update_remote(_byte(CombatState.Action.DODGE, ActionMachine.PHASE_NONE), dt)
 	assert_eq(layer.get_current().animation_name, &"ual1/Roll")
-	assert_false(layer.get_current().upper_body, "la esquiva es de cuerpo entero")
+	assert_false(layer.get_current().upper_body, "the dodge is full-body")
 	for _i: int in 200:
 		layer.update_remote(_byte(CombatState.Action.DEAD, ActionMachine.PHASE_NONE), dt)
 	var dead: CombatAnimationLayer.Slot = layer.get_current()
 	assert_eq(dead.animation_name, &"ual1/Death01")
-	assert_near(dead.time_s, _clips.find(&"dead").windup.to_s, 0.0001, "tumbado, en la última pose")
-	assert_near(dead.weight, 1.0, 0.0001, "a pleno peso")
+	assert_near(dead.time_s, _clips.find(&"dead").windup.to_s, 0.0001, "lying down, on the last pose")
+	assert_near(dead.weight, 1.0, 0.0001, "at full weight")
 
 
 func test_remote_ignores_garbage_actions() -> void:
 	var layer := CombatAnimationLayer.new(_clips)
 	layer.update_remote(0x0F, 0.016)
-	assert_null(layer.get_current(), "una acción fuera del enum no se anima")
+	assert_null(layer.get_current(), "an action outside the enum is not animated")
 	assert_eq(ActionMachine.action_byte(CombatState.initial(CombatCatalog.rules(), 1), 0), 0x30,
-			"y el byte de «sin acción» es 0x30")
+			"and the \"no action\" byte is 0x30")
 	layer.update_remote(0x30, 0.016)
 	assert_null(layer.get_current())
 
 
-## Un luchador del servidor en un mundo propio: es quien publica el byte de acción que ven los
-## demás clientes (el camino real, no la máquina de acciones suelta).
+## A server fighter in its own world: it is the one that publishes the action byte the
+## other clients see (the real path, not the standalone action machine).
 func _make_server_fighter(net_id: int) -> Combatant:
 	if _server_world == null:
 		_server_viewport = CombatFixture.make_world(tree.root)
@@ -470,12 +470,12 @@ func _make_server_fighter(net_id: int) -> Combatant:
 			0.0, CombatTiming.from_rules(CombatCatalog.rules()))
 
 
-## Recorre los ticks [code]START_TICK + 1[/code] a [code]START_TICK + last_rel[/code] del luchador:
-## en cada uno simula la máquina de acciones con los botones de [param buttons_at] (tick relativo
-## -> botones), llama a [param impose] (con el tick relativo, para imponer controles como hace el
-## servidor tras resolver los golpes) y publica. Un remoto recibe el byte [code]action[/code] de un
-## snapshot cada 2 ticks y avanza un tick de tiempo real por tick. Devuelve cuántas veces vuelve
-## atrás el instante del clip del remoto (un reinicio) y cuántas el de la capa local.
+## Walks ticks [code]START_TICK + 1[/code] to [code]START_TICK + last_rel[/code] of the fighter:
+## on each one it simulates the action machine with the buttons of [param buttons_at] (relative tick
+## -> buttons), calls [param impose] (with the relative tick, to impose controls as the
+## server does after resolving hits) and publishes. A remote receives the [code]action[/code] byte of a
+## snapshot every 2 ticks and advances one real-time tick per tick. Returns how many times the
+## remote's clip instant goes back (a restart) and how many times the local layer's does.
 func _count_restarts(fighter: Combatant, last_rel: int, buttons_at: Callable,
 		impose: Callable) -> Vector2i:
 	var clips: CombatClipSet = _clips
@@ -512,19 +512,19 @@ func _count_restarts(fighter: Combatant, last_rel: int, buttons_at: Callable,
 
 
 func test_a_remote_replays_a_second_dodge_chained_by_the_buffer() -> void:
-	# T2: la segunda esquiva sale del búfer en el tick en que acaba la primera, sin ningún tick en
-	# NONE: el byte de acción sería el mismo y el remoto se quedaría congelado en la última pose.
+	# T2: the second dodge comes out of the buffer on the tick the first one ends, with no tick in
+	# NONE: the action byte would be the same and the remote would stay frozen on the last pose.
 	var fighter: Combatant = _make_server_fighter(1)
 	var restarts: Vector2i = _count_restarts(fighter, 70,
 			func(rel: int) -> int: return DODGE if rel == 1 or rel == 22 else 0,
 			func(_rel: int, _combat: CombatState) -> void: pass)
-	assert_eq(restarts.y, 1, "la capa local reinicia el clip al empezar la segunda esquiva")
-	assert_eq(restarts.x, 1, "y el remoto también, aunque no vea ningún tick sin esquiva")
+	assert_eq(restarts.y, 1, "the local layer restarts the clip when the second dodge starts")
+	assert_eq(restarts.x, 1, "and the remote too, even though it sees no tick without a dodge")
 
 
 func test_a_remote_replays_a_second_control_whatever_the_gap_between_them() -> void:
-	# Dos tambaleos (o aturdimientos) seguidos comparten byte: el remoto debe reiniciar el clip en
-	# el segundo sea cual sea la separación entre ambos.
+	# Two staggers (or stuns) in a row share a byte: the remote must restart the clip on
+	# the second one whatever the separation between them.
 	var first_tick: int = 10
 	for gap: int in range(2, 12):
 		var fighter: Combatant = _make_server_fighter(10 + gap)
@@ -534,15 +534,15 @@ func test_a_remote_replays_a_second_control_whatever_the_gap_between_them() -> v
 					if rel == first_tick or rel == first_tick + gap:
 						ActionMachine.impose_stagger(combat, START_TICK + rel, START_TICK + rel + 40,
 								Vector2.ZERO))
-		assert_eq(restarts.x, 1, "separados %d ticks: el remoto reinicia el tambaleo" % gap)
-		assert_eq(restarts.y, 1, "(y el local también)")
+		assert_eq(restarts.x, 1, "%d ticks apart: the remote restarts the stagger" % gap)
+		assert_eq(restarts.y, 1, "(and the local one too)")
 	var stun_fighter: Combatant = _make_server_fighter(99)
 	var stun_restarts: Vector2i = _count_restarts(stun_fighter, 40,
 			func(_rel: int) -> int: return 0,
 			func(rel: int, combat: CombatState) -> void:
 				if rel == 10 or rel == 17:
 					ActionMachine.impose_stun(combat, START_TICK + rel, START_TICK + rel + 40))
-	assert_eq(stun_restarts.x, 1, "dos aturdimientos seguidos también")
+	assert_eq(stun_restarts.x, 1, "two stuns in a row too")
 
 
 func test_a_remote_does_not_restart_a_dodge_or_a_control_that_just_goes_on() -> void:
@@ -550,7 +550,7 @@ func test_a_remote_does_not_restart_a_dodge_or_a_control_that_just_goes_on() -> 
 	var restarts: Vector2i = _count_restarts(fighter, 40,
 			func(rel: int) -> int: return DODGE if rel == 1 else 0,
 			func(_rel: int, _combat: CombatState) -> void: pass)
-	assert_eq(restarts, Vector2i(0, 0), "una sola esquiva no se reinicia a mitad")
+	assert_eq(restarts, Vector2i(0, 0), "a single dodge does not restart halfway")
 	var staggered: Combatant = _make_server_fighter(4)
 	restarts = _count_restarts(staggered, 40,
 			func(_rel: int) -> int: return 0,
@@ -558,12 +558,12 @@ func test_a_remote_does_not_restart_a_dodge_or_a_control_that_just_goes_on() -> 
 				if rel == 5:
 					ActionMachine.impose_stagger(combat, START_TICK + rel, START_TICK + rel + 30,
 							Vector2.ZERO))
-	assert_eq(restarts, Vector2i(0, 0), "ni un solo tambaleo")
+	assert_eq(restarts, Vector2i(0, 0), "nor does a single stagger")
 
 
-# --- Pose en el esqueleto ---------------------------------------------------------------------
+# --- Pose on the skeleton ---------------------------------------------------------------------
 
-## Humanoide animado de verdad (cápsula sustituida) colgado de un personaje.
+## Truly animated humanoid (capsule replaced) hung from a character.
 func _make_visual() -> HumanoidVisual:
 	var world := Node3D.new()
 	tree.root.add_child(world)
@@ -584,7 +584,7 @@ func test_footsteps_do_not_depend_on_the_frame_rate() -> void:
 		var dt: float = 1.0 / float(fps)
 		var steps: int = 0
 		var time: float = 0.0
-		# Un pie que se levanta 0,2 m y se posa a 1,25 pasos por segundo (andar tensando el arco), 6 s.
+		# A foot that lifts 0.2 m and lands at 1.25 steps per second (walking while drawing the bow), 6 s.
 		while time < 6.0:
 			var phase: float = fmod(time * 1.25, 1.0)
 			var height: float = 0.1 + (0.2 * sin(phase / 0.4 * PI) if phase < 0.4 else 0.0)
@@ -592,9 +592,9 @@ func test_footsteps_do_not_depend_on_the_frame_rate() -> void:
 				steps += 1
 			time += dt
 		counts.append(steps)
-	assert_true(counts[0] >= 6, "se oyen pasos: %s" % [counts])
+	assert_true(counts[0] >= 6, "steps are heard: %s" % [counts])
 	for count: int in counts:
-		assert_true(absi(count - counts[1]) <= 1, "los mismos pasos a cualquier FPS: %s" % [counts])
+		assert_true(absi(count - counts[1]) <= 1, "the same steps at any FPS: %s" % [counts])
 
 
 func test_the_death_slide_is_gone_when_the_character_respawns() -> void:
@@ -623,24 +623,24 @@ func test_weapon_placeholders_hang_from_the_hands() -> void:
 			as BoneAttachment3D
 	var shield: BoneAttachment3D = skeleton.get_node_or_null(NodePath(WeaponProps.SHIELD_ATTACHMENT)) \
 			as BoneAttachment3D
-	if not assert_not_null(sword, "hay espada") or not assert_not_null(shield, "y escudo"):
+	if not assert_not_null(sword, "there is a sword") or not assert_not_null(shield, "and a shield"):
 		return
-	assert_eq(sword.bone_name, "RightHand", "la espada en la mano derecha")
-	assert_eq(shield.bone_name, "LeftHand", "y el escudo en la izquierda")
-	# La espada ya es el modelo propio (SwordModel), no la caja: dos mallas de LOD y no es provisional.
+	assert_eq(sword.bone_name, "RightHand", "the sword in the right hand")
+	assert_eq(shield.bone_name, "LeftHand", "and the shield in the left")
+	# The sword is now the own model (SwordModel), not the box: two LOD meshes and it is not provisional.
 	var blade: MeshInstance3D = sword.find_child(String(SwordModel.LOD0_NAME), true, false) as MeshInstance3D
-	if assert_not_null(blade, "la espada es el modelo con su malla de detalle completo"):
-		assert_true(blade.mesh is ArrayMesh and not (blade.mesh is BoxMesh), "una malla modelada, no una caja")
-	assert_not_null(sword.find_child(String(SwordModel.LOD1_NAME), true, false), "y la de detalle sencillo")
-	assert_null(sword.find_child("Hoja", true, false), "sin la caja de reserva")
+	if assert_not_null(blade, "the sword is the model with its full-detail mesh"):
+		assert_true(blade.mesh is ArrayMesh and not (blade.mesh is BoxMesh), "a modeled mesh, not a box")
+	assert_not_null(sword.find_child(String(SwordModel.LOD1_NAME), true, false), "and the simple-detail one")
+	assert_null(sword.find_child("Hoja", true, false), "without the fallback box")
 	var disc: MeshInstance3D = shield.find_child("Disco", true, false) as MeshInstance3D
-	assert_true(disc.mesh is CylinderMesh, "y un cilindro aplanado para el escudo")
+	assert_true(disc.mesh is CylinderMesh, "and a flattened cylinder for the shield")
 	var cylinder: CylinderMesh = disc.mesh as CylinderMesh
-	assert_true(cylinder.height < cylinder.top_radius * 0.5, "aplanado")
-	assert_false(bool(sword.get_child(0).get_meta(&"placeholder", true)), "la espada ya no es provisional")
-	assert_true(bool(shield.get_child(0).get_meta(&"placeholder", false)), "el escudo sí")
+	assert_true(cylinder.height < cylinder.top_radius * 0.5, "flattened")
+	assert_false(bool(sword.get_child(0).get_meta(&"placeholder", true)), "the sword is no longer provisional")
+	assert_true(bool(shield.get_child(0).get_meta(&"placeholder", false)), "the shield is")
 	var again: Array[BoneAttachment3D] = WeaponProps.install(skeleton)
-	assert_null(again[0], "instalarlas otra vez no duplica nada")
+	assert_null(again[0], "installing them again duplicates nothing")
 	var count: int = 0
 	for child: Node in skeleton.get_children():
 		if child is BoneAttachment3D:
@@ -653,14 +653,14 @@ func test_weapons_follow_the_hand_bone() -> void:
 	var skeleton: Skeleton3D = visual.get_skeleton()
 	var sword: BoneAttachment3D = skeleton.get_node(NodePath(WeaponProps.SWORD_ATTACHMENT)) \
 			as BoneAttachment3D
-	# La postura armada mueve la mano después de que el árbol ponga su pose: aquí solo se comprueba el agarre al
-	# hueso, así que se apaga para leer el hueso y la espada en el mismo instante.
+	# The armed stance moves the hand after the tree sets its pose: here only the grip on the
+	# bone is checked, so it is switched off to read the bone and the sword at the same instant.
 	visual.get_animator().get_stance_modifier().active = false
 	await wait_process_frames(3)
 	var hand: int = skeleton.find_bone("RightHand")
 	var hand_global: Transform3D = skeleton.global_transform * skeleton.get_bone_global_pose(hand)
 	assert_vec_near(sword.global_position, hand_global.origin, 0.05,
-			"la espada está en la mano (no en el origen)")
+			"the sword is in the hand (not at the origin)")
 	assert_true(sword.global_position.distance_to(visual.global_position) > 0.2)
 
 
@@ -672,14 +672,14 @@ func test_pose_modifier_blends_upper_body_clips_into_the_upper_bones_only() -> v
 	var modifier: CombatPoseModifier = animator.get_combat_modifier()
 	var layer: CombatAnimationLayer = animator.get_combat_layer()
 	var skeleton: Skeleton3D = visual.get_skeleton()
-	assert_not_null(modifier, "el humanoide trae su modificador de combate")
+	assert_not_null(modifier, "the humanoid brings its combat modifier")
 	assert_not_null(layer)
 	await wait_process_frames(2)
 	var chest: int = skeleton.find_bone("Chest")
 	var left_leg: int = skeleton.find_bone("LeftUpperLeg")
 	var before_chest: Quaternion = skeleton.get_bone_pose_rotation(chest)
 	var before_leg: Quaternion = skeleton.get_bone_pose_rotation(left_leg)
-	# Bloqueo (parte superior) a pleno peso.
+	# Block (upper body) at full weight.
 	var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.BLOCK,
 			ActionMachine.PHASE_NONE, 0, 1000.0)
 	layer.apply_plan(plan, 1.0)
@@ -694,14 +694,14 @@ func test_pose_modifier_blends_upper_body_clips_into_the_upper_bones_only() -> v
 				and clip.track_get_type(track) == Animation.TYPE_ROTATION_3D:
 			expected = clip.rotation_track_interpolate(track, slot.time_s)
 			found = true
-	assert_true(found, "el clip anima el pecho")
+	assert_true(found, "the clip animates the chest")
 	var after_chest: Quaternion = skeleton.get_bone_pose_rotation(chest)
-	assert_true(after_chest.angle_to(expected) < 0.001, "el pecho queda con la pose del clip")
-	assert_true(after_chest.angle_to(before_chest) > 0.001, "y cambia respecto a la locomoción")
+	assert_true(after_chest.angle_to(expected) < 0.001, "the chest keeps the clip's pose")
+	assert_true(after_chest.angle_to(before_chest) > 0.001, "and changes relative to locomotion")
 	var after_leg: Quaternion = skeleton.get_bone_pose_rotation(left_leg)
-	assert_true(after_leg.angle_to(before_leg) < 0.0001, "las piernas siguen con la locomoción")
+	assert_true(after_leg.angle_to(before_leg) < 0.0001, "the legs stay with locomotion")
 	assert_true(modifier.get_applied_count() >= 1)
-	assert_true(modifier.get_upper_body_bones().size() > 20, "la máscara de la parte superior (%d huesos)" % modifier.get_upper_body_bones().size())
+	assert_true(modifier.get_upper_body_bones().size() > 20, "the upper-body mask (%d bones)" % modifier.get_upper_body_bones().size())
 	assert_false(modifier.get_upper_body_bones().has(left_leg))
 
 
@@ -716,17 +716,17 @@ func test_pose_modifier_full_body_clip_moves_legs_and_hips_and_zero_weight_does_
 	var left_leg: int = skeleton.find_bone("LeftUpperLeg")
 	var rest_leg: Quaternion = skeleton.get_bone_pose_rotation(left_leg)
 	var rest_hips: Vector3 = skeleton.get_bone_pose_position(hips)
-	# Sin plan no se toca nada.
+	# Without a plan nothing is touched.
 	modifier._process_modification()
-	assert_true(skeleton.get_bone_pose_rotation(left_leg).angle_to(rest_leg) < 0.0001, "sin clip, sin cambios")
-	# Muerte (cuerpo entero), al final del clip: las caderas bajan al suelo.
+	assert_true(skeleton.get_bone_pose_rotation(left_leg).angle_to(rest_leg) < 0.0001, "without a clip, no changes")
+	# Death (full body), at the end of the clip: the hips drop to the ground.
 	var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.DEAD,
 			ActionMachine.PHASE_NONE, 0, 100000.0)
 	layer.apply_plan(plan, 1.0)
 	modifier._process_modification()
-	assert_true(skeleton.get_bone_pose_rotation(left_leg).angle_to(rest_leg) > 0.01, "la pierna sigue el clip")
+	assert_true(skeleton.get_bone_pose_rotation(left_leg).angle_to(rest_leg) > 0.01, "the leg follows the clip")
 	assert_true(skeleton.get_bone_pose_position(hips).y < rest_hips.y - 0.3,
-			"las caderas bajan (%.2f -> %.2f)" % [rest_hips.y, skeleton.get_bone_pose_position(hips).y])
+			"the hips drop (%.2f -> %.2f)" % [rest_hips.y, skeleton.get_bone_pose_position(hips).y])
 
 
 func test_animator_follows_the_local_combat_state_and_a_remote_byte() -> void:
@@ -734,7 +734,7 @@ func test_animator_follows_the_local_combat_state_and_a_remote_byte() -> void:
 	var animator: CharacterAnimator = visual.get_animator()
 	var character: PlayerCharacter = animator.get_character()
 	await wait_physics_frames(2)
-	# Local: se le pone un estado de ataque y el animador lo recoge.
+	# Local: it is given an attack state and the animator picks it up.
 	var driver := Driver.new()
 	driver.step()
 	driver.step(PRIMARY)
@@ -742,20 +742,20 @@ func test_animator_follows_the_local_combat_state_and_a_remote_byte() -> void:
 	character.last_input_tick = driver.tick
 	await wait_process_frames(2)
 	var local: Dictionary = animator.get_debug_state()["combat"]
-	assert_true(bool(local["active"]), "el animador anima el ataque")
+	assert_true(bool(local["active"]), "the animator animates the attack")
 	assert_eq(local["key"], &"sword_light_1")
 	assert_true(bool(local["upper_body"]))
-	# Remoto: la acción sale del byte que devuelve el origen.
+	# Remote: the action comes from the byte returned by the source.
 	var holder: Array[int] = [_byte(CombatState.Action.BLOCK, ActionMachine.PHASE_NONE)]
 	character.combat.copy_from(CombatState.initial(CombatCatalog.rules(), CombatCatalog.default_weapon_id()))
 	animator.set_remote_source(func() -> int: return holder[0])
 	await wait_process_frames(3)
 	var remote: Dictionary = animator.get_debug_state()["combat"]
-	assert_eq(remote.get("key"), &"block", "el remoto bloquea según su byte")
+	assert_eq(remote.get("key"), &"block", "the remote blocks according to its byte")
 	holder[0] = 0x30
 	await wait_physics_frames(45)
 	var idle: Dictionary = animator.get_debug_state()["combat"]
-	assert_false(bool(idle.get("active", true)), "sin acción, la capa se vacía")
+	assert_false(bool(idle.get("active", true)), "without an action, the layer empties")
 
 
 func test_remote_world_wires_the_animator_to_the_drawn_action() -> void:
@@ -777,7 +777,7 @@ func test_remote_world_wires_the_animator_to_the_drawn_action() -> void:
 	world.on_spawn(spawn)
 	var view: RemotePlayerView = world.get_view(9)
 	var visual: HumanoidVisual = view.get_body().get_node_or_null(^"Visual/HumanoidVisual") as HumanoidVisual
-	if not assert_not_null(visual, "el remoto lleva el humanoide"):
+	if not assert_not_null(visual, "the remote carries the humanoid"):
 		return
 	for tick: int in [2, 4]:
 		var record := EntityRecord.new()
@@ -792,10 +792,10 @@ func test_remote_world_wires_the_animator_to_the_drawn_action() -> void:
 	world.draw(3.0, 0.016)
 	await wait_process_frames(3)
 	var combat: Dictionary = visual.get_animator().get_debug_state()["combat"]
-	assert_eq(combat.get("key"), &"dodge", "el animador del remoto lee el byte action de su registro")
+	assert_eq(combat.get("key"), &"dodge", "the remote's animator reads the action byte of its record")
 
 
-## Reloj de dibujo fijado desde la prueba.
+## Draw clock set from the test.
 class RemoteWorldClock extends InterpolationClock:
 	var render: float = 0.0
 
@@ -803,69 +803,69 @@ class RemoteWorldClock extends InterpolationClock:
 		return render
 
 
-# --- Fase 4: habilidades, arco, derribado (provisional, docs/habilidades.md, sección 6.6) ----------
+# --- Phase 4: abilities, bow, knockdown (provisional, docs/habilidades.md, section 6.6) ----------
 
 const BOW_CLIPS_PATH: String = "res://data/animation/bow_clips.tres"
 
 
 func test_each_weapon_has_its_clip_set_with_the_phase_4_entries() -> void:
 	var bow_clips: CombatClipSet = load(BOW_CLIPS_PATH) as CombatClipSet
-	if not assert_not_null(bow_clips, "el arco tiene su juego de clips"):
+	if not assert_not_null(bow_clips, "the bow has its clip set"):
 		return
 	var sword_id: int = CombatCatalog.weapon_id(&"sword_shield")
 	var bow_id: int = CombatCatalog.weapon_id(&"bow")
-	assert_eq(CombatAnimationLayer.clips_for(bow_id, _clips), bow_clips, "el de su arma")
+	assert_eq(CombatAnimationLayer.clips_for(bow_id, _clips), bow_clips, "that of its weapon")
 	assert_eq(CombatAnimationLayer.clips_for(sword_id, null).resource_path, CLIPS_PATH)
 	var npc: int = CombatCatalog.weapon_id(&"npc_guard")
 	var npc_clips: CombatClipSet = CombatAnimationLayer.clips_for(npc, _clips)
 	assert_true(npc_clips != _clips and npc_clips.resource_path.ends_with("npc_guard_clips.tres"),
-			"un PNJ usa su propio juego (ART-47)")
-	assert_eq(CombatAnimationLayer.clips_for(0, _clips), _clips, "un arma desconocida usa el de por defecto")
+			"an NPC uses its own set (ART-47)")
+	assert_eq(CombatAnimationLayer.clips_for(0, _clips), _clips, "an unknown weapon uses the default one")
 	var common: Array[StringName] = [&"drink", &"swap", &"downed", &"downed_crawl", &"revive", &"execute",
 			&"get_up", &"dodge", &"stagger", &"stun", &"dead"]
 	for key: StringName in common + ([&"shield_bash", &"shield_rush", &"shield_wall", &"block", &"charge"]
 			as Array[StringName]):
-		assert_not_null(_clips.find(key), "espada y escudo: %s" % key)
+		assert_not_null(_clips.find(key), "sword and shield: %s" % key)
 	for key: StringName in common + ([&"bow_quick", &"bow_drawn", &"bow_volley", &"bow_slowing_shot",
 			&"bow_evasive_shot", &"charge"] as Array[StringName]):
-		assert_not_null(bow_clips.find(key), "arco: %s" % key)
-	assert_null(bow_clips.find(&"block"), "el arco no bloquea")
-	assert_true(_clips.find(&"downed_crawl").loop, "arrastrarse se repite")
-	assert_true(_clips.find(&"downed").loop, "derribado quieto, de rodillas y en bucle (ART-51)")
-	# Todos los tramos del arco existen y caben en su clip (los de la espada ya los mira otra prueba).
+		assert_not_null(bow_clips.find(key), "bow: %s" % key)
+	assert_null(bow_clips.find(&"block"), "the bow does not block")
+	assert_true(_clips.find(&"downed_crawl").loop, "crawling repeats")
+	assert_true(_clips.find(&"downed").loop, "knocked down and still, on the knees and looping (ART-51)")
+	# All the bow's segments exist and fit in their clip (the sword's are already checked by another test).
 	for entry: CombatActionAnim in bow_clips.entries:
 		for segment: CombatClipSegment in [entry.windup, entry.active, entry.recovery]:
 			if segment == null:
 				continue
 			var animation: Animation = bow_clips.get_animation(segment.animation)
-			if not assert_not_null(animation, "%s: el clip %s existe" % [entry.key, segment.animation]):
+			if not assert_not_null(animation, "%s: the clip %s exists" % [entry.key, segment.animation]):
 				continue
 			assert_true(segment.from_s >= 0.0 and segment.to_s <= animation.length + 0.0001
-					and segment.to_s > segment.from_s, "%s: el tramo cabe en %s" % [entry.key, segment.animation])
+					and segment.to_s > segment.from_s, "%s: the segment fits in %s" % [entry.key, segment.animation])
 	for name_of_attack: StringName in [&"bow_quick", &"bow_drawn"]:
 		var attack: AttackTicks = _attack(name_of_attack)
 		var contact: float = CombatClipPlanner.contact_tick(bow_clips.find(name_of_attack), attack)
 		assert_true(contact >= float(attack.active_from()) - 1.0 and contact <= float(attack.active_to()) + 1.0,
-				"%s: el disparo cae en su tick activo (%.1f)" % [name_of_attack, contact])
+				"%s: the shot falls on its active tick (%.1f)" % [name_of_attack, contact])
 
 
 func test_the_planner_animates_abilities_potions_swap_and_downed() -> void:
 	var bash: AbilityTicks = CombatCatalog.ability(CombatCatalog.ability_id(&"shield_bash"))
 	var potion: int = CombatCatalog.consumable_ids()[1]
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.ABILITY, 0, bash.id), &"shield_bash",
-			"una habilidad, por su nombre")
+			"an ability, by its name")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.ABILITY, 0, potion), &"drink",
-			"una poción, beber")
+			"a potion, drinking")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.SWAP, 0), &"swap")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.DOWNED, 0), &"downed")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.DOWNED, 0, 0, true), &"downed_crawl",
-			"derribado y moviéndose, se arrastra")
+			"knocked down and moving, it crawls")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.REVIVE, 0), &"revive")
 	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.EXECUTE, 0), &"execute")
-	assert_eq(CombatClipPlanner.ability_of_slot(_weapon, 0), bash.id, "la ranura 1 del byte de un remoto")
+	assert_eq(CombatClipPlanner.ability_of_slot(_weapon, 0), bash.id, "slot 1 of a remote's byte")
 	assert_eq(CombatClipPlanner.ability_of_slot(_weapon, 3), CombatCatalog.consumable_ids()[0],
-			"la 3 es beber")
-	# Cada fase de la habilidad se estira a la suya: lanzamiento, activo y recuperación.
+			"slot 3 is drinking")
+	# Each phase of the ability is stretched to its own: cast, active and recovery.
 	var entry: CombatActionAnim = _clips.find(&"shield_bash")
 	var lengths: Array[int] = [bash.cast_ticks, bash.active_ticks, bash.recovery_ticks]
 	for phase: int in 3:
@@ -873,16 +873,16 @@ func test_the_planner_animates_abilities_potions_swap_and_downed() -> void:
 				phase, 0, 0.0, 0, bash.id)
 		assert_eq(plan.animation, entry.segment_for_phase(phase).animation)
 		assert_near(plan.duration_s, float(lengths[phase]) / _tick_rate, 0.0001,
-				"fase %d del golpe de escudo, en su duración" % phase)
+				"phase %d of the shield bash, in its duration" % phase)
 	var swap: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.SWAP,
 			ActionMachine.PHASE_NONE, 0, 0.0)
 	assert_near(swap.duration_s, float(CombatCatalog.tables().swap_ticks) / _tick_rate, 0.0001,
-			"el cambio de arma dura sus 0,4 s")
+			"the weapon swap lasts its 0.4 s")
 	var revive: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.REVIVE,
 			ActionMachine.PHASE_NONE, 0, 0.0)
 	assert_eq(revive.animation, &"ual1/Fixing_Kneeling")
 	assert_near(revive.duration_s, float(CombatCatalog.tables().revive_ticks) / _tick_rate, 0.0001)
-	# Arrastrarse se repite: pasada su duración vuelve al principio.
+	# Crawling repeats: past its duration it goes back to the start.
 	var crawl: CombatActionAnim = _clips.find(&"downed_crawl")
 	var crawl_ticks: float = crawl.duration_s * _tick_rate
 	var later: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.DOWNED,
@@ -894,7 +894,7 @@ func test_the_layer_uses_the_weapons_clips_the_remote_ability_and_gets_up_after_
 	var layer := CombatAnimationLayer.new(_clips)
 	var dt: float = 1.0 / _tick_rate
 	var bow: int = CombatCatalog.weapon_id(&"bow")
-	# Local con el arco: el disparo rápido sale de su juego.
+	# Local with the bow: the quick shot comes from its set.
 	var state := CombatState.initial(CombatCatalog.rules(), bow)
 	state.action = CombatState.Action.LIGHT
 	state.action_id = CombatCatalog.attack_id(&"bow_quick")
@@ -902,25 +902,25 @@ func test_the_layer_uses_the_weapons_clips_the_remote_ability_and_gets_up_after_
 	layer.update_local(state, START_TICK + 1, 0.0, dt)
 	assert_eq(layer.get_current().key, &"bow_quick")
 	assert_eq(layer.get_current().animation_name, &"ual1/Pistol_Aim_Neutral")
-	# Un remoto con la espada y escudo en la ranura 2 de su byte: la embestida.
+	# A remote with the sword and shield in slot 2 of its byte: the charge.
 	var remote := CombatAnimationLayer.new(_clips)
 	remote.update_remote(_byte(CombatState.Action.ABILITY, ActionMachine.PHASE_ACTIVE, 1), dt,
 			CombatCatalog.weapon_id(&"sword_shield"))
-	assert_eq(remote.get_current().key, &"shield_rush", "la habilidad de la ranura del byte")
-	assert_false(remote.get_current().upper_body, "de cuerpo entero")
+	assert_eq(remote.get_current().key, &"shield_rush", "the ability of the byte's slot")
+	assert_false(remote.get_current().upper_body, "full-body")
 	remote.update_remote(_byte(CombatState.Action.ABILITY, ActionMachine.PHASE_WINDUP, 3), dt)
-	assert_eq(remote.get_current().key, &"drink", "la ranura 3 es beber")
-	# Derribado, levantado y de pie: se levanta una vez.
+	assert_eq(remote.get_current().key, &"drink", "slot 3 is drinking")
+	# Knocked down, picked up and standing: it gets up once.
 	for _i: int in 10:
 		remote.update_remote(_byte(CombatState.Action.DOWNED, ActionMachine.PHASE_NONE), dt, 0, true)
 	assert_eq(remote.get_current().key, &"downed_crawl")
 	remote.update_remote(_byte(CombatState.Action.NONE, ActionMachine.PHASE_NONE), dt)
-	assert_eq(remote.get_current().key, &"get_up", "lo han levantado: se levanta")
+	assert_eq(remote.get_current().key, &"get_up", "they have lifted him: he gets up")
 	for _i: int in roundi(_clips.find(&"get_up").duration_s * _tick_rate) + 2:
 		remote.update_remote(_byte(CombatState.Action.NONE, ActionMachine.PHASE_NONE), dt)
-	assert_eq(remote.get_plan(), null, "y luego, nada")
+	assert_eq(remote.get_plan(), null, "and then, nothing")
 	remote.update_remote(0x0E, dt)
-	assert_null(remote.get_plan(), "la acción 14 (libre) no se anima")
+	assert_null(remote.get_plan(), "action 14 (free) is not animated")
 
 
 func test_the_props_follow_the_weapon_in_the_hands() -> void:
@@ -934,22 +934,22 @@ func test_the_props_follow_the_weapon_in_the_hands() -> void:
 	var left: BoneAttachment3D = skeleton.get_node(NodePath(WeaponProps.SHIELD_ATTACHMENT)) as BoneAttachment3D
 	await wait_process_frames(2)
 	assert_eq(animator.get_shown_weapon(), character.combat.weapon_id)
-	assert_true(sword.visible, "con la espada y escudo, la espada")
-	assert_null(left.get_node_or_null(NodePath(WeaponProps.BOW_MESH)), "el arco aún no existe")
-	# Cambia al arco (el estado predicho): se ve el arco y no la espada ni el escudo.
+	assert_true(sword.visible, "with the sword and shield, the sword")
+	assert_null(left.get_node_or_null(NodePath(WeaponProps.BOW_MESH)), "the bow does not exist yet")
+	# Switches to the bow (the predicted state): the bow is shown and neither the sword nor the shield.
 	character.combat.weapon_id = CombatCatalog.weapon_id(&"bow")
 	await wait_process_frames(2)
 	assert_eq(animator.get_shown_weapon(), CombatCatalog.weapon_id(&"bow"))
-	assert_false(sword.visible, "sin espada")
+	assert_false(sword.visible, "no sword")
 	var bow_node: Node3D = left.get_node_or_null(NodePath(WeaponProps.BOW_MESH)) as Node3D
-	if not assert_not_null(bow_node, "el arco provisional en la mano izquierda"):
+	if not assert_not_null(bow_node, "the provisional bow in the left hand"):
 		return
 	assert_true(bow_node.visible)
-	assert_false((left.get_node(NodePath(WeaponProps.SHIELD_MESH)) as Node3D).visible, "sin escudo")
-	assert_true(bool(bow_node.get_meta(&"placeholder", false)), "marcado como provisional")
-	# Un remoto: el arma sale de su vista (pareja y bit de ranura).
+	assert_false((left.get_node(NodePath(WeaponProps.SHIELD_MESH)) as Node3D).visible, "no shield")
+	assert_true(bool(bow_node.get_meta(&"placeholder", false)), "marked as provisional")
+	# A remote: the weapon comes from its view (pair and slot bit).
 	var holder: Array[int] = [CombatCatalog.weapon_id(&"sword_shield")]
 	animator.set_remote_source(func() -> int: return 0x30, func() -> int: return holder[0])
 	await wait_process_frames(2)
-	assert_true(sword.visible, "el remoto lleva la espada")
+	assert_true(sword.visible, "the remote carries the sword")
 	assert_false(bow_node.visible)

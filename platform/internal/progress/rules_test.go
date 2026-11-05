@@ -52,25 +52,25 @@ func TestSharedAppearanceCasesWithGodot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cases) < 30 {
-		t.Fatalf("solo %d casos", len(cases))
+		t.Fatalf("only %d cases", len(cases))
 	}
 	r := embedded(t)
 	validCount := 0
 	for _, c := range cases {
 		b, err := base64.StdEncoding.DecodeString(c.Appearance)
 		if err != nil {
-			t.Errorf("%s: %q no es base64: %v", c.Case, c.Appearance, err)
+			t.Errorf("%s: %q is not base64: %v", c.Case, c.Appearance, err)
 			continue
 		}
 		if got := valid(r, c.Realm, c.RaceID, b); got != c.Valid {
-			t.Errorf("caso «%s» (%s, reino %d, %s): %v, se esperaba %v", c.Case, c.Appearance, c.Realm, c.RaceID, got, c.Valid)
+			t.Errorf("case \"%s\" (%s, realm %d, %s): %v, expected %v", c.Case, c.Appearance, c.Realm, c.RaceID, got, c.Valid)
 		}
 		if c.Valid {
 			validCount++
 		}
 	}
 	if validCount < 5 || validCount == len(cases) {
-		t.Errorf("%d casos válidos de %d: hacen falta de los dos", validCount, len(cases))
+		t.Errorf("%d valid cases out of %d: both kinds are needed", validCount, len(cases))
 	}
 }
 
@@ -93,7 +93,7 @@ func TestPartOfAnotherBody(t *testing.T) {
 	}
 	for _, c := range cases {
 		if got := r.ValidAppearance(1, "race_test", c.b); got != c.valid {
-			t.Errorf("%s: %v, se esperaba %v", c.name, got, c.valid)
+			t.Errorf("%s: %v, expected %v", c.name, got, c.valid)
 		}
 	}
 }
@@ -131,22 +131,22 @@ func TestEmbeddedRules(t *testing.T) {
 		realm int16
 	}{{"race_vardheim", 1}, {"race_solmarch", 2}, {"race_askarra", 3}}
 	if len(r.Races) != len(wantRaces) {
-		t.Fatalf("%d razas, se esperaban %d", len(r.Races), len(wantRaces))
+		t.Fatalf("%d races, expected %d", len(r.Races), len(wantRaces))
 	}
 	for i, w := range wantRaces {
 		if r.Races[i].ID != w.id || r.Races[i].Realm != w.realm || r.RaceIndex(w.id) != i {
-			t.Errorf("raza %d: %+v, se esperaba %s del reino %d", i, r.Races[i], w.id, w.realm)
+			t.Errorf("race %d: %+v, expected %s of realm %d", i, r.Races[i], w.id, w.realm)
 		}
 	}
 	if r.RaceIndex("race_elf") != -1 {
-		t.Error("RaceIndex de una raza que no existe")
+		t.Error("RaceIndex of a race that does not exist")
 	}
 	if r.LevelCurve.LevelCap != 40 || len(r.LevelCurve.XPToNext) != 39 {
-		t.Fatalf("curva: tope %d con %d valores", r.LevelCurve.LevelCap, len(r.LevelCurve.XPToNext))
+		t.Fatalf("curve: cap %d with %d values", r.LevelCurve.LevelCap, len(r.LevelCurve.XPToNext))
 	}
 	for level, want := range map[int]int64{1: 0, 2: 500, 6: 5350, 11: 25060, 21: 140320, 40: 783780, 41: 783780, 0: 0} {
 		if got := r.TotalTo(level); got != want {
-			t.Errorf("TotalTo(%d) = %d, se esperaba %d", level, got, want)
+			t.Errorf("TotalTo(%d) = %d, expected %d", level, got, want)
 		}
 	}
 	for level := 1; level <= 40; level++ {
@@ -155,24 +155,24 @@ func TestEmbeddedRules(t *testing.T) {
 		}
 		if level > 1 {
 			if got := r.LevelFor(r.TotalTo(level) - 1); got != level-1 {
-				t.Errorf("LevelFor(TotalTo(%d) − 1) = %d", level, got)
+				t.Errorf("LevelFor(TotalTo(%d) - 1) = %d", level, got)
 			}
 		}
 	}
 	if r.LevelFor(12345) != 8 || r.LevelFor(-1) != 1 || r.LevelFor(1<<40) != 40 {
-		t.Errorf("LevelFor: 12345 → %d, −1 → %d, 2^40 → %d", r.LevelFor(12345), r.LevelFor(-1), r.LevelFor(1<<40))
+		t.Errorf("LevelFor: 12345 -> %d, -1 -> %d, 2^40 -> %d", r.LevelFor(12345), r.LevelFor(-1), r.LevelFor(1<<40))
 	}
 	if len(r.Currencies) != 2 || r.Currencies[0].Cap != 1_000_000_000 || r.Currencies[1].ID != "merits" {
-		t.Errorf("monedas: %+v", r.Currencies)
+		t.Errorf("currencies: %+v", r.Currencies)
 	}
 	if r.Reasons.Codes["reversal"] != 128 || r.Reasons.OpKinds["gm"] != 4 || r.Reasons.Ranges.Sink.Min != 64 {
-		t.Errorf("motivos: %+v", r.Reasons)
+		t.Errorf("reasons: %+v", r.Reasons)
 	}
 	if r.Containers.Bag.DefaultSlots != 30 || r.Containers.Equipment.OpenSlots != 2 || len(r.Containers.Open) != 2 {
-		t.Errorf("contenedores: %+v", r.Containers)
+		t.Errorf("containers: %+v", r.Containers)
 	}
 	if r.Combat.HealthMax != 1000 {
-		t.Errorf("vida máxima %d", r.Combat.HealthMax)
+		t.Errorf("max health %d", r.Combat.HealthMax)
 	}
 }
 
@@ -186,21 +186,21 @@ func TestEmbeddedItemsAndTemplates(t *testing.T) {
 		{ID: "sword_shield_vado", Category: progress.CategoryWeapon, EquipSlot: progress.SlotWeapon, MaxStack: 1, RequiredLevel: 1},
 	}
 	if len(r.Items) != len(want) {
-		t.Fatalf("%d objetos, se esperaban %d: %+v", len(r.Items), len(want), r.Items)
+		t.Fatalf("%d items, expected %d: %+v", len(r.Items), len(want), r.Items)
 	}
 	for i, w := range want {
 		got, ok := r.Item(w.ID)
 		if !ok || got != w || r.Items[i] != w {
-			t.Errorf("objeto %d: %+v (Item: %+v, %v), se esperaba %+v", i, r.Items[i], got, ok, w)
+			t.Errorf("item %d: %+v (Item: %+v, %v), expected %+v", i, r.Items[i], got, ok, w)
 		}
 	}
 	if _, ok := r.Item("potion_regen"); ok {
-		t.Error("Item de un objeto que no existe")
+		t.Error("Item of an item that does not exist")
 	}
 	if len(r.Templates) != 2 || r.Templates[0].ID != "marksman" || r.Templates[1].ID != "squire" ||
 		strings.Join(r.Templates[0].Weapons, ",") != "bow_vado,sword_shield_vado" ||
 		strings.Join(r.Templates[1].Weapons, ",") != "sword_shield_vado" {
-		t.Errorf("plantillas: %+v", r.Templates)
+		t.Errorf("templates: %+v", r.Templates)
 	}
 	for id, want := range map[string]bool{"marksman": true, "squire": true, "": false, "npc_guard": false, "Squire": false} {
 		if got := r.SelectableTemplate(id); got != want {
@@ -215,7 +215,7 @@ func TestEachIndexOutOfRange(t *testing.T) {
 	r := embedded(t)
 	base := [8]byte{1, 0, 0, 1, 1, 0, 2, 1}
 	if !r.ValidAppearance(1, "race_vardheim", base) {
-		t.Fatal("la base no vale")
+		t.Fatal("the base is not valid")
 	}
 	a := r.Appearance
 	// The first value that no longer exists in each byte (hair and beard go with +1).
@@ -226,7 +226,7 @@ func TestEachIndexOutOfRange(t *testing.T) {
 			b := base
 			b[i] = v
 			if r.ValidAppearance(1, "race_vardheim", b) {
-				t.Errorf("byte %d = %d vale", i, v)
+				t.Errorf("byte %d = %d is valid", i, v)
 			}
 		}
 	}
@@ -234,12 +234,12 @@ func TestEachIndexOutOfRange(t *testing.T) {
 		b := base
 		b[7] = v
 		if r.ValidAppearance(1, "race_vardheim", b) {
-			t.Errorf("byte 7 = %#x vale", v)
+			t.Errorf("byte 7 = %#x is valid", v)
 		}
 	}
 	for _, realm := range []int16{0, 2, 3, 4, -1} {
 		if r.ValidAppearance(realm, "race_vardheim", base) {
-			t.Errorf("vale en el reino %d", realm)
+			t.Errorf("valid in realm %d", realm)
 		}
 	}
 }
@@ -345,20 +345,20 @@ func TestLoadRulesRejectsBrokenFiles(t *testing.T) {
 	for name, text := range cases {
 		_, err := progress.LoadRules(text)
 		if err == nil {
-			t.Errorf("%s: se esperaba un error", name)
+			t.Errorf("%s: expected an error", name)
 			continue
 		}
 		t.Logf("%s: %v", name, strings.ReplaceAll(err.Error(), "\n", " | "))
 	}
 	// Sections that this package does not read (those from platform.md, those of later phases) do not interfere.
 	if _, err := progress.LoadRules(mutate(func(m map[string]any) { m["vendors"] = []any{map[string]any{"id": "x"}} })); err != nil {
-		t.Errorf("una sección más no debería romper nada: %v", err)
+		t.Errorf("one more section should not break anything: %v", err)
 	}
 	// With no selectable templates the file is valid (no creation would pass P7's validation).
 	if _, err := progress.LoadRules(mutate(func(m map[string]any) { m["starter_templates"] = []any{} })); err != nil {
-		t.Errorf("starter_templates vacía: %v", err)
+		t.Errorf("empty starter_templates: %v", err)
 	}
 	if _, err := progress.LoadRules(mutate(func(map[string]any) {})); err != nil {
-		t.Errorf("el archivo pasado por map[string]any sigue valiendo: %v", err)
+		t.Errorf("the file passed through map[string]any is still valid: %v", err)
 	}
 }

@@ -1,11 +1,11 @@
 class_name ZonePlaces
 extends RefCounted
-## Topónimos de cada zona para la ventana del mapa (UI-53): los lugares con nombre que no son fuerte, campamento ni
-## paso (los puentes, el vado, las ruinas de Eld, la capilla, los bosques, las sierras y el río). Son datos, no
-## escena: el jugador los lee en el mapa y nada del juego depende de ellos. Los puntos llevan icono y las zonas
-## ([member MapLandmark.area]) solo el nombre. Solo cliente.
+## Place names of each zone for the map window (UI-53): the named places that are not a fort, camp or
+## pass (the bridges, the ford, the ruins of Eld, the chapel, the forests, the ranges and the river). They are data, not
+## a scene: the player reads them on the map and nothing in the game depends on them. Points carry an icon and areas
+## ([member MapLandmark.area]) only the name. Client only.
 
-## Topónimos del Vado Gris: [code][nombre, x, z, es_zona][/code], con el norte en -Z.
+## Place names of Vado Gris: [code][name, x, z, is_area][/code], with north at -Z.
 const VADO_GRIS: Array = [
 	["Puente del Norte", 0.0, -62.0, false],
 	["Puente del Sur", 0.0, 62.0, false],
@@ -20,7 +20,7 @@ const VADO_GRIS: Array = [
 ]
 
 
-## Topónimos de la zona [param zone_id] (vacío si no tiene).
+## Place names of zone [param zone_id] (empty if it has none).
 static func for_zone(zone_id: StringName) -> Array[MapLandmark]:
 	var places: Array[MapLandmark] = []
 	if zone_id != &"vado_gris":

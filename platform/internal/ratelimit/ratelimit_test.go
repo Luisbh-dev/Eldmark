@@ -16,10 +16,10 @@ func TestLRUForgetsTheOldest(t *testing.T) {
 	}
 	l.Put("c", 3) // forgets b, which is the least recent
 	if _, ok := l.Get("b"); ok {
-		t.Fatal("b tenía que olvidarse")
+		t.Fatal("b had to be forgotten")
 	}
 	if _, ok := l.Get("a"); !ok || l.Len() != 2 {
-		t.Fatal("a sigue")
+		t.Fatal("a remains")
 	}
 	l.Delete("a")
 	if _, ok := l.Get("a"); ok || l.Len() != 1 {
@@ -32,21 +32,21 @@ func TestBucket(t *testing.T) {
 	l := New(10, time.Minute, 10, 100)
 	for i := 0; i < 10; i++ {
 		if ok, _ := l.Allow("ip", t0); !ok {
-			t.Fatalf("intento %d", i+1)
+			t.Fatalf("attempt %d", i+1)
 		}
 	}
 	ok, wait := l.Allow("ip", t0)
 	if ok || wait != 6*time.Second {
-		t.Fatalf("el 11.º: %v %s", ok, wait)
+		t.Fatalf("the 11th: %v %s", ok, wait)
 	}
 	if ok, _ := l.Allow("otra", t0); !ok {
-		t.Fatal("cada clave tiene su cubo")
+		t.Fatal("each key has its own bucket")
 	}
 	if ok, _ := l.Allow("ip", t0.Add(6*time.Second)); !ok {
-		t.Fatal("a los 6 s hay otra ficha")
+		t.Fatal("at 6 s there is another token")
 	}
 	if ok, _ := l.Allow("ip", t0.Add(6*time.Second)); ok {
-		t.Fatal("y solo una")
+		t.Fatal("and only one")
 	}
 }
 
@@ -57,7 +57,7 @@ func TestSlowBucket(t *testing.T) {
 		l.Allow("ip", t0)
 	}
 	if ok, wait := l.Allow("ip", t0); ok || wait != 20*time.Minute {
-		t.Fatalf("el cuarto: %v %s", ok, wait)
+		t.Fatalf("the fourth: %v %s", ok, wait)
 	}
 	if RetryAfterSeconds(20*time.Minute) != 1200 || RetryAfterSeconds(1) != 1 || RetryAfterSeconds(0) != 1 {
 		t.Fatal("RetryAfterSeconds")
@@ -73,15 +73,15 @@ func TestAllowAllIsAllOrNothing(t *testing.T) {
 		}
 	}
 	if ok, _ := AllowAll(t0, Key{perAccount, "a"}, Key{perIP, "ip"}); ok {
-		t.Fatal("la cuenta ya no tiene")
+		t.Fatal("the account has none left")
 	}
 	// The IP did not spend a token on the rejected attempt: it has 7 left.
 	for i := 0; i < 7; i++ {
 		if ok, _ := AllowAll(t0, Key{perAccount, string(rune('b' + i))}, Key{perIP, "ip"}); !ok {
-			t.Fatalf("la IP tenía 7 fichas; falla en la %d", i+1)
+			t.Fatalf("the IP had 7 tokens; it fails on number %d", i+1)
 		}
 	}
 	if ok, _ := AllowAll(t0, Key{perAccount, "z"}, Key{perIP, "ip"}); ok {
-		t.Fatal("la IP ya no tiene")
+		t.Fatal("the IP has none left")
 	}
 }

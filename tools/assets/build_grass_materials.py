@@ -1,7 +1,7 @@
-"""Genera los materiales de hierba del instanciador (ART-59): assets/materials/vegetation/grass_blade_*.tres.
+"""Generates the instancer's grass materials (ART-59): assets/materials/vegetation/grass_blade_*.tres.
 
-Cada uno usa grass_blade.gdshader con la base del color del terreno de su zona (verde de Eldrun,
-seca, vivaz de Solmarch, escarchada de Vardheim) y la altura de su malla. Uso: python tools/assets/build_grass_materials.py
+Each one uses grass_blade.gdshader with the base of its zone's terrain color (green for Eldrun,
+dry, vivid for Solmarch, frosted for Vardheim) and its mesh's height. Usage: python tools/assets/build_grass_materials.py
 """
 from pathlib import Path
 

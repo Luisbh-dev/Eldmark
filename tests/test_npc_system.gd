@@ -1,9 +1,9 @@
 extends TestCase
-## Pruebas del [NpcSpawnerSystem] (MUN-09 a MUN-12, GUE-11; docs/fuerte.md 4.3): los generadores de la zona crean a los
-## Huecos, al Capitán del Vado, a la guarnición del dueño y a los Guardianes de la Puerta; los PNJ reaparecen en el tick
-## exacto, se retiran al desactivarse el generador, el controlador de la fortaleza se entera de su capitán y de sus
-## defensores y los Huecos vuelven enteros si nadie se acerca en dos minutos. Unas pruebas usan el Vado Gris de verdad
-## (su malla, sus marcadores y su fuerte) y otras la zona plana con una fortaleza de tiempos cortos.
+## Tests of the [NpcSpawnerSystem] (MUN-09 to MUN-12, GUE-11; docs/fuerte.md 4.3): the zone's spawners create the
+## Hollow, the Ford Captain, the owner's garrison and the Gate Guardians; NPCs respawn on the exact
+## tick, are withdrawn when the spawner is deactivated, the fortress controller learns of its captain and its
+## defenders, and the Hollow return at full health if nobody approaches within two minutes. Some tests use the real Vado Gris
+## (its mesh, its markers and its fort) and others the flat zone with a short-timed fortress.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -24,8 +24,8 @@ func after_each() -> void:
 
 # --- Ayudantes (zona plana con una fortaleza de pruebas) ---------------------------------------
 
-## Fortaleza de pruebas con dos Huecos, el Capitán y, si [param guardian_respawn_s] es mayor que 0, un Guardián
-## de Vardheim con esa reaparición.
+## Test fortress with two Hollow, the Captain and, if [param guardian_respawn_s] is greater than 0, a Guardian
+## of Vardheim with that respawn.
 func _start_fort_zone(guardian_respawn_s: float = 0.0, captain_respawn_s: float = 30.0) -> void:
 	await _rig.start_flat(tree, func(world: Node3D) -> void:
 		var definition: FortressDefinition = FortressFixture.make_definition()
@@ -39,7 +39,7 @@ func _start_fort_zone(guardian_respawn_s: float = 0.0, captain_respawn_s: float 
 		if guardian_respawn_s > 0.0:
 			NpcRig.add_spawner(world, "Guardian", &"gate_guardian", Vector3(-100.0, 0.05, 0.0), 0.0,
 					{&"respawn_s": guardian_respawn_s, &"realm": &"vardheim"}))
-	assert_true(await _rig.advance_until_populated(), "los PNJ aparecen")
+	assert_true(await _rig.advance_until_populated(), "the NPCs appear")
 
 
 func _kill(net_id: int) -> void:
@@ -69,40 +69,40 @@ func _entity_exists(net_id: int) -> bool:
 	return _rig.server.get_registry().get_entity(net_id) != null
 
 
-# --- La zona de verdad ------------------------------------------------------------------------
+# --- The real zone ----------------------------------------------------------------------------
 
 func test_the_vado_gris_spawns_the_hollows_the_captain_and_the_gate_guardians() -> void:
 	await _rig.start(tree)
 	var npcs: NpcSpawnerSystem = _rig.npcs()
-	if not assert_not_null(npcs, "el servidor crea el sistema de PNJ"):
+	if not assert_not_null(npcs, "the server creates the NPC system"):
 		return
-	assert_eq(npcs.get_slot_count(), 4 + 1 + 4 + 5, "4 Huecos, el Capitán, 4 Guardianes y 5 puestos de la guarnición")
-	assert_true(await _rig.advance_until_populated(), "los PNJ aparecen cuando la navegación está lista")
-	assert_true(npcs.is_ready() and npcs.get_navigation() != null, "con la malla de navegación montada")
+	assert_eq(npcs.get_slot_count(), 4 + 1 + 4 + 5, "4 Hollow, the Captain, 4 Guardians and 5 garrison posts")
+	assert_true(await _rig.advance_until_populated(), "the NPCs appear when navigation is ready")
+	assert_true(npcs.is_ready() and npcs.get_navigation() != null, "with the navigation mesh mounted")
 	assert_eq(_rig.alive_of(&"hollow").size(), 4, "cuatro Huecos")
-	assert_eq(_rig.alive_of(&"ford_captain").size(), 1, "el Capitán del Vado")
-	assert_eq(_rig.alive_of(&"gate_guardian").size(), 4, "dos Guardianes por campamento")
+	assert_eq(_rig.alive_of(&"ford_captain").size(), 1, "the Ford Captain")
+	assert_eq(_rig.alive_of(&"gate_guardian").size(), 4, "two Guardians per camp")
 	assert_eq(npcs.get_alive_count(), 9)
 	assert_eq(_rig.alive_of(&"realm_guard").size() + _rig.alive_of(&"realm_captain").size(), 0,
-			"la guarnición del dueño no existe con el fuerte neutral")
+			"the owner's garrison does not exist with the fort neutral")
 	var captain_id: int = _rig.alive_of(&"ford_captain")[0]
 	assert_eq(_rig.server.get_fortresses().get_captain_net_id(_rig.FORTRESS), captain_id,
-			"la fortaleza conoce a su capitán")
+			"the fortress knows its captain")
 	assert_eq(_rig.entity(captain_id).display_name, "Capitán del Vado")
 	assert_eq(_rig.combatant(captain_id).max_health, NpcCatalog.get_definition(&"ford_captain").max_health,
-			"con la vida de su definición")
+			"with the health from its definition")
 	assert_eq(_rig.entity(captain_id).realm, 0, "neutral")
 	var camps: Dictionary = {VARDHEIM: 0, SOLMARCH: 0}
 	for guardian_id: int in _rig.alive_of(&"gate_guardian"):
-		assert_true(_rig.combatant(guardian_id).ignores_safe_area, "los Guardianes ignoran la zona segura")
+		assert_true(_rig.combatant(guardian_id).ignores_safe_area, "the Guardians ignore the safe zone")
 		camps[_rig.entity(guardian_id).realm] += 1
 	assert_eq(camps, {VARDHEIM: 2, SOLMARCH: 2}, "dos de cada reino")
 	for hollow_id: int in _rig.alive_of(&"hollow"):
 		assert_eq(_rig.combatant(hollow_id).max_health, NpcCatalog.get_definition(&"hollow").max_health)
-		assert_eq(_rig.character(hollow_id).combat.weapon_id, CombatCatalog.weapon_id(&"npc_hollow"), "con su arma")
+		assert_eq(_rig.character(hollow_id).combat.weapon_id, CombatCatalog.weapon_id(&"npc_hollow"), "with its weapon")
 		assert_eq(_rig.entity(hollow_id).kind, NetProtocol.EntityKind.NPC)
 		assert_eq(_rig.fort_node().global_position.distance_to(_rig.entity(hollow_id).get_position()) < 25.0, true,
-				"dentro del fuerte")
+				"inside the fort")
 
 
 func test_a_spawned_npc_announces_its_catalog_number_in_its_spawn_message() -> void:
@@ -111,12 +111,12 @@ func test_a_spawned_npc_announces_its_catalog_number_in_its_spawn_message() -> v
 	var hollow: NetEntity = _rig.entity(_rig.alive_of(&"hollow")[0])
 	var bytes: PackedByteArray = hollow.encode_spawn(_rig.server.get_tick(), false)
 	var spawn: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
-	if not assert_not_null(spawn, "el SPAWN del PNJ se decodifica"):
+	if not assert_not_null(spawn, "the NPC's SPAWN is decoded"):
 		return
 	assert_eq(spawn.kind, NetProtocol.EntityKind.NPC)
-	assert_eq(spawn.npc_def_id, NpcCatalog.number_of(&"hollow"), "lleva el número de su definición")
+	assert_eq(spawn.npc_def_id, NpcCatalog.number_of(&"hollow"), "it carries the number of its definition")
 	assert_eq(spawn.display_name, "Hueco")
-	assert_true(BossInfo.is_boss(NpcCatalog.number_of(&"ford_captain")), "y el cliente sabe que el Capitán es un jefe")
+	assert_true(BossInfo.is_boss(NpcCatalog.number_of(&"ford_captain")), "and the client knows the Captain is a boss")
 	assert_false(BossInfo.is_boss(spawn.npc_def_id))
 
 
@@ -130,13 +130,13 @@ func test_the_gate_guardians_kill_an_intruder_in_the_safe_area_in_under_ten_seco
 		var intruder: int = _rig.add_player(SOLMARCH, camp + offset)
 		var started: int = _rig.server.get_tick()
 		var dead: bool = await _rig.advance_until(func() -> bool: return _rig.combatant(intruder).is_dead(), 600, 3)
-		assert_true(dead, "el intruso en %s muere en menos de 10 s" % offset)
+		assert_true(dead, "the intruder in %s dies in under 10 s" % offset)
 		print("[guardianes] intruso en %s muerto a los %.1f s" % [offset, float(_rig.server.get_tick() - started) / 60.0])
 		_rig.server.remove_fake_player(intruder)
 		await _rig.advance(120)
-	assert_eq(_rig.combatant(friend).health, 1000, "un jugador de Vardheim en su campamento no recibe daño")
-	assert_eq(_rig.combatant(outsider).health, 1000, "ni un enemigo que está fuera de la zona segura: allí no atacan")
-	assert_eq(_rig.alive_of(&"gate_guardian").size(), 4, "los Guardianes siguen vivos")
+	assert_eq(_rig.combatant(friend).health, 1000, "a Vardheim player in their camp takes no damage")
+	assert_eq(_rig.combatant(outsider).health, 1000, "nor an enemy outside the safe zone: they do not attack there")
+	assert_eq(_rig.alive_of(&"gate_guardian").size(), 4, "the Guardians are still alive")
 
 
 func _camp_position(realm_name: StringName) -> Vector3:
@@ -153,7 +153,7 @@ func test_the_hollows_that_patrol_walk_the_walkway_and_come_back() -> void:
 	for net_id: int in _rig.alive_of(&"hollow"):
 		if _rig.npcs().get_brain(net_id).get_route_size() >= 2:
 			patrollers.append(net_id)
-	assert_eq(patrollers.size(), 2, "dos de los cuatro patrullan")
+	assert_eq(patrollers.size(), 2, "two of the four patrol")
 	var floor_y: float = _rig.fort_node().global_position.y
 	var highest: Dictionary = {}
 	for net_id: int in patrollers:
@@ -165,18 +165,18 @@ func test_the_hollows_that_patrol_walk_the_walkway_and_come_back() -> void:
 			walked["states"][_rig.npcs().get_brain(net_id).state] = true)
 	await _rig.advance(60 * 40)
 	for net_id: int in patrollers:
-		assert_true(highest[net_id] - floor_y > 3.0, "sube a la pasarela (%.1f m sobre el patio)" % (highest[net_id] - floor_y))
+		assert_true(highest[net_id] - floor_y > 3.0, "climbs to the walkway (%.1f m above the courtyard)" % (highest[net_id] - floor_y))
 	assert_true(walked["states"].has(HfsmBrain.State.PATROL) and walked["states"].has(HfsmBrain.State.REST),
 			"alterna patrulla y reposo")
-	assert_eq(_rig.alive_of(&"hollow").size(), 4, "sin pelear no muere nadie")
+	assert_eq(_rig.alive_of(&"hollow").size(), 4, "without fighting, nobody dies")
 
 
 func test_the_leash_keeps_the_hollows_on_the_hill_when_a_runner_drags_them_toward_the_ford() -> void:
 	await _rig.start(tree)
 	assert_true(await _rig.advance_until_populated())
 	var fort: Node3D = _rig.fort_node()
-	# Un corredor sale por delante de la puerta hacia el vado (al oeste) y los PNJ del fuerte, avisados de él, lo
-	# persiguen por el enlace de la puerta; la correa los vuelve a su puesto antes de bajar de la colina.
+	# A runner leaves ahead of the gate toward the ford (to the west) and the fort's NPCs, alerted to it,
+	# chase it through the gate link; the leash sends them back to their post before they get off the hill.
 	var runner_brain := CombatFixture.ScriptBrain.new(1)
 	runner_brain.script_fn = func(tick: int, _position: Vector3, _yaw: float) -> PlayerInput:
 		var input := PlayerInput.new()
@@ -201,16 +201,16 @@ func test_the_leash_keeps_the_hollows_on_the_hill_when_a_runner_drags_them_towar
 				farthest["returning"] = true)
 	await _rig.advance(60 * 40)
 	var leash: float = NpcCatalog.get_definition(&"ford_captain").leash_radius
-	assert_true(farthest["from_post"] > 18.0, "salieron del fuerte tras él (hasta %.1f m de su puesto)" % farthest["from_post"])
-	assert_true(farthest["from_post"] <= leash + 5.0, "pero no más que su correa (%.1f m de %.1f)" % [farthest["from_post"], leash])
-	assert_true(farthest["west"] > fort.global_position.x - 56.0, "y ninguno llegó al vado (x = %.1f)" % farthest["west"])
+	assert_true(farthest["from_post"] > 18.0, "they left the fort after it (up to %.1f m from their post)" % farthest["from_post"])
+	assert_true(farthest["from_post"] <= leash + 5.0, "but no farther than their leash (%.1f m of %.1f)" % [farthest["from_post"], leash])
+	assert_true(farthest["west"] > fort.global_position.x - 56.0, "and none reached the ford (x = %.1f)" % farthest["west"])
 	assert_true(farthest["returning"], "volvieron, regenerados e inmunes")
 	for net_id: int in chasers:
 		assert_true(_rig.npcs().get_brain(net_id).state != HfsmBrain.State.COMBAT or _rig.entity(net_id).get_position().distance_to(
-				_rig.npcs().get_brain(net_id).get_home()) <= leash, "ninguno sigue peleando fuera de su correa")
+				_rig.npcs().get_brain(net_id).get_home()) <= leash, "none keeps fighting outside its leash")
 
 
-## Primer suelo (capa del mundo) que se toca bajando desde arriba en ([param point].x, .y).
+## First ground (world layer) that is hit going down from above at ([param point].x, .y).
 func _surface_at(point: Vector2) -> Vector3:
 	var space: PhysicsDirectSpaceState3D = _rig.world.get_world_3d().direct_space_state
 	var from: Vector3 = Vector3(point.x, 60.0, point.y)
@@ -221,7 +221,7 @@ func _surface_at(point: Vector2) -> Vector3:
 
 
 func test_two_or_three_bots_clear_the_hollows_in_a_reasonable_time() -> void:
-	# El Capitán, que se une a la pelea por el grito, se mide aparte: aquí caído, como si ya lo hubieran derrotado.
+	# The Captain, who joins the fight through the shout, is measured separately: here fallen, as if he had already been defeated.
 	await _rig.start(tree)
 	assert_true(await _rig.advance_until_populated())
 	_rig.server.console_command("fort_kill_captain")
@@ -234,15 +234,15 @@ func test_two_or_three_bots_clear_the_hollows_in_a_reasonable_time() -> void:
 	var cleared: bool = await _rig.advance_until(func() -> bool: return _rig.alive_of(&"hollow").is_empty(), 60 * 120, 30)
 	var seconds: float = float(_rig.server.get_tick() - started) / 60.0
 	print("[huecos] 3 bots limpian los 4 Huecos en %.1f s de juego" % seconds)
-	assert_true(cleared, "los Huecos caen")
+	assert_true(cleared, "the Hollow fall")
 	assert_true(seconds < 90.0, "en menos de 90 s (%.1f s)" % seconds)
 	assert_true(seconds > 15.0, "y no en un suspiro (%.1f s)" % seconds)
 
 
 func test_four_bots_that_do_not_die_beat_the_ford_captain_in_a_reasonable_time() -> void:
-	# Los bots no esquivan ni bloquean con criterio: un grupo de cuatro cae antes de bajarle la mitad de la vida
-	# (y el Capitán, sin nadie, regresa regenerado). Para medir cuánto dura el combate por el daño que hay que
-	# hacerle, se les cura la vida en cada tick, como a un grupo que sabe defenderse.
+	# The bots neither dodge nor block with judgment: a group of four falls before taking half its health off
+	# (and the Captain, with nobody, returns regenerated). To measure how long the fight lasts for the damage that has to be
+	# dealt to him, their health is healed every tick, like a group that knows how to defend itself.
 	await _rig.start(tree)
 	assert_true(await _rig.advance_until_populated())
 	for hollow_id: int in _rig.alive_of(&"hollow"):
@@ -262,14 +262,14 @@ func test_four_bots_that_do_not_die_beat_the_ford_captain_in_a_reasonable_time()
 	var cleared: bool = await _rig.advance_until(func() -> bool: return _rig.alive_of(&"ford_captain").is_empty(), 60 * 180, 30)
 	var seconds: float = float(_rig.server.get_tick() - started) / 60.0
 	print("[capitán] 4 bots que no mueren derrotan al Capitán del Vado en %.1f s de juego" % seconds)
-	assert_true(cleared, "el Capitán cae")
-	assert_true(seconds > 40.0 and seconds < 150.0, "entre 40 y 150 s (%.1f s)" % seconds)
-	# Con el torreón nuevo (ART-57, huella de 9,9 m) los bots pelean con el Capitán en la cara oeste, dentro
-	# del círculo: en cuanto muere, el círculo está abierto y ya captura (antes, con la torre de 6 m, lo
-	# atacaban desde fuera y la fase era VULNERABLE en ese tick).
+	assert_true(cleared, "the Captain falls")
+	assert_true(seconds > 40.0 and seconds < 150.0, "between 40 and 150 s (%.1f s)" % seconds)
+	# With the new keep (ART-57, 9.9 m footprint) the bots fight the Captain on the west face, inside
+	# the circle: as soon as he dies, the circle is open and it already captures (before, with the 6 m tower, they
+	# attacked from outside and the phase was VULNERABLE on that tick).
 	var phase: int = _rig.state().phase
 	assert_true(phase == FortressState.Phase.VULNERABLE or phase == FortressState.Phase.CAPTURING,
-			"su muerte abre el círculo de captura (fase %d)" % phase)
+			"his death opens the capture circle (phase %d)" % phase)
 	assert_false(_rig.state().captain_alive)
 
 
@@ -282,16 +282,16 @@ func test_the_captain_returns_regenerated_when_the_party_dies() -> void:
 	_rig.combatant(captain).health = 15000
 	var engaged: bool = await _rig.advance_until(func() -> bool:
 		return _rig.npcs().get_brain(captain).state == HfsmBrain.State.COMBAT, 600)
-	assert_true(engaged, "el Capitán entra en combate")
+	assert_true(engaged, "the Captain enters combat")
 	_rig.server.get_combat().kill(_rig.combatant(victim), _rig.server.get_tick() + 1)
 	var back: bool = await _rig.advance_until(func() -> bool:
 		return _rig.npcs().get_brain(captain).state == HfsmBrain.State.REST, 1800)
-	assert_true(back, "sin nadie a quien pegar, vuelve a su puesto")
-	assert_eq(_rig.combatant(captain).health, 30000, "regenerado del todo")
-	assert_eq(_rig.alive_of(&"ford_captain"), [captain] as Array[int], "es el mismo")
+	assert_true(back, "with nobody to hit, he returns to his post")
+	assert_eq(_rig.combatant(captain).health, 30000, "fully regenerated")
+	assert_eq(_rig.alive_of(&"ford_captain"), [captain] as Array[int], "it is the same one")
 
 
-# --- Reaparición, retirada y registro (zona plana) ---------------------------------------------------
+# --- Respawn, withdrawal and registry (flat zone) ----------------------------------------------------
 
 func test_a_dead_guardian_comes_back_at_the_exact_tick_and_its_corpse_goes_away() -> void:
 	await _start_fort_zone(2.0)
@@ -302,25 +302,25 @@ func test_a_dead_guardian_comes_back_at_the_exact_tick_and_its_corpse_goes_away(
 	_rig.npcs().npc_died.connect(func(net_id: int, spawner: Node, killer: int) -> void:
 		died.append([net_id, spawner, killer]))
 	var guardians: Array[int] = _rig.alive_of(&"gate_guardian")
-	assert_eq(guardians.size(), 1, "un Guardián")
+	assert_eq(guardians.size(), 1, "a Guardian")
 	var first: int = guardians[0]
 	var kill_tick: int = _rig.server.get_tick() + 1
 	_rig.server.get_combat().kill(_rig.combatant(first), kill_tick)
-	assert_eq(died.size(), 1, "la muerte avisa con npc_died")
+	assert_eq(died.size(), 1, "the death is announced with npc_died")
 	assert_eq(died[0][0], first)
-	assert_eq(died[0][1], _spawner("Guardian"), "con el generador del que salió")
-	assert_eq(died[0][2], 0, "y sin asesino: murió por una orden")
+	assert_eq(died[0][1], _spawner("Guardian"), "with the spawner it came from")
+	assert_eq(died[0][2], 0, "and without a killer: it died by an order")
 	await _rig.advance(119)
-	assert_true(_rig.alive_of(&"gate_guardian").is_empty(), "119 ticks después aún no ha vuelto")
+	assert_true(_rig.alive_of(&"gate_guardian").is_empty(), "119 ticks later it has not returned yet")
 	assert_true(spawned.is_empty())
 	await _rig.advance(kill_tick + 120 - _rig.server.get_tick())
 	assert_eq(spawned.size(), 1, "vuelve")
-	assert_eq(spawned[0].y, kill_tick + 120, "en el tick exacto: muerte + 2 s")
+	assert_eq(spawned[0].y, kill_tick + 120, "on the exact tick: death + 2 s")
 	var second: int = _rig.alive_of(&"gate_guardian")[0]
-	assert_true(second != first, "es un PNJ nuevo")
-	assert_true(_entity_exists(first), "el cadáver sigue ahí unos segundos")
+	assert_true(second != first, "it is a new NPC")
+	assert_true(_entity_exists(first), "the corpse stays there for a few seconds")
 	await _rig.advance(NpcSpawnerSystem.CORPSE_TICKS)
-	assert_false(_entity_exists(first), "y se retira tras %d ticks" % NpcSpawnerSystem.CORPSE_TICKS)
+	assert_false(_entity_exists(first), "and is withdrawn after %d ticks" % NpcSpawnerSystem.CORPSE_TICKS)
 	assert_true(_entity_exists(second))
 
 
@@ -333,14 +333,14 @@ func test_a_spawner_with_two_slots_replaces_each_dead_npc_at_its_own_tick() -> v
 	_rig.npcs().npc_spawned.connect(func(_net_id: int, _spawner: Node) -> void:
 		spawned.append(_rig.server.get_tick()))
 	var pair: Array[int] = _rig.alive_of(&"hollow")
-	assert_eq(pair.size(), 2, "dos a la vez")
+	assert_eq(pair.size(), 2, "two at once")
 	var first_death: int = _rig.server.get_tick() + 1
 	_rig.server.get_combat().kill(_rig.combatant(pair[0]), first_death)
 	await _rig.advance(40)
 	var second_death: int = _rig.server.get_tick() + 1
 	_rig.server.get_combat().kill(_rig.combatant(pair[1]), second_death)
 	await _rig.advance(400)
-	assert_eq(spawned, [first_death + 180, second_death + 180] as Array[int], "cada uno vuelve 3 s después de morir")
+	assert_eq(spawned, [first_death + 180, second_death + 180] as Array[int], "each one returns 3 s after dying")
 	assert_eq(_rig.alive_of(&"hollow").size(), 2)
 
 
@@ -351,12 +351,12 @@ func test_npcs_do_not_come_back_on_their_own_through_the_combat_director() -> vo
 	await _rig.advance(60)
 	assert_true(_rig.combatant(hollow).is_dead())
 	await _rig.advance(NpcSpawnerSystem.CORPSE_TICKS + 30)
-	assert_false(_entity_exists(hollow), "el cadáver se retira")
+	assert_false(_entity_exists(hollow), "the corpse is withdrawn")
 	await _rig.advance(2100)
-	assert_eq(_rig.alive_of(&"hollow").size(), 1, "los Huecos no reaparecen solos (los repone la fortaleza)")
+	assert_eq(_rig.alive_of(&"hollow").size(), 1, "the Hollow do not respawn on their own (the fortress replenishes them)")
 	for event: NetMessages.EntityEvent in _rig.events_of(NetMessages.EntityEvent.Kind.RESPAWN):
 		assert_true(_rig.entity(event.net_id) == null or _rig.entity(event.net_id).kind != NetProtocol.EntityKind.NPC,
-				"ningún PNJ recibe un RESPAWN del combate")
+				"no NPC receives a combat RESPAWN")
 
 
 func test_deactivating_a_spawner_removes_the_living_npcs_and_the_owners_garrison_takes_over() -> void:
@@ -365,35 +365,35 @@ func test_deactivating_a_spawner_removes_the_living_npcs_and_the_owners_garrison
 	var hollows: Array[int] = _rig.alive_of(&"hollow")
 	var captain: int = _rig.alive_of(&"ford_captain")[0]
 	assert_eq(hollows.size(), 2)
-	assert_eq(_state().guards_alive, 0, "neutral: no hay guarnición")
+	assert_eq(_state().guards_alive, 0, "neutral: there is no garrison")
 	assert_eq(_rig.server.get_fortresses().get_captain_net_id(FORTRESS), captain)
 	_rig.server.console_command("fort_owner vardheim")
 	await _rig.advance(3)
 	for net_id: int in hollows + [captain]:
-		assert_false(_entity_exists(net_id), "los PNJ de los Huecos se retiran al tener dueño el fuerte")
-	assert_true(_entity_exists(guardian), "el Guardián, que no depende del fuerte, sigue")
+		assert_false(_entity_exists(net_id), "the Hollow NPCs are withdrawn once the fort has an owner")
+	assert_true(_entity_exists(guardian), "the Guardian, which does not depend on the fort, remains")
 	var guards: Array[int] = _alive_realm(&"realm_guard", VARDHEIM)
-	assert_eq(guards.size(), 2, "los dos puestos de los Huecos dan dos guardias del reino dueño")
+	assert_eq(guards.size(), 2, "the two Hollow posts give two guards of the owning realm")
 	var new_captain: Array[int] = _alive_realm(&"realm_captain", VARDHEIM)
-	assert_eq(new_captain.size(), 1, "y el puesto del Capitán, el capitán del reino")
-	assert_eq(_state().guards_alive, 2, "la fortaleza sabe cuántos guardias hay")
+	assert_eq(new_captain.size(), 1, "and the Captain's post, the realm's captain")
+	assert_eq(_state().guards_alive, 2, "the fortress knows how many guards there are")
 	assert_eq(_rig.server.get_fortresses().get_captain_net_id(FORTRESS), new_captain[0],
-			"y quién es su capitán")
+			"and who its captain is")
 	for net_id: int in guards + new_captain:
 		assert_eq(_rig.entity(net_id).realm, VARDHEIM)
-	# Cambia de manos: se retira la guarnición de Vardheim y llega la de Solmarch.
+	# It changes hands: Vardheim's garrison is withdrawn and Solmarch's arrives.
 	_rig.server.console_command("fort_owner solmarch")
 	await _rig.advance(3)
 	for net_id: int in guards + new_captain:
-		assert_false(_entity_exists(net_id), "la guarnición del dueño anterior se retira")
+		assert_false(_entity_exists(net_id), "the previous owner's garrison is withdrawn")
 	assert_eq(_alive_realm(&"realm_guard", SOLMARCH).size(), 2)
 	assert_eq(_alive_realm(&"realm_captain", SOLMARCH).size(), 1)
-	# Un reinicio devuelve a los Huecos y al Capitán del Vado.
+	# A reset brings back the Hollow and the Ford Captain.
 	_rig.server.console_command("fort_reset")
 	await _rig.advance(3)
-	assert_eq(_rig.alive_of(&"hollow").size(), 2, "vuelven los Huecos")
-	assert_eq(_rig.alive_of(&"ford_captain").size(), 1, "y el Capitán del Vado")
-	assert_eq(_rig.alive_of(&"realm_guard").size(), 0, "sin guarnición del reino")
+	assert_eq(_rig.alive_of(&"hollow").size(), 2, "the Hollow return")
+	assert_eq(_rig.alive_of(&"ford_captain").size(), 1, "and the Ford Captain")
+	assert_eq(_rig.alive_of(&"realm_guard").size(), 0, "without a realm garrison")
 	assert_true(_entity_exists(guardian))
 
 
@@ -403,23 +403,23 @@ func test_the_fortress_learns_about_its_captain_and_its_defenders() -> void:
 	var attacker: int = _rig.add_player(VARDHEIM, Vector3(60.0, 0.1, 0.0))
 	var hollow: int = _rig.alive_of(&"hollow")[0]
 	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
-	# Un golpe a un defensor marca el fuerte como atacado.
+	# A blow to a defender marks the fort as attacked.
 	var before: int = _state().under_attack_until_tick
 	_rig.events.clear()
 	var hit: NetMessages.EntityEvent = NetMessages.EntityEvent.hit(hollow, _rig.server.get_tick() + 1, attacker, 10, 0, 0, 0)
 	_rig.server.get_combat().event_emitted.emit(hit, PackedInt32Array([hollow, attacker]))
-	assert_true(_state().under_attack_until_tick > before, "golpear a un Hueco marca el fuerte como atacado")
-	# La muerte del capitán abre el círculo.
+	assert_true(_state().under_attack_until_tick > before, "hitting a Hollow marks the fort as attacked")
+	# The captain's death opens the circle.
 	var died: Array[Array] = []
 	_rig.npcs().npc_died.connect(func(net_id: int, spawner: Node, killer: int) -> void:
 		died.append([net_id, spawner, killer]))
 	_kill(captain)
 	await _rig.advance(3)
-	assert_eq(_state().phase, FortressState.Phase.VULNERABLE, "muerto el capitán, el círculo se activa")
+	assert_eq(_state().phase, FortressState.Phase.VULNERABLE, "with the captain dead, the circle activates")
 	assert_false(_state().captain_alive)
 	assert_eq(died.size(), 1)
 	assert_eq(died[0][0], captain)
-	assert_eq(_rig.server.get_fortresses().get_captain_net_id(FORTRESS), 0, "ya no tiene capitán registrado")
+	assert_eq(_rig.server.get_fortresses().get_captain_net_id(FORTRESS), 0, "it no longer has a registered captain")
 
 
 func test_a_real_capture_replaces_the_hollows_with_the_owners_garrison_after_consolidation() -> void:
@@ -432,45 +432,45 @@ func test_a_real_capture_replaces_the_hollows_with_the_owners_garrison_after_con
 	var circle: Vector3 = FortressFixture.circle_center()
 	var capturer: int = _rig.add_player(VARDHEIM, circle + Vector3(0.0, 0.1, 0.0))
 	var captured: bool = await _rig.advance_until(func() -> bool: return _state().owner == VARDHEIM, 600, 6)
-	assert_true(captured, "el reino que ocupa el círculo captura el fuerte")
+	assert_true(captured, "the realm that occupies the circle captures the fort")
 	assert_eq(_state().phase, FortressState.Phase.CONSOLIDATING)
-	assert_eq(_rig.alive_of(&"realm_guard").size(), 0, "durante la consolidación no hay guarnición")
+	assert_eq(_rig.alive_of(&"realm_guard").size(), 0, "during consolidation there is no garrison")
 	assert_eq(_rig.alive_of(&"realm_captain").size(), 0)
 	var garrisoned: bool = await _rig.advance_until(func() -> bool:
 		return _state().phase == FortressState.Phase.GARRISONED, 600, 6)
-	assert_true(garrisoned, "a los 2 s de consolidación llega la guarnición")
+	assert_true(garrisoned, "after 2 s of consolidation the garrison arrives")
 	await _rig.advance(6)
 	var guards: Array[int] = _alive_realm(&"realm_guard", VARDHEIM)
-	assert_eq(guards.size(), 2, "los guardias del reino dueño")
-	assert_eq(_alive_realm(&"realm_captain", VARDHEIM).size(), 1, "y su capitán")
+	assert_eq(guards.size(), 2, "the owning realm's guards")
+	assert_eq(_alive_realm(&"realm_captain", VARDHEIM).size(), 1, "and its captain")
 	assert_eq(_state().guards_alive, 2)
 	assert_true(_state().captain_alive)
-	assert_eq(_rig.combatant(capturer).health, 1000, "los suyos no le atacan")
-	# Un guardia muerto se repone a los guard_respawn_s de la fortaleza (10 s en la de pruebas).
+	assert_eq(_rig.combatant(capturer).health, 1000, "its own side does not attack it")
+	# A dead guard is replenished after the fortress's guard_respawn_s (10 s in the test one).
 	_kill(guards[0])
 	await _rig.advance(3)
-	assert_eq(_state().guards_alive, 1, "la fortaleza lo nota")
+	assert_eq(_state().guards_alive, 1, "the fortress notices it")
 	await _rig.advance(60 * 9)
-	assert_eq(_alive_realm(&"realm_guard", VARDHEIM).size(), 1, "a los 9 s todavía no")
+	assert_eq(_alive_realm(&"realm_guard", VARDHEIM).size(), 1, "at 9 s not yet")
 	await _rig.advance(60 * 2 + 20)
 	assert_eq(_alive_realm(&"realm_guard", VARDHEIM).size(), 2, "tras 10 s vuelve")
 	assert_eq(_state().guards_alive, 2)
 	var guards_before: Array[int] = _alive_realm(&"realm_guard", VARDHEIM)
-	# Si cae el capitán del reino, vuelve solo él a los captain_respawn_s (30 s).
+	# If the realm's captain falls, only he returns after captain_respawn_s (30 s).
 	var owners_captain: int = _alive_realm(&"realm_captain", VARDHEIM)[0]
 	_kill(owners_captain)
 	await _rig.advance(3)
-	assert_eq(_state().phase, FortressState.Phase.VULNERABLE, "su muerte vuelve a abrir el círculo")
+	assert_eq(_state().phase, FortressState.Phase.VULNERABLE, "his death opens the circle again")
 	await _rig.advance(60 * 30)
-	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "sin captura, el capitán regresa")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "without a capture, the captain returns")
 	var back: Array[int] = _alive_realm(&"realm_captain", VARDHEIM)
-	assert_eq(back.size(), 1, "el capitán del reino reaparece")
+	assert_eq(back.size(), 1, "the realm's captain respawns")
 	assert_true(back[0] != owners_captain)
-	assert_eq(_alive_realm(&"realm_guard", VARDHEIM), guards_before, "los guardias no se tocan")
+	assert_eq(_alive_realm(&"realm_guard", VARDHEIM), guards_before, "the guards are untouched")
 
 
 func test_the_hollows_and_the_captain_come_back_whole_after_two_minutes_with_nobody_near() -> void:
-	# El capitán no vuelve solo (su plazo es larguísimo): lo trae la reaparición completa.
+	# The captain does not return on his own (his delay is very long): the full respawn brings him back.
 	await _start_fort_zone(0.0, 100000.0)
 	var hollows: Array[int] = _rig.alive_of(&"hollow")
 	_kill(hollows[0])
@@ -478,26 +478,26 @@ func test_the_hollows_and_the_captain_come_back_whole_after_two_minutes_with_nob
 	await _rig.advance(10)
 	assert_eq(_state().phase, FortressState.Phase.VULNERABLE)
 	assert_eq(_rig.alive_of(&"hollow").size(), 1)
-	# Un jugador a 30 m del fuerte impide la reaparición completa mientras esté cerca.
+	# A player 30 m from the fort prevents the full respawn while they stay close.
 	var near: int = _rig.add_player(VARDHEIM, FortressFixture.circle_center() + Vector3(-30.0, 0.1, 0.0))
 	await _rig.advance(NpcSpawnerSystem.FULL_RESPAWN_EMPTY_TICKS + 600)
-	assert_eq(_rig.alive_of(&"hollow").size(), 1, "con alguien a 30 m no vuelven")
+	assert_eq(_rig.alive_of(&"hollow").size(), 1, "with someone at 30 m they do not return")
 	assert_eq(_state().phase, FortressState.Phase.VULNERABLE)
-	# Se aleja a más de 40 m: la cuenta empieza.
+	# They move farther than 40 m away: the count starts.
 	_rig.server.teleport(near, FortressFixture.circle_center() + Vector3(-60.0, 0.1, 0.0))
 	await _rig.advance(NpcSpawnerSystem.FULL_RESPAWN_EMPTY_TICKS - 600)
-	assert_eq(_rig.alive_of(&"hollow").size(), 1, "antes de los 2 min no")
+	assert_eq(_rig.alive_of(&"hollow").size(), 1, "before 2 min, no")
 	await _rig.advance(1200)
-	assert_eq(_rig.alive_of(&"hollow").size(), 2, "pasados los 2 min vuelven los Huecos")
-	assert_eq(_rig.alive_of(&"ford_captain").size(), 1, "y el Capitán del Vado")
-	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "con el fuerte guardado otra vez")
+	assert_eq(_rig.alive_of(&"hollow").size(), 2, "after 2 min the Hollow return")
+	assert_eq(_rig.alive_of(&"ford_captain").size(), 1, "and the Ford Captain")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "with the fort guarded again")
 	assert_true(_state().captain_alive)
 	assert_eq(_rig.server.get_fortresses().get_captain_net_id(FORTRESS), _rig.alive_of(&"ford_captain")[0])
 	assert_eq(_rig.npcs().get_report()["full_respawns"], 1)
 
 
-# Revisión de la fase 4 (guerra): el Capitán llama a sus refuerzos una vez por vida (volver regenerado a su puesto no
-# rearma la llamada) y la reaparición completa retira los que queden y le devuelve la llamada.
+# Phase 4 review (war): the Captain calls his reinforcements once per life (returning regenerated to his post does not
+# rearm the call) and the full respawn withdraws any that remain and gives him the call back.
 func test_the_captain_calls_his_reinforcements_once_per_life_and_the_full_respawn_takes_them_away() -> void:
 	await _start_fort_zone()
 	var captain: int = _rig.alive_of(&"ford_captain")[0]
@@ -505,16 +505,16 @@ func test_the_captain_calls_his_reinforcements_once_per_life_and_the_full_respaw
 	for cycle: int in 3:
 		await _failed_assault(captain)
 		assert_eq(_rig.alive_of(&"hollow").size(), 4,
-				"asalto %d: los dos Huecos y los dos refuerzos de la única llamada" % (cycle + 1))
-	assert_eq(_rig.npcs().get_report()["reinforcements"], 2, "una sola llamada en tres asaltos")
+				"assault %d: the two Hollow and the two reinforcements of the single call" % (cycle + 1))
+	assert_eq(_rig.npcs().get_report()["reinforcements"], 2, "a single call in three assaults")
 	assert_true(_rig.npcs().get_brain(captain).has_called_reinforcements())
 	assert_true(_rig.npcs().force_full_respawn(FORTRESS, _rig.server.get_tick()))
 	await _rig.advance(30)
-	assert_eq(_rig.alive_of(&"hollow").size(), 2, "la reaparición completa los deja enteros, sin refuerzos")
-	assert_eq(_rig.alive_of(&"ford_captain"), [captain] as Array[int], "con el mismo Capitán")
-	assert_false(_rig.npcs().get_brain(captain).has_called_reinforcements(), "que vuelve a poder llamarlos")
+	assert_eq(_rig.alive_of(&"hollow").size(), 2, "the full respawn leaves them at full health, without reinforcements")
+	assert_eq(_rig.alive_of(&"ford_captain"), [captain] as Array[int], "with the same Captain")
+	assert_false(_rig.npcs().get_brain(captain).has_called_reinforcements(), "who can call them again")
 	await _failed_assault(captain)
-	assert_eq(_rig.alive_of(&"hollow").size(), 4, "y los llama en el asalto siguiente")
+	assert_eq(_rig.alive_of(&"hollow").size(), 4, "and calls them in the next assault")
 	assert_eq(_rig.npcs().get_report()["reinforcements"], 4)
 
 
@@ -522,30 +522,30 @@ func test_a_new_captain_does_not_add_reinforcements_while_the_previous_ones_live
 	await _start_fort_zone(0.0, 2.0)
 	var first: int = _rig.alive_of(&"ford_captain")[0]
 	await _failed_assault(first)
-	assert_eq(_rig.alive_of(&"hollow").size(), 4, "el primer Capitán llama a dos")
+	assert_eq(_rig.alive_of(&"hollow").size(), 4, "the first Captain calls two")
 	_kill(first)
 	var replaced: bool = await _rig.advance_until(func() -> bool:
 		var captains: Array[int] = _rig.alive_of(&"ford_captain")
 		return captains.size() == 1 and captains[0] != first, 1200)
-	if not assert_true(replaced, "vuelve otro Capitán"):
+	if not assert_true(replaced, "another Captain returns"):
 		return
 	var second: int = _rig.alive_of(&"ford_captain")[0]
 	await _failed_assault(second)
-	assert_true(_rig.npcs().get_brain(second).has_called_reinforcements(), "el nuevo también llama")
-	assert_eq(_rig.alive_of(&"hollow").size(), 4, "pero con los dos de antes vivos no suma más")
+	assert_true(_rig.npcs().get_brain(second).has_called_reinforcements(), "the new one calls too")
+	assert_eq(_rig.alive_of(&"hollow").size(), 4, "but with the previous two alive it adds no more")
 	assert_eq(_rig.npcs().get_report()["reinforcements"], 2)
 
 
-# Un asalto que fracasa: un jugador de Vardheim pelea con el Capitán, que está por debajo de la mitad de la vida, y muere;
-# el Capitán vuelve a su puesto regenerado. El jugador aparece a 3 m del puesto (dentro de lo que el Capitán oye: tras un
-# regreso descansa mirando hacia donde venía y no vería a nadie a su espalda).
+# A failed assault: a Vardheim player fights the Captain, who is below half health, and dies;
+# the Captain returns to his post regenerated. The player appears 3 m from the post (within what the Captain hears: after a
+# return he rests facing where he came from and would not see anyone behind his back).
 func _failed_assault(captain: int) -> void:
 	var post: Vector3 = _rig.npcs().get_brain(captain).get_home()
 	var player: int = _rig.add_player(VARDHEIM, post + Vector3(-3.0, 0.1, 0.0))
 	_rig.combatant(captain).health = 14000
 	var engaged: bool = await _rig.advance_until(func() -> bool:
 		return _rig.npcs().get_brain(captain).state == HfsmBrain.State.COMBAT, 600)
-	assert_true(engaged, "el Capitán entra en combate")
+	assert_true(engaged, "the Captain enters combat")
 	await _rig.advance(60)
 	_kill(player)
 	await _rig.advance(2)
@@ -553,39 +553,39 @@ func _failed_assault(captain: int) -> void:
 	var back: bool = await _rig.advance_until(func() -> bool:
 		return _rig.npcs().get_brain(captain).state == HfsmBrain.State.REST \
 				and _rig.combatant(captain).health == _rig.combatant(captain).max_health, 3600)
-	assert_true(back, "el Capitán vuelve regenerado")
+	assert_true(back, "the Captain returns regenerated")
 
 
 func test_without_the_npc_system_the_zone_has_no_npcs() -> void:
 	await _rig.start_flat(tree, func(world: Node3D) -> void:
 		NpcRig.add_spawner(world, "Solo", &"hollow", Vector3(0.0, 0.05, 0.0)),
 		func(config: ServerConfig) -> void: config.no_npcs = true)
-	assert_null(_rig.server.get_npc_system(), "--no-npcs apaga el sistema")
+	assert_null(_rig.server.get_npc_system(), "--no-npcs turns the system off")
 	await _rig.advance(60)
-	assert_eq(_rig.server.get_registry().size(), 0, "y no aparece ningún PNJ")
+	assert_eq(_rig.server.get_registry().size(), 0, "and no NPC appears")
 	assert_eq(_rig.server.get_dummy_count(), 0)
 
 
 func test_a_definition_override_only_changes_the_npcs_of_this_server() -> void:
-	# F6b: las pruebas cortas del asedio necesitan PNJ más débiles sin tocar data/npcs/ ni el catálogo del proceso.
+	# F6b: the short siege tests need weaker NPCs without touching data/npcs/ or the process catalog.
 	await _rig.start_flat(tree, func(world: Node3D) -> void:
 		NpcRig.add_spawner(world, "Solo", &"hollow", Vector3(0.0, 0.05, 0.0), 0.0, {&"respawn_s": 1.0}))
 	var weak: NpcDefinition = NpcCatalog.get_definition(&"hollow").duplicate() as NpcDefinition
 	weak.max_health = 700
 	_rig.npcs().set_definition_override(&"hollow", weak)
-	assert_eq(_rig.npcs().get_definition(&"hollow"), weak, "el sistema da la sustituta")
-	assert_true(await _rig.advance_until_populated(), "aparece el Hueco")
+	assert_eq(_rig.npcs().get_definition(&"hollow"), weak, "the system gives the substitute")
+	assert_true(await _rig.advance_until_populated(), "the Hollow appears")
 	var hollow: int = _rig.alive_of(&"hollow")[0]
-	assert_eq(_rig.combatant(hollow).max_health, 700, "con la vida de la sustituta")
-	assert_eq(_rig.entity(hollow).npc_def_id, NpcCatalog.number_of(&"hollow"), "y el número del catálogo")
-	assert_eq(NpcCatalog.get_definition(&"hollow").max_health, 2500, "el catálogo no cambia")
-	# Sin la sustitución, el siguiente vuelve a ser el de los datos.
+	assert_eq(_rig.combatant(hollow).max_health, 700, "with the substitute's health")
+	assert_eq(_rig.entity(hollow).npc_def_id, NpcCatalog.number_of(&"hollow"), "and the catalog number")
+	assert_eq(NpcCatalog.get_definition(&"hollow").max_health, 2500, "the catalog does not change")
+	# Without the substitution, the next one is the one from the data again.
 	_rig.npcs().set_definition_override(&"hollow", null)
 	_kill(hollow)
 	await _rig.advance(120)
 	var again: Array[int] = _rig.alive_of(&"hollow")
 	if assert_eq(again.size(), 1, "reaparece"):
-		assert_eq(_rig.combatant(again[0]).max_health, 2500, "con la vida de data/npcs/")
+		assert_eq(_rig.combatant(again[0]).max_health, 2500, "with the health from data/npcs/")
 
 
 func test_the_report_counts_the_npcs() -> void:
@@ -596,7 +596,7 @@ func test_the_report_counts_the_npcs() -> void:
 	assert_eq(_rig.server.write_report(path), OK)
 	var report: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	var npcs: Dictionary = report.get("npcs", {})
-	assert_eq(int(npcs.get("slots", 0)), 6, "los puestos del fuerte: 3 de los Huecos y 3 de la guarnición")
+	assert_eq(int(npcs.get("slots", 0)), 6, "the fort's posts: 3 Hollow and 3 garrison")
 	assert_eq(int(npcs.get("spawned", 0)), 3)
 	assert_eq(int(npcs.get("died", 0)), 1)
 	assert_eq(int(npcs.get("alive", 0)), 2)

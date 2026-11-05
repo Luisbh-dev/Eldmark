@@ -1,37 +1,37 @@
 class_name UIIconSlot
 extends Control
-## Casilla de icono (UI-09): la pieza de las barras de acciones, los inventarios y los efectos.
-## Dibuja un icono sobre un fondo hundido con borde del color de su rareza, un contador de pila
-## abajo a la derecha, un glifo de tecla ([UIKeyGlyph]) arriba a la izquierda y, cuando está en
-## reutilización, un barrido en sentido horario con los segundos que faltan. Al quedar lista da un
-## destello breve.
+## Icon slot (UI-09): the building block of action bars, inventories and effects.
+## It draws an icon over a recessed background with a border in its rarity color, a stack counter
+## at the bottom right, a key glyph ([UIKeyGlyph]) at the top left and, when on
+## cooldown, a clockwise sweep with the seconds remaining. When it becomes ready it gives a
+## brief flash.
 ## [br][br]
-## [b]Reutilización.[/b] [method start_cooldown] la arranca (se predice al pulsar) y
-## [method set_cooldown] la fija con lo que dice el servidor (la corrige si rechaza la acción o
-## llega con otro tiempo); [method clear_cooldown] la quita. El tiempo lo lleva [method advance]
-## ([method _process] lo llama con el delta de cada fotograma, solo mientras hace falta); las
-## pruebas lo llaman con pasos exactos. El barrido es el polígono de [method sweep_polygon].
+## [b]Cooldown.[/b] [method start_cooldown] starts it (predicted on press) and
+## [method set_cooldown] sets it to what the server says (it corrects it if the server rejects the action or
+## it arrives with a different time); [method clear_cooldown] removes it. Time is driven by [method advance]
+## ([method _process] calls it with each frame's delta, only while needed); tests
+## call it with exact steps. The sweep is the polygon from [method sweep_polygon].
 ## [br][br]
-## [b]Entrada.[/b] Un clic izquierdo suelto sobre la casilla, o aceptar con ella enfocada, emite
-## [signal pressed]; la casilla no decide si la acción vale (eso es de quien la escucha). Es
-## enfocable ([constant Control.FOCUS_ALL]) para navegar con teclado o mando ([UIFocus]) y suena por
-## [UISounds] al pasar el ratón y al pulsar.
+## [b]Input.[/b] A single left click on the slot, or accepting while it is focused, emits
+## [signal pressed]; the slot does not decide whether the action is valid (that is up to whoever listens). It is
+## focusable ([constant Control.FOCUS_ALL]) for keyboard or gamepad navigation ([UIFocus]) and sounds through
+## [UISounds] on hover and on press.
 ## [br][br]
-## [b]Tooltip.[/b] [method set_tooltip_info] guarda el contenido y [method bind_tooltip] lo enlaza con
-## un [UITooltip]; el título lleva el color de la rareza.
+## [b]Tooltip.[/b] [method set_tooltip_info] stores the content and [method bind_tooltip] links it to
+## a [UITooltip]; the title carries the rarity color.
 ## [br][br]
-## Solo cliente. Todo se dibuja en [method _draw] (sin nodos hijos salvo el glifo): una barra con
-## decenas de casillas no cuesta nada.
+## Client only. Everything is drawn in [method _draw] (no child nodes except the glyph): a bar with
+## dozens of slots costs nothing.
 
-## Se pulsó la casilla (clic izquierdo o aceptar con el foco).
+## The slot was pressed (left click or accept while focused).
 signal pressed
-## La reutilización llegó a cero.
+## The cooldown reached zero.
 signal cooldown_finished
 
 const SLOT_SIZE: Vector2 = Vector2(52.0, 52.0)
-## Segundos que dura el destello de «lista».
+## Seconds the "ready" flash lasts.
 const FLASH_SECONDS: float = 0.3
-## Margen (px) entre el borde y el icono.
+## Margin (px) between the border and the icon.
 const ICON_MARGIN: float = 3.0
 const BORDER_WIDTH: int = 2
 const COUNT_FONT_SIZE: int = 14
@@ -39,37 +39,37 @@ const COOLDOWN_FONT_SIZE: int = 18
 const COOLDOWN_OVERLAY: Color = Color(0.0, 0.0, 0.0, 0.62)
 const DISABLED_TINT: Color = Color(0.45, 0.45, 0.45, 0.8)
 
-## Icono (null: casilla vacía).
+## Icon (null: empty slot).
 var icon: Texture2D = null:
 	set(value):
 		icon = value
 		queue_redraw()
-## Rareza ([enum UIPalette.Rarity]) que da el color del borde; -1 = sin rareza (borde de metal).
+## Rarity ([enum UIPalette.Rarity]) that gives the border color; -1 = no rarity (metal border).
 var rarity: int = -1:
 	set(value):
 		rarity = value
 		queue_redraw()
-## Tamaño de la pila: solo se dibuja si es mayor que 1.
+## Stack size: only drawn if greater than 1.
 var count: int = 0:
 	set(value):
 		count = value
 		queue_redraw()
-## Acción cuyo glifo de tecla se muestra arriba a la izquierda (vacía: sin glifo).
+## Action whose key glyph is shown at the top left (empty: no glyph).
 var key_action: StringName = &"":
 	set(value):
 		key_action = value
 		_update_glyph()
-## Si es false, el icono se ve apagado.
+## If false, the icon is shown dimmed.
 var enabled: bool = true:
 	set(value):
 		enabled = value
 		queue_redraw()
-## Casilla elegida (borde de acento).
+## Selected slot (accent border).
 var selected: bool = false:
 	set(value):
 		selected = value
 		queue_redraw()
-## Contenido del tooltip: [code]title[/code], [code]subtitle[/code] y [code]body[/code].
+## Tooltip content: [code]title[/code], [code]subtitle[/code] and [code]body[/code].
 var tooltip_info: Dictionary = {}
 
 var _cooldown_total: float = 0.0
@@ -80,8 +80,8 @@ var _glyph: UIKeyGlyph = null
 var _box: StyleBoxFlat = StyleBoxFlat.new()
 
 
-## Texto de los segundos que faltan: enteros hacia arriba desde 1 s («9») y con un decimal por
-## debajo («0,7»).
+## Text of the seconds remaining: whole numbers rounded up from 1 s ("9") and with one decimal below
+## that ("0,7").
 static func cooldown_text(seconds: float) -> String:
 	if seconds <= 0.0:
 		return ""
@@ -90,9 +90,9 @@ static func cooldown_text(seconds: float) -> String:
 	return str(ceili(seconds))
 
 
-## Polígono que cubre la parte de [param rect] barrida, en sentido horario desde las 12 en punto,
-## por [param fraction] (0 a 1) de una vuelta completa: con 1 es todo el rectángulo, con 0,5 la mitad
-## derecha, con 0 vacío. Es un abanico desde el centro que sigue el borde del rectángulo.
+## Polygon covering the swept part of [param rect], clockwise from 12 o'clock,
+## by [param fraction] (0 to 1) of a full turn: with 1 it is the whole rectangle, with 0.5 the right
+## half, with 0 empty. It is a fan from the center that follows the rectangle's edge.
 static func sweep_polygon(rect: Rect2, fraction: float) -> PackedVector2Array:
 	var amount: float = clampf(fraction, 0.0, 1.0)
 	if amount <= 0.0 or rect.size.x <= 0.0 or rect.size.y <= 0.0:
@@ -101,7 +101,7 @@ static func sweep_polygon(rect: Rect2, fraction: float) -> PackedVector2Array:
 	var start_angle: float = -PI / 2.0
 	var end_angle: float = start_angle + TAU * amount
 	var points: PackedVector2Array = PackedVector2Array([center, _edge_point(rect, start_angle)])
-	# Las esquinas que quedan dentro del arco, en orden de ángulo creciente.
+	# The corners that fall inside the arc, in increasing angle order.
 	var corners: Array[Vector2] = [rect.position + Vector2(rect.size.x, 0.0), rect.end,
 			rect.position + Vector2(0.0, rect.size.y), rect.position]
 	for corner: Vector2 in corners:
@@ -114,7 +114,7 @@ static func sweep_polygon(rect: Rect2, fraction: float) -> PackedVector2Array:
 	return points
 
 
-# Punto del borde de [param rect] en la dirección [param angle] desde su centro.
+# Point on the edge of [param rect] in direction [param angle] from its center.
 static func _edge_point(rect: Rect2, angle: float) -> Vector2:
 	var center: Vector2 = rect.get_center()
 	var direction: Vector2 = Vector2(cos(angle), sin(angle))
@@ -135,8 +135,8 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# El motor activa _process al entrar en el árbol si el script lo define: se apaga hasta que haga
-	# falta (una reutilización en marcha o un destello).
+	# The engine enables _process on entering the tree if the script defines it: it is turned off until
+	# needed (a cooldown in progress or a flash).
 	set_process(_cooldown_left > 0.0 or _flash_left > 0.0)
 
 
@@ -144,9 +144,9 @@ func _process(delta: float) -> void:
 	advance(delta)
 
 
-# --- Reutilización ----------------------------------------------------------------------------
+# --- Cooldown ---------------------------------------------------------------------------------
 
-## Empieza una reutilización de [param seconds] segundos (la predicción al pulsar).
+## Starts a cooldown of [param seconds] seconds (the prediction on press).
 func start_cooldown(seconds: float) -> void:
 	if seconds <= 0.0:
 		clear_cooldown()
@@ -158,9 +158,9 @@ func start_cooldown(seconds: float) -> void:
 	queue_redraw()
 
 
-## Fija la reutilización con lo que dice el servidor: faltan [param remaining] s de [param total].
-## Con [param remaining] a 0 o menos la quita sin destello (por ejemplo, el servidor rechazó la
-## acción y no llegó a gastarse).
+## Sets the cooldown to what the server says: [param remaining] s of [param total] remain.
+## With [param remaining] at 0 or less it removes it without a flash (for example, the server rejected the
+## action and it was never spent).
 func set_cooldown(remaining: float, total: float) -> void:
 	if remaining <= 0.0:
 		clear_cooldown()
@@ -171,15 +171,15 @@ func set_cooldown(remaining: float, total: float) -> void:
 	queue_redraw()
 
 
-## Quita la reutilización sin destello.
+## Removes the cooldown without a flash.
 func clear_cooldown() -> void:
 	_cooldown_total = 0.0
 	_cooldown_left = 0.0
 	queue_redraw()
 
 
-## Avanza [param delta] segundos la reutilización y el destello. Al llegar a cero emite
-## [signal cooldown_finished] y da el destello.
+## Advances the cooldown and the flash by [param delta] seconds. On reaching zero it emits
+## [signal cooldown_finished] and gives the flash.
 func advance(delta: float) -> void:
 	if _cooldown_left > 0.0:
 		_cooldown_left = maxf(_cooldown_left - delta, 0.0)
@@ -199,22 +199,22 @@ func is_on_cooldown() -> bool:
 	return _cooldown_left > 0.0
 
 
-## Segundos que faltan.
+## Seconds remaining.
 func get_cooldown_remaining() -> float:
 	return _cooldown_left
 
 
-## Fracción de la reutilización que falta (1 recién empezada, 0 lista).
+## Fraction of the cooldown that remains (1 just started, 0 ready).
 func get_cooldown_fraction() -> float:
 	return _cooldown_left / _cooldown_total if _cooldown_total > 0.0 else 0.0
 
 
-## Opacidad actual del destello de «lista» (0 sin destello).
+## Current opacity of the "ready" flash (0 with no flash).
 func get_flash_alpha() -> float:
 	return clampf(_flash_left / FLASH_SECONDS, 0.0, 1.0)
 
 
-## Glifo de tecla de la esquina (null mientras no haya [member key_action]).
+## Key glyph in the corner (null while there is no [member key_action]).
 func get_glyph() -> UIKeyGlyph:
 	return _glyph
 
@@ -223,8 +223,8 @@ func is_hovered() -> bool:
 	return _hovered
 
 
-## Color del borde ahora: el de la rareza (o el de metal sin ella), el de acento si está elegida y un
-## poco más claro con el ratón encima.
+## Border color right now: the rarity's (or the metal one without it), the accent one if selected and
+## slightly lighter with the mouse over it.
 func get_border_color() -> Color:
 	var border: Color = UIPalette.rarity_color(rarity) if rarity >= 0 else UIPalette.BORDER
 	if selected:
@@ -234,20 +234,20 @@ func get_border_color() -> Color:
 	return border
 
 
-## Texto del contador de pila: vacío si la pila es de 1 o menos.
+## Text of the stack counter: empty if the stack is 1 or less.
 func get_count_text() -> String:
 	return str(count) if count > 1 else ""
 
 
 # --- Tooltip ----------------------------------------------------------------------------------
 
-## Guarda el contenido del tooltip: [param title], [param body] (BBCode) y [param subtitle].
+## Stores the tooltip content: [param title], [param body] (BBCode) and [param subtitle].
 func set_tooltip_info(title: String, body: String = "", subtitle: String = "") -> void:
 	tooltip_info = {"title": title, "body": body, "subtitle": subtitle}
 
 
-## El contenido que pide el [UITooltip]: el guardado más el color de la rareza para el título;
-## vacío si no hay título.
+## The content the [UITooltip] asks for: the stored one plus the rarity color for the title;
+## empty if there is no title.
 func get_tooltip_content() -> Dictionary:
 	if String(tooltip_info.get("title", "")).is_empty():
 		return {}
@@ -256,12 +256,12 @@ func get_tooltip_content() -> Dictionary:
 	return content
 
 
-## Enlaza la casilla con [param tooltip] (al pasar el ratón o enfocarla lo muestra).
+## Links the slot to [param tooltip] (on mouse hover or focus it shows it).
 func bind_tooltip(tooltip: UITooltip) -> void:
 	tooltip.bind_source(self, get_tooltip_content)
 
 
-# --- Entrada ----------------------------------------------------------------------------------
+# --- Input ------------------------------------------------------------------------------------
 
 func _gui_input(event: InputEvent) -> void:
 	var click: InputEventMouseButton = event as InputEventMouseButton
@@ -290,7 +290,7 @@ func _on_mouse_exited() -> void:
 	queue_redraw()
 
 
-# --- Dibujo -----------------------------------------------------------------------------------
+# --- Drawing ----------------------------------------------------------------------------------
 
 func _update_glyph() -> void:
 	if key_action == &"":

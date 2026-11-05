@@ -1,11 +1,11 @@
 extends RefCounted
-## Banco de capturas de calidad (TEC-50), área mapa (escenario de online_driver.gd).
+## Quality capture bench (TEC-50), map area (scenario of online_driver.gd).
 ##
-## Mapa M, minimapa y brújula del cliente en red, en varios sitios del Vado Gris.
+## The M map, minimap and compass of the networked client, at several places of Vado Gris.
 
 var d: Variant
 
-# [nombre, x, z, yaw, descripción]
+# [name, x, z, yaw, description]
 const SPOTS: Array = [
 	["campamento", 0.0, -138.0, 180.0, "campamento de Vardheim"],
 	["puente_norte", 0.0, -62.0, 180.0, "sobre el puente norte"],
@@ -36,7 +36,7 @@ func run(drv: Variant) -> void:
 		await d.crop("mapa/minimapa_%02d_%s_recorte.png" % [n, s[0]], Rect2i(r), "recorte del minimapa x3, %s" % s[4], "recorte del rectángulo del minimapa", 3.0)
 		var cr: Rect2 = compass.get_global_rect().grow(6.0)
 		await d.crop("mapa/brujula_%02d_%s_recorte.png" % [n, s[0]], Rect2i(cr), "recorte de la brújula x2, %s" % s[4], "recorte del rectángulo de la brújula", 2.0)
-	# Niveles de zoom del minimapa.
+	# Minimap zoom levels.
 	await d.ensure_alive()
 	await d.tp(-20.0, 30.0, 90.0, 3.0, NAN, 1.2)
 	for level: int in 3:
@@ -47,14 +47,14 @@ func run(drv: Variant) -> void:
 		await d.crop("mapa/minimapa_zoom_%d_recorte.png" % level, Rect2i(r2), "minimapa con zoom %d (%.0f m visibles)" % [level, minimap.get_visible_meters()], "set_zoom_level(%d)" % level, 3.0)
 		await d.shot("mapa/minimapa_zoom_%d_pantalla.png" % level, "pantalla completa, minimapa zoom %d" % level, "set_zoom_level")
 	minimap.set_zoom_level(1)
-	# Brújula con distintos rumbos.
+	# Compass with different headings.
 	await d.tp(0.0, -134.0, 0.0, 3.0, NAN, 1.0)
 	for yaw: int in [0, 90, 180, -90, 45]:
 		d.look(float(yaw), 3.0)
 		await d.wait(0.6)
 		var cr2: Rect2 = compass.get_global_rect().grow(6.0)
 		await d.crop("mapa/brujula_rumbo_%d_recorte.png" % yaw, Rect2i(cr2), "brújula con rumbo %d grados" % yaw, "d.look(%d)" % yaw, 2.0)
-	# Mapa M en varios puntos.
+	# M map at several points.
 	var map: Variant = d.hud.get_world_map()
 	var spots: Array = [["campamento", 0.0, -138.0], ["vado", -62.0, 0.0], ["fuerte", -12.0, -9.0], ["borde_este", 128.0, -62.0]]
 	var k: int = 0
@@ -69,7 +69,7 @@ func run(drv: Variant) -> void:
 		if map.is_open():
 			await d.key(KEY_M)
 		await d.wait(0.4)
-	# El mapa con el fuerte en manos de cada reino.
+	# The map with the fort held by each realm.
 	d.cmd(NetProtocol.DEBUG_FORT_OWNER, PackedByteArray([NetProtocol.Realm.SOLMARCH]))
 	await d.wait(1.5)
 	await d.key(KEY_M)
@@ -82,14 +82,14 @@ func run(drv: Variant) -> void:
 	await d.wait(0.9)
 	await d.shot("mapa/mapa_m_06_fuerte_de_vardheim.png", "mapa M con el fuerte de Vardheim", "DEBUG_FORT_OWNER=1")
 	await d.key(KEY_M)
-	# Teclas de zoom con el mapa abierto.
+	# Zoom keys with the map open.
 	await d.key(KEY_M)
 	await d.wait(0.6)
 	await d.key(KEY_EQUAL)
 	await d.wait(0.5)
 	await d.shot("mapa/mapa_m_07_tecla_mas.png", "mapa M tras pulsar + (zoom del minimapa)", "teclas M y =")
 	await d.key(KEY_M)
-	# UI-53: zoom con la rueda y arrastre (por las funciones que llaman los eventos del ratón).
+	# UI-53: zoom with the wheel and drag (through the functions the mouse events call).
 	await d.tp(-12.0, -9.0, 90.0, 3.0, NAN, 1.0)
 	await d.key(KEY_M)
 	await d.wait(0.6)
@@ -105,7 +105,7 @@ func run(drv: Variant) -> void:
 	await d.shot("mapa/mapa_m_10_zoom_ruinas.png", "mapa M con más zoom sobre las ruinas de Eld", "WorldMap.zoom_at")
 	map.reset_view()
 	await d.key(KEY_M)
-	# Brújula y línea de objetivo en el campamento (lejos del fuerte).
+	# Compass and objective line at the camp (far from the fort).
 	await d.tp(0.0, -138.0, 180.0, 3.0, NAN, 1.0)
 	await d.wait(0.8)
 	await d.shot("mapa/hud_objetivo_lejos.png", "pantalla completa lejos del fuerte: brújula con rumbo y línea de objetivo", "tp de depuración")

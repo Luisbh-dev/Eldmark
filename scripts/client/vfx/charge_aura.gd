@@ -1,38 +1,38 @@
 class_name ChargeAura
 extends VfxEffect
-## Aura de carga del golpe fuerte (ART-09, solo cliente): un efecto continuo que crece con la carga y que
-## se concentra en el arma, no en el cuerpo.
+## Heavy strike charge aura (ART-09, client only): a continuous effect that grows with the charge and is
+## concentrated on the weapon, not the body.
 ## [br][br]
-## Cuelga del personaje (a ras de suelo, sin escala). Se enciende con [method play], se alimenta cada
-## fotograma con [method set_charge] (0 a 1, la fracción de carga del golpe) y se apaga con [method stop]
-## si se cancela o con [method release] si el golpe sale. Al llegar a carga completa lanza una vez el
-## aviso [code]pulse[/code] (destello en la hoja y onda plana en el suelo: se nota sin mirar la barra) y deja
-## la carga al máximo; [method release] lanza el aviso [code]release[/code], el estallido de la suelta.
+## It hangs from the character (at ground level, unscaled). It is switched on with [method play], fed every
+## frame with [method set_charge] (0 to 1, the strike's charge fraction) and switched off with [method stop]
+## if canceled or with [method release] if the strike lands. On reaching full charge it fires the
+## [code]pulse[/code] cue once (a flash on the blade and a flat wave on the ground: noticeable without looking at the bar) and leaves
+## the charge at maximum; [method release] fires the [code]release[/code] cue, the burst of the release.
 ## [br][br]
-## [b]Qué se ve.[/b] En el arma: una franja de luz a lo largo de la hoja que crece con la carga (el núcleo
-## se ensancha y se calienta, corren pulsos hacia la punta), motas y brasas que la hoja absorbe y, con casi
-## toda la carga, una distorsión de calor. En el suelo: la runa que se cierra. El cuerpo no lleva nada
-## encima (una cáscara de energía tapaba al personaje y no decía qué se cargaba).
+## [b]What is seen.[/b] On the weapon: a strip of light along the blade that grows with the charge (the core
+## widens and heats up, pulses run toward the tip), motes and embers that the blade absorbs and, with almost
+## full charge, a heat distortion. On the ground: the rune that closes. The body carries nothing
+## on top (an energy shell hid the character and did not say what was being charged).
 ## [br][br]
-## [b]El arma.[/b] Todo lo que va en la hoja cuelga del nodo [code]Blade[/code], cuyo eje +X es la hoja.
-## [method set_weapon] lo cuelga del nodo del arma (el [BoneAttachment3D] de la espada) para que la siga
-## sin retraso; sin arma se queda sobre el personaje, en una posición de reposo. Lo que depende de la
-## carga lleva el metadato [code]vfx_charge[/code] con el nombre del parámetro de instancia que recibe el
-## valor, o [code]vfx_charge_amount[/code] (partículas: su fracción emitida).
+## [b]The weapon.[/b] Everything that goes on the blade hangs from the [code]Blade[/code] node, whose +X axis is the blade.
+## [method set_weapon] hangs it from the weapon node (the sword's [BoneAttachment3D]) so it follows it
+## without lag; with no weapon it stays on the character, in a rest position. Whatever depends on the
+## charge carries the [code]vfx_charge[/code] metadata with the name of the instance parameter that receives the
+## value, or [code]vfx_charge_amount[/code] (particles: their emitted fraction).
 
 const META_CHARGE: StringName = &"vfx_charge"
 const META_CHARGE_AMOUNT: StringName = &"vfx_charge_amount"
 const CUE_PULSE: StringName = &"pulse"
 const CUE_RELEASE: StringName = &"release"
-## Carga a partir de la cual se considera completa y suena el pulso.
+## Charge from which it is considered full and the pulse sounds.
 const FULL_CHARGE: float = 0.995
-## Hoja sobre la que se monta el brillo (m, de la empuñadura a la punta de la espada provisional): lo que ocupa el
-## nodo [code]Blade[/code] a escala 1. Una espada de otro largo escala el punto de montaje (ver [HumanoidVisual]).
+## Blade the glow is mounted on (m, from the hilt to the tip of the provisional sword): what the
+## [code]Blade[/code] node occupies at scale 1. A sword of another length scales the mount point (see [HumanoidVisual]).
 const BLADE_BASE: float = 0.12
 const BLADE_TIP: float = 1.12
 const BLADE_LENGTH: float = BLADE_TIP - BLADE_BASE
 
-## Reino que decide el color ([VfxPalette]).
+## Realm that decides the color ([VfxPalette]).
 @export var realm: int = 0:
 	set = set_realm
 
@@ -53,7 +53,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	# El arma cuelga del esqueleto, no de la aura: si la aura se va, se lleva lo suyo.
+	# The weapon hangs from the skeleton, not the aura: if the aura goes, it takes its own with it.
 	if _blade != null and is_instance_valid(_blade) and not is_ancestor_of(_blade):
 		_blade.queue_free()
 
@@ -71,7 +71,7 @@ func reset() -> void:
 	_set_blade_visible(false)
 
 
-## Pone la carga actual, de 0 a 1.
+## Sets the current charge, from 0 to 1.
 func set_charge(value: float) -> void:
 	_ensure_charge_setup()
 	_charge = clampf(value, 0.0, 1.0)
@@ -89,12 +89,12 @@ func set_charge(value: float) -> void:
 			_pulsed = false
 
 
-## Carga actual (la última de [method set_charge]).
+## Current charge (the last one from [method set_charge]).
 func get_charge() -> float:
 	return _charge
 
 
-## El golpe sale: estallido y la aura se apaga.
+## The strike lands: burst and the aura switches off.
 func release() -> void:
 	if not is_playing():
 		return
@@ -102,8 +102,8 @@ func release() -> void:
 	stop()
 
 
-## Cuelga todo lo que va en la hoja de [param weapon] (el nodo del arma: su eje +X es la hoja) para que
-## la siga fotograma a fotograma. Con null lo devuelve a la posición de reposo sobre el personaje.
+## Hangs everything that goes on the blade from [param weapon] (the weapon node: its +X axis is the blade) so that
+## it follows it frame by frame. With null it returns it to the rest position on the character.
 func set_weapon(weapon: Node3D) -> void:
 	_ensure_setup()
 	_ensure_charge_setup()
@@ -115,14 +115,14 @@ func set_weapon(weapon: Node3D) -> void:
 	_blade.transform = Transform3D.IDENTITY if weapon != null else _rest_transform()
 
 
-## Colores por reino (ver [VfxPalette]).
+## Colors per realm (see [VfxPalette]).
 func set_realm(value: int) -> void:
 	realm = value
 	_aura_color = VfxPalette.aura(value)
 	tint = _aura_color
 
 
-# Sin arma, la hoja queda de lado del personaje, a la altura de la mano, apuntando hacia arriba y adelante.
+# With no weapon, the blade sits at the character's side, at hand height, pointing up and forward.
 func _rest_transform() -> Transform3D:
 	var basis: Basis = Basis.from_euler(Vector3(0.0, 0.0, deg_to_rad(55.0)))
 	return Transform3D(basis, Vector3(0.45, 0.85, -0.2))

@@ -28,11 +28,11 @@ func TestIntAcceptsIntegersAndGodotFloats(t *testing.T) {
 	for in, want := range cases {
 		var got Int
 		if err := json.Unmarshal([]byte(in), &got); err != nil {
-			t.Errorf("%s: error inesperado: %v", in, err)
+			t.Errorf("%s: unexpected error: %v", in, err)
 			continue
 		}
 		if int64(got) != want {
-			t.Errorf("%s: %d, se esperaba %d", in, got, want)
+			t.Errorf("%s: %d, expected %d", in, got, want)
 		}
 	}
 }
@@ -47,7 +47,7 @@ func TestIntRejectsFractionsStringsAndUnsafeValues(t *testing.T) {
 		var got Int
 		err := json.Unmarshal([]byte(in), &got)
 		if err == nil {
-			t.Errorf("%s: se aceptó como %d", in, got)
+			t.Errorf("%s: accepted as %d", in, got)
 		}
 	}
 }
@@ -58,34 +58,34 @@ func TestIntInsideAStructAndAsPointer(t *testing.T) {
 		Level *Int `json:"level"`
 	}
 	if err := DecodeBytes([]byte(`{"kills": 4.0, "level": null}`), &body); err != nil {
-		t.Fatalf("Godot reescribe 4 como 4.0 y tiene que valer: %v", err)
+		t.Fatalf("Godot rewrites 4 as 4.0 and it has to be accepted: %v", err)
 	}
 	if body.Kills != 4 || body.Level != nil {
 		t.Fatalf("kills %d, level %v", body.Kills, body.Level)
 	}
 	if err := DecodeBytes([]byte(`{"kills": 4.5}`), &body); !errors.Is(err, ErrInt) {
-		t.Fatalf("4.5 tenía que fallar con ErrInt: %v", err)
+		t.Fatalf("4.5 had to fail with ErrInt: %v", err)
 	}
 	out, err := json.Marshal(Int(820))
 	if err != nil || string(out) != "820" {
-		t.Fatalf("Int se escribe sin decimales: %s %v", out, err)
+		t.Fatalf("Int is written without decimals: %s %v", out, err)
 	}
 	if _, err := json.Marshal(Int(MaxSafeInt + 1)); err == nil {
-		t.Fatal("un entero que no cabe exacto en JSON no se escribe")
+		t.Fatal("an integer that does not fit exactly in JSON is not written")
 	}
 }
 
 func TestIDRoundTripsTheFull63Bits(t *testing.T) {
 	var id ID
 	if err := json.Unmarshal([]byte(`"9223372036854775807"`), &id); err != nil {
-		t.Fatalf("2^63 − 1 en cadena vale: %v", err)
+		t.Fatalf("2^63 - 1 as a string is accepted: %v", err)
 	}
 	if int64(id) != 1<<63-1 {
-		t.Fatalf("leído %d", id)
+		t.Fatalf("read %d", id)
 	}
 	out, err := json.Marshal(id)
 	if err != nil || string(out) != `"9223372036854775807"` {
-		t.Fatalf("se escribe como cadena: %s %v", out, err)
+		t.Fatalf("it is written as a string: %s %v", out, err)
 	}
 	// The vector's ticket_id from §5.1 and an id above 2^53, without losing anything.
 	for in, want := range map[string]int64{
@@ -97,7 +97,7 @@ func TestIDRoundTripsTheFull63Bits(t *testing.T) {
 	} {
 		var got ID
 		if err := json.Unmarshal([]byte(in), &got); err != nil || int64(got) != want {
-			t.Errorf("%s: %d %v, se esperaba %d", in, got, err, want)
+			t.Errorf("%s: %d %v, expected %d", in, got, err, want)
 		}
 	}
 }
@@ -109,16 +109,16 @@ func TestIDRejectsNumbersAndMalformedStrings(t *testing.T) {
 	} {
 		var got ID
 		if err := json.Unmarshal([]byte(in), &got); err == nil {
-			t.Errorf("%s: se aceptó como %d", in, got)
+			t.Errorf("%s: accepted as %d", in, got)
 		} else if !errors.Is(err, ErrID) {
-			t.Errorf("%s: el error no es ErrID: %v", in, err)
+			t.Errorf("%s: the error is not ErrID: %v", in, err)
 		}
 	}
 	if _, err := ParseID("12a"); err == nil {
-		t.Error("ParseID acepta solo dígitos")
+		t.Error("ParseID accepts only digits")
 	}
 	if id, err := ParseID("8152839359930207727"); err != nil || id.String() != "8152839359930207727" {
-		t.Errorf("ParseID con el id que Godot corrompe: %v %v", id, err)
+		t.Errorf("ParseID with the id that Godot corrupts: %v %v", id, err)
 	}
 }
 
@@ -129,10 +129,10 @@ func TestDecodeIsStrict(t *testing.T) {
 	}
 	var b body
 	if err := DecodeBytes([]byte(`{"character_id": "41", "seq": 17.0}`), &b); err != nil {
-		t.Fatalf("cuerpo válido: %v", err)
+		t.Fatalf("valid body: %v", err)
 	}
 	if b.CharacterID != 41 || b.Seq != 17 {
-		t.Fatalf("leído %+v", b)
+		t.Fatalf("read %+v", b)
 	}
 	bad := map[string]string{
 		"campo desconocido":      `{"character_id": "41", "seq": 1, "world_id": 1}`,
@@ -151,11 +151,11 @@ func TestDecodeIsStrict(t *testing.T) {
 	for name, in := range bad {
 		var b body
 		if err := DecodeBytes([]byte(in), &b); err == nil {
-			t.Errorf("%s: se aceptó %s", name, in)
+			t.Errorf("%s: accepted %s", name, in)
 		}
 	}
 	// Trailing spaces and line breaks are valid.
 	if err := DecodeBytes([]byte("{\"character_id\": \"1\", \"seq\": 1}\n\n"), &b); err != nil {
-		t.Fatalf("espacios al final: %v", err)
+		t.Fatalf("trailing whitespace: %v", err)
 	}
 }

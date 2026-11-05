@@ -1,21 +1,21 @@
 class_name StatusIcons
 extends HBoxContainer
-## Fila de iconos de efectos de estado (UI-45, docs/habilidades.md, sección 6.4): la propia, sobre la
-## barra de vida, y la pequeña de las placas de nombre (hasta 4, primero los perjudiciales). Cada icono
-## enseña el efecto (cuadro provisional con su inicial, [CombatIcons]), los segundos que le quedan, las
-## acumulaciones si hay más de una y un borde rojo si perjudica o verde si no; el tooltip da su nombre y
-## qué hace.
+## Row of status effect icons (UI-45, docs/habilidades.md, section 6.4): the player's own, above the
+## health bar, and the small one on nameplates (up to 4, harmful ones first). Each icon
+## shows the effect (provisional square with its initial, [CombatIcons]), the seconds remaining, the
+## stacks if there is more than one and a red border if it is harmful or green if not; the tooltip gives its name and
+## what it does.
 ## [br][br]
-## No lee la red: quien la tiene le pasa con [method show_entries] los efectos de un [StatusTracker] y el
-## tick con el que contar lo que queda (el del servidor estimado para el jugador local; el de dibujo en
-## las placas). Un efecto que ya acabó en ese tick no sale. Los iconos se reutilizan (pool). Solo
-## cliente.
+## It does not read the network: whoever owns it passes it the effects of a [StatusTracker] with [method show_entries] and the
+## tick to count the remaining time against (the estimated server tick for the local player; the draw tick on
+## nameplates). An effect that has already ended at that tick is not shown. Icons are reused (pool). Client
+## only.
 
-## Lado (px) de cada icono de la fila propia y de la de las placas.
+## Side (px) of each icon in the player's own row and in the nameplates' row.
 const ICON_SIZE: float = 30.0
 const COMPACT_ICON_SIZE: float = 18.0
 const BORDER_WIDTH: float = 2.0
-## Píxeles que quedan para el dibujo dentro del borde (las variantes pequeñas de [CombatIcons]).
+## Pixels left for the drawing inside the border (the small variants of [CombatIcons]).
 const NORMAL_PIXELS: int = 26
 const COMPACT_PIXELS: int = 14
 const HARMFUL_BORDER: Color = Color(0.92, 0.22, 0.18, 1.0)
@@ -26,7 +26,7 @@ const SECONDS_FONT_SIZE: int = 12
 const STACKS_FONT_SIZE: int = 12
 
 
-## Un icono de efecto (se dibuja él solo; su [member Control.tooltip_text] es el del efecto).
+## An effect icon (it draws itself; its [member Control.tooltip_text] is the effect's).
 class StatusIcon extends Control:
 	var status_id: int = 0
 	var stacks: int = 1
@@ -39,15 +39,15 @@ class StatusIcon extends Control:
 		mouse_filter = Control.MOUSE_FILTER_PASS
 		focus_mode = Control.FOCUS_NONE
 
-	## Texto de los segundos que quedan (vacío en las placas).
+	## Text of the seconds remaining (empty on nameplates).
 	func get_seconds_text() -> String:
 		return "" if compact or seconds_left <= 0 else str(seconds_left)
 
-	## Texto de las acumulaciones (vacío si hay una sola).
+	## Text of the stacks (empty if there is only one).
 	func get_stacks_text() -> String:
 		return str(stacks) if stacks > 1 else ""
 
-	## Color del borde: rojo si perjudica, verde si no.
+	## Border color: red if harmful, green if not.
 	func get_border_color() -> Color:
 		return HARMFUL_BORDER if harmful else BENEFICIAL_BORDER
 
@@ -73,11 +73,11 @@ class StatusIcon extends Control:
 					SECONDS_FONT_SIZE, TEXT_COLOR)
 
 
-## Iconos como mucho (las placas, 4).
+## At most this many icons (nameplates, 4).
 @export var max_icons: int = 8
-## Iconos pequeños sin segundos (las placas).
+## Small icons without seconds (nameplates).
 @export var compact: bool = false
-## Primero los perjudiciales (las placas); si no, en el orden en que llegaron.
+## Harmful ones first (nameplates); otherwise in the order they arrived.
 @export var harmful_first: bool = false
 
 var _icons: Array[StatusIcon] = []
@@ -90,8 +90,8 @@ func _init() -> void:
 	add_theme_constant_override(&"separation", 3)
 
 
-## Enseña los efectos de [param tracker] que siguen vivos en [param tick] (null o ninguno: la fila se
-## vacía). Devuelve cuántos iconos enseña.
+## Shows the effects of [param tracker] that are still alive at [param tick] (null or none: the row is
+## emptied). Returns how many icons it shows.
 func show_tracker(tracker: StatusTracker, tick: int) -> int:
 	if tracker == null:
 		var none: Array[StatusTracker.Entry] = []
@@ -99,8 +99,8 @@ func show_tracker(tracker: StatusTracker, tick: int) -> int:
 	return show_entries(tracker.get_active(tick, harmful_first), tick)
 
 
-## Enseña [param entries] (ya en orden; como mucho [member max_icons]) contando lo que les queda contra
-## [param tick]. Los que ya acabaron no salen. Devuelve cuántos iconos enseña.
+## Shows [param entries] (already in order; at most [member max_icons]) counting what remains of them against
+## [param tick]. Those that have already ended are not shown. Returns how many icons it shows.
 func show_entries(entries: Array[StatusTracker.Entry], tick: int) -> int:
 	if entries.is_empty() and _shown == 0:
 		return 0
@@ -113,10 +113,10 @@ func show_entries(entries: Array[StatusTracker.Entry], tick: int) -> int:
 			continue
 		var icon: StatusIcon = _icon_at(used)
 		var seconds: int = ceili(float(entry.ticks_left(tick)) / rate)
-		# Solo se toca lo que cambia: con 32 placas, esto va cada fotograma.
+		# Only what changes is touched: with 32 plates, this runs every frame.
 		if icon.status_id != entry.status_id or icon.stacks != entry.stacks \
 				or icon.seconds_left != seconds or icon.compact != compact or not icon.visible:
-			# La variante pequeña de cada estado está dibujada a la medida exacta del icono.
+			# The small variant of each status is drawn to the exact size of the icon.
 			icon.icon = CombatIcons.status_icon(entry.status_id,
 					COMPACT_PIXELS if compact else NORMAL_PIXELS)
 			icon.harmful = entry.is_harmful()
@@ -136,17 +136,17 @@ func show_entries(entries: Array[StatusTracker.Entry], tick: int) -> int:
 	return used
 
 
-## Iconos que se ven.
+## Icons that are visible.
 func get_shown_count() -> int:
 	return _shown
 
 
-## El icono [param index] de los que se ven (null si no hay tantos).
+## Icon [param index] of those that are visible (null if there are not that many).
 func get_icon(index: int) -> StatusIcon:
 	return _icons[index] if index >= 0 and index < _shown else null
 
 
-## Iconos creados (pool): nunca más de [member max_icons].
+## Icons created (pool): never more than [member max_icons].
 func get_pool_size() -> int:
 	return _icons.size()
 

@@ -1,28 +1,28 @@
 class_name MapLabelPlacer
 extends RefCounted
-## Colocación de rótulos del mapa sin que se pisen (UI-53). Puro: recibe los rótulos con su punto de anclaje, su
-## tamaño y su prioridad, y devuelve dónde va cada uno. Los de más prioridad eligen primero; cada rótulo prueba una
-## serie de posiciones alrededor de su icono (derecha, izquierda, encima, debajo y las diagonales) y, si todas
-## chocan, dos coronas más lejos unidas al icono con una línea guía. Si tampoco cabe, se oculta.
+## Placement of map labels so that they do not overlap (UI-53). Pure: it receives the labels with their anchor point, their
+## size and their priority, and returns where each goes. Those with higher priority choose first; each label tries a
+## series of positions around its icon (right, left, above, below and the diagonals) and, if all
+## collide, two farther rings joined to the icon by a leader line. If it does not fit either, it is hidden.
 ## [br][br]
-## Cada elemento de entrada es [code]{"id", "anchor": Vector2, "size": Vector2, "priority": int, "area": bool}[/code].
-## Con [code]radius[/code] (px) se cambia el hueco del icono. Las zonas ([code]area[/code]) se centran sobre su anclaje y no tienen más posiciones. La salida añade
-## [code]placed: bool[/code], [code]rect: Rect2[/code] y [code]leader: bool[/code] (línea guía hasta el icono). Solo
-## cliente.
+## Each input element is [code]{"id", "anchor": Vector2, "size": Vector2, "priority": int, "area": bool}[/code].
+## With [code]radius[/code] (px) the icon's gap is changed. Areas ([code]area[/code]) are centered on their anchor and have no other positions. The output adds
+## [code]placed: bool[/code], [code]rect: Rect2[/code] and [code]leader: bool[/code] (leader line to the icon). Client
+## only.
 
-## Hueco (px) entre el icono y el rótulo en la primera corona, y en la segunda (con línea guía).
+## Gap (px) between the icon and the label in the first ring, and in the second (with a leader line).
 const GAP_NEAR: float = 8.0
 const GAP_FAR: float = 34.0
-## Hueco (px) de la tercera y última corona, también con línea guía.
+## Gap (px) of the third and last ring, also with a leader line.
 const GAP_FARTHEST: float = 66.0
-## Margen (px) que se deja libre alrededor de cada rótulo ya colocado.
+## Margin (px) left free around each label already placed.
 const PADDING: float = 3.0
-## Radio (px) del hueco que ocupa cada icono para los rótulos de los demás.
+## Radius (px) of the gap each icon occupies for the other labels.
 const ICON_RADIUS: float = 9.0
 
 
-## Coloca [param items] dentro de [param bounds]; [param extra_obstacles] son rectángulos que ningún rótulo puede
-## tapar (el jugador, la leyenda...). Devuelve los mismos elementos en el mismo orden, anotados.
+## Places [param items] inside [param bounds]; [param extra_obstacles] are rectangles that no label may
+## cover (the player, the legend...). Returns the same elements in the same order, annotated.
 static func place(items: Array[Dictionary], bounds: Rect2, extra_obstacles: Array[Rect2] = []) -> Array[Dictionary]:
 	var order: Array[int] = []
 	for i: int in items.size():
@@ -60,7 +60,7 @@ static func place(items: Array[Dictionary], bounds: Rect2, extra_obstacles: Arra
 	return result
 
 
-## Posiciones que prueba un rótulo, por orden: [code]{"rect": Rect2, "leader": bool}[/code].
+## Positions a label tries, in order: [code]{"rect": Rect2, "leader": bool}[/code].
 static func candidates(item: Dictionary) -> Array[Dictionary]:
 	var at: Vector2 = item["anchor"]
 	var size: Vector2 = item["size"]
@@ -72,7 +72,7 @@ static func candidates(item: Dictionary) -> Array[Dictionary]:
 		var gap: float = [GAP_NEAR, GAP_FAR, GAP_FARTHEST][ring]
 		var leader: bool = ring > 0
 		var d: float = float(item.get("radius", ICON_RADIUS)) + gap
-		# Derecha, izquierda, encima, debajo y las cuatro diagonales.
+		# Right, left, above, below and the four diagonals.
 		found.append({"rect": Rect2(at + Vector2(d, -size.y * 0.5), size), "leader": leader})
 		found.append({"rect": Rect2(at + Vector2(-d - size.x, -size.y * 0.5), size), "leader": leader})
 		found.append({"rect": Rect2(at + Vector2(-size.x * 0.5, -d - size.y), size), "leader": leader})
@@ -84,7 +84,7 @@ static func candidates(item: Dictionary) -> Array[Dictionary]:
 	return found
 
 
-## true si [param rect] (con su margen) toca alguno de [param others].
+## true if [param rect] (with its margin) touches any of [param others].
 static func _hits(rect: Rect2, others: Array[Rect2]) -> bool:
 	var grown: Rect2 = rect.grow(PADDING)
 	for other: Rect2 in others:

@@ -85,10 +85,10 @@ func serve(t *testing.T, a *app.App) {
 		select {
 		case err := <-done:
 			if err != nil {
-				t.Errorf("Serve terminó con error: %v", err)
+				t.Errorf("Serve ended with an error: %v", err)
 			}
 		case <-time.After(15 * time.Second):
-			t.Error("Serve no terminó al cancelar")
+			t.Error("Serve did not end on cancel")
 		}
 	})
 }
@@ -103,7 +103,7 @@ func get(t *testing.T, addr, path string) (int, map[string]any, http.Header) {
 	data, _ := io.ReadAll(resp.Body)
 	var body map[string]any
 	if err := json.Unmarshal(data, &body); err != nil {
-		t.Fatalf("GET %s: cuerpo JSON: %v (%s)", path, err, data)
+		t.Fatalf("GET %s: JSON body: %v (%s)", path, err, data)
 	}
 	return resp.StatusCode, body, resp.Header
 }
@@ -117,7 +117,7 @@ func waitReady(t *testing.T, addr string) {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("/ready no llega a 200: %d %v", status, body)
+			t.Fatalf("/ready does not reach 200: %d %v", status, body)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -136,15 +136,15 @@ func TestReadyWithTheDatabaseDown(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
 		if rec.Code != 200 {
-			t.Fatalf("/health sin base: %d", rec.Code)
+			t.Fatalf("/health without a database: %d", rec.Code)
 		}
 		rec = httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
 		if rec.Code != 503 || !strings.Contains(rec.Body.String(), "La base de datos no responde") {
-			t.Fatalf("/ready sin base: %d %s", rec.Code, rec.Body.String())
+			t.Fatalf("/ready without a database: %d %s", rec.Code, rec.Body.String())
 		}
 		if strings.Contains(rec.Body.String(), "parada") || strings.Contains(rec.Body.String(), "eldmark") {
-			t.Fatalf("/ready no da detalles de la base: %s", rec.Body.String())
+			t.Fatalf("/ready gives no database details: %s", rec.Body.String())
 		}
 	}
 }
@@ -157,18 +157,18 @@ func TestServeWaitsForTheMigrations(t *testing.T) {
 	serve(t, a)
 	status, body, header := get(t, a.PublicAddr(), "/ready")
 	if status != 503 || !strings.Contains(body["reason"].(string), "migrate up") || header.Get("Retry-After") == "" {
-		t.Fatalf("/ready con la base sin migrar: %d %v", status, body)
+		t.Fatalf("/ready with an unmigrated database: %d %v", status, body)
 	}
 	if status, _, _ := get(t, a.PublicAddr(), "/health"); status != 200 {
 		t.Fatalf("/health: %d", status)
 	}
 	if a.Started() {
-		t.Fatal("no arranca sin el esquema")
+		t.Fatal("does not start without the schema")
 	}
 	// As long as the reason does not change, it is logged only once even if checked every 50 ms.
 	time.Sleep(300 * time.Millisecond)
 	if n := strings.Count(logs.String(), "no puede arrancar todavía"); n != 1 {
-		t.Errorf("el mismo motivo se registra una vez, no %d: %s", n, logs.String())
+		t.Errorf("the same reason is logged once, not %d times: %s", n, logs.String())
 	}
 	r, err := migrate.New(pool, migrate.FS())
 	if err != nil {
@@ -181,11 +181,11 @@ func TestServeWaitsForTheMigrations(t *testing.T) {
 	waitReady(t, a.InternalAddr())
 	if !a.Started() || !strings.Contains(logs.String(), "plataforma lista") ||
 		!strings.Contains(logs.String(), "no puede arrancar todavía") {
-		t.Fatalf("el arranque se registra: %s", logs.String())
+		t.Fatalf("the startup is logged: %s", logs.String())
 	}
 	status, body, _ = get(t, a.PublicAddr(), "/no/existe")
 	if status != 404 || body["error"].(map[string]any)["code"] != "not_found" {
-		t.Fatalf("ruta desconocida: %d %v", status, body)
+		t.Fatalf("unknown route: %d %v", status, body)
 	}
 }
 
@@ -206,7 +206,7 @@ func TestServeStartsWithALaterMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if applied, err := r.Up(context.Background()); err != nil || len(applied) != 1 {
-		t.Fatalf("la posterior: %v %v", applied, err)
+		t.Fatalf("the later one: %v %v", applied, err)
 	}
 	a, _ := newApp(t, pool, migrate.FS())
 	serve(t, a)
@@ -246,7 +246,7 @@ insert into character_leases (character_id, world_id, lease_id, zone_instance_id
 		t.Fatal(err)
 	}
 	if !liveFresh || !stoppedOld {
-		t.Fatalf("latidos: la viva renovada %v, la parada igual %v", liveFresh, stoppedOld)
+		t.Fatalf("heartbeats: the live one renewed %v, the stopped one unchanged %v", liveFresh, stoppedOld)
 	}
 	var heldLong, freeOld, expiredBefore bool
 	if err := pool.QueryRow(ctx, `select
@@ -257,7 +257,7 @@ insert into character_leases (character_id, world_id, lease_id, zone_instance_id
 		t.Fatal(err)
 	}
 	if !heldLong || !freeOld || !expiredBefore {
-		t.Fatalf("arrendamientos: el vivo alargado %v, el libre igual %v, el caducado antes del último latido igual %v",
+		t.Fatalf("leases: the live one extended %v, the free one unchanged %v, the one expired before the last heartbeat unchanged %v",
 			heldLong, freeOld, expiredBefore)
 	}
 }
@@ -280,7 +280,7 @@ func TestListenFailsOnABusyPort(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := a.Listen(); err == nil || !strings.Contains(err.Error(), "ELDMARK_INTERNAL_ADDR") {
-		t.Fatalf("puerto ocupado: %v", err)
+		t.Fatalf("port in use: %v", err)
 	}
 }
 
@@ -306,10 +306,10 @@ func TestBootHooksJobsAndGate(t *testing.T) {
 	serve(t, a)
 	status, body, header := get(t, a.PublicAddr(), "/v1/prueba")
 	if status != 503 || body["error"].(map[string]any)["code"] != "unavailable" || header.Get("Retry-After") == "" {
-		t.Fatalf("antes del arranque: %d %v", status, body)
+		t.Fatalf("before startup: %d %v", status, body)
 	}
 	if hookCalls.Load() != 0 {
-		t.Fatal("los ganchos esperan al esquema")
+		t.Fatal("the hooks wait for the schema")
 	}
 	r, _ := migrate.New(pool, migrate.FS())
 	if _, err := r.Up(context.Background()); err != nil {
@@ -322,17 +322,17 @@ func TestBootHooksJobsAndGate(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != 204 || hookCalls.Load() != 2 {
-		t.Fatalf("tras el arranque: %d, ganchos %d", resp.StatusCode, hookCalls.Load())
+		t.Fatalf("after startup: %d, hooks %d", resp.StatusCode, hookCalls.Load())
 	}
 	for i := 0; i < 2; i++ {
 		select {
 		case <-jobRan:
 		case <-time.After(5 * time.Second):
-			t.Fatalf("el trabajo corre al arrancar y cada vuelta (%d)", jobCalls.Load())
+			t.Fatalf("the work runs at startup and on every round (%d)", jobCalls.Load())
 		}
 	}
 	if !strings.Contains(logs.String(), "el primer intento falla") {
-		t.Fatal("el fallo del gancho se registra")
+		t.Fatal("the hook failure is logged")
 	}
 }
 
@@ -355,7 +355,7 @@ func TestJobsTakeTheAdvisoryLock(t *testing.T) {
 	waitReady(t, a.PublicAddr())
 	time.Sleep(150 * time.Millisecond)
 	if ran.Load() != 0 {
-		t.Fatal("con el bloqueo en otro proceso, no corre")
+		t.Fatal("with the lock held by another process, it does not run")
 	}
 	if _, err := conn.Exec(ctx, `select pg_advisory_unlock($1)`, app.JobLockKey("bloqueado")); err != nil {
 		t.Fatal(err)
@@ -363,7 +363,7 @@ func TestJobsTakeTheAdvisoryLock(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for ran.Load() == 0 {
 		if time.Now().After(deadline) {
-			t.Fatal("libre el bloqueo, corre")
+			t.Fatal("with the lock released, it runs")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

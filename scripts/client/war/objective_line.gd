@@ -1,15 +1,15 @@
 class_name ObjectiveLine
 extends Control
-## Línea de objetivo bajo la brújula (UI-54): una sola línea compacta y siempre visible con el estado del fuerte
-## cuando se está lejos de él («Fuerte del Vado Gris · De Vardheim · Capitán del Vado en pie · Puerta 72 % · 182 m»).
-## Sustituye al [CapturePanel], que solo aparece a menos de [constant CapturePanel.NEAR_DISTANCE] m (o de
-## [constant CapturePanel.COMBAT_DISTANCE] m si se combate): la línea se esconde cuando el panel está a la vista, así
-## que nunca hay las dos a la vez. Sin fuerte conocido no se dibuja. El texto sale de [method compose_text], pura.
-## Solo cliente.
+## Objective line under the compass (UI-54): a single compact, always-visible line with the state of the fort
+## when the player is far from it ("Fuerte del Vado Gris · De Vardheim · Capitán del Vado en pie · Puerta 72 % · 182 m").
+## It replaces the [CapturePanel], which only shows up closer than [constant CapturePanel.NEAR_DISTANCE] m (or
+## [constant CapturePanel.COMBAT_DISTANCE] m while fighting): the line hides when the panel is in view, so
+## the two are never shown at once. With no known fort nothing is drawn. The text comes from the pure [method compose_text].
+## Client only.
 
 const WIDTH: float = 560.0
 const HEIGHT: float = 22.0
-## Debajo de la brújula (4 px de margen + 60 de alto) con un hueco.
+## Below the compass (4 px margin + 60 px height) with a gap.
 const TOP_MARGIN: float = 68.0
 const FONT_SIZE: int = 14
 const BACK_COLOR: Color = Color(0.04, 0.045, 0.06, 0.55)
@@ -44,8 +44,8 @@ func _process(_delta: float) -> void:
 	refresh()
 
 
-## Conecta la línea con el cliente (dónde está el jugador), la vista del fuerte y el panel de captura (que la sustituye
-## cuando está a la vista).
+## Connects the line to the client (where the player is), the fort view and the capture panel (which replaces it
+## when it is in view).
 func bind(client: NetClient, view: FortressView, panel: CapturePanel) -> void:
 	_client = client
 	_view = view
@@ -53,7 +53,7 @@ func bind(client: NetClient, view: FortressView, panel: CapturePanel) -> void:
 	refresh()
 
 
-## Vuelve a calcular el texto y si se enseña.
+## Recomputes the text and whether it is shown.
 func refresh() -> void:
 	_text = ""
 	var character: PlayerCharacter = _client.get_character() if is_instance_valid(_client) else null
@@ -74,13 +74,13 @@ func refresh() -> void:
 	_set_visible(not (is_instance_valid(_panel) and _panel.is_shown()))
 
 
-## El texto que se está mostrando (vacío si la línea está oculta).
+## The text being shown (empty if the line is hidden).
 func get_text() -> String:
 	return _text if visible else ""
 
 
-## «Fuerte · De Vardheim · Capitán del Vado en pie · Puerta 72 % · 182 m» para un fuerte [param fort_name] en el
-## estado [param state], con la captura al [param capture_fraction] (0 a 1) y a [param distance] m del jugador.
+## "Fuerte · De Vardheim · Capitán del Vado en pie · Puerta 72 % · 182 m" for a fort [param fort_name] in state
+## [param state], with the capture at [param capture_fraction] (0 to 1) and [param distance] m from the player.
 static func compose_text(fort_name: String, state: FortressState, capture_fraction: float, distance: float) -> String:
 	var parts := PackedStringArray()
 	parts.append(fort_name)

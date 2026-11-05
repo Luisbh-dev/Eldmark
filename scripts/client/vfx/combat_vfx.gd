@@ -1,22 +1,22 @@
 class_name CombatVfx
 extends Node3D
-## Conecta los efectos de golpe (ART-09, escenas de [code]scenes/vfx/[/code]) con el combate. Solo cliente.
+## Connects the hit effects (ART-09, scenes in [code]scenes/vfx/[/code]) to combat. Client only.
 ## [br][br]
-## Un nodo por cliente, en el mundo (los efectos se colocan en coordenadas globales). Tiene un [VfxPool] por efecto,
-## creados una vez, y los dispara desde [CombatFeedback] ([method bind]) y desde los visuales ([HumanoidVisual]):
-## [br]- [b]Impacto[/b] de todo golpe confirmado ([signal CombatFeedback.hit_impact]), propio o ajeno, en el
-## punto de contacto: el pecho de la víctima, adelantado hacia el atacante, con la normal hacia él y la dirección del
-## golpe a lo largo del tajo. Carne ([code]hit_flesh[/code]), malla ([code]hit_metal_spark[/code]), tela
-## ([code]hit_cloth[/code]), escudo ([code]hit_block_wood[/code], sobre la cara del escudo) y parada
-## ([code]parry_flash[/code] más chispas de metal): se distinguen de un vistazo.
-## [br]- [b]Golpe predicho[/b] ([signal CombatFeedback.hit_predicted]): la carne al instante, sin esperar al servidor; si
-## el servidor lo confirma como golpe normal no se repite.
-## [br]- [b]Polvo[/b]: esquiva, aterrizaje y muerte ([method play_dodge_dust], [method play_land_dust],
-## [method play_death_dust]), con el color del suelo ([VfxGround]).
-## [br]- [b]Habilidades[/b] de espada y escudo ([method play_ability]): el golpe de escudo (impacto de escudo y onda de
-## polvo), la carga (rastro de polvo) y el muro (el arco de [code]shield_wall[/code] con el borde del color del reino).
+## One node per client, in the world (the effects are placed in global coordinates). It has one [VfxPool] per effect,
+## created once, and fires them from [CombatFeedback] ([method bind]) and from the visuals ([HumanoidVisual]):
+## [br]- [b]Impact[/b] of every confirmed hit ([signal CombatFeedback.hit_impact]), own or other's, at the
+## contact point: the victim's chest, shifted toward the attacker, with the normal toward them and the strike direction
+## along the slash. Flesh ([code]hit_flesh[/code]), mail ([code]hit_metal_spark[/code]), cloth
+## ([code]hit_cloth[/code]), shield ([code]hit_block_wood[/code], on the shield face) and parry
+## ([code]parry_flash[/code] plus metal sparks): they can be told apart at a glance.
+## [br]- [b]Predicted hit[/b] ([signal CombatFeedback.hit_predicted]): the flesh effect instantly, without waiting for the server; if
+## the server confirms it as a normal hit it is not repeated.
+## [br]- [b]Dust[/b]: dodge, landing and death ([method play_dodge_dust], [method play_land_dust],
+## [method play_death_dust]), in the ground's color ([VfxGround]).
+## [br]- Sword and shield [b]abilities[/b] ([method play_ability]): the shield bash (shield impact and dust
+## wave), the charge (dust trail) and the wall (the [code]shield_wall[/code] arc with the edge in the realm's color).
 ## [br][br]
-## Los efectos son solo visuales y no dicen nada a la simulación.
+## The effects are visual only and tell the simulation nothing.
 
 const FLESH_SCENE: PackedScene = preload("res://scenes/vfx/hit_flesh.tscn")
 const CLOTH_SCENE: PackedScene = preload("res://scenes/vfx/hit_cloth.tscn")
@@ -26,13 +26,13 @@ const PARRY_SCENE: PackedScene = preload("res://scenes/vfx/parry_flash.tscn")
 const DUST_SCENE: PackedScene = preload("res://scenes/vfx/dust_kick.tscn")
 const WALL_SCENE: PackedScene = preload("res://scenes/vfx/shield_wall.tscn")
 
-## Altura (m) del pecho sobre los pies, donde cae el impacto, y cuánto se adelanta hacia el atacante.
+## Height (m) of the chest above the feet, where the impact lands, and how far it is shifted toward the attacker.
 const CHEST_HEIGHT: float = 1.25
 const CHEST_FORWARD: float = 0.32
-## A qué distancia (m) delante de la víctima queda la cara del escudo en un golpe bloqueado.
+## How far (m) in front of the victim the shield face sits on a blocked hit.
 const SHIELD_FORWARD: float = 0.62
 const SHIELD_HEIGHT: float = 1.1
-## Segundos entre el golpe mortal y el polvo del cuerpo al tocar el suelo.
+## Seconds between the killing blow and the body's dust when it hits the ground.
 const DEATH_DUST_DELAY: float = 0.42
 
 static var _instance: CombatVfx = null
@@ -47,7 +47,7 @@ func _init() -> void:
 	top_level = true
 
 
-## El nodo de efectos vivo, o null (el servidor, las pruebas sin él).
+## The live effects node, or null (the server, tests without it).
 static func get_instance() -> CombatVfx:
 	return _instance if is_instance_valid(_instance) else null
 
@@ -71,7 +71,7 @@ func _ready() -> void:
 	_make_pool(&"wall", WALL_SCENE, 3)
 
 
-## Conecta con el reparto de la sensación de combate. Se puede volver a llamar con otro.
+## Connects to the combat feel dispatcher. It can be called again with another one.
 func bind(feedback: CombatFeedback) -> void:
 	if is_instance_valid(_feedback):
 		_feedback.hit_impact.disconnect(_on_hit_impact)
@@ -86,17 +86,17 @@ func bind(feedback: CombatFeedback) -> void:
 		_feedback.action_changed.connect(_on_local_action)
 
 
-# --- Disparos -----------------------------------------------------------------------------------
+# --- Spawns -------------------------------------------------------------------------------------
 
-## Punto de contacto de un golpe a la víctima en [param victim_feet] desde el atacante en [param attacker_feet]: el pecho,
-## adelantado hacia el atacante.
+## Contact point of a hit on the victim at [param victim_feet] from the attacker at [param attacker_feet]: the chest,
+## shifted toward the attacker.
 static func contact_point(victim_feet: Vector3, attacker_feet: Vector3) -> Vector3:
 	var toward: Vector3 = _horizontal_toward(victim_feet, attacker_feet)
 	return victim_feet + Vector3(0.0, CHEST_HEIGHT, 0.0) + toward * CHEST_FORWARD
 
 
-## Impacto de un golpe. [param material] es un [enum CombatSoundBank.Armor]; con [param blocked] el golpe da en el
-## escudo y con [param parried] es una parada.
+## Impact of a hit. [param material] is a [enum CombatSoundBank.Armor]; with [param blocked] the hit lands on the
+## shield and with [param parried] it is a parry.
 func spawn_impact(victim_feet: Vector3, attacker_feet: Vector3, material: int, blocked: bool, parried: bool,
 		heavy: bool) -> void:
 	var toward: Vector3 = _horizontal_toward(victim_feet, attacker_feet)
@@ -121,7 +121,7 @@ func spawn_impact(victim_feet: Vector3, attacker_feet: Vector3, material: int, b
 			_spawn(&"metal", chest, normal, blow)
 
 
-## Polvo de una esquiva en [param feet] hacia [param move_direction].
+## Dust of a dodge at [param feet] toward [param move_direction].
 func play_dodge_dust(feet: Vector3, move_direction: Vector3) -> void:
 	var kick: DustKick = _dust(feet)
 	if kick != null:
@@ -129,7 +129,7 @@ func play_dodge_dust(feet: Vector3, move_direction: Vector3) -> void:
 		_count(&"dust")
 
 
-## Polvo de un aterrizaje en [param feet] con [param strength] de 0 a 1.
+## Dust of a landing at [param feet] with [param strength] from 0 to 1.
 func play_land_dust(feet: Vector3, strength: float) -> void:
 	var kick: DustKick = _dust(feet)
 	if kick != null:
@@ -137,7 +137,7 @@ func play_land_dust(feet: Vector3, strength: float) -> void:
 		_count(&"dust")
 
 
-## Polvo del cuerpo al caer en [param feet], un instante después del golpe mortal.
+## Dust of the body falling at [param feet], an instant after the killing blow.
 func play_death_dust(feet: Vector3) -> void:
 	if is_inside_tree():
 		get_tree().create_timer(DEATH_DUST_DELAY).timeout.connect(func() -> void:
@@ -146,8 +146,8 @@ func play_death_dust(feet: Vector3) -> void:
 		play_land_dust(feet, 0.9)
 
 
-## Efecto de la habilidad [param ability] (el nombre de [member AbilityTicks.name]) de quien está en [param feet]
-## mirando hacia [param forward], del reino [param realm] (colores del muro).
+## Effect of ability [param ability] (the name from [member AbilityTicks.name]) of whoever is at [param feet]
+## facing [param forward], of realm [param realm] (wall colors).
 func play_ability(ability: StringName, feet: Vector3, forward: Vector3, realm: int) -> void:
 	var ahead: Vector3 = Vector3(forward.x, 0.0, forward.z)
 	ahead = ahead.normalized() if ahead.length_squared() > 0.0001 else Vector3.FORWARD
@@ -169,18 +169,18 @@ func play_ability(ability: StringName, feet: Vector3, forward: Vector3, realm: i
 				_count(&"wall")
 
 
-## Veces que ha salido el efecto [param pool_name] ([code]flesh[/code], [code]cloth[/code], [code]metal[/code],
-## [code]block[/code], [code]parry[/code], [code]dust[/code], [code]wall[/code]): para las pruebas.
+## Times the effect [param pool_name] has fired ([code]flesh[/code], [code]cloth[/code], [code]metal[/code],
+## [code]block[/code], [code]parry[/code], [code]dust[/code], [code]wall[/code]): for tests.
 func get_spawn_count(pool_name: StringName) -> int:
 	return _counts.get(pool_name, 0)
 
 
-## Pool de un efecto (para las pruebas).
+## Pool of an effect (for tests).
 func get_pool(pool_name: StringName) -> VfxPool:
 	return _pools.get(pool_name) as VfxPool
 
 
-# --- Interno ------------------------------------------------------------------------------------
+# --- Internal -----------------------------------------------------------------------------------
 
 func _make_pool(pool_name: StringName, scene: PackedScene, size: int) -> void:
 	var pool := VfxPool.new()

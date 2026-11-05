@@ -27,7 +27,7 @@ func TestThroughThePlatform(t *testing.T) {
 	for _, first := range []string{"1", "1025"} {
 		res := z.Do("POST", "/internal/v1/id-blocks", map[string]any{"zone_instance_id": z.ID})
 		if res.Status != http.StatusOK || res.String("first") != first {
-			t.Fatalf("bloque: %d %s", res.Status, res.Raw)
+			t.Fatalf("block: %d %s", res.Status, res.Raw)
 		}
 	}
 	pl := p.NewPlayer("aneira@example.org")
@@ -55,7 +55,7 @@ func TestThroughThePlatform(t *testing.T) {
 	if claimed["race_id"] != "race_vardheim" || claimed["appearance"] != "AQAAAQEDAgE=" ||
 		claimed["starter_template_id"] != "squire" || claimed["location"] != nil || claimed["starter_granted"] != false ||
 		len(claimed["items"].([]any)) != 0 || len(claimed["wallets"].([]any)) != 2 {
-		t.Fatalf("reclamación de un personaje nuevo: %v", claimed)
+		t.Fatalf("claim of a new character: %v", claimed)
 	}
 
 	c := loadCases(t)
@@ -95,7 +95,7 @@ func TestThroughThePlatform(t *testing.T) {
 	res = z.Save(id, envelope(3, equipped))
 	platformtest.Expect(t, res, http.StatusBadRequest, "invalid_save")
 	if fields := res.ErrValue("fields").(map[string]any); fields["check"] != "S5" {
-		t.Fatalf("poción en el equipo: %s", res.Raw)
+		t.Fatalf("potion in the equipment: %s", res.Raw)
 	}
 	platformtest.Expect(t, z.Release(id, lease), http.StatusNoContent, "")
 
@@ -103,7 +103,7 @@ func TestThroughThePlatform(t *testing.T) {
 	listed := res.Body["characters"].([]any)[0].(map[string]any)
 	if listed["level"] != json.Number("1") || listed["last_zone_id"] != "vado_gris" ||
 		listed["played_seconds"] != json.Number("120") || listed["race_id"] != "race_vardheim" {
-		t.Fatalf("lista: %s", res.Raw)
+		t.Fatalf("list: %s", res.Raw)
 	}
 
 	ticket, _ = p.MustEnter(pl, id)
@@ -114,7 +114,7 @@ func TestThroughThePlatform(t *testing.T) {
 	if again["starter_granted"] != true || again["health"] != json.Number("820") || len(again["items"].([]any)) != 4 ||
 		location["x"] != json.Number("30.5") || location["zone_id"] != "vado_gris" ||
 		location["saved_at_unix"] != json.Number(strconv.FormatInt(saved.Unix(), 10)) {
-		t.Fatalf("reclamación siguiente: %v", again)
+		t.Fatalf("next claim: %v", again)
 	}
 
 	res = z.Do("GET", "/internal/v1/ops/1025?zone_instance_id="+z.ID, nil)
@@ -122,12 +122,12 @@ func TestThroughThePlatform(t *testing.T) {
 	op := res.Body["op"].(map[string]any)
 	if op["kind"] != json.Number("3") || !reflect.DeepEqual(op["participants"], []any{strconv.FormatInt(id, 10)}) ||
 		len(op["items"].([]any)) != 4 || len(op["instances"].([]any)) != 4 {
-		t.Fatalf("operación: %s", res.Raw)
+		t.Fatalf("operation: %s", res.Raw)
 	}
 	platformtest.Expect(t, z.Do("GET", "/internal/v1/ops/9999?zone_instance_id="+z.ID, nil), http.StatusNotFound, "not_found")
 	res = z.Do("GET", "/internal/v1/characters/"+strconv.FormatInt(id, 10)+"/ledger?zone_instance_id="+z.ID, nil)
 	platformtest.Expect(t, res, http.StatusOK, "")
 	if entries, ok := res.Body["entries"].([]any); !ok || len(entries) != 0 {
-		t.Fatalf("libro: %s", res.Raw)
+		t.Fatalf("ledger: %s", res.Raw)
 	}
 }

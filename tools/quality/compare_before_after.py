@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Pone lado a lado las capturas de dos pasadas del banco (antes y después) con los mismos nombres de archivo.
+"""Puts side by side the captures of two bench runs (before and after) with the same file names.
 
-    python tools/quality/compare_before_after.py <carpeta_antes> <carpeta_después> --out <carpeta> [--pattern "pelea_*.png"]
+    python tools/quality/compare_before_after.py <before_folder> <after_folder> --out <folder> [--pattern "pelea_*.png"]
         [--scale 0.5] [--label-before ANTES] [--label-after DESPUÉS] [--max N]
 
-Cada pareja se guarda como `<nombre>.png` en la carpeta de salida con una banda de rótulos arriba. Solo se emparejan los
-archivos que existen en las dos carpetas (los mismos encuadres del banco, así que la comparación es directa).
+Each pair is saved as `<nombre>.png` in the output folder with a band of labels on top. Only the files that
+exist in both folders are paired (the same bench framings, so the comparison is direct).
 """
 import argparse
 import fnmatch

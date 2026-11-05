@@ -31,18 +31,18 @@ func TestComposeEveryTemplate(t *testing.T) {
 		hasLink := strings.Contains(m.Body, link)
 		wantLink := tpl != RegisterExisting && tpl != RegisterBlocked && tpl != LoginFailures
 		if hasLink != wantLink {
-			t.Errorf("%s: enlace en el cuerpo %v", tpl, hasLink)
+			t.Errorf("%s: link in the body %v", tpl, hasLink)
 		}
 	}
 	m, _ := Compose(RegisterBlocked, "a@example.org", data)
 	if !strings.Contains(m.Body, "3/11/2026 18:00 UTC") {
-		t.Errorf("fecha del bloqueo: %s", m.Body)
+		t.Errorf("lockout date: %s", m.Body)
 	}
 	if _, err := Compose(VerifyEmail, "a@example.org", Data{}); err == nil {
-		t.Error("verify_email sin enlace")
+		t.Error("verify_email without a link")
 	}
 	if _, err := Compose("otra", "a@example.org", data); err == nil {
-		t.Error("plantilla desconocida")
+		t.Error("unknown template")
 	}
 }
 
@@ -59,28 +59,28 @@ func TestBuildMIME(t *testing.T) {
 	}
 	subject, err := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
 	if err != nil || subject != "Recupera tu contraseña de Eldmark" {
-		t.Fatalf("asunto: %q %v (%s)", subject, err, msg.Header.Get("Subject"))
+		t.Fatalf("subject: %q %v (%s)", subject, err, msg.Header.Get("Subject"))
 	}
 	if strings.Contains(msg.Header.Get("Subject"), "ñ") {
-		t.Fatal("el asunto va codificado")
+		t.Fatal("the subject is encoded")
 	}
 	if msg.Header.Get("To") != "<aneira@example.org>" || !strings.Contains(msg.Header.Get("From"), "no-reply@eldmark.example") {
-		t.Fatalf("direcciones: %q %q", msg.Header.Get("To"), msg.Header.Get("From"))
+		t.Fatalf("addresses: %q %q", msg.Header.Get("To"), msg.Header.Get("From"))
 	}
 	body, _ := io.ReadAll(quotedprintable.NewReader(msg.Body))
 	if !strings.Contains(string(body), "https://eldmark.example/reset?token=x") || !strings.Contains(string(body), "contraseña") {
-		t.Fatalf("cuerpo: %s", body)
+		t.Fatalf("body: %s", body)
 	}
 	// Only known headers: nothing coming from the recipient opens a new header.
 	for _, bad := range []string{"aneira@example.org\r\nBcc: otro@example.org", "a@example.org\nBcc: b@example.org"} {
 		m.To = bad
 		if _, err := BuildMIME(from, m, time.Now()); err == nil {
-			t.Errorf("destinatario con salto de línea: %q", bad)
+			t.Errorf("recipient with a line break: %q", bad)
 		}
 	}
 	m.To = "Nombre <a@example.org>"
 	if _, err := BuildMIME(from, m, time.Now()); err == nil {
-		t.Error("el destinatario es solo la dirección")
+		t.Error("the recipient is only the address")
 	}
 }
 
@@ -185,13 +185,13 @@ func TestSMTPSenderDelivers(t *testing.T) {
 	rcpt, data := server.received()
 	if len(rcpt) != 1 || rcpt[0] != "RCPT TO:<aneira@example.org>" || len(data) != 1 ||
 		!strings.Contains(data[0], "Subject: Verifica tu correo de Eldmark\r\n") {
-		t.Fatalf("recibido: %v %v", rcpt, data)
+		t.Fatalf("received: %v %v", rcpt, data)
 	}
 	if err := s.Send(context.Background(), m); err == nil {
-		t.Fatal("tras Close no acepta correos")
+		t.Fatal("after Close it does not accept emails")
 	}
 	if _, err := NewSMTP(u, "Nombre <a@b.c>", nil); err == nil {
-		t.Fatal("el remitente es solo la dirección")
+		t.Fatal("the sender is only the address")
 	}
 }
 
@@ -221,12 +221,12 @@ func TestSMTPRequiresStartTLSOutsideLoopback(t *testing.T) {
 			t.Fatalf("%s: %v", raw, err)
 		}
 		if want := map[bool]string{true: "smtp.example.org:25", false: "smtp.example.org:465"}[strings.HasPrefix(raw, "smtp:")]; dialed != want {
-			t.Fatalf("%s: conectó a %q", raw, dialed)
+			t.Fatalf("%s: connected to %q", raw, dialed)
 		}
 	}
 	server.mu.Lock()
 	defer server.mu.Unlock()
 	if len(server.from)+len(server.rcpt)+len(server.data) != 0 {
-		t.Fatalf("salió en claro: %v %v %v", server.from, server.rcpt, server.data)
+		t.Fatalf("it went out in the clear: %v %v %v", server.from, server.rcpt, server.data)
 	}
 }

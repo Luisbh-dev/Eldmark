@@ -40,7 +40,7 @@ func TestUsage(t *testing.T) {
 		{"migrate", "down", "x"}, {"migrate", "sideways"}, {"serve", "extra"}} {
 		code, _, stderr := runWith(t, nil, args...)
 		if code != exitUsage || !strings.Contains(stderr, "eldmark-platform") && !strings.Contains(stderr, "migrate down") {
-			t.Errorf("%v: código %d, %q", args, code, stderr)
+			t.Errorf("%v: code %d, %q", args, code, stderr)
 		}
 	}
 	if code, stdout, _ := runWith(t, nil, "help"); code != exitOK || !strings.Contains(stdout, "migrate status") {
@@ -51,11 +51,11 @@ func TestUsage(t *testing.T) {
 func TestConfigErrorsStopTheCommands(t *testing.T) {
 	code, _, stderr := runWith(t, map[string]string{}, "serve")
 	if code != exitError || !strings.Contains(stderr, "ELDMARK_DATABASE_URL") || !strings.Contains(stderr, "no arranca") {
-		t.Fatalf("serve sin configuración: %d %q", code, stderr)
+		t.Fatalf("serve without configuration: %d %q", code, stderr)
 	}
 	code, _, stderr = runWith(t, map[string]string{}, "migrate", "up")
 	if code != exitError || !strings.Contains(stderr, "ELDMARK_DATABASE_URL") {
-		t.Fatalf("migrate sin base: %d %q", code, stderr)
+		t.Fatalf("migrate without a database: %d %q", code, stderr)
 	}
 }
 
@@ -65,7 +65,7 @@ func TestMigrateCommands(t *testing.T) {
 
 	code, stdout, _ := runWith(t, env, "migrate", "status")
 	if code != exitError || !strings.Contains(stdout, "0001_accounts") || !strings.Contains(stdout, "pendiente") {
-		t.Fatalf("status de una base vacía (pendientes → código 1): %d\n%s", code, stdout)
+		t.Fatalf("status of an empty database (pending -> code 1): %d\n%s", code, stdout)
 	}
 	code, stdout, stderr := runWith(t, env, "migrate", "up")
 	if code != exitOK || !strings.Contains(stdout, "Aplicada 0001_accounts") || !strings.Contains(stdout, "Aplicada 0006_privacy") ||
@@ -73,11 +73,11 @@ func TestMigrateCommands(t *testing.T) {
 		t.Fatalf("up: %d\n%s%s", code, stdout, stderr)
 	}
 	if code, stdout, _ = runWith(t, env, "migrate", "up"); code != exitOK || !strings.Contains(stdout, "No hay migraciones pendientes") {
-		t.Fatalf("segundo up: %d %s", code, stdout)
+		t.Fatalf("second up: %d %s", code, stdout)
 	}
 	code, stdout, _ = runWith(t, env, "migrate", "status")
 	if code != exitOK || strings.Count(stdout, "aplicada") != 7 || !strings.Contains(stdout, "UTC") {
-		t.Fatalf("status al día: %d\n%s", code, stdout)
+		t.Fatalf("status up to date: %d\n%s", code, stdout)
 	}
 	if code, stdout, _ = runWith(t, env, "migrate", "down", "2"); code != exitOK ||
 		!strings.Contains(stdout, "Deshecha 0010_progress\nDeshecha 0006_privacy") {
@@ -87,12 +87,12 @@ func TestMigrateCommands(t *testing.T) {
 		env["ELDMARK_ENV"] = e
 		code, _, stderr = runWith(t, env, "migrate", "down", "1")
 		if code != exitError || !strings.Contains(stderr, "solo se usa en desarrollo y CI") {
-			t.Fatalf("down en %s: %d %q", e, code, stderr)
+			t.Fatalf("down at %s: %d %q", e, code, stderr)
 		}
 	}
 	env["ELDMARK_ENV"] = "dev"
 	if code, _, stderr = runWith(t, env, "migrate", "down", "9"); code != exitError || !strings.Contains(stderr, "Error") {
-		t.Fatalf("down de más: %d %q", code, stderr)
+		t.Fatalf("extra down: %d %q", code, stderr)
 	}
 }
 
@@ -147,7 +147,7 @@ func startServeApp(t *testing.T, pool *pgxpool.Pool, env map[string]string) *app
 	deadline := time.Now().Add(10 * time.Second)
 	for !a.Started() {
 		if time.Now().After(deadline) {
-			t.Fatal("no arranca")
+			t.Fatal("does not start")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -184,15 +184,15 @@ func TestServeMountsTheAccounts(t *testing.T) {
 	base := startServe(t, pool, serveEnv(pool))
 	var docs int
 	if err := pool.QueryRow(ctx, `select count(*) from legal_documents`).Scan(&docs); err != nil || docs != 3 {
-		t.Fatalf("textos legales publicados al arrancar: %d %v", docs, err)
+		t.Fatalf("legal texts published at startup: %d %v", docs, err)
 	}
 	if status, _ := request(t, http.MethodPost, base+"/v1/accounts", "", registerJSON); status != 202 {
-		t.Fatalf("registro: %d", status)
+		t.Fatalf("registration: %d", status)
 	}
 	var link string
 	if err := pool.QueryRow(ctx, `select body from outbound_mail where to_email = 'serve@example.org'`).Scan(&link); err != nil ||
 		!strings.Contains(link, "http://127.0.0.1:24680/verify?token=") {
-		t.Fatalf("correo de verificación: %v %q", err, link)
+		t.Fatalf("verification email: %v %q", err, link)
 	}
 	resp, err := http.Get(base + "/verify?token=no-vale")
 	if err != nil {
@@ -200,7 +200,7 @@ func TestServeMountsTheAccounts(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != 400 || resp.Header.Get("Content-Security-Policy") == "" {
-		t.Fatalf("página /verify: %d", resp.StatusCode)
+		t.Fatalf("/verify page: %d", resp.StatusCode)
 	}
 }
 
@@ -211,34 +211,34 @@ func TestServeMountsTheCharacters(t *testing.T) {
 	pool := testdb.New(t)
 	base := startServe(t, pool, serveEnv(pool))
 	if status, _ := request(t, http.MethodPost, base+"/v1/accounts", "", registerJSON); status != 202 {
-		t.Fatalf("registro: %d", status)
+		t.Fatalf("registration: %d", status)
 	}
 	status, body := request(t, http.MethodPost, base+"/v1/sessions", "",
 		`{"email": "serve@example.org", "password": "una contraseña larga"}`)
 	token, _ := body["access_token"].(string)
 	if status != 200 || token == "" {
-		t.Fatalf("inicio de sesión: %d %v", status, body)
+		t.Fatalf("login: %d %v", status, body)
 	}
 	// 8 B that the provisional validation allowed and the rules do not (another race at byte 0).
 	status, body = request(t, http.MethodPost, base+"/v1/worlds/1/characters", token, `{"name": "Servida",
 		"realm": "solmarch", "race_id": "race_solmarch", "appearance": "AQACAQADAiE=", "starter_template_id": "squire"}`)
 	if errBody, _ := body["error"].(map[string]any); status != 400 || errBody["code"] != "validation" {
-		t.Fatalf("apariencia que no vale: %d %v", status, body)
+		t.Fatalf("invalid appearance: %d %v", status, body)
 	}
 	status, body = request(t, http.MethodPost, base+"/v1/worlds/1/characters", token, `{"name": "Servida",
 		"realm": "solmarch", "race_id": "race_solmarch", "appearance": "AgAAAAAHAAA=", "starter_template_id": "squire"}`)
 	if status != 201 {
-		t.Fatalf("crear: %d %v", status, body)
+		t.Fatalf("create: %d %v", status, body)
 	}
 	var stored int
 	if err := pool.QueryRow(context.Background(), `select count(*) from character_progress p
 		join character_wallets w using (character_id) where p.race_id = 'race_solmarch'`).Scan(&stored); err != nil ||
 		stored != 2 {
-		t.Fatalf("el progreso no está en la base: %d %v", stored, err)
+		t.Fatalf("progress is not in the database: %d %v", stored, err)
 	}
 	status, body = request(t, http.MethodGet, base+"/v1/worlds/1/characters", token, "")
 	if status != 200 || body["realm"] != "solmarch" || body["used"] != 1.0 {
-		t.Fatalf("lista: %d %v", status, body)
+		t.Fatalf("list: %d %v", status, body)
 	}
 	// The minimum protocol is that of progression_rules.json: a lower one gives 426.
 	minProtocol := gamedata.MustLoad().ProtocolVersion
@@ -250,7 +250,7 @@ func TestServeMountsTheCharacters(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUpgradeRequired {
-		t.Fatalf("protocolo %d: %d", minProtocol-1, resp.StatusCode)
+		t.Fatalf("protocol %d: %d", minProtocol-1, resp.StatusCode)
 	}
 	if status, body = request(t, http.MethodGet, base+"/v1/status", "", ""); status != 200 ||
 		body["min_protocol"] != float64(minProtocol) {
@@ -312,29 +312,29 @@ func TestServeMountsTheInternalAPI(t *testing.T) {
 		"max_players": 64, "dtls_cert_pem": null, "dtls_name": null, "replace": false}`)
 	id, _ := body["zone_instance_id"].(string)
 	if status != 200 || id == "" || body["env"] != "test" {
-		t.Fatalf("registro: %d %v", status, body)
+		t.Fatalf("registration: %d %v", status, body)
 	}
 	if status, body = internalRequest(t, http.MethodPost, base+"/internal/v1/zone-instances/"+id+"/live", "token", ""); status != 204 {
 		t.Fatalf("live: %d %v", status, body)
 	}
 	if status, body = internalRequest(t, http.MethodPost, base+"/internal/v1/id-blocks", "token",
 		`{"zone_instance_id": "`+id+`"}`); status != 200 || body["first"] != "1" {
-		t.Fatalf("bloque: %d %v", status, body)
+		t.Fatalf("block: %d %v", status, body)
 	}
 	if status, body = internalRequest(t, http.MethodPost, base+"/internal/v1/zone-instances/"+id+"/heartbeat", "token",
 		`{"players": 0, "characters": []}`); status != 200 {
-		t.Fatalf("latido: %d %v", status, body)
+		t.Fatalf("heartbeat: %d %v", status, body)
 	}
 	if status, body = internalRequest(t, http.MethodPost, base+"/internal/v1/id-blocks", "",
 		`{"zone_instance_id": "`+id+`"}`); status != 401 || body["error"].(map[string]any)["code"] != "bad_token" {
-		t.Fatalf("sin token: %d %v", status, body)
+		t.Fatalf("without token: %d %v", status, body)
 	}
 	if status, _ = internalRequest(t, http.MethodGet, base+"/internal/v1/nada", "token", ""); status != 404 {
-		t.Fatalf("ruta desconocida: %d", status)
+		t.Fatalf("unknown route: %d", status)
 	}
 	// The public API does not have the internal routes.
 	if status, _ = internalRequest(t, http.MethodPost, "http://"+a.PublicAddr()+"/internal/v1/id-blocks", "token",
 		`{"zone_instance_id": "`+id+`"}`); status != 404 {
-		t.Fatalf("interna por la pública: %d", status)
+		t.Fatalf("internal one through the public one: %d", status)
 	}
 }

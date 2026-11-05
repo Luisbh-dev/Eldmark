@@ -1,25 +1,25 @@
 class_name UIKeyGlyph
 extends Control
-## Glifo de tecla (UI-09): una «tecla» dibujada con el nombre real de lo que el jugador tiene
-## asignado a una acción, para que la ayuda del HUD y las pistas no digan «E» cuando la tecla es otra.
+## Key glyph (UI-09): a "key" drawn with the real name of whatever the player has
+## bound to an action, so that the HUD help and hints do not say "E" when the key is another one.
 ## [br][br]
-## Lee la asignación del [InputMap] ([method label_for_action]): la primera tecla, botón del ratón o
-## botón de mando de la acción, con los modificadores si los lleva. Para las teclas físicas
-## ([member InputEventKey.physical_keycode], las que usa [InputBindings]) pregunta al sistema qué
-## letra hay en esa posición con [method DisplayServer.keyboard_get_label_from_physical]: en un
-## teclado AZERTY la tecla de «W» muestra «Z». Sin pantalla (modo headless, que no lo admite y
-## registraría un error) o si el sistema no lo sabe, usa el nombre de la tecla física tal cual.
+## It reads the binding from the [InputMap] ([method label_for_action]): the action's first key, mouse button or
+## gamepad button, with modifiers if it has them. For physical keys
+## ([member InputEventKey.physical_keycode], the ones [InputBindings] uses) it asks the system which
+## letter is at that position with [method DisplayServer.keyboard_get_label_from_physical]: on an
+## AZERTY keyboard the "W" key shows "Z". Without a display (headless mode, which does not support it and
+## would log an error) or if the system does not know, it uses the physical key's name as is.
 ## [br][br]
-## Los nombres se dan en español ([constant KEY_NAMES], [method mouse_button_name]). Si se reasignan
-## las teclas, [method refresh_all] (o [method refresh] en uno) vuelve a leer el [InputMap].
+## Names are given in Spanish ([constant KEY_NAMES], [method mouse_button_name]). If keys are
+## rebound, [method refresh_all] (or [method refresh] on one) re-reads the [InputMap].
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Grupo en el que están todos los glifos vivos (para [method refresh_all]).
+## Group that holds all live glyphs (for [method refresh_all]).
 const GROUP: StringName = &"ui_key_glyphs"
-## Texto cuando la acción no existe o no tiene nada asignado.
+## Text when the action does not exist or has nothing bound.
 const UNASSIGNED_TEXT: String = "?"
-## Nombre en español de las teclas cuyo nombre en inglés no vale tal cual.
+## Spanish name of the keys whose English name is not usable as is.
 const KEY_NAMES: Dictionary = {
 	KEY_SHIFT: "Mayús", KEY_CTRL: "Ctrl", KEY_ALT: "Alt", KEY_META: "Win", KEY_SPACE: "Espacio",
 	KEY_ESCAPE: "Esc", KEY_ENTER: "Intro", KEY_KP_ENTER: "Intro", KEY_TAB: "Tab",
@@ -30,38 +30,38 @@ const KEY_NAMES: Dictionary = {
 }
 const FONT_SIZE: int = 14
 const COMPACT_FONT_SIZE: int = 11
-## Márgenes de la tecla y altura mínima (px).
+## Key margins and minimum height (px).
 const PADDING_X: float = 7.0
 const MIN_HEIGHT: float = 22.0
 const COMPACT_MIN_HEIGHT: float = 16.0
 const MIN_WIDTH: float = 22.0
 const COMPACT_MIN_WIDTH: float = 16.0
-## Medidas (px) del ratón dibujado de los glifos compactos de clic.
+## Dimensions (px) of the mouse drawn in compact click glyphs.
 const MOUSE_ICON_SIZE: Vector2 = Vector2(11.0, 15.0)
 
-## Acción cuya asignación se muestra. Vacía: se muestra [member text_override].
+## Action whose binding is shown. Empty: [member text_override] is shown.
 var action: StringName = &"":
 	set(value):
 		action = value
 		refresh()
-## Texto fijo para cuando no hay acción (o para forzar uno: «Rueda» en la ayuda de zoom).
+## Fixed text for when there is no action (or to force one: "Rueda" ("Wheel") in the zoom help).
 var text_override: String = "":
 	set(value):
 		text_override = value
 		refresh()
-## Tamaño reducido (casillas de la barra de acciones).
+## Reduced size (action bar slots).
 var compact: bool = false:
 	set(value):
 		compact = value
 		refresh()
 
 var _label: String = UNASSIGNED_TEXT
-## En el modo compacto, el botón del ratón que se dibuja como icono en vez de escribir «Clic izq.»
-## (MOUSE_BUTTON_NONE: se escribe el texto).
+## In compact mode, the mouse button drawn as an icon instead of writing "Clic izq." ("Left click")
+## (MOUSE_BUTTON_NONE: the text is written).
 var _mouse_icon: MouseButton = MOUSE_BUTTON_NONE
 
 
-## Crea un glifo ya configurado para [param action_name].
+## Creates a glyph already configured for [param action_name].
 static func for_action(action_name: StringName, is_compact: bool = false) -> UIKeyGlyph:
 	var glyph: UIKeyGlyph = UIKeyGlyph.new()
 	glyph.compact = is_compact
@@ -69,13 +69,13 @@ static func for_action(action_name: StringName, is_compact: bool = false) -> UIK
 	return glyph
 
 
-## Texto de la tecla que tiene asignada [param action_name] en el [InputMap]; [constant
-## UNASSIGNED_TEXT] si la acción no existe o no tiene eventos de teclado, ratón o mando.
+## Text of the key bound to [param action_name] in the [InputMap]; [constant
+## UNASSIGNED_TEXT] if the action does not exist or has no keyboard, mouse or gamepad events.
 static func label_for_action(action_name: StringName) -> String:
 	if not InputMap.has_action(action_name):
 		return UNASSIGNED_TEXT
 	var events: Array[InputEvent] = InputMap.action_get_events(action_name)
-	# Teclado antes que ratón y mando: es lo que se enseña como «la tecla de la acción».
+	# Keyboard before mouse and gamepad: it is what is shown as "the action's key".
 	for kind: int in 3:
 		for event: InputEvent in events:
 			if _kind_of(event) == kind:
@@ -85,8 +85,8 @@ static func label_for_action(action_name: StringName) -> String:
 	return UNASSIGNED_TEXT
 
 
-## Texto de un evento de entrada: tecla (con modificadores), botón del ratón o botón de mando.
-## Cadena vacía si es de otro tipo.
+## Text of an input event: key (with modifiers), mouse button or gamepad button.
+## Empty string if it is of another type.
 static func label_for_event(event: InputEvent) -> String:
 	var key_event: InputEventKey = event as InputEventKey
 	if key_event != null:
@@ -100,7 +100,7 @@ static func label_for_event(event: InputEvent) -> String:
 	return ""
 
 
-## Nombre en español de un botón del ratón.
+## Spanish name of a mouse button.
 static func mouse_button_name(button: MouseButton) -> String:
 	match button:
 		MOUSE_BUTTON_LEFT:
@@ -120,20 +120,20 @@ static func mouse_button_name(button: MouseButton) -> String:
 	return "Ratón %d" % int(button)
 
 
-## Nombre en español de la tecla [param key] (un código de [enum Key]).
+## Spanish name of key [param key] (a code from [enum Key]).
 static func key_name(key: Key) -> String:
 	if KEY_NAMES.has(key):
 		return KEY_NAMES[key]
 	return OS.get_keycode_string(key)
 
 
-## Vuelve a leer la asignación de todos los glifos vivos de [param tree] (tras reasignar teclas).
+## Re-reads the binding of all live glyphs in [param tree] (after rebinding keys).
 static func refresh_all(tree: SceneTree) -> void:
 	for node: Node in tree.get_nodes_in_group(GROUP):
 		(node as UIKeyGlyph).refresh()
 
 
-# Orden de preferencia al elegir qué evento enseñar: 0 teclado, 1 ratón, 2 mando, 3 otro.
+# Preference order when choosing which event to show: 0 keyboard, 1 mouse, 2 gamepad, 3 other.
 static func _kind_of(event: InputEvent) -> int:
 	if event is InputEventKey:
 		return 0
@@ -157,8 +157,8 @@ static func _key_label(event: InputEventKey) -> String:
 	return _with_modifiers(event, key_name(key))
 
 
-# La tecla que hay en la posición física [param physical] con la distribución de teclado actual.
-# Sin pantalla, o si el sistema no devuelve nada, la propia tecla física.
+# The key at physical position [param physical] with the current keyboard layout.
+# Without a display, or if the system returns nothing, the physical key itself.
 static func _layout_key(physical: Key) -> Key:
 	if DisplayServer.get_name() == "headless":
 		return physical
@@ -166,7 +166,7 @@ static func _layout_key(physical: Key) -> Key:
 	return label if label != KEY_NONE else physical
 
 
-# Antepone los modificadores que lleva el evento («Ctrl+S»).
+# Prepends the modifiers the event carries ("Ctrl+S").
 static func _with_modifiers(event: InputEventWithModifiers, base: String) -> String:
 	var prefix: String = ""
 	if event.ctrl_pressed:
@@ -189,12 +189,12 @@ func _ready() -> void:
 	refresh()
 
 
-## Texto que muestra ahora la tecla.
+## Text the key shows right now.
 func get_label() -> String:
 	return _label
 
 
-## Vuelve a leer el [InputMap] (o el texto fijo) y se redibuja.
+## Re-reads the [InputMap] (or the fixed text) and redraws.
 func refresh() -> void:
 	if not text_override.is_empty():
 		_label = text_override
@@ -212,7 +212,7 @@ func refresh() -> void:
 	queue_redraw()
 
 
-## Botón del ratón que se dibuja como icono (MOUSE_BUTTON_NONE si el glifo lleva texto).
+## Mouse button drawn as an icon (MOUSE_BUTTON_NONE if the glyph carries text).
 func get_mouse_icon() -> MouseButton:
 	return _mouse_icon
 
@@ -235,7 +235,7 @@ func _draw() -> void:
 	cap.bg_color = UIPalette.INSET_BG
 	cap.border_color = UIPalette.BORDER_LIGHT
 	cap.set_border_width_all(1)
-	# El borde inferior más grueso da el relieve de una tecla.
+	# The thicker bottom border gives a key its relief.
 	cap.border_width_bottom = 2
 	cap.set_corner_radius_all(3)
 	cap.anti_aliasing = true
@@ -251,8 +251,8 @@ func _draw() -> void:
 			HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, UIPalette.TEXT)
 
 
-# Un ratón visto desde arriba con el botón de [member _mouse_icon] relleno: dentro de la tecla, un clic
-# cabe donde un texto de nueve letras se salía de la casilla.
+# A mouse seen from above with the [member _mouse_icon] button filled in: inside the key, a click
+# fits where a nine-letter text overflowed the slot.
 func _draw_mouse(rect: Rect2) -> void:
 	var body := Rect2(rect.position + (rect.size - MOUSE_ICON_SIZE) * 0.5 - Vector2(0.0, 0.5),
 			MOUSE_ICON_SIZE)

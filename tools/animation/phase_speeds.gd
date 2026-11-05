@@ -1,7 +1,7 @@
 extends SceneTree
-## Imprime, para cada juego de clips de data/animation, la velocidad de reproducción de cada tramo de cada
-## ataque, habilidad y acción con duración (la regla de calidad es 0,7x a 1,5x; ART-07).
-## Uso: godot --headless --path . -s res://tools/animation/phase_speeds.gd
+## Prints, for each clip set in data/animation, the playback speed of each phase of each
+## attack, ability and action with a duration (the quality rule is 0.7x to 1.5x; ART-07).
+## Usage: godot --headless --path . -s res://tools/animation/phase_speeds.gd
 
 
 func _initialize() -> void:
@@ -30,7 +30,7 @@ func _initialize() -> void:
 	quit(0)
 
 
-# Ticks de cada fase de la entrada, buscando su ataque o habilidad por nombre; 0 si no se conocen.
+# Ticks of each phase of the entry, looking up its attack or ability by name; 0 if they are not known.
 func _phase_ticks(entry: CombatActionAnim) -> Array[float]:
 	var tick_rate: float = float(Engine.physics_ticks_per_second)
 	var result: Array[float] = [0.0, 0.0, 0.0]
@@ -49,7 +49,7 @@ func _phase_ticks(entry: CombatActionAnim) -> Array[float]:
 	if ability != null:
 		if entry.is_attack():
 			return [float(ability.cast_ticks), float(ability.active_ticks), float(ability.recovery_ticks)]
-		# Sin fases (el muro de escudos, las pociones): el planificador usa la duración del propio recurso.
+		# Without phases (the shield wall, the potions): the planner uses the duration of the resource itself.
 		return [entry.duration_s * tick_rate, 0.0, 0.0]
 	var tables: CombatTables = CombatCatalog.tables()
 	match entry.key:

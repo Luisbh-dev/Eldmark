@@ -38,10 +38,10 @@ func TestParsePurges(t *testing.T) {
 		{Kind: admin.PurgeCharacter, ID: 18, PurgedAt: time.Date(2026, 10, 30, 9, 46, 1, 0, time.UTC)},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("leído %+v", got)
+		t.Fatalf("read %+v", got)
 	}
 	if got, err := admin.ParsePurges(strings.NewReader("")); err != nil || len(got) != 0 {
-		t.Fatalf("vacío: %v %v", got, err)
+		t.Fatalf("empty: %v %v", got, err)
 	}
 	for _, bad := range []string{
 		"account 3 2026-10-30 09:46:00+00",
@@ -66,7 +66,7 @@ func pgTool(t *testing.T, name string) string {
 	}
 	path, err := exec.LookPath(name)
 	if err != nil {
-		t.Skipf("falta %s", name)
+		t.Skipf("missing %s", name)
 	}
 	return path
 }
@@ -122,7 +122,7 @@ func nameOf(t *testing.T, p *platformtest.Platform, key string) nameRow {
 	var r nameRow
 	if err := p.Pool.QueryRow(ctx, `select status, character_id, reserved_until from character_names
 		where world_id = 1 and name_key = $1`, key).Scan(&r.Status, &r.Character, &r.Until); err != nil {
-		t.Fatalf("nombre %s: %v", key, err)
+		t.Fatalf("name %s: %v", key, err)
 	}
 	return r
 }
@@ -188,7 +188,7 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 	// time).
 	r := platformtest.Attach(t, restore(t, copyFile))
 	if n := r.Count(`select count(*) from character_leases`); n != 1 {
-		t.Fatalf("la copia trae %d arrendamientos", n)
+		t.Fatalf("the backup carries %d leases", n)
 	}
 	actor, err := r.Admin.Authorize(ctx, "admin@example.org", sanctions.RoleAdmin)
 	if err != nil {
@@ -200,60 +200,60 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 	}
 	if res.Entries != 4 || res.LeasesDeleted != 1 || res.TicketsDeleted != 2 || res.Accounts != 1 ||
 		res.Characters != 3 || res.Unchanged != 0 {
-		t.Fatalf("resultado %+v", res)
+		t.Fatalf("result %+v", res)
 	}
 	for _, c := range []struct {
 		id int64
 		at time.Time
 	}{{aGone, t1}, {bDeleted, t1}, {bLive, t2}} {
 		if at := purgedAt(t, r, "characters", "character_id", c.id); at == nil || !at.Equal(c.at) {
-			t.Fatalf("personaje %d: purged_at %v y no %v", c.id, at, c.at)
+			t.Fatalf("character %d: purged_at %v and not %v", c.id, at, c.at)
 		}
 	}
 	if at := purgedAt(t, r, "accounts", "account_id", b.ID); at == nil || !at.Equal(t2) {
-		t.Fatalf("cuenta: purged_at %v y no %v", at, t2)
+		t.Fatalf("account: purged_at %v and not %v", at, t2)
 	}
 	if n := r.Count(`select count(*) from accounts where account_id = $1 and status = 'purged' and email is null
 		and password_hash is null`, b.ID); n != 1 {
-		t.Fatal("la cuenta b no es una lápida")
+		t.Fatal("account b is not a tombstone")
 	}
 	if n := r.Count(`select count(*) from characters where character_id in ($1, $2, $3) and name is null`,
 		aGone, bLive, bDeleted); n != 3 {
-		t.Fatal("quedan nombres en las lápidas")
+		t.Fatal("names remain in the tombstones")
 	}
 	if n := r.Count(`select count(*) from characters where character_id = $1 and purged_at is null and name = 'Aldric'`,
 		aLive); n != 1 {
-		t.Fatal("el personaje vivo de a ha cambiado")
+		t.Fatal("a's live character has changed")
 	}
 	if n := r.Count(`select count(*) from character_leases`) + r.Count(`select count(*) from enter_tickets`); n != 0 {
-		t.Fatalf("quedan %d arrendamientos o billetes de la copia", n)
+		t.Fatalf("%d leases or tickets from the backup remain", n)
 	}
 	if got := purgeLog(t, r); !reflect.DeepEqual(got, want) {
-		t.Fatalf("purge_log restaurado %+v", got)
+		t.Fatalf("restored purge_log %+v", got)
 	}
 	var rHMAC []byte
 	var rUntil time.Time
 	r.Scalar(&rHMAC, `select hmac from sanctioned_email_hashes`)
 	r.Scalar(&rUntil, `select until from sanctioned_email_hashes`)
 	if string(rHMAC) != string(hmac) || !rUntil.Equal(hashUntil) {
-		t.Fatalf("huella del correo: %v hasta %v; la original, hasta %v", rHMAC, rUntil, hashUntil)
+		t.Fatalf("email fingerprint: %v until %v; the original, until %v", rHMAC, rUntil, hashUntil)
 	}
 	if n := r.Count(`select count(*) from sanctions where account_id = $1 and reason <> ''`, b.ID); n != 0 {
-		t.Fatal("las sanciones de la cuenta purgada conservan el motivo")
+		t.Fatal("the purged account's sanctions keep the reason")
 	}
 	if got := nameOf(t, r, "corwin"); !reflect.DeepEqual(got, corwin) {
-		t.Fatalf("nombre de Corwin %+v; el original %+v", got, corwin)
+		t.Fatalf("Corwin's name %+v; the original %+v", got, corwin)
 	}
 	// Brenna was alive in the backup: her name stays reserved for 30 days from purged_at.
 	if got := nameOf(t, r, "brenna"); got.Status != "reserved" || got.Character != nil || got.Until == nil ||
 		!got.Until.Equal(t1.Add(30*24*time.Hour)) {
-		t.Fatalf("nombre de Brenna %+v", got)
+		t.Fatalf("Brenna's name %+v", got)
 	}
 	row := lastAudit(t, r, "reapply-purges")
 	if row.Source != "cli" || !is(row.Actor, adm.AccountID) || row.Args["entries"] != float64(4) ||
 		row.Args["leases_deleted"] != float64(1) || row.Args["tickets_deleted"] != float64(2) ||
 		row.Args["os_user"] != "prueba" {
-		t.Fatalf("fila reapply-purges %+v", row)
+		t.Fatalf("reapply-purges row %+v", row)
 	}
 
 	// Idempotent.
@@ -262,10 +262,10 @@ func TestReapplyPurgesAfterRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.Accounts != 0 || res.Characters != 0 || res.Unchanged != 4 || res.LeasesDeleted != 0 {
-		t.Fatalf("segunda vuelta %+v", res)
+		t.Fatalf("second pass %+v", res)
 	}
 	if got := purgeLog(t, r); !reflect.DeepEqual(got, want) {
-		t.Fatalf("purge_log tras la segunda vuelta %+v", got)
+		t.Fatalf("purge_log after the second pass %+v", got)
 	}
 }
 
@@ -296,7 +296,7 @@ func TestReapplyPurgesReportsWhatStaysUnpurged(t *testing.T) {
 	var unpurged *admin.UnpurgedError
 	if !errors.As(err, &unpurged) || len(unpurged.Accounts) != 0 || !reflect.DeepEqual(unpurged.Characters, []int64{id}) ||
 		!strings.Contains(err.Error(), strconv.FormatInt(id, 10)) {
-		t.Fatalf("sin purgar: %v", err)
+		t.Fatalf("not purged: %v", err)
 	}
 	// With the real purge, the same file works (ids that do not exist do not count).
 	res, err := p.Admin.ReapplyPurges(ctx, adm, entries)
@@ -308,6 +308,6 @@ func TestReapplyPurgesReportsWhatStaysUnpurged(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := none.ReapplyPurges(ctx, adm, entries); !errors.Is(err, admin.ErrNoCharacterPurger) {
-		t.Fatalf("sin purga de personajes: %v", err)
+		t.Fatalf("without character purge: %v", err)
 	}
 }

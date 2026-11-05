@@ -1,14 +1,14 @@
-"""Procesa las texturas CC0 de Poly Haven del terreno (ART-55).
+"""Processes the terrain's CC0 Poly Haven textures (ART-55).
 
-Entrada: ../Eldmark-raw/texturas_polyhaven_2k/extracted/<id>/<id>_{diff,nor_gl,rough,disp,ao}_2k.*
-Salida: assets/textures/terrain/polyhaven/<id>_alb_ht.png (albedo desaturado, con la altura en el
-alfa, como pide Terrain3D) y <id>_nrm_rough.png (normal OpenGL, con la rugosidad en el alfa), a
-1024 x 1024 el albedo y 512 x 512 la normal (cada familia del mismo tamaño, requisito de Terrain3D; la
-normal a 512 para que el paquete del servidor, que lleva todos los recursos del repo, siga bajo los 35 MB
-de tests/test_export_config.gd).
+Input: ../Eldmark-raw/texturas_polyhaven_2k/extracted/<id>/<id>_{diff,nor_gl,rough,disp,ao}_2k.*
+Output: assets/textures/terrain/polyhaven/<id>_alb_ht.png (desaturated albedo, with the height in the
+alpha, as Terrain3D requires) and <id>_nrm_rough.png (OpenGL normal, with the roughness in the alpha), at
+1024 x 1024 for the albedo and 512 x 512 for the normal (each family of the same size, a Terrain3D requirement; the
+normal at 512 so that the server package, which carries every resource in the repo, stays under the 35 MB
+of tests/test_export_config.gd).
 
-Estilo (docs/arte.md): estilizado y apagado, así que se desatura, se comprime un poco el contraste
-y se hornea parte de la oclusión ambiental en el color. Uso: python tools/assets/process_terrain_textures.py
+Style (docs/arte.md): stylized and muted, so it is desaturated, the contrast is compressed a little
+and part of the ambient occlusion is baked into the color. Usage: python tools/assets/process_terrain_textures.py
 """
 import os
 import sys
@@ -20,8 +20,8 @@ from PIL import Image
 
 
 def find_raw() -> Path:
-    """Carpeta de las texturas originales: la variable de entorno ELDMARK_RAW (que apunta a Eldmark-raw) o, si no
-    está, la primera Eldmark-raw que haya en los directorios padres del repo."""
+    """Folder of the original textures: the ELDMARK_RAW environment variable (which points to Eldmark-raw) or, if it is not
+    set, the first Eldmark-raw found in the repo's parent directories."""
     sub = Path("texturas_polyhaven_2k") / "extracted"
     if os.environ.get("ELDMARK_RAW"):
         return Path(os.environ["ELDMARK_RAW"]) / sub

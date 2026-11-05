@@ -1,66 +1,66 @@
 class_name FortressView
 extends Node
-## Vista de las fortalezas en el cliente (docs/fuerte.md, secciones 2 y 3.2; GUE-09, GUE-12 parte
-## cliente). Recibe el ENTITY_SPAWN de cada estructura ([method on_spawn]) y sus OBJECT_STATE
-## ([method on_object_state]), guarda la historia de cambios ([FortressTimeline]) y la aplica de dos
-## maneras distintas:
+## View of the fortresses on the client (docs/fuerte.md, sections 2 and 3.2; GUE-09, GUE-12 client
+## part). It receives the ENTITY_SPAWN of each structure ([method on_spawn]) and its OBJECT_STATE
+## ([method on_object_state]), keeps the change history ([FortressTimeline]) and applies it in two
+## different ways:
 ## [br][br]
-## [b]Interfaz y estandartes, en el tick de dibujo.[/b] [method advance] (lo llama [NetClient] en cada
-## tick de física con el [code]render_tick[/code] del [InterpolationClock]) pone como estado
-## [i]mostrado[/i] el vigente en ese instante. Cuando cambia: recolorea los estandartes
-## ([code]Estandarte[/code], [code]EstandartePuertaN[/code] y [code]EstandartePuertaS[/code], el
-## parámetro de instancia [code]faction_color[/code] con el color del dueño; los Huecos si es
-## neutral), pone la pose de la puerta ([method FortGate.set_state]) y emite [signal state_changed].
-## El progreso de la captura se evalúa con la fórmula en el instante pedido ([method get_progress]).
+## [b]Interface and banners, at the draw tick.[/b] [method advance] ([NetClient] calls it on every
+## physics tick with the [code]render_tick[/code] of the [InterpolationClock]) sets as the
+## [i]displayed[/i] state the one in force at that instant. When it changes: it recolors the banners
+## ([code]Estandarte[/code], [code]EstandartePuertaN[/code] and [code]EstandartePuertaS[/code], the
+## [code]faction_color[/code] instance parameter with the owner's color; the Hollow if
+## neutral), sets the gate's pose ([method FortGate.set_state]) and emits [signal state_changed].
+## Capture progress is evaluated with the formula at the requested instant ([method get_progress]).
 ## [br][br]
-## [b]Colisión de la puerta, en el tick simulado.[/b] [method before_simulate] es el gancho
-## [member ClientPrediction.before_simulate]: antes de simular el tick [code]t[/code] (también en las
-## repeticiones de la reconciliación) pone las capas de movimiento de la puerta que tenía ese tick
-## ([method FortressTimeline.gate_layers_for_tick]: un cambio con [code]tick = s[/code] vale desde
-## [code]s + 1[/code]). Así las repeticiones de la reconciliación simulan cada tick con la misma puerta que el
-## servidor. Pero el OBJECT_STATE llega un trayecto después y el cliente va por delante: los ticks de
-## [code]s + 1[/code] al predicho al recibirlo ya se simularon con la puerta vieja, y si el jugador la tocaba en
-## ellos el snapshot no coincide. Esa corrección es esperada y la repetición la arregla; [NetClient] la cuenta como
-## explicada por la puerta ([code]gate_diffs[/code]), no como un fallo de la predicción. Esas capas no las pisa la
-## pose de dibujo: [method advance] las vuelve a poner tras cambiar la pose. Los cambios que tocan a
-## la colisión (dueño y rotura de la puerta) tienen que llegar con el tick en el que cambiaron de
-## verdad.
+## [b]Gate collision, at the simulated tick.[/b] [method before_simulate] is the
+## [member ClientPrediction.before_simulate] hook: before simulating tick [code]t[/code] (also during
+## reconciliation replays) it sets the gate's movement layers that it had at that tick
+## ([method FortressTimeline.gate_layers_for_tick]: a change with [code]tick = s[/code] takes effect from
+## [code]s + 1[/code]). This way reconciliation replays simulate each tick with the same gate as the
+## server. But the OBJECT_STATE arrives one trip later and the client runs ahead: the ticks from
+## [code]s + 1[/code] to the predicted one at the moment of receipt were already simulated with the old gate, and if the player was touching it
+## during them the snapshot does not match. That correction is expected and the replay fixes it; [NetClient] counts it as
+## explained by the gate ([code]gate_diffs[/code]), not as a prediction failure. These layers are not overwritten by the
+## draw pose: [method advance] sets them again after changing the pose. Changes that affect
+## collision (owner and gate breakage) must arrive with the tick at which they actually
+## changed.
 ## [br][br]
-## [b]Escena.[/b] La fortaleza de la escena es el nodo del grupo [constant FORTRESS_GROUP] cuya
-## definición (metadato [code]definition[/code]) tiene el id del SPAWN. Se busca en la zona que se
-## dio con [method set_zone] o, si no, en todo el árbol. Si la escena aún no está, la historia se
-## guarda igual y el enlace se reintenta.
+## [b]Scene.[/b] The scene's fortress is the node of group [constant FORTRESS_GROUP] whose
+## definition ([code]definition[/code] metadata) has the SPAWN's id. It is searched for in the zone given
+## with [method set_zone] or, failing that, in the whole tree. If the scene is not there yet, the history is
+## stored anyway and linking is retried.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Una fortaleza ya tiene estado en pantalla o ha cambiado el que se muestra. [param previous] es
-## null la primera vez.
+## A fortress now has an on-screen state or the one being shown has changed. [param previous] is
+## null the first time.
 signal state_changed(net_id: int, state: FortressState, previous: FortressState)
-## Llega el SPAWN de una fortaleza que no se conocía.
+## The SPAWN of a previously unknown fortress arrives.
 signal fortress_added(net_id: int)
 
-## Grupo de las fortalezas de la zona y metadato de su definición. Son los de [code]Zones.FORTRESS_GROUP[/code]
-## y [code]Zones.FORTRESS_DEFINITION_META[/code]; el código de red no nombra [code]Zones[/code] (solo
-## [NetZones]) y una prueba comprueba que siguen iguales.
+## Group of the zone's fortresses and metadata of its definition. They are those of [code]Zones.FORTRESS_GROUP[/code]
+## and [code]Zones.FORTRESS_DEFINITION_META[/code]; the network code does not name [code]Zones[/code] (only
+## [NetZones]) and a test checks that they remain the same.
 const FORTRESS_GROUP: StringName = &"fortresses"
 const DEFINITION_META: StringName = &"definition"
-## Nodos de estandarte de la escena de la fortaleza.
+## Banner nodes of the fortress scene.
 const BANNER_NODES: Array[StringName] = [&"Estandarte", &"EstandartePuertaN", &"EstandartePuertaS"]
 const GATE_NODE: NodePath = ^"FortGate"
 const CIRCLE_NODE: NodePath = ^"CaptureCircle"
-## Propiedad de la malla del estandarte con el color de bando (parámetro de instancia del shader).
+## Property of the banner mesh with the faction color (shader instance parameter).
 const FACTION_COLOR_PROPERTY: String = "instance_shader_parameters/faction_color"
-## Emblema del atlas del estandarte del torreón (parámetro de instancia): 0 Vardheim, 1 Solmarch, 2 Askarra
-## y 3 el neutral (los mástiles de las puertas no lo tienen).
+## Emblem from the keep banner's atlas (instance parameter): 0 Vardheim, 1 Solmarch, 2 Askarra
+## and 3 the neutral one (the gate masts do not have it).
 const EMBLEM_PROPERTY: String = "instance_shader_parameters/emblem_index"
 const NEUTRAL_EMBLEM: float = 3.0
-## Carpeta de las definiciones, por si la escena no está para decir cuál es.
+## Folder of the definitions, in case the scene is not there to say which one it is.
 const DEFINITIONS_DIR: String = "res://data/fortresses"
-## Cada cuántas llamadas a [method advance] se reintenta enlazar con la escena.
+## Every how many calls to [method advance] linking with the scene is retried.
 const REBIND_INTERVAL: int = 30
 
 
-## Una fortaleza conocida.
+## A known fortress.
 class Fortress extends RefCounted:
 	var net_id: int = 0
 	var definition_id: String = ""
@@ -68,12 +68,12 @@ class Fortress extends RefCounted:
 	var node: Node3D = null
 	var gate: FortGate = null
 	var banners: Array[MeshInstance3D] = []
-	## Estado en pantalla (el vigente en el último tick de dibujo) y la versión de la historia que lo
-	## dio; null hasta que se muestra el primero.
+	## On-screen state (the one in force at the last draw tick) and the version of the history that
+	## gave it; null until the first one is shown.
 	var displayed: FortressState = null
 	var banner_color: Color = Color.WHITE
 	var has_banner_color: bool = false
-	## Últimas capas de movimiento puestas a la puerta por el gancho (-1 = ninguna).
+	## Last movement layers set on the gate by the hook (-1 = none).
 	var movement_layers: int = -1
 	var spawn_tick: int = 0
 
@@ -93,25 +93,25 @@ func _init() -> void:
 	name = "FortressView"
 
 
-## Reloj de interpolación, para [method get_progress_now].
+## Interpolation clock, for [method get_progress_now].
 func setup(clock: InterpolationClock) -> void:
 	_clock = clock
 
 
-## Zona donde buscar las fortalezas de la escena (null = todo el árbol). Reintenta enlazar las que ya
-## se conocen.
+## Zone in which to look for the scene's fortresses (null = the whole tree). Retries linking those already
+## known.
 func set_zone(zone: Node) -> void:
 	_zone = zone
 	for fortress: Fortress in _fortresses.values():
 		_bind(fortress)
 
 
-## true si [param net_id] es una fortaleza conocida.
+## true if [param net_id] is a known fortress.
 func has_fortress(net_id: int) -> bool:
 	return _fortresses.has(net_id)
 
 
-## Ids de red de las fortalezas conocidas, en orden.
+## Network ids of the known fortresses, in order.
 func get_fortress_ids() -> Array[int]:
 	var ids: Array[int] = []
 	ids.assign(_fortresses.keys())
@@ -119,15 +119,15 @@ func get_fortress_ids() -> Array[int]:
 	return ids
 
 
-## Primera fortaleza conocida (0 si no hay ninguna): en el Vado Gris, la única.
+## First known fortress (0 if there is none): in Vado Gris, the only one.
 func get_primary_id() -> int:
 	var ids: Array[int] = get_fortress_ids()
 	return ids[0] if not ids.is_empty() else 0
 
 
-## ENTITY_SPAWN de una estructura: crea la fortaleza (o, si ya existía, anota sus campos como un
-## cambio más) y la enlaza con su escena. Devuelve false si el mensaje no es de una estructura o no
-## trae campos conocidos.
+## ENTITY_SPAWN of a structure: creates the fortress (or, if it already existed, records its fields as one more
+## change) and links it to its scene. Returns false if the message is not for a structure or
+## carries no known fields.
 func on_spawn(spawn: NetMessages.EntitySpawn) -> bool:
 	if spawn == null or spawn.kind != NetProtocol.EntityKind.STRUCTURE:
 		return false
@@ -148,8 +148,8 @@ func on_spawn(spawn: NetMessages.EntitySpawn) -> bool:
 	return applied > 0
 
 
-## OBJECT_STATE de una fortaleza conocida: anota los campos como un cambio del tick del mensaje. Se
-## ignora (y se cuenta) si la fortaleza no se conoce o no trae campos aplicables.
+## OBJECT_STATE of a known fortress: records the fields as a change at the message's tick. It is
+## ignored (and counted) if the fortress is not known or carries no applicable fields.
 func on_object_state(object_state: NetMessages.ObjectState) -> bool:
 	if object_state == null:
 		return false
@@ -160,8 +160,8 @@ func on_object_state(object_state: NetMessages.ObjectState) -> bool:
 	return true
 
 
-## Aplica a la interfaz y a la escena el estado vigente en el tick de dibujo [param render_tick].
-## Con el reloj sin arrancar (0 o menos) no hace nada.
+## Applies the state in force at draw tick [param render_tick] to the interface and the scene.
+## With the clock not started (0 or less) it does nothing.
 func advance(render_tick: float) -> void:
 	_advance_calls += 1
 	if render_tick <= 0.0:
@@ -180,8 +180,8 @@ func advance(render_tick: float) -> void:
 		state_changed.emit(fortress.net_id, state, previous)
 
 
-## Gancho de [member ClientPrediction.before_simulate]: pone a cada puerta las capas de movimiento
-## que tiene en el tick [param tick] que se va a simular.
+## Hook of [member ClientPrediction.before_simulate]: sets on each gate the movement layers
+## it has at tick [param tick], which is about to be simulated.
 func before_simulate(tick: int) -> void:
 	_hook_calls += 1
 	for fortress: Fortress in _fortresses.values():
@@ -195,8 +195,8 @@ func before_simulate(tick: int) -> void:
 			_gate_layer_changes += 1
 
 
-## Capas de movimiento de la puerta de [param net_id] para el tick [param tick] que se simula, según la historia que
-## se conoce ahora (-1 si la fortaleza no se conoce o aún no tiene estado).
+## Movement layers of the gate of [param net_id] for the simulated tick [param tick], according to the history
+## known now (-1 if the fortress is not known or has no state yet).
 func get_gate_layers_for_tick(net_id: int, tick: int) -> int:
 	var fortress: Fortress = _fortresses.get(net_id)
 	if fortress == null or not fortress.timeline.has_state():
@@ -204,24 +204,24 @@ func get_gate_layers_for_tick(net_id: int, tick: int) -> int:
 	return fortress.timeline.gate_layers_for_tick(tick)
 
 
-## Capas de movimiento que el gancho puso por última vez a la puerta de [param net_id] (-1 si
-## ninguna).
+## Movement layers that the hook last set on the gate of [param net_id] (-1 if
+## none).
 func get_gate_movement_layers(net_id: int) -> int:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress.movement_layers if fortress != null else -1
 
 
-# --- Consultas --------------------------------------------------------------------------------
+# --- Queries ----------------------------------------------------------------------------------
 
-## Estado en pantalla de la fortaleza (el vigente en el último tick de dibujo), o null si todavía no
-## se ha mostrado ninguno. No se debe modificar.
+## On-screen state of the fortress (the one in force at the last draw tick), or null if none has been
+## shown yet. It must not be modified.
 func get_displayed_state(net_id: int) -> FortressState:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress.displayed if fortress != null else null
 
 
-## Último estado conocido, el más nuevo que ha llegado (puede ir por delante de lo que se ve). Null
-## si no se conoce la fortaleza.
+## Latest known state, the newest that has arrived (it may be ahead of what is seen). Null
+## if the fortress is not known.
 func get_latest_state(net_id: int) -> FortressState:
 	var fortress: Fortress = _fortresses.get(net_id)
 	if fortress == null or not fortress.timeline.has_state():
@@ -229,52 +229,52 @@ func get_latest_state(net_id: int) -> FortressState:
 	return fortress.timeline.state_at(fortress.timeline.get_latest_tick())
 
 
-## Historia de la fortaleza (null si no se conoce).
+## History of the fortress (null if not known).
 func get_timeline(net_id: int) -> FortressTimeline:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress.timeline if fortress != null else null
 
 
-## Definición de la fortaleza (null si no se conoce).
+## Definition of the fortress (null if not known).
 func get_definition(net_id: int) -> FortressDefinition:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress.timeline.get_definition() if fortress != null else null
 
 
-## Id de la definición del SPAWN («vado_gris_fort»); vacío si no se conoce.
+## Id of the SPAWN's definition ("vado_gris_fort"); empty if not known.
 func get_definition_id(net_id: int) -> String:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress.definition_id if fortress != null else ""
 
 
-## Progreso de la captura (0 a [member FortressState.progress_max]) en [param render_time] (ticks con
-## fracción): la fórmula del estado vigente en ese instante. 0 si no se conoce la fortaleza.
+## Capture progress (0 to [member FortressState.progress_max]) at [param render_time] (ticks with a
+## fraction): the formula of the state in force at that instant. 0 if the fortress is not known.
 func get_progress(net_id: int, render_time: float) -> int:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress.timeline.progress_at(render_time) if fortress != null else 0
 
 
-## Progreso de 0 a 1 en [param render_time].
+## Progress from 0 to 1 at [param render_time].
 func get_progress_fraction(net_id: int, render_time: float) -> float:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress.timeline.progress_fraction_at(render_time) if fortress != null else 0.0
 
 
-## Instante de dibujo de ahora (tick con fracción), o 0 si el reloj no ha arrancado.
+## Draw instant right now (tick with a fraction), or 0 if the clock has not started.
 func get_render_time_now() -> float:
 	if _clock == null or _clock.get_render_tick() <= 0.0:
 		return 0.0
 	return _clock.get_render_tick() + Engine.get_physics_interpolation_fraction()
 
 
-## Progreso de 0 a 1 en el instante de dibujo de ahora.
+## Progress from 0 to 1 at the draw instant right now.
 func get_progress_fraction_now(net_id: int) -> float:
 	return get_progress_fraction(net_id, get_render_time_now())
 
 
-## Estados de las fortalezas por id de definición, como los pide [method RespawnRules.points_for]
-## ([param tick]: el tick del servidor del que se quiere el estado). Una fortaleza sin estado no
-## figura.
+## States of the fortresses by definition id, as [method RespawnRules.points_for] asks for them
+## ([param tick]: the server tick whose state is wanted). A fortress without a state is not
+## included.
 func get_states_by_definition(tick: int) -> Dictionary:
 	var states: Dictionary = {}
 	for fortress: Fortress in _fortresses.values():
@@ -283,8 +283,8 @@ func get_states_by_definition(tick: int) -> Dictionary:
 	return states
 
 
-## Nombre para la interfaz de cada fortaleza conocida, por id de definición (los puntos de reaparición del
-## interior de un fuerte se llaman como él, [method RespawnPointList.options]).
+## Interface name of each known fortress, by definition id (the respawn points inside a
+## fort are named after it, [method RespawnPointList.options]).
 func get_display_names() -> Dictionary:
 	var names: Dictionary = {}
 	for fortress: Fortress in _fortresses.values():
@@ -294,7 +294,7 @@ func get_display_names() -> Dictionary:
 	return names
 
 
-## Posición del nodo de la fortaleza en el mundo ([constant Vector3.INF] si no está enlazada).
+## Position of the fortress node in the world ([constant Vector3.INF] if not linked).
 func get_anchor_position(net_id: int) -> Vector3:
 	var fortress: Fortress = _fortresses.get(net_id)
 	if fortress == null or fortress.node == null or not is_instance_valid(fortress.node):
@@ -303,7 +303,7 @@ func get_anchor_position(net_id: int) -> Vector3:
 			else fortress.node.position
 
 
-## Centro del círculo de captura ([constant Vector3.INF] si no está enlazada).
+## Center of the capture circle ([constant Vector3.INF] if not linked).
 func get_circle_center(net_id: int) -> Vector3:
 	var circle: Node3D = _marker(net_id, CIRCLE_NODE)
 	if circle == null:
@@ -311,13 +311,13 @@ func get_circle_center(net_id: int) -> Vector3:
 	return circle.global_position if circle.is_inside_tree() else circle.position
 
 
-## Radio del círculo de captura (metadato [code]radius[/code] del marcador; 0 si no se sabe).
+## Radius of the capture circle ([code]radius[/code] metadata of the marker; 0 if unknown).
 func get_circle_radius(net_id: int) -> float:
 	var circle: Node3D = _marker(net_id, CIRCLE_NODE)
 	return float(circle.get_meta(&"radius", 0.0)) if circle != null else 0.0
 
 
-## Centro de la puerta, a ras de suelo ([constant Vector3.INF] si no está enlazada).
+## Center of the gate, at ground level ([constant Vector3.INF] if not linked).
 func get_gate_position(net_id: int) -> Vector3:
 	var fortress: Fortress = _fortresses.get(net_id)
 	if fortress == null or fortress.gate == null or not is_instance_valid(fortress.gate):
@@ -326,7 +326,7 @@ func get_gate_position(net_id: int) -> Vector3:
 			else fortress.gate.position
 
 
-## La puerta de la escena (null si no está enlazada).
+## The scene's gate (null if not linked).
 func get_gate(net_id: int) -> FortGate:
 	var fortress: Fortress = _fortresses.get(net_id)
 	if fortress == null or fortress.gate == null or not is_instance_valid(fortress.gate):
@@ -334,8 +334,8 @@ func get_gate(net_id: int) -> FortGate:
 	return fortress.gate
 
 
-## Color con el que se pintaron por última vez los estandartes de la fortaleza (blanco, y
-## [method has_banner_color] false, si aún no se han pintado).
+## Color the fortress's banners were last painted with (white, and
+## [method has_banner_color] false, if they have not been painted yet).
 func get_banner_color(net_id: int) -> Color:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress.banner_color if fortress != null else Color.WHITE
@@ -346,7 +346,7 @@ func has_banner_color(net_id: int) -> bool:
 	return fortress != null and fortress.has_banner_color
 
 
-## Mallas de estandarte enlazadas de la fortaleza.
+## Linked banner meshes of the fortress.
 func get_banners(net_id: int) -> Array[MeshInstance3D]:
 	var fortress: Fortress = _fortresses.get(net_id)
 	var banners: Array[MeshInstance3D] = []
@@ -355,13 +355,13 @@ func get_banners(net_id: int) -> Array[MeshInstance3D]:
 	return banners
 
 
-## true si la fortaleza está enlazada con su nodo de la escena.
+## true if the fortress is linked to its scene node.
 func is_bound(net_id: int) -> bool:
 	var fortress: Fortress = _fortresses.get(net_id)
 	return fortress != null and fortress.node != null and is_instance_valid(fortress.node)
 
 
-## Estadísticas: OBJECT_STATE ignorados, llamadas al gancho y cambios de capa hechos a la puerta.
+## Statistics: ignored OBJECT_STATEs, hook calls and layer changes made to the gate.
 func get_stats() -> Dictionary:
 	return {
 		"fortresses": _fortresses.size(),
@@ -371,7 +371,7 @@ func get_stats() -> Dictionary:
 	}
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ---------------------------------------------------------------------------------
 
 func _marker(net_id: int, path: NodePath) -> Node3D:
 	var fortress: Fortress = _fortresses.get(net_id)
@@ -380,7 +380,7 @@ func _marker(net_id: int, path: NodePath) -> Node3D:
 	return fortress.node.get_node_or_null(path) as Node3D
 
 
-# Enlaza con el nodo de la escena (si no lo estaba) y busca la puerta y los estandartes.
+# Links to the scene node (if not already linked) and looks for the gate and the banners.
 func _bind(fortress: Fortress) -> void:
 	if fortress.node == null or not is_instance_valid(fortress.node):
 		fortress.node = null
@@ -392,12 +392,12 @@ func _bind(fortress: Fortress) -> void:
 		fortress.movement_layers = -1
 	if fortress.banners.is_empty():
 		fortress.banners = _find_banners(fortress.node)
-	# Si ya se mostró un estado antes de enlazar, se aplica a lo recién enlazado.
+	# If a state was already shown before linking, it is applied to what was just linked.
 	if fortress.displayed != null:
 		_apply_to_scene(fortress, fortress.displayed)
 
 
-# Busca el nodo del grupo de fortalezas cuya definición tiene el id del SPAWN.
+# Looks for the node of the fortress group whose definition has the SPAWN's id.
 func _bind_node(fortress: Fortress) -> void:
 	var tree: SceneTree = get_tree()
 	if tree == null:
@@ -416,8 +416,8 @@ func _bind_node(fortress: Fortress) -> void:
 func _find_banners(root: Node) -> Array[MeshInstance3D]:
 	var found: Array[MeshInstance3D] = []
 	for banner_name: StringName in BANNER_NODES:
-		# El estandarte del torreón (FortKeep) cuelga del glTF del torreón, no de la raíz del fuerte, y es
-		# él mismo la malla; los de los mástiles son un nodo con la malla dentro.
+		# The keep banner (FortKeep) hangs from the keep's glTF, not from the fort's root, and is
+		# itself the mesh; those of the masts are a node with the mesh inside.
 		var banner: Node = root.get_node_or_null(NodePath(String(banner_name)))
 		if banner == null:
 			banner = root.find_child(String(banner_name), true, false)
@@ -432,8 +432,8 @@ func _find_banners(root: Node) -> Array[MeshInstance3D]:
 	return found
 
 
-# Definición de la fortaleza: la que dice el metadato del nodo de la escena y, si no, la que tiene su
-# id en la carpeta de datos; si tampoco está, una por defecto.
+# Definition of the fortress: the one the scene node's metadata names and, failing that, the one whose
+# id is in the data folder; if that is not there either, a default one.
 func _definition_for(fortress: Fortress) -> FortressDefinition:
 	if fortress.node != null:
 		var from_scene: FortressDefinition = _definition_from_meta(fortress.node)
@@ -448,8 +448,8 @@ func _definition_for(fortress: Fortress) -> FortressDefinition:
 	return fallback
 
 
-# La definición que lleva el nodo en el metadato: la propia [FortressDefinition] (las escenas de
-# prueba) o la ruta de su .tres (el generador del Vado Gris), como en el servidor.
+# The definition the node carries in its metadata: the [FortressDefinition] itself (test
+# scenes) or the path to its .tres (the Vado Gris generator), as on the server.
 func _definition_from_meta(node: Node) -> FortressDefinition:
 	var value: Variant = node.get_meta(DEFINITION_META, null)
 	if value is FortressDefinition:
@@ -482,8 +482,8 @@ func _scan_definitions() -> void:
 			_load_definition("%s/%s" % [DEFINITIONS_DIR, file_name])
 
 
-# Estandartes con el color del dueño y la puerta con su pose (rota o entera). Las capas de movimiento
-# las manda la predicción: se vuelven a poner tras cambiar la pose.
+# Banners in the owner's color and the gate with its pose (broken or whole). The movement layers
+# are driven by prediction: they are set again after changing the pose.
 func _apply_to_scene(fortress: Fortress, state: FortressState) -> void:
 	var color: Color = UIPalette.faction_color_of_code(state.owner)
 	fortress.banner_color = color

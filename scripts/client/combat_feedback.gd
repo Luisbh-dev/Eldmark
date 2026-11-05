@@ -1,77 +1,77 @@
 class_name CombatFeedback
 extends Node
-## Reparte la sensación de combate en el cliente (docs/combate.md, sección 8; UI-12, ART-09 básico,
-## CMB-11). Recibe los ENTITY_EVENT [b]ya temporizados[/b] por [NetClient] ([signal
-## NetClient.combat_event]: los propios al llegar, los ajenos en su tick de dibujo) y los reparte:
-## [br]- [b]Golpes propios confirmados[/b] ([method handle_event], HIT con el jugador local de atacante):
-## marcador de impacto ([HitMarker]) y número de daño ([DamageNumbers]) con su variante, y el
-## [DpsMeter]. Un golpe no confirmado por el servidor no produce nada: no se predice.
-## [br]- [b]Daño recibido[/b]: sacudida de cámara ([method CameraRig.add_shake]), número rojo y la
-## señal [signal damage_taken] (de la que cuelgan los arcos de dirección del HUD).
-## [br]- [b]Destello[/b] de la víctima: un [code]material_overlay[/code] blanco y aditivo de unos 80 ms que cae a cero
-## (UI-50). A plena intensidad en los golpes en que interviene el jugador local y tenue en los ajenos.
+## Distributes the combat feel on the client (docs/combate.md, section 8; UI-12, basic ART-09,
+## CMB-11). It receives the ENTITY_EVENTs [b]already timed[/b] by [NetClient] ([signal
+## NetClient.combat_event]: the player's own on arrival, other players' on their draw tick) and distributes them:
+## [br]- [b]Confirmed own hits[/b] ([method handle_event], HIT with the local player as attacker):
+## hit marker ([HitMarker]) and damage number ([DamageNumbers]) with its variant, and the
+## [DpsMeter]. A hit not confirmed by the server produces nothing: it is not predicted.
+## [br]- [b]Damage taken[/b]: camera shake ([method CameraRig.add_shake]), red number and the
+## signal [signal damage_taken] (from which the HUD direction arcs hang).
+## [br]- [b]Flash[/b] of the victim: a white, additive [code]material_overlay[/code] of about 80 ms that falls to zero
+## (UI-50). At full intensity on hits involving the local player and faint on others'.
 ## [br][br]
-## [b]Temporización de la reacción de un remoto.[/b] Un evento propio llega nada más producirse en el
-## servidor, pero los remotos se dibujan unos ticks por detrás (el retardo del [InterpolationClock]).
-## Lo que es del jugador local (marcador, número, DPS, sacudida, HUD) se aplica al llegar; lo que se
-## ve en el remoto (destello, placa de vida con [signal entity_damaged], sonido de su muerte o de la
-## baja) espera en una [CombatEventQueue] propia a que su tick de dibujo alcance el [code]tick[/code]
-## del evento, igual que los eventos ajenos. Sin cliente (el sandbox) no hay retardo y todo es
-## inmediato.
+## [b]Timing of a remote's reaction.[/b] An own event arrives as soon as it occurs on the
+## server, but remotes are drawn a few ticks behind (the [InterpolationClock] delay).
+## What belongs to the local player (marker, number, DPS, shake, HUD) is applied on arrival; what is
+## seen on the remote (flash, health nameplate with [signal entity_damaged], sound of its death or
+## kill) waits in a [CombatEventQueue] of its own until its draw tick reaches the event's
+## [code]tick[/code], just like other players' events. Without a client (the sandbox) there is no delay and everything is
+## immediate.
 ## [br]
-## [br]- [b]Ganchos de sonido y efectos[/b]: la señal [signal sound_requested] con el nombre del sonido y su
-## posición, y [signal hit_impact], una vez por cada HIT confirmado, sea de quien sea y bloqueado o no, en su tick de
-## dibujo, de la que cuelgan el sonido de impacto ([CombatAudio]) y las chispas ([CombatVfx]).
-## [br]- [b]Golpe predicho[/b] (ART-09, decisión 6 de calidad.md): mientras el golpe propio está activo se comprueba
-## contra las posiciones DIBUJADAS de los enemigos si alcanzaría a alguno ([method _try_predict]). Si es así, ya
-## suena el impacto, salen las chispas y la animación hace la parada de golpe (50 ms los ligeros, 80 ms los fuertes),
-## sin esperar al servidor ([signal hit_predicted]). Es solo cosmético: el número, el marcador y el DPS siguen
-## esperando al evento; y si el servidor lo confirma como golpe normal no se repite el sonido ni la chispa.
-## [br]- Muerte y reaparición propias: [signal local_died] y [signal local_respawned].
+## [br]- [b]Sound and effect hooks[/b]: the signal [signal sound_requested] with the sound name and its
+## position, and [signal hit_impact], once for each confirmed HIT, whoever's it is and blocked or not, on its draw
+## tick, from which the impact sound ([CombatAudio]) and the sparks ([CombatVfx]) hang.
+## [br]- [b]Predicted hit[/b] (ART-09, decision 6 of calidad.md): while the own hit is active it is checked
+## against the DRAWN positions of the enemies to see whether it would reach any ([method _try_predict]). If so, the
+## impact already sounds, the sparks fly and the animation does the hitstop (50 ms for light, 80 ms for heavy),
+## without waiting for the server ([signal hit_predicted]). It is cosmetic only: the number, the marker and the DPS keep
+## waiting for the event; and if the server confirms it as a normal hit the sound and the spark are not repeated.
+## [br]- Own death and respawn: [signal local_died] and [signal local_respawned].
 ## [br][br]
-## [b]Acciones propias sin señales.[/b] La simulación no emite señales de combate (las repeticiones de
-## la reconciliación duplicarían o perderían efectos). En su lugar, tras cada tick de física se
-## compara [code](action, action_id, action_tick)[/code] del estado mostrado con el último visto:
-## si cambia, empieza otra acción ([signal action_changed]); y se sigue el barrido del arma, activo
-## mientras dura el golpe ([signal swing_active_changed], gancho para la estela). Una corrección que
-## repite ticks no cambia la clave, así que no duplica nada; y una que solo desplaza unos ticks el
-## inicio de la misma acción (la entrada del flanco llegó tarde al servidor, que la sustituyó y empezó
-## la esquiva un tick después) tampoco es una acción nueva. El desplazamiento admitido es el tamaño del
-## búfer de entradas ([member CombatRules.input_buffer_ticks]), menos que la duración de la acción más
-## corta (la esquiva dura 27 ticks), así que una segunda acción encadenada sí se distingue.
+## [b]Own actions without signals.[/b] The simulation emits no combat signals (reconciliation replays
+## would duplicate or lose effects). Instead, after each physics tick
+## [code](action, action_id, action_tick)[/code] of the displayed state is compared with the last one seen:
+## if it changes, another action begins ([signal action_changed]); and the weapon sweep is tracked, active
+## while the hit lasts ([signal swing_active_changed], hook for the trail). A correction that
+## replays ticks does not change the key, so it duplicates nothing; and one that only shifts the start of
+## the same action by a few ticks (the edge input reached the server late, which replaced it and started
+## the dodge one tick later) is not a new action either. The allowed shift is the size of the
+## input buffer ([member CombatRules.input_buffer_ticks]), less than the duration of the shortest
+## action (the dodge lasts 27 ticks), so a second chained action is told apart.
 ## [br][br]
-## Las opciones del jugador son [member hit_markers_enabled], [member damage_numbers_enabled],
-## [member camera_shake_enabled] y [member flash_enabled].
+## The player options are [member hit_markers_enabled], [member damage_numbers_enabled],
+## [member camera_shake_enabled] and [member flash_enabled].
 
-## Un golpe de este jugador confirmado por el servidor. [param kind] es un [enum HitMarker.Kind].
+## A hit by this player confirmed by the server. [param kind] is a [enum HitMarker.Kind].
 signal hit_confirmed(kind: int, amount: int, event: NetMessages.EntityEvent)
-## El jugador local recibió [param amount] de daño del atacante [param attacker_id] (0 si no hay).
+## The local player took [param amount] damage from attacker [param attacker_id] (0 if none).
 signal damage_taken(amount: int, attacker_id: int, event: NetMessages.EntityEvent)
-## Un HIT con daño sobre [param net_id], sea quien sea (las placas enseñan su vida unos segundos). Si
-## el evento es propio y la víctima un remoto, sale cuando se le dibuja en el tick del golpe.
+## A HIT with damage on [param net_id], whoever it is (nameplates show their health for a few seconds). If
+## the event is own and the victim a remote, it fires when the victim is drawn on the hit's tick.
 signal entity_damaged(net_id: int)
-## El jugador local mató a [param victim_id].
+## The local player killed [param victim_id].
 signal kill_confirmed(victim_id: int, event: NetMessages.EntityEvent)
-## El jugador local ha muerto; [param killer_id] es 0 si fue el entorno.
+## The local player has died; [param killer_id] is 0 if it was the environment.
 signal local_died(killer_id: int, attack_id: int)
-## El jugador local ha reaparecido en el punto [param point] en el tick [param tick] del servidor.
+## The local player has respawned at point [param point] on server tick [param tick].
 signal local_respawned(point: int, tick: int)
-## La acción del personaje local ha cambiado ([param previous_action] es la anterior).
+## The local character's action has changed ([param previous_action] is the previous one).
 signal action_changed(action: int, attack_id: int, action_tick: int, previous_action: int)
-## El golpe del arma pasa a estar activo (o deja de estarlo): lanza o corta la estela.
+## The weapon hit becomes active (or stops being so): starts or cuts the trail.
 signal swing_active_changed(active: bool, attack_id: int)
-## Gancho de sonido: [param sound] es uno de los [code]SOUND_*[/code] y [param world_position] dónde
-## suena.
+## Sound hook: [param sound] is one of the [code]SOUND_*[/code] and [param world_position] is where it
+## plays.
 signal sound_requested(sound: StringName, world_position: Vector3)
 
-## El golpe de [param event] ha dado en el punto [param position] (los pies de la víctima), sea quien sea quien
-## golpea, ya en el tick en que se dibuja. [param involves_me]: el jugador local es el atacante o la víctima.
-## [param already_predicted]: el golpe ya se enseñó como predicción local y es un golpe normal (no repetir sonido ni
-## chispa).
+## The hit of [param event] has landed at point [param position] (the victim's feet), whoever
+## strikes, already on the tick at which it is drawn. [param involves_me]: the local player is the attacker or the victim.
+## [param already_predicted]: the hit was already shown as a local prediction and is a normal hit (do not repeat sound or
+## spark).
 signal hit_impact(event: NetMessages.EntityEvent, position: Vector3, involves_me: bool, already_predicted: bool)
-## El golpe propio activo alcanzaría a alguien según lo dibujado: [param position] son los pies de la víctima.
+## The active own hit would reach someone according to what is drawn: [param position] is the victim's feet.
 signal hit_predicted(net_id: int, position: Vector3, heavy: bool)
-## [param net_id] muere en [param position] (los pies), en el tick en que se dibuja.
+## [param net_id] dies at [param position] (the feet), on the tick at which it is drawn.
 signal entity_died(net_id: int, position: Vector3)
 
 const SOUND_SWING: StringName = &"swing"
@@ -84,35 +84,35 @@ const SOUND_KILL: StringName = &"kill"
 const SOUND_DEATH: StringName = &"death"
 const SOUND_RESPAWN: StringName = &"respawn"
 
-## Duración (s) del destello de la víctima: breve, con la opacidad cayendo en línea recta hasta cero.
+## Duration (s) of the victim's flash: brief, with the opacity falling in a straight line to zero.
 const FLASH_SECONDS: float = 0.08
-## Destello blanco y aditivo (suma luz, no tiñe de rojo): su opacidad al empezar, a plena intensidad (golpes en los que
-## interviene el jugador local) y la fracción de esa intensidad que tienen los golpes ajenos.
+## White, additive flash (adds light, does not tint red): its opacity at the start, at full intensity (hits involving
+## the local player) and the fraction of that intensity that other players' hits have.
 const FLASH_COLOR: Color = Color(1.0, 1.0, 1.0, 0.55)
 const FLASH_OTHERS_INTENSITY: float = 0.45
-## Sacudida de cámara al recibir daño: amplitud base y por fracción de vida máxima perdida (m),
-## tope y duración (s). Un golpe bloqueado sacude la mitad.
+## Camera shake on taking damage: base amplitude and per fraction of maximum health lost (m),
+## cap and duration (s). A blocked hit shakes half as much.
 const SHAKE_BASE: float = 0.03
 const SHAKE_PER_HEALTH_FRACTION: float = 0.25
 const SHAKE_MAX: float = 0.15
 const SHAKE_SECONDS: float = 0.18
 const BLOCKED_SHAKE_SCALE: float = 0.5
-## Parada de golpe (s) de la animación del atacante: un golpe ligero, uno fuerte, una parada y una muerte.
+## Hitstop (s) of the attacker's animation: a light hit, a heavy one, a parry and a death.
 const HITSTOP_LIGHT: float = 0.05
 const HITSTOP_HEAVY: float = 0.08
 const HITSTOP_PARRY: float = 0.10
 const HITSTOP_KILL: float = 0.10
-## Empujón de cámara (m) al lanzar el golpe fuerte y al conectar uno propio.
+## Camera push (m) when releasing the heavy attack and when an own one connects.
 const HEAVY_RELEASE_SHAKE: float = 0.05
 const HEAVY_DEALT_SHAKE: float = 0.04
 const PARRY_DEALT_SHAKE: float = 0.05
-## Segundos que vale un golpe predicho para saltarse el sonido y la chispa del mismo golpe confirmado.
+## Seconds a predicted hit is valid to skip the sound and spark of the same confirmed hit.
 const PREDICTION_WINDOW_SECONDS: float = 1.2
-## Texto de los números de golpes parados y bloqueados sin daño.
+## Text of the numbers of parried hits and of blocked hits with no damage.
 const TEXT_PARRIED: String = "Parada"
 const TEXT_BLOCKED: String = "Bloqueado"
 
-## Opciones del jugador.
+## Player options.
 var hit_markers_enabled: bool = true:
 	set(value):
 		hit_markers_enabled = value
@@ -125,8 +125,8 @@ var damage_numbers_enabled: bool = true:
 			_numbers.enabled = value
 var camera_shake_enabled: bool = true
 var flash_enabled: bool = true
-## Solo para pruebas y el sandbox: si es válido se le pregunta primero dónde está una entidad
-## (recibe el [code]net_id[/code] y devuelve su posición de dibujo, o [constant Vector3.INF]).
+## Only for tests and the sandbox: if valid, it is asked first where an entity is
+## (it receives the [code]net_id[/code] and returns its draw position, or [constant Vector3.INF]).
 var position_resolver: Callable = Callable()
 
 var _client: NetClient = null
@@ -137,28 +137,28 @@ var _numbers: DamageNumbers = null
 var _dps: DpsMeter = DpsMeter.new()
 var _own_net_id_override: int = 0
 var _last_event_tick: int = 0
-# Última clave (acción, ataque, tick de inicio) vista del personaje local y si el golpe estaba activo.
+# Last key (action, attack, start tick) seen of the local character and whether the hit was active.
 var _last_action_key: Vector3i = Vector3i(-1, -1, -1)
 var _last_action: int = CombatState.Action.NONE
 var _swing_active: bool = false
 var _flash_meshes: Array[MeshInstance3D] = []
 var _flash_left: Array[float] = []
-# Material y opacidad inicial de cada destello en curso (en el orden de _flash_meshes).
+# Material and initial opacity of each flash in progress (in the order of _flash_meshes).
 var _flash_materials: Array[StandardMaterial3D] = []
 var _flash_peaks: Array[float] = []
 var _events_handled: int = 0
-# Golpe predicho en local: el ataque, cuándo (ms) y si ya se predijo en este barrido.
+# Locally predicted hit: the attack, when (ms) and whether it was already predicted in this sweep.
 var _predicted_attack: int = -1
 var _predicted_msec: int = -1000000
 var _predicted_this_swing: bool = false
 var _predictions_made: int = 0
-# Reacciones visuales de eventos propios sobre un remoto que esperan a su tick de dibujo.
+# Visual reactions to own events on a remote that are waiting for their draw tick.
 var _deferred: CombatEventQueue = CombatEventQueue.new()
 
 
 func _init() -> void:
 	name = "CombatFeedback"
-	# Después de que NetClient (y la predicción) o el controlador hayan simulado el tick.
+	# After NetClient (and the prediction) or the controller have simulated the tick.
 	process_physics_priority = 100
 
 
@@ -171,9 +171,9 @@ func _physics_process(_delta: float) -> void:
 	deliver_due_reactions()
 
 
-## Conecta el reparto con lo que hay en pantalla. Todo es opcional: sin [param client] (el sandbox)
-## solo se sigue la acción del personaje; sin marcador, números o cámara, ese efecto se omite.
-## Con cliente, los eventos llegan por [signal NetClient.combat_event].
+## Connects the distribution to what is on screen. Everything is optional: without [param client] (the sandbox)
+## only the character's action is tracked; without a marker, numbers or camera, that effect is skipped.
+## With a client, events arrive through [signal NetClient.combat_event].
 func setup(client: NetClient, camera_rig: CameraRig, character: PlayerCharacter,
 		marker: HitMarker, numbers: DamageNumbers) -> void:
 	if is_instance_valid(_client) and _client.combat_event.is_connected(handle_event):
@@ -196,12 +196,12 @@ func setup(client: NetClient, camera_rig: CameraRig, character: PlayerCharacter,
 	_deferred.clear()
 
 
-## Solo para pruebas y sandbox: el id de red del jugador local si no hay [NetClient].
+## Only for tests and the sandbox: the local player's network id if there is no [NetClient].
 func set_own_net_id(net_id: int) -> void:
 	_own_net_id_override = net_id
 
 
-## Id de red del jugador local (0 si no se sabe).
+## Network id of the local player (0 if unknown).
 func get_own_net_id() -> int:
 	if is_instance_valid(_client):
 		return _client.get_net_id()
@@ -212,30 +212,30 @@ func get_dps_meter() -> DpsMeter:
 	return _dps
 
 
-## Daño por segundo de los últimos 30 s (panel F3).
+## Damage per second over the last 30 s (F3 panel).
 func get_dps() -> float:
 	return _dps.get_dps(_now_tick())
 
 
-## Daño de los golpes propios de los últimos 30 s.
+## Damage of the own hits over the last 30 s.
 func get_damage_in_window() -> int:
 	return _dps.get_damage(_now_tick())
 
 
-## Eventos repartidos desde que existe.
+## Events distributed since it exists.
 func get_events_handled() -> int:
 	return _events_handled
 
 
-## Reacciones visuales de eventos propios sobre un remoto que todavía esperan a su tick de dibujo.
+## Visual reactions to own events on a remote that are still waiting for their draw tick.
 func get_pending_reactions() -> int:
 	return _deferred.size()
 
 
-# --- Eventos ----------------------------------------------------------------------------------
+# --- Events -----------------------------------------------------------------------------------
 
-## Reparte un evento ya temporizado ([signal NetClient.combat_event]). [param is_own] dice si el
-## jugador local interviene; el reparto además comprueba los ids, así que sirve igual si falta.
+## Distributes an already timed event ([signal NetClient.combat_event]). [param is_own] says whether the
+## local player is involved; the distribution also checks the ids, so it works the same if it is missing.
 func handle_event(event: NetMessages.EntityEvent, is_own: bool = false) -> void:
 	if event == null:
 		return
@@ -252,7 +252,7 @@ func handle_event(event: NetMessages.EntityEvent, is_own: bool = false) -> void:
 			_on_respawn(event, is_own)
 
 
-## Variante de marcador y de número para un HIT: muerte, parada, bloqueado, fuerte o normal.
+## Marker and number variant for a HIT: death, parry, blocked, heavy or normal.
 func kind_of(event: NetMessages.EntityEvent) -> int:
 	if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL):
 		return HitMarker.Kind.KILL
@@ -266,7 +266,7 @@ func kind_of(event: NetMessages.EntityEvent) -> int:
 	return HitMarker.Kind.HIT
 
 
-## Nombre del jugador [param net_id] tal como lo ve este cliente ("" si no se le conoce).
+## Name of player [param net_id] as this client sees it ("" if unknown).
 func get_entity_name(net_id: int) -> String:
 	if net_id == 0 or not is_instance_valid(_client):
 		return ""
@@ -274,8 +274,8 @@ func get_entity_name(net_id: int) -> String:
 	return view.get_display_name() if view != null else ""
 
 
-## Posición (pies) con la que se dibuja ahora a la entidad [param net_id]: el personaje local o la
-## vista de un remoto. [constant Vector3.INF] si no se conoce (fuera de interés).
+## Position (feet) at which entity [param net_id] is drawn now: the local character or the
+## view of a remote. [constant Vector3.INF] if unknown (out of interest).
 func get_entity_position(net_id: int) -> Vector3:
 	if position_resolver.is_valid():
 		var resolved: Vector3 = position_resolver.call(net_id)
@@ -342,8 +342,8 @@ func _on_kill(event: NetMessages.EntityEvent, is_own: bool) -> void:
 			_react_to_kill(event)
 
 
-# Lo que se ve en la víctima de un HIT con daño: su placa enseña la vida y destella (a plena intensidad si el golpe
-# es del jugador local o lo recibe él, tenue si es de otros).
+# What is seen on the victim of a HIT with damage: its nameplate shows the health and it flashes (at full intensity if the hit
+# is by the local player or the local player receives it, faint if it is others').
 func _react_to_hit(event: NetMessages.EntityEvent) -> void:
 	_react_body(event, event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED)
 			or event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED))
@@ -355,8 +355,8 @@ func _react_to_hit(event: NetMessages.EntityEvent) -> void:
 	_emit_impact(event, involves_me)
 
 
-# El cuerpo de la víctima reacciona al golpe (ART-48, ART-50): se echa atrás, al lado contrario al atacante, o, si
-# lo bloquea, empuja el escudo. Solo visual y solo si la víctima tiene un [HumanoidVisual] dibujado.
+# The victim's body reacts to the hit (ART-48, ART-50): it recoils, away from the attacker, or, if
+# it blocks, pushes the shield. Visual only and only if the victim has a drawn [HumanoidVisual].
 func _react_body(event: NetMessages.EntityEvent, blocked: bool) -> void:
 	var body: PlayerCharacter = _body_of(event.net_id)
 	if body == null:
@@ -382,11 +382,11 @@ func _react_to_kill(event: NetMessages.EntityEvent) -> void:
 	_request_sound(SOUND_KILL, get_entity_position(event.net_id))
 
 
-# Guarda la reacción visual de [param event] si es propio y le ocurre a un remoto al que todavía se
-# dibuja antes del tick del evento (el servidor lo produjo hace [code]retardo[/code] ticks respecto a lo
-# que se ve de él). Devuelve true si la ha guardado; entonces [method deliver_due_reactions] la aplica
-# cuando el tick de dibujo alcance el del evento. Sin cliente (sandbox) o con la víctima propia no hay
-# nada que esperar. Con el reloj sin arrancar (tick de dibujo 0) también espera: aún no se dibuja a nadie.
+# Stores the visual reaction of [param event] if it is own and happens to a remote that is still
+# drawn before the event's tick (the server produced it [code]delay[/code] ticks ahead of what
+# is seen of it). Returns true if it stored it; then [method deliver_due_reactions] applies it when
+# the draw tick reaches the event's. Without a client (sandbox) or with the own player as victim there is
+# nothing to wait for. With the clock not started (draw tick 0) it also waits: nobody is drawn yet.
 func _defer_remote_reaction(event: NetMessages.EntityEvent, is_own: bool) -> bool:
 	if not is_own or not is_instance_valid(_client):
 		return false
@@ -400,9 +400,9 @@ func _defer_remote_reaction(event: NetMessages.EntityEvent, is_own: bool) -> boo
 	return true
 
 
-## Aplica las reacciones visuales de eventos propios sobre remotos cuyo tick ya ha alcanzado el tick
-## de dibujo ([method _defer_remote_reaction]). Lo llama [method _physics_process] después de cada
-## tick; las pruebas lo llaman a mano.
+## Applies the visual reactions to own events on remotes whose tick the draw tick has now reached
+## ([method _defer_remote_reaction]). [method _physics_process] calls it after each
+## tick; tests call it by hand.
 func deliver_due_reactions() -> void:
 	if _deferred.size() == 0:
 		return
@@ -427,7 +427,7 @@ func _on_respawn(event: NetMessages.EntityEvent, is_own: bool) -> void:
 		local_respawned.emit(event.point, event.tick)
 
 
-# Texto del número: vacío (el daño) salvo en los golpes parados o bloqueados sin daño.
+# Text of the number: empty (the damage) except on parried hits or blocked hits with no damage.
 func _text_for(event: NetMessages.EntityEvent, parried: bool, blocked: bool) -> String:
 	if parried:
 		return TEXT_PARRIED
@@ -452,7 +452,7 @@ func _request_sound(sound: StringName, position: Vector3) -> void:
 	sound_requested.emit(sound, position if position != Vector3.INF else Vector3.ZERO)
 
 
-# true si el golpe propio es fuerte o una parada (los que empujan la cámara al conectar).
+# true if the own hit is heavy or a parry (the ones that push the camera on connecting).
 func heavy_or_parry_dealt(event: NetMessages.EntityEvent) -> bool:
 	if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED):
 		return true
@@ -466,8 +466,8 @@ func _shake_dealt(parried: bool) -> void:
 	_camera_rig.add_shake(PARRY_DEALT_SHAKE if parried else HEAVY_DEALT_SHAKE, SHAKE_SECONDS * 0.7)
 
 
-# Avisa del impacto de [param event] (ver [signal hit_impact]) y da la parada de golpe al atacante (y a los dos en una
-# parada o una muerte) si no se le dio ya al predecir el golpe.
+# Announces the impact of [param event] (see [signal hit_impact]) and gives the attacker hitstop (and both on a
+# parry or a death) if it was not already given when the hit was predicted.
 func _emit_impact(event: NetMessages.EntityEvent, involves_me: bool) -> void:
 	var position: Vector3 = get_entity_position(event.net_id)
 	if position == Vector3.INF:
@@ -484,7 +484,7 @@ func _emit_impact(event: NetMessages.EntityEvent, involves_me: bool) -> void:
 		seconds = HITSTOP_PARRY
 	elif lethal:
 		seconds = maxf(seconds, HITSTOP_KILL)
-	# Un golpe ya predicho dio su parada de golpe al lanzarse; solo la muerte añade una más larga.
+	# An already predicted hit gave its hitstop when it was thrown; only death adds a longer one.
 	if already and not lethal:
 		return
 	if event.attacker != 0 and event.attacker != event.net_id:
@@ -493,7 +493,7 @@ func _emit_impact(event: NetMessages.EntityEvent, involves_me: bool) -> void:
 		_hitstop(event.net_id, seconds)
 
 
-# true (y lo gasta) si [param event] es el golpe propio que ya se predijo en local hace nada.
+# true (and consumes it) if [param event] is the own hit that was just predicted locally.
 func _consume_prediction(event: NetMessages.EntityEvent) -> bool:
 	var own_id: int = get_own_net_id()
 	if own_id == 0 or event.attacker != own_id or _predicted_attack != event.attack_id:
@@ -505,8 +505,8 @@ func _consume_prediction(event: NetMessages.EntityEvent) -> bool:
 	return true
 
 
-# Congela [param seconds] la animación de combate de la entidad [param net_id] (solo la animación: la simulación
-# no se entera).
+# Freezes the combat animation of entity [param net_id] for [param seconds] (only the animation: the simulation
+# does not find out).
 func _hitstop(net_id: int, seconds: float) -> void:
 	var body: PlayerCharacter = _body_of(net_id)
 	if body == null:
@@ -516,12 +516,12 @@ func _hitstop(net_id: int, seconds: float) -> void:
 		visual.start_hitstop(seconds)
 
 
-## Golpes que se han predicho en local desde que existe (las pruebas).
+## Hits that have been predicted locally since it exists (tests).
 func get_predictions_made() -> int:
 	return _predictions_made
 
 
-## true si [param net_id] es un PNJ de los Huecos (suena y se ve distinto al humano).
+## true if [param net_id] is an NPC of the Hollow (it sounds and looks different from a human).
 func is_hollow(net_id: int) -> bool:
 	if not is_instance_valid(_client) or net_id == 0:
 		return false
@@ -532,7 +532,7 @@ func is_hollow(net_id: int) -> bool:
 	return definition != null and definition.weapon_id == &"npc_hollow"
 
 
-## Pies del personaje local (Vector3.ZERO si no hay).
+## Feet of the local character (Vector3.ZERO if none).
 func get_local_position() -> Vector3:
 	var character: PlayerCharacter = _local_character()
 	if character == null:
@@ -540,7 +540,7 @@ func get_local_position() -> Vector3:
 	return character.global_position if character.is_inside_tree() else character.position
 
 
-## Hacia dónde mira el personaje local (horizontal, unitario).
+## Where the local character is facing (horizontal, unit length).
 func get_local_heading() -> Vector3:
 	var character: PlayerCharacter = _local_character()
 	if character == null:
@@ -548,15 +548,15 @@ func get_local_heading() -> Vector3:
 	return Basis(Vector3.UP, character.yaw) * Vector3.FORWARD
 
 
-## Reino del jugador local (código de [enum NetProtocol.Realm]; 0 si no se sabe).
+## Realm of the local player ([enum NetProtocol.Realm] code; 0 if unknown).
 func get_local_realm() -> int:
 	if is_instance_valid(_client) and _client.get_welcome() != null:
 		return _client.get_welcome().realm
 	return 0
 
 
-## true si el remoto dibujado [param view] es alguien al que el jugador local puede dañar (reino y zona; los PNJ,
-## siempre) y no está muerto.
+## true if the drawn remote [param view] is someone the local player can damage (realm and zone; NPCs,
+## always) and is not dead.
 func is_valid_target(view: RemotePlayerView) -> bool:
 	if not is_instance_valid(_client) or view == null or not view.is_drawn():
 		return false
@@ -568,8 +568,8 @@ func is_valid_target(view: RemotePlayerView) -> bool:
 	return FactionRules.can_damage(welcome.realm, view.get_realm(), StringName(welcome.zone_id))
 
 
-# Comprueba el golpe propio activo contra las posiciones dibujadas de los enemigos y, si alcanza a alguno, lo
-# predice: sonido, chispa y parada de golpe ya, sin esperar al servidor (solo cosmético).
+# Checks the active own hit against the drawn positions of the enemies and, if it reaches any, it
+# predicts it: sound, spark and hitstop right away, without waiting for the server (cosmetic only).
 func _try_predict(character: PlayerCharacter, state: CombatState) -> void:
 	if not is_instance_valid(_client):
 		return
@@ -583,7 +583,7 @@ func _try_predict(character: PlayerCharacter, state: CombatState) -> void:
 	for view: RemotePlayerView in _client.get_remote_world().get_views():
 		if view.get_net_id() == get_own_net_id() or not is_valid_target(view):
 			continue
-		# Quien esquiva (en sus ticks de invulnerabilidad) no recibe el golpe: no se predice.
+		# Whoever dodges (on their invulnerability ticks) does not receive the hit: it is not predicted.
 		if (view.get_drawn_action() & 15) == CombatState.Action.DODGE:
 			continue
 		var feet: Vector3 = view.get_drawn_position()
@@ -598,11 +598,11 @@ func _try_predict(character: PlayerCharacter, state: CombatState) -> void:
 			return
 
 
-# --- Destello ---------------------------------------------------------------------------------
+# --- Flash ------------------------------------------------------------------------------------
 
-## Destello breve (material_overlay blanco y aditivo) sobre las mallas de la entidad [param net_id] con la fuerza
-## [param intensity] (1 = plena, la de [constant FLASH_COLOR]). Sin efecto con [member flash_enabled] a false o si no se
-## conoce su cuerpo.
+## Brief flash (white, additive material_overlay) on the meshes of entity [param net_id] with strength
+## [param intensity] (1 = full, that of [constant FLASH_COLOR]). No effect with [member flash_enabled] set to false or if its
+## body is unknown.
 func flash(net_id: int, intensity: float = 1.0) -> void:
 	if not flash_enabled:
 		return
@@ -628,7 +628,7 @@ func flash(net_id: int, intensity: float = 1.0) -> void:
 			_flash_peaks.append(peak)
 
 
-## Avanza el destello [param delta] segundos, baja su opacidad y quita el overlay a las mallas que ya acabaron.
+## Advances the flash by [param delta] seconds, lowers its opacity and removes the overlay from the meshes that have finished.
 func advance_flashes(delta: float) -> void:
 	var index: int = _flash_meshes.size() - 1
 	while index >= 0:
@@ -644,12 +644,12 @@ func advance_flashes(delta: float) -> void:
 		index -= 1
 
 
-## Mallas que tienen ahora el destello puesto.
+## Meshes that currently have the flash applied.
 func get_flashing_count() -> int:
 	return _flash_meshes.size()
 
 
-## Opacidad actual del destello de la primera malla que lo tiene (0 si ninguna): para las pruebas.
+## Current opacity of the flash of the first mesh that has it (0 if none): for tests.
 func get_flash_alpha() -> float:
 	return _flash_materials[0].albedo_color.a if not _flash_materials.is_empty() else 0.0
 
@@ -674,7 +674,7 @@ func _make_flash_material(alpha: float) -> StandardMaterial3D:
 func _exit_tree() -> void:
 	if OS.has_environment("ELDMARK_FEEL_LOG"):
 		print("[feedback] eventos %d, golpes predichos en local %d" % [_events_handled, _predictions_made])
-	# Que ninguna malla se quede teñida si el reparto desaparece a medias.
+	# So that no mesh stays tinted if the distributor disappears halfway.
 	for mesh: MeshInstance3D in _flash_meshes:
 		if is_instance_valid(mesh):
 			mesh.material_overlay = null
@@ -685,11 +685,11 @@ func _exit_tree() -> void:
 	_deferred.clear()
 
 
-# --- Acciones propias -------------------------------------------------------------------------
+# --- Own actions ------------------------------------------------------------------------------
 
-## Compara la clave de la acción del personaje local con la última vista y lanza las señales de lo
-## que cambió. Lo llama [method _physics_process] después de cada tick; las pruebas lo llaman a
-## mano.
+## Compares the key of the local character's action with the last one seen and fires the signals for what
+## changed. [method _physics_process] calls it after each tick; tests call it by
+## hand.
 func observe_action() -> void:
 	var character: PlayerCharacter = _local_character()
 	if character == null:
@@ -721,19 +721,19 @@ func observe_action() -> void:
 		_try_predict(character, state)
 
 
-# true si [param key] es la misma acción que [param previous] con el inicio movido unos ticks (una
-# corrección de la reconciliación), no otra acción: mismo tipo y mismo ataque, distinto de NONE.
+# true if [param key] is the same action as [param previous] with the start moved by a few ticks (a
+# reconciliation correction), not another action: same type and same attack, other than NONE.
 func _is_shifted_start(key: Vector3i, previous: Vector3i) -> bool:
 	return key.x != CombatState.Action.NONE and key.x == previous.x and key.y == previous.y \
 			and absi(key.z - previous.z) <= CombatCatalog.rules().input_buffer_ticks
 
 
-## true mientras el golpe del arma propia está activo.
+## true while the own weapon's hit is active.
 func is_swing_active() -> bool:
 	return _swing_active
 
 
-# --- Ayudantes --------------------------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------------------------
 
 func _now_tick() -> int:
 	var estimated: int = _client.get_estimated_server_tick() if is_instance_valid(_client) else 0

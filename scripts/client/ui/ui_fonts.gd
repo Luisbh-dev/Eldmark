@@ -1,51 +1,51 @@
 class_name UIFonts
 extends RefCounted
-## Fuentes de la interfaz (UI-02): dos familias OFL en todo el cliente. Cinzel para títulos y rótulos de
-## lugares, Noto Sans para el texto, los números y las placas; IM Fell English SC queda disponible para
-## los rótulos del mapa. Los archivos están en [code]assets/fonts/[/code] (autor y licencia en
+## UI fonts (UI-02): two OFL families across the whole client. Cinzel for titles and place
+## labels, Noto Sans for text, numbers and nameplates; IM Fell English SC remains available for
+## the map labels. The files are in [code]assets/fonts/[/code] (author and license in
 ## [code]assets/LICENCIAS.md[/code]).
 ## [br][br]
-## Todo código que dibuja texto con [method CanvasItem.draw_string] pide aquí su fuente en vez de usar la
-## del motor (la «fallback_font» de ThemeDB, que una prueba prohíbe en [code]scripts/client[/code]).
-## Las fuentes se cargan una vez y se guardan. Solo cliente.
+## All code that draws text with [method CanvasItem.draw_string] asks for its font here instead of using the
+## engine's ("fallback_font" of ThemeDB, which a test forbids in [code]scripts/client[/code]).
+## Fonts are loaded once and cached. Client only.
 
 const BODY_PATH: String = "res://assets/fonts/NotoSans-Variable.ttf"
 const TITLE_PATH: String = "res://assets/fonts/Cinzel-Variable.ttf"
 const MAP_PATH: String = "res://assets/fonts/IMFellEnglishSC-Regular.ttf"
 
-## Grosor (eje wght) del texto «seminegrita» de números y placas, que se leen sobre el mundo.
+## Weight (wght axis) of the "semibold" text for numbers and nameplates, which are read over the world.
 const SEMIBOLD_WEIGHT: int = 600
 const BOLD_WEIGHT: int = 700
 
 static var _cache: Dictionary[String, Font] = {}
 
 
-## Noto Sans normal: texto corriente.
+## Regular Noto Sans: ordinary text.
 static func body() -> Font:
 	return _load(BODY_PATH)
 
 
-## Noto Sans en seminegrita: números, placas y rótulos pequeños sobre el mundo.
+## Semibold Noto Sans: numbers, nameplates and small labels over the world.
 static func body_semibold() -> Font:
 	return _variation(BODY_PATH, SEMIBOLD_WEIGHT)
 
 
-## Noto Sans en negrita.
+## Bold Noto Sans.
 static func body_bold() -> Font:
 	return _variation(BODY_PATH, BOLD_WEIGHT)
 
 
-## Cinzel: títulos, nombres de jefe, avisos.
+## Cinzel: titles, boss names, notices.
 static func title() -> Font:
 	return _load(TITLE_PATH)
 
 
-## Cinzel en negrita (los avisos grandes).
+## Bold Cinzel (the big notices).
 static func title_bold() -> Font:
 	return _variation(TITLE_PATH, BOLD_WEIGHT)
 
 
-## IM Fell English SC: rótulos de lugares del mapa.
+## IM Fell English SC: place labels on the map.
 static func map_label() -> Font:
 	return _load(MAP_PATH)
 
@@ -56,7 +56,7 @@ static func _load(path: String) -> Font:
 		return cached
 	var font: Font = load(path) as Font
 	if font == null:
-		# Sin el archivo (una exportación que no lo incluya) se usa la fuente por defecto del tema.
+		# Without the file (an export that does not include it) the theme's default font is used.
 		font = ThemeDB.get_default_theme().get_default_font()
 	_cache[path] = font
 	return font

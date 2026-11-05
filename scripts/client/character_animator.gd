@@ -1,75 +1,75 @@
 class_name CharacterAnimator
 extends Node
-## Conduce el [AnimationTree] de un [HumanoidVisual] a partir del estado de un [PlayerCharacter].
+## Drives the [AnimationTree] of a [HumanoidVisual] from the state of a [PlayerCharacter].
 ##
-## Solo cliente y solo lectura: cada fotograma lee la velocidad, la orientación interpolada y
-## [member PlayerCharacter.grounded] del personaje que decora, y escucha
-## [signal PlayerCharacter.jumped]. Nunca escribe en la simulación y el servidor no necesita nada
-## de esto. El aterrizaje se deduce del cambio de [member PlayerCharacter.grounded] (y no de
-## [signal PlayerCharacter.landed]) para que una reconciliación que repita ticks pasados no
-## dispare aterrizajes falsos; por lo mismo, el salto se valida contra el estado actual (en el
-## aire y subiendo) y también se detecta sin la señal si se deja el suelo subiendo rápido.
+## Client only and read-only: every frame it reads the velocity, the interpolated orientation and
+## [member PlayerCharacter.grounded] of the character it decorates, and listens to
+## [signal PlayerCharacter.jumped]. It never writes to the simulation and the server needs none
+## of this. The landing is deduced from the change of [member PlayerCharacter.grounded] (and not from
+## [signal PlayerCharacter.landed]) so that a reconciliation that replays past ticks does not
+## trigger false landings; for the same reason, the jump is validated against the current state (in the
+## air and rising) and is also detected without the signal if the ground is left while rising fast.
 ## [br][br]
-## [b]Locomoción.[/b] El nodo [code]locomotion[/code] del árbol es un BlendSpace1D por velocidad
-## (m/s) con caminar, trotar y esprintar. Cada clip tiene una línea de tiempo propia estirada a
-## 1 s, así que todos van en fase (pie izquierdo apoyado al principio del ciclo) y un único
-## TimeScale fija los ciclos por segundo. Para que los pies no patinen, ese ritmo es la
-## velocidad real dividida entre la zancada mezclada (metros por ciclo de cada clip, a partir de
+## [b]Locomotion.[/b] The [code]locomotion[/code] node of the tree is a BlendSpace1D by speed
+## (m/s) with walk, jog and sprint. Each clip has its own timeline stretched to
+## 1 s, so they are all in phase (left foot planted at the start of the cycle) and a single
+## TimeScale sets the cycles per second. So that the feet do not skate, that rate is the
+## real speed divided by the blended stride (meters per cycle of each clip, from
 ## [member clip_ground_speeds]).
 ## [br][br]
-## [b]Orientación.[/b] UAL no trae clips de desplazamiento lateral ni hacia atrás. Para que el
-## strafe no parezca patinaje, las caderas (el nodo [code]Pivot[/code], no la simulación) giran
-## hacia la dirección del movimiento y la columna ([SpineTwistModifier]) gira en sentido contrario
-## para que el pecho y la cabeza sigan mirando hacia el punto de mira. Al retroceder (movimiento a
-## más de [member backpedal_enter_angle] del yaw de la simulación) el modelo mira hacia delante y
-## la locomoción se reproduce al revés: el personaje camina hacia atrás de cara al enemigo en vez de
-## darse la vuelta y correr hacia la cámara. Parado, vuelve suavemente al yaw de la simulación. El
-## Pivot no usa interpolación física: su giro se aplica cada fotograma sobre la transformación
-## interpolada del personaje.
+## [b]Orientation.[/b] UAL has no sideways or backward movement clips. So that
+## strafing does not look like skating, the hips (the [code]Pivot[/code] node, not the simulation) turn
+## toward the direction of movement and the spine ([SpineTwistModifier]) turns the opposite way
+## so that the chest and head keep facing the aim point. When backpedaling (movement at
+## more than [member backpedal_enter_angle] from the simulation's yaw) the model looks forward and
+## the locomotion plays in reverse: the character walks backward facing the enemy instead of
+## turning around and running toward the camera. When standing still, it smoothly returns to the simulation's yaw. The
+## Pivot does not use physics interpolation: its turn is applied every frame on top of the character's
+## interpolated transform.
 ## [br][br]
-## [b]Esquiva[/b] (ART-49, solo visual): durante [constant CombatState.Action.DODGE] el modelo mira hacia donde
-## se viaja desde el primer fotograma (el rumbo de la esquiva del estado del personaje o, en un remoto, su
-## velocidad) y la columna no compensa el giro: la voltereta va de cabeza hacia donde se mueve el cuerpo en
-## las cuatro direcciones, también hacia atrás. Al acabar, el modelo vuelve al giro de siempre con el suavizado
-## de [member turn_sharpness] y la columna recupera su compensación en [member dodge_twist_return_time]. La
-## simulación no se entera: solo se mueve el [code]Pivot[/code].
+## [b]Dodge[/b] (ART-49, visual only): during [constant CombatState.Action.DODGE] the model faces the direction of
+## travel from the first frame (the heading of the dodge in the character's state or, on a remote, its
+## velocity) and the spine does not compensate for the turn: the roll goes head first toward where the body moves in
+## all four directions, backward too. When it ends, the model returns to the usual turn with the smoothing
+## of [member turn_sharpness] and the spine recovers its compensation over [member dodge_twist_return_time]. The
+## simulation is unaware: only the [code]Pivot[/code] moves.
 ## [br][br]
-## [b]Postura armada[/b] (ART-45): el [ArmedStanceModifier] pone el reposo de combate (la guardia con escudo
-## de [code]ual2/Idle_Shield_Loop[/code]) cuando se está parado y, andando, una capa de brazos con peso de 0,6 a
-## 0,9 (el escudo delante del torso, la hoja sin ir hacia atrás) y los dedos cerrados. Se aparta en el aire, con un
-## clip de cuerpo entero (esquiva, muerte...) y con el arco; el Hueco usa el perfil zombi.
+## [b]Combat stance[/b] (ART-45): the [ArmedStanceModifier] applies the combat rest (the shield guard
+## from [code]ual2/Idle_Shield_Loop[/code]) when standing still and, while walking, an arm layer with weight 0.6 to
+## 0.9 (the shield in front of the torso, the blade not going backward) and closed fingers. It steps aside in the air, with a
+## full-body clip (dodge, death...) and with the bow; the Hollow uses the zombie profile.
 ## [br][br]
-## [b]Ataques con los pies plantados[/b] (ART-46): mientras dura un ataque sin que la entrada pida andar, el modelo
-## mira a donde mira la cámara (se coloca al instante al empezar) y la capa de combate toma cadera y piernas del
-## clip ([member CombatAnimationLayer.move_request] a 0). Lo que avanza la estocada del ataque no cuenta como
-## entrada: se descuenta de la velocidad. Si se pide andar, todo vuelve a la locomoción.
+## [b]Attacks with planted feet[/b] (ART-46): while an attack lasts without the input asking to walk, the model
+## faces where the camera faces (it snaps into place at the start) and the combat layer takes hips and legs from the
+## clip ([member CombatAnimationLayer.move_request] at 0). What the attack's lunge advances does not count as
+## input: it is subtracted from the velocity. If walking is requested, everything goes back to locomotion.
 ## [br][br]
-## [b]Reacciones[/b] (ART-48, ART-50, ART-51): [method react_to_hit] da al [HitReactionModifier] el golpe recibido o
-## bloqueado; el tambaleo da un paso atrás del [code]Pivot[/code]; al morir, el cuerpo conserva parte de la
-## velocidad que llevaba (se desliza y se frena) y se vuelve hacia el atacante para caer alejándose de él. Todo es
-## visual: la simulación no se entera.
+## [b]Reactions[/b] (ART-48, ART-50, ART-51): [method react_to_hit] gives the [HitReactionModifier] the hit received or
+## blocked; the stagger takes a step back with the [code]Pivot[/code]; on death, the body keeps part of the
+## velocity it had (it slides and slows down) and turns toward the attacker to fall away from them. It is all
+## visual: the simulation is unaware.
 ## [br][br]
-## [b]Aire.[/b] Saltar reproduce Jump_Start desde el despegue (sin la anticipación agachada, porque
-## la simulación ya ha despegado) y pasa a Jump_Loop al empezar a caer; caer por un borde va
-## directo a Jump_Loop. Al aterrizar se mezcla Jump_Land con una intensidad que depende de la
-## velocidad de impacto y de si se sigue corriendo.
+## [b]Air.[/b] Jumping plays Jump_Start from the takeoff (without the crouching anticipation, because
+## the simulation has already taken off) and switches to Jump_Loop when it starts to fall; falling off an edge goes
+## straight to Jump_Loop. On landing, Jump_Land is blended with an intensity that depends on the
+## impact speed and on whether the character keeps running.
 
 ## [br][br]
-## [b]Combate.[/b] Sobre la locomoción va la capa de animación de combate ([CombatAnimationLayer],
-## ART-08): ataques, bloqueo, tambaleo y aturdimiento en la parte superior del cuerpo; esquiva y
-## muerte en el cuerpo entero. La acción sale del [member PlayerCharacter.combat] del personaje (el
-## jugador local y el sandbox) o, en un remoto, del byte [code]action[/code] de su registro
-## ([method set_remote_source]). Cada clip se reescala a la duración de la fase en los datos de
-## combate; ver [CombatClipPlanner]. La pose la pone el [CombatPoseModifier] después del árbol.
+## [b]Combat.[/b] On top of the locomotion goes the combat animation layer ([CombatAnimationLayer],
+## ART-08): attacks, block, stagger and stun on the upper body; dodge and
+## death on the whole body. The action comes from the character's [member PlayerCharacter.combat] (the local
+## player and the sandbox) or, on a remote, from the [code]action[/code] byte of its record
+## ([method set_remote_source]). Each clip is rescaled to the duration of the phase in the combat
+## data; see [CombatClipPlanner]. The pose is applied by the [CombatPoseModifier] after the tree.
 ## [br][br]
-## [b]Arma activa[/b] (fase 4): la del estado del personaje o, en un remoto, la que da su vista (pareja de
-## armas y bit de ranura del registro, [method set_remote_source]). Elige el juego de clips del arma y,
-## cuando cambia, avisa por [signal weapon_shown] (el [HumanoidVisual] cambia los accesorios de las manos,
-## [WeaponProps]). Si el cambio llega durante la acción [constant CombatState.Action.SWAP] (ART-06), los
-## accesorios cambian a mitad del gesto ([member swap_show_fraction]) y no en el primer fotograma; en cualquier
-## otro caso (aparecer, un cambio de equipo) cambian al instante.
+## [b]Active weapon[/b] (phase 4): the one from the character's state or, on a remote, the one its view gives (weapon pair
+## and slot bit of the record, [method set_remote_source]). It picks the weapon's clip set and,
+## when it changes, notifies through [signal weapon_shown] (the [HumanoidVisual] swaps the hand props,
+## [WeaponProps]). If the change arrives during the [constant CombatState.Action.SWAP] action (ART-06), the
+## props change mid-gesture ([member swap_show_fraction]) rather than on the first frame; in any other
+## case (spawning, an equipment change) they change instantly.
 
-## Ruta de los parámetros del árbol (ver humanoid_visual.tscn).
+## Path of the tree's parameters (see humanoid_visual.tscn).
 const PARAM_LOCOMOTION_BLEND: StringName = &"parameters/locomotion/blend_position"
 const PARAM_LOCOMOTION_SCALE: StringName = &"parameters/locomotion_speed/scale"
 const PARAM_MOVE: StringName = &"parameters/move/blend_amount"
@@ -79,147 +79,147 @@ const PARAM_LAND_SCALE: StringName = &"parameters/land_speed/scale"
 const PARAM_JUMP_SEEK: StringName = &"parameters/jump_seek/seek_request"
 const PARAM_AIR_PHASE: StringName = &"parameters/air_phase/blend_amount"
 const PARAM_AIR: StringName = &"parameters/air/blend_amount"
-## Nodo BlendSpace1D de locomoción dentro del árbol.
+## Locomotion BlendSpace1D node inside the tree.
 const LOCOMOTION_NODE: StringName = &"locomotion"
 
-## El arma que se ve en las manos ha cambiado (id del catálogo de combate; 0 = ninguna conocida).
+## The weapon shown in the hands has changed (combat catalog id; 0 = none known).
 signal weapon_shown(weapon_id: int)
-## El golpe del arma pasa a estar activo (o deja de estarlo), para el jugador local y para los remotos
-## ([method CombatAnimationLayer.is_swing_active]): de aquí cuelga la estela de la espada.
+## The weapon's hit becomes active (or stops being so), for the local player and for remotes
+## ([method CombatAnimationLayer.is_swing_active]): the sword trail hangs from this.
 signal swing_active_changed(active: bool)
 
-## El personaje despega del suelo con un salto (para el sonido y el polvo; no sale al caer por un borde).
+## The character leaves the ground with a jump (for the sound and the dust; it is not emitted when falling off an edge).
 signal jumped_visual
-## El personaje toca el suelo tras estar en el aire, con [param strength] de 0 a 1 según la velocidad del impacto.
+## The character touches the ground after being in the air, with [param strength] from 0 to 1 according to the impact speed.
 signal touched_down(strength: float)
-## Un remoto empieza una acción de combate ([param action] es un [enum CombatState.Action]; [param step] el paso del
-## combo, la ranura de la habilidad o el contador de reinicio del byte de acción). Solo de los remotos: lo propio lo
-## reparte [CombatFeedback].
+## A remote starts a combat action ([param action] is a [enum CombatState.Action]; [param step] the combo
+## step, the ability slot or the restart counter from the action byte). Remotes only: the local player's own is
+## dispatched by [CombatFeedback].
 signal remote_action_started(action: int, step: int)
-## La carga del golpe fuerte está en curso ([param active]) con [param fraction] de 0 a 1, o ha terminado. Se emite
-## cada fotograma mientras dura. De aquí cuelga el aura de la espada ([ChargeAura]).
+## The heavy-attack charge is in progress ([param active]) with [param fraction] from 0 to 1, or has ended. It is emitted
+## every frame while it lasts. The sword aura ([ChargeAura]) hangs from this.
 signal charge_changed(active: bool, fraction: float)
 
-## Fases del aire.
+## Air phases.
 enum AirState { GROUNDED, JUMPING, FALLING }
-## Velocidad horizontal (m/s) por encima de la cual un derribado se arrastra.
+## Horizontal speed (m/s) above which a knocked-down character crawls.
 const CRAWL_MIN_SPEED: float = 0.2
 
-## Árbol de animación que se conduce.
-## Tiempo (s) en que el modelo gira hacia el rumbo de la esquiva al empezar y suavizado de ese giro.
+## Animation tree being driven.
+## Time (s) over which the model turns toward the dodge heading at the start, and the smoothing of that turn.
 const DODGE_TURN_TIME: float = 0.08
 const DODGE_TURN_SHARPNESS: float = 40.0
-## Velocidad (m/s) a partir de la cual la entrada se considera «pide andar» en un ataque (entre ese 8 % y el 40 % de
-## la carrera, las piernas pasan del clip a la locomoción).
+## Speed (m/s) from which the input counts as "asks to walk" during an attack (between that 8 % and 40 % of
+## the run, the legs go from the clip to the locomotion).
 const MOVE_REQUEST_FROM: float = 0.08
 const MOVE_REQUEST_TO: float = 0.4
-## Pesos de la capa de brazos de la postura armada: andando y esprintando.
+## Weights of the combat stance arm layer: walking and sprinting.
 const STANCE_ARM_WEIGHT_WALK: float = 0.9
 const STANCE_ARM_WEIGHT_SPRINT: float = 0.65
-## Velocidad (m/s) del caminar del zombi a su velocidad de reproducción 1, y límites de esa velocidad. Por encima
-## de [constant ZOMBIE_RUN_FROM] m/s el Hueco corre con la locomoción normal (el zombi no esprinta).
+## Speed (m/s) of the zombie walk at its playback speed of 1, and the limits of that speed. Above
+## [constant ZOMBIE_RUN_FROM] m/s the Hollow runs with the normal locomotion (the zombie does not sprint).
 const ZOMBIE_WALK_SPEED: float = 1.1
 const ZOMBIE_RUN_FROM: float = 2.8
 const ZOMBIE_RUN_TO: float = 4.0
-## Tambaleo: metros que da el cuerpo hacia atrás y rapidez con la que lo hace y vuelve.
+## Stagger: meters the body moves backward and how quickly it does so and returns.
 const STAGGER_STEP_BACK: float = 0.3
 const STAGGER_STEP_RATE: float = 2.4
 const STAGGER_RETURN_RATE: float = 1.0
-## Muerte (ART-51): fracción de la velocidad que conserva el cuerpo (con tope en m/s), tiempo (s) en que se frena y
-## cuánto tarda en volverse hacia el atacante.
+## Death (ART-51): fraction of the velocity the body keeps (capped in m/s), time (s) over which it slows down and
+## how long it takes to turn toward the attacker.
 const DEATH_SLIDE_FACTOR: float = 0.55
 const DEATH_SLIDE_MAX_SPEED: float = 3.5
 const DEATH_SLIDE_TAU: float = 0.28
 const DEATH_FACE_SHARPNESS: float = 22.0
-## Tiempo (s) tras el que un golpe recibido ya no cuenta como el que mata.
+## Time (s) after which a received hit no longer counts as the killing one.
 const LAST_HIT_MEMORY: float = 0.7
 
 @export var animation_tree: AnimationTree
-## Nodo que se gira para orientar el modelo; su padre debe ser un Node3D que siga al personaje.
+## Node that is rotated to orient the model; its parent must be a Node3D that follows the character.
 @export var pivot: Node3D
 
-## Clips de las acciones de combate (recurso de texto en data/animation/).
+## Clips of the combat actions (text resource in data/animation/).
 @export var clip_set: CombatClipSet
 
 @export_group("Locomoción")
-## Velocidad sobre el suelo (m/s) de cada clip a velocidad de reproducción 1, medida sobre el
-## modelo instalado (Ranger de 1,84 m) con tools/animation/measure_locomotion_strides.gd: avance
-## de las puntas de los pies mientras están apoyadas / duración del ciclo. (Las de la variante con
-## root motion del maniquí UAL son un 15 % más cortas y hacían patinar los pies hacia atrás.)
+## Ground speed (m/s) of each clip at playback speed 1, measured on the installed
+## model (1.84 m Ranger) with tools/animation/measure_locomotion_strides.gd: advance
+## of the toes while planted / cycle duration. (Those of the UAL mannequin's root motion variant
+## are 15 % shorter and made the feet skate backward.)
 @export var clip_ground_speeds: Dictionary[StringName, float] = {
 	&"ual1/Walk_Loop": 1.028,
 	&"ual1/Jog_Fwd_Loop": 6.093,
 	&"ual1/Sprint_Loop": 9.387,
 }
-## Rapidez con la que la velocidad usada para mezclar sigue a la real (1/s, suavizado exponencial).
+## How quickly the speed used for blending follows the real one (1/s, exponential smoothing).
 @export var speed_smoothing: float = 14.0
-## Por debajo de esta velocidad (m/s) se mezcla con la pose de reposo.
+## Below this speed (m/s) it blends with the rest pose.
 @export var idle_blend_speed: float = 0.7
-## Ritmo máximo de la locomoción (ciclos de 1 s por segundo).
+## Maximum locomotion rate (1 s cycles per second).
 @export var max_locomotion_scale: float = 2.5
 
 @export_group("Orientación")
-## Velocidad horizontal (m/s) a partir de la cual el modelo mira hacia donde se mueve.
+## Horizontal speed (m/s) from which the model faces the direction it moves.
 @export var turn_min_speed: float = 0.6
-## Rapidez del giro del modelo (1/s, suavizado exponencial del ángulo).
+## Speed of the model's turn (1/s, exponential smoothing of the angle).
 @export var turn_sharpness: float = 12.0
-## Velocidad angular máxima del modelo (rad/s).
+## Maximum angular speed of the model (rad/s).
 @export var max_turn_speed: float = 14.0
-## Ángulo (grados) entre el movimiento y el yaw de la simulación a partir del cual se retrocede
-## de cara (locomoción al revés) en vez de girarse.
+## Angle (degrees) between the movement and the simulation's yaw from which the character backpedals
+## facing forward (reverse locomotion) instead of turning around.
 @export var backpedal_enter_angle: float = 110.0
-## Ángulo (grados) por debajo del cual se deja de retroceder (histéresis).
+## Angle (degrees) below which it stops backpedaling (hysteresis).
 @export var backpedal_exit_angle: float = 95.0
-## Giro máximo (grados) con el que la columna compensa el de las caderas.
+## Maximum twist (degrees) with which the spine compensates for that of the hips.
 @export var max_spine_twist: float = 75.0
 
 @export_group("Esquiva")
-## Tiempo (s) que tarda la columna en recuperar su compensación hacia el punto de mira al acabar la esquiva.
+## Time (s) the spine takes to recover its compensation toward the aim point when the dodge ends.
 @export var dodge_twist_return_time: float = 0.15
-## Velocidad horizontal (m/s) a partir de la cual un remoto en esquiva da el rumbo de su movimiento.
+## Horizontal speed (m/s) from which a remote that is dodging gives the heading of its movement.
 @export var dodge_min_speed: float = 0.5
 
 @export_group("Cambio de arma")
-## Fracción de la acción de cambio de arma (0 a 1) a la que cambian los accesorios de las manos.
+## Fraction of the weapon swap action (0 to 1) at which the hand props change.
 @export_range(0.0, 1.0) var swap_show_fraction: float = 0.5
 
 @export_group("Aire")
-## Segundo de Jump_Start en el que los pies dejan el suelo (antes hay una anticipación agachada).
+## Second of Jump_Start at which the feet leave the ground (before that there is a crouching anticipation).
 @export var jump_takeoff_time: float = 0.07
-## Tiempo en el aire sin saltar antes de considerar que se está cayendo (escalones, rampas).
+## Time in the air without jumping before it is considered that the character is falling (steps, ramps).
 @export var fall_grace_time: float = 0.15
-## Velocidad vertical (m/s) por debajo de la cual el salto pasa a la pose de caída.
+## Vertical speed (m/s) below which the jump switches to the fall pose.
 @export var fall_blend_velocity: float = -1.0
-## Velocidad vertical (m/s) al dejar el suelo a partir de la cual se considera un salto aunque no
-## haya llegado la señal (por ejemplo, tras una reconciliación).
+## Vertical speed (m/s) on leaving the ground from which it is considered a jump even if the signal
+## has not arrived (for example, after a reconciliation).
 @export var jump_detect_velocity: float = 4.0
-## Duración de la mezcla suelo -> aire (s).
+## Duration of the ground -> air blend (s).
 @export var air_blend_in_time: float = 0.08
-## Duración de la mezcla aire -> suelo al aterrizar (s).
+## Duration of the air -> ground blend on landing (s).
 @export var air_blend_out_time: float = 0.1
-## Duración de la mezcla salto -> caída (s).
+## Duration of the jump -> fall blend (s).
 @export var fall_blend_time: float = 0.25
 
 @export_group("Aterrizaje")
-## Intensidad de Jump_Land al aterrizar parado tras un salto normal (0..1).
+## Intensity of Jump_Land when landing while standing still after a normal jump (0..1).
 @export var land_strength_idle: float = 0.8
-## Intensidad de Jump_Land al aterrizar corriendo.
+## Intensity of Jump_Land when landing while running.
 @export var land_strength_moving: float = 0.3
-## Velocidad de impacto (m/s) por debajo de la cual no se reproduce el aterrizaje.
+## Impact speed (m/s) below which the landing is not played.
 @export var land_min_impact: float = 2.0
-## Velocidad de impacto (m/s) a partir de la cual el aterrizaje tiene la intensidad completa.
+## Impact speed (m/s) from which the landing has full intensity.
 @export var land_full_impact: float = 7.0
-## Multiplicador de velocidad de Jump_Land (el clip original es una recepción pesada de 1,3 s).
+## Speed multiplier of Jump_Land (the original clip is a heavy 1.3 s landing).
 @export var land_playback_speed: float = 1.6
-## Tiempo (s) que el aterrizaje se mantiene a su intensidad antes de desvanecerse.
+## Time (s) the landing stays at its intensity before fading out.
 @export var land_hold_time: float = 0.12
-## Duración total (s) del aterrizaje.
+## Total duration (s) of the landing.
 @export var land_duration: float = 0.5
 
 var _character: PlayerCharacter = null
 var _spine: SpineTwistModifier = null
 var _blend_space: AnimationNodeBlendSpace1D = null
-## Puntos del BlendSpace ordenados: [posición (m/s), metros por unidad de TimeScale].
+## Sorted BlendSpace points: [position (m/s), meters per TimeScale unit].
 var _stride_points: Array[Vector2] = []
 
 var _speed: float = 0.0
@@ -237,51 +237,51 @@ var _land_strength: float = 0.0
 var _locomotion_scale: float = 0.0
 var _move_weight: float = 0.0
 var _backpedal: bool = false
-## Esquiva en curso (el modelo mira hacia su rumbo) y cuánto de la compensación de la columna se aplica (0 a 1).
+## Dodge in progress (the model faces its heading) and how much of the spine compensation is applied (0 to 1).
 var _dodging: bool = false
 var _twist_weight: float = 1.0
-## Segundos que lleva la acción de cambio de arma en curso.
+## Seconds the current weapon swap action has been running.
 var _swap_elapsed: float = 0.0
 var _combat_layer: CombatAnimationLayer = null
 var _combat_modifier: CombatPoseModifier = null
 var _stance: ArmedStanceModifier = null
 var _reaction: HitReactionModifier = null
-## Instantes de los clips de la postura armada (s).
+## Times of the combat stance clips (s).
 var _stance_rest_time: float = 0.0
 var _stance_walk_time: float = 0.0
-## Perfil de postura pedido: [code]shield[/code] o [code]zombie[/code].
+## Requested stance profile: [code]shield[/code] or [code]zombie[/code].
 var _stance_profile: StringName = &"shield"
-# Ataque en curso con el modelo ya colocado hacia la cámara.
+# Attack in progress with the model already turned toward the camera.
 var _attack_facing: bool = false
-# Cuerpo: desplazamiento visual del Pivot (paso atrás del tambaleo, deslizamiento de la muerte).
+# Body: visual offset of the Pivot (stagger step back, death slide).
 var _body_offset: Vector3 = Vector3.ZERO
 var _slide_velocity: Vector3 = Vector3.ZERO
 var _live_velocity: Vector3 = Vector3.ZERO
 var _was_dead: bool = false
 var _death_yaw: float = NAN
 var _was_staggered: bool = false
-# Último golpe recibido: dirección hacia el atacante (mundo) y segundos desde entonces.
+# Last hit received: direction toward the attacker (world) and seconds since then.
 var _last_attacker_dir: Vector3 = Vector3.ZERO
 var _last_reaction_age: float = 99.0
-## Origen del byte action de un remoto: devuelve el byte del registro dibujado. Si no es válido, la
-## acción sale del [member PlayerCharacter.combat] del personaje.
+## Source of a remote's action byte: returns the byte of the drawn record. If it is not valid, the
+## action comes from the character's [member PlayerCharacter.combat].
 var _remote_source: Callable = Callable()
-## Arma activa de un remoto (devuelve su id); si no es válido, la del estado del personaje.
+## Active weapon of a remote (returns its id); if it is not valid, the one from the character's state.
 var _remote_weapon_source: Callable = Callable()
 var _shown_weapon: int = -1
-# Último valor avisado por [signal swing_active_changed].
+# Last value notified through [signal swing_active_changed].
 var _swing_shown: bool = false
-# Última acción de un remoto avisada por [signal remote_action_started] y su paso (-1 = ninguna).
+# Last action of a remote notified through [signal remote_action_started] and its step (-1 = none).
 var _remote_action_seen: int = -1
 var _remote_step_seen: int = -1
-# Carga del fuerte: si se está avisando y los segundos que lleva un remoto cargando.
+# Heavy-attack charge: whether it is being notified and the seconds a remote has been charging.
 var _charging: bool = false
 var _remote_charge_s: float = 0.0
 
 
 func _ready() -> void:
-	# Antes que el AnimationTree (prioridad 0), para que los parámetros de este fotograma se
-	# apliquen en este mismo fotograma y no en el siguiente.
+	# Before the AnimationTree (priority 0), so that this frame's parameters are
+	# applied in this same frame and not the next one.
 	process_priority = -1
 	if animation_tree == null:
 		animation_tree = get_node_or_null(^"../AnimationTree") as AnimationTree
@@ -292,7 +292,7 @@ func _ready() -> void:
 		set_character(_find_character())
 
 
-## Personaje que se decora. Puede cambiarse en cualquier momento (o pasar null para soltarlo).
+## The character being decorated. It can be changed at any time (or pass null to release it).
 func set_character(character: PlayerCharacter) -> void:
 	if _character == character:
 		return
@@ -310,13 +310,13 @@ func set_character(character: PlayerCharacter) -> void:
 		_character.jumped.connect(_on_jumped)
 
 
-## Personaje decorado (o null).
+## The decorated character (or null).
 func get_character() -> PlayerCharacter:
 	return _character
 
 
-## Coloca el modelo al instante mirando como la simulación, sin giro suave. Para después de un
-## teletransporte o una reaparición (junto con [method Node.reset_physics_interpolation]).
+## Places the model instantly facing the way the simulation does, with no smooth turn. For after a
+## teleport or a respawn (together with [method Node.reset_physics_interpolation]).
 func reset_facing() -> void:
 	_yaw_initialized = false
 	_backpedal = false
@@ -334,13 +334,13 @@ func reset_facing() -> void:
 		_spine.twist = 0.0
 
 
-## Modificador que gira la columna (lo crea [HumanoidVisual] bajo su esqueleto).
+## Modifier that twists the spine ([HumanoidVisual] creates it under its skeleton).
 func set_spine_modifier(modifier: SpineTwistModifier) -> void:
 	_spine = modifier
 
 
-## Modificador que aplica la pose de combate al esqueleto (lo crea [HumanoidVisual] bajo el
-## esqueleto, antes del de la columna). Crea la capa de combate con [member clip_set].
+## Modifier that applies the combat pose to the skeleton ([HumanoidVisual] creates it under the
+## skeleton, before the spine one). It creates the combat layer with [member clip_set].
 func set_combat_modifier(modifier: CombatPoseModifier) -> void:
 	_combat_modifier = modifier
 	if _combat_layer == null:
@@ -349,7 +349,7 @@ func set_combat_modifier(modifier: CombatPoseModifier) -> void:
 		_combat_modifier.layer = _combat_layer
 
 
-## Modificador de la postura armada (lo crea [HumanoidVisual]; va antes que el de combate).
+## Combat stance modifier ([HumanoidVisual] creates it; it goes before the combat one).
 func set_stance_modifier(modifier: ArmedStanceModifier) -> void:
 	_stance = modifier
 	if _stance != null:
@@ -357,35 +357,35 @@ func set_stance_modifier(modifier: ArmedStanceModifier) -> void:
 		_apply_stance_profile()
 
 
-## Modificador de las reacciones procedurales (lo crea [HumanoidVisual]).
+## Modifier for the procedural reactions ([HumanoidVisual] creates it).
 func set_reaction_modifier(modifier: HitReactionModifier) -> void:
 	_reaction = modifier
 
 
-## Cambia el perfil de la postura armada: [code]shield[/code] (guardia con escudo) o [code]zombie[/code] (el Hueco).
+## Changes the combat stance profile: [code]shield[/code] (shield guard) or [code]zombie[/code] (the Hollow).
 func set_stance_profile(profile: StringName) -> void:
 	_stance_profile = profile
 	_apply_stance_profile()
 
 
-## Modificador de la postura armada (o null).
+## The combat stance modifier (or null).
 func get_stance_modifier() -> ArmedStanceModifier:
 	return _stance
 
 
-## Modificador de reacciones (o null).
+## The reactions modifier (or null).
 func get_reaction_modifier() -> HitReactionModifier:
 	return _reaction
 
 
-## Peso con el que se mezcla con la locomoción el reposo de combate (1 parado, 0 en movimiento).
+## Weight with which the combat rest is blended with the locomotion (1 standing still, 0 moving).
 func get_move_weight() -> float:
 	return _move_weight
 
 
-## El personaje recibe un golpe de [param amount] de daño desde [param attacker_direction] (vector del mundo de la
-## víctima hacia el atacante; cero si no se sabe). Con [param blocked], el escudo lo ha parado: empujón del brazo y
-## de la columna en lugar de echar atrás el cuerpo (ART-48, ART-50).
+## The character receives a hit of [param amount] damage from [param attacker_direction] (a vector in the world from the
+## victim toward the attacker; zero if unknown). With [param blocked], the shield has stopped it: a push of the arm and
+## the spine instead of throwing the body back (ART-48, ART-50).
 func react_to_hit(attacker_direction: Vector3, amount: float = 0.0, blocked: bool = false) -> void:
 	_last_reaction_age = 0.0
 	if attacker_direction.length_squared() > 0.0001:
@@ -398,9 +398,9 @@ func react_to_hit(attacker_direction: Vector3, amount: float = 0.0, blocked: boo
 		_reaction.trigger_hit(attacker_direction, amount)
 
 
-## Hace que la acción de combate salga del byte [code]action[/code] que devuelve [param source]
-## (el registro dibujado de un remoto) en lugar del estado del personaje, y el arma activa de
-## [param weapon_source] (el id que dice su vista). Un [Callable] no válido vuelve al estado del personaje.
+## Makes the combat action come from the [code]action[/code] byte that [param source] returns
+## (a remote's drawn record) instead of the character's state, and the active weapon from
+## [param weapon_source] (the id its view reports). An invalid [Callable] goes back to the character's state.
 func set_remote_source(source: Callable, weapon_source: Callable = Callable()) -> void:
 	_remote_source = source
 	_remote_weapon_source = weapon_source
@@ -409,22 +409,22 @@ func set_remote_source(source: Callable, weapon_source: Callable = Callable()) -
 	_set_swing_shown(false)
 
 
-## Arma que se ve ahora en las manos (-1 antes del primer fotograma).
+## Weapon currently shown in the hands (-1 before the first frame).
 func get_shown_weapon() -> int:
 	return _shown_weapon
 
 
-## Capa de animación de combate (null hasta [method set_combat_modifier]).
+## Combat animation layer (null until [method set_combat_modifier]).
 func get_combat_layer() -> CombatAnimationLayer:
 	return _combat_layer
 
 
-## Modificador que pone la pose de combate (o null).
+## Modifier that applies the combat pose (or null).
 func get_combat_modifier() -> CombatPoseModifier:
 	return _combat_modifier
 
 
-## Estado interno para depuración y pruebas visuales.
+## Internal state for debugging and visual tests.
 func get_debug_state() -> Dictionary:
 	return {
 		"speed": _speed,
@@ -469,9 +469,9 @@ func _process(delta: float) -> void:
 	_update_stance(delta)
 
 
-# --- Combate -----------------------------------------------------------------------------------
+# --- Combat ------------------------------------------------------------------------------------
 
-# Alimenta la capa de combate con la acción de este fotograma.
+# Feeds the combat layer with this frame's action.
 func _update_combat(delta: float) -> void:
 	var weapon_id: int = _character.combat.weapon_id
 	if _remote_source.is_valid() and _remote_weapon_source.is_valid():
@@ -480,8 +480,8 @@ func _update_combat(delta: float) -> void:
 		_swap_elapsed += delta
 	else:
 		_swap_elapsed = 0.0
-	# En pleno cambio de arma los accesorios esperan a la mitad del gesto; si la acción acaba antes (o no hay
-	# cambio de arma, sino un equipo nuevo), cambian ya.
+	# In the middle of a weapon swap the props wait for the middle of the gesture; if the action ends earlier (or there is no
+	# weapon swap, but new equipment), they change right away.
 	var swapping_in_place: bool = _shown_weapon >= 0 and _swap_elapsed > 0.0 \
 			and _swap_elapsed < _swap_show_seconds()
 	if weapon_id != _shown_weapon and not swapping_in_place:
@@ -502,8 +502,8 @@ func _update_combat(delta: float) -> void:
 	_observe_remote_action()
 
 
-# Avisa de la carga del fuerte ([signal charge_changed]): la fracción sale del estado en el jugador local y del
-# tiempo que se ve cargar a un remoto.
+# Notifies the heavy-attack charge ([signal charge_changed]): the fraction comes from the state for the local player and from the
+# time a remote is seen charging.
 func _update_charge(delta: float, weapon_id: int) -> void:
 	var charging: bool = _current_action() == CombatState.Action.CHARGE
 	if not charging:
@@ -526,7 +526,7 @@ func _update_charge(delta: float, weapon_id: int) -> void:
 	charge_changed.emit(true, clampf(elapsed_ticks / full_ticks, 0.0, 1.0))
 
 
-# Avisa de las acciones nuevas de un remoto ([signal remote_action_started]).
+# Notifies the new actions of a remote ([signal remote_action_started]).
 func _observe_remote_action() -> void:
 	if not _remote_source.is_valid():
 		return
@@ -543,20 +543,20 @@ func _observe_remote_action() -> void:
 		remote_action_started.emit(action, step)
 
 
-## true si este animador lo conduce un remoto (la acción sale del byte de su registro).
+## true if this animator is driven by a remote (the action comes from the byte of its record).
 func is_remote() -> bool:
 	return _remote_source.is_valid()
 
 
-# Cuánto movimiento pide la entrada (0 a 1) para las piernas de un ataque: la velocidad horizontal sin lo que avanza
-# la estocada del ataque en curso, entre [constant MOVE_REQUEST_FROM] y [constant MOVE_REQUEST_TO] de la carrera.
+# How much movement the input asks for (0 to 1) for the legs of an attack: the horizontal speed minus what the lunge of
+# the current attack advances, between [constant MOVE_REQUEST_FROM] and [constant MOVE_REQUEST_TO] of the run.
 func _move_request() -> float:
 	var speed: float = _character.get_horizontal_speed() - _current_lunge_speed()
 	var ratio: float = maxf(speed, 0.0) / maxf(_character.run_speed, 0.001)
 	return smoothstep(MOVE_REQUEST_FROM, MOVE_REQUEST_TO, ratio)
 
 
-# Avance (m/s) que la simulación suma ahora por la estocada del ataque en curso (hasta el final del golpe activo).
+# Advance (m/s) that the simulation currently adds for the lunge of the current attack (until the end of the active hit).
 func _current_lunge_speed() -> float:
 	if _combat_layer == null:
 		return 0.0
@@ -567,34 +567,34 @@ func _current_lunge_speed() -> float:
 	return attack.lunge_speed if attack != null else 0.0
 
 
-# true si la acción de este fotograma es un ataque de los que se plantan hacia la cámara.
+# true if this frame's action is an attack of the kind that plants toward the camera.
 func _is_attack_action(action: int) -> bool:
 	return action == CombatState.Action.LIGHT or action == CombatState.Action.HEAVY \
 			or action == CombatState.Action.CHARGE or action == CombatState.Action.ABILITY
 
 
-# Avisa por [signal swing_active_changed] solo cuando el estado cambia.
+# Notifies through [signal swing_active_changed] only when the state changes.
 func _set_swing_shown(swinging: bool) -> void:
 	if swinging != _swing_shown:
 		_swing_shown = swinging
 		swing_active_changed.emit(swinging)
 
 
-## Acción de combate de este fotograma (un [enum CombatState.Action]): la del byte del registro dibujado de un remoto
-## o la del estado del personaje.
+## Combat action of this frame (a [enum CombatState.Action]): the one from the drawn record's byte for a remote
+## or the one from the character's state.
 func get_current_action() -> int:
 	return _current_action()
 
 
-# Acción de combate de este fotograma: la del byte del registro dibujado de un remoto o la del estado del
-# personaje.
+# Combat action of this frame: the one from the drawn record's byte for a remote or the one from the
+# character's state.
 func _current_action() -> int:
 	if _remote_source.is_valid():
 		return int(_remote_source.call()) & 15
 	return _character.combat.action
 
 
-# Segundos desde el inicio del cambio de arma a los que cambian los accesorios.
+# Seconds from the start of the weapon swap at which the props change.
 func _swap_show_seconds() -> float:
 	return float(CombatCatalog.tables().swap_ticks) / float(Engine.physics_ticks_per_second) * swap_show_fraction
 
@@ -616,10 +616,10 @@ func _combat_debug() -> Dictionary:
 	}
 
 
-# --- Locomoción --------------------------------------------------------------------------------
+# --- Locomotion --------------------------------------------------------------------------------
 
-## Lee los puntos del BlendSpace de locomoción y calcula, para cada uno, cuántos metros avanza el
-## clip por cada unidad de TimeScale (zancada / duración de su ciclo en el árbol).
+## Reads the points of the locomotion BlendSpace and computes, for each one, how many meters the
+## clip advances per TimeScale unit (stride / duration of its cycle in the tree).
 func _cache_locomotion_strides() -> void:
 	_stride_points.clear()
 	if animation_tree == null:
@@ -656,7 +656,7 @@ func _update_locomotion() -> void:
 	_locomotion_scale = 0.0
 	if meters_per_unit > 0.0:
 		_locomotion_scale = clampf(_speed / meters_per_unit, 0.0, max_locomotion_scale)
-	# Retroceso: el mismo ciclo al revés (la zancada vale igual en los dos sentidos).
+	# Backpedal: the same cycle in reverse (the stride is the same in both directions).
 	if _backpedal:
 		_locomotion_scale = -_locomotion_scale
 	_move_weight = clampf(_speed / maxf(idle_blend_speed, 0.001), 0.0, 1.0)
@@ -666,8 +666,8 @@ func _update_locomotion() -> void:
 	animation_tree.set(PARAM_MOVE, _move_weight)
 
 
-## Metros por unidad de TimeScale en la posición [param blend], interpolando linealmente entre los
-## puntos del BlendSpace igual que lo hace el propio BlendSpace1D.
+## Meters per TimeScale unit at position [param blend], interpolating linearly between the
+## BlendSpace points just as the BlendSpace1D itself does.
 func _stride_at(blend: float) -> float:
 	if _stride_points.is_empty():
 		return 0.0
@@ -682,7 +682,7 @@ func _stride_at(blend: float) -> float:
 	return _stride_points[_stride_points.size() - 1].y
 
 
-# --- Orientación -------------------------------------------------------------------------------
+# --- Orientation -------------------------------------------------------------------------------
 
 func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> void:
 	var parent: Node3D = pivot.get_parent() as Node3D
@@ -692,8 +692,8 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 	if not _yaw_initialized:
 		_visual_yaw = base_yaw
 		_yaw_initialized = true
-	# Esquiva: el modelo mira hacia donde se viaja desde el primer fotograma, sin giro suave ni compensación de
-	# la columna (ART-49).
+	# Dodge: the model faces the direction of travel from the first frame, with no smooth turn or spine
+	# compensation (ART-49).
 	if _current_action() == CombatState.Action.DODGE:
 		var dodge_yaw: float = _dodge_heading(horizontal, real_speed)
 		if not _dodging:
@@ -701,7 +701,7 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 			_backpedal = false
 			_twist_weight = 0.0
 		if not is_nan(dodge_yaw):
-			# El giro de entrada se reparte en unos 0,08 s (antes era un salto de hasta 180 grados en un fotograma).
+			# The entry turn is spread over about 0.08 s (it used to be a jump of up to 180 degrees in one frame).
 			var dodge_diff: float = angle_difference(_visual_yaw, dodge_yaw)
 			var dodge_step: float = dodge_diff * (1.0 - exp(-DODGE_TURN_SHARPNESS * delta))
 			var dodge_max: float = PI / DODGE_TURN_TIME * delta
@@ -713,7 +713,7 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 	_dodging = false
 	_twist_weight = move_toward(_twist_weight, 1.0, delta / maxf(dodge_twist_return_time, 0.001))
 	var action: int = _current_action()
-	# Muerte: el modelo se vuelve hacia el atacante para caer alejándose de él (ART-51).
+	# Death: the model turns toward the attacker to fall away from them (ART-51).
 	if action == CombatState.Action.DEAD and not is_nan(_death_yaw):
 		var death_diff: float = angle_difference(_visual_yaw, _death_yaw)
 		_visual_yaw = wrapf(_visual_yaw + death_diff * (1.0 - exp(-DEATH_FACE_SHARPNESS * delta)), -PI, PI)
@@ -721,8 +721,8 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 		if _spine != null:
 			_spine.twist = 0.0
 		return
-	# Ataque sin pedir andar: el modelo mira donde la cámara, al instante al empezar, y la columna no compensa
-	# nada (ART-46): la cadera y los pies del clip salen hacia el punto de mira.
+	# Attack without asking to walk: the model faces where the camera does, instantly at the start, and the spine compensates
+	# nothing (ART-46): the clip's hips and feet turn toward the aim point.
 	var planted: bool = _is_attack_action(action) \
 			and (_combat_layer == null or _combat_layer.move_request < 0.5)
 	if planted:
@@ -755,14 +755,14 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 	_visual_yaw = wrapf(_visual_yaw + clampf(step, -max_step, max_step), -PI, PI)
 	var offset: float = angle_difference(base_yaw, _visual_yaw)
 	pivot.rotation = Vector3(0.0, offset, 0.0)
-	# La columna devuelve el pecho y la cabeza hacia el punto de mira.
+	# The spine returns the chest and head toward the aim point.
 	if _spine != null:
 		var limit: float = deg_to_rad(max_spine_twist)
 		_spine.twist = -clampf(offset, -limit, limit) * _twist_weight
 
 
-# Rumbo (yaw) de la esquiva en curso: el del estado del personaje si es el local (la simulación lo fija al
-# empezar) o el de su velocidad si es un remoto; NAN si aún no se sabe.
+# Heading (yaw) of the current dodge: the one from the character's state if it is the local one (the simulation sets it
+# at the start) or the one from its velocity if it is a remote; NAN if it is not yet known.
 func _dodge_heading(horizontal: Vector3, real_speed: float) -> float:
 	if not _remote_source.is_valid():
 		return CombatState.dequantize_yaw(_character.combat.action_dir)
@@ -771,14 +771,14 @@ func _dodge_heading(horizontal: Vector3, real_speed: float) -> float:
 	return NAN
 
 
-## Yaw (convención de [member Node3D.rotation].y: 0 mira hacia -Z) de una base.
+## Yaw (convention of [member Node3D.rotation].y: 0 faces -Z) of a basis.
 static func _yaw_of(basis: Basis) -> float:
 	return atan2(basis.z.x, basis.z.z)
 
 
-# --- Postura armada y cuerpo -------------------------------------------------------------------
+# --- Combat stance and body --------------------------------------------------------------------
 
-# Pone en el modificador de la postura los clips del perfil pedido.
+# Sets the clips of the requested profile on the stance modifier.
 func _apply_stance_profile() -> void:
 	if _stance == null:
 		return
@@ -788,7 +788,7 @@ func _apply_stance_profile() -> void:
 		_stance.use_shield_profile()
 
 
-# Fija los pesos y los instantes de la postura armada de este fotograma (ART-45).
+# Sets the weights and times of this frame's combat stance (ART-45).
 func _update_stance(delta: float) -> void:
 	if _stance == null:
 		return
@@ -819,7 +819,7 @@ func _update_stance(delta: float) -> void:
 		_stance.walk_time = _stance_walk_time
 		var shamble: float = 1.0 - smoothstep(ZOMBIE_RUN_FROM, ZOMBIE_RUN_TO, _speed)
 		_stance.walk_weight = _move_weight * shamble
-		# El brazo de la espada solo entra cuando corre: caminando manda el brazo del zombi.
+		# The sword arm only comes in when running: while walking, the zombie arm rules.
 		_stance.arm_weight *= 1.0 - _stance.walk_weight
 	else:
 		_stance.walk_weight = 0.0
@@ -828,7 +828,7 @@ func _update_stance(delta: float) -> void:
 	_last_reaction_age += delta
 
 
-# Cuánto se alza el escudo (0 a 1): mientras dura el bloqueo o el muro de escudos.
+# How far the shield is raised (0 to 1): while the block or the shield wall lasts.
 func _guard_raise() -> float:
 	if _combat_layer == null:
 		return 0.0
@@ -839,7 +839,7 @@ func _guard_raise() -> float:
 	return raise
 
 
-# Desplazamiento visual del Pivot: el paso atrás del tambaleo y el deslizamiento de la muerte (ART-50, ART-51).
+# Visual offset of the Pivot: the stagger step back and the death slide (ART-50, ART-51).
 func _update_body_offset(delta: float, horizontal: Vector3) -> void:
 	var parent: Node3D = pivot.get_parent() as Node3D
 	if parent == null:
@@ -861,7 +861,7 @@ func _update_body_offset(delta: float, horizontal: Vector3) -> void:
 		pivot.position = _body_offset
 		return
 	if _was_dead:
-		# Sale de la muerte (reaparición): el cuerpo vuelve a la cápsula y al rumbo de golpe, sin deslizarse hasta ella.
+		# Leaves the death state (respawn): the body goes back to the capsule and the heading at once, without sliding to it.
 		reset_facing()
 	_was_dead = false
 	_death_yaw = NAN
@@ -869,7 +869,7 @@ func _update_body_offset(delta: float, horizontal: Vector3) -> void:
 	_live_velocity = _live_velocity.lerp(horizontal, 1.0 - exp(-6.0 * delta))
 	var staggered: bool = action == CombatState.Action.STAGGER
 	if staggered and not _was_staggered and _last_reaction_age > 0.15:
-		# Un tambaleo sin golpe avisado (el sandbox, una prueba): se echa atrás como si viniera de enfrente.
+		# A stagger without a notified hit (the sandbox, a test): it falls back as if the hit came from the front.
 		react_to_hit(-parent.global_transform.basis.z, 60.0)
 	_was_staggered = staggered
 	var target := Vector3.ZERO
@@ -884,7 +884,7 @@ func _update_body_offset(delta: float, horizontal: Vector3) -> void:
 	pivot.position = _body_offset
 
 
-# --- Aire --------------------------------------------------------------------------------------
+# --- Air ---------------------------------------------------------------------------------------
 
 func _on_jumped() -> void:
 	_jump_pending = true

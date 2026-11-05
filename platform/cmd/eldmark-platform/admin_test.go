@@ -36,12 +36,12 @@ func TestAdminUsage(t *testing.T) {
 	} {
 		code, _, stderr := runWith(t, map[string]string{}, args...)
 		if code != exitUsage {
-			t.Errorf("%v: código %d, %q", args, code, stderr)
+			t.Errorf("%v: code %d, %q", args, code, stderr)
 		}
 	}
 	code, _, stderr := runWith(t, map[string]string{}, "admin", "reports", "show", "1")
 	if !strings.Contains(stderr, "--actor") || code != exitUsage {
-		t.Fatalf("sin --actor: %d %q", code, stderr)
+		t.Fatalf("without --actor: %d %q", code, stderr)
 	}
 	if code, stdout, _ := runWith(t, nil, "admin", "help"); code != exitOK || !strings.Contains(stdout, "set-role") {
 		t.Fatalf("admin help: %d %q", code, stdout)
@@ -64,7 +64,7 @@ func TestAdminCommands(t *testing.T) {
 		t.Helper()
 		code, stdout, stderr := runWith(t, env, append([]string{"admin"}, args...)...)
 		if code != want {
-			t.Fatalf("%v: código %d (se esperaba %d)\n%s%s", args, code, want, stdout, stderr)
+			t.Fatalf("%v: code %d (expected %d)\n%s%s", args, code, want, stdout, stderr)
 		}
 		return stdout + stderr
 	}
@@ -108,7 +108,7 @@ func TestAdminCommands(t *testing.T) {
 	var parsed map[string]any
 	_ = json.Unmarshal(args, &parsed)
 	if parsed["os_user"] != "operadora" || parsed["report_id"] != id || actor == nil {
-		t.Fatalf("fila reports show: %s", args)
+		t.Fatalf("reports show row: %s", args)
 	}
 	if out := run(exitOK, "--actor", "mod@example.org", "reports", "list", "--status", "all"); !strings.Contains(out, "Reportes: 1.") {
 		t.Fatalf("reports list:\n%s", out)
@@ -127,7 +127,7 @@ func TestAdminCommands(t *testing.T) {
 	}
 	if out := run(exitOK, "--actor", "jefa@example.org", "sanction", "add", "bran", "mute", "--duration", "1d",
 		"--reason", "lenguaje", "--report", id); !strings.Contains(out, "hasta el") {
-		t.Fatalf("sanción:\n%s", out)
+		t.Fatalf("sanction:\n%s", out)
 	}
 	if out := run(exitOK, "--actor", "mod@example.org", "sanction", "list", "Bran"); !strings.Contains(out, "vigente") {
 		t.Fatalf("sanction list:\n%s", out)
@@ -141,7 +141,7 @@ func TestAdminCommands(t *testing.T) {
 	out = run(exitOK, "--actor", "mod@example.org", "audit", "--since", "2026-01-01", "--target", "Bran")
 	for _, want := range []string{"set-role", "sanction", "reports close", "chat", "Bran (#"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("audit sin %q:\n%s", want, out)
+			t.Errorf("audit without %q:\n%s", want, out)
 		}
 	}
 	run(exitOK, "--actor", "jefa@example.org", "purge-now", "bran@example.org", "--wait", "0s")
@@ -165,13 +165,13 @@ func TestAdminCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out := run(exitError, "--actor", "jefa@example.org", "reapply-purges", purges); !strings.Contains(out, "línea 1") {
-		t.Fatalf("purges.txt mal formado:\n%s", out)
+		t.Fatalf("malformed purges.txt:\n%s", out)
 	}
 	run(exitError, "--actor", "jefa@example.org", "reapply-purges", filepath.Join(dir, "no-existe.txt"))
 	var cli, withOSUser int
 	if err := pool.QueryRow(ctx, `select count(*), count(*) filter (where args->>'os_user' = 'operadora')
 		from audit_log where source = 'cli'`).Scan(&cli, &withOSUser); err != nil || cli < 10 || cli != withOSUser {
-		t.Fatalf("filas de la CLI: %d, con os_user: %d (%v)", cli, withOSUser, err)
+		t.Fatalf("CLI rows: %d, with os_user: %d (%v)", cli, withOSUser, err)
 	}
 }
 
@@ -207,7 +207,7 @@ insert into character_leases (character_id, world_id, lease_id, zone_instance_id
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("sin latido, a los 15 s: %s, libre %v", status, free)
+			t.Fatalf("no heartbeat, at 15 s: %s, free %v", status, free)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -234,13 +234,13 @@ func TestServeRunsTheChatRetention(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("mensajes: %d", n)
+			t.Fatalf("messages: %d", n)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	var key string
 	if err := pool.QueryRow(ctx, `select message_key from chat_messages`).Scan(&key); err != nil || key != "k1" {
-		t.Fatalf("queda el de hace 29 días: %q %v", key, err)
+		t.Fatalf("the one from 29 days ago remains: %q %v", key, err)
 	}
 }
 
@@ -275,13 +275,13 @@ func TestServeRunsThePrivacyRetention(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("accesos %d, lápida %d", events, tombs)
+			t.Fatalf("logins %d, tombstone %d", events, tombs)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	var agent string
 	if err := pool.QueryRow(ctx, `select user_agent from auth_events where user_agent in ('viejo', 'ayer')`).Scan(&agent); err != nil ||
 		agent != "ayer" {
-		t.Fatalf("queda el de ayer: %q %v", agent, err)
+		t.Fatalf("yesterday's one remains: %q %v", agent, err)
 	}
 }

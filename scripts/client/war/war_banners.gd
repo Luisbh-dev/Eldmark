@@ -1,33 +1,33 @@
 class_name WarBanners
 extends Control
-## Banners de los avisos de guerra (UI-18, GUE-13 parte cliente, UI-08): fuerte atacado, capitán caído,
-## captura iniciada o disputada, puerta rota, fuerte capturado y reiniciado. El servidor los manda por
-## ENTITY_EVENT [code]WAR[/code] a toda la zona; [NetClient] los entrega en el tick de dibujo
-## ([signal NetClient.war_event]) y aquí se convierten en texto con [method WarEvents.text].
+## Banners for war notices (UI-18, GUE-13 client part, UI-08): fort attacked, captain fallen,
+## capture started or contested, gate broken, fort captured and reset. The server sends them as
+## ENTITY_EVENT [code]WAR[/code] to the whole zone; [NetClient] delivers them on the draw tick
+## ([signal NetClient.war_event]) and here they are turned into text with [method WarEvents.text].
 ## [br][br]
-## [b]Cola, de uno en uno.[/b] Los avisos esperan en una cola (como mucho [constant MAX_BANNERS]: al llegar otro
-## se quita el más antiguo que aún no se ve) y se ven de uno en uno sobre una banda oscura con el emblema del bando a los dos
-## lados y el texto en la fuente de títulos. Así nunca se pisan entre sí, y la banda tiene su sitio fijo
-## ([constant TOP_OFFSET]) entre el panel del fuerte, la barra de jefe y el aviso de derribado. El tiempo de
-## cada aviso solo corre mientras es el que se ve; el fundido es breve ([constant FADE_SECONDS]) y lo hace la
-## banda entera, para que la letra y su contorno no se aclaren por separado.
+## [b]Queue, one at a time.[/b] Notices wait in a queue (at most [constant MAX_BANNERS]: when another arrives,
+## the oldest one not yet visible is dropped) and are shown one at a time on a dark band with the faction emblem on both
+## sides and the text in the title font. This way they never overlap, and the band has a fixed place
+## ([constant TOP_OFFSET]) between the fort panel, the boss bar and the knocked-down notice. Each
+## notice's time only runs while it is the one on screen; the fade is short ([constant FADE_SECONDS]) and is done by the
+## whole band, so the text and its outline do not lighten separately.
 ## [br][br]
-## Las medidas, los colores y las duraciones son provisionales. Solo cliente.
+## The measurements, colors and durations are provisional. Client only.
 
-## Avisos en la cola como mucho (al llegar otro, se quita el más antiguo).
+## Maximum notices in the queue (when another arrives, the oldest is dropped).
 const MAX_BANNERS: int = 3
-## Segundos que dura un banner normal y uno grande, y el fundido de entrada y de salida.
+## Seconds a normal banner and a big one last, and the fade-in and fade-out.
 const NORMAL_SECONDS: float = 4.0
 const BIG_SECONDS: float = 6.0
 const FADE_SECONDS: float = 0.25
 const NORMAL_FONT_SIZE: int = 22
 const BIG_FONT_SIZE: int = 28
-## Lugar de la banda: px desde lo alto, bajo el panel del fuerte en su estado más alto (en plena captura acaba hacia los 252 px).
+## Place of the band: px from the top, below the fort panel at its tallest (in the middle of a capture it ends around 252 px).
 const TOP_OFFSET: float = 260.0
 const MIN_WIDTH: float = 460.0
 const EMBLEM_SIZE: float = 30.0
 const BAND_COLOR: Color = Color(0.03, 0.035, 0.05, 0.82)
-## Avisos que se muestran en grande.
+## Notices that are shown big.
 const BIG_EVENTS: Array[int] = [
 	WarEvents.CAPTAIN_DOWN, WarEvents.GATE_BROKEN, WarEvents.FORT_CAPTURED, WarEvents.FORT_RESET,
 ]
@@ -38,7 +38,7 @@ var _band: PanelContainer = null
 var _label: Label = null
 var _emblem_left: TextureRect = null
 var _emblem_right: TextureRect = null
-# La cola: el primero es el que se ve. Cada uno: label (texto), left, text, big, color, emblem.
+# The queue: the first is the one on screen. Each one: label (text), left, text, big, color, emblem.
 var _banners: Array[Dictionary] = []
 
 
@@ -56,7 +56,7 @@ func _exit_tree() -> void:
 		_client.war_event.disconnect(show_war_event)
 
 
-## Conecta los banners con los avisos de [param client] y, para el nombre del fuerte, con
+## Connects the banners to the notices of [param client] and, for the fort name, to
 ## [param view].
 func bind(client: NetClient, view: FortressView) -> void:
 	if is_instance_valid(_client) and _client.war_event.is_connected(show_war_event):
@@ -68,8 +68,8 @@ func bind(client: NetClient, view: FortressView) -> void:
 		_client.war_event.connect(show_war_event)
 
 
-## Muestra el aviso [param event] (un ENTITY_EVENT de tipo WAR). Un id de aviso desconocido no hace
-## nada. Devuelve el texto mostrado.
+## Shows the notice [param event] (an ENTITY_EVENT of type WAR). An unknown notice id does
+## nothing. Returns the text shown.
 func show_war_event(event: NetMessages.EntityEvent) -> String:
 	if event == null or not WarEvents.is_valid(event.war_event):
 		return ""
@@ -84,36 +84,36 @@ func show_war_event(event: NetMessages.EntityEvent) -> String:
 	return text
 
 
-## Color del banner: el del bando que lo provoca; los avisos sin bando (disputa, reinicio), el color de
-## los Huecos.
+## Banner color: that of the faction that causes it; notices without a faction (contest, reset) use the color of
+## the Hollow.
 static func color_for(war_event: int, realm: int) -> Color:
 	if war_event == WarEvents.CAPTURE_CONTESTED or war_event == WarEvents.FORT_RESET:
 		return UIPalette.WARNING
 	return UIPalette.faction_color_of_code(realm)
 
 
-## Emblema del bando del aviso (null si no hay bando o no hay emblema).
+## Emblem of the notice's faction (null if there is no faction or no emblem).
 static func emblem_for(war_event: int, realm: int) -> Texture2D:
 	if war_event == WarEvents.CAPTURE_CONTESTED or war_event == WarEvents.FORT_RESET:
 		return null
 	return UIPalette.load_emblem(RealmCatalog.id_of_code(realm))
 
 
-## Pone en la cola un banner con [param text] del color [param color]; [param big] lo hace grande y más largo.
-## [param emblem] es el emblema que lleva a los lados (opcional).
+## Queues a banner with [param text] in color [param color]; [param big] makes it big and longer.
+## [param emblem] is the emblem it carries on its sides (optional).
 func add_banner(text: String, color: Color, big: bool = false, emblem: Texture2D = null) -> void:
 	_ensure_built()
 	if text.is_empty():
 		return
 	while _banners.size() >= MAX_BANNERS:
-		# Se descarta el más antiguo que aún no se ve: el aviso visible no se quita a medias.
+		# The oldest one not yet visible is dropped: the visible notice is not cut halfway.
 		_banners.remove_at(1 if _banners.size() > 1 else 0)
 	_banners.append({"left": BIG_SECONDS if big else NORMAL_SECONDS, "text": text, "big": big,
 			"color": color, "emblem": emblem})
 	_refresh_view()
 
 
-## Avanza [param delta] segundos: solo corre el tiempo del aviso que se ve; al acabar, entra el siguiente.
+## Advances [param delta] seconds: only the time of the notice on screen runs; when it ends, the next one comes in.
 func advance(delta: float) -> void:
 	if _banners.is_empty():
 		return
@@ -127,26 +127,26 @@ func advance(delta: float) -> void:
 				else NORMAL_SECONDS))
 
 
-## Opacidad de la banda con [param left] segundos por mostrar de un aviso de [param total] segundos: entra y
-## sale con un fundido de [constant FADE_SECONDS].
+## Opacity of the band with [param left] seconds left to show of a notice of [param total] seconds: it fades in and
+## out over [constant FADE_SECONDS].
 static func band_alpha(left: float, total: float) -> float:
 	var fade_in: float = clampf((total - left) / FADE_SECONDS, 0.0, 1.0)
 	var fade_out: float = clampf(left / FADE_SECONDS, 0.0, 1.0)
 	return minf(fade_in, fade_out)
 
 
-## Quita todos los banners.
+## Removes all banners.
 func clear() -> void:
 	_banners.clear()
 	_refresh_view()
 
 
-## Avisos en la cola (el que se ve y los que esperan).
+## Notices in the queue (the visible one and those waiting).
 func get_banner_count() -> int:
 	return _banners.size()
 
 
-## Textos de la cola, del que se ve a los que esperan.
+## Texts of the queue, from the visible one to those waiting.
 func get_texts() -> PackedStringArray:
 	var texts := PackedStringArray()
 	for banner: Dictionary in _banners:
@@ -166,17 +166,17 @@ func get_banner_seconds_left(index: int) -> float:
 	return float(_banners[index]["left"]) if index >= 0 and index < _banners.size() else 0.0
 
 
-## true si la banda se ve (hay algún aviso).
+## true if the band is visible (there is some notice).
 func is_band_visible() -> bool:
 	return _band != null and _band.visible
 
 
-## La banda en la que se ve el aviso actual (para medirla en las pruebas).
+## The band showing the current notice (to measure it in tests).
 func get_band() -> PanelContainer:
 	return _band
 
 
-# Pone la banda al día con el primer aviso de la cola (o la esconde).
+# Updates the band with the first notice in the queue (or hides it).
 func _refresh_view() -> void:
 	if _band == null:
 		return
@@ -198,7 +198,7 @@ func _refresh_view() -> void:
 		rect.modulate = color.lightened(0.15)
 	_band.visible = true
 	_band.modulate.a = 0.0
-	# Centrada en x = 960: con el texto nuevo se mide su ancho y se reparte a los dos lados del ancla.
+	# Centered at x = 960: with the new text its width is measured and split on both sides of the anchor.
 	_band.reset_size()
 	var width: float = maxf(_band.get_combined_minimum_size().x, MIN_WIDTH)
 	_band.offset_left = -width * 0.5
@@ -225,7 +225,7 @@ func _ensure_built() -> void:
 	_band.add_theme_stylebox_override(&"panel", style)
 	_band.custom_minimum_size = Vector2(MIN_WIDTH, 0.0)
 	add_child(_band)
-	# Centrada: ancla en el centro y crece a los dos lados.
+	# Centered: anchored at the center and grows to both sides.
 	_band.anchor_left = 0.5
 	_band.anchor_right = 0.5
 	_band.anchor_top = 0.0

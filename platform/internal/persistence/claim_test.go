@@ -37,12 +37,12 @@ func TestClaim(t *testing.T) {
 	account := res.Body["account"].(map[string]any)
 	if account["account_id"] != strconv.FormatInt(pl.ID, 10) || account["role"] != "gm" ||
 		account["muted_until_unix"].(json.Number).String() != "0" || len(account["ignored_account_ids"].([]any)) != 0 {
-		t.Fatalf("cuenta: %v", account)
+		t.Fatalf("account: %v", account)
 	}
 	c := res.Body["character"].(map[string]any)
 	if c["character_id"] != strconv.FormatInt(id, 10) || c["world_id"].(json.Number).String() != "1" ||
 		c["realm"].(json.Number).String() != "2" || c["name"] != "Aneira" {
-		t.Fatalf("personaje: %v", c)
+		t.Fatalf("character: %v", c)
 	}
 	progress := res.Body["progress"].(map[string]any)
 	if progress["race_id"] != "race_solmarch" || progress["appearance"] != platformtest.Appearance ||
@@ -58,7 +58,7 @@ func TestClaim(t *testing.T) {
 	p.Scalar(&consumed, `select consumed_at is not null from enter_tickets where ticket_id = $1`, ticket)
 	p.Scalar(&entered, `select last_entered_at is not null from characters where character_id = $1`, id)
 	if !consumed || entered {
-		t.Fatalf("billete consumido %v, last_entered_at %v (la reclamación no lo escribe)", consumed, entered)
+		t.Fatalf("ticket consumed %v, last_entered_at %v (the claim does not write it)", consumed, entered)
 	}
 	var stored string
 	p.Scalar(&stored, `select lease_id::text from character_leases where character_id = $1 and zone_instance_id = $2
@@ -73,7 +73,7 @@ func TestClaim(t *testing.T) {
 	platformtest.Expect(t, z.Save(id, z.SaveBody(id, lease, 1)), 200, "")
 	p.Scalar(&entered, `select last_entered_at = $2 from characters where character_id = $1`, id, claimedAt)
 	if !entered {
-		t.Fatal("last_entered_at tras el primer guardado")
+		t.Fatal("last_entered_at after the first save")
 	}
 }
 
@@ -88,7 +88,7 @@ func TestClaimTicketInvalid(t *testing.T) {
 	notConsumed := func(ticket int64) {
 		t.Helper()
 		if n := p.Count(`select count(*) from enter_tickets where ticket_id = $1 and consumed_at is null`, ticket); n != 1 {
-			t.Fatal("el billete quedó consumido")
+			t.Fatal("the ticket ended up consumed")
 		}
 	}
 
@@ -136,7 +136,7 @@ func TestClaimBusyKeepsTheTicket(t *testing.T) {
 	z.MustClaim(first, id)
 	platformtest.Expect(t, z.Claim(second, id), 409, "character_busy")
 	if n := p.Count(`select count(*) from enter_tickets where ticket_id = $1 and consumed_at is null`, second); n != 1 {
-		t.Fatal("character_busy consumió el billete")
+		t.Fatal("character_busy consumed the ticket")
 	}
 }
 
@@ -224,7 +224,7 @@ func TestClaimAccountBlocked(t *testing.T) {
 			t.Fatal(res.Raw)
 		}
 		if n := p.Count(`select count(*) from enter_tickets where ticket_id = $1 and consumed_at is null`, ticket); n != 1 {
-			t.Fatal("el billete quedó consumido")
+			t.Fatal("the ticket ended up consumed")
 		}
 	}
 }
@@ -258,12 +258,12 @@ func TestClaimRevealsNothingWithoutATicket(t *testing.T) {
 		platformtest.Expect(t, res, 409, "ticket_invalid")
 		if res.Raw != nobody.Raw || strings.Contains(res.Raw, "motivo") || res.ErrValue("kind") != nil ||
 			res.ErrValue("until_unix") != nil {
-			t.Fatalf("billete %d, personaje %d: %s", c.ticket, c.id, res.Raw)
+			t.Fatalf("ticket %d, character %d: %s", c.ticket, c.id, res.Raw)
 		}
 	}
 	platformtest.Expect(t, z.Claim(ticket, idS), 403, "account_blocked")
 	if n := p.Count(`select count(*) from enter_tickets where ticket_id = $1 and consumed_at is null`, ticket); n != 1 {
-		t.Fatal("el billete quedó consumido")
+		t.Fatal("the ticket ended up consumed")
 	}
 }
 
@@ -300,11 +300,11 @@ func TestDeleteAndClaimAtOnce(t *testing.T) {
 		case !deleted && leased && claim.Status == 200 && del.Code() == "character_busy":
 			outcomes["reclamado"]++
 		default:
-			t.Fatalf("ronda %d: borrado=%v arrendado=%v; DELETE %d %s; claim %d %s", round, deleted, leased,
+			t.Fatalf("round %d: deleted=%v leased=%v; DELETE %d %s; claim %d %s", round, deleted, leased,
 				del.Status, del.Raw, claim.Status, claim.Raw)
 		}
 	}
-	t.Logf("resultados: %v", outcomes)
+	t.Logf("results: %v", outcomes)
 }
 
 // Two simultaneous claims of two characters of the same account: only one wins and the other gives
@@ -333,15 +333,15 @@ func TestOneCharacterPerAccountInTheWorld(t *testing.T) {
 			switch {
 			case r.Status == 200:
 				if won >= 0 {
-					t.Fatalf("ronda %d: ganan los dos", round)
+					t.Fatalf("round %d: both win", round)
 				}
 				won = i
 			case r.Code() != "character_busy":
-				t.Fatalf("ronda %d: %d %s", round, r.Status, r.Raw)
+				t.Fatalf("round %d: %d %s", round, r.Status, r.Raw)
 			}
 		}
 		if won < 0 {
-			t.Fatalf("ronda %d: no gana ninguno", round)
+			t.Fatalf("round %d: neither wins", round)
 		}
 		loser := []int64{a, b}[1-won]
 		platformtest.Expect(t, p.Enter(pl, loser), 409, "character_busy")
@@ -382,11 +382,11 @@ func TestTwoInstancesClaimAtOnce(t *testing.T) {
 			case r.Status == 200:
 				ok++
 			case r.Code() != "character_busy":
-				t.Fatalf("ronda %d: %d %s", round, r.Status, r.Raw)
+				t.Fatalf("round %d: %d %s", round, r.Status, r.Raw)
 			}
 		}
 		if ok != 1 {
-			t.Fatalf("ronda %d: %d ganadoras", round, ok)
+			t.Fatalf("round %d: %d winners", round, ok)
 		}
 	}
 }

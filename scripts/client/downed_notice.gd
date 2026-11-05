@@ -1,46 +1,46 @@
 class_name DownedNotice
 extends Control
-## Avisos de derribado (CMB-28, docs/habilidades.md, sección 6.5), arriba en el centro de la pantalla:
-## [br]- Derribado: «Derribado» con la cuenta atrás de la vida de derribado (la del bloque extra, que baja
-## 1 cada [code]downed_s / downed_health[/code] s y con el daño enemigo).
-## [br]- «Ana te está levantando» con la barra de su INTERACT 1, o «¡Te rematan!» con la de su INTERACT 4.
-## [br]- En pie y cerca de un aliado derribado (posiciones dibujadas y acción DOWNED de su registro):
-## «Mantén E para levantar a Ana»; y mientras se levanta a alguien, «Levantando a Ana» con su barra.
+## Knocked-down notices (CMB-28, docs/habilidades.md, section 6.5), at the top center of the screen:
+## [br]- Knocked down: "Derribado" (knocked down) with the countdown of the knocked-down health (that of the extra block, which drops
+## 1 every [code]downed_s / downed_health[/code] s and with enemy damage).
+## [br]- "Ana te está levantando" (Ana is reviving you) with the bar of her INTERACT 1, or "¡Te rematan!" (you are being finished off!) with that of her INTERACT 4.
+## [br]- Standing and near a knocked-down ally (drawn positions and DOWNED action in its record):
+## "Mantén E para levantar a Ana" (hold E to revive Ana); and while reviving someone, "Levantando a Ana" (reviving Ana) with its bar.
 ## [br][br]
-## No lee la red: el [HUD] le pasa los eventos de combate ([method handle_event]: INTERACT, DOWNED, DEATH y
-## RESPAWN) y, cada fotograma, si el jugador está derribado, su vida, el tick del servidor estimado y a quién
-## se puede levantar ([method update_view]). Los nombres los da [member name_of]. Solo cliente.
+## It does not read the network: the [HUD] passes it the combat events ([method handle_event]: INTERACT, DOWNED, DEATH and
+## RESPAWN) and, every frame, if the player is knocked down, their health, the estimated server tick and who
+## can be revived ([method update_view]). Names are given by [member name_of]. Client only.
 ## [br][br]
-## El servidor deja que un aliado levante y uno o más enemigos rematen al mismo derribado a la vez: cada
-## interacción sobre el jugador local se guarda con su actor y solo la quita el fin o el corte de ese actor
-## (o quedar en pie, morir o reaparecer); el remate se muestra antes que el levantar (revisión de la fase 4).
+## The server lets one ally revive and one or more enemies finish off the same knocked-down player at once: each
+## interaction on the local player is stored with its actor and only the end or interruption of that actor removes it
+## (or standing up, dying or respawning); the finisher is shown before the revive (phase 4 review).
 
-## Lo que se está haciendo con el jugador local o lo que hace él.
+## What is being done to the local player or what they are doing.
 enum Interaction { NONE, BEING_REVIVED, BEING_EXECUTED, REVIVING, EXECUTING }
 
 const TITLE_FONT_SIZE: int = 34
 const TEXT_FONT_SIZE: int = 20
 const BAR_SIZE: Vector2 = Vector2(320.0, 12.0)
-## Ancho de la columna de textos, centrada en la pantalla.
+## Width of the text column, centered on the screen.
 const COLUMN_WIDTH: float = BAR_SIZE.x + 80.0
 const DOWNED_COLOR: Color = Color(0.78, 0.74, 0.92, 1.0)
 const REVIVE_COLOR: Color = Color(0.4, 0.85, 0.45, 1.0)
 const EXECUTE_COLOR: Color = Color(0.95, 0.2, 0.15, 1.0)
 const BAR_BACK: Color = Color(0.03, 0.03, 0.04, 0.75)
-## Desde lo alto de la pantalla (px). Por debajo de la barra de jefe (BossBar.TOP_OFFSET 316 + unos 52 de alto) y de la banda de avisos (WarBanners.TOP_OFFSET),
-## que sale en todo el fuerte, para que la cuenta atrás no se pise con ella.
+## From the top of the screen (px). Below the boss bar (BossBar.TOP_OFFSET 316 + about 52 of height) and the notice band (WarBanners.TOP_OFFSET),
+## which shows throughout the fort, so that the countdown does not overlap with it.
 const TOP_OFFSET: float = 374.0
 
-## Ticks tras el fin previsto de una interacción en que se olvida si no llega su evento de fin.
+## Ticks after the expected end of an interaction after which it is forgotten if its end event does not arrive.
 const FORGET_AFTER_TICKS: int = 30
 
-## Nombre de una entidad por su net_id ([code]func(net_id: int) -> String[/code]); vacío si no se sabe.
+## Name of an entity by its net_id ([code]func(net_id: int) -> String[/code]); empty if unknown.
 var name_of: Callable = Callable()
 
 var _own_id: int = 0
-# Levantar y rematar sobre el jugador local, cada uno con su actor (en el orden en que empezaron).
+# Reviving and finishing off on the local player, each with its actor (in the order they started).
 var _on_me: Array[_Ongoing] = []
-# Lo que hace él (levantar o rematar a otro), o null.
+# What the local player is doing (reviving or finishing off another), or null.
 var _mine: _Ongoing = null
 var _column: VBoxContainer = null
 var _title: Label = null
@@ -50,8 +50,8 @@ var _bar: ProgressBar = null
 var _prompt: Label = null
 
 
-# Una interacción en curso: qué es ([enum Interaction]), con quién (quien actúa sobre el jugador local o a
-# quien levanta o remata él) y sus ticks.
+# An interaction in progress: what it is ([enum Interaction]), with whom (who acts on the local player or who
+# the local player revives or finishes off) and its ticks.
 class _Ongoing:
 	var interaction: int = Interaction.NONE
 	var other_id: int = 0
@@ -65,14 +65,14 @@ func _init() -> void:
 	_build()
 
 
-## Id de red del jugador local.
+## Network id of the local player.
 func set_own_id(net_id: int) -> void:
 	_own_id = net_id
 
 
-## Un ENTITY_EVENT ya temporizado: los INTERACT donde el jugador local es el derribado o quien actúa
-## empiezan o acaban levantar y rematar (el fin o el corte, solo la de su actor; levantado, todas las que
-## había sobre él); su DOWNED, DEATH o RESPAWN lo borra todo.
+## An already timed ENTITY_EVENT: the INTERACTs where the local player is the knocked-down one or the actor
+## start or end reviving and finishing off (the end or interruption removes only that of its actor; revived, all those that
+## there were on them); their DOWNED, DEATH or RESPAWN clears everything.
 func handle_event(event: NetMessages.EntityEvent) -> void:
 	if event == null or _own_id == 0:
 		return
@@ -89,7 +89,7 @@ func handle_event(event: NetMessages.EntityEvent) -> void:
 					_start(Interaction.BEING_EXECUTED if on_me else Interaction.EXECUTING, event)
 				NetMessages.EntityEvent.InteractOp.REVIVED:
 					if on_me:
-						# En pie: ya no le levantan ni le rematan.
+						# Standing: they are no longer being revived or finished off.
 						_on_me.clear()
 					else:
 						_end_mine(Interaction.REVIVING, event.net_id)
@@ -110,9 +110,9 @@ func handle_event(event: NetMessages.EntityEvent) -> void:
 				_mine = null
 
 
-## Pone el aviso al día: [param downed] si el jugador está derribado, con [param downed_health] de vida de
-## derribado; [param tick], el tick del servidor estimado; [param revive_target], el aliado derribado al
-## que se puede levantar (0 = ninguno; solo cuenta en pie).
+## Brings the notice up to date: [param downed] if the player is knocked down, with [param downed_health] of
+## knocked-down health; [param tick], the estimated server tick; [param revive_target], the knocked-down ally
+## that can be revived (0 = none; only counts while standing).
 func update_view(downed: bool, downed_health: int, tick: int, revive_target: int = 0) -> void:
 	_forget_stale(tick)
 	_title.visible = downed
@@ -138,18 +138,18 @@ func update_view(downed: bool, downed_health: int, tick: int, revive_target: int
 	visible = _title.visible or _prompt.visible or _detail.visible
 
 
-## Segundos (hacia arriba) que le quedan a un derribado con [param downed_health] de vida de derribado
-## al ritmo del desangrado ([member CombatRules.downed_s] para [member CombatRules.downed_health]).
+## Seconds (rounded up) left to a knocked-down player with [param downed_health] of knocked-down health
+## at the pace of the bleed-out ([member CombatRules.downed_s] for [member CombatRules.downed_health]).
 static func seconds_left(downed_health: int) -> int:
 	var rules: CombatRules = CombatCatalog.rules()
 	var ticks_per_point: float = float(CombatCatalog.tables().downed_ticks) / float(maxi(rules.downed_health, 1))
 	return ceili(float(maxi(downed_health, 0)) * ticks_per_point / float(Engine.physics_ticks_per_second))
 
 
-## El aliado derribado más cercano al que [param own_feet] puede levantar: un remoto de su reino que se
-## dibuja con la acción DOWNED, a [member CombatRules.interact_range_m] o menos en horizontal y con
-## [code]|Δy| ≤ 1,5[/code] (lo mismo que mira el servidor, sin la línea de visión); empate por net_id.
-## Devuelve su net_id o 0.
+## The nearest knocked-down ally that [param own_feet] can revive: a remote of their realm that is
+## drawn with the DOWNED action, at [member CombatRules.interact_range_m] or less horizontally and with
+## [code]|Δy| ≤ 1.5[/code] (the same the server checks, without line of sight); ties broken by net_id.
+## Returns its net_id or 0.
 static func find_downed_ally(world: RemoteWorld, own_feet: Vector3, own_realm: int) -> int:
 	if world == null or own_realm == NetProtocol.Realm.NONE:
 		return 0
@@ -173,8 +173,8 @@ static func find_downed_ally(world: RemoteWorld, own_feet: Vector3, own_realm: i
 	return best
 
 
-## Lo que se está haciendo ahora ([enum Interaction]): sobre el jugador local, el remate antes que el
-## levantar; si no, lo que hace él.
+## What is being done now ([enum Interaction]): on the local player, the finisher before the
+## revive; otherwise, what they do.
 func get_interaction() -> int:
 	var shown: _Ongoing = _shown_on_me()
 	if shown != null:
@@ -190,17 +190,17 @@ func get_countdown_text() -> String:
 	return _countdown.text if _countdown.visible else ""
 
 
-## La línea de levantar o rematar (vacía si no hay).
+## The revive or finish-off line (empty if none).
 func get_detail_text() -> String:
 	return _detail.text if _detail.visible else ""
 
 
-## La invitación a levantar a un aliado (vacía si no hay).
+## The prompt to revive an ally (empty if none).
 func get_prompt_text() -> String:
 	return _prompt.text if _prompt.visible else ""
 
 
-## Progreso (0 a 1) de la barra de levantar o rematar (-1 si no se ve).
+## Progress (0 to 1) of the revive or finish-off bar (-1 if not visible).
 func get_progress() -> float:
 	return _bar.value / _bar.max_value if _bar.visible else -1.0
 
@@ -211,7 +211,7 @@ func _start(interaction: int, event: NetMessages.EntityEvent) -> void:
 	ongoing.start_tick = event.tick
 	ongoing.end_tick = maxi(event.end_tick, event.tick + 1)
 	if event.net_id == _own_id:
-		# Un actor hace una sola cosa a la vez: lo nuevo sustituye a lo que tuviera.
+		# An actor does one thing at a time: the new one replaces whatever it had.
 		ongoing.other_id = event.actor
 		_forget_actor(event.actor)
 		_on_me.append(ongoing)
@@ -220,28 +220,28 @@ func _start(interaction: int, event: NetMessages.EntityEvent) -> void:
 		_mine = ongoing
 
 
-# Quita lo que hacía [param actor] sobre el jugador local.
+# Removes what [param actor] was doing to the local player.
 func _forget_actor(actor: int) -> void:
 	for index: int in range(_on_me.size() - 1, -1, -1):
 		if _on_me[index].other_id == actor:
 			_on_me.remove_at(index)
 
 
-# El fin o el corte de [param interaction] de [param actor] sobre el jugador local: solo quita la suya.
+# The end or interruption of [param interaction] by [param actor] on the local player: removes only its own.
 func _end_on_me(interaction: int, actor: int) -> void:
 	for index: int in range(_on_me.size() - 1, -1, -1):
 		if _on_me[index].other_id == actor and _on_me[index].interaction == interaction:
 			_on_me.remove_at(index)
 
 
-# El fin o el corte de lo que hace el jugador local ([param interaction] con [param target]).
+# The end or interruption of what the local player does ([param interaction] with [param target]).
 func _end_mine(interaction: int, target: int) -> void:
 	if _mine != null and _mine.interaction == interaction and _mine.other_id == target:
 		_mine = null
 
 
-# El final (levantado, rematado o cortado) llega por evento; si se perdió de vista, se olvida
-# [constant FORGET_AFTER_TICKS] ticks después de su fin previsto.
+# The end (revived, finished off or interrupted) arrives by event; if it was lost from sight, it is forgotten
+# [constant FORGET_AFTER_TICKS] ticks after its expected end.
 func _forget_stale(tick: int) -> void:
 	for index: int in range(_on_me.size() - 1, -1, -1):
 		if tick >= _on_me[index].end_tick + FORGET_AFTER_TICKS:
@@ -250,7 +250,7 @@ func _forget_stale(tick: int) -> void:
 		_mine = null
 
 
-# Lo que se muestra sobre el jugador local: el remate que antes acaba y, si no hay, el levantar; o null.
+# What is shown on the local player: the finisher that ends first and, if there is none, the revive; or null.
 func _shown_on_me() -> _Ongoing:
 	var shown: _Ongoing = null
 	for ongoing: _Ongoing in _on_me:
@@ -283,8 +283,8 @@ func _name_or_ally(net_id: int) -> String:
 
 
 func _build() -> void:
-	# A pantalla completa (así lo coloca también el HUD): la columna se centra respecto al padre, sea del tamaño que sea
-	# (UI-49; antes suponía un padre de ancho 0 centrado y salía cortada por la izquierda).
+	# Full screen (that is how the HUD places it too): the column is centered relative to the parent, whatever its size
+	# (UI-49; before, it assumed a centered parent of width 0 and came out cut off on the left).
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_column = VBoxContainer.new()
 	_column.name = "Columna"

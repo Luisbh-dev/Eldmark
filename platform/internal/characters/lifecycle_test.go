@@ -20,7 +20,7 @@ func TestDeleteRestoreAndReservedName(t *testing.T) {
 	res := h.remove(a, id, "Brena")
 	h.expect(res, http.StatusBadRequest, "validation")
 	if res.errField("confirm_name") != "mismatch" {
-		t.Fatalf("confirmación equivocada: %s", res.raw)
+		t.Fatalf("wrong confirmation: %s", res.raw)
 	}
 	h.expect(h.do(call{method: "DELETE", path: path("/v1/characters/{id}", id), token: a.token, body: map[string]any{}}),
 		http.StatusBadRequest, "validation")
@@ -35,22 +35,22 @@ func TestDeleteRestoreAndReservedName(t *testing.T) {
 	h.scalar(&reserved, `select reserved_until from character_names where name_key = 'brenna' and status = 'reserved'
 		and character_id = $1`, id)
 	if !reserved.Equal(restoreUntil.Add(30 * day)) {
-		t.Fatalf("reservado hasta %v", reserved)
+		t.Fatalf("reserved until %v", reserved)
 	}
 	c := h.list(a).body["characters"].([]any)[0].(map[string]any)
 	if c["deleted_at"] != float64(h.clock.Now().Unix()) || c["restore_until"] != float64(restoreUntil.Unix()) {
-		t.Errorf("la lista enseña el borrado con su fecha límite: %v", c)
+		t.Errorf("the list shows the deletion with its deadline: %v", c)
 	}
 	h.expect(h.remove(a, id, "Brenna"), http.StatusNotFound, "not_found") // already deleted
 	h.expect(h.enter(a, id), http.StatusNotFound, "not_found")
 	if h.count(`select count(*) from auth_events where account_id = $1 and kind = 'character_delete'`, a.id) != 1 {
-		t.Error("falta el apunte character_delete")
+		t.Error("the character_delete entry is missing")
 	}
 
 	// Meanwhile nobody can use the name.
 	h.expect(h.create(b, "Brenna", "solmarch"), http.StatusConflict, "name_taken")
 	if res := h.nameCheck(b, "brenna"); res.body["code"] != "name_invalid" {
-		t.Errorf("name-check en minúscula: %s", res.raw)
+		t.Errorf("lowercase name-check: %s", res.raw)
 	}
 	if res := h.nameCheck(b, "Brenna"); res.body["code"] != "name_taken" {
 		t.Errorf("name-check: %s", res.raw)
@@ -61,11 +61,11 @@ func TestDeleteRestoreAndReservedName(t *testing.T) {
 	res = h.restore(a, id)
 	h.expect(res, http.StatusOK, "")
 	if c := res.character(); c["deleted_at"] != nil || c["restore_until"] != nil || c["name"] != "Brenna" {
-		t.Fatalf("restaurado: %s", res.raw)
+		t.Fatalf("restored: %s", res.raw)
 	}
 	if h.count(`select count(*) from character_names where name_key = 'brenna' and status = 'active'
 		and reserved_until is null and character_id = $1`, id) != 1 {
-		t.Error("el nombre vuelve a estar activo")
+		t.Error("the name is active again")
 	}
 	h.expect(h.restore(a, id), http.StatusOK, "") // restoring a living one returns it as is
 
@@ -103,7 +103,7 @@ func TestTrialCharacterFreesTheNameAtRestoreUntil(t *testing.T) {
 	var reserved time.Time
 	h.scalar(&reserved, `select reserved_until from character_names where name_key = 'jugado'`)
 	if !reserved.Equal(h.clock.Now().Add(37 * day)) {
-		t.Errorf("con 1 h jugada, reservado hasta %v", reserved)
+		t.Errorf("with 1 h played, reserved until %v", reserved)
 	}
 }
 
@@ -134,7 +134,7 @@ func TestDeleteBusyAndDailyLimit(t *testing.T) {
 	res = h.remove(p, ids[5], "Seis")
 	h.expect(res, http.StatusTooManyRequests, "rate_limited")
 	if h.count(`select count(*) from characters where deleted_at is null`) != 1 {
-		t.Error("el sexto borrado no debería haberse hecho")
+		t.Error("the sixth deletion should not have gone through")
 	}
 	h.advance(day, p)
 	h.expect(h.remove(p, ids[5], "Seis"), http.StatusOK, "")
@@ -152,7 +152,7 @@ func TestOtherAccountsCharacters(t *testing.T) {
 	h.expect(h.do(call{method: "POST", path: path("/v1/characters/{id}/rename", id), token: b.token,
 		body: map[string]any{"name": "Otro"}}), http.StatusNotFound, "not_found")
 	if h.count(`select count(*) from characters where character_id = $1 and deleted_at is null and name = 'Aneira'`, id) != 1 {
-		t.Error("otra cuenta ha cambiado el personaje")
+		t.Error("another account changed the character")
 	}
 }
 
@@ -174,7 +174,7 @@ func TestForcedRename(t *testing.T) {
 	h.zone("vado_gris", 0, []int16{1, 2}, 0, 64, "live")
 	h.expect(h.enter(a, id), http.StatusConflict, "rename_required")
 	if c := h.list(a).body["characters"].([]any)[0].(map[string]any); c["must_rename"] != true {
-		t.Errorf("la lista dice must_rename: %v", c)
+		t.Errorf("the list says must_rename: %v", c)
 	}
 	res := rename("nuevo")
 	h.expect(res, http.StatusUnprocessableEntity, "name_invalid")
@@ -185,7 +185,7 @@ func TestForcedRename(t *testing.T) {
 	res = rename("Educado")
 	h.expect(res, http.StatusOK, "")
 	if c := res.character(); c["name"] != "Educado" || c["must_rename"] != false {
-		t.Fatalf("renombrado: %s", res.raw)
+		t.Fatalf("renamed: %s", res.raw)
 	}
 	h.expect(rename("Otro"), http.StatusConflict, "rename_not_required")
 	h.expect(h.enter(a, id), http.StatusOK, "")

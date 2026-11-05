@@ -1,20 +1,20 @@
-// Hierba del instanciador de Terrain3D (ART-59): mata de hojas con la base del color del terreno
-// que sube hasta el color de la punta, un poco de translucidez a contraluz y un balanceo de viento
-// que crece con la altura. Sin descarte de caras traseras (las hojas son planos).
+// Grass for the Terrain3D instancer (ART-59): a tuft of blades whose base takes the terrain color
+// and rises to the tip color, with a bit of backlit translucency and a wind sway that grows with
+// height. No back-face culling (the blades are planes).
 //
-// El balanceo usa TIME y la posición del mundo, así que se mueve por oleadas y no todas a la vez.
-// El viento de árboles y estandartes (ART-14) usará los mismos parámetros globales.
+// The sway uses TIME and the world position, so it moves in waves rather than all at once.
+// The tree and banner wind (ART-14) will use the same global parameters.
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, repeat_enable, hint_default_white;
 uniform float alpha_scissor : hint_range(0.0, 1.0) = 0.5;
-// Color del suelo bajo la mata: la base de las hojas se funde con él.
+// Ground color under the tuft: the base of the blades blends into it.
 uniform vec3 base_color : source_color = vec3(0.30, 0.30, 0.20);
-// Color de la punta de las hojas (se modula con la luminancia de la textura).
+// Color of the blade tips (modulated by the texture luminance).
 uniform vec3 tip_color : source_color = vec3(0.4, 0.44, 0.29);
 uniform float reference_luminance : hint_range(0.05, 1.0) = 0.83;
-// Altura del modelo en metros locales (para normalizar el degradado y el viento).
+// Model height in local meters (to normalize the gradient and the wind).
 uniform float blade_height = 1.3;
 uniform float wind_strength : hint_range(0.0, 0.5) = 0.12;
 uniform float wind_speed : hint_range(0.0, 4.0) = 1.1;

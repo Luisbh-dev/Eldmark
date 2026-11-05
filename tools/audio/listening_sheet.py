@@ -1,15 +1,15 @@
 #!/usr/bin/env python
-"""Hoja de escucha de combate (ART-11): un OGG por categoría con la opción A y la opción B seguidas.
+"""Combat listening sheet (ART-11): one OGG per category with option A and option B in sequence.
 
     python tools/audio/listening_sheet.py [--out build/o4_hoja_escucha] [--raw ../Eldmark-raw]
 
-Cada OGG suena así: un pitido (A), tres variantes de la opción A, un silencio, dos pitidos (B), tres variantes de la
-opción B. La A es casi siempre lo sintetizado en casa (`assets/audio/sfx`, equilibrado con `niveles.json`) y la B lo
-descargado (Kenney Impact Sounds y RPG Audio, Still North Weapon Impacts, rubberduck 80 CC0 RPG SFX), con su volumen
-igualado al de la A para que lo único que cambie sea el sonido. Escribe además `indice.md` con los archivos de
-cada opción y cuál es la que usa el juego hoy (`CombatSoundBank`).
+Each OGG sounds like this: one beep (A), three variants of option A, a silence, two beeps (B), three variants of
+option B. A is almost always what was synthesized in-house (`assets/audio/sfx`, balanced with `niveles.json`) and B what was
+downloaded (Kenney Impact Sounds and RPG Audio, Still North Weapon Impacts, rubberduck 80 CC0 RPG SFX), with its volume
+matched to A's so that the only thing that changes is the sound. It also writes `indice.md` with the files of
+each option and which one the game uses today (`CombatSoundBank`).
 
-Necesita ffmpeg en el PATH. No descarga nada: lee de ../Eldmark-raw/, donde ya están los packs.
+Requires ffmpeg on the PATH. It downloads nothing: it reads from ../Eldmark-raw/, where the packs already are.
 """
 import argparse
 import shutil
@@ -21,8 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SFX = ROOT / "assets" / "audio" / "sfx"
 
-# categoría -> (descripción, opción A, opción B, opción que usa el juego). Una opción es (lista de archivos, factor
-# de tono opcional). Las rutas de A son relativas a assets/audio/sfx; las de B, a la carpeta de los packs.
+# category -> (description, option A, option B, option the game uses). An option is (list of files, optional
+# pitch factor). The A paths are relative to assets/audio/sfx; the B ones, to the packs folder.
 KEN_I = "kenney_impact_sounds/extracted/Audio"
 KEN_R = "kenney_rpg_audio/extracted/Audio"
 STN = "still_north_weapon_impacts/extracted"
@@ -119,7 +119,7 @@ def run(cmd):
 
 
 def normalized_wav(src: Path, dst: Path, pitch: float):
-    """Convierte a WAV mono de 44,1 kHz, recorta a MAX_CLIP s y baja o sube el tono con asetrate (cambia la duración)."""
+    """Converts to 44.1 kHz mono WAV, trims to MAX_CLIP s and lowers or raises the pitch with asetrate (which changes the duration)."""
     filters = []
     if abs(pitch - 1.0) > 1e-3:
         filters.append(f"asetrate={int(44100 * pitch)},aresample=44100")
@@ -128,7 +128,7 @@ def normalized_wav(src: Path, dst: Path, pitch: float):
 
 
 def loudness(wav: Path) -> float:
-    """Volumen medio (dB) con volumedetect."""
+    """Mean volume (dB) with volumedetect."""
     proc = subprocess.run(["ffmpeg", "-i", str(wav), "-af", "volumedetect", "-f", "null", "-"],
                           capture_output=True, text=True)
     for line in proc.stderr.splitlines():
@@ -163,7 +163,7 @@ def main() -> int:
         return 1
     raw = Path(args.raw)
     if not raw.exists():
-        # Si no está donde se indica, sube por los directorios padres hasta encontrar Eldmark-raw.
+        # If it is not where indicated, it climbs up the parent directories until it finds Eldmark-raw.
         for parent in ROOT.parents:
             if (parent / "Eldmark-raw").exists():
                 raw = parent / "Eldmark-raw"
@@ -199,7 +199,7 @@ def main() -> int:
                     if reference is None:
                         reference = level
                     if label == "B":
-                        # Igualar al volumen medio de la A.
+                        # Match A's mean volume.
                         gained = tmp / f"{key}_{label}{index}_g.wav"
                         run(["ffmpeg", "-y", "-i", str(wav), "-af", f"volume={reference - level:.2f}dB,alimiter=limit=0.95", str(gained)])
                         wav = gained

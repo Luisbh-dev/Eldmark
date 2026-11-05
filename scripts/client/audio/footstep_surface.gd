@@ -1,15 +1,15 @@
 class_name FootstepSurface
 extends RefCounted
-## Superficie que se pisa en un punto (ART-11, solo cliente): decide qué paso suena. Dos fuentes, por este orden:
-## [br]- El metadato [code]surface[/code] del colisionador que hay bajo los pies (o de su padre): un puente de
-## madera, una losa o el agua del vado lo ponen en su escena con uno de [constant CombatSoundBank.SURFACES].
-## [br]- El material pintado de [code]Terrain3D[/code] bajo ese punto ([method kind_of_texture_name] traduce el nombre
-## de la textura: «Losa de calzada» es piedra, «Hierba seca» es hierba).
-## [br]Sin ninguna de las dos (un suelo liso, una prueba), hierba, que es lo que más se pisa.
+## Surface stepped on at a point (ART-11, client only): decides which footstep plays. Two sources, in this order:
+## [br]- The [code]surface[/code] metadata of the collider under the feet (or of its parent): a wooden bridge, a
+## slab or the ford water set it in their scene with one of [constant CombatSoundBank.SURFACES].
+## [br]- The painted material of [code]Terrain3D[/code] under that point ([method kind_of_texture_name] translates the texture
+## name: "Losa de calzada" (road slab) is stone, "Hierba seca" (dry grass) is grass).
+## [br]With neither of the two (a flat floor, a test), grass, which is what gets stepped on the most.
 
-## Metadato del colisionador.
+## Collider metadata.
 const META_SURFACE: StringName = &"surface"
-## Nombres (en minúsculas, sin tildes) de textura que dan cada superficie; el primero que case gana.
+## Texture names (lowercase, without accents) that give each surface; the first one that matches wins.
 const TEXTURE_KEYWORDS: Array = [
 	[&"stone", ["roca", "losa", "piedra", "calzada", "muralla", "adoqu", "stone", "rock"]],
 	[&"wood", ["madera", "tabla", "wood", "plank"]],
@@ -22,8 +22,8 @@ static var _terrain: Object = null
 static var _names: Dictionary = {}
 
 
-## Superficie bajo [param position] (mundo). [param context] es cualquier nodo del árbol del cliente (da el mundo
-## físico y la escena en la que se busca el terreno).
+## Surface under [param position] (world). [param context] is any node of the client tree (it gives the physics
+## world and the scene in which the terrain is searched for).
 static func kind_at(context: Node3D, position: Vector3) -> StringName:
 	if context == null or not context.is_inside_tree():
 		return CombatSoundBank.SURFACE_GRASS
@@ -36,7 +36,7 @@ static func kind_at(context: Node3D, position: Vector3) -> StringName:
 	return CombatSoundBank.SURFACE_GRASS
 
 
-## Superficie que da el nombre de una textura del terreno ([code]&""[/code] si no se reconoce).
+## Surface given by the name of a terrain texture ([code]&""[/code] if it is not recognized).
 static func kind_of_texture_name(texture_name: String) -> StringName:
 	var lowered: String = _strip_accents(texture_name.to_lower())
 	for entry: Array in TEXTURE_KEYWORDS:
@@ -46,7 +46,7 @@ static func kind_of_texture_name(texture_name: String) -> StringName:
 	return &""
 
 
-## Olvida el terreno encontrado (cambio de zona, pruebas).
+## Forgets the terrain found (zone change, tests).
 static func clear_cache() -> void:
 	_terrain = null
 	_names.clear()
@@ -69,13 +69,13 @@ static func _kind_from_collider(context: Node3D, position: Vector3) -> StringNam
 			var value: StringName = StringName(String(node.get_meta(META_SURFACE)))
 			return value if CombatSoundBank.SURFACES.has(value) else &""
 		node = node.get_parent()
-		# Solo el colisionador y su padre: no se sube por toda la escena.
+		# Only the collider and its parent: it does not climb the whole scene.
 		if node == null or node == context.get_tree().current_scene:
 			break
 	return &""
 
 
-## El nodo Terrain3D de la escena actual (null si no hay o no existe la extensión). Lo comparten los pasos y el polvo
+## The Terrain3D node of the current scene (null if there is none or the extension does not exist). Shared by the footsteps and the dust
 ## ([VfxGround]).
 static func terrain_for(context: Node) -> Object:
 	if is_instance_valid(_terrain):

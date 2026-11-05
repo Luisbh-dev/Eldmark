@@ -91,29 +91,29 @@ func TestAuditBatch(t *testing.T) {
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("rejected[%d] = %v, se esperaba %s", i, got[i], want[i])
+			t.Fatalf("rejected[%d] = %v, expected %s", i, got[i], want[i])
 		}
 	}
 	if n := p.Count(`select count(*) from audit_log where world_id = 1 and zone_id = 'vado_gris'
 		and at = to_timestamp(1800000000)`); n != 2 {
-		t.Fatalf("insertadas: %d", n)
+		t.Fatalf("inserted: %d", n)
 	}
 	if n := p.Count(`select count(*) from audit_log where source = 'console' and actor_account_id is null`); n != 1 {
-		t.Fatal("la de la consola")
+		t.Fatal("the one from the console")
 	}
 	// The save's op:<op_id> row is as it was: on conflict do nothing, neither overwritten nor rejected.
 	intact := func() {
 		t.Helper()
 		if n := p.Count(`select count(*) from audit_log where event_key = $1 and actor_account_id = 99
 			and args = '{"s8": true}' and at = to_timestamp(1700000000)`, opKey); n != 1 {
-			t.Fatal("el lote pisó la fila op:<op_id> del guardado")
+			t.Fatal("the batch overwrote the save's op:<op_id> row")
 		}
 	}
 	intact()
 	res = z.Do("POST", "/internal/v1/audit", raw)
 	platformtest.Expect(t, res, 200, "")
 	if n := p.Count(`select count(*) from audit_log where zone_id = 'vado_gris'`); n != 3 {
-		t.Fatalf("reenviar no duplica: %d", n)
+		t.Fatalf("resending does not duplicate: %d", n)
 	}
 	intact()
 }
@@ -158,13 +158,13 @@ func TestChatBatch(t *testing.T) {
 	p.Scalar(&world, `select world_id from chat_messages where message_key = $1`, z.ID+":1")
 	p.Scalar(&zoneID, `select zone_id from chat_messages where message_key = $1`, z.ID+":1")
 	if zoneChannel != 1 || account != pl.ID || world != 1 || zoneID != "vado_gris" {
-		t.Fatalf("relleno de la instancia: canal %d cuenta %d mundo %d zona %s", zoneChannel, account, world, zoneID)
+		t.Fatalf("instance filler: channel %d account %d world %d zone %s", zoneChannel, account, world, zoneID)
 	}
 	if n := p.Count(`select count(*) from chat_messages`); n != 3 {
 		t.Fatal(n)
 	}
 	if strings.Contains(p.Logs.String(), "Vado Gris!") {
-		t.Fatal("el texto del chat no va al registro")
+		t.Fatal("the chat text does not go into the log")
 	}
 	p.Exec(`update zone_instances set status = 'lost' where zone_instance_id = $1`, z.ID)
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/chat", map[string]any{"zone_instance_id": z.ID,
@@ -206,7 +206,7 @@ func TestWorldComesFromTheInstance(t *testing.T) {
 	res := w2.Do("POST", "/internal/v1/ignores", ignore)
 	platformtest.Expect(t, res, 200, "")
 	if res.String("ignored_account_id") != idStr(b2.ID) || res.String("name") != "Bran" {
-		t.Fatalf("ignorado del mundo 2: %s", res.Raw)
+		t.Fatalf("ignored from world 2: %s", res.Raw)
 	}
 	res = w2.Do("POST", "/internal/v1/reports", report)
 	platformtest.Expect(t, res, 200, "")
@@ -215,7 +215,7 @@ func TestWorldComesFromTheInstance(t *testing.T) {
 	p.Scalar(&target, `select target_character_id from reports where report_id = $1::bigint`, reportID)
 	p.Scalar(&world, `select world_id from reports where report_id = $1::bigint`, reportID)
 	if target != bran2 || world != 2 || p.Count(`select count(*) from report_evidence where report_id = $1::bigint`, reportID) != 1 {
-		t.Fatalf("reporte: objetivo %d mundo %d", target, world)
+		t.Fatalf("report: target %d world %d", target, world)
 	}
 	sanction["report_ids"] = []any{reportID}
 	res = w2.Do("POST", "/internal/v1/sanctions", sanction)
@@ -226,7 +226,7 @@ func TestWorldComesFromTheInstance(t *testing.T) {
 	var sanctioned int64
 	p.Scalar(&sanctioned, `select account_id from sanctions where sanction_id = $1::bigint`, res.String("sanction_id"))
 	if sanctioned != b2.ID || p.Count(`select count(*) from sanction_reports`) != 1 {
-		t.Fatal("sanción en el mundo 2")
+		t.Fatal("sanction in world 2")
 	}
 	// From world 1's instance the GM has no lease: 403.
 	ignore["zone_instance_id"] = w1.ID
@@ -363,19 +363,19 @@ func TestSanctionAuthorization(t *testing.T) {
 	platformtest.Expect(t, sanction(idGM, "Celadora", "warning", 0), 403, "forbidden") // themselves
 	denied := p.Count(`select count(*) from audit_log where source = 'platform' and command = 'sanction_denied'`)
 	if denied != 5 {
-		t.Fatalf("filas sanction_denied: %d", denied)
+		t.Fatalf("sanction_denied rows: %d", denied)
 	}
 	var args string
 	p.Scalar(&args, `select args::text from audit_log where command = 'sanction_denied' order by id limit 1`)
 	if strings.Contains(args, "Bran") || strings.Contains(args, "@") || !strings.Contains(args, `"denied": "role"`) {
-		t.Fatalf("args sin nombres ni correos: %s", args)
+		t.Fatalf("args without names or emails: %s", args)
 	}
 	if n := p.Count(`select count(*) from audit_log where command = 'sanction_denied' and target_account_id = $1
 		and target_character_id = $2 and actor_account_id = $3`, player.ID, idPlayer, mod.ID); n != 2 {
-		t.Fatalf("objetivo y autor por id: %d", n)
+		t.Fatalf("target and author by id: %d", n)
 	}
 	if n := p.Count(`select count(*) from sanctions`); n != 0 {
-		t.Fatal("ninguna sanción")
+		t.Fatal("no sanction")
 	}
 
 	platformtest.Expect(t, sanction(idMod, "Bran", "warning", 0), 200, "")
@@ -397,7 +397,7 @@ func TestSanctionAuthorization(t *testing.T) {
 		t.Fatal("must_rename")
 	}
 	if n := p.Count(`select count(*) from audit_log where source = 'platform' and command = 'sanction'`); n != 3 {
-		t.Fatalf("filas sanction: %d", n)
+		t.Fatalf("sanction rows: %d", n)
 	}
 	// The next claim brings the mute.
 	platformtest.Expect(t, z.Release(idPlayer, leasePlayer), 204, "")

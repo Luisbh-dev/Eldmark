@@ -1,10 +1,10 @@
 extends TestCase
-## Las ventanas de inventario y de personaje (docs/progresion.md §11 y §15, P6; UI-26): [InventoryWindow],
-## [CharacterWindow], [InventorySlotView] y [SplitDialog] sobre un [ClientInventory] con el kit del escudero. Los
-## gestos simulados (arrastrar y soltar, Mayúsculas para dividir, doble clic y clic derecho, soltar fuera) generan la
-## petición correcta, o el aviso sin enviar nada; las casillas enseñan la vista, el tooltip y las monedas; la ventana
-## de personaje, sus ranuras, el nivel, la XP y la figura con su apariencia; y el [HUD] las monta con I y C, avisa en el
-## chat y quita el selector de plantilla de la pantalla de muerte cuando hay inventario.
+## The inventory and character windows (docs/progresion.md §11 and §15, P6; UI-26): [InventoryWindow],
+## [CharacterWindow], [InventorySlotView] and [SplitDialog] over a [ClientInventory] with the squire's kit. The
+## simulated gestures (drag and drop, Shift to split, double click and right click, drop outside) produce the
+## right request, or the notice without sending anything; the slots show the view, the tooltip and the coins; the
+## character window, its slots, the level, the XP and the figure with its appearance; and the [HUD] mounts them with I and C, warns in the
+## chat and removes the template selector from the death screen when there is an inventory.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const OWN_ID: int = 101
@@ -13,7 +13,7 @@ const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 
 
-## Cliente de red que no conecta con nada: su inventario es el de verdad y lo que envía se apunta.
+## Network client that connects to nothing: its inventory is the real one and what it sends is recorded.
 class FakeClient extends NetClient:
 	var fake_config: ClientConfig = ClientConfig.new()
 	var fake_character: PlayerCharacter = null
@@ -76,7 +76,7 @@ func before_each() -> void:
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_track(root)
-	# Una al lado de la otra, como en el HUD (sin centrar: no se solapan).
+	# Side by side, as in the HUD (not centered: they do not overlap).
 	_window = InventoryWindow.new()
 	_window.centered = false
 	_window.position = Vector2(620.0, 40.0)
@@ -151,37 +151,37 @@ func _key(keycode: Key) -> InputEventKey:
 # --- Ventana de inventario --------------------------------------------------------------------------
 
 func test_the_bag_grid_shows_the_view_and_the_wallet() -> void:
-	assert_eq(_window.get_slot_count(), InventoryState.BAG_SLOTS_DEFAULT, "una casilla por ranura de la bolsa")
+	assert_eq(_window.get_slot_count(), InventoryState.BAG_SLOTS_DEFAULT, "one slot per bag slot")
 	assert_eq((_window.get_slot_view(0).get_parent() as GridContainer).columns, InventoryWindow.COLUMNS,
 			"seis columnas")
 	var potion: Vector2i = _slot_of(&"potion_health")
 	var view_slot: InventorySlotView = _view_of(potion)
 	var item: ItemInstance = _state.get_item(potion.x, potion.y)
-	assert_eq(view_slot.get_item().uid, item.uid, "la casilla enseña su objeto")
-	assert_eq(view_slot.count, item.count, "con su pila")
+	assert_eq(view_slot.get_item().uid, item.uid, "the slot shows its item")
+	assert_eq(view_slot.count, item.count, "with its stack")
 	assert_eq(view_slot.get_count_text(), str(item.count) if item.count > 1 else "")
-	assert_eq(view_slot.rarity, 0, "borde de común")
-	assert_true(view_slot.icon is GameIcon, "la poción lleva el dibujo de ART-12, no una letra")
-	# Lo que no tiene dibujo (una armadura, por ejemplo) sigue con el cuadro provisional con su nombre corto.
+	assert_eq(view_slot.rarity, 0, "common border")
+	assert_true(view_slot.icon is GameIcon, "the potion carries the ART-12 drawing, not a letter")
+	# Whatever has no drawing (armor, for example) keeps the placeholder box with its short name.
 	var plain := ItemDefinition.new()
 	plain.display_name = "Poción de vida"
 	plain.category = ItemDefinition.Category.MISC
 	var icon: PlaceholderIcon = InventorySlotView.icon_for(plain) as PlaceholderIcon
-	if assert_not_null(icon, "sin dibujo, el provisional"):
-		assert_eq(icon.letter, "PV", "nombre corto de «Poción de vida»")
+	if assert_not_null(icon, "without a drawing, the placeholder"):
+		assert_eq(icon.letter, "PV", "short name of \"Poción de vida\" (Health Potion)")
 		assert_eq(icon.color, InventorySlotView.CATEGORY_COLORS[ItemDefinition.Category.MISC],
-				"con el color de su categoría")
+				"with the color of its category")
 	assert_eq(view_slot.get_tooltip_content()["title"], "Poción de vida")
-	assert_null(_window.get_slot_view(InventoryState.BAG_SLOTS_DEFAULT - 1).get_item(), "la última, vacía")
+	assert_null(_window.get_slot_view(InventoryState.BAG_SLOTS_DEFAULT - 1).get_item(), "the last one, empty")
 	assert_eq(_window.get_slot_view(InventoryState.BAG_SLOTS_DEFAULT - 1).get_tooltip_content(), {},
-			"una casilla vacía de la bolsa no tiene tooltip")
-	# Las monedas, del progreso.
+			"an empty bag slot has no tooltip")
+	# The coins, from the progress.
 	assert_eq(_window.get_gold_label().text, "Oro: 0")
 	_progress.on_wallet(ProgressMessages.WalletUpdate.make(Currency.Code.GOLD, 1250000, 50, EconomyReason.NPC_KILL))
 	_progress.on_wallet(ProgressMessages.WalletUpdate.make(Currency.Code.MERITS, 42, 0, 0))
-	assert_eq(_window.get_gold_label().text, "Oro: 1.250.000", "con puntos de millar")
+	assert_eq(_window.get_gold_label().text, "Oro: 1.250.000", "with thousands separators")
 	assert_eq(_window.get_merits_label().text, "Méritos: 42")
-	# Una bolsa más grande (un FULL con más ranuras) da más casillas; y una más pequeña, menos.
+	# A bigger bag (a FULL with more slots) gives more slots; and a smaller one, fewer.
 	var bigger: InventoryState = _state.duplicate_state()
 	bigger.bag_slots = 36
 	_inventory.on_full_page(ProgressMessages.InventoryFull.split(2, bigger)[0])
@@ -199,32 +199,32 @@ func test_dragging_onto_another_slot_sends_a_move() -> void:
 	assert_eq(data[InventorySlotView.DRAG_KEY], bow)
 	assert_eq(data["uid"], bow_uid)
 	assert_true(_window.get_slot_view(target).accepts(data), "otra casilla lo acepta")
-	assert_false(_view_of(bow).accepts(data), "la misma casilla no")
+	assert_false(_view_of(bow).accepts(data), "the same slot does not")
 	_window.get_slot_view(target)._drop_data(Vector2.ZERO, data)
-	assert_eq(_sent.size(), 1, "una petición")
-	assert_eq(_last_sent(), [InventoryOps.Op.MOVE, bow.x, bow.y, 0, target, 0, bow_uid], "MOVE con el uid que se ve")
-	assert_eq(_window.get_slot_view(target).get_item().uid, bow_uid, "optimista: el arco ya está en su sitio")
-	assert_null(_view_of(bow).get_item(), "y su casilla, vacía")
-	# De la bolsa a la ventana de personaje: equipar el arco en WEAPON_2.
+	assert_eq(_sent.size(), 1, "one request")
+	assert_eq(_last_sent(), [InventoryOps.Op.MOVE, bow.x, bow.y, 0, target, 0, bow_uid], "MOVE with the uid that is shown")
+	assert_eq(_window.get_slot_view(target).get_item().uid, bow_uid, "optimistic: the bow is already in place")
+	assert_null(_view_of(bow).get_item(), "and its slot, empty")
+	# From the bag to the character window: equip the bow in WEAPON_2.
 	data = _window.get_slot_view(target).make_drag_data(false)
 	_character.get_slot_view(InventoryState.EquipmentSlot.WEAPON_2).drop(data)
-	assert_eq(_last_sent(), [InventoryOps.Op.MOVE, 0, target, 1, 1, 0, bow_uid], "equipar es un MOVE al equipo")
-	assert_eq(_character.get_slot_view(1).get_item().uid, bow_uid, "la ranura de arma ya lo enseña")
-	# Las ranuras de armadura no reciben nada; una pieza local que no vale no sale (WEAPON_REQUIRED).
+	assert_eq(_last_sent(), [InventoryOps.Op.MOVE, 0, target, 1, 1, 0, bow_uid], "equipping is a MOVE to the equipment")
+	assert_eq(_character.get_slot_view(1).get_item().uid, bow_uid, "the weapon slot already shows it")
+	# The armor slots accept nothing; a local piece that is not valid does not go out (WEAPON_REQUIRED).
 	var head: InventorySlotView = _character.get_slot_view(InventoryState.EquipmentSlot.HEAD)
-	assert_false(head.accepts(_character.get_slot_view(1).make_drag_data(false)), "la cabeza está cerrada")
-	# Soltar el arco de WEAPON_2 sobre WEAPON_1 los intercambia.
+	assert_false(head.accepts(_character.get_slot_view(1).make_drag_data(false)), "the head is closed")
+	# Dropping the bow from WEAPON_2 onto WEAPON_1 swaps them.
 	var sword_uid: int = _character.get_slot_view(0).get_item().uid
 	_character.get_slot_view(0).drop(_character.get_slot_view(1).make_drag_data(false))
-	assert_eq(_sent.size(), 3, "intercambiar las armas sale")
-	assert_eq(_character.get_slot_view(0).get_item().uid, bow_uid, "el arco en WEAPON_1")
-	assert_eq(_character.get_slot_view(1).get_item().uid, sword_uid, "la espada en WEAPON_2")
-	# Dejar vacía la ranura activa (WEAPON_1) no sale; la otra, sí.
+	assert_eq(_sent.size(), 3, "swapping the weapons goes out")
+	assert_eq(_character.get_slot_view(0).get_item().uid, bow_uid, "the bow in WEAPON_1")
+	assert_eq(_character.get_slot_view(1).get_item().uid, sword_uid, "the sword in WEAPON_2")
+	# Leaving the active slot (WEAPON_1) empty does not go out; the other one does.
 	_window.get_slot_view(target).drop(_character.get_slot_view(0).make_drag_data(false))
-	assert_eq(_sent.size(), 3, "dejar vacía la ranura activa no sale")
+	assert_eq(_sent.size(), 3, "leaving the active slot empty does not go out")
 	assert_eq(_rejections.back(), [InventoryOps.Result.WEAPON_REQUIRED, "Necesitas un arma en la mano"])
 	_window.get_slot_view(target).drop(_character.get_slot_view(1).make_drag_data(false))
-	assert_eq(_sent.size(), 4, "desequipar la de WEAPON_2 sale")
+	assert_eq(_sent.size(), 4, "unequipping the WEAPON_2 one goes out")
 	assert_null(_character.get_slot_view(1).get_item())
 	assert_eq(_window.get_slot_view(target).get_item().uid, sword_uid)
 	await wait_process_frames()
@@ -235,35 +235,35 @@ func test_shift_dragging_opens_the_split_dialog_with_half() -> void:
 	var item: ItemInstance = _state.get_item(potion.x, potion.y)
 	var target: int = InventoryState.BAG_SLOTS_DEFAULT - 1
 	var data: Dictionary = _view_of(potion).make_drag_data(true)
-	assert_true(bool(data["split"]), "con Mayúsculas, dividir")
+	assert_true(bool(data["split"]), "with Shift, split")
 	_window.get_slot_view(target).drop(data)
-	assert_true(_split.is_open(), "se abre el diálogo")
-	assert_true(_sent.is_empty(), "y aún no sale nada")
-	assert_eq(_split.get_amount(), SplitDialog.default_amount(item.count), "por defecto, la mitad")
-	assert_eq(int(_split.get_spin_box().max_value), item.count - 1, "como mucho, la pila menos una")
+	assert_true(_split.is_open(), "the dialog opens")
+	assert_true(_sent.is_empty(), "and nothing goes out yet")
+	assert_eq(_split.get_amount(), SplitDialog.default_amount(item.count), "by default, half")
+	assert_eq(int(_split.get_spin_box().max_value), item.count - 1, "at most, the stack minus one")
 	assert_eq(_split.get_message_label().text, "¿Cuántas separas de Poción de vida ×%d?" % item.count)
 	_split.set_amount(item.count - 1)
 	_split.confirm()
 	assert_false(_split.is_open())
 	assert_eq(_last_sent(), [InventoryOps.Op.SPLIT, potion.x, potion.y, 0, target, item.count - 1, item.uid],
-			"SPLIT con la cantidad elegida")
+			"SPLIT with the chosen amount")
 	var provisional: ItemInstance = _window.get_slot_view(target).get_item()
-	assert_true(ClientInventory.is_provisional(provisional), "la pila nueva, provisional")
+	assert_true(ClientInventory.is_provisional(provisional), "the new stack, provisional")
 	assert_false(_window.get_slot_view(target).enabled, "y apagada")
-	assert_eq(_window.get_slot_view(target).make_drag_data(false), {}, "no se arrastra hasta tener su uid")
-	# Cancelar no envía nada.
+	assert_eq(_window.get_slot_view(target).make_drag_data(false), {}, "it is not dragged until it has its uid")
+	# Cancelling sends nothing.
 	var stamina: Vector2i = _slot_of(&"potion_stamina")
 	_window.get_slot_view(target - 1).drop(_view_of(stamina).make_drag_data(true))
 	assert_true(_split.is_open())
 	_split.cancel()
 	assert_eq(_sent.size(), 1, "cancelar no pide nada")
-	# Dividir lo que no se apila no abre el diálogo: el aviso de por qué y nada sale.
+	# Splitting something that does not stack does not open the dialog: the notice says why and nothing goes out.
 	var bow: Vector2i = _slot_of(&"bow_vado")
 	_window.get_slot_view(target - 2).drop(_view_of(bow).make_drag_data(true))
-	assert_false(_split.is_open(), "un arco no se divide")
+	assert_false(_split.is_open(), "a bow is not split")
 	assert_eq(_rejections.back(), [InventoryOps.Result.INVALID, "Petición no válida"])
 	assert_eq(_sent.size(), 1)
-	# Ni sobre una casilla ocupada.
+	# Nor onto an occupied slot.
 	_view_of(bow).drop(_view_of(stamina).make_drag_data(true))
 	assert_false(_split.is_open())
 	assert_eq(_rejections.back(), [InventoryOps.Result.NO_ROOM, "No cabe"])
@@ -273,23 +273,23 @@ func test_shift_dragging_opens_the_split_dialog_with_half() -> void:
 func test_double_click_and_right_click_equip_and_unequip() -> void:
 	var bow: Vector2i = _slot_of(&"bow_vado")
 	var bow_uid: int = _state.get_item(bow.x, bow.y).uid
-	# Doble clic en el arco de la bolsa: a WEAPON_2, que está vacía.
+	# Double click on the bow in the bag: to WEAPON_2, which is empty.
 	_view_of(bow)._gui_input(_click(MOUSE_BUTTON_LEFT, true))
 	assert_eq(_sent.size(), 1)
 	assert_eq(_last_sent(), [InventoryOps.Op.MOVE, bow.x, bow.y, 1, 1, 0, bow_uid], "equipar en WEAPON_2")
-	# Clic derecho en el arco ya equipado (la vista optimista): a la primera libre de la bolsa.
+	# Right click on the already equipped bow (the optimistic view): to the first free slot in the bag.
 	var free: int = _inventory.get_view().first_free(InventoryState.ContainerId.BAG)
 	_character.get_slot_view(1)._gui_input(_click(MOUSE_BUTTON_RIGHT))
-	assert_eq(_last_sent(), [InventoryOps.Op.MOVE, 1, 1, 0, free, 0, bow_uid], "desequipar a la bolsa")
-	# La espada es el arma activa: desequiparla avisa y no sale.
+	assert_eq(_last_sent(), [InventoryOps.Op.MOVE, 1, 1, 0, free, 0, bow_uid], "unequip to the bag")
+	# The sword is the active weapon: unequipping it warns and does not go out.
 	_character.get_slot_view(0)._gui_input(_click(MOUSE_BUTTON_RIGHT))
 	assert_eq(_sent.size(), 2)
 	assert_eq(_rejections.back()[0], InventoryOps.Result.WEAPON_REQUIRED)
-	# Una poción no se equipa: nada.
+	# A potion is not equipped: nothing.
 	var potion: Vector2i = _slot_of(&"potion_health")
 	assert_eq(_window.activate_item(potion), -1)
-	assert_eq(_sent.size(), 2, "una poción no se equipa")
-	# Un clic suelto no hace nada más que el de UIIconSlot.
+	assert_eq(_sent.size(), 2, "a potion is not equipped")
+	# A single click does nothing beyond what UIIconSlot does.
 	var pressed: Array[int] = [0]
 	_view_of(potion).pressed.connect(func() -> void: pressed[0] += 1)
 	var release := _click(MOUSE_BUTTON_LEFT)
@@ -303,40 +303,40 @@ func test_double_click_and_right_click_equip_and_unequip() -> void:
 func test_dropping_outside_the_windows_asks_before_destroying() -> void:
 	var potion: Vector2i = _slot_of(&"potion_health")
 	var item: ItemInstance = _state.get_item(potion.x, potion.y)
-	assert_true(_window.drop_outside(potion), "una poción se puede destruir")
-	assert_true(_destroy.is_open(), "se pide confirmación")
+	assert_true(_window.drop_outside(potion), "a potion can be destroyed")
+	assert_true(_destroy.is_open(), "confirmation is requested")
 	assert_true(_destroy.get_message_label().text.begins_with("¿Destruir Poción de vida ×%d?" % item.count),
 			"«%s»" % _destroy.get_message_label().text)
 	assert_true(_sent.is_empty(), "nada sale hasta confirmar")
 	_destroy.confirm()
 	assert_eq(_last_sent(), [InventoryOps.Op.DESTROY, potion.x, potion.y, InventoryOps.NO_SLOT, InventoryOps.NO_SLOT,
-			item.count, item.uid], "DESTROY de toda la pila con su uid")
-	assert_null(_view_of(potion).get_item(), "optimista: la pila desaparece")
+			item.count, item.uid], "DESTROY of the whole stack with its uid")
+	assert_null(_view_of(potion).get_item(), "optimistic: the stack disappears")
 	# Cancelar no destruye.
 	var stamina: Vector2i = _slot_of(&"potion_stamina")
 	assert_true(_window.drop_outside(stamina))
 	_destroy.cancel()
 	assert_eq(_sent.size(), 1)
-	# Lo que no se puede destruir no pregunta: el aviso y nada.
+	# What cannot be destroyed does not ask: the notice and nothing else.
 	var bow: Vector2i = _slot_of(&"bow_vado")
-	assert_false(_window.drop_outside(bow), "el arco del Vado es indestructible")
+	assert_false(_window.drop_outside(bow), "the Ford's bow is indestructible")
 	assert_false(_destroy.is_open())
 	assert_eq(_rejections.back(), [InventoryOps.Result.LOCKED, "Ese objeto no se puede destruir"])
 	assert_false(_window.drop_outside(Vector2i(1, 0)), "lo equipado tampoco")
 	assert_eq(_sent.size(), 1)
 	assert_eq(InventoryWindow.destroy_question(_state.get_item(bow.x, bow.y)), "¿Destruir Arco del Vado?",
-			"sin cantidad en lo que no se apila")
-	# Dentro de las ventanas no se destruye nada; fuera, sí.
+			"no quantity for what does not stack")
+	# Inside the windows nothing is destroyed; outside, it is.
 	await wait_process_frames()
 	_character.open()
 	_window.open()
 	await wait_process_frames()
-	assert_true(_window.is_over_drop_zone(_window.get_global_rect().get_center()), "sobre el inventario")
-	assert_true(_window.is_over_drop_zone(_character.get_global_rect().get_center()), "sobre el personaje")
-	assert_false(_window.is_over_drop_zone(Vector2(-500.0, -500.0)), "fuera de las dos")
-	assert_false(_window.get_global_rect().intersects(_character.get_global_rect()), "no se solapan")
+	assert_true(_window.is_over_drop_zone(_window.get_global_rect().get_center()), "over the inventory")
+	assert_true(_window.is_over_drop_zone(_character.get_global_rect().get_center()), "over the character")
+	assert_false(_window.is_over_drop_zone(Vector2(-500.0, -500.0)), "outside both")
+	assert_false(_window.get_global_rect().intersects(_character.get_global_rect()), "they do not overlap")
 	_character.close()
-	assert_false(_window.is_over_drop_zone(_character.get_global_rect().get_center()), "una ventana cerrada no cuenta")
+	assert_false(_window.is_over_drop_zone(_character.get_global_rect().get_center()), "a closed window does not count")
 	_window.close()
 
 
@@ -349,15 +349,15 @@ func test_the_slot_tooltip_tells_damage_level_and_comparison() -> void:
 	assert_eq(content["subtitle"], "Arma · Ranura de arma")
 	var body: String = content["body"]
 	var damage: Dictionary = InventorySlotView.weapon_damage(CombatCatalog.weapon_id(&"bow"))
-	assert_true(int(damage["heavy"]) > 0, "el arco tiene un disparo tensado con daño")
-	assert_true(body.contains(InventorySlotView.TEXT_HEAVY % int(damage["heavy"])), "el daño del fuerte: %s" % body)
-	assert_true(body.contains("Frente a Espada y escudo del Vado"), "la comparación con el arma de esa ranura")
+	assert_true(int(damage["heavy"]) > 0, "the bow has a drawn shot with damage")
+	assert_true(body.contains(InventorySlotView.TEXT_HEAVY % int(damage["heavy"])), "the fort's damage: %s" % body)
+	assert_true(body.contains("Frente a Espada y escudo del Vado"), "the comparison with the weapon in that slot")
 	assert_true(body.contains(InventorySlotView.TEXT_BOUND), "ligado")
 	assert_true(body.contains("Valor: 0 de oro"))
 	assert_true(body.contains("Nivel requerido: 1"))
 	assert_false(body.contains("[color=#%s]Nivel requerido" % UIPalette.DANGER.to_html(false)),
 			"nivel 1 alcanzado: no va en rojo")
-	# Con un arma que pide más nivel, la línea va en rojo.
+	# With a weapon that requires a higher level, the line is red.
 	var strong: ItemDefinition = _db.get_definition(&"bow_vado").duplicate() as ItemDefinition
 	strong.id = &"test_strong_bow"
 	strong.required_level = 20
@@ -367,14 +367,14 @@ func test_the_slot_tooltip_tells_damage_level_and_comparison() -> void:
 	var red: String = InventorySlotView.tooltip_for(strong_item, db, 5)["body"]
 	assert_true(red.contains("[color=#%s]Nivel requerido: 20[/color]" % UIPalette.DANGER.to_html(false)),
 			"en rojo si no llega: %s" % red)
-	# Una poción dice su efecto.
+	# A potion states its effect.
 	var potion: Vector2i = _slot_of(&"potion_health")
 	var potion_body: String = InventorySlotView.tooltip_for(_state.get_item(potion.x, potion.y), _db, 1)["body"]
 	assert_true(potion_body.contains(CombatText.ability_description(CombatCatalog.ability_id(&"potion_health"))),
-			"el efecto de la poción")
-	# Una casilla de la bolsa con un arma compara con la ranura a la que iría con un doble clic.
+			"the potion's effect")
+	# A bag slot with a weapon compares with the slot it would go to on a double click.
 	assert_true(String(_view_of(bow).get_tooltip_content()["body"]).contains("Frente a") == false,
-			"con WEAPON_2 vacía no hay con qué comparar")
+			"with WEAPON_2 empty there is nothing to compare against")
 	assert_eq(InventorySlotView.short_name("Arco del Vado"), "AV")
 	assert_eq(InventorySlotView.short_name("Poción"), "P")
 	assert_eq(InventorySlotView.short_name("  "), "?")
@@ -388,12 +388,12 @@ func test_the_character_window_shows_slots_sheet_and_figure() -> void:
 		assert_eq(view_slot.get_position_key(), Vector2i(1, slot))
 		assert_eq(view_slot.locked, slot >= InventoryState.OPEN_EQUIPMENT_SLOTS, "ranura %d" % slot)
 	var locked: InventorySlotView = _character.get_slot_view(InventoryState.EquipmentSlot.CHEST)
-	assert_eq(locked.get_tooltip_content()["subtitle"], CharacterWindow.TEXT_SOON, "«Próximamente»")
+	assert_eq(locked.get_tooltip_content()["subtitle"], CharacterWindow.TEXT_SOON, "\"Próximamente\" (Coming soon)")
 	assert_false(locked.enabled, "en gris")
-	assert_eq(_character.get_slot_view(0).get_item().def_id, &"sword_shield_vado", "la espada en WEAPON_1")
-	assert_null(_character.get_slot_view(1).get_item(), "WEAPON_2 vacía")
+	assert_eq(_character.get_slot_view(0).get_item().def_id, &"sword_shield_vado", "the sword in WEAPON_1")
+	assert_null(_character.get_slot_view(1).get_item(), "WEAPON_2 empty")
 	assert_eq(_character.get_slot_view(1).get_tooltip_content()["title"], "Arma 2")
-	# Nivel, XP y puntos del progreso; la hoja de CombatRules.
+	# Level, XP and points from the progress; the CombatRules sheet.
 	var curve: LevelCurve = LevelCurve.shared()
 	_progress.on_progress(ProgressMessages.ProgressUpdate.make(curve, 3, curve.total_to(3) + 25, 25,
 			ProgressMessages.XpSource.PVP, 120, 0))
@@ -406,32 +406,32 @@ func test_the_character_window_shows_slots_sheet_and_figure() -> void:
 	_progress.on_progress(ProgressMessages.ProgressUpdate.make(curve, curve.level_cap, curve.total_to(curve.level_cap),
 			0, ProgressMessages.XpSource.STATE, 120, 0))
 	assert_eq(_character.get_xp_label().text, CharacterWindow.TEXT_XP_CAP)
-	# La figura: con la apariencia (la de por defecto de Vardheim si los 8 B van a 0) y las armas.
+	# The figure: with the appearance (Vardheim's default if the 8 B are 0) and the weapons.
 	var zeros := PackedByteArray()
 	zeros.resize(CharacterAppearance.ENCODED_SIZE)
 	_character.set_identity("Ana", VARDHEIM, zeros)
 	assert_eq(_character.get_name_label().text, "Ana")
-	assert_null(_character.get_preview_visual(), "la figura no se monta hasta abrir")
+	assert_null(_character.get_preview_visual(), "the figure is not mounted until opened")
 	_character.open()
 	var visual: HumanoidVisual = _character.get_preview_visual()
-	if not assert_not_null(visual, "al abrir, la figura"):
+	if not assert_not_null(visual, "on opening, the figure"):
 		return
 	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
 	var expected: CharacterAppearance = AppearanceApplier.resolve(zeros, VARDHEIM, catalog)
-	assert_eq(visual.get_tint(&"skin"), catalog.skin_tones[expected.skin].color, "con la piel de su apariencia")
-	assert_true(_character.get_preview_viewport().own_world_3d, "en su propio mundo")
+	assert_eq(visual.get_tint(&"skin"), catalog.skin_tones[expected.skin].color, "with the skin of its appearance")
+	assert_true(_character.get_preview_viewport().own_world_3d, "in its own world")
 	var bow_id: int = CombatCatalog.weapon_id(&"bow")
 	_character.set_weapons(bow_id, 0)
-	assert_eq(_character.get_preview_character().combat.weapon_id, bow_id, "con el arma activa")
+	assert_eq(_character.get_preview_character().combat.weapon_id, bow_id, "with the active weapon")
 	var yaw: float = _character.get_preview_yaw()
 	_character.rotate_preview(100.0)
-	assert_near(_character.get_preview_yaw(), yaw + 100.0 * CharacterWindow.TURN_RATE, 0.0001, "gira al arrastrar")
+	assert_near(_character.get_preview_yaw(), yaw + 100.0 * CharacterWindow.TURN_RATE, 0.0001, "rotates when dragged")
 	await wait_process_frames(2)
 	_character.close()
 	assert_eq(_character.get_preview_viewport().render_target_update_mode, SubViewport.UPDATE_DISABLED,
 			"cerrada no dibuja")
 	_character.open()
-	assert_eq(_character.get_preview_visual(), visual, "al volver a abrir, la misma figura")
+	assert_eq(_character.get_preview_visual(), visual, "on reopening, the same figure")
 	_character.close()
 
 
@@ -447,43 +447,43 @@ func test_the_hud_mounts_the_windows_with_i_and_c() -> void:
 	_track(character)
 	client.fake_character = character
 	hud.bind(character, rig)
-	assert_null(hud.get_inventory_window(), "el sandbox no tiene inventario")
+	assert_null(hud.get_inventory_window(), "the sandbox has no inventory")
 	hud.bind_net(client, null)
 	var inventory_window: InventoryWindow = hud.get_inventory_window()
 	var character_window: CharacterWindow = hud.get_character_window()
-	if not assert_not_null(inventory_window, "en red, sí") or not assert_not_null(character_window):
+	if not assert_not_null(inventory_window, "over the network, yes") or not assert_not_null(character_window):
 		return
-	assert_true(inventory_window.get_index() < hud.get_death_screen().get_index(), "por debajo de la muerte")
-	assert_true(hud.get_split_dialog().get_index() > inventory_window.get_index(), "los diálogos encima")
-	assert_eq(inventory_window.get_inventory(), client.get_inventory(), "con el inventario del cliente")
-	# I y C abren las dos a la vez y liberan el cursor.
+	assert_true(inventory_window.get_index() < hud.get_death_screen().get_index(), "below the death screen")
+	assert_true(hud.get_split_dialog().get_index() > inventory_window.get_index(), "dialogs on top")
+	assert_eq(inventory_window.get_inventory(), client.get_inventory(), "with the client's inventory")
+	# I and C open both at once and release the cursor.
 	tree.root.push_input(_key(KEY_I))
-	assert_true(inventory_window.is_open(), "I abre el inventario")
+	assert_true(inventory_window.is_open(), "I opens the inventory")
 	tree.root.push_input(_key(KEY_C))
-	assert_true(character_window.is_open(), "C abre la de personaje")
-	assert_true(inventory_window.is_open(), "las dos a la vez")
-	assert_true(rig.is_ui_holding_cursor(), "con el cursor libre")
+	assert_true(character_window.is_open(), "C opens the character one")
+	assert_true(inventory_window.is_open(), "both at once")
+	assert_true(rig.is_ui_holding_cursor(), "with the cursor free")
 	tree.root.push_input(_key(KEY_I))
-	assert_false(inventory_window.is_open(), "I la cierra")
+	assert_false(inventory_window.is_open(), "I closes it")
 	character_window.close()
 	assert_false(rig.is_ui_holding_cursor())
-	# Un gesto con el inventario del cliente sale por el cliente; un aviso, al chat.
+	# A gesture with the client's inventory goes out through the client; a notice, to the chat.
 	client.get_inventory().on_full_page(ProgressMessages.InventoryFull.split(1, _state)[0])
 	var bow: Vector2i = _slot_of(&"bow_vado")
 	assert_eq(inventory_window.activate_item(bow), InventoryOps.Result.OK)
-	assert_eq(client.requests.size(), 1, "la petición sale por el cliente")
+	assert_eq(client.requests.size(), 1, "the request goes out through the client")
 	var chat_lines: int = hud.get_chat().get_log().get_count()
 	inventory_window.drop_outside(Vector2i(1, 0))
-	assert_eq(hud.get_chat().get_log().get_count(), chat_lines + 1, "el aviso del rechazo, en el chat")
-	# Con inventario, la pantalla de muerte no ofrece plantilla.
+	assert_eq(hud.get_chat().get_log().get_count(), chat_lines + 1, "the rejection notice, in the chat")
+	# With an inventory, the death screen offers no template.
 	hud._open_death_screen()
-	assert_false(hud.get_death_screen().get_template_selector().visible, "sin selector de plantilla")
+	assert_false(hud.get_death_screen().get_template_selector().visible, "without a template selector")
 	hud.get_death_screen().close()
-	# Con la pantalla de muerte abierta, I no abre nada.
+	# With the death screen open, I opens nothing.
 	hud.get_death_screen().open("", 0, PackedStringArray())
 	assert_false(hud.toggle_inventory_window(), "muerto no")
 	hud.get_death_screen().close()
-	# Una segunda llamada rehace las ventanas sin duplicarlas.
+	# A second call rebuilds the windows without duplicating them.
 	hud.bind_net(client, null)
 	assert_eq(hud.get_children().filter(func(child: Node) -> bool: return child is InventoryWindow).size(), 1)
 	assert_eq(hud.get_children().filter(func(child: Node) -> bool: return child is CharacterWindow).size(), 1)
@@ -501,6 +501,6 @@ func test_without_inventory_the_death_screen_keeps_the_template_selector() -> vo
 	hud.bind_net(client, null)
 	hud._open_death_screen()
 	assert_true(hud.get_death_screen().get_template_selector().visible,
-			"sin inventario (servidor sin progreso), la plantilla se sigue eligiendo")
+			"without an inventory (server without progress), the template is still chosen")
 	hud.get_death_screen().close()
 	await wait_process_frames()

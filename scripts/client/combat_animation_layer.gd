@@ -1,39 +1,39 @@
 class_name CombatAnimationLayer
 extends RefCounted
-## Capa de animación de combate de un personaje (ART-08), por encima de la locomoción. Lee la acción
-## en curso, elige el clip con [CombatClipPlanner] y mantiene hasta dos [Slot]: el clip actual y el
-## anterior, que se desvanece mientras entra el nuevo. El [CombatPoseModifier] los aplica al esqueleto
-## ya con la pose de la locomoción.
+## Combat animation layer of a character (ART-08), above the locomotion. It reads the action
+## in progress, picks the clip with [CombatClipPlanner] and keeps up to two [Slot]s: the current clip and the
+## previous one, which fades out while the new one comes in. The [CombatPoseModifier] applies them to the skeleton
+## already carrying the locomotion pose.
 ## [br][br]
-## [b]Dos orígenes de la acción[/b]:
-## [br]- [method update_local]: el jugador local (y el sandbox) lee su [CombatState] y el tick de la
-## simulación. El instante del clip es una función del estado ([code]tick - action_tick[/code] más la
-## fracción de interpolación), así que una reconciliación que repita ticks no reinicia nada mientras
-## la clave [code](action, action_id, action_tick)[/code] sea la misma; si el servidor impone otra
-## acción (un tambaleo), la clave cambia y hay fundido al clip nuevo.
-## [br]- [method update_remote]: un remoto solo trae el byte [code]action[/code] de su registro (bits
-## 0-3 la acción, 4-5 la fase, 6-7 el paso del combo o, en la esquiva y los controles, el contador de
-## reinicio; ver [ActionWire]). El instante se cuenta en tiempo real desde el momento en que se ve
-## entrar en cada fase, y cada cambio de fase (o de contador: una segunda esquiva o un segundo
-## tambaleo seguidos) reajusta el clip al principio de su tramo, de modo que el contacto sigue
-## cayendo en la ventana activa con la precisión de los snapshots.
+## [b]Two sources of the action[/b]:
+## [br]- [method update_local]: the local player (and the sandbox) reads its [CombatState] and the simulation
+## tick. The clip time is a function of the state ([code]tick - action_tick[/code] plus the
+## interpolation fraction), so a reconciliation that replays ticks does not restart anything as long as
+## the key [code](action, action_id, action_tick)[/code] is the same; if the server imposes another
+## action (a stagger), the key changes and there is a crossfade to the new clip.
+## [br]- [method update_remote]: a remote only brings the [code]action[/code] byte of its record (bits
+## 0-3 the action, 4-5 the phase, 6-7 the combo step or, in dodges and crowd control, the restart
+## counter; see [ActionWire]). The time is counted in real time from the moment each phase is seen
+## to begin, and every change of phase (or of counter: a second dodge or a second
+## stagger in a row) resets the clip to the start of its segment, so that the contact still
+## lands in the active window with snapshot precision.
 ## [br][br]
-## Sin acción, el clip actual se desvanece ([member CombatActionAnim.blend_out_s]) y la capa queda
-## inactiva.
+## With no action, the current clip fades out ([member CombatActionAnim.blend_out_s]) and the layer becomes
+## inactive.
 ## [br][br]
-## [b]Parada de golpe[/b] (ART-09, solo la animación): [method start_hitstop] congela el clip actual unos 50 a 80 ms
-## cuando un golpe conecta. No se toca el tiempo de la simulación ni el plan: se acumula un desfase ([member
-## _lag_s], segundos de clip) que se resta al instante del clip mientras dura la parada y se recupera después
-## acelerando el clip (a 1,5x) durante la recuperación, así la acción acaba a su hora. Cambiar de clip lo anula.
+## [b]Hitstop[/b] (ART-09, animation only): [method start_hitstop] freezes the current clip for about 50 to 80 ms
+## when a hit connects. The simulation time and the plan are not touched: an offset accumulates ([member
+## _lag_s], clip seconds) that is subtracted from the clip time while the stop lasts and recovered afterward
+## by speeding the clip up (to 1.5x) during the recovery, so the action ends on time. Changing clip cancels it.
 ## [br][br]
-## [b]Fase 4[/b] (docs/habilidades.md, sección 6.6, provisional): cada arma anima con su juego de clips
-## ([method clips_for]: [code]data/animation/<arma>_clips.tres[/code], o el de por defecto si no tiene);
-## el remoto da su arma activa (pareja de armas y bit de ranura de su registro). Una ABILITY sale con la
-## entrada de su habilidad (la del remoto, por la ranura del byte de acción); derribado se arrastra si se
-## mueve, y al pasar de derribado a nada (lo han levantado) se ve [constant CombatClipPlanner.KEY_GET_UP]
-## una vez.
+## [b]Phase 4[/b] (docs/habilidades.md, section 6.6, provisional): each weapon animates with its own clip set
+## ([method clips_for]: [code]data/animation/<weapon>_clips.tres[/code], or the default one if it has none);
+## the remote gives its active weapon (weapon pair and slot bit of its record). An ABILITY comes from
+## the input of its ability (the remote's, by the slot in the action byte); a knocked-down character crawls if it
+## moves, and when going from knocked down to nothing (they were lifted up) [constant CombatClipPlanner.KEY_GET_UP]
+## is seen once.
 
-## Clip en curso (o saliente) con su peso.
+## Clip in progress (or outgoing) with its weight.
 class Slot:
 	var key: StringName = &""
 	var animation_name: StringName = &""
@@ -44,54 +44,54 @@ class Slot:
 	var target: float = 1.0
 	var upper_body: bool = false
 	var hold: bool = false
-	## Peso de cadera y piernas con [member upper_body] y brazo izquierdo reservado (ver [CombatActionAnim]).
+	## Hips and legs weight with [member upper_body] and the left arm reserved (see [CombatActionAnim]).
 	var lower_weight: float = 0.0
-	## [member lower_weight] suavizado (cambia con la fase en 0,08 s) que usa el [CombatPoseModifier].
+	## Smoothed [member lower_weight] (changes with the phase over 0.08 s) used by the [CombatPoseModifier].
 	var lower_current: float = 0.0
 	var keep_left_arm: bool = false
 	var blend_in_s: float = 0.06
 	var blend_out_s: float = 0.12
 	var length_s: float = 0.0
 
-## Directorio de los juegos de clips por arma.
+## Directory of the per-weapon clip sets.
 const CLIPS_DIR: String = "res://data/animation"
-## Metros que avanza un derribado por ciclo del clip de arrastre (ART-51): el ciclo va al ritmo de la velocidad
-## real, para que las manos y las rodillas no patinen.
+## Meters a knocked-down character advances per cycle of the crawl clip (ART-51): the cycle runs at the pace of the real
+## speed, so the hands and knees do not skate.
 const CRAWL_CYCLE_METERS: float = 1.2
-## Segundos que tarda el peso de las piernas en pasar al de la fase siguiente de un ataque.
+## Seconds the legs' weight takes to move to that of the next phase of an attack.
 const LOWER_BLEND_S: float = 0.08
 
-## Juego de clips por defecto (el de las armas sin juego propio).
+## Default clip set (the one for weapons without their own set).
 var clips: CombatClipSet = null
-## Cuánto movimiento pide la entrada (0 = ninguno, 1 = andar a pleno): con él las piernas de un ataque vuelven a
-## la locomoción ([member Slot.lower_weight], ART-46). Lo pone el [CharacterAnimator] cada fotograma.
+## How much movement the input asks for (0 = none, 1 = full walk): with it the legs of an attack go back to
+## the locomotion ([member Slot.lower_weight], ART-46). Set by the [CharacterAnimator] every frame.
 var move_request: float = 0.0
-## Velocidad (m/s) de un derribado que se arrastra: marca el ritmo de su clip (ART-51).
+## Speed (m/s) of a knocked-down character who is crawling: sets the pace of its clip (ART-51).
 var crawl_speed: float = 0.0
 var _crawl_cycles: float = 0.0
 var _weapon: WeaponTicks = null
-# Levantarse tras ser levantado: si se está viendo y el tiempo (ticks) que lleva.
+# Getting up after being lifted: whether it is being shown and the time (ticks) it has been running.
 var _was_downed: bool = false
 var _getting_up: bool = false
 var _get_up_elapsed: float = 0.0
-# Juegos de clips ya cargados por nombre de arma (null = no tiene: se usa el de por defecto).
+# Clip sets already loaded by weapon name (null = it has none: the default one is used).
 static var _weapon_clips: Dictionary[StringName, CombatClipSet] = {}
 var _current: Slot = null
 var _previous: Slot = null
 var _plan: CombatClipPlanner.Plan = null
-# Parada de golpe: segundos de parada que quedan y desfase acumulado del clip actual (segundos de clip).
+# Hitstop: seconds of stop remaining and accumulated offset of the current clip (clip seconds).
 var _hitstop_left: float = 0.0
 var _lag_s: float = 0.0
-## Velocidad extra (fracción de la normal) con la que el clip recupera el desfase de la parada de golpe.
+## Extra speed (fraction of normal) with which the clip recovers the hitstop offset.
 const HITSTOP_CATCHUP: float = 0.5
-# Seguimiento del byte action de un remoto.
+# Tracking of a remote's action byte.
 var _remote_action: int = -1
 var _remote_step: int = -1
 var _remote_phase: int = -1
 var _remote_elapsed: float = 0.0
-# Contador de reinicio del byte (varía entre tambaleos seguidos: alterna el golpe al pecho y a la cabeza).
+# Restart counter of the byte (it varies between consecutive staggers: it alternates the chest and head hit).
 var _remote_restart_counter: int = 0
-# true mientras el golpe del arma está activo (la estela de la espada; ver [method is_swing_active]).
+# true while the weapon's hit is active (the sword trail; see [method is_swing_active]).
 var _swing_active: bool = false
 
 
@@ -100,10 +100,10 @@ func _init(clip_set: CombatClipSet = null) -> void:
 	_weapon = CombatCatalog.weapon(CombatCatalog.default_weapon_id())
 
 
-# --- Entrada ----------------------------------------------------------------------------------
+# --- Input ------------------------------------------------------------------------------------
 
-## Juego de clips del arma [param weapon_id]: [code]data/animation/<arma>_clips.tres[/code] si existe y,
-## si no, [param fallback].
+## Clip set of weapon [param weapon_id]: [code]data/animation/<weapon>_clips.tres[/code] if it exists and,
+## if not, [param fallback].
 static func clips_for(weapon_id: int, fallback: CombatClipSet) -> CombatClipSet:
 	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id)
 	if weapon == null:
@@ -115,9 +115,9 @@ static func clips_for(weapon_id: int, fallback: CombatClipSet) -> CombatClipSet:
 	return found if found != null else fallback
 
 
-## Actualiza la capa con el estado de combate del personaje local en el tick [param tick] de la
-## simulación, con [param fraction] (0 a 1) de la interpolación de física, y avanza
-## [param delta] segundos de pesos. [param moving]: si se mueve (un derribado se arrastra).
+## Updates the layer with the local character's combat state at simulation tick [param tick],
+## with [param fraction] (0 to 1) of the physics interpolation, and advances the weights by
+## [param delta] seconds. [param moving]: whether it is moving (a knocked-down character crawls).
 func update_local(state: CombatState, tick: int, fraction: float, delta: float,
 		moving: bool = false) -> void:
 	var plan: CombatClipPlanner.Plan = null
@@ -150,9 +150,9 @@ func update_local(state: CombatState, tick: int, fraction: float, delta: float,
 	apply_plan(plan, delta)
 
 
-## Actualiza la capa con el byte [code]action[/code] del registro dibujado de un remoto
-## (ver [ActionWire]) y avanza [param delta] segundos reales. [param weapon_id] es el arma que lleva en
-## las manos (0 = la de por defecto) y [param moving], si se mueve (un derribado se arrastra).
+## Updates the layer with the [code]action[/code] byte of a remote's drawn record
+## (see [ActionWire]) and advances [param delta] real seconds. [param weapon_id] is the weapon it holds in
+## its hands (0 = the default one) and [param moving], whether it is moving (a knocked-down character crawls).
 func update_remote(action_byte: int, delta: float, weapon_id: int = 0, moving: bool = false) -> void:
 	var action: int = action_byte & 15
 	var phase: int = (action_byte >> 4) & 3
@@ -171,8 +171,8 @@ func update_remote(action_byte: int, delta: float, weapon_id: int = 0, moving: b
 		var none_action: int = CombatState.Action.NONE if action == CombatState.Action.NONE else -1
 		apply_plan(_with_get_up(null, none_action, set_for_weapon, weapon, 0.0, delta, false), delta)
 		return
-	# Cada cambio de acción, de paso del combo (o de contador de reinicio) o de fase empieza su tramo
-	# desde el principio.
+	# Every change of action, combo step (or restart counter) or phase starts its segment
+	# from the beginning.
 	if action != _remote_action or step != _remote_step or phase != _remote_phase:
 		_remote_elapsed = 0.0
 	else:
@@ -193,8 +193,8 @@ func update_remote(action_byte: int, delta: float, weapon_id: int = 0, moving: b
 	apply_plan(plan, delta)
 
 
-## Aplica el plan de este fotograma ([param plan] null = sin acción): cambia de clip con fundido si
-## hace falta, fija el instante y avanza los pesos [param delta] segundos.
+## Applies this frame's plan ([param plan] null = no action): switches clip with a crossfade if
+## needed, sets the time and advances the weights by [param delta] seconds.
 func apply_plan(plan: CombatClipPlanner.Plan, delta: float) -> void:
 	_plan = plan
 	if plan != null:
@@ -212,38 +212,38 @@ func apply_plan(plan: CombatClipPlanner.Plan, delta: float) -> void:
 		_current.lower_weight = plan.lower_weight
 		_current.lower_current = move_toward(_current.lower_current, plan.lower_weight, delta / LOWER_BLEND_S)
 		if plan.key == CombatClipPlanner.KEY_DOWNED_CRAWL and _current.length_s > 0.0:
-			# El arrastre avanza al ritmo de la velocidad real (ART-51), no al del reloj.
+			# The crawl advances at the pace of the real speed (ART-51), not that of the clock.
 			_crawl_cycles = fposmod(_crawl_cycles + delta * crawl_speed / CRAWL_CYCLE_METERS, 1.0)
 			_current.time_s = lerpf(plan.from_s, plan.to_s, _crawl_cycles)
 			_current.speed = plan.speed * crawl_speed / CRAWL_CYCLE_METERS * plan.duration_s
 	elif _current != null:
 		_current.target = 0.0
-		# Sigue avanzando mientras se desvanece, sin pasarse del final del clip.
+		# Keeps advancing while it fades out, without going past the end of the clip.
 		_current.time_s = minf(_current.time_s + _current.speed * delta, _current.length_s)
 	_advance_weights(delta)
 
 
-# --- Parada de golpe ---------------------------------------------------------------------------
+# --- Hitstop -----------------------------------------------------------------------------------
 
-## Congela [param seconds] el clip actual (solo la animación). Si ya hay una parada en curso, se queda con la más larga.
-## No hace nada sin clip de combate en marcha (no hay nada que congelar).
+## Freezes the current clip for [param seconds] (animation only). If a stop is already in progress, it keeps the longer one.
+## It does nothing without a combat clip running (there is nothing to freeze).
 func start_hitstop(seconds: float) -> void:
 	if _current == null or seconds <= 0.0:
 		return
 	_hitstop_left = maxf(_hitstop_left, seconds)
 
 
-## true mientras el clip está congelado por la parada de golpe.
+## true while the clip is frozen by the hitstop.
 func is_in_hitstop() -> bool:
 	return _hitstop_left > 0.0
 
 
-## Desfase (s de clip) que lleva el clip actual por la parada de golpe y aún no ha recuperado.
+## Offset (clip seconds) the current clip carries because of the hitstop and has not yet recovered.
 func get_hitstop_lag() -> float:
 	return _lag_s
 
 
-# Instante del clip con la parada de golpe aplicada: congelado mientras dura, y recuperando el desfase después.
+# Clip time with the hitstop applied: frozen while it lasts, and recovering the offset afterward.
 func _hitstop_time(plan: CombatClipPlanner.Plan, delta: float) -> float:
 	if _hitstop_left > 0.0:
 		var frozen: float = minf(delta, _hitstop_left)
@@ -256,9 +256,9 @@ func _hitstop_time(plan: CombatClipPlanner.Plan, delta: float) -> float:
 	return maxf(plan.time_s - _lag_s, 0.0)
 
 
-# --- Salida -----------------------------------------------------------------------------------
+# --- Output -----------------------------------------------------------------------------------
 
-## Los clips que hay que aplicar ahora, del saliente al actual (con peso mayor que 0).
+## The clips to apply now, from the outgoing to the current one (with weight greater than 0).
 func get_slots() -> Array[Slot]:
 	var slots: Array[Slot] = []
 	if _previous != null and _previous.weight > 0.0:
@@ -268,23 +268,23 @@ func get_slots() -> Array[Slot]:
 	return slots
 
 
-## El plan del último fotograma (null sin acción).
+## The plan of the last frame (null with no action).
 func get_plan() -> CombatClipPlanner.Plan:
 	return _plan
 
 
-## Clip actual (o null).
+## Current clip (or null).
 func get_current() -> Slot:
 	return _current
 
 
-## Clip que se está desvaneciendo (o null).
+## Clip that is fading out (or null).
 func get_previous() -> Slot:
 	return _previous
 
 
-## Peso (0 a 1) del clip de cuerpo entero que se está viendo (esquiva, muerte, derribado, tambaleo...): la
-## postura armada se aparta mientras tanto ([ArmedStanceModifier]).
+## Weight (0 to 1) of the full-body clip being shown (dodge, death, knocked down, stagger...): the combat
+## stance steps aside in the meantime ([ArmedStanceModifier]).
 func get_full_body_weight() -> float:
 	var weight: float = 0.0
 	for slot: Slot in get_slots():
@@ -293,7 +293,7 @@ func get_full_body_weight() -> float:
 	return clampf(weight, 0.0, 1.0)
 
 
-## Peso (0 a 1) con el que los clips en curso reservan el brazo izquierdo a la postura armada (ataques de espada).
+## Weight (0 to 1) with which the clips in progress reserve the left arm for the combat stance (sword attacks).
 func get_left_arm_reserved() -> float:
 	var weight: float = 0.0
 	for slot: Slot in get_slots():
@@ -302,19 +302,19 @@ func get_left_arm_reserved() -> float:
 	return clampf(weight, 0.0, 1.0)
 
 
-## true si algún clip tiene peso.
+## true if any clip has weight.
 func is_active() -> bool:
 	return not get_slots().is_empty()
 
 
-## true mientras el golpe del arma (ataque ligero o fuerte) está en su fase activa: lo que lanza la estela.
-## Es el mismo criterio para el jugador local ([method ActionMachine.is_attack_active], el de
-## [signal CombatFeedback.swing_active_changed]) y para los remotos (la fase activa del byte de acción).
+## true while the weapon's hit (light or heavy attack) is in its active phase: what launches the trail.
+## It is the same criterion for the local player ([method ActionMachine.is_attack_active], the one behind
+## [signal CombatFeedback.swing_active_changed]) and for remotes (the active phase of the action byte).
 func is_swing_active() -> bool:
 	return _swing_active
 
 
-## Olvida todo (por ejemplo, tras reaparecer o cambiar de personaje).
+## Forgets everything (for example, after respawning or switching character).
 func reset() -> void:
 	_current = null
 	_previous = null
@@ -333,11 +333,11 @@ func reset() -> void:
 	_lag_s = 0.0
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ---------------------------------------------------------------------------------
 
-# Levantarse: cuando la acción pasa de DOWNED a NONE (lo han levantado), mientras siga en NONE y hasta
-# que acabe su clip, el plan es el de KEY_GET_UP. [param elapsed_ticks] es lo que lleva en NONE si se
-# sabe (el local, por su action_tick); si no (el remoto), se cuenta aquí con [param delta].
+# Getting up: when the action goes from DOWNED to NONE (they were lifted up), while it stays at NONE and until
+# its clip ends, the plan is that of KEY_GET_UP. [param elapsed_ticks] is how long it has been at NONE if it
+# is known (the local one, from its action_tick); if not (the remote), it is counted here with [param delta].
 func _with_get_up(plan: CombatClipPlanner.Plan, action: int, set_for_weapon: CombatClipSet,
 		weapon: WeaponTicks, elapsed_ticks: float, delta: float, exact: bool) -> CombatClipPlanner.Plan:
 	if action == CombatState.Action.DOWNED:
@@ -366,7 +366,7 @@ func _with_get_up(plan: CombatClipPlanner.Plan, action: int, set_for_weapon: Com
 	return CombatClipPlanner.plan_entry(set_for_weapon, CombatClipPlanner.KEY_GET_UP, weapon,
 			CombatState.Action.NONE, ActionMachine.PHASE_NONE, _get_up_elapsed)
 
-# Empieza un clip nuevo: el actual pasa a ser el saliente (si se veía) y el nuevo entra desde 0.
+# Starts a new clip: the current one becomes the outgoing one (if it was visible) and the new one comes in from 0.
 func _start_slot(plan: CombatClipPlanner.Plan) -> void:
 	_hitstop_left = 0.0
 	_lag_s = 0.0

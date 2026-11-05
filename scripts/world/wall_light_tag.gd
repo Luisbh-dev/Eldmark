@@ -1,18 +1,18 @@
 class_name WallLightTag
 extends Node3D
-## Marca todo lo visible bajo este nodo con la capa de luz de las murallas (ART-54).
+## Marks everything visible under this node with the walls' light layer (ART-54).
 ##
-## El sol del Vado Gris va en el plano X (para que las dos mitades reciban lo mismo), así que las
-## fachadas de las murallas, que miran a +Z y a -Z, quedan de canto a su luz y solo reciben ambiente:
-## grises y planas. El generador pone en la zona dos luces de relleno simétricas (una desde el
-## suroeste y otra desde el noroeste, sin sombra) que solo iluminan la capa [constant LIGHT_LAYER]: la
-## fachada interior de cada muralla recibe una y la luz rasante hace que se lea el relieve de los
-## sillares, sin tocar el resto de la escena. Este nodo mete en esa capa (sin quitarla de la 1) las
-## mallas de las murallas, incluidas las torres y las puertas, que son escenas instanciadas.
+## The Vado Gris sun runs in the X plane (so both halves receive the same), so the
+## wall facades, which face +Z and -Z, sit edge-on to its light and only receive ambient:
+## gray and flat. The generator puts two symmetric fill lights in the zone (one from the
+## southwest and one from the northwest, with no shadow) that only light the [constant LIGHT_LAYER] layer: the
+## inner facade of each wall receives one and the grazing light makes the relief of the
+## ashlar blocks readable, without touching the rest of the scene. This node puts the meshes of the walls
+## into that layer (without removing them from layer 1), including the towers and the gates, which are instanced scenes.
 ## [br][br]
-## En el servidor (headless) no dibuja nada y poner la capa no cuesta nada.
+## On the server (headless) it draws nothing and setting the layer costs nothing.
 
-## Capa de visualización de las murallas (la 20) y su máscara de luz.
+## Walls' visual layer (the 20th) and its light mask.
 const LIGHT_LAYER: int = 1 << 19
 
 
@@ -20,7 +20,7 @@ func _ready() -> void:
 	tag(self)
 
 
-## Pone la capa en cada [VisualInstance3D] bajo [param root] (también en el propio nodo si lo es).
+## Sets the layer on every [VisualInstance3D] under [param root] (also on the node itself if it is one).
 static func tag(root: Node) -> void:
 	var nodes: Array[Node] = root.find_children("*", "VisualInstance3D", true, false)
 	if root is VisualInstance3D:

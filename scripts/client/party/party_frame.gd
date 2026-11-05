@@ -1,11 +1,11 @@
 class_name PartyFrame
 extends Control
-## Marco de un miembro del grupo (SOC-08, docs/social.md, sección 12.5): su nombre con el color del reino, la
-## corona del líder, la vida y la resistencia, y la distancia si está lejos. Se ve atenuado si está muerto, si
-## está lejos o si aún no se sabe cómo está. Se dibuja entero en [method _draw]; lo coloca [PartyFrames] y le
-## da los datos con [method configure].
+## Frame of a party member (SOC-08, docs/social.md, section 12.5): their name in the realm color, the
+## leader's crown, health and stamina, and the distance if they are far away. It is dimmed if they are dead, if
+## they are far away or if their state is not known yet. It is drawn entirely in [method _draw]; [PartyFrames] places it and
+## gives it the data with [method configure].
 ## [br][br]
-## Medidas y colores provisionales (pendiente del usuario). Solo cliente.
+## Provisional sizes and colors (pending the user). Client only.
 
 const SIZE: Vector2 = Vector2(224.0, 50.0)
 const PADDING: float = 8.0
@@ -15,9 +15,9 @@ const HEALTH_HEIGHT: float = 11.0
 const STAMINA_HEIGHT: float = 5.0
 const BAR_GAP: float = 3.0
 const CROWN_SIZE: Vector2 = Vector2(14.0, 10.0)
-## Opacidad de un marco atenuado (lejos, muerto o sin datos).
+## Opacity of a dimmed frame (far, dead or without data).
 const DIM_ALPHA: float = 0.45
-## Distancia (m) a partir de la cual se escribe la distancia junto al nombre.
+## Distance (m) from which the distance is written next to the name.
 const DISTANCE_TEXT_FROM: float = 30.0
 const CROWN_COLOR: Color = Color(1.0, 0.82, 0.3, 1.0)
 const DEAD_COLOR: Color = Color(0.45, 0.45, 0.47, 1.0)
@@ -45,8 +45,8 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-## Pone los datos del marco y lo repinta. [param distance] es la distancia (m) al jugador local (INF si no se
-## sabe); [param own] marca el marco del propio jugador.
+## Sets the frame's data and repaints it. [param distance] is the distance (m) to the local player (INF if
+## unknown); [param own] marks the player's own frame.
 func configure(member: PartyState.Member, is_leader: bool, own: bool, distance: float,
 		name_color: Color) -> void:
 	_net_id = member.net_id
@@ -77,12 +77,12 @@ func get_name_color() -> Color:
 	return _color
 
 
-## true si el marco lleva la corona del líder.
+## true if the frame carries the leader's crown.
 func is_leader_shown() -> bool:
 	return _leader
 
 
-## true si es el marco del propio jugador.
+## true if it is the player's own frame.
 func is_own() -> bool:
 	return _own
 
@@ -103,22 +103,22 @@ func is_in_combat() -> bool:
 	return _in_combat
 
 
-## true si el miembro está más lejos de [constant PartyRules.FAR_DISTANCE] m.
+## true if the member is farther than [constant PartyRules.FAR_DISTANCE] m.
 func is_far() -> bool:
 	return _far
 
 
-## true si ya ha llegado el estado del miembro (si no, el marco está atenuado y sin datos).
+## true if the member's state has already arrived (otherwise the frame is dimmed and has no data).
 func has_data() -> bool:
 	return _has_data
 
 
-## Distancia (m) al jugador local (INF si no se sabe).
+## Distance (m) to the local player (INF if unknown).
 func get_distance() -> float:
 	return _distance
 
 
-## true si el marco se ve atenuado (muerto, lejos o sin datos).
+## true if the frame is shown dimmed (dead, far or without data).
 func is_dimmed() -> bool:
 	return _dead or _far or not _has_data
 
@@ -156,14 +156,14 @@ func _draw() -> void:
 			_stamina, UIPalette.STAMINA if not _dead else DEAD_COLOR)
 
 
-# Una barra con su fondo y el relleno hasta [param fraction].
+# A bar with its background and the fill up to [param fraction].
 func _draw_bar(rect: Rect2, fraction: float, fill: Color) -> void:
 	draw_rect(rect, BACK_COLOR)
 	if fraction > 0.0:
 		draw_rect(Rect2(rect.position, Vector2(rect.size.x * clampf(fraction, 0.0, 1.0), rect.size.y)), fill)
 
 
-# Una corona de tres picos (el tipo de letra del motor no lleva el símbolo).
+# A three-point crown (the engine's font does not include the symbol).
 func _draw_crown(top_left: Vector2) -> void:
 	var w: float = CROWN_SIZE.x
 	var h: float = CROWN_SIZE.y

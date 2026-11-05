@@ -1,76 +1,76 @@
 class_name HUD
 extends CanvasLayer
-## Interfaz del jugador: punto de mira, vida y resistencia, marcador de impacto y números de daño,
-## arcos de dirección del daño, viñeta de vida baja, placas de nombre de los remotos, pantalla de
-## muerte, panel de depuración y ayuda de controles.
+## Player interface: crosshair, health and stamina, hit marker and damage numbers,
+## damage direction arcs, low-health vignette, remote players' nameplates, death
+## screen, debug panel and controls help.
 ## [br][br]
-## Solo cliente. Lee el estado del personaje, de la cámara y (en red) del [NetClient] cada
-## fotograma, pero nunca modifica la simulación. Se conecta con [method bind] (sandbox y cliente en
-## red) y, en red, con [method bind_net].
+## Client only. It reads the state of the character, the camera and (online) the [NetClient] every
+## frame, but never modifies the simulation. It is connected with [method bind] (sandbox and online
+## client) and, online, with [method bind_net].
 ## [br][br]
-## [b]Sandbox sin red.[/b] La vida no existe: la barra de vida se oculta. La resistencia sí
-## funciona (la simulación es local) y el reparto de la sensación de combate ([CombatFeedback]) sigue
-## las acciones del personaje, pero no llega ningún evento.
+## [b]Offline sandbox.[/b] Health does not exist: the health bar is hidden. Stamina does
+## work (the simulation is local) and the combat feel distributor ([CombatFeedback]) follows
+## the character's actions, but no event arrives.
 ## [br][br]
-## [b]En red.[/b] La vida sale del bloque extra del snapshot ([method NetClient.get_health]); los
-## eventos de combate ya temporizados ([signal NetClient.combat_event]) los reparte
-## [CombatFeedback]. Al morir (estado «muerto» del snapshot) se abre la [DeathScreen], que libera el
-## cursor y atenúa el resto de la interfaz, y el botón envía el RESPAWN_REQUEST con el punto elegido;
-## al reaparecer (evento RESPAWN propio o vida de nuevo) se cierra y todo vuelve a la normalidad.
+## [b]Online.[/b] Health comes from the extra block of the snapshot ([method NetClient.get_health]); the
+## already timed combat events ([signal NetClient.combat_event]) are distributed by
+## [CombatFeedback]. On death ("dead" state in the snapshot) the [DeathScreen] opens, which frees the
+## cursor and dims the rest of the interface, and its button sends the RESPAWN_REQUEST with the chosen point;
+## on respawn (own RESPAWN event or health again) it closes and everything returns to normal.
 ## [br][br]
-## [b]Reaparición y mapa (UI-21).[/b] La lista de la pantalla de muerte son las opciones válidas ahora
-## ([method RespawnPointList.valid_options]: tu campamento y un fuerte tuyo en calma), se actualiza mientras
-## está abierta (el fuerte puede cambiar de manos) y cada opción envía el índice de su marcador entre todos
-## los de la zona (docs/fuerte.md, sección 5). «Elegir en el mapa» (o M con la pantalla abierta) abre el
-## [WorldMap] en modo de reaparición por encima de ella: pulsar un punto válido lo deja elegido en la lista.
+## [b]Respawn and map (UI-21).[/b] The death screen list is the options valid right now
+## ([method RespawnPointList.valid_options]: your camp and a calm fort of yours), it is updated while
+## open (the fort may change hands) and each option sends the index of its marker among all
+## those in the zone (docs/fuerte.md, section 5). "Elegir en el mapa" (choose on the map) (or M with the screen open) opens the
+## [WorldMap] in respawn mode on top of it: clicking a valid point leaves it chosen in the list.
 ## [br][br]
-## [b]Marcador (UI-41).[/b] Mientras se mantiene Tab, el [ScoreboardPanel] (el último hijo, por encima de todo)
-## enseña la tabla de la zona; el registro de bajas ([KillFeed]) vive en la interfaz de guerra.
+## [b]Scoreboard (UI-41).[/b] While Tab is held, the [ScoreboardPanel] (the last child, above everything)
+## shows the zone's table; the kill log ([KillFeed]) lives in the war interface.
 ## [br][br]
-## [b]Pistas (UI-42).[/b] En red, las [HintToasts] van justo encima de la pantalla de muerte y sin atenuar (la de
-## reaparecer es de esa pantalla) y debajo del mapa y del marcador, que las tapan: mientras uno de los dos está
-## abierto esperan ([member HintToasts.is_covered]). Al cerrarse la pantalla de muerte, la pista de reaparecer se
-## retira si aún no se había leído.
+## [b]Hints (UI-42).[/b] Online, the [HintToasts] sit just above the death screen and undimmed (the
+## respawn one belongs to that screen) and below the map and the scoreboard, which cover them: while either of them is
+## open they wait ([member HintToasts.is_covered]). When the death screen closes, the respawn hint is
+## withdrawn if it had not been read yet.
 ## [br][br]
-## [b]Chat (SOC-05).[/b] En red, la [ChatBox] abajo a la izquierda enseña los mensajes de [signal
-## NetClient.chat_received] y los NOTICE; Intro abre su línea y suspende el movimiento y la cámara mientras se
-## escribe.
+## [b]Chat (SOC-05).[/b] Online, the [ChatBox] at the bottom left shows the messages of [signal
+## NetClient.chat_received] and the NOTICEs; Enter opens its line and suspends movement and the camera while
+## typing.
 ## [br][br]
-## [b]Grupo (SOC-08).[/b] En red, el [PartyHud] a la izquierda enseña el aviso de invitación (con aceptar y rechazar
-## por teclado) y los marcos de los miembros del grupo; atiende los comandos [code]/invitar[/code],
-## [code]/salir[/code], [code]/expulsar[/code] y [code]/lider[/code] de la caja de chat y avisa a las placas de nombre de
-## quién es del grupo.
+## [b]Party (SOC-08).[/b] Online, the [PartyHud] on the left shows the invitation notice (with accept and decline
+## by keyboard) and the frames of the party members; it handles the commands [code]/invitar[/code],
+## [code]/salir[/code], [code]/expulsar[/code] and [code]/lider[/code] of the chat box and tells the nameplates
+## who is in the party.
 ## [br][br]
-## [b]Menú social (SOC-07).[/b] La tecla [code]social_menu[/code] abre el [SocialMenu] sobre el aliado al que apunta la
-## retícula a 20 m o menos y a la vista ([method open_social_menu]): invitar al grupo y susurrar.
+## [b]Social menu (SOC-07).[/b] The [code]social_menu[/code] key opens the [SocialMenu] on the ally the
+## reticle points at, within 20 m and in sight ([method open_social_menu]): invite to the party and whisper.
 ## [br][br]
-## [b]Habilidades (fase 4, docs/habilidades.md, sección 6).[/b] Encima de la vida, la fila de efectos propios
-## ([StatusIcons] con el [StatusTracker] del jugador local, contra el tick del servidor estimado) y, encima, la
-## [ActionBar] (también en el sandbox: lee el estado predicho). Arriba, los avisos de derribado
-## ([DownedNotice]); en la pantalla de muerte, el selector de plantilla, que manda el LOADOUT_SELECT. Tensando
-## el arco, la cámara cierra el campo de visión ([method CameraRig.set_aim_zoom]) y la retícula se cierra
-## con la carga ([method Crosshair.set_tension]).
+## [b]Abilities (phase 4, docs/habilidades.md, section 6).[/b] Above health, the row of own effects
+## ([StatusIcons] with the local player's [StatusTracker], against the estimated server tick) and, above that, the
+## [ActionBar] (also in the sandbox: it reads the predicted state). At the top, the knocked-down notices
+## ([DownedNotice]); on the death screen, the loadout selector, which sends the LOADOUT_SELECT. While drawing
+## the bow, the camera narrows the field of view ([method CameraRig.set_aim_zoom]) and the reticle closes
+## with the charge ([method Crosshair.set_tension]).
 ## [br][br]
-## [b]Inventario y personaje (fase 5, docs/progresion.md §11, UI-26).[/b] En red, I abre la [InventoryWindow] (a la
-## derecha) y C la [CharacterWindow] (a la izquierda), con el [ClientInventory] y el [ClientProgress] del cliente; se
-## abren a la vez, liberan el cursor y se arrastra de una a otra. Los diálogos de dividir ([SplitDialog]) y de
-## destruir ([UIConfirmDialog]) van por encima de las dos. Los avisos de una petición rechazada salen en el chat.
-## Con inventario (llega con el primer INVENTORY_FULL), la pantalla de muerte ya no enseña el selector de plantilla:
-## la reaparición toma las armas del equipo (§2.5).
+## [b]Inventory and character (phase 5, docs/progresion.md §11, UI-26).[/b] Online, I opens the [InventoryWindow] (on the
+## right) and C the [CharacterWindow] (on the left), with the client's [ClientInventory] and [ClientProgress]; they
+## open together, free the cursor and you drag from one to the other. The split ([SplitDialog]) and destroy
+## ([UIConfirmDialog]) dialogs go on top of both. Notices of a rejected request appear in the chat.
+## With inventory (it arrives with the first INVENTORY_FULL), the death screen no longer shows the loadout selector:
+## the respawn takes the weapons from the equipment (§2.5).
 
-## Cada cuánto se refresca el texto del panel de depuración, en segundos.
-## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
+## How often the debug panel text is refreshed, in seconds.
+## Refreshing it every frame makes the figures flicker and become unreadable.
 const DEBUG_REFRESH_INTERVAL: float = 0.1
-## Opacidad a la que se atenúa la interfaz de juego con la pantalla de muerte abierta.
+## Opacity to which the game interface is dimmed with the death screen open.
 const DEAD_DIM_ALPHA: float = 0.3
-## Posición (px desde abajo, anclada al centro) de la barra de acciones y de la fila de efectos propios,
-## por encima de la barra de acciones (a 24 px del borde); [code]Vitals[/code] va justo encima de ella.
+## Position (px from the bottom, anchored to the center) of the action bar and of the row of own effects,
+## above the action bar (24 px from the edge); [code]Vitals[/code] goes right above it.
 const ACTION_BAR_RECT: Rect2 = Rect2(-340.0, -76.0, 680.0, 52.0)
 const STATUS_ROW_RECT: Rect2 = Rect2(-200.0, -160.0, 400.0, 30.0)
-## Aviso del menú social (SOC-07) cuando no hay a quién ofrecérselo. Es el único: un enemigo, un muerto, un jugador
-## falso o alguien tras una pared dan el mismo que no apuntar a nadie, para no delatar lo que no se ve.
+## Social menu notice (SOC-07) for when there is nobody to offer it to. It is the only one: an enemy, a dead player, a fake
+## player or someone behind a wall give the same one as pointing at nobody, so as not to reveal what is not seen.
 const TEXT_NO_SOCIAL_TARGET: String = "Apunta a un jugador de tu reino (a 20 m o menos) para ver sus acciones."
-## Pistas de la línea de ayuda del cliente en red: las de siempre y, tras la depuración, el mapa y el marcador.
+## Hints of the help line of the online client: the usual ones and, after debug, the map and the scoreboard.
 const NET_HINTS_EXTRA: Array[Dictionary] = [
 	{"action": &"open_map", "text": "Mapa"},
 	{"action": &"scoreboard", "text": "Marcador"},
@@ -79,7 +79,7 @@ const NET_HINTS_EXTRA: Array[Dictionary] = [
 	{"action": &"open_inventory", "text": "Inventario"},
 	{"action": &"open_character", "text": "Personaje"},
 ]
-## Margen (px) de las ventanas de inventario y personaje con el borde de la pantalla.
+## Margin (px) of the inventory and character windows from the screen edge.
 const INVENTORY_WINDOW_MARGIN: int = 48
 
 var _character: PlayerCharacter = null
@@ -87,37 +87,37 @@ var _camera_rig: CameraRig = null
 var _client: NetClient = null
 var _world: Node = null
 var _feedback: CombatFeedback = null
-# Audio y efectos del combate (ART-11, ART-09): se conectan al reparto de la sensación de combate.
+# Combat audio and effects (ART-11, ART-09): connected to the combat feel distributor.
 var _combat_audio: CombatAudio = null
 var _combat_vfx: CombatVfx = null
 var _debug_refresh_left: float = 0.0
 var _health_initialized: bool = false
-# Quién te mató y con qué (del DEATH propio), hasta que se use para la pantalla de muerte.
+# Who killed you and with what (from the own DEATH), until it is used for the death screen.
 var _death_killer_id: int = -1
 var _death_attack_id: int = 0
-# Tick del servidor del último RESPAWN propio: un snapshot anterior no puede reabrir la pantalla.
+# Server tick of the last own RESPAWN: an earlier snapshot cannot reopen the screen.
 var _respawn_event_tick: int = 0
 var _dimmed: bool = false
-# Interfaz de guerra del cliente en red (fuerte, avisos, jefe...); null en el sandbox.
+# War interface of the online client (fort, notices, boss...); null in the sandbox.
 var _war_hud: WarHud = null
-# Mapa a pantalla completa y marcador (por encima de la pantalla de muerte); null en el sandbox.
+# Full-screen map and scoreboard (above the death screen); null in the sandbox.
 var _world_map: WorldMap = null
 var _scoreboard: ScoreboardPanel = null
-# Pistas del juego (UI-42), por encima de la pantalla de muerte; null en el sandbox.
+# Game hints (UI-42), above the death screen; null in the sandbox.
 var _hints: HintToasts = null
-# Caja de chat (SOC-05); null en el sandbox.
+# Chat box (SOC-05); null in the sandbox.
 var _chat: ChatBox = null
-# Interfaz de grupo (SOC-08): invitación y marcos; null en el sandbox.
+# Party interface (SOC-08): invitation and frames; null in the sandbox.
 var _party_hud: PartyHud = null
-# Menú social sobre el jugador bajo el punto de mira (SOC-07); null en el sandbox.
+# Social menu on the player under the crosshair (SOC-07); null in the sandbox.
 var _social_menu: SocialMenu = null
-# Lo que enseña ahora la lista de reaparición de la pantalla de muerte (para saber si cambió).
+# What the death screen's respawn list currently shows (to know whether it changed).
 var _death_signature: String = ""
-# Fase 4: barra de acciones, efectos propios y avisos de derribado (los crea _ready, también en el sandbox).
+# Phase 4: action bar, own effects and knocked-down notices (created by _ready, also in the sandbox).
 var _action_bar: ActionBar = null
 var _status_row: StatusIcons = null
 var _downed_notice: DownedNotice = null
-# Fase 5: ventanas de inventario y personaje y sus diálogos (null en el sandbox).
+# Phase 5: inventory and character windows and their dialogs (null in the sandbox).
 var _inventory_window: InventoryWindow = null
 var _character_window: CharacterWindow = null
 var _split_dialog: SplitDialog = null
@@ -137,14 +137,14 @@ var _destroy_dialog: UIConfirmDialog = null
 
 
 func _ready() -> void:
-	# Los controles no se mueven, pero así el HUD nunca se ve afectado por la
-	# interpolación de físicas.
+	# The controls do not move, but this way the HUD is never affected by
+	# physics interpolation.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	# Después de que la simulación (controlador local o predicción de red) haya dado el tick: el
-	# bit «sin resistencia» de combat_flags dura un solo tick y hay que leerlo ya puesto.
+	# After the simulation (local controller or network prediction) has ticked: the
+	# "no stamina" bit of combat_flags lasts a single tick and must be read while it is set.
 	process_physics_priority = 100
 	_vitals.set_health_visible(_client != null)
-	# La línea de ayuda de controles empieza oculta (UI-49): F1 y los ajustes de Interfaz la muestran.
+	# The controls help line starts hidden (UI-49): F1 and the Interface settings show it.
 	ClientSettings.bind_visibility(_hint, ClientSettings.HELP_BAR, true)
 	_death.respawn_requested.connect(_on_respawn_requested)
 	_death.map_requested.connect(_on_map_requested)
@@ -158,13 +158,13 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	# Que el cursor no se quede suelto si el HUD desaparece con la pantalla de muerte abierta.
+	# So that the cursor is not left loose if the HUD disappears with the death screen open.
 	if is_instance_valid(_camera_rig):
 		_camera_rig.set_ui_cursor_release(false, self)
 
 
-## Conecta el HUD con el personaje local y la cámara. Se puede llamar antes o
-## después de añadir el HUD al árbol.
+## Connects the HUD to the local character and the camera. It can be called before or
+## after adding the HUD to the tree.
 func bind(character: PlayerCharacter, camera_rig: CameraRig) -> void:
 	_character = character
 	_camera_rig = camera_rig
@@ -177,15 +177,15 @@ func bind(character: PlayerCharacter, camera_rig: CameraRig) -> void:
 		_refresh_debug_text()
 
 
-## Conecta la barra de acciones con el controlador del personaje local: una pulsación a destiempo hace
-## parpadear su casilla (en red lo hace [method bind_net] con el del cliente).
+## Connects the action bar to the local character's controller: a mistimed key press makes
+## its slot blink (online, [method bind_net] does it with the client's).
 func bind_controller(controller: LocalPlayerController) -> void:
 	if is_node_ready():
 		_action_bar.bind(_character, controller)
 
 
-## Conecta el HUD con el cliente de red [param client] (la vida y los eventos de combate) y con la
-## zona [param world] (los puntos de reaparición). Después de [method bind].
+## Connects the HUD to the network client [param client] (health and combat events) and to the
+## zone [param world] (the respawn points). After [method bind].
 func bind_net(client: NetClient, world: Node) -> void:
 	_client = client
 	_world = world
@@ -230,8 +230,8 @@ func _process(delta: float) -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	# El bit «sin resistencia» dura un solo tick de física: se lee a esa cadencia para no perderlo
-	# entre dos fotogramas.
+	# The "no stamina" bit lasts a single physics tick: it is read at that rate so as not to lose it
+	# between two frames.
 	if is_instance_valid(_character) and (_character.combat.combat_flags
 			& CombatState.FLAG_NO_STAMINA) != 0:
 		_vitals.notify_no_stamina()
@@ -259,8 +259,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 
-## Muestra u oculta la línea de ayuda de controles (F1) y lo recuerda en los ajustes de Interfaz
-## ([constant ClientSettings.HELP_BAR]). Devuelve si queda visible.
+## Shows or hides the controls help line (F1) and remembers it in the Interface settings
+## ([constant ClientSettings.HELP_BAR]). Returns whether it ends up visible.
 func toggle_help_line() -> bool:
 	var settings: ClientSettings = ClientSettings.current()
 	settings.set_value(ClientSettings.HELP_BAR, not bool(settings.get_value(ClientSettings.HELP_BAR)))
@@ -268,13 +268,13 @@ func toggle_help_line() -> bool:
 	return _hint.visible
 
 
-## Línea de ayuda de controles de la parte baja (oculta por defecto).
+## Controls help line at the bottom (hidden by default).
 func get_help_line() -> UIHintBar:
 	return _hint
 
 
-## Muestra u oculta el panel de depuración sin esperar a F3. El cliente en red lo empieza oculto y
-## F3 lo alterna junto con [NetDebugOverlay].
+## Shows or hides the debug panel without waiting for F3. The online client starts it hidden and
+## F3 toggles it together with [NetDebugOverlay].
 func set_debug_visible(visible_now: bool) -> void:
 	_debug_panel.visible = visible_now
 	if visible_now:
@@ -282,9 +282,9 @@ func set_debug_visible(visible_now: bool) -> void:
 		_refresh_debug_text()
 
 
-# --- Accesos (para las pruebas y para quien monta la interfaz) --------------------------------
+# --- Accessors (for tests and for whoever assembles the interface) ----------------------------
 
-## Barras de vida y resistencia.
+## Health and stamina bars.
 func get_vitals() -> VitalsHud:
 	return _vitals
 
@@ -309,50 +309,50 @@ func get_damage_numbers() -> DamageNumbers:
 	return _numbers
 
 
-## Placas de nombre y vida de los remotos.
+## Name and health nameplates of the remotes.
 func get_nameplates() -> Nameplates:
 	return _nameplates
 
 
-## Interfaz de guerra: panel de captura, avisos, barra de jefe... (null sin red).
+## War interface: capture panel, notices, boss bar... (null offline).
 func get_war_hud() -> WarHud:
 	return _war_hud
 
 
-## Mapa a pantalla completa (null sin red).
+## Full-screen map (null offline).
 func get_world_map() -> WorldMap:
 	return _world_map
 
 
-## Marcador de la zona, Tab (null sin red).
+## Zone scoreboard, Tab (null offline).
 func get_scoreboard() -> ScoreboardPanel:
 	return _scoreboard
 
 
-## Pistas del juego (null sin red).
+## Game hints (null offline).
 func get_hints() -> HintToasts:
 	return _hints
 
 
-## Caja de chat (null sin red).
+## Chat box (null offline).
 func get_chat() -> ChatBox:
 	return _chat
 
 
-## Interfaz de grupo: aviso de invitación y marcos de los miembros (null sin red).
+## Party interface: invitation notice and member frames (null offline).
 func get_party_hud() -> PartyHud:
 	return _party_hud
 
 
-## Menú social del jugador bajo el punto de mira (null sin red).
+## Social menu of the player under the crosshair (null offline).
 func get_social_menu() -> SocialMenu:
 	return _social_menu
 
 
-## Abre el menú social sobre el aliado al que apunta la retícula, a 20 m o menos y a la vista (SOC-07,
-## [method SocialTarget.find]): invitar al grupo y susurrar. Devuelve false, sin abrir nada, si hay otra ventana o
-## la línea del chat abierta, o si no hay ningún aliado así bajo la retícula; en este caso avisa en el chat con
-## [constant TEXT_NO_SOCIAL_TARGET], el mismo aviso apunte a un enemigo, a una pared o al vacío.
+## Opens the social menu on the ally the reticle points at, within 20 m and in sight (SOC-07,
+## [method SocialTarget.find]): invite to the party and whisper. Returns false, opening nothing, if there is another window or
+## the chat line open, or if there is no such ally under the reticle; in that case it notifies in the chat with
+## [constant TEXT_NO_SOCIAL_TARGET], the same notice whether it points at an enemy, a wall or the void.
 func open_social_menu() -> bool:
 	if not is_instance_valid(_social_menu) or not is_instance_valid(_client) \
 			or not is_instance_valid(_camera_rig) or _death.is_open():
@@ -363,7 +363,7 @@ func open_social_menu() -> bool:
 	if character == null or not is_instance_valid(character) or not character.is_inside_tree():
 		return false
 	var own_realm: int = _client.get_config().realm if _client.get_config() != null else NetProtocol.Realm.NONE
-	# El mundo del personaje (ya en el árbol) es el de las paredes que tapan.
+	# The character's world (already in the tree) is the one of the walls that block the view.
 	var space: PhysicsDirectSpaceState3D = character.get_world_3d().direct_space_state
 	var view: RemotePlayerView = SocialTarget.find(_client.get_remote_world(), _camera_rig.get_aim_ray(),
 			character.global_position, own_realm, space)
@@ -374,28 +374,28 @@ func open_social_menu() -> bool:
 	return true
 
 
-## Ventana de inventario, I (null sin red).
+## Inventory window, I (null offline).
 func get_inventory_window() -> InventoryWindow:
 	return _inventory_window
 
 
-## Ventana de personaje, C (null sin red).
+## Character window, C (null offline).
 func get_character_window() -> CharacterWindow:
 	return _character_window
 
 
-## Diálogo de dividir una pila (null sin red).
+## Dialog to split a stack (null offline).
 func get_split_dialog() -> SplitDialog:
 	return _split_dialog
 
 
-## Diálogo de confirmar una destrucción (null sin red).
+## Dialog to confirm a destruction (null offline).
 func get_destroy_dialog() -> UIConfirmDialog:
 	return _destroy_dialog
 
 
-## Abre o cierra la ventana de inventario. Devuelve false, sin hacer nada, sin red o con la pantalla de muerte o la
-## línea del chat abiertas.
+## Opens or closes the inventory window. Returns false, doing nothing, when offline or with the death screen or the
+## chat line open.
 func toggle_inventory_window() -> bool:
 	if not _can_toggle_inventory_windows():
 		return false
@@ -403,7 +403,7 @@ func toggle_inventory_window() -> bool:
 	return true
 
 
-## Abre o cierra la ventana de personaje (las mismas condiciones que [method toggle_inventory_window]).
+## Opens or closes the character window (the same conditions as [method toggle_inventory_window]).
 func toggle_character_window() -> bool:
 	if not _can_toggle_inventory_windows():
 		return false
@@ -411,45 +411,45 @@ func toggle_character_window() -> bool:
 	return true
 
 
-## Barra de acciones (UI-11).
+## Action bar (UI-11).
 func get_action_bar() -> ActionBar:
 	return _action_bar
 
 
-## Fila de efectos propios sobre la vida (UI-45).
+## Row of own effects above health (UI-45).
 func get_status_row() -> StatusIcons:
 	return _status_row
 
 
-## Avisos de derribado.
+## Knocked-down notices.
 func get_downed_notice() -> DownedNotice:
 	return _downed_notice
 
 
-## Reparto de la sensación de combate (null hasta [method bind]).
+## Combat feel distributor (null until [method bind]).
 func get_feedback() -> CombatFeedback:
 	return _feedback
 
 
-## Audio del combate (null hasta [method bind]).
+## Combat audio (null until [method bind]).
 func get_combat_audio() -> CombatAudio:
 	return _combat_audio
 
 
-## Efectos de golpe (null hasta [method bind] o sin personaje).
+## Hit effects (null until [method bind] or without a character).
 func get_combat_vfx() -> CombatVfx:
 	return _combat_vfx
 
 
-## true mientras la interfaz de juego está atenuada por la pantalla de muerte.
+## true while the game interface is dimmed by the death screen.
 func is_dimmed() -> bool:
 	return _dimmed
 
 
-# --- Montaje ----------------------------------------------------------------------------------
+# --- Setup ------------------------------------------------------------------------------------
 
-# Crea (una vez) el reparto de la sensación de combate y lo conecta con el personaje, el cliente y
-# los elementos de pantalla; sus señales alimentan los arcos, la viñeta y la pantalla de muerte.
+# Creates (once) the combat feel distributor and connects it to the character, the client and
+# the on-screen elements; its signals feed the arcs, the vignette and the death screen.
 func _setup_feedback() -> void:
 	if _feedback == null:
 		_feedback = CombatFeedback.new()
@@ -464,7 +464,7 @@ func _setup_feedback() -> void:
 		_combat_audio = CombatAudio.new()
 		add_child(_combat_audio)
 	_combat_audio.bind(_feedback)
-	# Los efectos cuelgan del mundo (van en coordenadas globales): del personaje, que se recrea con la zona.
+	# The effects hang from the world (they use global coordinates): from the character, which is recreated with the zone.
 	if is_instance_valid(_character) and (not is_instance_valid(_combat_vfx)
 			or _combat_vfx.get_parent() != _character):
 		if is_instance_valid(_combat_vfx):
@@ -475,8 +475,8 @@ func _setup_feedback() -> void:
 		_combat_vfx.bind(_feedback)
 
 
-# Crea (de nuevo, si ya había una) la interfaz de guerra y la conecta con el cliente. Va por debajo de la
-# pantalla de muerte, que es el último hijo.
+# Creates (again, if there already was one) the war interface and connects it to the client. It goes below the
+# death screen, which is the last child.
 func _setup_war_hud() -> void:
 	if is_instance_valid(_war_hud):
 		remove_child(_war_hud)
@@ -488,8 +488,8 @@ func _setup_war_hud() -> void:
 	_war_hud.bind(_client, _camera_rig)
 
 
-# Crea (de nuevo, si ya había uno) el mapa a pantalla completa: el último hijo, por encima de la pantalla de
-# muerte para poder elegir reaparición. Usa el mapa horneado que cargó la interfaz de guerra.
+# Creates (again, if there already was one) the full-screen map: the last child, above the death
+# screen so that respawn can be chosen. It uses the baked map that the war interface loaded.
 func _setup_world_map() -> void:
 	if is_instance_valid(_world_map):
 		remove_child(_world_map)
@@ -503,7 +503,7 @@ func _setup_world_map() -> void:
 	_world_map.respawn_option_chosen.connect(_on_map_option_chosen)
 
 
-# Crea (de nuevo, si ya había uno) el marcador de la zona: el último hijo, por encima de todo lo demás.
+# Creates (again, if there already was one) the zone scoreboard: the last child, above everything else.
 func _setup_scoreboard() -> void:
 	if is_instance_valid(_scoreboard):
 		remove_child(_scoreboard)
@@ -514,8 +514,8 @@ func _setup_scoreboard() -> void:
 	_scoreboard.bind(_client)
 
 
-# Crea (de nuevo, si ya había unas) las pistas del juego: justo encima de la pantalla de muerte (sin atenuar: la de
-# reaparecer es de esa pantalla) y debajo del mapa y del marcador, que las tapan mientras están abiertos.
+# Creates (again, if there already were some) the game hints: right above the death screen (undimmed: the
+# respawn one belongs to that screen) and below the map and the scoreboard, which cover them while they are open.
 func _setup_hints() -> void:
 	if is_instance_valid(_hints):
 		remove_child(_hints)
@@ -529,14 +529,14 @@ func _setup_hints() -> void:
 	_hints.is_covered = _hints_covered
 
 
-# true si el mapa o el marcador tapan las pistas.
+# true if the map or the scoreboard cover the hints.
 func _hints_covered() -> bool:
 	return (is_instance_valid(_world_map) and _world_map.is_open()) \
 			or (is_instance_valid(_scoreboard) and _scoreboard.is_open())
 
 
-# Crea (de nuevo, si ya había una) la caja de chat: por debajo de la pantalla de muerte, que es el último hijo
-# (y del marcador y el mapa, que van encima de todo).
+# Creates (again, if there already was one) the chat box: below the death screen, which is the last child
+# (and below the scoreboard and the map, which go on top of everything).
 func _setup_chat() -> void:
 	if is_instance_valid(_chat):
 		remove_child(_chat)
@@ -548,8 +548,8 @@ func _setup_chat() -> void:
 	_chat.bind(_client, _camera_rig, _client.get_controller())
 
 
-# Crea (de nuevo, si ya había una) la interfaz de grupo: a la izquierda, por debajo de la pantalla de muerte, con
-# los comandos de grupo de la caja de chat conectados a ella y las placas de nombre avisadas de quién es del grupo.
+# Creates (again, if there already was one) the party interface: on the left, below the death screen, with
+# the chat box's party commands connected to it and the nameplates told who is in the party.
 func _setup_party() -> void:
 	if is_instance_valid(_party_hud):
 		remove_child(_party_hud)
@@ -558,16 +558,16 @@ func _setup_party() -> void:
 	_party_hud.name = "Grupo"
 	add_child(_party_hud)
 	move_child(_party_hud, _death.get_index())
-	# Y y N no responden a la invitación con otra ventana abierta; la pantalla de muerte (el HUD pide el cursor
-	# por ella) sí deja responder.
+	# Y and N do not answer the invitation with another window open; the death screen (the HUD requests the cursor
+	# for it) does allow answering.
 	_party_hud.bind(_client, _camera_rig, self)
 	if is_instance_valid(_chat):
 		_chat.party_handler = Callable(_party_hud, "handle_command")
 	_nameplates.set_party(_client.get_party())
 
 
-# Crea (de nuevo, si ya había uno) el menú social: por encima del chat y del grupo, y por debajo de la pantalla
-# de muerte y del marcador, que sigue siendo el último hijo.
+# Creates (again, if there already was one) the social menu: above the chat and the party, and below the death
+# screen and the scoreboard, which remains the last child.
 func _setup_social_menu() -> void:
 	if is_instance_valid(_social_menu):
 		remove_child(_social_menu)
@@ -579,10 +579,10 @@ func _setup_social_menu() -> void:
 	_social_menu.setup(_client, _chat, _camera_rig)
 
 
-# --- Inventario y personaje (fase 5) ---------------------------------------------------------------
+# --- Inventory and character (phase 5) ----------------------------------------------------------
 
-# Crea (de nuevo, si ya había) las ventanas de inventario y personaje y sus diálogos, por debajo de la pantalla de
-# muerte (los diálogos encima de las ventanas), enlazadas con el inventario, el progreso y la cámara.
+# Creates (again, if there already was one) the inventory and character windows and their dialogs, below the death
+# screen (the dialogs above the windows), linked to the inventory, the progress and the camera.
 func _setup_inventory() -> void:
 	for node: Node in [_inventory_window, _character_window, _split_dialog, _destroy_dialog]:
 		if is_instance_valid(node):
@@ -631,23 +631,23 @@ func _can_toggle_inventory_windows() -> bool:
 	return not (is_instance_valid(_chat) and _chat.is_open())
 
 
-# Con la ventana de personaje abierta, su figura lleva las armas del estado del personaje (las del LOADOUT y el
-# cambio de arma, no las de la vista optimista del inventario).
+# With the character window open, its figure carries the weapons from the character's state (those of the LOADOUT and the
+# weapon swap, not those of the inventory's optimistic view).
 func _update_inventory_windows() -> void:
 	if is_instance_valid(_character_window) and _character_window.is_open() and is_instance_valid(_character):
 		_character_window.set_weapons(_character.combat.weapon_id, _character.combat.alt_weapon_id)
 
 
-# Una petición del inventario que no se envió o que el servidor rechazó: su aviso, en el chat.
+# An inventory request that was not sent or that the server rejected: its notice, in the chat.
 func _on_inventory_rejected(_result: int, text: String) -> void:
 	if is_instance_valid(_chat) and not text.is_empty():
 		_chat.add_system_text(text)
 
 
-# --- Habilidades (fase 4) ------------------------------------------------------------------------
+# --- Abilities (phase 4) -----------------------------------------------------------------------
 
-# Crea la barra de acciones, la fila de efectos propios y los avisos de derribado, por debajo de la pantalla
-# de muerte.
+# Creates the action bar, the row of own effects and the knocked-down notices, below the death
+# screen.
 func _setup_ability_hud() -> void:
 	_action_bar = ActionBar.new()
 	_place_bottom(_action_bar, ACTION_BAR_RECT)
@@ -663,8 +663,8 @@ func _setup_ability_hud() -> void:
 		_action_bar.bind(_character)
 
 
-# Añade [param control] anclado abajo al centro con el rectángulo [param rect] (offsets desde ese ancla),
-# justo por debajo de la pantalla de muerte.
+# Adds [param control] anchored at the bottom center with rectangle [param rect] (offsets from that anchor),
+# right below the death screen.
 func _place_bottom(control: Control, rect: Rect2) -> void:
 	add_child(control)
 	move_child(control, _death.get_index())
@@ -680,7 +680,7 @@ func _place_bottom(control: Control, rect: Rect2) -> void:
 	control.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 
-# Cada fotograma: efectos propios, avisos de derribado y la puntería del arco.
+# Every frame: own effects, knocked-down notices and the bow aim.
 func _update_ability_hud() -> void:
 	var online: bool = is_instance_valid(_client)
 	var server_tick: int = _client.get_estimated_server_tick() if online else 0
@@ -698,8 +698,8 @@ func _update_ability_hud() -> void:
 	_update_bow_aim()
 
 
-# Tensando el arco: la cámara cierra el campo de visión al llegar a la carga mínima y la retícula se
-# cierra con la carga (docs/habilidades.md, sección 6.5). En cualquier otra acción, nada.
+# While drawing the bow: the camera narrows the field of view on reaching the minimum charge and the reticle
+# closes with the charge (docs/habilidades.md, section 6.5). On any other action, nothing.
 func _update_bow_aim() -> void:
 	var zoom: float = 0.0
 	var tension: float = 0.0
@@ -716,13 +716,13 @@ func _update_bow_aim() -> void:
 		_camera_rig.set_aim_zoom(zoom)
 
 
-# Eventos de combate ya temporizados del cliente: levantar, rematar y derribos van a los avisos.
+# Already timed combat events of the client: reviving, finishing off and knockdowns go to the notices.
 func _on_combat_event(event: NetMessages.EntityEvent, _is_own: bool) -> void:
 	_downed_notice.set_own_id(_client.get_net_id() if is_instance_valid(_client) else 0)
 	_downed_notice.handle_event(event)
 
 
-# Plantilla elegida en la pantalla de muerte: vale para esta reaparición.
+# Template chosen on the death screen: valid for this respawn.
 func _on_template_chosen(template_id: int) -> void:
 	if is_instance_valid(_client):
 		_client.send_loadout_select(template_id)
@@ -734,7 +734,7 @@ func _entity_name(net_id: int) -> String:
 	return _feedback.get_entity_name(net_id) if _feedback != null else ""
 
 
-# --- Vida y resistencia -----------------------------------------------------------------------
+# --- Health and stamina -----------------------------------------------------------------------
 
 func _update_vitals() -> void:
 	if is_instance_valid(_character):
@@ -749,7 +749,7 @@ func _update_vitals() -> void:
 			_health_initialized = true
 		else:
 			_vitals.set_health(health, max_health)
-		# En la pantalla de muerte, sin viñeta: ya atenúa el mundo y el HUD (UI-50).
+		# On the death screen, no vignette: it already dims the world and the HUD (UI-50).
 		var dead: bool = _is_dead_now()
 		_vignette.set_suppressed(dead)
 		_vignette.set_health_fraction(1.0 if dead else float(health) / float(maxi(max_health, 1)))
@@ -757,7 +757,7 @@ func _update_vitals() -> void:
 		_vignette.set_health_fraction(1.0)
 
 
-# Un golpe propio confirmado: los marcadores del mundo se quedan solo con el objetivo unos segundos.
+# An own hit confirmed: the world markers are left with only the target for a few seconds.
 func _on_hit_confirmed(_kind: int, _amount: int, _event: NetMessages.EntityEvent) -> void:
 	_notify_combat_to_markers()
 
@@ -769,8 +769,8 @@ func _notify_combat_to_markers() -> void:
 
 func _on_damage_taken(amount: int, attacker_id: int, _event: NetMessages.EntityEvent) -> void:
 	_notify_combat_to_markers()
-	# La viñeta roja avisa de daño: una parada o un bloqueo completo (amount 0) no la enciende. Su opacidad es
-	# proporcional a lo que quita el golpe de la vida máxima (UI-50).
+	# The red vignette warns of damage: a parry or a full block (amount 0) does not light it. Its opacity is
+	# proportional to what the hit takes from maximum health (UI-50).
 	if amount <= 0:
 		return
 	_vignette.flash(amount, _client.get_max_health() if is_instance_valid(_client) and _client.has_health()
@@ -787,10 +787,10 @@ func _on_damage_taken(amount: int, attacker_id: int, _event: NetMessages.EntityE
 	_indicator.add_hit(DamageIndicator.world_heading(from_position, attacker_position), strength)
 
 
-# --- Muerte y reaparición ---------------------------------------------------------------------
+# --- Death and respawn ------------------------------------------------------------------------
 
-# true si el servidor dice que el jugador está muerto y el snapshot no es anterior a la última
-# reaparición (un snapshot atrasado podría reabrir la pantalla recién cerrada).
+# true if the server says the player is dead and the snapshot is not older than the last
+# respawn (a stale snapshot could reopen the screen that was just closed).
 func _is_dead_now() -> bool:
 	if not is_instance_valid(_client) or not _client.is_dead():
 		return false
@@ -827,15 +827,15 @@ func _open_death_screen() -> void:
 	var own_id: int = _client.get_net_id()
 	_death.set_point_indices(RespawnPointList.option_indices(options, own_id))
 	_death_signature = _options_signature(options, own_id)
-	# La plantilla marcada es la que se pidió la última vez (o la de por defecto). Con inventario no se enseña: la
-	# reaparición toma las armas del equipo y LOADOUT_SELECT ya no cambia nada (docs/progresion.md §2.5).
+	# The selected template is the one requested last time (or the default one). With inventory it is not shown: the
+	# respawn takes the weapons from the equipment and LOADOUT_SELECT no longer changes anything (docs/progresion.md §2.5).
 	if _client.get_config() != null:
 		_death.get_template_selector().select(_client.get_config().get_loadout_template_id())
 	_death.get_template_selector().visible = not _client.get_inventory().has_inventory()
 
 
-# Las opciones de reaparición que valen ahora para el jugador: su campamento y un fuerte suyo en calma
-# (RespawnRules, la misma regla que aplica el servidor).
+# The respawn options valid for the player right now: their camp and a calm fort of theirs
+# (RespawnRules, the same rule the server applies).
 func _valid_respawn_options() -> Array[RespawnPointList.Option]:
 	var empty: Array[RespawnPointList.Option] = []
 	if not is_instance_valid(_world) or not is_instance_valid(_client) or _client.get_config() == null:
@@ -846,8 +846,8 @@ func _valid_respawn_options() -> Array[RespawnPointList.Option]:
 			view.get_states_by_definition(tick), tick, view.get_display_names())
 
 
-# Vuelve a calcular las opciones mientras la pantalla está abierta (un fuerte cambia de manos o entra en
-# combate) y rehace la lista solo si ha cambiado algo; conserva el punto elegido.
+# Recomputes the options while the screen is open (a fort changes hands or enters
+# combat) and rebuilds the list only if something changed; it keeps the chosen point.
 func _refresh_respawn_options() -> void:
 	var options: Array[RespawnPointList.Option] = _valid_respawn_options()
 	var own_id: int = _client.get_net_id()
@@ -866,7 +866,7 @@ static func _options_signature(options: Array[RespawnPointList.Option], spread_s
 	return "|".join(parts)
 
 
-# Con la pantalla de muerte abierta y más de un sitio donde reaparecer, la pista del mapa (una sola vez).
+# With the death screen open and more than one place to respawn, the map hint (only once).
 func _hint_respawn_map() -> void:
 	if is_instance_valid(_hints) and _death.get_point_count() > 1:
 		_hints.request(HintCatalog.RESPAWN_MAP)
@@ -877,13 +877,13 @@ func _on_map_requested() -> void:
 		_world_map.open(true)
 
 
-# El mapa se abre con la pantalla de muerte delante (con M o con el botón): es para elegir reaparición.
+# The map opens with the death screen in front (with M or with the button): it is for choosing respawn.
 func _on_map_opened() -> void:
 	if _death.is_open() and is_instance_valid(_world_map):
 		_world_map.set_respawn_mode(true)
 
 
-# Un punto de reaparición válido pulsado en el mapa: queda elegido en la lista y se vuelve a la pantalla.
+# A valid respawn point clicked on the map: it is left chosen in the list and we return to the screen.
 func _on_map_option_chosen(option: RespawnPointList.Option) -> void:
 	if not _death.is_open():
 		return
@@ -892,7 +892,7 @@ func _on_map_option_chosen(option: RespawnPointList.Option) -> void:
 	_world_map.close()
 
 
-# «Te ha derrotado X con Y.» con lo que se sabe del DEATH propio.
+# "Te ha derrotado X con Y." (X defeated you with Y.) with what is known from the own DEATH.
 func _death_cause_text() -> String:
 	if _death_killer_id < 0:
 		return CombatText.TEXT_FALLEN
@@ -909,7 +909,7 @@ func _on_death_opened() -> void:
 func _on_death_closed() -> void:
 	_set_dimmed(false)
 	_death_signature = ""
-	# La pista de reaparecer ya no viene a cuento (si no se había leído, vuelve en la siguiente muerte).
+	# The respawn hint is no longer relevant (if it had not been read, it returns on the next death).
 	if is_instance_valid(_hints):
 		_hints.withdraw(HintCatalog.RESPAWN_MAP)
 	if is_instance_valid(_world_map) and _world_map.is_respawn_mode():
@@ -928,7 +928,7 @@ func _on_respawn_requested(point_index: int) -> void:
 		_client.send_respawn_request(point_index)
 
 
-# Atenúa (o restaura) lo que no es la pantalla de muerte.
+# Dims (or restores) whatever is not the death screen.
 func _set_dimmed(dim: bool) -> void:
 	_dimmed = dim
 	var alpha: float = DEAD_DIM_ALPHA if dim else 1.0
@@ -939,7 +939,7 @@ func _set_dimmed(dim: bool) -> void:
 		_war_hud.modulate.a = alpha
 
 
-## El punto de mira solo tiene sentido mientras el ratón controla la cámara.
+## The crosshair only makes sense while the mouse controls the camera.
 func _update_crosshair() -> void:
 	var cursor_free: bool = is_instance_valid(_camera_rig) and _camera_rig.is_cursor_free()
 	_crosshair.visible = not cursor_free

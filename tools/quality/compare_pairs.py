@@ -1,10 +1,10 @@
-"""Une, lado a lado, las capturas de antes y de después de una carpeta de áreas del banco.
+"""Joins, side by side, the before and after captures of a folder of bench areas.
 
-Uso: python tools/quality/compare_pairs.py <carpeta_antes> <carpeta_despues> <carpeta_salida> [--width 1920]
+Usage: python tools/quality/compare_pairs.py <before_folder> <after_folder> <output_folder> [--width 1920]
 
-Recorre los PNG de <carpeta_despues> (con la misma estructura que <carpeta_antes>) y escribe, por cada
-pareja, una imagen con ANTES a la izquierda y DESPUÉS a la derecha. Cada mitad mide la mitad del ancho
-pedido, con el mismo encuadre, para poder usarlas tal cual en un vídeo comparativo.
+Walks the PNGs of <after_folder> (with the same structure as <before_folder>) and writes, for each
+pair, an image with the label "ANTES" (before) on the left and "DESPUÉS" (after) on the right. Each half is half the requested
+width, with the same framing, so they can be used as they are in a comparison video.
 """
 import argparse
 from pathlib import Path

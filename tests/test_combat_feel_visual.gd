@@ -1,7 +1,7 @@
 extends TestCase
-## Pruebas de los ganchos de sonido y efectos de [HumanoidVisual] (ART-11, ART-09): las acciones de un remoto suenan y
-## se ven (barrido, esquiva, habilidad), el aura de carga sigue la fracción de carga, la estela del fuerte se enciende
-## con su variante y los pasos salen de los pies en la superficie que se pisa.
+## Tests of the sound and effect hooks of [HumanoidVisual] (ART-11, ART-09): a remote's actions sound and
+## are seen (sweep, dodge, ability), the charge aura follows the charge fraction, the heavy attack's trail lights up
+## with its variant and the footsteps come from the feet on the surface being stepped on.
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 
@@ -55,15 +55,15 @@ func test_a_remote_swing_sounds_with_the_delay_of_its_windup() -> void:
 	holder[0] = _byte(CombatState.Action.LIGHT, ActionMachine.PHASE_WINDUP, 0)
 	await wait_process_frames(2)
 	assert_true(_audio.get_pending_count() + _audio.get_play_count(&"sword_swing_light") >= 1,
-			"el barrido del remoto se ha pedido (con retraso, esperando a la ventana activa)")
+			"the remote's sweep was requested (delayed, waiting for the active window)")
 	await tree.create_timer(0.3).timeout
-	assert_eq(_audio.get_play_count(&"sword_swing_light"), 1, "y suena una vez")
+	assert_eq(_audio.get_play_count(&"sword_swing_light"), 1, "and sounds once")
 	holder[0] = 0
 	await wait_process_frames(2)
 	holder[0] = _byte(CombatState.Action.HEAVY, ActionMachine.PHASE_WINDUP, 0)
 	await wait_process_frames(2)
 	await tree.create_timer(0.45).timeout
-	assert_eq(_audio.get_play_count(&"sword_swing_heavy"), 1, "el fuerte suena con su banco")
+	assert_eq(_audio.get_play_count(&"sword_swing_heavy"), 1, "the heavy sounds with its bank")
 
 
 func test_a_remote_dodge_sounds_and_raises_dust() -> void:
@@ -92,7 +92,7 @@ func test_a_remote_shield_wall_shows_its_arc() -> void:
 			slot = index
 	holder[0] = _byte(CombatState.Action.ABILITY, 0, slot)
 	await wait_process_frames(2)
-	assert_eq(_vfx.get_spawn_count(&"wall"), 1, "el muro de escudos de un remoto se ve")
+	assert_eq(_vfx.get_spawn_count(&"wall"), 1, "a remote's shield wall is seen")
 
 
 func test_charge_aura_follows_the_charge_and_releases_on_the_heavy_blow() -> void:
@@ -104,15 +104,15 @@ func test_charge_aura_follows_the_charge_and_releases_on_the_heavy_blow() -> voi
 	holder[0] = _byte(CombatState.Action.CHARGE)
 	await wait_process_frames(10)
 	var aura: ChargeAura = visual.get_charge_aura()
-	if not assert_not_null(aura, "el aura se crea al empezar a cargar"):
+	if not assert_not_null(aura, "the aura is created when charging starts"):
 		return
-	assert_true(aura.is_playing(), "y se enciende")
+	assert_true(aura.is_playing(), "and lights up")
 	var early: float = aura.get_charge()
 	await wait_process_frames(30)
-	assert_true(aura.get_charge() > early, "crece con el tiempo que se ve cargar")
+	assert_true(aura.get_charge() > early, "it grows with the time the charge is seen")
 	holder[0] = _byte(CombatState.Action.HEAVY, ActionMachine.PHASE_ACTIVE)
 	await wait_process_frames(2)
-	assert_true(not aura.is_playing() or aura.get_elapsed() < 1.0, "al soltar el golpe estalla y se apaga")
+	assert_true(not aura.is_playing() or aura.get_elapsed() < 1.0, "on releasing the hit it bursts and goes out")
 
 
 func test_cancelled_charge_switches_the_aura_off_without_a_burst() -> void:
@@ -128,7 +128,7 @@ func test_cancelled_charge_switches_the_aura_off_without_a_burst() -> void:
 		return
 	holder[0] = 0
 	await wait_process_frames(2)
-	assert_false(aura.is_playing() and aura.get_charge() > 0.95, "cancelar apaga el aura")
+	assert_false(aura.is_playing() and aura.get_charge() > 0.95, "canceling turns off the aura")
 
 
 func test_the_heavy_swing_lights_the_heavy_trail() -> void:
@@ -143,12 +143,12 @@ func test_the_heavy_swing_lights_the_heavy_trail() -> void:
 	var trail: SwordTrail = sword.get_node_or_null(^"SwordTrail") as SwordTrail
 	if not assert_not_null(trail):
 		return
-	assert_true(trail.is_active() and trail.is_heavy(), "el golpe fuerte enciende la estela del fuerte")
+	assert_true(trail.is_active() and trail.is_heavy(), "the heavy hit lights up the heavy trail")
 	holder[0] = 0
 	await wait_process_frames(3)
 	holder[0] = _byte(CombatState.Action.LIGHT, ActionMachine.PHASE_ACTIVE, 0)
 	await wait_process_frames(3)
-	assert_true(trail.is_active() and not trail.is_heavy(), "uno ligero, la normal")
+	assert_true(trail.is_active() and not trail.is_heavy(), "a light one, the normal")
 
 
 func test_hit_stop_on_a_visual_freezes_its_combat_clip() -> void:
@@ -161,9 +161,9 @@ func test_hit_stop_on_a_visual_freezes_its_combat_clip() -> void:
 	await wait_process_frames(4)
 	var layer: CombatAnimationLayer = visual.get_animator().get_combat_layer()
 	visual.start_hitstop(0.08)
-	assert_true(layer.is_in_hitstop(), "la parada de golpe se aplica a la capa de combate del personaje")
+	assert_true(layer.is_in_hitstop(), "hitstop is applied to the character's combat layer")
 	await wait_process_frames(12)
-	assert_false(layer.is_in_hitstop(), "y acaba")
+	assert_false(layer.is_in_hitstop(), "and ends")
 
 
 func test_footstep_surface_defaults_to_grass_on_a_plain_floor() -> void:
@@ -171,7 +171,7 @@ func test_footstep_surface_defaults_to_grass_on_a_plain_floor() -> void:
 	tree.root.add_child(world)
 	_nodes.append(world)
 	assert_eq(FootstepSurface.kind_at(world, Vector3.ZERO), CombatSoundBank.SURFACE_GRASS,
-			"sin terreno ni metadatos, hierba")
+			"without terrain or metadata, grass")
 
 
 func test_a_collider_with_surface_metadata_decides_the_step() -> void:
@@ -189,4 +189,4 @@ func test_a_collider_with_surface_metadata_decides_the_step() -> void:
 	body.position = Vector3(0.0, -0.5, 0.0)
 	await wait_physics_frames(3)
 	assert_eq(FootstepSurface.kind_at(world, Vector3(0.0, 0.05, 0.0)), CombatSoundBank.SURFACE_WOOD,
-			"un puente de madera suena a madera")
+			"a wooden bridge sounds like wood")

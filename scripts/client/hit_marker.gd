@@ -1,17 +1,17 @@
 class_name HitMarker
 extends Control
-## Marcador de impacto alrededor del punto de mira (UI-12). Cuatro marcas en diagonal que aparecen
-## cuando el servidor confirma un golpe propio (ENTITY_EVENT) y se desvanecen enseguida. Nunca se
-## predice: [CombatFeedback] solo lo dispara al recibir el evento.
+## Hit marker around the crosshair (UI-12). Four diagonal marks that appear
+## when the server confirms an own hit (ENTITY_EVENT) and quickly fade. It is never
+## predicted: [CombatFeedback] only fires it on receiving the event.
 ## [br][br]
-## Variantes ([enum Kind]): golpe normal (blanco), golpe fuerte (naranja, más grande), bloqueado (gris azulado,
-## más pequeño y con la marca cortada), parada (dorado, con un aro) y muerte (rojo, el mayor, con una cruz de
-## cuatro puntas). Calidad (UI-12): las marcas son gruesas (4 px, con contorno), nacen un 40 % más grandes y se
-## encogen al sitio en 70 ms, así que se leen incluso en mitad de una refriega.
+## Variants ([enum Kind]): normal hit (white), heavy hit (orange, larger), blocked (bluish gray,
+## smaller and with the mark cut short), parry (gold, with a ring) and death (red, the largest, with a four-pointed
+## cross). Quality (UI-12): the marks are thick (4 px, outlined), are born 40% larger and
+## shrink into place in 70 ms, so they read even in the middle of a melee.
 
 enum Kind { HIT, HEAVY, BLOCKED, KILL, PARRY }
 
-## Duración (s) del marcador de cada variante.
+## Duration (s) of the marker of each variant.
 const DURATIONS: Dictionary[int, float] = {
 	Kind.HIT: 0.22,
 	Kind.HEAVY: 0.3,
@@ -19,7 +19,7 @@ const DURATIONS: Dictionary[int, float] = {
 	Kind.KILL: 0.5,
 	Kind.PARRY: 0.32,
 }
-## Distancia (px) del centro a la que empieza cada marca y su longitud, por variante.
+## Distance (px) from the center at which each mark starts and its length, per variant.
 const INNER_RADIUS: Dictionary[int, float] = {
 	Kind.HIT: 9.0,
 	Kind.HEAVY: 11.0,
@@ -42,14 +42,14 @@ const COLORS: Dictionary[int, Color] = {
 	Kind.PARRY: Color(1.0, 0.86, 0.35, 1.0),
 }
 const OUTLINE_COLOR: Color = Color(0.0, 0.0, 0.0, 0.75)
-## Grosor de la marca (px) y del contorno extra; sube en las variantes que más importan.
+## Thickness of the mark (px) and of the extra outline; it goes up on the variants that matter most.
 const LINE_WIDTH: float = 4.0
 const OUTLINE_EXTRA: float = 3.0
-## Cuánto más grande nace el marcador (1 = sin salto) y cuánto dura (fracción de su vida) el encogimiento.
+## How much larger the marker is born (1 = no jump) and how long the shrinking lasts (fraction of its life).
 const POP_SCALE: float = 1.4
 const POP_FRACTION: float = 0.3
 
-## false: no se muestra ningún marcador (opción del jugador).
+## false: no marker is shown (player option).
 var enabled: bool = true:
 	set(value):
 		enabled = value
@@ -70,8 +70,8 @@ func _process(delta: float) -> void:
 	advance(delta)
 
 
-## Enseña el marcador de la variante [param variant] (reinicia el que hubiera). No hace nada si
-## [member enabled] es false.
+## Shows the marker of variant [param variant] (restarts any existing one). Does nothing if
+## [member enabled] is false.
 func show_marker(variant: int) -> void:
 	if not enabled:
 		return
@@ -82,7 +82,7 @@ func show_marker(variant: int) -> void:
 	queue_redraw()
 
 
-## Avanza [param delta] segundos el desvanecimiento.
+## Advances the fade by [param delta] seconds.
 func advance(delta: float) -> void:
 	if _time_left <= 0.0:
 		return
@@ -90,30 +90,30 @@ func advance(delta: float) -> void:
 	queue_redraw()
 
 
-## Lo quita al instante.
+## Removes it instantly.
 func clear() -> void:
 	_time_left = 0.0
 	queue_redraw()
 
 
-## true mientras se ve el marcador.
+## true while the marker is visible.
 func is_active() -> bool:
 	return _time_left > 0.0
 
 
-## Variante del último marcador (o del que se ve).
+## Variant of the last marker (or of the one being shown).
 func get_variant() -> int:
 	return _variant
 
 
-## Opacidad actual (1 al aparecer, 0 al acabar).
+## Current opacity (1 on appearing, 0 at the end).
 func get_alpha() -> float:
 	if _duration <= 0.0 or _time_left <= 0.0:
 		return 0.0
 	return clampf(_time_left / _duration, 0.0, 1.0)
 
 
-## Veces que se ha enseñado el marcador desde que existe (para las pruebas).
+## Times the marker has been shown since it exists (for tests).
 func get_shown_count() -> int:
 	return _shown_count
 
@@ -129,18 +129,18 @@ func _draw() -> void:
 	outline.a *= alpha
 	var inner: float = INNER_RADIUS[_variant]
 	var length: float = TICK_LENGTH[_variant]
-	# Salto de escala: nace un 40 % más grande y se encoge a su sitio en el primer tramo de su vida.
+	# Scale jump: born 40% larger and shrinks into place in the first stretch of its life.
 	var age: float = 1.0 - alpha
 	var pop: float = lerpf(POP_SCALE, 1.0, clampf(age / POP_FRACTION, 0.0, 1.0))
 	var width: float = LINE_WIDTH + (1.5 if _variant == Kind.KILL or _variant == Kind.HEAVY else 0.0)
-	# Se encoge hacia el centro al desvanecerse.
+	# It shrinks toward the center as it fades.
 	var pull: float = maxf(age - POP_FRACTION, 0.0) * 6.0
 	for diagonal: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
 		var direction: Vector2 = diagonal.normalized()
 		var from: Vector2 = center + direction * (inner * pop - pull)
 		var to: Vector2 = center + direction * ((inner + length) * pop - pull)
 		if _variant == Kind.BLOCKED:
-			# Bloqueado: la marca queda cortada a la mitad.
+			# Blocked: the mark is cut to half.
 			to = from + (to - from) * 0.55
 		draw_line(from, to, outline, width + OUTLINE_EXTRA, true)
 		draw_line(from, to, color, width, true)

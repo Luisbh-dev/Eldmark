@@ -134,11 +134,11 @@ func loadRecord(h *Harness, rules *progress.Rules, characterID int64) savedRecor
 	h.T.Helper()
 	raw, err := progress.New(rules, nil).Load(context.Background(), h.Pool, characterID)
 	if err != nil {
-		h.T.Fatalf("Load del personaje %d: %v", characterID, err)
+		h.T.Fatalf("Load of character %d: %v", characterID, err)
 	}
 	var rec savedRecord
 	if err := json.Unmarshal(raw, &rec); err != nil {
-		h.T.Fatalf("Load del personaje %d: %v\n%s", characterID, err, raw)
+		h.T.Fatalf("Load of character %d: %v\n%s", characterID, err, raw)
 	}
 	return rec
 }
@@ -150,13 +150,13 @@ func loadRecord(h *Harness, rules *progress.Rules, characterID int64) savedRecor
 func compareWithLoad(t *testing.T, rules *progress.Rules, what string, seen *botProgress, rec savedRecord) {
 	t.Helper()
 	if seen == nil {
-		t.Fatalf("%s: el informe del bot no trae progress", what)
+		t.Fatalf("%s: the bot report has no progress", what)
 	}
 	if seen.Pending != 0 {
-		t.Fatalf("%s: el bot tenía %d peticiones del inventario sin respuesta", what, seen.Pending)
+		t.Fatalf("%s: the bot had %d unanswered inventory requests", what, seen.Pending)
 	}
 	if len(seen.Items) != len(rec.Items) {
-		t.Fatalf("%s: el bot ve %d objetos y Load da %d\nbot:  %+v\nLoad: %+v", what, len(seen.Items),
+		t.Fatalf("%s: the bot sees %d items and Load gives %d\nbot:  %+v\nLoad: %+v", what, len(seen.Items),
 			len(rec.Items), seen.Items, rec.Items)
 	}
 	for i := range rec.Items {
@@ -168,19 +168,19 @@ func compareWithLoad(t *testing.T, rules *progress.Rules, what string, seen *bot
 			b.Affixes = []int64{}
 		}
 		if !reflect.DeepEqual(a, b) {
-			t.Fatalf("%s: objeto %d distinto\nbot:  %+v\nLoad: %+v", what, i, a, b)
+			t.Fatalf("%s: item %d differs\nbot:  %+v\nLoad: %+v", what, i, a, b)
 		}
 	}
 	if !reflect.DeepEqual(seen.Wallets, rec.Wallets) {
-		t.Fatalf("%s: saldos distintos: el bot %+v, Load %+v", what, seen.Wallets, rec.Wallets)
+		t.Fatalf("%s: balances differ: bot %+v, Load %+v", what, seen.Wallets, rec.Wallets)
 	}
 	if seen.Level != rec.Level || rules.TotalTo(seen.Level)+seen.XPInLevel != rec.XPTotal {
-		t.Fatalf("%s: el bot ve el nivel %d con %d de XP en él; Load da el nivel %d con %d en total", what,
+		t.Fatalf("%s: the bot sees level %d with %d XP in it; Load gives level %d with %d in total", what,
 			seen.Level, seen.XPInLevel, rec.Level, rec.XPTotal)
 	}
 	if seen.RealmPoints != rec.RealmPoints || seen.BagSlots != rec.BagSlots ||
 		seen.ActiveWeaponSlot != rec.ActiveWeaponSlot {
-		t.Fatalf("%s: puntos de reino %d/%d, bolsa %d/%d, ranura activa %d/%d (bot/Load)", what, seen.RealmPoints,
+		t.Fatalf("%s: realm points %d/%d, bag %d/%d, active slot %d/%d (bot/Load)", what, seen.RealmPoints,
 			rec.RealmPoints, seen.BagSlots, rec.BagSlots, seen.ActiveWeaponSlot, rec.ActiveWeaponSlot)
 	}
 }
@@ -221,7 +221,7 @@ func characterOf(t *testing.T, report *BotReport) int64 {
 	t.Helper()
 	id, err := strconv.ParseInt(report.Platform.CharacterID, 10, 64)
 	if err != nil {
-		t.Fatalf("character_id del informe: %q", report.Platform.CharacterID)
+		t.Fatalf("character_id of the report: %q", report.Platform.CharacterID)
 	}
 	return id
 }
@@ -241,11 +241,11 @@ func TestProgressEndToEnd(t *testing.T) {
 
 	bot := h.StartBot(acc, "--character=Progreso", "--loadout=squire", "--bot-scenario=progress")
 	if code := bot.Wait(t, scenarioTimeout); code != 0 {
-		t.Fatalf("el bot sale con el código %d (se esperaba 0: el escenario entero)", code)
+		t.Fatalf("the bot exits with code %d (expected 0: the whole scenario)", code)
 	}
 	report := bot.ReadReport(t)
 	if report.Platform.Code != "" || !report.Platform.Created {
-		t.Fatalf("informe del bot: platform = %+v (se esperaba entrar con un personaje creado)", report.Platform)
+		t.Fatalf("bot report: platform = %+v (expected to enter with a created character)", report.Platform)
 	}
 	id := characterOf(t, report)
 	seen, err := readProgressReport(bot.Report)
@@ -255,7 +255,7 @@ func TestProgressEndToEnd(t *testing.T) {
 	sc := seen.Scenario
 	if sc == nil || sc.Phase != "done" || sc.Error != "" || sc.AlreadyEquipped ||
 		!reflect.DeepEqual(sc.BowSlot, []int{1, 1}) {
-		t.Fatalf("escenario del informe: %+v (se esperaba done, sin error, con el arco equipado en WEAPON_2)", sc)
+		t.Fatalf("report scenario: %+v (expected done, no error, with the bow equipped in WEAPON_2)", sc)
 	}
 	h.Logf("el bot ha hecho el escenario con el personaje %d: %v", id, sc.Completed)
 
@@ -270,17 +270,17 @@ func TestProgressEndToEnd(t *testing.T) {
 
 	// What has to be there, besides the bot and the database saying the same thing.
 	if rec.StarterTemplateID != "squire" || !rec.StarterGranted {
-		t.Fatalf("plantilla %q y kit dado %v (se esperaba squire y true)", rec.StarterTemplateID, rec.StarterGranted)
+		t.Fatalf("template %q and kit given %v (expected squire and true)", rec.StarterTemplateID, rec.StarterGranted)
 	}
 	bow, sword := itemAt(rec, 1, 1), itemAt(rec, 1, 0)
 	if bow == nil || bow.DefID != "bow_vado" || !bow.Bound || sword == nil || sword.DefID != "sword_shield_vado" {
-		t.Fatalf("equipo guardado: WEAPON_1 %+v, WEAPON_2 %+v (se esperaba la espada y el arco, ligado)", sword, bow)
+		t.Fatalf("saved equipment: WEAPON_1 %+v, WEAPON_2 %+v (expected the sword and the bow, bound)", sword, bow)
 	}
 	if got := balanceOf(rec, currencyGold); got != goldGiven {
-		t.Fatalf("oro guardado: %d (se esperaba %d)", got, goldGiven)
+		t.Fatalf("saved gold: %d (expected %d)", got, goldGiven)
 	}
 	if got := countOf(rec, "potion_health"); got != sc.PotionsBefore+1 || got != 4 {
-		t.Fatalf("pociones de vida guardadas: %d (las %d del kit y la dada)", got, sc.PotionsBefore)
+		t.Fatalf("saved health potions: %d (the %d from the kit plus the given one)", got, sc.PotionsBefore)
 	}
 
 	// The two GM operations from DEBUG_COMMAND: by the admin, with the note "debug", and each with its
@@ -312,7 +312,7 @@ func TestProgressEndToEnd(t *testing.T) {
 	for _, op := range ops {
 		commands[op.command] = true
 		if op.actor != acc.ID || op.note != "debug" || op.source != "debug" {
-			t.Fatalf("operación GM %d: actor %d, nota %q, source %q (se esperaba la cuenta %d, «debug» y debug)",
+			t.Fatalf("GM operation %d: actor %d, note %q, source %q (expected account %d, \"debug\" and debug)",
 				op.opID, op.actor, op.note, op.source, acc.ID)
 		}
 		var audits int
@@ -320,17 +320,17 @@ func TestProgressEndToEnd(t *testing.T) {
 			and actor_account_id = $2 and target_character_id = $3 and command = $4`,
 			fmt.Sprintf("op:%d", op.opID), acc.ID, id, op.command)
 		if audits != 1 {
-			t.Fatalf("operación GM %d (%s): %d filas de auditoría con su clave (se esperaba 1)", op.opID, op.command,
+			t.Fatalf("GM operation %d (%s): %d audit rows with its key (expected 1)", op.opID, op.command,
 				audits)
 		}
 	}
 	if len(ops) != 2 || !commands["currency_add"] || !commands["item_give"] {
-		t.Fatalf("operaciones GM del personaje: %+v (se esperaba currency_add e item_give)", ops)
+		t.Fatalf("character's GM operations: %+v (expected currency_add and item_give)", ops)
 	}
 	h.CheckBooks(id)
 
 	if code := zone.Stop(zoneStop); code != 0 {
-		t.Fatalf("la zona sale con el código %d tras el cierre ordenado", code)
+		t.Fatalf("the zone exits with code %d after the orderly shutdown", code)
 	}
 	h.Logf("TestProgressEndToEnd: %.1f s", h.Elapsed().Seconds())
 }
@@ -359,7 +359,7 @@ func TestProgressCrash(t *testing.T) {
 			return false
 		}
 		if r.Scenario.Error != "" {
-			t.Fatalf("el escenario falla: %s", r.Scenario.Error)
+			t.Fatalf("the scenario fails: %s", r.Scenario.Error)
 		}
 		phase = r.Scenario.Phase
 		return phase == "gold" || phase == "potion" || phase == "done"
@@ -378,18 +378,18 @@ func TestProgressCrash(t *testing.T) {
 	var oldStatus string
 	h.Scalar(&oldStatus, `select status from zone_instances where zone_instance_id = $1`, oldInstance)
 	if newInstance == oldInstance || oldStatus != "lost" {
-		t.Fatalf("instancia nueva %s y la vieja %s en %q (se esperaba otra y lost)", newInstance, oldInstance, oldStatus)
+		t.Fatalf("new instance %s and the old one %s in %q (expected a different one and lost)", newInstance, oldInstance, oldStatus)
 	}
 	h.CheckBooks(id) // what was left by the old one: nothing half-done
 	before := loadRecord(h, rules, id)
 
 	second := h.StartBot(acc, "--character=Caida", "--quit-after-ticks=240")
 	if code := second.Wait(t, botTimeout); code != 0 {
-		t.Fatalf("el segundo bot sale con el código %d", code)
+		t.Fatalf("the second bot exits with code %d", code)
 	}
 	report := second.ReadReport(t)
 	if report.Platform.Code != "" || report.Platform.Created || characterOf(t, report) != id {
-		t.Fatalf("informe del segundo bot: platform = %+v (se esperaba el personaje %d ya creado)", report.Platform, id)
+		t.Fatalf("second bot report: platform = %+v (expected the already created character %d)", report.Platform, id)
 	}
 	seen, err := readProgressReport(second.Report)
 	if err != nil {
@@ -405,7 +405,7 @@ func TestProgressCrash(t *testing.T) {
 	compareWithLoad(t, rules, "tras salir de la nueva", seen.Progress, after)
 	h.CheckBooks(id) // and after joining again: the kit is not repeated and nothing is duplicated
 	if code := replacement.Stop(zoneStop); code != 0 {
-		t.Fatalf("la zona nueva sale con el código %d tras el cierre ordenado", code)
+		t.Fatalf("the new zone exits with code %d after the orderly shutdown", code)
 	}
 	h.Logf("TestProgressCrash: %.1f s", h.Elapsed().Seconds())
 }

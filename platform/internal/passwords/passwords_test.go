@@ -17,23 +17,23 @@ func TestHashAndVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !regexp.MustCompile(`^\$argon2id\$v=19\$m=8,t=1,p=1\$[A-Za-z0-9+/]{22}\$[A-Za-z0-9+/]{43}$`).MatchString(phc) {
-		t.Fatalf("cadena PHC: %s", phc)
+		t.Fatalf("PHC string: %s", phc)
 	}
 	ok, rehash, err := Verify("contraseña larga", phc, fast)
 	if err != nil || !ok || rehash {
-		t.Fatalf("la buena: %v %v %v", ok, rehash, err)
+		t.Fatalf("the good one: %v %v %v", ok, rehash, err)
 	}
 	ok, _, err = Verify("contraseña larga ", phc, fast)
 	if err != nil || ok {
-		t.Fatalf("la mala: %v %v", ok, err)
+		t.Fatalf("the wrong one: %v %v", ok, err)
 	}
 	// Not normalized: another Unicode form of the same letter is another password.
 	if ok, _, _ := Verify("contraseña larga", phc, fast); ok {
-		t.Fatal("la contraseña no se normaliza")
+		t.Fatal("the password is not normalized")
 	}
 	other, _ := Hash("contraseña larga", fast)
 	if other == phc {
-		t.Fatal("cada hash lleva su sal")
+		t.Fatal("each hash carries its own salt")
 	}
 }
 
@@ -43,7 +43,7 @@ func TestNeedsRehash(t *testing.T) {
 	current := Params{MemoryKiB: 16, Time: 1, Threads: 1}
 	ok, rehash, err := Verify("otra contraseña", phc, current)
 	if err != nil || !ok || !rehash {
-		t.Fatalf("con otros parámetros: %v %v %v", ok, rehash, err)
+		t.Fatalf("with other parameters: %v %v %v", ok, rehash, err)
 	}
 	if p, err := ParamsOf(phc); err != nil || p != fast {
 		t.Fatalf("ParamsOf: %v %v", p, err)
@@ -78,10 +78,10 @@ func TestFillerCostsTheSame(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p, err := ParamsOf(f); err != nil || p != fast {
-		t.Fatalf("relleno: %v %v", p, err)
+		t.Fatalf("padding: %v %v", p, err)
 	}
 	if ok, _, _ := Verify("", f, fast); ok {
-		t.Fatal("nadie conoce la contraseña del relleno")
+		t.Fatal("nobody knows the padding's password")
 	}
 }
 
@@ -99,7 +99,7 @@ func TestContextCancelsTheWait(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	if _, err := HashContext(ctx, "x", fast); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("sin plaza: %v", err)
+		t.Fatalf("no slot: %v", err)
 	}
 }
 
@@ -118,8 +118,8 @@ func TestProductionCost(t *testing.T) {
 	const n = 5
 	for i := 0; i < n; i++ {
 		if ok, _, _ := Verify("medida", phc, prod); !ok {
-			t.Fatal("la buena")
+			t.Fatal("the good one")
 		}
 	}
-	t.Logf("argon2id %s: %.1f ms por comprobación", prod, float64(time.Since(start).Microseconds())/1000/n)
+	t.Logf("argon2id %s: %.1f ms per check", prod, float64(time.Since(start).Microseconds())/1000/n)
 }

@@ -1,23 +1,23 @@
 extends SceneTree
-## Banco de capturas de calidad (TEC-50), área animación: tiras de fotogramas del personaje en el sandbox.
+## Quality capture bench (TEC-50), animation area: frame strips of the character in the sandbox.
 ##
-## Monta el sandbox de verdad (zona test_world, PlayerCharacter + HumanoidVisual + CameraRig real +
-## LocalPlayerController), conduce al personaje con un guion de entradas (un BotBrain propio, ver
-## anim_actions.gd) y, por cada ventana de captura, guarda N fotogramas desde tres cámaras:
-##   - "game":  la cámara real del juego (CameraRig), recortada alrededor del personaje.
-##   - "side":  cámara de cuerpo entero de lado (SubViewport propio, sobre un suelo a cuadros de 1 m).
-##   - "front": cámara de cuerpo entero de frente.
-## Los fotogramas van a <raw>/<accion>/<ventana>/{game,side,front}_NN.png y meta.json (con, por fotograma, la acción
-## de combate, la velocidad y el clip de combate que enseña la capa de animación); compose_strips.py los une en
-## rejillas. Lo que en el juego impone el servidor (tambaleo, aturdimiento, muerte, derribado, reanimar, rematar) se
-## impone aquí con ActionMachine.impose_* en el tick del guion.
+## It builds the real sandbox (test_world zone, PlayerCharacter + HumanoidVisual + real CameraRig +
+## LocalPlayerController), drives the character with an input script (its own BotBrain, see
+## anim_actions.gd) and, for each capture window, saves N frames from three cameras:
+##   - "game":  the game's real camera (CameraRig), cropped around the character.
+##   - "side":  full-body camera from the side (own SubViewport, over a 1 m checkered floor).
+##   - "front": full-body camera from the front.
+## The frames go to <raw>/<action>/<window>/{game,side,front}_NN.png and meta.json (with, per frame, the combat
+## action, the speed and the combat clip shown by the animation layer); compose_strips.py joins them into
+## grids. What in the game is imposed by the server (stagger, stun, death, knocked down, revive, execute) is
+## imposed here with ActionMachine.impose_* at the script's tick.
 ##
-## Necesita ventana (no headless) y GPU. Normalmente se lanza con `python tools/quality/run.py animacion`; a mano:
+## It needs a window (not headless) and a GPU. Usually launched with `python tools/quality/run.py animacion`; by hand:
 ##   godot --path . --resolution 1920x1080 --fixed-fps 30 -s res://tools/quality/anim_strips.gd -- \
-##       --raw=C:/ruta/build/calidad/raw [--set=player|npc|all] [--only=a,b] [--list]
+##       --raw=C:/path/build/calidad/raw [--set=player|npc|all] [--only=a,b] [--list]
 ##
-## Opciones: --raw=<carpeta> (por defecto build/calidad/raw), --set=player (por defecto), npc (los PNJ del catálogo)
-## o all; --only=<ids separados por comas> (ids de acciones); --list escribe los ids y sale (sin ventana).
+## Options: --raw=<folder> (default build/calidad/raw), --set=player (default), npc (the catalog's NPCs)
+## or all; --only=<comma-separated ids> (action ids); --list prints the ids and exits (no window).
 
 const AnimActions = preload("res://tools/quality/anim_actions.gd")
 
@@ -48,7 +48,7 @@ var W_SWORD: int
 
 
 # ---------------------------------------------------------------------------------------------
-# Cerebro guionizado
+# Scripted brain
 # ---------------------------------------------------------------------------------------------
 class ScriptBrain extends BotBrain:
 	var owner_main: Object = null
@@ -162,7 +162,7 @@ func _run() -> void:
 
 
 # ---------------------------------------------------------------------------------------------
-# Montaje
+# Setup
 # ---------------------------------------------------------------------------------------------
 func _build_world() -> void:
 	var zone: Node = (load(ZONE_SCENE) as PackedScene).instantiate()
@@ -180,7 +180,7 @@ func _build_world() -> void:
 	rig.set_target(ch.get_camera_target(), ch)
 	rig.set_hide_when_close(ch.get_node_or_null(^"Visual") as Node3D)
 	rig.set_look(0.0, 0.0)
-	# La cámara del juego no ve el suelo a cuadros (capa 2).
+	# The game camera does not see the checkered floor (layer 2).
 	rig.get_camera().cull_mask = 0xFFFFF & ~2
 	ctrl = LocalPlayerController.new()
 	root.add_child(ctrl)
@@ -188,7 +188,7 @@ func _build_world() -> void:
 	brain = ScriptBrain.new()
 	brain.owner_main = self
 	ctrl.set_bot(brain)
-	# Suelo a cuadros de 1 m, solo para las cámaras de cerca (capa 2): delata si los pies patinan.
+	# 1 m checkered floor, only for the close-up cameras (layer 2): it reveals whether the feet slide.
 	var shader := Shader.new()
 	shader.code = "shader_type spatial;\nrender_mode unshaded;\nvarying vec3 wp;\nvoid vertex(){ wp = (MODEL_MATRIX * vec4(VERTEX,1.0)).xyz; }\nvoid fragment(){ vec2 c = floor(wp.xz); float k = mod(c.x + c.y, 2.0); ALBEDO = mix(vec3(0.60,0.60,0.56), vec3(0.34,0.37,0.33), k); }\n"
 	var mat := ShaderMaterial.new()
@@ -231,7 +231,7 @@ func _set_close_cameras(cam_y: float, target_y: float, dist: float) -> void:
 
 
 # ---------------------------------------------------------------------------------------------
-# Eventos impuestos (lo que haría el servidor)
+# Imposed events (what the server would do)
 # ---------------------------------------------------------------------------------------------
 func apply_event(ev: Dictionary, tick: int) -> void:
 	var c: CombatState = ch.combat
@@ -251,13 +251,13 @@ func apply_event(ev: Dictionary, tick: int) -> void:
 		"revived":
 			ActionMachine.impose_revived(c, tick)
 		"hit", "block_hit":
-			# Reacción visual a un golpe que el servidor no convierte en control (ART-48, ART-50): el atacante
-			# está delante del personaje (que mira a -Z).
+			# Visual reaction to a hit that the server does not turn into control (ART-48, ART-50): the attacker
+			# is in front of the character (who faces -Z).
 			visual.react_to_hit(Vector3(0.0, 0.0, -1.0), float(ev.get("amount", 90.0)), String(ev["kind"]) == "block_hit")
 
 
 # ---------------------------------------------------------------------------------------------
-# Ejecución de una acción
+# Running an action
 # ---------------------------------------------------------------------------------------------
 func _reset_character(act: Dictionary) -> void:
 	brain.stop()
@@ -280,14 +280,14 @@ func _reset_character(act: Dictionary) -> void:
 
 
 func _run_action(act: Dictionary) -> void:
-	# Cada ventana vuelve a correr la acción entera desde el principio (las ventanas pueden solaparse).
+	# Each window runs the whole action again from the start (windows may overlap).
 	for i: int in (act["windows"] as Array).size():
 		await _run_one(act, i)
 
 
 func _run_one(act: Dictionary, win_index: int) -> void:
 	_reset_character(act)
-	# Reposo para que el animador, el arma y la cámara se asienten.
+	# Idle so that the animator, the weapon and the camera settle.
 	for _i: int in 24:
 		await process_frame
 	var tl: AnimActions.TL = act["tl"] as AnimActions.TL
@@ -309,7 +309,7 @@ func _run_one(act: Dictionary, win_index: int) -> void:
 			win["to"] = int(win["dyn_warm"]) + cycle_ticks
 			win["cycle"] = true
 			win["note"] = "ciclo de locomoción completo: escala %.2f ciclos/s, %d ticks" % [scale, cycle_ticks]
-		# Centro del recorte de la cámara del juego: donde está el personaje al empezar la ventana.
+		# Center of the game camera crop: where the character is when the window starts.
 		while ctrl.get_tick() - start_tick < int(win["from"]) - 2:
 			await process_frame
 			guard += 1

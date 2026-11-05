@@ -1,6 +1,6 @@
 extends SceneTree
-## Lista los clips de UAL1 y UAL2 (nombre y duración) y, con --tracks=<clip>, los huesos que animan.
-## Uso: godot --headless --path . -s res://tools/animation/list_clips.gd -- [--tracks=ual1/Sword_Idle]
+## Lists the clips of UAL1 and UAL2 (name and duration) and, with --tracks=<clip>, the bones they animate.
+## Usage: godot --headless --path . -s res://tools/animation/list_clips.gd -- [--tracks=ual1/Sword_Idle]
 
 const LIBS: Dictionary = {
 	"ual1": "res://assets/animations/ual1/UAL1_Standard.glb",

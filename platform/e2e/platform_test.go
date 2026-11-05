@@ -28,15 +28,15 @@ func TestEnterAndSave(t *testing.T) {
 
 	bot := h.StartBot(acc, "--character=Viajera", "--quit-after-ticks=300")
 	if code := bot.Wait(t, botTimeout); code != 0 {
-		t.Fatalf("el bot sale con el código %d (se esperaba 0: llegó a jugar)", code)
+		t.Fatalf("the bot exits with code %d (expected 0: it got to play)", code)
 	}
 	report := bot.ReadReport(t)
 	if report.Platform.Code != "" || !report.Platform.Created {
-		t.Fatalf("informe del bot: platform = %+v (se esperaba entrar con un personaje creado)", report.Platform)
+		t.Fatalf("bot report: platform = %+v (expected to enter with a created character)", report.Platform)
 	}
 	id, err := strconv.ParseInt(report.Platform.CharacterID, 10, 64)
 	if err != nil {
-		t.Fatalf("character_id del informe: %q", report.Platform.CharacterID)
+		t.Fatalf("character_id of the report: %q", report.Platform.CharacterID)
 	}
 	h.Logf("el bot ha jugado y salido con el personaje %d", id)
 
@@ -55,25 +55,25 @@ func TestEnterAndSave(t *testing.T) {
 	h.Scalar(&lastZone, `select coalesce(last_zone_id, '') from character_progress where character_id = $1`, id)
 	h.Scalar(&claimedBy, `select claimed_by::text from character_leases where character_id = $1`, id)
 	if saveVersion <= 0 || savedAt == nil {
-		t.Fatalf("character_progress: save_version %d, saved_at %v (se esperaba un guardado)", saveVersion, savedAt)
+		t.Fatalf("character_progress: save_version %d, saved_at %v (expected a save)", saveVersion, savedAt)
 	}
 	if lastZone != ZoneID || claimedBy != instance {
-		t.Fatalf("last_zone_id %q y arrendamiento reclamado por %s (se esperaba %s y %s)", lastZone, claimedBy, ZoneID,
+		t.Fatalf("last_zone_id %q and lease claimed by %s (expected %s and %s)", lastZone, claimedBy, ZoneID,
 			instance)
 	}
 	if n := countConsumed(h, id); n != 1 {
-		t.Fatalf("billetes consumidos del personaje: %d (se esperaba 1)", n)
+		t.Fatalf("character's consumed tickets: %d (expected 1)", n)
 	}
 	h.CheckBooks(id)
 	h.Logf("guardado: save_version %d, saved_at %s", saveVersion, savedAt.Format(time.RFC3339Nano))
 
 	if code := zone.Stop(zoneStop); code != 0 {
-		t.Fatalf("la zona sale con el código %d tras el cierre ordenado", code)
+		t.Fatalf("the zone exits with code %d after the orderly shutdown", code)
 	}
 	var status string
 	h.Scalar(&status, `select status from zone_instances where zone_instance_id = $1`, instance)
 	if status != "stopped" {
-		t.Fatalf("la instancia queda en %q tras el cierre ordenado (se esperaba stopped)", status)
+		t.Fatalf("the instance is left in %q after the orderly shutdown (expected stopped)", status)
 	}
 	h.Logf("TestEnterAndSave: %.1f s", h.Elapsed().Seconds())
 }
@@ -121,12 +121,12 @@ func TestZoneCrash(t *testing.T) {
 	replacement := h.StartZone("--save-interval=5")
 	newInstance := replacement.WaitLive(liveTimeout)
 	if newInstance == oldInstance {
-		t.Fatalf("la instancia nueva es la vieja (%s)", newInstance)
+		t.Fatalf("the new instance is the old one (%s)", newInstance)
 	}
 	var oldStatus string
 	h.Scalar(&oldStatus, `select status from zone_instances where zone_instance_id = $1`, oldInstance)
 	if oldStatus != "lost" {
-		t.Fatalf("la instancia muerta queda en %q (se esperaba lost)", oldStatus)
+		t.Fatalf("the dead instance is left in %q (expected lost)", oldStatus)
 	}
 
 	// The last thing that arrived from the old one: nothing more can arrive (it is lost and its leases
@@ -139,10 +139,10 @@ func TestZoneCrash(t *testing.T) {
 	h.Logf("último guardado de la vieja: %s (save_version %d); kill − saved_at = %.2f s", savedAt.Format(time.RFC3339Nano),
 		saveVersion, lost.Seconds())
 	if !savedAt.After(firstSave) {
-		t.Fatalf("no hubo ningún punto de control tras el primer guardado (%s): saved_at %s", firstSave, savedAt)
+		t.Fatalf("there was no checkpoint after the first save (%s): saved_at %s", firstSave, savedAt)
 	}
 	if lost >= saveInterval+margin {
-		t.Fatalf("kill − saved_at = %v; con --save-interval=5 tiene que ser < %v", lost, saveInterval+margin)
+		t.Fatalf("kill - saved_at = %v; with --save-interval=5 it has to be < %v", lost, saveInterval+margin)
 	}
 	h.CheckBooks(id) // what was left by the old one: nothing half-done
 
@@ -154,14 +154,14 @@ func TestZoneCrash(t *testing.T) {
 	})
 	h.Logf("el segundo bot ha entrado con el personaje %d en %s", id, newInstance)
 	if code := second.Wait(t, botTimeout); code != 0 {
-		t.Fatalf("el segundo bot sale con el código %d", code)
+		t.Fatalf("the second bot exits with code %d", code)
 	}
 	report := second.ReadReport(t)
 	if report.Platform.Code != "" || report.Platform.Created || report.Platform.CharacterID != strconv.FormatInt(id, 10) {
-		t.Fatalf("informe del segundo bot: platform = %+v (se esperaba el personaje %d ya creado)", report.Platform, id)
+		t.Fatalf("second bot report: platform = %+v (expected the already created character %d)", report.Platform, id)
 	}
 	if code := replacement.Stop(zoneStop); code != 0 {
-		t.Fatalf("la zona nueva sale con el código %d tras el cierre ordenado", code)
+		t.Fatalf("the new zone exits with code %d after the orderly shutdown", code)
 	}
 	h.CheckBooks(id) // and after joining again: the kit is not repeated and nothing is duplicated
 	// Who marks the old one as lost depends on when the new one's registration arrives: the lost-instances

@@ -1,35 +1,35 @@
 class_name CombatAudio
 extends Node
-## Audio del combate y de los pasos (ART-11, solo cliente). Un solo nodo por cliente que reparte las peticiones de
-## sonido por el [AudioDirector] con los bancos de [CombatSoundBank]: cada sonido sale de una variante distinta
-## con tono y volumen aleatorios, en 3D y con prioridad alta para lo propio.
+## Combat and footstep audio (ART-11, client only). A single node per client that dispatches sound requests
+## through the [AudioDirector] with the banks of [CombatSoundBank]: each sound comes from a different variant
+## with random pitch and volume, in 3D and with high priority for the player's own.
 ## [br][br]
-## [b]De dónde vienen las peticiones[/b]:
-## [br]- [CombatFeedback] ([method bind]): el impacto de TODO golpe confirmado ([signal CombatFeedback.hit_impact],
-## propio o ajeno, en su tick de dibujo), el golpe predicho en local ([signal CombatFeedback.hit_predicted]), la
-## acción del personaje local ([signal CombatFeedback.action_changed]) y su muerte.
-## [br]- Los visuales ([HumanoidVisual]): los pasos, el salto y el aterrizaje de cualquier personaje
-## ([signal CharacterAnimator.stepped]...) y las acciones de los remotos (barridos y esquivas).
+## [b]Where the requests come from[/b]:
+## [br]- [CombatFeedback] ([method bind]): the impact of EVERY confirmed hit ([signal CombatFeedback.hit_impact],
+## own or someone else's, at its draw tick), the locally predicted hit ([signal CombatFeedback.hit_predicted]), the
+## local character's action ([signal CombatFeedback.action_changed]) and its death.
+## [br]- The visuals ([HumanoidVisual]): the footsteps, jump and landing of any character
+## ([signal CharacterAnimator.stepped]...) and the actions of remote ones (swings and dodges).
 ## [br][br]
-## [b]Sincronía del barrido.[/b] El sonido tiene el pico a [constant SWING_PEAK_LIGHT] ([constant SWING_PEAK_HEAVY])
-## segundos de su inicio, y el golpe activo empieza al acabar la anticipación; se pide al empezar la acción con el
-## retraso que hace caer el pico en medio de la ventana activa ([method swing_delay], regla de
+## [b]Swing sync.[/b] The sound peaks [constant SWING_PEAK_LIGHT] ([constant SWING_PEAK_HEAVY])
+## seconds after its start, and the active hit begins when the windup ends; it is requested when the action starts with the
+## delay that makes the peak land in the middle of the active window ([method swing_delay], rule from
 ## [code]niveles.json[/code]).
 ## [br][br]
-## Lo que suena se cuenta por grupo ([method get_play_count]) aunque no haya [AudioDirector] (las pruebas).
+## What plays is counted per group ([method get_play_count]) even when there is no [AudioDirector] (the tests).
 
-## Segundos desde el inicio del sonido hasta su pico, en los barridos ligeros y en los fuertes (niveles.json).
+## Seconds from the start of the sound to its peak, in light and heavy swings (niveles.json).
 const SWING_PEAK_LIGHT: float = 0.089
 const SWING_PEAK_HEAVY: float = 0.197
-## Prioridad (m) de lo que hace o recibe el jugador local frente a lo ajeno al repartir las voces.
+## Priority (m) of what the local player does or receives versus what belongs to others when allocating voices.
 const LOCAL_PRIORITY_BONUS: float = 60.0
-## Un golpe predicho y el confirmado que lo sigue son el mismo si llegan con menos de esto (s) de diferencia.
+## A predicted hit and the confirmed one that follows it are the same if they arrive less than this (s) apart.
 const PREDICTION_MATCH_SECONDS: float = 1.2
-## Segundos entre el golpe mortal y el ruido del cuerpo al caer.
+## Seconds between the killing blow and the sound of the body falling.
 const DEATH_FALL_DELAY: float = 0.4
-## Metros a los que un paso deja de oírse (los pasos de los demás se atenúan por distancia).
+## Meters at which a footstep stops being heard (other players' footsteps attenuate with distance).
 const STEP_HEARING_DISTANCE: float = 28.0
-## Volumen (dB) extra de cada paso al correr y al esprintar frente a andar.
+## Extra volume (dB) of each footstep when running and sprinting compared with walking.
 const STEP_LOUDNESS_DB_RANGE: float = 6.0
 
 static var _instance: CombatAudio = null
@@ -59,8 +59,8 @@ func _init() -> void:
 	name = "CombatAudio"
 
 
-## Conecta el nodo con el reparto de la sensación de combate: de ahí salen los impactos, las acciones propias y la
-## muerte. Se puede volver a llamar con otro reparto.
+## Connects the node to the combat-feedback dispatcher: the impacts, own actions and death come from there.
+## It can be called again with another dispatcher.
 func bind(feedback: CombatFeedback) -> void:
 	if is_instance_valid(_feedback):
 		_feedback.hit_impact.disconnect(_on_hit_impact)
@@ -75,17 +75,17 @@ func bind(feedback: CombatFeedback) -> void:
 		_feedback.sound_requested.connect(_on_sound_requested)
 
 
-# --- Peticiones --------------------------------------------------------------------------------
+# --- Requests ----------------------------------------------------------------------------------
 
-## Retraso (s) con el que hay que arrancar el sonido de un barrido para que su pico caiga en medio de la ventana
-## activa: anticipación + mitad de la activa - pico, nunca negativo.
+## Delay (s) with which a swing sound has to start so that its peak lands in the middle of the active
+## window: windup + half of the active time - peak, never negative.
 static func swing_delay(windup_s: float, active_s: float, heavy: bool) -> float:
 	var peak: float = SWING_PEAK_HEAVY if heavy else SWING_PEAK_LIGHT
 	return maxf(windup_s + active_s * 0.5 - peak, 0.0)
 
 
-## Barrido del arma en [param position]. Si [param windup_s] y [param active_s] son positivos se retrasa para la
-## sincronía de [method swing_delay]; [param local] da prioridad.
+## Weapon swing at [param position]. If [param windup_s] and [param active_s] are positive it is delayed for the
+## sync of [method swing_delay]; [param local] gives priority.
 func play_swing(position: Vector3, heavy: bool, windup_s: float = 0.0, active_s: float = 0.0,
 		local: bool = false) -> void:
 	var delay: float = swing_delay(windup_s, active_s, heavy) if windup_s > 0.0 else 0.0
@@ -99,8 +99,8 @@ func play_swing(position: Vector3, heavy: bool, windup_s: float = 0.0, active_s:
 		_play(group, position, 0.0, 1.0, local)
 
 
-## Impacto de un golpe en [param position] (pecho de la víctima).
-## [param material] es un [enum CombatSoundBank.Armor]; [param heavy] lo hace más grave y fuerte.
+## Impact of a hit at [param position] (the victim's chest).
+## [param material] is a [enum CombatSoundBank.Armor]; [param heavy] makes it deeper and louder.
 func play_impact(position: Vector3, material: int, heavy: bool, blocked: bool, parried: bool,
 		local: bool) -> void:
 	var group: StringName = CombatSoundBank.impact_group(material, blocked, parried)
@@ -109,8 +109,8 @@ func play_impact(position: Vector3, material: int, heavy: bool, blocked: bool, p
 		_play(&"hollow_hurt", position, 0.0, 1.0, local)
 
 
-## Paso de un personaje en [param position] sobre [param surface]. [param speed_fraction] (0 = andando, 1 = esprint)
-## le da algo más de fuerza; los pasos de los demás se atenúan con la distancia y tienen menos prioridad.
+## Footstep of a character at [param position] on [param surface]. [param speed_fraction] (0 = walking, 1 = sprint)
+## gives it a bit more force; other players' footsteps attenuate with distance and have lower priority.
 func play_step(position: Vector3, surface: StringName, speed_fraction: float, local: bool) -> void:
 	var group: StringName = CombatSoundBank.step_group(surface)
 	var extra: float = lerpf(-STEP_LOUDNESS_DB_RANGE * 0.5, STEP_LOUDNESS_DB_RANGE * 0.5,
@@ -119,12 +119,12 @@ func play_step(position: Vector3, surface: StringName, speed_fraction: float, lo
 			STEP_HEARING_DISTANCE)
 
 
-## Despegue del salto: un paso con empuje.
+## Jump takeoff: a footstep with push.
 func play_jump(position: Vector3, surface: StringName, local: bool) -> void:
 	_play(CombatSoundBank.step_group(surface), position, 1.0, 1.1, local, STEP_HEARING_DISTANCE)
 
 
-## Aterrizaje con [param strength] de 0 a 1 (la velocidad del impacto): dos pasos juntos, más fuertes cuanto mayor.
+## Landing with [param strength] from 0 to 1 (the impact speed): two footsteps together, louder the greater it is.
 func play_land(position: Vector3, surface: StringName, strength: float, local: bool) -> void:
 	var group: StringName = CombatSoundBank.step_group(surface)
 	var pitch: float = lerpf(0.95, 0.78, clampf(strength, 0.0, 1.0))
@@ -132,12 +132,12 @@ func play_land(position: Vector3, surface: StringName, strength: float, local: b
 			STEP_HEARING_DISTANCE)
 
 
-## Esquiva: la voltereta (con tela y pisada) del que se mueve.
+## Dodge: the roll (with cloth and a footfall) of the one who moves.
 func play_dodge(position: Vector3, local: bool) -> void:
 	_play(&"dodge_roll", position, 0.0, 1.0, local)
 
 
-## Muerte: la caída del cuerpo, un instante después del golpe.
+## Death: the body falling, a moment after the hit.
 func play_death(position: Vector3, local: bool) -> void:
 	if is_inside_tree():
 		_pending += 1
@@ -148,14 +148,14 @@ func play_death(position: Vector3, local: bool) -> void:
 		_play(&"body_fall", position, 0.0, 1.0, local)
 
 
-# --- Lectura (las pruebas) ----------------------------------------------------------------------
+# --- Readout (the tests) ------------------------------------------------------------------------
 
-## Veces que se ha pedido el grupo [param group] desde que existe.
+## Number of times the group [param group] has been requested since it was created.
 func get_play_count(group: StringName) -> int:
 	return int(_counts.get(group, 0))
 
 
-## Peticiones totales.
+## Total requests.
 func get_total_play_count() -> int:
 	var total: int = 0
 	for group: Variant in _counts:
@@ -163,18 +163,18 @@ func get_total_play_count() -> int:
 	return total
 
 
-## Barridos con retraso que esperan su momento.
+## Delayed swings waiting for their moment.
 func get_pending_count() -> int:
 	return _pending
 
 
-## Olvida los contadores (las pruebas).
+## Forgets the counters (the tests).
 func reset_counts() -> void:
 	_counts.clear()
 
 
-## Material con el que suena el golpe a la víctima [param net_id]: estable por víctima (su armadura) y de los Huecos
-## si lo es. Sin reparto, carne.
+## Material the hit sounds with for victim [param net_id]: stable per victim (their armor) and Hollow
+## if it is one. Without a dispatcher, flesh.
 func material_of(net_id: int) -> int:
 	if is_instance_valid(_feedback) and _feedback.is_hollow(net_id):
 		return CombatSoundBank.Armor.HOLLOW
@@ -183,7 +183,7 @@ func material_of(net_id: int) -> int:
 	return order[absi(net_id) % order.size()]
 
 
-# --- Interno ----------------------------------------------------------------------------------
+# --- Internal ---------------------------------------------------------------------------------
 
 func _play(group: StringName, position: Vector3, volume_offset_db: float, pitch: float, local: bool,
 		max_distance: float = 0.0) -> void:
@@ -235,6 +235,6 @@ func _on_local_action(action: int, attack_id: int, _action_tick: int, _previous:
 
 
 func _on_sound_requested(sound: StringName, position: Vector3) -> void:
-	# Barridos, esquivas y golpes ya los reparten sus propias señales; aquí, solo la muerte propia o ajena.
+	# Swings, dodges and hits are already dispatched by their own signals; here, only the death, own or someone else's.
 	if sound == CombatFeedback.SOUND_DEATH:
 		play_death(position, false)

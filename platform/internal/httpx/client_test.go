@@ -55,7 +55,7 @@ func TestAddrGroup(t *testing.T) {
 		}
 	}
 	if AddrGroup(netip.Addr{}) != "?" {
-		t.Error("IP vacía")
+		t.Error("empty IP")
 	}
 }
 
@@ -85,7 +85,7 @@ func TestRequireProtocol(t *testing.T) {
 	r.Header.Set(ProtocolHeader, "1")
 	any.ServeHTTP(rec, r)
 	if rec.Code != 204 {
-		t.Fatalf("con mínimo 0 vale cualquiera: %d", rec.Code)
+		t.Fatalf("with a minimum of 0 any value is valid: %d", rec.Code)
 	}
 }
 

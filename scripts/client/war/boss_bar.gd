@@ -1,25 +1,25 @@
 class_name BossBar
 extends Control
-## Barra de jefe (UI-18): la vida del PNJ con [code]is_boss[/code] más cercano (por el
-## [code]npc_def_id[/code] de su ENTITY_SPAWN, ver [BossInfo]) mientras está a menos de
-## [constant RANGE] m y vivo. Arriba al centro, bajo el panel de captura. La vida sale del registro
-## dibujado de ese PNJ ([method RemotePlayerView.get_drawn_health_q]), la misma que usan las placas.
+## Boss bar (UI-18): the health of the nearest NPC with [code]is_boss[/code] (by the
+## [code]npc_def_id[/code] of its ENTITY_SPAWN, see [BossInfo]) while it is within
+## [constant RANGE] m and alive. At the top center, below the capture panel. Health comes from that NPC's
+## drawn record ([method RemotePlayerView.get_drawn_health_q]), the same one the nameplates use.
 ## [br][br]
-## Con [method show_boss] se puede poner a mano (las pruebas). Medidas y colores provisionales.
-## Solo cliente.
+## With [method show_boss] it can be set by hand (tests). Provisional sizes and colors.
+## Client only.
 
-## Metros a los que se ve la barra de un jefe.
+## Meters at which a boss's bar is visible.
 const RANGE: float = 90.0
 const BAR_WIDTH: float = 520.0
 const TOP_OFFSET: float = 316.0
 const FILL_COLOR: Color = UIPalette.BOSS
 
-## Segundos que dura «peleando» tras cada golpe entre el jugador y el jefe.
+## Seconds that "fighting" lasts after each hit between the player and the boss.
 const ENGAGE_SECONDS: float = 8.0
 
 var _client: NetClient = null
 var _clock: float = 0.0
-# net_id del jefe -> segundo (del reloj de la barra) hasta el que se le da por «peleando».
+# Boss net_id -> second (of the bar's clock) until which it is considered "fighting".
 var _engaged: Dictionary[int, float] = {}
 var _shown_id: int = 0
 var _name_label: Label = null
@@ -52,18 +52,18 @@ func bind(client: NetClient) -> void:
 		_client.combat_event.connect(_on_combat_event)
 
 
-## Da por «peleando» con el jefe [param net_id] durante [constant ENGAGE_SECONDS] s (un golpe del jugador
-## al jefe o del jefe al jugador). Hasta entonces la barra no sale (UI-18).
+## Marks as "fighting" with boss [param net_id] for [constant ENGAGE_SECONDS] s (a hit from the player
+## to the boss or from the boss to the player). Until then the bar does not appear (UI-18).
 func engage(net_id: int) -> void:
 	_engaged[net_id] = _clock + ENGAGE_SECONDS
 
 
-## true si se pelea con el jefe [param net_id] ahora mismo.
+## true if the player is fighting boss [param net_id] right now.
 func is_engaged(net_id: int) -> bool:
 	return _engaged.has(net_id) and _clock <= float(_engaged[net_id])
 
 
-# Un golpe entre el jugador local y otra entidad abre la pelea con ella (solo cuenta si es un jefe).
+# A hit between the local player and another entity opens the fight with it (it only counts if it is a boss).
 func _on_combat_event(event: NetMessages.EntityEvent, _is_own: bool) -> void:
 	if event.event != NetMessages.EntityEvent.Kind.HIT or not is_instance_valid(_client):
 		return
@@ -76,15 +76,15 @@ func _on_combat_event(event: NetMessages.EntityEvent, _is_own: bool) -> void:
 		engage(event.attacker)
 
 
-# Quita las peleas caducadas: sin esto, cada golpe a una entidad nueva (los PNJ que reaparecen) dejaría su entrada.
+# Removes expired fights: without this, every hit on a new entity (respawning NPCs) would leave its entry behind.
 func _purge_expired() -> void:
 	for net_id: int in _engaged.keys():
 		if _clock > float(_engaged[net_id]):
 			_engaged.erase(net_id)
 
 
-## Busca el jefe vivo más cercano a menos de [constant RANGE] m con el que se pelea ([method is_engaged]) y lo
-## muestra; si no hay, oculta la barra.
+## Finds the nearest living boss within [constant RANGE] m that is being fought ([method is_engaged]) and
+## shows it; if there is none, hides the bar.
 func refresh() -> void:
 	if not is_instance_valid(_client):
 		_hide()
@@ -114,7 +114,7 @@ func refresh() -> void:
 			EntityRecord.health_fraction(best.get_drawn_health_q()))
 
 
-## Muestra la barra del jefe [param net_id] con su nombre y su vida (0 a 1).
+## Shows the bar of boss [param net_id] with its name and health (0 to 1).
 func show_boss(net_id: int, boss_name: String, health_fraction: float) -> void:
 	_ensure_built()
 	_shown_id = net_id
@@ -124,7 +124,7 @@ func show_boss(net_id: int, boss_name: String, health_fraction: float) -> void:
 	visible = true
 
 
-## Id de red del jefe que se muestra (0 si ninguno).
+## Network id of the boss being shown (0 if none).
 func get_shown_id() -> int:
 	return _shown_id if visible else 0
 

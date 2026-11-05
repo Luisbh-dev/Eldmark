@@ -52,7 +52,7 @@ func lastAudit(t *testing.T, p *platformtest.Platform, command string) auditRow 
 		command).Scan(&r.Source, &r.Actor, &r.ActorCharacter, &r.TargetAccount, &r.TargetCharacter, &r.World, &r.Zone,
 		&args, &r.At)
 	if err != nil {
-		t.Fatalf("fila %s: %v", command, err)
+		t.Fatalf("row %s: %v", command, err)
 	}
 	if err := json.Unmarshal(args, &r.Args); err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestAuthorize(t *testing.T) {
 		t.Helper()
 		var actorErr *admin.ActorError
 		if _, err := p.Admin.Authorize(ctx, email, need); !errors.As(err, &actorErr) {
-			t.Errorf("%q con %s: %v", email, need, err)
+			t.Errorf("%q with %s: %v", email, need, err)
 		}
 	}
 	deny("", sanctions.RoleModerator)
@@ -89,7 +89,7 @@ func TestAuthorize(t *testing.T) {
 	deny(banned.Email, sanctions.RoleModerator)
 	deny(leaving.Email, sanctions.RoleModerator)
 	if a, err := p.Admin.Authorize(ctx, " MOD@example.org", sanctions.RoleModerator); err != nil || a.AccountID != mod.ID {
-		t.Fatalf("moderator para leer: %v %v", a, err)
+		t.Fatalf("moderator to read: %v %v", a, err)
 	}
 	if a, err := p.Admin.Authorize(ctx, adm.Email, sanctions.RoleAdmin); err != nil || a.Role != sanctions.RoleAdmin {
 		t.Fatalf("admin: %v %v", a, err)
@@ -99,7 +99,7 @@ func TestAuthorize(t *testing.T) {
 	p.Exec(`update accounts set role = 'gm' where account_id = $1`, adm.ID)
 	var actorErr *admin.ActorError
 	if _, err := p.Admin.BlockName(ctx, actor, "Malnombre", ""); !errors.As(err, &actorErr) {
-		t.Fatalf("rol perdido a mitad: %v", err)
+		t.Fatalf("role lost midway: %v", err)
 	}
 	if n := p.Count(`select count(*) from name_blacklist`); n != 0 {
 		t.Fatal(n)
@@ -143,7 +143,7 @@ func TestSetRole(t *testing.T) {
 	}
 	if n := p.Count(`select count(*) from sessions where account_id = $1 and (revoked_at is null
 		or revoke_reason <> 'role_changed')`, gm.ID); n != 0 {
-		t.Fatal("sesiones sin revocar")
+		t.Fatal("sessions not revoked")
 	}
 	platformtest.Expect(t, p.PublicDo("GET", "/v1/account", gm.Token, nil), 401, "unauthorized")
 	// The fixed row of §9.1.
@@ -151,13 +151,13 @@ func TestSetRole(t *testing.T) {
 	if row.Source != "cli" || !is(row.Actor, actor.AccountID) || !is(row.TargetAccount, gm.ID) || row.TargetCharacter != nil ||
 		row.ActorCharacter != nil || row.World != nil || row.Zone != nil || !row.At.Equal(p.Clock.Now()) ||
 		len(row.Args) != 3 || row.Args["from"] != "gm" || row.Args["to"] != "player" || row.Args["os_user"] != "prueba" {
-		t.Fatalf("fila set-role: %+v", row)
+		t.Fatalf("set-role row: %+v", row)
 	}
 	// S2: the role at an instant before the change is the previous one.
 	for at, want := range map[time.Time]string{before: "gm", p.Clock.Now(): "player",
 		p.Clock.Now().Add(time.Hour): "player"} {
 		if got, err := sanctions.RoleAt(ctx, p.Pool, gm.ID, at); err != nil || got != want {
-			t.Errorf("RoleAt(%v) = %q %v, se esperaba %s", at, got, err, want)
+			t.Errorf("RoleAt(%v) = %q %v, expected %s", at, got, err, want)
 		}
 	}
 	// It logs back in with the new role (the zone released after its final save).
@@ -167,13 +167,13 @@ func TestSetRole(t *testing.T) {
 	claim := z.Claim(ticket, id)
 	platformtest.Expect(t, claim, 200, "")
 	if role := claim.Body["account"].(map[string]any)["role"]; role != "player" {
-		t.Fatalf("rol en la reclamación: %v", role)
+		t.Fatalf("role in the claim: %v", role)
 	}
 	// The same role again changes nothing and leaves no row; on itself, on an email without an account
 	// or on an unknown role, error.
 	res, err = p.Admin.SetRole(ctx, actor, gm.Email, sanctions.RolePlayer)
 	if err != nil || res.Changed || p.Count(`select count(*) from audit_log where command = 'set-role'`) != 1 {
-		t.Fatalf("mismo rol: %+v %v", res, err)
+		t.Fatalf("same role: %+v %v", res, err)
 	}
 	if _, err := p.Admin.SetRole(ctx, actor, "admin@example.org", sanctions.RolePlayer); !errors.Is(err, admin.ErrSelf) {
 		t.Fatal(err)
@@ -211,7 +211,7 @@ func TestRoleAtOnlyReadsCLI(t *testing.T) {
 	p.Exec(`insert into audit_log (source, command, target_account_id, args, at)
 		values ('zone', 'set-role', $1, '{"from": "admin", "to": "player"}', $2)`, pl.ID, p.Clock.Now().Add(time.Hour))
 	if role, err := sanctions.RoleAt(ctx, p.Pool, pl.ID, p.Clock.Now()); err != nil || role != "player" {
-		t.Fatalf("S2 ve una fila que no es de la CLI: %q %v", role, err)
+		t.Fatalf("S2 sees a row that is not from the CLI: %q %v", role, err)
 	}
 	t0 := p.Clock.Now()
 	p.Clock.Advance(time.Minute)
@@ -226,11 +226,11 @@ func TestRoleAtOnlyReadsCLI(t *testing.T) {
 	for at, want := range map[time.Time]string{t0: "player", t1: "gm", t1.Add(30 * time.Second): "gm",
 		p.Clock.Now(): "moderator"} {
 		if got, _ := sanctions.RoleAt(ctx, p.Pool, pl.ID, at); got != want {
-			t.Errorf("RoleAt(%v) = %q, se esperaba %s", at.Sub(t0), got, want)
+			t.Errorf("RoleAt(%v) = %q, expected %s", at.Sub(t0), got, want)
 		}
 	}
 	if got, _ := sanctions.RoleAt(ctx, p.Pool, 999999, t0); got != "" {
-		t.Errorf("cuenta inexistente: %q", got)
+		t.Errorf("nonexistent account: %q", got)
 	}
 }
 
@@ -247,7 +247,7 @@ func TestNamesBlock(t *testing.T) {
 		t.Fatalf("%+v %v", res, err)
 	}
 	if res, _ := p.Admin.BlockName(ctx, actor, "Malnombre", ""); res.Changed {
-		t.Fatal("ya estaba")
+		t.Fatal("it was already there")
 	}
 	row := lastAudit(t, p, "names block")
 	if row.Args["term"] != "malnombre" || row.Args["os_user"] != "prueba" || !is(row.Actor, actor.AccountID) {
@@ -270,14 +270,14 @@ func TestNamesBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res, _ := p.Admin.UnblockName(ctx, actor, "Insulto"); res.Changed {
-		t.Fatal("ya no estaba")
+		t.Fatal("it was no longer there")
 	}
 	platformtest.Expect(t, create("Insulto"), 201, "")
 	if _, err := p.Admin.BlockName(ctx, actor, "!!", ""); !errors.Is(err, admin.ErrInvalidName) {
 		t.Fatal(err)
 	}
 	if n := p.Count(`select count(*) from audit_log where command in ('names block', 'names unblock')`); n != 3 {
-		t.Fatalf("filas: %d", n)
+		t.Fatalf("rows: %d", n)
 	}
 }
 
@@ -306,10 +306,10 @@ func TestSetRoleRace(t *testing.T) {
 		}
 		admins := p.Count(`select count(*) from accounts where account_id in ($1, $2) and role = 'admin'`, a.ID, b.ID)
 		if ok != 1 || refused != 1 || admins != 1 {
-			t.Fatalf("ronda %d: %d hechos, %d sin ejecutar, %d admins", round, ok, refused, admins)
+			t.Fatalf("round %d: %d done, %d not executed, %d admins", round, ok, refused, admins)
 		}
 	}
 	if n := p.Count(`select count(*) from audit_log where command = 'set-role'`); n != 8 {
-		t.Fatalf("filas set-role: %d", n)
+		t.Fatalf("set-role rows: %d", n)
 	}
 }

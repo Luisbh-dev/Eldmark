@@ -1,23 +1,23 @@
 extends SceneTree
-## Generador del Vado Gris (fase 4): terreno de Terrain3D, pintura, hierba y vegetación, y la
-## escena de la zona con todas sus piezas y colisiones.
+## Vado Gris generator (phase 4): Terrain3D terrain, paint, grass and vegetation, and the
+## zone scene with all its pieces and collisions.
 ##
-## Uso (desde la raíz del proyecto, con el editor cerrado):
+## Usage (from the project root, with the editor closed):
 ## [codeblock]
 ## godot --headless --path . -s res://tools/terrain/generate_vado_gris.gd
 ## [/codeblock]
-## Requisitos previos (una vez): tools/assets/copy_vado_gris_assets.gd, --import,
-## tools/assets/extract_kit_meshes.gd, tools/materials/build_realm_materials.gd y
-## tools/props/build_vado_gris_props.gd. Ver docs/zonas/vado_gris.md.
+## Prerequisites (once): tools/assets/copy_vado_gris_assets.gd, --import,
+## tools/assets/extract_kit_meshes.gd, tools/materials/build_realm_materials.gd and
+## tools/props/build_vado_gris_props.gd. See docs/zonas/vado_gris.md.
 ## [br][br]
-## Es determinista y se puede repetir: borra y vuelve a escribir los datos de región
-## (scenes/world/zones/vado_gris/terrain/*.res), los assets del terreno y vado_gris.tscn. Todo
-## lo que hay en la escena sale de aquí y de vado_gris_layout.gd: para cambiar la zona se
-## cambia el generador, no la escena a mano.
+## It is deterministic and can be repeated: it deletes and rewrites the region data
+## (scenes/world/zones/vado_gris/terrain/*.res), the terrain assets and vado_gris.tscn. Everything
+## in the scene comes from here and from vado_gris_layout.gd: to change the zone you
+## change the generator, not the scene by hand.
 ## [br][br]
-## Una sola pasada calcula las posiciones de árboles y rocas: las mallas van al instanciador de
-## Terrain3D (solo visual, sin colisión) y las colisiones (un cilindro por tronco o roca) se
-## guardan en la escena, así que el servidor dedicado tiene exactamente las mismas.
+## A single pass computes the positions of trees and rocks: the meshes go to the Terrain3D
+## instancer (visual only, no collision) and the collisions (one cylinder per trunk or rock) are
+## saved in the scene, so the dedicated server has exactly the same ones.
 
 const Layout = preload("res://tools/terrain/vado_gris_layout.gd")
 const BakedMultiMeshScript: GDScript = preload("res://scripts/world/baked_multimesh.gd")
@@ -41,39 +41,39 @@ const CW_MESH: String = "res://assets/models/environment/castle_wall/meshes/"
 const VIL_MESH: String = "res://assets/models/environment/village/meshes/"
 const CUSTOM_MESH: String = "res://assets/models/environment/custom/"
 
-## Capa del mundo estático (personajes, cámara y, más adelante, disparos).
+## Layer of the static world (characters, camera and, later, shots).
 const WORLD_LAYER: int = PlayerCharacter.WORLD_COLLISION_LAYER
-## Capa de los bloqueos invisibles que solo paran al jugador: límites, orillas profundas y cierre
-## del cauce. La cámara no la mira (no se pega a la cabeza junto a una orilla).
+## Layer of the invisible blockers that stop only the player: limits, deep banks and the closing
+## of the channel. The camera does not look at it (it does not stick to the head next to a bank).
 const PLAYER_BLOCKER_LAYER: int = PlayerCharacter.PLAYER_BLOCKER_LAYER
 const SEED: int = 20261028
-## Definición de la fortaleza del Vado Gris (metadato `definition` del nodo del fuerte).
+## Definition of the Vado Gris fortress (`definition` metadata of the fort node).
 const FORTRESS_DEFINITION_PATH: String = "res://data/fortresses/vado_gris.tres"
-## Id de la fortaleza (el `id` de su definición): metadato `fortress` de sus puntos de reaparición.
+## Id of the fortress (the `id` of its definition): `fortress` metadata of its respawn points.
 const FORTRESS_ID: StringName = &"vado_gris_fort"
-## Puntos de reaparición del interior del fuerte, en coordenadas del fuerte (x al este, z al sur):
-## el patio al este de la hoguera y de la torre, fuera del cilindro del círculo de captura (centro
-## x = -8,5, radio 5 m), en espejo norte-sur y mirando a la puerta.
+## Respawn points inside the fort, in fort coordinates (x to the east, z to the south):
+## the yard east of the bonfire and the tower, outside the capture circle cylinder (center
+## x = -8.5, radius 5 m), mirrored north-south and facing the gate.
 const FORT_RESPAWN_LOCAL: Array[Vector2] = [
 	Vector2(11.0, -6.0), Vector2(11.0, -2.0), Vector2(11.0, 2.0), Vector2(11.0, 6.0),
 ]
-## Posiciones (x, |z|) de los dos Guardianes de la Puerta de cada campamento: a los lados de las
-## torres de la puerta, dentro de la zona segura.
+## Positions (x, |z|) of the two Gate Guardians of each camp: on the sides of the
+## gate towers, inside the safe zone.
 const GUARDIAN_SPOTS: Array[Vector2] = [Vector2(-11.0, 142.5), Vector2(11.0, 142.5)]
-## Segundos que tarda en reaparecer un Guardián de la Puerta muerto.
+## Seconds it takes a dead Gate Guardian to respawn.
 const GUARDIAN_RESPAWN_S: float = 30.0
-## Posiciones x de los cuatro puntos de aparición de cada campamento.
+## x positions of the four spawn points of each camp.
 const CAMP_SPAWN_XS: Array[float] = [-7.5, -2.5, 2.5, 7.5]
-## Medio ancho exterior de los puentes (tablero + pretil): las orillas profundas acaban aquí.
+## Outer half-width of the bridges (deck + parapet): the deep banks end here.
 const BRIDGE_OUTER_HALF: float = Layout.BRIDGE_WIDTH * 0.5 + 0.4
 
-## Texturas del terreno (el índice es el id de Terrain3D): [archivo (sin sufijo), nombre, uv_scale,
-## tinte]. Son las CC0 de Poly Haven procesadas por tools/assets/process_terrain_textures.py:
-## desaturadas, con la altura en el alfa del albedo y la normal con la rugosidad en el alfa de la
-## normal (ART-55). El uv_scale es la inversa del lado de la tesela en metros: la hierba y la tierra
-## a 3 m, la grava a 2 m y la roca a 4,5 m; de cerca se ve grano, piedras y briznas, y la proyección
-## en pendientes evita las vetas estiradas. La repetición a gran escala la rompen el desfase de
-## rotación de cada textura, la variación macro del material y el mapa de color.
+## Terrain textures (the index is the Terrain3D id): [file (without suffix), name, uv_scale,
+## tint]. They are the Poly Haven CC0 ones processed by tools/assets/process_terrain_textures.py:
+## desaturated, with the height in the albedo alpha and the normal with the roughness in the normal
+## alpha (ART-55). The uv_scale is the inverse of the tile side in meters: grass and dirt
+## at 3 m, gravel at 2 m and rock at 4.5 m; up close you see grain, stones and blades, and the projection
+## on slopes avoids stretched streaks. Large-scale repetition is broken up by each texture's rotation
+## offset, the macro variation of the material and the color map.
 const TERRAIN_TEXTURES: Array[Array] = [
 	["grass_ground", "Hierba", 0.3, Color(0.84, 1.08, 0.76)],
 	["grass_ground", "Hierba seca", 0.27, Color(1.06, 1.02, 0.84)],
@@ -86,8 +86,8 @@ const TERRAIN_TEXTURES: Array[Array] = [
 	["snow_02", "Nieve", 0.3, Color(1.0, 1.0, 1.02)],
 	["forest_ground_06", "Suelo de bosque", 0.32, Color(1.0, 1.0, 1.0)],
 ]
-## Umbral de la proyección en pendientes de Terrain3D (0 a 0,99): a partir de esa inclinación la
-## textura se proyecta de lado en vez de estirarse a lo largo de la ladera.
+## Threshold of the Terrain3D slope projection (0 to 0.99): beyond that steepness the
+## texture is projected sideways instead of stretching along the slope.
 const PROJECTION_THRESHOLD: float = 0.6
 const T_GRASS: int = 0
 const T_DRY: int = 1
@@ -100,7 +100,7 @@ const T_MUD: int = 7
 const T_SNOW: int = 8
 const T_FOREST: int = 9
 
-## Materiales que sustituyen a los del glTF en el instanciador (tono de Eldrun).
+## Materials that replace the glTF's in the instancer (Eldrun tone).
 const MESH_MATERIALS: Dictionary = {
 	0: "res://assets/materials/vegetation/grass_blade_green.tres",
 	1: "res://assets/materials/vegetation/grass_blade_wispy.tres",
@@ -116,11 +116,11 @@ const MESH_MATERIALS: Dictionary = {
 	29: "res://assets/materials/vegetation/path_stones.tres",
 }
 
-## Mallas del instanciador (el índice es el id): [glTF, nombre, alcance visible (m), sombra].
-## Terrain3D crea un MultiMesh por variante y celda de 32 m, así que cada variante extra
-## multiplica las llamadas de dibujo: las variantes de árbol son pocas (cinco por familia, de las
-## que el kit ya trae) y el sotobosque solo se ve de cerca. Los ids nuevos van al final para no
-## mover los que ya usa el resto del generador.
+## Instancer meshes (the index is the id): [glTF, name, visible range (m), shadow].
+## Terrain3D creates one MultiMesh per variant and 32 m cell, so each extra variant
+## multiplies the draw calls: the tree variants are few (five per family, from those
+## the kit already ships) and the undergrowth is only seen up close. New ids go at the end so as not to
+## shift those the rest of the generator already uses.
 const MESHES: Array[Array] = [
 	["grass_common_short.gltf", "Hierba corta", 48.0, false],
 	["grass_wispy_short.gltf", "Hierba seca", 40.0, false],
@@ -174,42 +174,42 @@ const M_MUSHROOM: int = 30
 const M_GRASS_DRY_SHORT: int = 31
 const M_GRASS_LUSH: int = 32
 const M_GRASS_FROST: int = 33
-## Ids de las variantes de cada familia de árbol (los de pino, caducifolio y muerto van en el
-## orden del kit; los extra, al final de la lista de mallas).
+## Ids of the variants of each tree family (those of pine, deciduous and dead are in the
+## kit's order; the extra ones, at the end of the mesh list).
 const TREE_VARIANTS: Dictionary = {
 	M_PINE: [2, 3, 4, 16, 17],
 	M_COMMON: [5, 6, 7, 18, 19],
 	M_DEAD: [8, 9, 20, 21, 22],
 	M_TWISTED: [23, 24],
 }
-## Grosor de las losas de calzada (m): se hunden para que su cara de arriba quede a ras.
+## Thickness of the road slabs (m): they are sunk so that their top face is flush.
 const PATH_SLAB_SINK: Dictionary = {M_PATH: 0.155, M_PATH + 1: 0.095}
-## Pendiente máxima (grados) para poner una losa: en las laderas del fuerte quedarían al aire.
+## Maximum slope (degrees) for placing a slab: on the fort's slopes they would hang in the air.
 const PATH_SLAB_MAX_SLOPE: float = 7.0
 
-## Factor de escala de las variantes que el kit trae más altas que las tres primeras de su familia
-## (DeadTree_3 a _5 miden de 13 a 16 m y Pine_4 10 m, frente a los 7 a 11 m de las demás): solo
-## afecta al dibujo, nunca a la colisión.
+## Scale factor of the variants that the kit ships taller than the first three of their family
+## (DeadTree_3 to _5 are 13 to 16 m tall and Pine_4 10 m, against the 7 to 11 m of the others): it only
+## affects the drawing, never the collision.
 const VARIANT_SCALE: Dictionary = {16: 0.8, 17: 0.9, 18: 0.85, 20: 0.78, 21: 0.8, 22: 0.62}
-## Radio del tronco (m, a escala 1) para la colisión de cada familia de árbol.
+## Trunk radius (m, at scale 1) for the collision of each tree family.
 const TRUNK_RADIUS: Dictionary = {M_PINE: 0.4, M_COMMON: 0.38, M_DEAD: 0.45}
-## Radio de la base del tronco de cada familia (m, a escala 1), medido en las mallas: lo que hay que
-## hundir un árbol por cada unidad de pendiente para que no quede aire bajo el lado de abajo.
+## Radius of the trunk base of each family (m, at scale 1), measured on the meshes: how much a tree has to
+## be sunk per unit of slope so that no air is left under its downhill side.
 const ROOT_RADIUS: Dictionary = {M_PINE: 0.27, M_COMMON: 0.74, M_DEAD: 0.67, M_TWISTED: 0.6}
-## Por encima de esta pendiente (grados) no se plantan árboles: va roca y canchal (ART-58).
+## Above this slope (degrees) no trees are planted: rock and scree go there (ART-58).
 const TREE_MAX_SLOPE: float = 45.0
-## Altura y radio de la base de las rocas medianas del kit (m, a escala 1), medidos en las mallas.
+## Height and base radius of the kit's medium rocks (m, at scale 1), measured on the meshes.
 const ROCK_HEIGHT: float = 2.2
 const ROCK_RADIUS: float = 1.8
-## Fracción de su altura que se hunde una roca con colisión (la colisión no se toca: el dibujo queda a
-## la altura de su cilindro) y una roca suelta del borde, que sí puede quedar medio enterrada.
+## Fraction of its height that a rock with collision is sunk (the collision is not touched: the drawing stays at
+## the height of its cylinder) and a loose rock on the edge, which can end up half buried.
 const GAMEPLAY_ROCK_SINK: float = 0.14
 const LOOSE_ROCK_SINK: float = 0.45
 
 var _layout: Layout
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
-## Generador aparte para lo que es solo decoración (sotobosque, guijarros): así la cobertura de
-## juego (árboles y rocas con colisión), que sale de [member _rng], no se mueve nunca.
+## Separate generator for what is only decoration (undergrowth, pebbles): this way the gameplay
+## cover (trees and rocks with collision), which comes from [member _rng], never moves.
 var _decor_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _terrain: Terrain3D
 var _zone: Node3D
@@ -260,7 +260,7 @@ func _run() -> void:
 
 
 # =============================================================================================
-# Terreno
+# Terrain
 # =============================================================================================
 
 func _build_height_image() -> Image:
@@ -283,15 +283,15 @@ func _height_at_pixel(px: int, pz: int) -> float:
 	return _heights[clampi(pz, 0, size - 1) * size + clampi(px, 0, size - 1)]
 
 
-## Pendiente en grados en un píxel (diferencias centrales, 1 m entre vértices).
+## Slope in degrees at a pixel (central differences, 1 m between vertices).
 func _slope_at_pixel(px: int, pz: int) -> float:
 	var dx: float = (_height_at_pixel(px + 1, pz) - _height_at_pixel(px - 1, pz)) * 0.5
 	var dz: float = (_height_at_pixel(px, pz + 1) - _height_at_pixel(px, pz - 1)) * 0.5
 	return rad_to_deg(atan(sqrt(dx * dx + dz * dz)))
 
 
-## Mapa de control: textura base, textura superpuesta y mezcla por píxel, según la pendiente,
-## la altura, la distancia al río, las calzadas y las zonas de juego.
+## Control map: base texture, overlay texture and per-pixel blend, according to slope,
+## height, distance to the river, roads and gameplay zones.
 func _build_control_image() -> Image:
 	var size: int = Layout.MAP_SIZE
 	var image: Image = Image.create_empty(size, size, false, Image.FORMAT_RF)
@@ -303,7 +303,7 @@ func _build_control_image() -> Image:
 			var base: int = paint.x
 			var overlay: int = paint.y
 			var blend: int = clampi(paint.z, 0, 255)
-			# Terrain3D 1.0.2: base == overlay con mezcla 255 se ve negro.
+			# Terrain3D 1.0.2: base == overlay with blend 255 looks black.
 			if base == overlay:
 				blend = 0
 			var bits: int = Terrain3DUtil.enc_base(base) | Terrain3DUtil.enc_overlay(overlay) \
@@ -312,11 +312,11 @@ func _build_control_image() -> Image:
 	return image
 
 
-## Devuelve (base, superpuesta, mezcla 0..255).
+## Returns (base, overlay, blend 0..255).
 func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 	var n: float = _layout.paint_noise(x, z)
 	var n2: float = _layout.paint_noise(x * 2.3 + 91.0, z * 2.3 - 37.0)
-	# Hierba: seca y gris hacia el norte y en el centro (Eldrun), más verde hacia el sur.
+	# Grass: dry and gray toward the north and in the center (Eldrun), greener toward the south.
 	var south: float = smoothstep(-20.0, 150.0, z)
 	var north: float = smoothstep(-20.0, 150.0, -z)
 	var base: int = T_GRASS
@@ -326,7 +326,7 @@ func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 		overlay = T_LUSH
 		blend = clampf(south * 0.9 + n2 * 0.8, 0.0, 1.0)
 
-	# Laderas empinadas y montaña: roca.
+	# Steep slopes and mountain: rock.
 	var rock: float = smoothstep(30.0, 46.0, slope + n2 * 9.0)
 	var high: float = smoothstep(28.0, 46.0, h + n * 8.0)
 	if rock > 0.0 or high > 0.0:
@@ -339,10 +339,10 @@ func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 			overlay = T_ROCK
 			blend = r * 2.0
 
-	# Identidad de cada mitad (ART-62), solo pintura (la capa de juego sigue en espejo): al norte
-	# (Vardheim) nieve a manchas en la hierba y suelo de bosque oscuro bajo las coníferas, y nieve
-	# continua en lo alto; al sur (Solmarch) hierba verde y suelo vivo, sin nieve. Fuera del área
-	# jugable la diferencia es mayor.
+	# Identity of each half (ART-62), paint only (the gameplay layer stays mirrored): in the north
+	# (Vardheim) patchy snow on the grass and dark forest floor under the conifers, and continuous
+	# snow up high; in the south (Solmarch) green grass and lively soil, no snow. Outside the
+	# playable area the difference is greater.
 	var outside: float = smoothstep(0.0, 14.0, maxf(absf(x) - Layout.PLAY_HALF, absf(z) - Layout.WALL_Z))
 	if z < 0.0 and base != T_ROCK:
 		var snow_noise: float = _layout.paint_noise(x * 0.9 + 400.0, z * 0.9 + 77.0)
@@ -357,13 +357,13 @@ func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 	elif z >= 0.0 and base != T_ROCK and outside > 0.3 and h < 40.0:
 		overlay = T_LUSH
 		blend = clampf(0.55 + n2 * 0.5, 0.0, 1.0)
-	# Cimas y riscos: la roca manda, con nieve en las cumbres del norte.
+	# Summits and crags: rock rules, with snow on the northern peaks.
 	if high > 0.8 and z < -20.0 and h > 62.0:
 		overlay = T_SNOW
 		blend = clampf((h - 62.0) / 14.0, 0.0, 1.0)
 
 	var grass_base: int = base
-	# Pie de las murallas y campamentos: tierra pisada con calvas de hierba.
+	# Foot of the walls and camps: trampled earth with bald patches of grass.
 	var az: float = absf(z)
 	var wall_band: float = 1.0 - smoothstep(3.0, 9.0, absf(az - Layout.WALL_Z))
 	var camp: float = 1.0 - smoothstep(Layout.CAMP_RADIUS - 8.0, Layout.CAMP_RADIUS + 2.0, Layout.camp_distance(x, z))
@@ -373,16 +373,16 @@ func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 		overlay = T_DRY if z < 0.0 else T_GRASS
 		blend = clampf(1.0 - trodden + n * 0.9 + 0.3, 0.0, 1.0)
 
-	# Meseta del fuerte: tierra y grava.
+	# Fort plateau: earth and gravel.
 	var fort_d: float = Layout.fort_sdf(x, z)
 	if fort_d < 6.0:
 		base = T_DIRT
 		overlay = T_GRAVEL if fort_d < 1.0 else T_DRY
 		blend = clampf(0.35 + n * 0.6 if fort_d < 1.0 else smoothstep(1.0, 6.0, fort_d), 0.0, 1.0)
 
-	# Calzadas: núcleo de grava gris (la vieja calzada de Eld, con las losas encima en el
-	# instanciador) que pasa a tierra y se funde con la hierba en un borde roto por ruido, con
-	# mezcla fraccionaria (no 0/1) para que el contorno no siga la rejilla de 1 m.
+	# Roads: gray gravel core (the old road of Eld, with the slabs on top in the
+	# instancer) that turns to dirt and blends into the grass at an edge broken up by noise, with
+	# fractional blend (not 0/1) so that the outline does not follow the 1 m grid.
 	var road: float = Layout.road_distance(x, z) + n * 1.4 + n2 * 0.6
 	if road < 4.2:
 		if road < 1.8:
@@ -394,7 +394,7 @@ func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 			overlay = grass_base if fort_d >= 6.0 else T_DRY
 			blend = smoothstep(1.8, 4.2, road)
 
-	# Río: lecho oscuro, vado de grava gris (el "Vado Gris"), orillas de barro y grava.
+	# River: dark bed, gray gravel ford (the "Vado Gris"), banks of mud and gravel.
 	var d: float = Layout.river_distance(x, z) + n * 1.2
 	var ford: float = Layout.ford_factor(x, z)
 	if d < Layout.WATER_HALF_WIDTH + 1.0 + ford * 6.0:
@@ -416,9 +416,9 @@ func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 	return Vector3i(base, overlay, roundi(blend * 255.0))
 
 
-## Mapa de color (multiplica el albedo): manchas grandes de luz y sombra, calvas secas más
-## pardas y orillas más verdes y oscuras, para que el valle no sea un verde uniforme. El alfa
-## es el modificador de rugosidad de Terrain3D (0,5 = neutro).
+## Color map (multiplies the albedo): large patches of light and shadow, browner dry
+## bald patches and greener, darker banks, so that the valley is not a uniform green. The alpha
+## is Terrain3D's roughness modifier (0.5 = neutral).
 func _build_color_image() -> Image:
 	var size: int = Layout.MAP_SIZE
 	var image: Image = Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
@@ -453,12 +453,12 @@ func _create_terrain(height_image: Image, control_image: Image, color_image: Ima
 	_terrain.collision_mode = Terrain3DCollision.FULL_GAME
 	_terrain.collision_layer = WORLD_LAYER
 	_terrain.collision_mask = WORLD_LAYER
-	# Se ajusta el material que crea el propio nodo (asignar uno nuevo en headless registra
-	# errores del servidor de render ficticio). Sin fondo plano fuera de las regiones.
+	# The material that the node itself creates is tweaked (assigning a new one in headless logs
+	# errors from the dummy render server). No flat background outside the regions.
 	_terrain.material.world_background = Terrain3DMaterial.NONE
-	# Transiciones más suaves entre texturas (con la mezcla por altura de las texturas de
-	# acuarela) y variación de color a gran escala para que los bordes de la pintura no sigan la
-	# rejilla de 1 m del mapa de control.
+	# Softer transitions between textures (with the height blend of the watercolor
+	# textures) and large-scale color variation so that the paint edges do not follow the
+	# 1 m grid of the control map.
 	_terrain.material.set_shader_param(&"blend_sharpness", 0.45)
 	_terrain.material.set_shader_param(&"enable_projection", true)
 	_terrain.material.set_shader_param(&"projection_threshold", PROJECTION_THRESHOLD)
@@ -503,7 +503,7 @@ func _create_terrain(height_image: Image, control_image: Image, color_image: Ima
 	print("   regiones: %d" % _terrain.data.get_region_count())
 
 
-## Altura del terreno sin el fallo de get_height() junto a los vértices (Terrain3D 1.0.2).
+## Terrain height without the get_height() flaw next to vertices (Terrain3D 1.0.2).
 func _ground(x: float, z: float) -> float:
 	var flat: Vector3 = Vector3(x, 0.0, z)
 	var vertex: Vector3 = flat.snapped(Vector3(1.0, 0.0, 1.0))
@@ -536,7 +536,7 @@ func _save_terrain() -> void:
 
 
 # =============================================================================================
-# Vegetación
+# Vegetation
 # =============================================================================================
 
 func _add_instance(mesh_id: int, xform: Transform3D) -> void:
@@ -554,7 +554,7 @@ func _place_vegetation() -> void:
 	print("   colisiones: %d troncos, %d rocas" % [_tree_colliders.size(), _rock_colliders.size()])
 
 
-## ¿Se puede poner un árbol o una roca de juego aquí (mitad norte)?
+## Can a gameplay tree or rock be placed here (north half)?
 func _cover_allowed(x: float, z: float, clearance: float) -> bool:
 	if absf(x) > Layout.PLAY_HALF - 5.0 or z > -6.0 or z < -Layout.WALL_Z + 9.0:
 		return false
@@ -577,11 +577,11 @@ func _cover_allowed(x: float, z: float, clearance: float) -> bool:
 	return true
 
 
-## Cobertura de juego (árboles y rocas con colisión). Se genera en la mitad norte y se refleja
-## en el eje z = 0: misma posición, mismo radio de colisión; cambia solo el modelo (pinos al
-## norte, caducifolios al sur). Así los dos reinos tienen exactamente la misma cobertura.
+## Gameplay cover (trees and rocks with collision). It is generated in the north half and mirrored
+## on the z = 0 axis: same position, same collision radius; only the model changes (pines in the
+## north, deciduous in the south). This way both realms have exactly the same cover.
 func _place_gameplay_cover() -> void:
-	# Bosquetes en los flancos: [centro, radio, árboles].
+	# Groves on the flanks: [center, radius, trees].
 	var groves: Array[Array] = [
 		[Vector2(-118, -112), 18.0, 9], [Vector2(-72, -128), 12.0, 5], [Vector2(-130, -62), 13.0, 5],
 		[Vector2(70, -122), 16.0, 8], [Vector2(118, -96), 16.0, 7], [Vector2(112, -132), 10.0, 4],
@@ -602,7 +602,7 @@ func _place_gameplay_cover() -> void:
 			var family: int = M_PINE if z < -70.0 else M_DEAD
 			_add_mirrored_tree(x, z, family)
 			placed += 1
-	# Árboles muertos sueltos en la franja central (Eldrun) y en la península.
+	# Loose dead trees in the central strip (Eldrun) and on the peninsula.
 	var singles: int = 0
 	var attempts: int = 0
 	while singles < 9 and attempts < 400:
@@ -613,7 +613,7 @@ func _place_gameplay_cover() -> void:
 			continue
 		_add_mirrored_tree(x, z, M_DEAD)
 		singles += 1
-	# Rocas: grupos de cobertura en las llanuras, cerca de las orillas y junto a la península.
+	# Rocks: cover groups on the plains, near the banks and next to the peninsula.
 	var rock_spots: Array[Vector2] = [
 		Vector2(-40, -118), Vector2(-96, -88), Vector2(-60, -40), Vector2(-26, -76), Vector2(24, -102),
 		Vector2(58, -74), Vector2(96, -70), Vector2(132, -118), Vector2(-138, -100), Vector2(64, -30),
@@ -632,8 +632,8 @@ func _place_gameplay_cover() -> void:
 			for mirror: int in 2:
 				var mz: float = z if mirror == 0 else -z
 				var my: float = yaw if mirror == 0 else PI - yaw
-				# La colisión se queda donde estaba (cilindro desde 0,15 de escala bajo el suelo);
-				# solo el dibujo se asienta en la ladera (ART-58).
+				# The collision stays where it was (cylinder from 0.15 of scale below the ground);
+				# only the drawing settles on the slope (ART-58).
 				var y: float = _ground(x, mz) - 0.15 * scale
 				_add_instance(mesh_id, _settle_rock(x, mz, scale, scale, my, GAMEPLAY_ROCK_SINK, 0.8))
 				_rock_colliders.append({"position": Vector3(x, y, mz), "radius": 1.35 * scale, "height": 2.0 * scale})
@@ -644,8 +644,8 @@ func _place_gameplay_cover() -> void:
 func _add_mirrored_tree(x: float, z: float, family: int) -> void:
 	var variants: Array = TREE_VARIANTS[family]
 	var variant: int = _rng.randi_range(0, variants.size() - 1)
-	# Algo más grandes que el modelo del kit (7,3 m): junto a murallas de 12 m y torres de 18 m
-	# los árboles a escala 1 parecían arbustos.
+	# Somewhat bigger than the kit model (7.3 m): next to 12 m walls and 18 m towers
+	# trees at scale 1 looked like bushes.
 	var scale: float = _rng.randf_range(1.05, 1.4)
 	var yaw: float = _rng.randf_range(0.0, TAU)
 	for mirror: int in 2:
@@ -656,7 +656,7 @@ func _add_mirrored_tree(x: float, z: float, family: int) -> void:
 			mesh_family = M_COMMON
 			mesh_variant = variant % (TREE_VARIANTS[M_COMMON] as Array).size()
 		var mesh_id: int = (TREE_VARIANTS[mesh_family] as Array)[mesh_variant]
-		# La colisión se queda en h - 0,1; el dibujo se hunde además según la pendiente (ART-58).
+		# The collision stays at h - 0.1; the drawing also sinks according to the slope (ART-58).
 		var y: float = _ground(x, mz) - 0.1
 		var visual_scale: float = scale * float(VARIANT_SCALE.get(mesh_id, 1.0))
 		var basis: Basis = Basis(Vector3.UP, yaw if mirror == 0 else PI - yaw).scaled(Vector3(visual_scale, visual_scale, visual_scale))
@@ -666,17 +666,17 @@ func _add_mirrored_tree(x: float, z: float, family: int) -> void:
 	_occupied.append(Vector3(x, 2.5, z))
 
 
-## Altura a la que se pone un árbol (ART-58): el suelo menos [param base_sink] menos lo que hay que
-## hundirlo según la pendiente, tan(pendiente) por el radio de su base, para que el lado de abajo del
-## tronco no quede en el aire. Por encima de [constant TREE_MAX_SLOPE] no se ponen árboles.
+## Height at which a tree is placed (ART-58): the ground minus [param base_sink] minus how much it has to
+## be sunk according to the slope, tan(slope) times the radius of its base, so that the downhill side of the
+## trunk is not left in the air. Above [constant TREE_MAX_SLOPE] no trees are placed.
 func _trunk_y(x: float, z: float, family: int, scale: float, base_sink: float) -> float:
 	var slope: float = minf(_ground_slope(x, z), TREE_MAX_SLOPE)
 	return _ground(x, z) - base_sink - tan(deg_to_rad(slope)) * float(ROOT_RADIUS[family]) * scale
 
 
-## Posición y giro de una roca asentada en la ladera (ART-58): inclinada hacia la normal del terreno
-## ([param tilt] de 0 a 1) y hundida una fracción [param sink_fraction] de su altura más el hueco que
-## deja la inclinación que falta. Escala [param scale_xz] en horizontal y [param scale_y] en vertical.
+## Position and rotation of a rock settled on the slope (ART-58): tilted toward the terrain normal
+## ([param tilt] from 0 to 1) and sunk a fraction [param sink_fraction] of its height plus the gap that
+## the missing tilt leaves. Scale [param scale_xz] horizontally and [param scale_y] vertically.
 func _settle_rock(x: float, z: float, scale_xz: float, scale_y: float, yaw: float, sink_fraction: float,
 		tilt: float) -> Transform3D:
 	var normal: Vector3 = _ground_normal(x, z)
@@ -687,9 +687,9 @@ func _settle_rock(x: float, z: float, scale_xz: float, scale_y: float, yaw: floa
 	return Transform3D(basis, Vector3(x, _ground(x, z) - sink, z))
 
 
-## Sotobosque alrededor de un tronco (ART-59): helechos, plantas, setas y hierba alta. Solo dibujo (sin
-## colisión), con el generador de decoración para no mover la cobertura de juego. No pisa calzadas,
-## río, fuerte, campamentos ni ruinas.
+## Undergrowth around a trunk (ART-59): ferns, plants, mushrooms and tall grass. Drawing only (no
+## collision), with the decoration generator so as not to move the gameplay cover. It does not step on roads,
+## river, fort, camps or ruins.
 func _scatter_undergrowth(x: float, z: float, radius: float, count: int) -> void:
 	var kinds: Array[int] = [M_FERN, M_FERN, M_PLANT, M_TALL_GRASS, M_MUSHROOM]
 	for i: int in count:
@@ -713,7 +713,7 @@ func _scatter_undergrowth(x: float, z: float, radius: float, count: int) -> void
 		_add_instance(kind, Transform3D(basis, Vector3(px, _ground(px, pz) - 0.03, pz)))
 
 
-## Guijarros alrededor de una roca (ART-59), solo dibujo.
+## Pebbles around a rock (ART-59), drawing only.
 func _scatter_pebbles(x: float, z: float, radius: float) -> void:
 	for i: int in _decor_rng.randi_range(3, 6):
 		var angle: float = _decor_rng.randf_range(0.0, TAU)
@@ -729,13 +729,13 @@ func _scatter_pebbles(x: float, z: float, radius: float) -> void:
 		_add_instance(kind, Transform3D(basis, Vector3(px, _ground(px, pz) - 0.02, pz)))
 
 
-## ¿Cae (x, z) dentro del área jugable (el cuadrado de [constant Layout.PLAY_HALF] hasta las murallas)?
+## Does (x, z) fall inside the playable area (the square of [constant Layout.PLAY_HALF] up to the walls)?
 static func _in_play_area(x: float, z: float) -> bool:
 	return absf(x) <= Layout.PLAY_HALF and absf(z) <= Layout.WALL_Z
 
 
-## ¿Se puede poner decoración suelta aquí? Fuera de calzadas (margen [param road_margin] m), del
-## río, del fuerte, de los campamentos y de las ruinas, y en pendientes de menos de [param max_slope].
+## Can loose decoration be placed here? Away from roads (margin [param road_margin] m), the
+## river, the fort, the camps and the ruins, and on slopes under [param max_slope].
 func _decor_allowed(x: float, z: float, road_margin: float, max_slope: float) -> bool:
 	if Layout.road_distance(x, z) < road_margin or Layout.river_distance(x, z) < 11.5:
 		return false
@@ -747,9 +747,9 @@ func _decor_allowed(x: float, z: float, road_margin: float, max_slope: float) ->
 	return not is_nan(h) and _ground_slope(x, z) <= max_slope
 
 
-## Bosque del borde, fuera del área jugable (sin colisión: no se llega). Pinos al norte,
-## caducifolios al sur y árboles muertos y retorcidos donde se juntan, como pide la identidad
-## visual. No hay árboles por encima de [constant TREE_MAX_SLOPE]: allí va canchal (ART-58).
+## Border forest, outside the playable area (no collision: it cannot be reached). Pines in the north,
+## deciduous in the south and dead and twisted trees where they meet, as the visual identity
+## asks. There are no trees above [constant TREE_MAX_SLOPE]: scree goes there (ART-58).
 func _place_border_forest() -> void:
 	var step: float = 6.5
 	var count: int = 0
@@ -765,7 +765,7 @@ func _place_border_forest() -> void:
 				continue
 			if absf(x) < Layout.WALL_HALF_LENGTH + 4.0 and absf(absf(z) - Layout.WALL_Z) < 12.0:
 				continue
-			# Paso de la calzada detrás de cada puerta, despejado.
+			# Road passage behind each gate, kept clear.
 			if absf(x) < 14.0 and absf(z) > Layout.WALL_Z:
 				continue
 			if Layout.river_distance(x, z) < 15.0:
@@ -774,24 +774,24 @@ func _place_border_forest() -> void:
 			if is_nan(h) or h > 110.0:
 				continue
 			var slope: float = _ground_slope(x, z)
-			# Laderas de más de 45°: canchal de rocas en vez de árboles.
+			# Slopes over 45°: rock scree instead of trees.
 			if slope > TREE_MAX_SLOPE:
 				if _rng.randf() < 0.45:
 					_add_scree(x, z)
 				continue
-			# Bosque en grupos (ruido), que se aclara en las laderas fuertes (de 38° hacia arriba) en
-			# vez de quedarse solo en las crestas.
+			# Forest in clumps (noise), thinning out on steep slopes (from 38° up) instead of
+			# staying only on the ridges.
 			var clump: float = _layout.paint_noise(x * 0.5 + 300.0, z * 0.5 - 120.0)
 			var density: float = (0.85 if z < -40.0 else 0.7) * clampf(0.8 + clump * 1.4, 0.2, 1.0)
 			density *= 1.0 - smoothstep(34.0, 50.0, slope) * 0.55
-			# Más lejos del área jugable el bosque se aclara (presupuesto de primitivas, y a esa
-			# distancia la niebla lo funde en una masa).
+			# Farther from the playable area the forest thins out (primitive budget, and at that
+			# distance the fog blends it into a mass).
 			var beyond: float = maxf(absf(x) - Layout.PLAY_HALF, absf(z) - Layout.WALL_Z)
 			density *= lerpf(1.0, 0.45, smoothstep(30.0, 110.0, beyond))
 			if _rng.randf() > density:
 				if slope > 34.0 and _rng.randf() < 0.18:
 					_add_scree(x, z)
-				# Laderas sin árbol: matorral (helechos, plantas y arbustos) para que no queden peladas.
+				# Treeless slopes: scrub (ferns, plants and bushes) so they do not stay bare.
 				if slope > 20.0 and _decor_rng.randf() < 0.6:
 					_scatter_scrub(x, z)
 				continue
@@ -804,9 +804,9 @@ func _place_border_forest() -> void:
 				var pick: float = _rng.randf()
 				family = M_DEAD if pick < 0.4 else (M_TWISTED if pick < 0.55 else (M_PINE if _rng.randf() < 0.5 else M_COMMON))
 			var variants: Array = TREE_VARIANTS[family]
-			# Coníferas del borde mucho más grandes (las montañas llegan a 80 m y el Muro de
-			# Escarcha mide 12 m): mismo modelo del kit, a escala de bosque de montaña. Los
-			# retorcidos del kit son enormes (17 m a escala 1) y se achican.
+			# Border conifers much bigger (the mountains reach 80 m and the Frost
+			# Wall is 12 m tall): same kit model, at mountain forest scale. The kit's twisted
+			# ones are huge (17 m at scale 1) and are scaled down.
 			var scale: float
 			if family == M_TWISTED:
 				scale = _rng.randf_range(0.5, 0.7)
@@ -820,7 +820,7 @@ func _place_border_forest() -> void:
 			basis = basis.scaled(Vector3(scale, scale, scale))
 			_add_instance(mesh_id, Transform3D(basis, Vector3(x, _trunk_y(x, z, family, scale, 0.15), z)))
 			count += 1
-			# Sotobosque al pie de algunos árboles (ART-59).
+			# Undergrowth at the foot of some trees (ART-59).
 			if _decor_rng.randf() < 0.8:
 				_scatter_undergrowth(x, z, 4.0, 4)
 			if _rng.randf() < 0.12:
@@ -830,7 +830,7 @@ func _place_border_forest() -> void:
 				var rh: float = _ground(rx, rz)
 				var rock_id: int = M_ROCK + _rng.randi_range(0, 2)
 				var rock_yaw: float = _rng.randf_range(0, TAU)
-				# Dentro del área jugable toda roca tiene colisión: las sueltas solo van fuera.
+				# Inside the playable area every rock has collision: loose ones go only outside.
 				if not is_nan(rh) and not _in_play_area(rx, rz):
 					_add_instance(rock_id, _settle_rock(rx, rz, rock_scale, rock_scale, rock_yaw,
 							LOOSE_ROCK_SINK, 0.85))
@@ -838,11 +838,11 @@ func _place_border_forest() -> void:
 	print("   bosque del borde: %d árboles" % count)
 
 
-## Rocas sueltas de canchal en una ladera empinada del borde (sin colisión: no se llega), inclinadas
-## con la ladera y medio enterradas (ART-58).
+## Loose scree rocks on a steep slope at the border (no collision: it cannot be reached), tilted
+## with the slope and half buried (ART-58).
 func _add_scree(x: float, z: float) -> void:
-	# Canchal en regueros, no lunares: de 3 a 6 rocas de tamaños distintos alineadas con la línea de
-	# máxima pendiente (cuesta abajo), las pequeñas a los lados, y guijarros entre ellas.
+	# Scree in rivulets, not polka dots: 3 to 6 rocks of different sizes aligned with the line of
+	# steepest slope (downhill), the small ones on the sides, and pebbles among them.
 	var normal: Vector3 = _ground_normal(x, z)
 	var downhill: Vector2 = Vector2(normal.x, normal.z)
 	downhill = downhill.normalized() if downhill.length() > 0.01 else Vector2(0.0, 1.0)
@@ -857,7 +857,7 @@ func _add_scree(x: float, z: float) -> void:
 		var rock_scale: float = _rng.randf_range(0.9, 1.7) if big else _rng.randf_range(0.3, 0.8)
 		var rock_yaw: float = _rng.randf_range(0.0, TAU)
 		var rock_id: int = M_ROCK + _rng.randi_range(0, 2)
-		# Dentro del área jugable toda roca tiene colisión: el canchal solo va fuera.
+		# Inside the playable area every rock has collision: scree goes only outside.
 		if is_nan(rh) or absf(rx) > 246.0 or absf(rz) > 246.0 or _in_play_area(rx, rz):
 			continue
 		_add_instance(rock_id, _settle_rock(rx, rz, rock_scale, rock_scale * 0.8, rock_yaw, LOOSE_ROCK_SINK, 0.9))
@@ -865,10 +865,10 @@ func _add_scree(x: float, z: float) -> void:
 			_scatter_pebbles(rx, rz, 1.2 * rock_scale + 0.6)
 
 
-## Hierba (instanciador, sin colisión, visible hasta 48 m): en matas agrupadas por un ruido de
-## manchas (prado espeso y claros, no una rejilla), seca y gris hacia el centro (Eldrun) y el
-## norte, algo más verde hacia el sur. Cada celda de 1 m tiene su posición al azar dentro de la
-## celda, así que no se ven hileras.
+## Grass (instancer, no collision, visible up to 48 m): in tufts grouped by a patch noise
+## (thick meadow and clearings, not a grid), dry and gray toward the center (Eldrun) and the
+## north, somewhat greener toward the south. Each 1 m cell has its position at random inside the
+## cell, so no rows are visible.
 func _place_grass() -> void:
 	var step: float = 1.0
 	var gx: float = -186.0
@@ -888,11 +888,11 @@ func _place_grass() -> void:
 				continue
 			if absf(absf(cz) - Layout.WALL_Z) < 4.0 and absf(cx) < 190.0:
 				continue
-			# Manchas: densidad alta en los prados, claros entre ellos.
+			# Patches: high density in the meadows, clearings between them.
 			var clump: float = _layout.paint_noise(cx * 2.2 + 57.0, cz * 2.2 - 11.0) * 0.7 \
 					+ _layout.paint_noise(cx * 0.7 - 23.0, cz * 0.7 + 41.0) * 0.6
 			var keep: float = clampf(0.58 + clump * 1.5, 0.1, 0.97)
-			# Junto a las calzadas, un borde de matas más espeso.
+			# Next to the roads, a thicker edge of tufts.
 			if road < 4.5:
 				keep = maxf(keep, 0.7)
 			if Layout.camp_distance(cx, cz) < Layout.CAMP_RADIUS:
@@ -918,7 +918,7 @@ func _place_grass() -> void:
 		gx += step
 
 
-## Matorral de ladera (ART-59): un manchón de helechos, plantas y arbustos, solo dibujo.
+## Slope scrub (ART-59): a patch of ferns, plants and bushes, drawing only.
 func _scatter_scrub(x: float, z: float) -> void:
 	if absf(x) > 246.0 or absf(z) > 246.0 or _in_play_area(x, z):
 		return
@@ -935,9 +935,9 @@ func _scatter_scrub(x: float, z: float) -> void:
 		_add_instance(kind, Transform3D(basis, Vector3(px, h - 0.05, pz)))
 
 
-## Variante de hierba según la zona (ART-59 y ART-62): al norte (Vardheim) matas escarchadas y
-## verdes frías, en la franja central (Eldrun) secas y grises, al sur (Solmarch) verde vivo. La
-## de hojas finas y caras (wispy, 190 triángulos) solo entra en pequeña proporción.
+## Grass variant according to the zone (ART-59 and ART-62): in the north (Vardheim) frosted tufts and
+## cold greens, in the central strip (Eldrun) dry and gray, in the south (Solmarch) vivid green. The
+## thin, expensive-leaved one (wispy, 190 triangles) only comes in at a small proportion.
 func _grass_variant(z: float, dry_chance: float) -> int:
 	if _rng.randf() < dry_chance:
 		return M_GRASS_DRY if _rng.randf() < 0.18 else M_GRASS_DRY_SHORT
@@ -948,7 +948,7 @@ func _grass_variant(z: float, dry_chance: float) -> int:
 	return M_GRASS
 
 
-## Arbustos decorativos (sin colisión) en orillas, lindes de los bosquetes y ruinas.
+## Decorative bushes (no collision) on banks, grove edges and ruins.
 func _place_bushes() -> void:
 	var placed: int = 0
 	var attempts: int = 0
@@ -973,9 +973,9 @@ func _place_bushes() -> void:
 		placed += 1
 
 
-## Losas del viejo Eld a lo largo de las calzadas (decorativas, sin colisión). Cada losa se
-## inclina con el terreno (normal en su centro) y se hunde hasta que su cara de arriba queda a
-## ras; en pendientes de más de [constant PATH_SLAB_MAX_SLOPE]° no se ponen (sobresaldrían).
+## Slabs of old Eld along the roads (decorative, no collision). Each slab is
+## tilted with the terrain (normal at its center) and sunk until its top face is
+## flush; on slopes of more than [constant PATH_SLAB_MAX_SLOPE]° they are not placed (they would stick out).
 func _place_road_stones() -> void:
 	for road: PackedVector2Array in Layout.road_polylines():
 		for mirror: int in 2:
@@ -1005,14 +1005,14 @@ func _place_road_stones() -> void:
 					_add_instance(mesh_id, Transform3D(basis, Vector3(x, y, z)))
 
 
-## Normal del terreno en (x, z) por diferencias centrales a 1 m.
+## Terrain normal at (x, z) by central differences at 1 m.
 func _ground_normal(x: float, z: float) -> Vector3:
 	var dx: float = (_ground(x + 1.0, z) - _ground(x - 1.0, z)) * 0.5
 	var dz: float = (_ground(x, z + 1.0) - _ground(x, z - 1.0)) * 0.5
 	return Vector3(-dx, 1.0, -dz).normalized()
 
 
-## Base con el eje Y en [param normal] y girada [param yaw] alrededor de ella.
+## Basis with the Y axis on [param normal] and rotated [param yaw] around it.
 static func _basis_on_normal(normal: Vector3, yaw: float) -> Basis:
 	var heading: Vector3 = Basis(Vector3.UP, yaw) * Vector3.FORWARD
 	var x_axis: Vector3 = normal.cross(-heading).normalized()
@@ -1021,11 +1021,11 @@ static func _basis_on_normal(normal: Vector3, yaw: float) -> Basis:
 
 
 # =============================================================================================
-# Ruinas (definición compartida por la vegetación y el montaje)
+# Ruins (definition shared by the vegetation and the assembly)
 # =============================================================================================
 
-## Casas de la aldea en la mitad norte: [centro, segmentos x, segmentos z, lado de la puerta,
-## semilla de daño]. Se reflejan para el sur. Lado: 0 sur, 1 este, 2 norte, 3 oeste.
+## Village houses in the north half: [center, x segments, z segments, door side,
+## damage seed]. They are mirrored for the south. Side: 0 south, 1 east, 2 north, 3 west.
 func _village_houses() -> Array[Array]:
 	return [
 		[Vector2(-121, -13), 4, 3, 0, 1],
@@ -1049,7 +1049,7 @@ func _in_ruins(x: float, z: float, margin: float) -> bool:
 
 
 # =============================================================================================
-# Montaje de la escena
+# Scene assembly
 # =============================================================================================
 
 func _assemble_scene() -> void:
@@ -1074,11 +1074,11 @@ func _assemble_scene() -> void:
 func _add_environment() -> void:
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_SKY
-	# Cielo de la frontera de Eldrun (ART-54): una tormenta que se abre. Shader propio sobre la cúpula
-	# (assets/materials/shaders/storm_sky.gdshader): nubes rotas, oscuras al este y en el cénit, con un
-	# claro hacia el oeste y filo plateado, y el disco solar donde está la luz direccional. Es un
-	# recurso de Environment como otro cualquiera: el servidor headless no lo dibuja y no carga
-	# ningún addon de cielo.
+	# Sky of the Eldrun frontier (ART-54): a storm that is breaking up. Custom shader on the dome
+	# (assets/materials/shaders/storm_sky.gdshader): broken clouds, dark in the east and at the zenith, with a
+	# clearing toward the west and a silver lining, and the sun disc where the directional light is. It is an
+	# Environment resource like any other: the headless server does not draw it and does not load
+	# any sky addon.
 	var sky_material := ShaderMaterial.new()
 	sky_material.shader = load(SKY_SHADER_PATH) as Shader
 	sky_material.set_shader_parameter(&"cloud_noise", _make_cloud_noise())
@@ -1087,8 +1087,8 @@ func _add_environment() -> void:
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	# Ambiente bajo: la luz con dirección la pone el sol. Con el claro del cielo hacia el oeste y las
-	# nubes oscuras al este, el ambiente ya trae un degradado de color, no un gris uniforme.
+	# Low ambient: the directional light is provided by the sun. With the sky clearing in the west and the
+	# dark clouds in the east, the ambient already brings a color gradient, not a uniform gray.
 	environment.ambient_light_energy = 0.55
 	environment.ambient_light_sky_contribution = 1.0
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
@@ -1098,7 +1098,7 @@ func _add_environment() -> void:
 	environment.ssao_enabled = true
 	environment.ssao_radius = 1.6
 	environment.ssao_intensity = 1.6
-	# Rebote de luz en pantalla: el interior del fuerte y el pie de las murallas no se quedan negros.
+	# Screen-space light bounce: the inside of the fort and the foot of the walls do not stay black.
 	environment.ssil_enabled = true
 	environment.ssil_radius = 4.0
 	environment.ssil_intensity = 0.8
@@ -1106,7 +1106,7 @@ func _add_environment() -> void:
 	environment.glow_intensity = 0.35
 	environment.glow_bloom = 0.04
 	environment.glow_hdr_threshold = 1.2
-	# Niebla de distancia fría y baja, con la dispersión del sol bajo del oeste.
+	# Cold, low distance fog, with the scattering of the low western sun.
 	environment.fog_enabled = true
 	environment.fog_light_color = Color("#9ba5ae")
 	environment.fog_light_energy = 1.0
@@ -1116,7 +1116,7 @@ func _add_environment() -> void:
 	environment.fog_sky_affect = 0.25
 	environment.fog_height = 3.0
 	environment.fog_height_density = 0.01
-	# Niebla volumétrica ligera: las sombras de las nubes y de las torres dejan haces de luz.
+	# Light volumetric fog: the shadows of the clouds and the towers leave beams of light.
 	environment.volumetric_fog_enabled = true
 	environment.volumetric_fog_density = 0.0012
 	environment.volumetric_fog_albedo = Color("#b8c4d0")
@@ -1141,11 +1141,11 @@ func _add_environment() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
-	# Sol bajo del oeste (28°), algo cálido y con sombras largas. Va exactamente a lo largo de +X,
-	# así que no da de lleno en ninguna de las dos fachadas de muralla (miran a +Z y a -Z): las dos
-	# reciben la misma luz (la del ambiente), y la simetría entre reinos no se toca. Ya no hay
-	# rellenos: con ellos la luz era plana (ART-54). Lo que mira al oeste recibe sol y lo que mira al
-	# este queda en sombra, con un ambiente de 0,48.
+	# Low sun from the west (28°), slightly warm and with long shadows. It runs exactly along +X,
+	# so it does not hit either of the two wall facades head-on (they face +Z and -Z): both
+	# get the same light (the ambient's), and the symmetry between realms is not touched. There are no
+	# fill lights anymore: with them the light was flat (ART-54). What faces west gets sun and what faces
+	# east is left in shadow, with an ambient of 0.48.
 	sun.rotation_degrees = Vector3(-28.0, -90.0, 0.0)
 	sun.light_color = Color("#ffe6c4")
 	sun.light_energy = 2.6
@@ -1153,23 +1153,23 @@ func _add_environment() -> void:
 	sun.light_angular_distance = 1.5
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.4
-	# Cuatro cortes hasta 130 m (antes dos hasta 120 m): las sombras largas de un sol bajo llegan a
-	# los árboles y a la muralla. El coste en llamadas de dibujo se mide con
-	# tools/render/render_screenshot_points.gd (docs/zonas/vado_gris.md, «Rendimiento medido»).
+	# Four splits up to 130 m (before, two up to 120 m): the long shadows of a low sun reach
+	# the trees and the wall. The cost in draw calls is measured with
+	# tools/render/render_screenshot_points.gd (docs/zonas/vado_gris.md, «Measured performance»).
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_max_distance = 110.0
 	sun.directional_shadow_blend_splits = false
 	_zone.add_child(sun)
 	_zone.move_child(sun, 1)
 
-	# Relleno de las murallas (ART-54): dos luces simétricas, sin sombra, que solo iluminan la capa 20
-	# (WallLightTag la pone en las murallas). Con el sol en el plano X, las fachadas de las murallas
-	# quedan de canto y salen grises y planas; cada una recibe aquí una luz rasante del oeste, una desde
-	# el suroeste y otra desde el noroeste, y se lee el relieve de la sillería. La zona sigue en espejo.
+	# Wall fill (ART-54): two symmetrical lights, without shadow, that only light layer 20
+	# (WallLightTag puts it on the walls). With the sun in the X plane, the wall facades
+	# are seen edge-on and come out gray and flat; each one gets here a grazing light from the west, one from
+	# the southwest and another from the northwest, and the relief of the ashlar reads. The zone stays mirrored.
 	for side: float in [-1.0, 1.0]:
 		var fill := DirectionalLight3D.new()
 		fill.name = "RellenoMuralla%s" % ("Norte" if side < 0.0 else "Sur")
-		# La luz viaja hacia el este y hacia la fachada (la del muro norte mira a +Z): de lado, a 28°.
+		# The light travels toward the east and toward the facade (the north wall's faces +Z): sideways, at 28°.
 		fill.basis = Basis.looking_at(Vector3(0.62, -0.47, -side * 0.62).normalized(), Vector3.UP)
 		fill.light_color = Color("#ffe9cf")
 		fill.light_energy = 0.9
@@ -1180,8 +1180,8 @@ func _add_environment() -> void:
 		_zone.move_child(fill, 2 if side < 0.0 else 3)
 
 
-## Ruido de las nubes del cielo (textura procedural que se guarda como parámetros, no como imagen):
-## ruido simplex suave y sin costuras, que el shader del cielo muestrea a varias escalas.
+## Sky cloud noise (procedural texture saved as parameters, not as an image):
+## soft, seamless simplex noise, which the sky shader samples at several scales.
 static func _make_cloud_noise() -> NoiseTexture2D:
 	var noise := FastNoiseLite.new()
 	noise.seed = 4113
@@ -1199,8 +1199,8 @@ static func _make_cloud_noise() -> NoiseTexture2D:
 	return texture
 
 
-## Agua del río: cinta de malla a lo largo del cauce, a la cota WATER_LEVEL. UV.x son metros a
-## lo largo del río (para la corriente) y UV.y metros desde el eje.
+## River water: mesh ribbon along the channel, at height WATER_LEVEL. UV.x is meters along
+## the river (for the current) and UV.y meters from the axis.
 func _add_water() -> void:
 	var line: PackedVector2Array = Layout.river_polyline(2.0)
 	var half_width: float = 15.0
@@ -1225,7 +1225,7 @@ func _add_water() -> void:
 		vertex_count += 2
 	for i: int in line.size() - 1:
 		var a: int = i * 2
-		# Orden horario visto desde arriba (cara frontal en Godot).
+		# Clockwise order seen from above (front face in Godot).
 		st.add_index(a)
 		st.add_index(a + 1)
 		st.add_index(a + 2)
@@ -1247,11 +1247,11 @@ func _add_water() -> void:
 	group.add_child(water)
 
 
-## El fuerte es el nodo de la fortaleza (docs/fuerte.md, sección 1.6): del grupo `fortresses` y con
-## el metadato `definition`. Sus hijos son los marcadores que usa el controlador: `CaptureCircle`
-## (con `radius`), `CaptainSpawn`, `GuardSpawn1`..4, `FortGate` y los estandartes `Estandarte`,
-## `EstandartePuertaN` y `EstandartePuertaS`, más los generadores de PNJ (`NpcSpawner`) y los
-## marcadores de patrulla de los Huecos.
+## The fort is the fortress node (docs/fuerte.md, section 1.6): in the `fortresses` group and with
+## the `definition` metadata. Its children are the markers the controller uses: `CaptureCircle`
+## (with `radius`), `CaptainSpawn`, `GuardSpawn1`..4, `FortGate` and the banners `Estandarte`,
+## `EstandartePuertaN` and `EstandartePuertaS`, plus the NPC spawners (`NpcSpawner`) and the
+## patrol markers of the Hollow.
 func _add_fort() -> void:
 	var fort: Node3D = _instance(PROPS + "fort/vado_gris_fort.tscn", _zone)
 	fort.name = "Fuerte"
@@ -1269,7 +1269,7 @@ func _add_bridges() -> void:
 		bridge.position = Vector3(Layout.BRIDGE_X, Layout.BANK_LEVEL, z)
 
 
-# --- Murallas --------------------------------------------------------------------------------
+# --- Walls -----------------------------------------------------------------------------------
 
 func _add_walls() -> void:
 	var group := _group("Murallas")
@@ -1278,9 +1278,9 @@ func _add_walls() -> void:
 	_build_wall(group, "solmarch", 1.0, "MurallaDelAlba", [36.0, 72.0, 108.0, 144.0])
 
 
-## Fachada de una muralla: puerta con torres (escena), hiladas de Castle Wall Kit en MultiMesh
-## (dos llamadas de dibujo por tramo), torres intermedias y una colisión por lado.
-## [param side] = -1 para la del norte (la cara mira a +Z) y +1 para la del sur.
+## Facade of a wall: gate with towers (scene), Castle Wall Kit courses in MultiMesh
+## (two draw calls per section), intermediate towers and one collision per side.
+## [param side] = -1 for the north one (the face looks toward +Z) and +1 for the south one.
 func _build_wall(parent: Node3D, realm: String, side: float, node_name: String, tower_xs: Array) -> void:
 	var wall := Node3D.new()
 	wall.name = node_name
@@ -1300,7 +1300,7 @@ func _build_wall(parent: Node3D, realm: String, side: float, node_name: String, 
 	for direction: float in [-1.0, 1.0]:
 		var x0: float = 9.0
 		while x0 < Layout.WALL_HALF_LENGTH:
-			# Tramo de 6 m entre x0 y x0 + 6 (en la dirección del lado).
+			# 6 m section between x0 and x0 + 6 (in the direction of the side).
 			var mid: float = direction * (x0 + 3.0)
 			var terrain_mid: float = _ground(mid, face_z + side * 6.0)
 			if not is_nan(terrain_mid) and terrain_mid > ground + 11.0:
@@ -1341,16 +1341,16 @@ func _build_wall(parent: Node3D, realm: String, side: float, node_name: String, 
 				Vector3(direction * (9.0 + run * 0.5), ground + 4.0, face_z + side * 0.45))
 
 
-## Esquina de una pieza Courtine (origen en su extremo izquierdo visto desde el valle).
+## Corner of a Courtine piece (origin at its left end seen from the valley).
 static func _wall_point(start_x: float, y: float, face_z: float, side: float) -> Vector3:
-	# La pieza va de x a x + 6 en su espacio local; girada 180° (muralla sur) va de x a x - 6.
+	# The piece goes from x to x + 6 in its local space; rotated 180° (south wall) it goes from x to x - 6.
 	return Vector3(start_x if side < 0.0 else start_x + 6.0, y, face_z)
 
 
-# --- Campamentos -----------------------------------------------------------------------------
+# --- Camps -----------------------------------------------------------------------------------
 
-## Campamento dentro de cada puerta. Se define en la mitad norte y se refleja con las piezas de
-## cada reino: [escena, x, z, giro en grados, altura extra].
+## Camp inside each gate. It is defined in the north half and mirrored with the pieces of
+## each realm: [scene, x, z, rotation in degrees, extra height].
 func _camp_layout() -> Array[Array]:
 	return [
 		["tent", -17.0, -141.0, 90.0, 0.0], ["tent", -17.0, -133.5, 90.0, 0.0],
@@ -1388,7 +1388,7 @@ func _add_camps() -> void:
 			index += 1
 
 
-# --- Ruinas ----------------------------------------------------------------------------------
+# --- Ruins -----------------------------------------------------------------------------------
 
 func _add_ruins() -> void:
 	var group := _group("Ruinas")
@@ -1414,8 +1414,8 @@ func _add_ruins() -> void:
 	_baked(group, "Escombros", CUSTOM_MESH + "rubble.tres", load(MAT + "eldrun/ruin_trim.tres") as Material, _rubble_xforms)
 
 
-## Final de la vieja calle de la aldea antes del borde oeste: dos pilares de una puerta caída y
-## escombros, para que la calzada no acabe contra la pared invisible.
+## End of the old village street before the west edge: two pillars of a fallen gate and
+## rubble, so that the road does not end against the invisible wall.
 func _build_road_end(parent: Node3D) -> void:
 	var end := Node3D.new()
 	end.name = "FinCalzada"
@@ -1429,10 +1429,10 @@ func _build_road_end(parent: Node3D) -> void:
 		_rubble_xforms.append(Transform3D(Basis(Vector3.UP, spot.x + spot.y), Vector3(spot.x, _ground(spot.x, spot.y), spot.y)))
 
 
-## Estado de cada tramo de 2 m de una casa: [tipo, hundimiento, inclinación]. Tipo: "wall",
-## "window", "door" o "" (derrumbado). Se calcula una vez y se usa en las dos casas reflejadas.
-## Las puertas no se hunden (el dintel queda a más de 2 m: se pasa por debajo) y los muros o se
-## saltan (cima a 1,2 m o menos) o tapan (cima a 1,9 m o más): nada a la altura justa del salto.
+## State of each 2 m section of a house: [type, sinking, tilt]. Type: "wall",
+## "window", "door" or "" (collapsed). It is computed once and used for both mirrored houses.
+## Doors do not sink (the lintel stays above 2 m: you pass underneath) and walls are either
+## jumped over (top at 1.2 m or less) or block the way (top at 1.9 m or more): nothing at the exact jump height.
 func _house_wall_states(house: Array, damage: RandomNumberGenerator) -> Array:
 	var states: Array = []
 	var nx: int = house[1]
@@ -1471,7 +1471,7 @@ func _build_house(node: Node3D, house: Array, states: Array, mirror: bool) -> vo
 	var k: int = 0
 	for side: int in 4:
 		var count: int = nx if side % 2 == 0 else nz
-		# Normal exterior del lado y dirección a lo largo de él.
+		# Outward normal of the side and direction along it.
 		var outward: Vector2 = [Vector2(0, 1), Vector2(1, 0), Vector2(0, -1), Vector2(-1, 0)][side]
 		var along: Vector2 = Vector2(-outward.y, outward.x)
 		for i: int in count:
@@ -1493,18 +1493,18 @@ func _build_house(node: Node3D, house: Array, states: Array, mirror: bool) -> vo
 			var piece: Node3D = _instance(path, node)
 			piece.name = "Muro%d" % k
 			var y: float = minf(_ground(world.x, world.y), _ground(world.x + along.x, world.y + along.y)) - 0.25 - float(state[1])
-			# Los muros hundidos, algo vencidos hacia fuera o hacia dentro (la colisión va con ellos).
-			# Girar sobre el eje local X (a lo largo del muro) inclina hacia la normal local +Z,
-			# que en la casa reflejada también es la exterior: el reflejo sale solo.
+			# Sunken walls, somewhat leaning outward or inward (the collision goes with them).
+			# Rotating about the local X axis (along the wall) tilts toward the local +Z normal,
+			# which in the mirrored house is also the outer one: the mirroring comes out by itself.
 			var tilt: float = float(state[2])
 			var basis: Basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt)
 			piece.transform = Transform3D(basis, Vector3(world.x, y, world.y))
-			# Escombros al pie de los muros más derrumbados, por fuera.
+			# Rubble at the foot of the most collapsed walls, on the outside.
 			if float(state[1]) > 1.5:
 				var out: Vector2 = world + normal * 1.0 + Vector2(normal.y, -normal.x) * 0.3
 				_rubble_xforms.append(Transform3D(Basis(Vector3.UP, yaw + 0.6), Vector3(out.x, _ground(out.x, out.y) - 0.05, out.y)))
-	# Suelo parcial, escombros y, en la casa grande, la chimenea. Suelos y escombros son solo
-	# visuales: van a dos MultiMesh de toda la aldea (ver _add_ruins).
+	# Partial floor, rubble and, in the big house, the chimney. Floors and rubble are visual
+	# only: they go into two MultiMeshes for the whole village (see _add_ruins).
 	for ix: int in nx:
 		for iz: int in nz:
 			if (ix + iz + int(house[4])) % 3 == 0:
@@ -1523,15 +1523,15 @@ func _build_house(node: Node3D, house: Array, states: Array, mirror: bool) -> vo
 		chimney.position = Vector3(cx, _ground(cx, chz) - 0.2, chz)
 
 
-## Capilla en ruinas en la península, sobre el eje (simétrica): planta de 12 x 10 m, puerta al
-## oeste en el eje, cabecera este derrumbada y dos pilares del viejo Eld.
+## Ruined chapel on the peninsula, on the axis (symmetrical): 12 x 10 m floor plan, door to the
+## west on the axis, collapsed east chancel and two pillars of old Eld.
 func _build_chapel(parent: Node3D) -> void:
 	var chapel := Node3D.new()
 	chapel.name = "Capilla"
 	parent.add_child(chapel)
 	var c: Vector2 = Layout.CHAPEL_CENTER
 	var pieces: Array[Array] = []
-	# Muros laterales (norte y sur): 6 tramos, iguales a los dos lados.
+	# Side walls (north and south): 6 sections, the same on both sides.
 	var sinks: Array[float] = [0.0, 0.3, 0.0, 1.2, 1.7, 2.4]
 	var kinds: Array[String] = ["wall", "window", "wall", "window", "wall", ""]
 	for i: int in 6:
@@ -1539,7 +1539,7 @@ func _build_chapel(parent: Node3D) -> void:
 		for zs: float in [-1.0, 1.0]:
 			if not kinds[i].is_empty():
 				pieces.append([kinds[i], Vector2(x, c.y + zs * 5.0), Vector2(0, zs), sinks[i]])
-	# Fachada oeste (5 tramos, puerta en el eje) y cabecera este casi desaparecida.
+	# West facade (5 sections, door on the axis) and east chancel almost gone.
 	for j: int in 5:
 		var z: float = c.y - 4.0 + j * 2.0
 		pieces.append(["door" if j == 2 else "wall", Vector2(c.x - 6.0, z), Vector2(-1, 0), 0.0 if j != 0 and j != 4 else 0.5])
@@ -1567,8 +1567,8 @@ func _build_chapel(parent: Node3D) -> void:
 		_rubble_xforms.append(Transform3D(Basis(Vector3.UP, zs), Vector3(rx, _ground(rx, rz), rz)))
 
 
-## Postes de madera que marcan el paso del vado (la línea de la vieja calzada sobre el eje),
-## para que se lea desde lejos dónde se puede cruzar. Con colisión fina: son obstáculo real.
+## Wooden posts that mark the ford crossing (the line of the old road along the axis),
+## so that it is readable from afar where it can be crossed. With thin collision: they are a real obstacle.
 func _add_ford_posts() -> void:
 	var group := _group("Vado")
 	var xforms: Array[Transform3D] = []
@@ -1613,7 +1613,7 @@ func _add_ford_posts() -> void:
 	group.add_child(mmi)
 
 
-# --- Colisiones, límites y marcadores --------------------------------------------------------
+# --- Collisions, boundaries and markers ------------------------------------------------------
 
 func _add_vegetation_colliders() -> void:
 	var group := _group("Colisiones")
@@ -1651,10 +1651,10 @@ func _add_vegetation_colliders() -> void:
 		i += 1
 
 
-## Paredes invisibles del área jugable de 300 x 300 m, orillas profundas del río (el agua es
-## solo visual: fuera del vado, el borde del agua no se cruza) y cierre del cauce a los dos lados
-## del vado (sin él, desde el vado se podía andar por el lecho profundo hasta los puentes). Todo
-## en la capa de bloqueos del jugador: la cámara no choca con ellos.
+## Invisible walls of the 300 x 300 m playable area, deep river banks (the water is
+## visual only: outside the ford, the water's edge cannot be crossed) and closing of the channel on both sides
+## of the ford (without it, from the ford you could walk along the deep bed to the bridges). All of it
+## on the player blocker layer: the camera does not collide with them.
 func _add_boundaries() -> void:
 	var group := _group("Limites")
 	var limits := StaticBody3D.new()
@@ -1676,7 +1676,7 @@ func _add_boundaries() -> void:
 	var line: PackedVector2Array = Layout.river_polyline(2.0)
 	var offset: float = Layout.WATER_HALF_WIDTH + 0.4
 	var bottom: float = Layout.WATER_LEVEL - 2.0
-	# Más alto que un salto desde lo más alto de la orilla (salto de unos 1,45 m).
+	# Higher than a jump from the highest point of the bank (a jump of about 1.45 m).
 	var top: float = Layout.BANK_LEVEL + 1.6
 	var index: int = 0
 	var cross_index: int = 0
@@ -1692,7 +1692,7 @@ func _add_boundaries() -> void:
 		var tangent: Vector2 = (b - a).normalized()
 		var normal: Vector2 = Vector2(-tangent.y, tangent.x)
 		var in_ford: bool = Layout.ford_factor(mid.x, mid.y) > 0.02
-		# Donde el vado empieza o acaba, una pared a través del cauce, en el lado profundo.
+		# Where the ford starts or ends, a wall across the channel, on the deep side.
 		if in_ford != was_ford and index > 0:
 			var joint: Vector2 = a + tangent * (0.3 if was_ford else -0.3)
 			var shape := CollisionShape3D.new()
@@ -1709,9 +1709,9 @@ func _add_boundaries() -> void:
 		for side: float in [-1.0, 1.0]:
 			var pa: Vector2 = a + normal * offset * side
 			var pb: Vector2 = b + normal * offset * side
-			# Bajo los puentes la orilla la cierran los costados del puente: el tramo se recorta
-			# exactamente en su cara exterior (antes se saltaba por el punto medio y un bloque se
-			# metía 0,7 m en el tablero).
+			# Under the bridges the bank is closed off by the sides of the bridge: the section is trimmed
+			# exactly at its outer face (before it was skipped at the midpoint and a block
+			# went 0.7 m into the deck).
 			for piece: Array in _bank_pieces(pa, pb):
 				var p0: Vector2 = piece[0]
 				var p1: Vector2 = piece[1]
@@ -1732,9 +1732,9 @@ func _add_boundaries() -> void:
 				banks.add_child(shape)
 
 
-## Parte del tramo de orilla [param pa]-[param pb] que no queda bajo un puente: lista de
-## [inicio, fin, prolongación al inicio, prolongación al final]. Los extremos libres se prolongan
-## 0,2 m (solape entre tramos); los recortados contra el puente, no.
+## Part of the bank section [param pa]-[param pb] that is not under a bridge: list of
+## [start, end, extension at the start, extension at the end]. Free ends are extended
+## 0.2 m (overlap between sections); those trimmed against the bridge are not.
 func _bank_pieces(pa: Vector2, pb: Vector2) -> Array[Array]:
 	var whole: Array[Array] = [[pa, pb, 0.2, 0.2]]
 	var mid_z: float = absf((pa.y + pb.y) * 0.5)
@@ -1759,8 +1759,8 @@ func _bank_pieces(pa: Vector2, pb: Vector2) -> Array[Array]:
 	return pieces
 
 
-## Transformación de un punto de aparición del campamento de [param realm] en [param x]: a 14 m de
-## su muralla y mirando al fuerte (el norte mira a +Z, giro PI; el sur a -Z, giro 0).
+## Transform of a spawn point of the [param realm] camp at [param x]: 14 m from
+## its wall and facing the fort (the north one faces +Z, rotation PI; the south one -Z, rotation 0).
 func _camp_spawn_transform(realm: String, x: float) -> Transform3D:
 	var side: float = -1.0 if realm == "vardheim" else 1.0
 	var z: float = side * 138.0
@@ -1781,11 +1781,11 @@ func _add_spawn_points() -> void:
 			group.add_child(marker)
 
 
-## Puntos de reaparición tras morir (docs/fuerte.md, sección 5), en el orden de la escena, que es
-## el índice que usan cliente y servidor: primero los de los dos campamentos (en el sitio de sus
-## puntos de aparición, con el metadato `realm`) y después los del interior del fuerte (con el
-## metadato `fortress`, el id de la fortaleza; sin `realm`, porque valen para el reino que sea
-## dueño del fuerte). Nunca se reordenan ni se insertan nodos delante de los últimos.
+## Respawn points after death (docs/fuerte.md, section 5), in scene order, which is
+## the index that client and server use: first those of the two camps (at the place of their
+## spawn points, with the `realm` metadata) and then those inside the fort (with the
+## `fortress` metadata, the fortress id; without `realm`, because they are valid for whichever realm
+## owns the fort). Nodes are never reordered or inserted in front of the last ones.
 func _add_respawn_points() -> void:
 	var group := _group("RespawnPoints")
 	for realm: String in ["vardheim", "solmarch"]:
@@ -1804,7 +1804,7 @@ func _add_respawn_points() -> void:
 		var marker := Marker3D.new()
 		marker.name = "FuerteVadoGris%d" % fort_index
 		fort_index += 1
-		# Mira a la puerta (oeste, -X): giro de +90°.
+		# Faces the gate (west, -X): rotation of +90°.
 		marker.transform = Transform3D(Basis(Vector3.UP, PI * 0.5),
 				fort.position + Vector3(local.x, 0.05, local.y))
 		marker.set_meta(&"fortress", FORTRESS_ID)
@@ -1812,9 +1812,9 @@ func _add_respawn_points() -> void:
 		group.add_child(marker)
 
 
-## Los dos Guardianes de la Puerta de cada campamento (docs/fuerte.md, sección 4.3): generadores
-## de PNJ (`NpcSpawner`, solo datos) del reino del campamento, siempre activos, que miran al
-## fuerte desde los lados de la puerta de su muralla.
+## The two Gate Guardians of each camp (docs/fuerte.md, section 4.3): NPC spawners
+## (`NpcSpawner`, data only) of the camp's realm, always active, that look at the
+## fort from the sides of the gate in their wall.
 func _add_gate_guardians() -> void:
 	var group := _group("NpcSpawners")
 	for realm: String in ["vardheim", "solmarch"]:
@@ -1837,9 +1837,9 @@ func _add_gate_guardians() -> void:
 			group.add_child(spawner)
 
 
-## Zonas seguras (docs/combate.md, sección 5): una por campamento, centrada en el centro de sus
-## puntos de aparición (x = 0, z = ±138) y con el radio del campamento (24 m). Solo protegen a su
-## reino (metadato [code]realm[/code]); las lee el servidor del grupo [code]safe_areas[/code].
+## Safe zones (docs/combate.md, section 5): one per camp, centered on the center of its
+## spawn points (x = 0, z = ±138) and with the camp's radius (24 m). They only protect their
+## realm ([code]realm[/code] metadata); the server reads them from the [code]safe_areas[/code] group.
 func _add_safe_areas() -> void:
 	var group := _group("SafeAreas")
 	for realm: String in ["vardheim", "solmarch"]:
@@ -1854,10 +1854,10 @@ func _add_safe_areas() -> void:
 		group.add_child(marker)
 
 
-## Maniquíes de entrenamiento: uno junto a cada campamento, fuera de su zona segura (a 30 m del
-## centro de los puntos de aparición, hacia el fuerte) y mirando al campamento, para que se pueda
-## golpear desde fuera. El servidor coloca un maniquí en cada marcador del grupo
-## [code]dummy_points[/code].
+## Training dummies: one next to each camp, outside its safe zone (30 m from the
+## center of the spawn points, toward the fort) and facing the camp, so that it can be
+## hit from outside. The server places a dummy at each marker of the
+## [code]dummy_points[/code] group.
 func _add_dummy_points() -> void:
 	var group := _group("DummyPoints")
 	for realm: String in ["vardheim", "solmarch"]:
@@ -1865,15 +1865,15 @@ func _add_dummy_points() -> void:
 		var z: float = side * 108.0
 		var marker := Marker3D.new()
 		marker.name = "Muneco" + realm.capitalize()
-		# Mira hacia el campamento: el norte mira a -Z (giro 0), el sur a +Z (giro PI).
+		# Faces the camp: the north one faces -Z (rotation 0), the south one +Z (rotation PI).
 		marker.transform = Transform3D(Basis(Vector3.UP, 0.0 if side < 0.0 else PI),
 				Vector3(0.0, _ground(0.0, z) + 0.05, z))
 		marker.add_to_group(&"dummy_points", true)
 		group.add_child(marker)
 
 
-## Cámaras de revisión: [nombre, posición (y = metros sobre el suelo), punto al que mira (y =
-## metros sobre el suelo), fov].
+## Review cameras: [name, position (y = meters above the ground), point it looks at (y =
+## meters above the ground), fov].
 func _screenshot_specs() -> Array[Array]:
 	return [
 		["vista_desde_puerta_vardheim", Vector3(-6, 15, -140), Vector3(0, 2, -10), 62.0],
@@ -1905,7 +1905,7 @@ func _add_screenshot_points() -> void:
 
 
 # =============================================================================================
-# Utilidades
+# Utilities
 # =============================================================================================
 
 func _group(node_name: String) -> Node3D:
@@ -1962,9 +1962,9 @@ func _save_scene() -> void:
 	print("   %s (%.0f KB)" % [SCENE_PATH, FileAccess.get_file_as_bytes(SCENE_PATH).size() / 1024.0])
 
 
-## Hace a [param owner] dueño de los nodos que se guardan. No entra en las escenas instanciadas
-## (se guardan como referencia) ni en los hijos internos de Terrain3D (mallas del instanciador,
-## que se regeneran al cargar desde los datos de región).
+## Makes [param owner] the owner of the nodes that get saved. It does not enter the instanced scenes
+## (they are saved as a reference) or the internal children of Terrain3D (instancer meshes,
+## which are regenerated on load from the region data).
 func _own(node: Node, owner: Node) -> void:
 	for child: Node in node.get_children():
 		child.owner = owner

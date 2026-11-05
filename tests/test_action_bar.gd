@@ -1,13 +1,13 @@
 extends TestCase
-## Pruebas de la barra de acciones (UI-11, docs/habilidades.md, secciones 6.3 y 7.3, H4): lee el estado
-## predicho, así que se alimenta con la máquina de acciones sin física ([MachineDriver]) o con la
-## predicción de verdad ([PredictionPair]).
-## [br]- Al cambiar de arma cambian los iconos (habilidades, ataque, bloqueo oculto con el arco y el arma
-## de la otra ranura en Q) y cada arma conserva sus reutilizaciones.
-## [br]- [b]Un rechazo revierte el contador[/b]: la reconciliación que quita la habilidad deja la casilla
-## lista, sin destello.
-## [br]- La reutilización que acaba sola destella; las pociones enseñan sus cargas y se tachan sin ellas;
-## pulsar a destiempo hace parpadear la casilla; la esquiva parpadea sin resistencia.
+## Tests of the action bar (UI-11, docs/habilidades.md, sections 6.3 and 7.3, H4): it reads the predicted
+## state, so it is fed with the physics-free action machine ([MachineDriver]) or with real
+## prediction ([PredictionPair]).
+## [br]- When the weapon changes, the icons change (abilities, attack, block hidden with the bow and the weapon
+## of the other slot on Q) and each weapon keeps its cooldowns.
+## [br]- [b]A rejection reverts the counter[/b]: the reconciliation that removes the ability leaves the slot
+## ready, with no flash.
+## [br]- A cooldown that ends by itself flashes; potions show their charges and are crossed out without them;
+## pressing at the wrong time makes the slot blink; the dodge blinks without stamina.
 
 const Slot = ActionBar.Slot
 const PRESS_TICK: int = 40
@@ -61,58 +61,58 @@ func test_swapping_weapons_changes_the_icons_and_keeps_each_weapons_cooldowns() 
 	d.step()
 	bar.refresh(d.c, d.tick)
 	assert_eq(bar.get_shown_weapon(), CombatCatalog.weapon_id(&"sword_shield"))
-	assert_eq(_title(bar, Slot.ABILITY_1), "Golpe de escudo", "la ranura 1 es el golpe de escudo")
+	assert_eq(_title(bar, Slot.ABILITY_1), "Golpe de escudo", "slot 1 is the shield bash")
 	assert_eq(_title(bar, Slot.ABILITY_2), "Embestida")
 	assert_eq(_title(bar, Slot.ABILITY_3), "Muro de escudos")
-	assert_true(bar.get_slot(Slot.ABILITY_1).icon is GameIcon, "icono dibujado, no una letra")
-	assert_eq(_letter(bar, Slot.ABILITY_1), "", "sin letra")
+	assert_true(bar.get_slot(Slot.ABILITY_1).icon is GameIcon, "icon drawn, not a letter")
+	assert_eq(_letter(bar, Slot.ABILITY_1), "", "no letter")
 	assert_true(bar.get_slot(Slot.PRIMARY).icon is GameIcon)
-	assert_true(bar.get_slot(Slot.BLOCK).visible, "la espada y escudo bloquea")
+	assert_true(bar.get_slot(Slot.BLOCK).visible, "sword and shield blocks")
 	assert_eq((bar.get_slot(Slot.SWAP).icon as GameIcon).figure.resource_path,
-			"res://assets/ui/icons/weapon_bow.png", "Q enseña el arma de la otra ranura (el arco)")
+			"res://assets/ui/icons/weapon_bow.png", "Q shows the weapon of the other slot (the bow)")
 	assert_eq(_title(bar, Slot.SWAP), CombatText.TEXT_SWAP_TO % "Arco")
-	assert_eq(bar.get_slot(Slot.SWAP).key_action, &"swap_weapon", "con el glifo de su tecla")
+	assert_eq(bar.get_slot(Slot.SWAP).key_action, &"swap_weapon", "with the glyph of its key")
 	assert_eq(bar.get_slot(Slot.CONSUMABLE_2).key_action, &"consumable_2")
 	var sword_icon: Texture2D = bar.get_slot(Slot.ABILITY_1).icon
-	# Golpe de escudo: tras su compromiso, la casilla 1 entra en reutilización.
+	# Shield bash: after its commitment, slot 1 goes on cooldown.
 	var bash: AbilityTicks = CombatCatalog.ability(CombatCatalog.ability_id(&"shield_bash"))
 	d.step(PlayerInput.ABILITY_1)
 	d.hold(0, bash.total_ticks + 1)
 	bar.refresh(d.c, d.tick)
 	var slot_1: ActionBar.ActionSlot = bar.get_slot(Slot.ABILITY_1)
-	assert_true(slot_1.is_on_cooldown(), "el golpe de escudo está en reutilización")
+	assert_true(slot_1.is_on_cooldown(), "the shield bash is on cooldown")
 	var remaining: float = slot_1.get_cooldown_remaining()
 	assert_near(remaining, float(d.c.ability_ready[0] - d.tick) / 60.0, 0.0001,
-			"lo que falta sale de ability_ready − tick predicho")
-	# Cambio de arma (Q): el arco.
+			"what remains comes from ability_ready - predicted tick")
+	# Weapon swap (Q): the bow.
 	d.step(PlayerInput.SWAP_WEAPON)
 	d.hold(0, CombatCatalog.tables().swap_ticks + 1)
 	bar.refresh(d.c, d.tick)
-	assert_eq(bar.get_shown_weapon(), CombatCatalog.weapon_id(&"bow"), "lleva el arco")
-	assert_eq(_title(bar, Slot.ABILITY_1), "Abanico", "los iconos son los del arco")
+	assert_eq(bar.get_shown_weapon(), CombatCatalog.weapon_id(&"bow"), "carries the bow")
+	assert_eq(_title(bar, Slot.ABILITY_1), "Abanico", "the icons are the bow's")
 	assert_eq(_title(bar, Slot.ABILITY_2), "Flecha lastrante")
 	assert_eq(_title(bar, Slot.ABILITY_3), "Salto atrás con disparo")
-	assert_true(bar.get_slot(Slot.ABILITY_1).icon != sword_icon, "otro icono")
+	assert_true(bar.get_slot(Slot.ABILITY_1).icon != sword_icon, "a different icon")
 	assert_eq((bar.get_slot(Slot.PRIMARY).icon as GameIcon).figure.resource_path,
-			"res://assets/ui/icons/bow_quick.png", "el ligero es el disparo rápido")
+			"res://assets/ui/icons/bow_quick.png", "the light attack is the quick shot")
 	assert_eq(_title(bar, Slot.PRIMARY), CombatText.TEXT_QUICK_SHOT)
-	assert_false(bar.get_slot(Slot.BLOCK).visible, "el arco no bloquea: la casilla se oculta")
+	assert_false(bar.get_slot(Slot.BLOCK).visible, "the bow does not block: the slot is hidden")
 	assert_eq(_title(bar, Slot.SWAP), CombatText.TEXT_SWAP_TO % "Espada y escudo")
-	assert_false(bar.get_slot(Slot.ABILITY_1).is_on_cooldown(), "el abanico está listo")
-	assert_near(bar.get_slot(Slot.ABILITY_1).get_flash_alpha(), 0.0, 0.0001, "y no destella al cambiar")
-	# De vuelta a la espada: el golpe de escudo sigue en reutilización (ticks absolutos).
+	assert_false(bar.get_slot(Slot.ABILITY_1).is_on_cooldown(), "the fan is ready")
+	assert_near(bar.get_slot(Slot.ABILITY_1).get_flash_alpha(), 0.0, 0.0001, "and does not flash on swap")
+	# Back to the sword: the shield bash is still on cooldown (absolute ticks).
 	d.step(PlayerInput.SWAP_WEAPON)
 	d.hold(0, CombatCatalog.tables().swap_ticks + 1)
 	bar.refresh(d.c, d.tick)
 	assert_eq(_title(bar, Slot.ABILITY_1), "Golpe de escudo")
-	assert_true(bar.get_slot(Slot.ABILITY_1).is_on_cooldown(), "la reutilización se conserva")
+	assert_true(bar.get_slot(Slot.ABILITY_1).is_on_cooldown(), "the cooldown is kept")
 	assert_near(bar.get_slot(Slot.ABILITY_1).get_cooldown_remaining(),
 			float(d.c.ability_ready[0] - d.tick) / 60.0, 0.0001)
 
 
 func test_a_rejection_reverts_the_counter() -> void:
-	# La pulsación del golpe de escudo se pierde: el servidor no empieza la habilidad; el cliente la
-	# predijo y, al reconciliar, la quita (como test_ability_reconciliation).
+	# The shield bash press is lost: the server does not start the ability; the client
+	# predicted it and, on reconciling, removes it (like test_ability_reconciliation).
 	_pair = PredictionPair.new()
 	_pair.lost.assign([PRESS_TICK])
 	_pair.state_delay_frames = 30
@@ -133,14 +133,14 @@ func test_a_rejection_reverts_the_counter() -> void:
 			was_counting = true
 		elif was_counting and reverted_at < 0:
 			reverted_at = _pair.prediction.get_predicted_tick()
-			assert_near(slot.get_flash_alpha(), 0.0, 0.0001, "un rechazo no destella")
-	assert_true(was_counting, "la barra contó la reutilización predicha")
-	assert_true(reverted_at > 0, "y la quitó al reconciliar")
+			assert_near(slot.get_flash_alpha(), 0.0, 0.0001, "a rejection does not flash")
+	assert_true(was_counting, "the bar counted the predicted cooldown")
+	assert_true(reverted_at > 0, "and removed it on reconciling")
 	assert_true(reverted_at < PRESS_TICK + bash.cast_ticks + bash.cooldown_ticks,
-			"mucho antes de que acabara sola (tick %d)" % reverted_at)
-	assert_eq(_pair.client.combat.ability_ready[0], 0, "el estado predicho ya no la tiene")
+			"long before it would have ended by itself (tick %d)" % reverted_at)
+	assert_eq(_pair.client.combat.ability_ready[0], 0, "the predicted state no longer has it")
 	assert_eq(ActionMachine.ability_status(_pair.client.combat, 0, _pair.client.last_input_tick),
-			ActionMachine.AbilityStatus.READY, "la casilla vuelve a estar lista")
+			ActionMachine.AbilityStatus.READY, "the slot is ready again")
 	assert_true(bar.get_slot(Slot.ABILITY_1).enabled)
 
 
@@ -156,11 +156,11 @@ func test_a_cooldown_that_ends_on_its_own_flashes() -> void:
 	var finished: Array[bool] = [false]
 	slot.cooldown_finished.connect(func() -> void: finished[0] = true)
 	bar.refresh(d.c, d.c.ability_ready[0] - 1)
-	assert_true(slot.is_on_cooldown(), "un tick antes, aún no")
+	assert_true(slot.is_on_cooldown(), "one tick earlier, not yet")
 	bar.refresh(d.c, d.c.ability_ready[0])
-	assert_false(slot.is_on_cooldown(), "en ability_ready, lista")
-	assert_true(finished[0], "acaba sola")
-	assert_true(slot.get_flash_alpha() > 0.9, "con su destello")
+	assert_false(slot.is_on_cooldown(), "at ability_ready, ready")
+	assert_true(finished[0], "ends by itself")
+	assert_true(slot.get_flash_alpha() > 0.9, "with its flash")
 
 
 func test_potions_show_their_charges_cross_out_when_empty_and_blink_when_pressed_too_soon() -> void:
@@ -171,21 +171,21 @@ func test_potions_show_their_charges_cross_out_when_empty_and_blink_when_pressed
 	var health: ActionBar.ActionSlot = bar.get_slot(Slot.CONSUMABLE_1)
 	var stamina: ActionBar.ActionSlot = bar.get_slot(Slot.CONSUMABLE_2)
 	assert_eq(_title(bar, Slot.CONSUMABLE_1), "Poción de vida")
-	assert_eq(health.get_count_text(), "1", "las cargas se ven aunque quede una")
+	assert_eq(health.get_count_text(), "1", "the charges are shown even if one is left")
 	assert_eq(stamina.get_count_text(), "2")
 	assert_false(health.crossed)
-	assert_eq(_letter(bar, Slot.SWAP), "", "sin segunda arma, Q vacía")
+	assert_eq(_letter(bar, Slot.SWAP), "", "without a second weapon, Q is empty")
 	assert_false(bar.get_slot(Slot.SWAP).enabled)
-	# Bebe la de vida: se gasta la carga al acabar de beber y entra la reutilización compartida.
+	# Drinks the health one: the charge is spent when the drinking ends and the shared cooldown starts.
 	var potion: AbilityTicks = CombatCatalog.ability(CombatCatalog.consumable_ids()[0])
 	d.step(PlayerInput.CONSUMABLE_1)
 	d.hold(0, potion.total_ticks + 1)
 	bar.refresh(d.c, d.tick)
-	assert_true(health.crossed, "sin cargas, tachada")
+	assert_true(health.crossed, "no charges, crossed out")
 	assert_false(health.enabled)
 	assert_eq(health.get_count_text(), "")
-	assert_true(stamina.is_on_cooldown(), "la reutilización es compartida")
-	# Pulsar a destiempo (en el cliente; no viaja) hace parpadear la casilla.
+	assert_true(stamina.is_on_cooldown(), "the cooldown is shared")
+	# Pressing at the wrong time (on the client; it does not travel) makes the slot blink.
 	bar.bind(null)
 	var character: PlayerCharacter = (load("res://scenes/characters/player_character.tscn") as PackedScene) \
 			.instantiate() as PlayerCharacter
@@ -197,30 +197,30 @@ func test_potions_show_their_charges_cross_out_when_empty_and_blink_when_pressed
 	press.tick = d.tick + 1
 	press.buttons = PlayerInput.CONSUMABLE_2
 	bar.handle_input(press)
-	assert_true(stamina.is_blinking(), "en reutilización parpadea")
+	assert_true(stamina.is_blinking(), "on cooldown it blinks")
 	press = PlayerInput.new()
 	press.tick = d.tick + 2
 	press.buttons = PlayerInput.CONSUMABLE_2 | PlayerInput.CONSUMABLE_1
 	bar.handle_input(press)
-	assert_eq(stamina.get_blink_count(), 1, "mantener no es otra pulsación")
-	assert_true(health.is_blinking(), "sin cargas también parpadea")
+	assert_eq(stamina.get_blink_count(), 1, "holding is not another press")
+	assert_true(health.is_blinking(), "without charges it also blinks")
 	var substituted := PlayerInput.new()
 	substituted.tick = d.tick + 3
 	substituted.buttons = PlayerInput.ABILITY_1 | PlayerInput.SUBSTITUTED
 	bar.handle_input(substituted)
-	assert_eq(bar.get_slot(Slot.ABILITY_1).get_blink_count(), 0, "una sustituida no cuenta")
-	# La esquiva parpadea cuando algo falla por falta de resistencia y se apaga agotado.
+	assert_eq(bar.get_slot(Slot.ABILITY_1).get_blink_count(), 0, "a replaced one does not count")
+	# The dodge blinks when something fails for lack of stamina and goes dark when exhausted.
 	bar.notify_no_stamina()
 	assert_true(bar.get_slot(Slot.DODGE).is_blinking())
 	d.c.combat_flags |= CombatState.FLAG_EXHAUSTED
 	bar.refresh(d.c, d.tick)
-	assert_false(bar.get_slot(Slot.DODGE).enabled, "agotado, la esquiva se apaga")
-	assert_false(bar.get_slot(Slot.BLOCK).enabled, "y el bloqueo")
+	assert_false(bar.get_slot(Slot.DODGE).enabled, "exhausted, the dodge goes dark")
+	assert_false(bar.get_slot(Slot.BLOCK).enabled, "and the block")
 	bar.refresh(d.c, d.tick, ActionBar.BLINK_SECONDS + 0.1)
-	assert_false(bar.get_slot(Slot.DODGE).is_blinking(), "el parpadeo acaba")
+	assert_false(bar.get_slot(Slot.DODGE).is_blinking(), "the blink ends")
 
 
-## Camina y toca el golpe de escudo en [constant PRESS_TICK] (un solo tick).
+## Walks and taps the shield bash at [constant PRESS_TICK] (a single tick).
 func _tap_route(tick: int) -> PlayerInput:
 	var input := PlayerInput.new()
 	input.tick = tick

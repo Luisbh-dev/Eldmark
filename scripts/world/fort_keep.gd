@@ -1,34 +1,34 @@
 class_name FortKeep
 extends Node3D
-## Torreón del fuerte del Vado Gris (ART-57): el modelo propio [code]fort_keep.glb[/code] en su sitio,
-## con la paleta de reino, los niveles de detalle y la colisión de baja resolución.
+## Keep of the Vado Gris fort (ART-57): the own model [code]fort_keep.glb[/code] in place,
+## with the realm palette, the levels of detail and the low-resolution collision.
 ## [br][br]
-## La escena [code]fort_keep.tscn[/code] cuelga el glTF de este nodo. Al entrar en el árbol se
-## sustituyen los materiales del glTF por los de [code]fort_keep/materials/<reino>/[/code] (mismo
-## nombre de material), se ponen los rangos de visibilidad de los tres LOD (el glTF no los guarda) y
-## el cuerpo estático de colisión pasa a la capa del mundo. El nodo [code]Estandarte[/code] del glTF
-## lleva los parámetros por instancia (color de bando, emblema, captura y viento) que mueve la vista
-## de la fortaleza (FortressView) igual que los del mástil antiguo.
+## The scene [code]fort_keep.tscn[/code] hangs the glTF from this node. On entering the tree, the
+## glTF materials are replaced by those of [code]fort_keep/materials/<realm>/[/code] (same
+## material name), the visibility ranges of the three LODs are set (the glTF does not store them) and
+## the static collision body moves to the world layer. The glTF's [code]Estandarte[/code] node
+## carries the per-instance parameters (faction color, emblem, capture and wind) that the fortress
+## view (FortressView) drives, just like those of the old mast.
 ## [br][br]
-## En el servidor (headless) solo cuenta la colisión: no hay nada que dibujar.
+## On the server (headless) only the collision counts: there is nothing to draw.
 
-## Carpeta de los materiales por reino del torreón.
+## Folder of the keep's per-realm materials.
 const MATERIAL_DIR: String = "res://assets/models/environment/custom/fort_keep/materials/"
-## Distancia (m) hasta la que se dibuja el LOD0 (sillares modelados); de ahí al LOD2 va el LOD1 (paños
-## de sillería despiezada) y más allá, la silueta. Con [constant LOD_FADE_MARGIN] de fundido por dither.
-## La primera es corta a propósito: a 30 y 60 m las juntas modeladas (2,4 cm) son subpíxel y centellean
-## al moverse.
+## Distance (m) up to which LOD0 (modeled ashlar blocks) is drawn; from there to LOD2 goes LOD1 (panels
+## of broken-up ashlar masonry) and beyond that, the silhouette. With [constant LOD_FADE_MARGIN] of dither fade.
+## The first is short on purpose: at 30 and 60 m the modeled joints (2.4 cm) are subpixel and flicker
+## when moving.
 const LOD1_DISTANCE: float = 50.0
 const LOD2_DISTANCE: float = 250.0
 const LOD_FADE_MARGIN: float = 10.0
 
-## Estandarte neutral (de los Huecos) con el que empieza: color de bando y emblema del atlas (3, el neutral).
-## La vista del fuerte los cambia según el dueño. Sin un valor inicial, el parámetro de instancia
-## no existe para quien lo busca.
+## Neutral banner (of the Hollow) it starts with: faction color and atlas emblem (3, the neutral one).
+## The fort view changes them according to the owner. Without an initial value, the instance parameter
+## does not exist for whoever looks it up.
 const NEUTRAL_BANNER_COLOR: Color = Color("#bdb6a6")
 const NEUTRAL_EMBLEM_INDEX: float = 3.0
 
-## Reino cuya paleta usa el torreón: eldrun (la frontera, la del Vado Gris), vardheim, solmarch o askarra.
+## Realm whose palette the keep uses: eldrun (the frontier, that of Vado Gris), vardheim, solmarch or askarra.
 @export var realm: StringName = &"eldrun"
 
 
@@ -48,8 +48,8 @@ func _ready() -> void:
 		body.collision_mask = 0
 
 
-## Sustituye, en cada malla bajo [param keep], los materiales del glTF por los del reino (mismo nombre
-## de material: keep_stone, keep_trim, keep_cloth...).
+## Replaces, on every mesh under [param keep], the glTF materials with those of the realm (same
+## material name: keep_stone, keep_trim, keep_cloth...).
 static func apply_materials(keep: Node, realm_name: StringName) -> void:
 	for node: Node in keep.find_children("*", "MeshInstance3D", true, false):
 		var instance: MeshInstance3D = node as MeshInstance3D
@@ -64,7 +64,7 @@ static func apply_materials(keep: Node, realm_name: StringName) -> void:
 				instance.set_surface_override_material(i, load(path) as Material)
 
 
-## Rangos de visibilidad de los tres niveles de detalle, con fundido por dither.
+## Visibility ranges of the three levels of detail, with dither fade.
 static func apply_lods(keep: Node) -> void:
 	for node: Node in keep.find_children("FortKeep_LOD*", "MeshInstance3D", true, false):
 		var instance: MeshInstance3D = node as MeshInstance3D

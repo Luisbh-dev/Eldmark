@@ -86,7 +86,7 @@ func (w *sanctionWorld) state(t *testing.T, id int64) string {
 			return s.State
 		}
 	}
-	t.Fatalf("sanción %d no listada", id)
+	t.Fatalf("sanction %d not listed", id)
 	return ""
 }
 
@@ -99,7 +99,7 @@ func TestWarningIsShownOnce(t *testing.T) {
 	w := newSanctionWorld(t)
 	first := w.claim(t)
 	if n := len(account(first)["warnings"].([]any)); n != 0 {
-		t.Fatalf("sin avisos: %s", first.Raw)
+		t.Fatalf("no warnings: %s", first.Raw)
 	}
 	w.leave(t, first)
 	w.p.Clock.Advance(time.Minute)
@@ -113,16 +113,16 @@ func TestWarningIsShownOnce(t *testing.T) {
 	got := warnings[0].(map[string]any)
 	if got["sanction_id"] != idStr(id) || got["text"] != "Has recibido un aviso de la moderación: normas de la comunidad" ||
 		got["at_unix"].(json.Number).String() != strconv.FormatInt(w.p.Clock.Now().Add(-time.Minute).Unix(), 10) {
-		t.Fatalf("aviso: %v", got)
+		t.Fatalf("warning: %v", got)
 	}
 	w.leave(t, res)
 	w.p.Clock.Advance(time.Minute)
 	again := w.claim(t)
 	if n := len(account(again)["warnings"].([]any)); n != 0 {
-		t.Fatalf("el aviso sale una sola vez: %s", again.Raw)
+		t.Fatalf("the warning is delivered only once: %s", again.Raw)
 	}
 	if res := w.login(t); res.String("scope") != "game" || res.Body["restriction"] != nil {
-		t.Fatalf("un aviso no restringe: %s", res.Raw)
+		t.Fatalf("a warning does not restrict: %s", res.Raw)
 	}
 	if s := w.state(t, id); s != admin.StateNoted {
 		t.Fatal(s)
@@ -140,19 +140,19 @@ func TestWarningSurvivesARejectedEntry(t *testing.T) {
 		res := w.claim(t)
 		if warnings := account(res)["warnings"].([]any); len(warnings) != 1 ||
 			warnings[0].(map[string]any)["sanction_id"] != idStr(id) {
-			t.Fatalf("reclamación %d: %s", i, res.Raw)
+			t.Fatalf("appeal %d: %s", i, res.Raw)
 		}
 		w.reject(t, res)
 		w.p.Clock.Advance(time.Second)
 	}
 	res := w.claim(t)
 	if len(account(res)["warnings"].([]any)) != 1 {
-		t.Fatalf("tras dos rechazos: %s", res.Raw)
+		t.Fatalf("after two rejections: %s", res.Raw)
 	}
 	w.leave(t, res)
 	w.p.Clock.Advance(time.Second)
 	if res := w.claim(t); len(account(res)["warnings"].([]any)) != 0 {
-		t.Fatalf("visto tras entrar y guardar: %s", res.Raw)
+		t.Fatalf("seen after entering and saving: %s", res.Raw)
 	}
 }
 
@@ -178,18 +178,18 @@ func TestMuteExpires(t *testing.T) {
 	w.login(t)
 	claim = w.claim(t)
 	if account(claim)["muted_until_unix"].(json.Number).String() != strconv.FormatInt(until, 10) {
-		t.Fatalf("reclamación: %s", claim.Raw)
+		t.Fatalf("appeal: %s", claim.Raw)
 	}
 	w.p.Clock.Advance(30*time.Minute + time.Second)
 	hb = w.z.Heartbeat(1, platformtest.Lease{CharacterID: w.id, LeaseID: claim.String("lease_id")})
 	if len(hb.Body["mutes"].([]any)) != 0 {
-		t.Fatalf("el silencio ha caducado: %s", hb.Raw)
+		t.Fatalf("the mute has expired: %s", hb.Raw)
 	}
 	w.leave(t, claim)
 	w.login(t)
 	claim = w.claim(t)
 	if account(claim)["muted_until_unix"].(json.Number).String() != "0" {
-		t.Fatalf("reclamación tras el fin: %s", claim.Raw)
+		t.Fatalf("appeal after the end: %s", claim.Raw)
 	}
 	if s := w.state(t, id); s != admin.StateExpired {
 		t.Fatal(s)
@@ -208,7 +208,7 @@ func TestSuspensionExpires(t *testing.T) {
 	hb := w.z.Heartbeat(1, lease)
 	revoked := hb.Body["revoked"].([]any)
 	if len(revoked) != 1 || revoked[0].(map[string]any)["reason"] != "suspended" {
-		t.Fatalf("latido: %s", hb.Raw)
+		t.Fatalf("heartbeat: %s", hb.Raw)
 	}
 	w.leave(t, claim)
 	res := w.z.Claim(ticket, w.id)
@@ -219,17 +219,17 @@ func TestSuspensionExpires(t *testing.T) {
 	login := w.login(t)
 	r := login.Body["restriction"].(map[string]any)
 	if login.String("scope") != "privacy" || r["code"] != "account_suspended" || r["reason"] != "normas de la comunidad" {
-		t.Fatalf("inicio de sesión: %s", login.Raw)
+		t.Fatalf("login: %s", login.Raw)
 	}
 	platformtest.Expect(t, w.p.Enter(w.pl, w.id), 403, "account_suspended")
 	w.p.Clock.Advance(3*24*time.Hour - time.Minute)
 	if login := w.login(t); login.String("scope") != "privacy" {
-		t.Fatalf("un minuto antes del fin: %s", login.Raw)
+		t.Fatalf("one minute before the end: %s", login.Raw)
 	}
 	platformtest.Expect(t, w.p.Enter(w.pl, w.id), 403, "account_suspended")
 	w.p.Clock.Advance(time.Minute)
 	if login := w.login(t); login.String("scope") != "game" || login.Body["restriction"] != nil {
-		t.Fatalf("tras el fin: %s", login.Raw)
+		t.Fatalf("after the end: %s", login.Raw)
 	}
 	w.leave(t, w.claim(t))
 	if s := w.state(t, id); s != admin.StateExpired {
@@ -244,12 +244,12 @@ func TestBanUntilRevoked(t *testing.T) {
 	if login := w.login(t); login.String("scope") != "privacy" ||
 		login.Body["restriction"].(map[string]any)["code"] != "account_banned" ||
 		login.Body["restriction"].(map[string]any)["until"] != nil {
-		t.Fatalf("inicio de sesión: %s", login.Raw)
+		t.Fatalf("login: %s", login.Raw)
 	}
 	platformtest.Expect(t, w.p.Enter(w.pl, w.id), 403, "account_banned")
 	w.p.Clock.Advance(10 * 365 * 24 * time.Hour)
 	if login := w.login(t); login.String("scope") != "privacy" {
-		t.Fatalf("a los diez años: %s", login.Raw)
+		t.Fatalf("after ten years: %s", login.Raw)
 	}
 	if s := w.state(t, id); s != admin.StateActive {
 		t.Fatal(s)
@@ -265,7 +265,7 @@ func TestBanUntilRevoked(t *testing.T) {
 		t.Fatal(err)
 	}
 	if login := w.login(t); login.String("scope") != "game" {
-		t.Fatalf("revocada: %s", login.Raw)
+		t.Fatalf("revoked: %s", login.Raw)
 	}
 	w.claim(t)
 	row := lastAudit(t, w.p, "sanction revoke")
@@ -316,7 +316,7 @@ func TestCLISanctionChecks(t *testing.T) {
 	var denied *admin.DeniedError
 	if _, _, err := p.Admin.Sanction(ctx, w.actor, order); !errors.As(err, &denied) ||
 		denied.Denial != sanctions.DeniedTargetRole {
-		t.Fatalf("admin contra admin: %v", err)
+		t.Fatalf("admin against admin: %v", err)
 	}
 	row := lastAudit(t, p, "sanction_denied")
 	if row.Source != "cli" || !is(row.Actor, w.actor.AccountID) || row.ActorCharacter != nil || row.Zone != nil ||
@@ -334,7 +334,7 @@ func TestCLISanctionChecks(t *testing.T) {
 		{World: 1, Target: "Bran", Kind: sanctions.KindWarning, Reason: "  "},
 	} {
 		if _, _, err := p.Admin.Sanction(ctx, w.actor, bad); err == nil {
-			t.Errorf("%+v debería fallar", bad)
+			t.Errorf("%+v should fail", bad)
 		}
 	}
 	order = admin.SanctionOrder{World: 1, Target: "Nadie", Kind: sanctions.KindWarning, Reason: "x"}
@@ -363,7 +363,7 @@ func TestCLISanctionChecks(t *testing.T) {
 	var author int64
 	p.Scalar(&author, `select author_account_id from sanctions where sanction_id = $1`, created.SanctionID)
 	if author != w.actor.AccountID || p.Count(`select count(*) from sanction_reports`) != 1 {
-		t.Fatal("autor y reportes")
+		t.Fatal("author and reports")
 	}
 	if s := strings.ToLower(row.Args["kind"].(string)); s != "warning" {
 		t.Fatal(s)

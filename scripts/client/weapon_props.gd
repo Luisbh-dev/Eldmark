@@ -1,61 +1,61 @@
 class_name WeaponProps
 extends RefCounted
-## Armas en las manos del personaje (ART-06): la espada (el modelo propio de [SwordModel], con una caja
-## de reserva si no carga) y un cilindro aplanado para el escudo, colgados de [BoneAttachment3D] en la
-## mano derecha e izquierda del esqueleto. Solo cliente. El escudo es [b]solo un marcador de posición[/b]
-## hasta que llegue el definitivo (RPG Weapons Pro); el arco del golpe no sale de la malla sino de los
-## datos de combate. La hoja, la guarda, el disco y el arco proyectan sombra (la cuerda, de 6 mm, no): el
-## arma existe también en la sombra del personaje.
+## Weapons in the character's hands (ART-06): the sword (the own model of [SwordModel], with a fallback box
+## if it does not load) and a flattened cylinder for the shield, hung from [BoneAttachment3D] on the
+## skeleton's right and left hand. Client only. The shield is [b]only a placeholder[/b]
+## until the final one arrives (RPG Weapons Pro); the swing arc does not come from the mesh but from the
+## combat data. The blade, the guard, the disc and the bow cast shadows (the 6 mm string does not): the
+## weapon also exists in the character's shadow.
 ## [br][br]
-## El esqueleto es el humanoide de Godot ([code]RightHand[/code], [code]LeftHand[/code]). En los clips de
-## UAL el eje local +Y de la mano apunta por el antebrazo hacia los dedos; la hoja sale por +X y el
-## escudo se agarra con su disco perpendicular a Z, por delante de la mano (hacia -Z). Si al verlo
-## no encaja, los desplazamientos y giros de más abajo son lo único que hay que tocar.
+## The skeleton is Godot's humanoid ([code]RightHand[/code], [code]LeftHand[/code]). In the
+## UAL clips the hand's local +Y axis points along the forearm toward the fingers; the blade goes out along +X and the
+## shield is gripped with its disc perpendicular to Z, in front of the hand (toward -Z). If it does not
+## fit when viewed, the offsets and rotations below are the only thing to touch.
 ## [br][br]
-## [b]Arco provisional[/b] (fase 4, docs/habilidades.md, sección 6.6): tres cilindros finos en arco (las
-## dos palas y la empuñadura) y una cuerda, en la mano izquierda (cuelga del mismo [BoneAttachment3D] que
-## el escudo, como segundo hijo; se crea la primera vez que hace falta). [method show_weapon] enseña los
-## accesorios del arma que se lleva (el arco, o la espada y el escudo) también en los remotos: el arma
-## activa sale de la pareja de armas y del bit de ranura de su registro (PRG-07 se ve).
+## [b]Provisional bow[/b] (phase 4, docs/habilidades.md, section 6.6): three thin cylinders in an arc (the
+## two limbs and the grip) and a string, in the left hand (it hangs from the same [BoneAttachment3D] as
+## the shield, as a second child; it is created the first time it is needed). [method show_weapon] shows the
+## accessories of the weapon being carried (the bow, or the sword and shield) on remote players too: the
+## active weapon comes from the weapon pair and the slot bit of its record (PRG-07 is visible).
 
-## Nombres de los nodos que se crean.
+## Names of the nodes that are created.
 const SWORD_ATTACHMENT: StringName = &"SwordAttachment"
 const SHIELD_ATTACHMENT: StringName = &"ShieldAttachment"
 const SWORD_MESH: StringName = &"SwordPlaceholder"
-## Nodo que cuelga de la mano con el modelo de la espada (la caja de reserva usa [constant SWORD_MESH]).
+## Node hanging from the hand with the sword model (the fallback box uses [constant SWORD_MESH]).
 const SWORD_MODEL_NODE: StringName = &"Sword"
-## Nodo del modelo dentro de [constant SWORD_MODEL_NODE] (se cambia con [method set_sword_variant]) y de la
-## estela del golpe ([SwordTrail]), que cuelga del mismo nodo.
+## Model node inside [constant SWORD_MODEL_NODE] (changed with [method set_sword_variant]) and of the
+## swing trail ([SwordTrail]), which hangs from the same node.
 const SWORD_MODEL_INSTANCE: StringName = &"SwordModel"
 const SWORD_TRAIL_NODE: StringName = &"SwordTrail"
 const SHIELD_MESH: StringName = &"ShieldPlaceholder"
-## Huesos de las manos.
+## Hand bones.
 const SWORD_BONE: StringName = &"RightHand"
 const SHIELD_BONE: StringName = &"LeftHand"
-## Espada: largo total de la hoja con la empuñadura (m), ancho y grosor, y cuánto sobresale la
-## empuñadura por detrás de la mano.
+## Sword: total length of the blade with the grip (m), width and thickness, and how far the
+## grip sticks out behind the hand.
 const SWORD_LENGTH: float = 0.95
 const SWORD_WIDTH: float = 0.07
 const SWORD_THICKNESS: float = 0.02
 const SWORD_POMMEL_BACK: float = 0.12
-## Agarre del modelo de la espada, en el espacio de la mano: el modelo tiene el origen en el centro de la
-## empuñadura y la hoja por +Y, así que se gira para que la hoja salga por +X (como la caja) y se lleva
-## el centro de la empuñadura a la palma, un poco por delante de la muñeca (hacia los dedos, +Y).
+## Grip of the sword model, in hand space: the model has its origin at the center of the
+## grip and the blade along +Y, so it is rotated so the blade goes out along +X (like the box) and the
+## center of the grip is brought to the palm, a little ahead of the wrist (toward the fingers, +Y).
 const SWORD_GRIP_ROTATION_DEG: Vector3 = Vector3(0.0, 0.0, -90.0)
 const SWORD_GRIP_OFFSET: Vector3 = Vector3(0.0, 0.07, 0.0)
-## Giro del modelo sobre su propio eje (el de la hoja) dentro del agarre, en grados: con la hoja exactamente
-## de canto desde detrás (reposo, cámara del juego) se ve como un hilo; unos grados enseñan algo de cara
-## plana. No toca el alcance del golpe, que sale de los datos de combate y no de la malla.
+## Roll of the model about its own axis (the blade's) within the grip, in degrees: with the blade exactly
+## edge-on from behind (rest, game camera) it looks like a thread; a few degrees show some of the
+## flat face. It does not affect the swing reach, which comes from the combat data and not from the mesh.
 const SWORD_ROLL_DEG: float = 18.0
-## Guarda de la espada (caja cruzada) y su posición a lo largo de la hoja.
+## Sword guard (cross box) and its position along the blade.
 const GUARD_SIZE: Vector3 = Vector3(0.03, 0.025, 0.22)
 const GUARD_OFFSET: float = 0.1
-## Escudo: radio y grosor del disco (m) y cuánto se adelanta de la mano (hacia -Z).
+## Shield: radius and thickness of the disc (m) and how far it sits ahead of the hand (toward -Z).
 const SHIELD_RADIUS: float = 0.26
 const SHIELD_THICKNESS: float = 0.045
 const SHIELD_FORWARD: float = 0.12
-## Arco: nombre del nodo, largo de cada pala y de la empuñadura (m), grosor, curvatura (grados de cada
-## pala respecto a la empuñadura) y cuánto se adelanta de la mano.
+## Bow: node name, length of each limb and of the grip (m), thickness, curvature (degrees of each
+## limb relative to the grip) and how far it sits ahead of the hand.
 const BOW_MESH: StringName = &"BowPlaceholder"
 const BOW_LIMB_LENGTH: float = 0.5
 const BOW_GRIP_LENGTH: float = 0.16
@@ -64,16 +64,16 @@ const BOW_BEND_DEG: float = 22.0
 const BOW_FORWARD: float = 0.05
 const BOW_COLOR: Color = Color(0.42, 0.27, 0.12, 1.0)
 const STRING_COLOR: Color = Color(0.85, 0.82, 0.72, 1.0)
-## Nombre (en el catálogo de combate) del arma que se ve como arco.
+## Name (in the combat catalog) of the weapon that is shown as a bow.
 const BOW_WEAPON: StringName = &"bow"
 const STEEL_COLOR: Color = Color(0.72, 0.74, 0.8, 1.0)
 const GUARD_COLOR: Color = Color(0.45, 0.33, 0.12, 1.0)
 const SHIELD_COLOR: Color = Color(0.4, 0.26, 0.14, 1.0)
 
 
-## Cuelga la espada y el escudo provisionales de [param skeleton] y devuelve los dos
-## [BoneAttachment3D] (espada, escudo). Si falta una mano, ese arma no se crea y el elemento es null.
-## No hace nada (y devuelve nulos) si ya estaban puestos.
+## Hangs the provisional sword and shield from [param skeleton] and returns the two
+## [BoneAttachment3D] (sword, shield). If a hand is missing, that weapon is not created and the element is null.
+## Does nothing (and returns nulls) if they were already in place.
 static func install(skeleton: Skeleton3D) -> Array[BoneAttachment3D]:
 	var result: Array[BoneAttachment3D] = [null, null]
 	if skeleton == null:
@@ -89,10 +89,10 @@ static func install(skeleton: Skeleton3D) -> Array[BoneAttachment3D]:
 	return result
 
 
-## Enseña en [param skeleton] los accesorios del arma [param weapon_id] del catálogo de combate: el arco
-## (y nada en la mano derecha) si es el arco; la espada y el escudo con cualquier otra (las de los PNJ
-## también). Crea el arco la primera vez. Sin las armas instaladas ([method install]) no hace nada.
-## Devuelve true si se ve el arco.
+## Shows on [param skeleton] the accessories of weapon [param weapon_id] from the combat catalog: the bow
+## (and nothing in the right hand) if it is the bow; the sword and shield with any other (NPCs' too).
+## Creates the bow the first time. With no weapons installed ([method install]) it does nothing.
+## Returns true if the bow is visible.
 static func show_weapon(skeleton: Skeleton3D, weapon_id: int) -> bool:
 	if skeleton == null:
 		return false
@@ -116,10 +116,10 @@ static func show_weapon(skeleton: Skeleton3D, weapon_id: int) -> bool:
 	return bow
 
 
-## Cambia la espada de [param skeleton] por la variante [param variant] de [SwordModel] ([code]base[/code] o el
-## id de un reino: [code]vardheim[/code], [code]solmarch[/code], [code]askarra[/code]; cualquier otro, el
-## base) y tiñe su estela. No hace nada si ya es esa variante, si la espada no está instalada o si es la caja
-## de reserva. El agarre no cambia: es el mismo para las cuatro.
+## Changes the sword of [param skeleton] to variant [param variant] of [SwordModel] ([code]base[/code] or the
+## id of a realm: [code]vardheim[/code], [code]solmarch[/code], [code]askarra[/code]; anything else, the
+## base) and tints its trail. It does nothing if it is already that variant, if the sword is not installed or if it is the fallback
+## box. The grip does not change: it is the same for all four.
 static func set_sword_variant(skeleton: Skeleton3D, variant: StringName) -> void:
 	var root: Node3D = _sword_root(skeleton)
 	if root == null:
@@ -143,8 +143,8 @@ static func set_sword_variant(skeleton: Skeleton3D, variant: StringName) -> void
 		trail.set_tint(SwordTrail.color_for(key))
 
 
-## Variante de la espada que se ve ahora en [param skeleton] ([constant SwordModel.BASE] si es la de
-## siempre; una cadena vacía si no hay modelo).
+## Variant of the sword currently visible on [param skeleton] ([constant SwordModel.BASE] if it is the usual
+## one; an empty string if there is no model).
 static func get_sword_variant(skeleton: Skeleton3D) -> StringName:
 	var root: Node3D = _sword_root(skeleton)
 	if root == null:
@@ -153,8 +153,8 @@ static func get_sword_variant(skeleton: Skeleton3D) -> StringName:
 	return StringName(current.get_meta(&"variant", &"")) if current != null else &""
 
 
-## Lanza o corta la estela de la espada de [param skeleton] (el golpe está activo o ha terminado). No hace nada
-## sin modelo de espada.
+## Starts or cuts the sword trail of [param skeleton] (the hit is active or has ended). It does nothing
+## without a sword model.
 static func set_swing_active(skeleton: Skeleton3D, active: bool, heavy: bool = false) -> void:
 	var root: Node3D = _sword_root(skeleton)
 	if root == null:
@@ -164,13 +164,13 @@ static func set_swing_active(skeleton: Skeleton3D, active: bool, heavy: bool = f
 		trail.set_active(active, heavy)
 
 
-## El nodo de la espada de [param skeleton] (la raíz del modelo, cuyo eje +X o +Y sigue la hoja según el agarre), o
-## null si no hay espada. De él cuelga el aura de carga.
+## The sword node of [param skeleton] (the model root, whose +X or +Y axis follows the blade depending on the grip), or
+## null if there is no sword. The charge aura hangs from it.
 static func get_sword_node(skeleton: Skeleton3D) -> Node3D:
 	return _sword_root(skeleton)
 
 
-# El nodo [constant SWORD_MODEL_NODE] de la espada, o null (sin espada instalada o con la caja de reserva).
+# The [constant SWORD_MODEL_NODE] node of the sword, or null (no sword installed or with the fallback box).
 static func _sword_root(skeleton: Skeleton3D) -> Node3D:
 	if skeleton == null:
 		return null
@@ -185,15 +185,15 @@ static func _attach(skeleton: Skeleton3D, node_name: StringName, bone: StringNam
 	var attachment := BoneAttachment3D.new()
 	attachment.name = node_name
 	attachment.bone_name = bone
-	# Sin interpolación de física: sigue al hueso cada fotograma.
+	# No physics interpolation: it follows the bone every frame.
 	attachment.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	skeleton.add_child(attachment)
 	attachment.add_child(prop)
 	return attachment
 
 
-# La espada de verdad: el modelo de SwordModel dentro de un nodo que lo coloca en la mano. Si el GLB no
-# carga, la caja de siempre.
+# The real sword: the SwordModel model inside a node that places it in the hand. If the GLB does not
+# load, the usual box.
 static func _make_sword_node() -> Node3D:
 	var model: Node3D = SwordModel.instantiate(SwordModel.BASE)
 	if model == null:
@@ -215,8 +215,8 @@ static func _make_sword_node() -> Node3D:
 	return root
 
 
-# La espada provisional: una caja larga para la hoja con la empuñadura, y otra cruzada de guarda. La hoja sale
-# por +X de la mano.
+# The provisional sword: a long box for the blade with the grip, and another crossed one for the guard. The blade goes out
+# along +X of the hand.
 static func _make_sword() -> Node3D:
 	var root := Node3D.new()
 	root.name = SWORD_MESH
@@ -242,7 +242,7 @@ static func _make_sword() -> Node3D:
 	return root
 
 
-# El escudo: un cilindro aplanado cuyo eje es Z, por delante de la mano (hacia -Z).
+# The shield: a flattened cylinder whose axis is Z, in front of the hand (toward -Z).
 static func _make_shield() -> Node3D:
 	var root := Node3D.new()
 	root.name = SHIELD_MESH
@@ -257,7 +257,7 @@ static func _make_shield() -> Node3D:
 	mesh.rings = 1
 	mesh.material = _material(SHIELD_COLOR, 0.0, 0.8)
 	disc.mesh = mesh
-	# El cilindro de Godot tiene el eje en Y: se tumba para que el eje sea Z.
+	# Godot's cylinder has its axis on Y: it is laid down so the axis is Z.
 	disc.rotation = Vector3(PI * 0.5, 0.0, 0.0)
 	disc.position = Vector3(0.0, 0.0, -SHIELD_FORWARD)
 	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
@@ -265,8 +265,8 @@ static func _make_shield() -> Node3D:
 	return root
 
 
-# El arco: la empuñadura recta a lo largo de +X de la mano (hacia arriba con el brazo extendido) y una
-# pala a cada lado, inclinadas hacia atrás (+Z) para dar la curva; la cuerda une las puntas.
+# The bow: the straight grip along +X of the hand (pointing up with the arm extended) and a
+# limb on each side, tilted back (+Z) to give the curve; the string joins the tips.
 static func _make_bow() -> Node3D:
 	var root := Node3D.new()
 	root.name = BOW_MESH
@@ -288,7 +288,7 @@ static func _make_bow() -> Node3D:
 		var direction := Vector3(side * cos(bend), 0.0, sin(bend))
 		var start := Vector3(side * BOW_GRIP_LENGTH * 0.5, 0.0, 0.0)
 		limb.position = start + direction * BOW_LIMB_LENGTH * 0.5
-		# El cilindro va en Y: se gira para que siga la dirección de la pala.
+		# The cylinder runs along Y: it is rotated to follow the direction of the limb.
 		limb.basis = Basis(Quaternion(Vector3.UP, direction.normalized()))
 		limb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		root.add_child(limb)

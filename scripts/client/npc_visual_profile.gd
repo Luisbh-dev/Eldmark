@@ -1,17 +1,17 @@
 class_name NpcVisualProfile
 extends RefCounted
-## Perfil visual de un tipo de PNJ (ART-52, solo cliente): lo que lo distingue de un jugador a 20 m mientras llega el
-## modelo definitivo de ART-16. Se elige por el arma de combate del PNJ ([code]npc_hollow[/code],
-## [code]npc_captain[/code]...), que es lo que el visual ya sabe de él (la ve el remoto en su registro y el sandbox
-## la pone en su estado), y lo aplica [method HumanoidVisual.apply_profile].
+## Visual profile of an NPC type (ART-52, client only): what sets it apart from a player at 20 m until the
+## final ART-16 model arrives. It is chosen by the NPC's combat weapon ([code]npc_hollow[/code],
+## [code]npc_captain[/code]...), which is what the visual already knows about it (the remote sees it in its record and the sandbox
+## puts it in its state), and [method HumanoidVisual.apply_profile] applies it.
 ## [br][br]
-## [b]Hueco[/b]: sin escudo, piel y ropa de hueso gris desaturado, ojos que brillan (emisivos) y el andar arrastrado de
-## zombi ([ArmedStanceModifier.use_zombie_profile]). [b]Capitán del Vado[/b]: escala visual 1,25, hierro enrojecido y
-## un arma mayor. La escala y el color son solo visuales: la cápsula y las cajas de golpe no cambian. El guardia y el
-## Guardián de la Puerta no tienen perfil: se ven como un soldado con espada y escudo.
+## [b]Hollow[/b]: no shield, skin and clothes of desaturated gray bone, glowing (emissive) eyes and the dragging zombie
+## gait ([ArmedStanceModifier.use_zombie_profile]). [b]Ford Captain[/b]: visual scale 1.25, reddened iron and
+## a larger weapon. Scale and color are visual only: the capsule and hit boxes do not change. The guard and the
+## Gate Guardian have no profile: they look like a soldier with sword and shield.
 
-## Sombreado que recolorea la textura de un material del cuerpo: desatura hacia su luminancia ([code]saturation[/code])
-## y la tiñe ([code]tint[/code]). Un color multiplicado no basta: un jubón verde multiplicado por gris sigue verde.
+## Shader that recolors the texture of a body material: desaturates toward its luminance ([code]saturation[/code])
+## and tints it ([code]tint[/code]). A multiplied color is not enough: a green jerkin multiplied by gray is still green.
 const RECOLOR_SHADER: String = """shader_type spatial;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform vec4 tint : source_color = vec4(1.0);
@@ -25,43 +25,43 @@ void fragment() {
 }
 """
 
-## Nombre del arma -> perfil (se crean una vez).
+## Weapon name -> profile (created once).
 static var _profiles: Dictionary[StringName, NpcVisualProfile] = {}
 
-## Identificador (el del arma de combate).
+## Identifier (that of the combat weapon).
 var id: StringName = &""
-## Escala visual del modelo entero (1 = la del jugador).
+## Visual scale of the whole model (1 = the player's).
 var scale: float = 1.0
-## Color por el que se multiplica el albedo de cada material del cuerpo (blanco = el suyo).
+## Color the albedo of each body material is multiplied by (white = its own).
 var tint: Color = Color.WHITE
-## Saturación de la textura del cuerpo (1 = la suya, 0 = grises): con menos de 1 el color pasa por el sombreado de
-## recoloreado ([constant RECOLOR_SHADER]) en lugar de multiplicarse.
+## Saturation of the body texture (1 = its own, 0 = grays): below 1 the color goes through the recolor shader
+## ([constant RECOLOR_SHADER]) instead of being multiplied.
 var saturation: float = 1.0
-## Brillo de los ojos: color y energía (0 = sin brillo).
+## Eye glow: color and energy (0 = no glow).
 var eye_glow: Color = Color.WHITE
 var eye_energy: float = 0.0
-## false: sin escudo en el brazo izquierdo.
+## false: no shield on the left arm.
 var shield: bool = true
-## Escala del arma de la mano derecha (1 = la normal).
+## Scale of the right-hand weapon (1 = normal).
 var weapon_scale: float = 1.0
-## Postura del reposo y la locomoción: [code]shield[/code] (guardia con escudo) o [code]zombie[/code].
+## Idle and locomotion stance: [code]shield[/code] (guard with shield) or [code]zombie[/code].
 var stance: StringName = &"shield"
 
 
-## Perfil del PNJ cuya arma de combate se llama [param weapon_name], o null si ese PNJ (o un jugador) no tiene.
+## Profile of the NPC whose combat weapon is named [param weapon_name], or null if that NPC (or a player) has none.
 static func for_weapon(weapon_name: StringName) -> NpcVisualProfile:
 	if _profiles.is_empty():
 		_build()
 	return _profiles.get(weapon_name)
 
 
-## Perfil del PNJ de [param weapon_id] (id del catálogo de combate) o null.
+## Profile of the NPC with [param weapon_id] (combat catalog id) or null.
 static func for_weapon_id(weapon_id: int) -> NpcVisualProfile:
 	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id)
 	return for_weapon(weapon.name) if weapon != null else null
 
 
-## true si el perfil cambia el aspecto (escala, color, ojos o escudo) respecto al de un jugador.
+## true if the profile changes the look (scale, color, eyes or shield) compared with a player's.
 func changes_look() -> bool:
 	return scale != 1.0 or tint != Color.WHITE or saturation != 1.0 or eye_energy > 0.0 or not shield or weapon_scale != 1.0
 

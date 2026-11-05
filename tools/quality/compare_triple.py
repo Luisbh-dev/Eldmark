@@ -1,11 +1,11 @@
-"""Une tres pasadas del banco, lado a lado: ANTES (auditoría) | OLEADA 1 | AHORA.
+"""Joins three bench runs, side by side: BEFORE (audit) | WAVE 1 | NOW.
 
-Uso: python tools/quality/compare_triple.py <antes> <oleada1> <ahora> <salida> [--per-area 6] [--width 2400]
+Usage: python tools/quality/compare_triple.py <before> <wave1> <now> <output> [--per-area 6] [--width 2400]
          [--areas animacion,mapa,interfaz,mundo,combate]
 
-Para cada área recorre los PNG que existen en las tres carpetas (misma estructura y mismos encuadres) y deja, de cada
-área, los primeros <per-area> repartidos a lo largo de la lista (siempre incluye el primero y el último), con un rótulo
-por columna. Sirve para enseñar el avance de una oleada en un vídeo.
+For each area it walks the PNGs that exist in the three folders (same structure and same framings) and leaves, from each
+area, the first <per-area> spread along the list (it always includes the first and the last), with a label
+per column. It serves to show the progress of a wave in a video.
 """
 import argparse
 from pathlib import Path

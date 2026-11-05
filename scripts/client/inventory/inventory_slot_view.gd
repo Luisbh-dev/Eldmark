@@ -1,29 +1,29 @@
 class_name InventorySlotView
 extends UIIconSlot
-## Una casilla del inventario o del equipo (docs/progresion.md §11, UI-26): un [UIIconSlot] con arrastrar y
-## soltar. Enseña el objeto de la vista de [ClientInventory] ([method show_item]): su icono (o, sin icono de
-## ART-12, el nombre corto con el color de la categoría), la pila, el borde de su rareza y el tooltip de §11.2.
-## Una pila provisional (la de un SPLIT que aún no tiene su [code]uid[/code] real) se ve apagada.
+## An inventory or equipment slot (docs/progresion.md §11, UI-26): a [UIIconSlot] with drag and
+## drop. It shows the item from the [ClientInventory] view ([method show_item]): its icon (or, with no ART-12
+## icon, the short name in the category color), the stack, the border of its rarity and the §11.2 tooltip.
+## A provisional stack (that of a SPLIT that does not yet have its real [code]uid[/code]) is shown dimmed.
 ## [br][br]
-## [b]Gestos.[/b] Arrastrar una casilla con objeto lleva [method make_drag_data] (con Mayúsculas, para dividir);
-## soltar sobre otra casilla llama a [member drop_handler] con el origen, el destino y si se divide; un arrastre
-## que nadie recoge emite [signal drag_cancelled] (soltar fuera de las ventanas: destruir). El doble clic y el
-## clic derecho emiten [signal activated] (equipar o desequipar). La casilla no decide nada: eso es de
-## [InventoryWindow]. Una casilla [member locked] (las ranuras de armadura de la fase 5) no se arrastra ni recibe.
+## [b]Gestures.[/b] Dragging a slot with an item carries [method make_drag_data] (with Shift, to split);
+## dropping onto another slot calls [member drop_handler] with the origin, the destination and whether it splits; a drag
+## that nobody picks up emits [signal drag_cancelled] (drop outside the windows: destroy). Double click and
+## right click emit [signal activated] (equip or unequip). The slot decides nothing: that is up to
+## [InventoryWindow]. A [member locked] slot (the armor slots of phase 5) cannot be dragged or receive.
 ## [br][br]
-## Solo cliente.
+## Client only.
 
-## Doble clic o clic derecho sobre la casilla.
+## Double click or right click on the slot.
 signal activated
-## El arrastre que salió de esta casilla acabó sin que nadie lo recogiera.
+## The drag that started from this slot ended without anyone picking it up.
 signal drag_cancelled
 
-## Clave del diccionario de arrastre con el origen [code](contenedor, ranura)[/code].
+## Key of the drag dictionary with the origin [code](container, slot)[/code].
 const DRAG_KEY: String = "inventory_slot"
-## Tamaño de la vista previa que sigue al ratón.
+## Size of the preview that follows the mouse.
 const PREVIEW_SIZE: Vector2 = Vector2(44.0, 44.0)
-## Color de cada categoría ([enum ItemDefinition.Category]) para el icono provisional. # TODO(arte): hasta los
-## iconos de ART-12 y el visto bueno de las ventanas (docs/progresion.md §16).
+## Color of each category ([enum ItemDefinition.Category]) for the provisional icon. # TODO(art): until the
+## ART-12 icons and the approval of the windows (docs/progresion.md §16).
 const CATEGORY_COLORS: Dictionary[int, Color] = {
 	ItemDefinition.Category.WEAPON: Color(0.56, 0.42, 0.26, 1.0),
 	ItemDefinition.Category.ARMOR: Color(0.32, 0.42, 0.55, 1.0),
@@ -32,13 +32,13 @@ const CATEGORY_COLORS: Dictionary[int, Color] = {
 	ItemDefinition.Category.QUEST: Color(0.7, 0.58, 0.2, 1.0),
 	ItemDefinition.Category.MISC: Color(0.42, 0.42, 0.46, 1.0),
 }
-## Nombre en español de cada categoría.
+## Name in Spanish of each category.
 const CATEGORY_NAMES: Dictionary[int, String] = {
 	ItemDefinition.Category.WEAPON: "Arma", ItemDefinition.Category.ARMOR: "Armadura",
 	ItemDefinition.Category.CONSUMABLE: "Consumible", ItemDefinition.Category.MATERIAL: "Material",
 	ItemDefinition.Category.QUEST: "Objeto de misión", ItemDefinition.Category.MISC: "Varios",
 }
-## Nombre en español de cada ranura de equipo ([enum ItemDefinition.EquipSlot]).
+## Name in Spanish of each equipment slot ([enum ItemDefinition.EquipSlot]).
 const EQUIP_SLOT_NAMES: Dictionary[int, String] = {
 	ItemDefinition.EquipSlot.WEAPON: "Ranura de arma", ItemDefinition.EquipSlot.HEAD: "Cabeza",
 	ItemDefinition.EquipSlot.CHEST: "Torso", ItemDefinition.EquipSlot.HANDS: "Manos",
@@ -54,38 +54,38 @@ const TEXT_ABILITY: String = "%s: %d de daño"
 const TEXT_COMPARE: String = "Frente a %s: combo %s, fuerte %s"
 const TEXT_PROVISIONAL: String = "Esperando al servidor…"
 
-## Contenedor ([enum InventoryState.ContainerId]) y ranura que enseña.
+## Container ([enum InventoryState.ContainerId]) and slot it shows.
 var container: int = InventoryState.ContainerId.BAG
 var slot: int = 0
-## Reservada (equipo 2–6 en la fase 5): en gris, sin arrastre ni suelta.
+## Reserved (equipment 2-6 in phase 5): grayed out, no drag or drop.
 var locked: bool = false:
 	set(value):
 		locked = value
 		enabled = not value
-## [code](from: Vector2i, to: Vector2i, split: bool) -> void[/code]: lo que pasa al soltar sobre esta casilla.
+## [code](from: Vector2i, to: Vector2i, split: bool) -> void[/code]: what happens when dropping onto this slot.
 var drop_handler: Callable = Callable()
-## Título del tooltip de la casilla vacía (en el equipo, el nombre de la ranura); vacío = sin tooltip.
+## Title of the empty slot's tooltip (in the equipment, the slot's name); empty = no tooltip.
 var empty_title: String = ""
-## Subtítulo del tooltip de la casilla vacía («Próximamente» en las reservadas).
+## Subtitle of the empty slot's tooltip ("Próximamente" (coming soon) on the reserved ones).
 var empty_subtitle: String = ""
 
 var _item: ItemInstance = null
 var _drag_source: bool = false
 
 
-## La ranura que enseña: [code](contenedor, ranura)[/code].
+## The slot it shows: [code](container, slot)[/code].
 func get_position_key() -> Vector2i:
 	return Vector2i(container, slot)
 
 
-## El objeto que enseña (null si está vacía).
+## The item it shows (null if empty).
 func get_item() -> ItemInstance:
 	return _item
 
 
-## Enseña [param item] (null = vacía) con las definiciones de [param db] (null =
-## [method ItemDatabase.shared]) para un personaje de nivel [param level]; [param compare] es el arma con la que
-## se compara un arma en el tooltip (null = ninguna).
+## Shows [param item] (null = empty) with the definitions of [param db] (null =
+## [method ItemDatabase.shared]) for a character of level [param level]; [param compare] is the weapon a weapon is
+## compared against in the tooltip (null = none).
 func show_item(item: ItemInstance, db: ItemDatabase = null, level: int = 1, compare: ItemInstance = null) -> void:
 	_item = item
 	if db == null:
@@ -109,8 +109,8 @@ func show_item(item: ItemInstance, db: ItemDatabase = null, level: int = 1, comp
 	set_tooltip_info(content["title"], content["body"], content["subtitle"])
 
 
-## Lo que lleva un arrastre desde esta casilla ([constant DRAG_KEY]: el origen, [code]uid[/code] y
-## [code]split[/code]: con Mayúsculas se divide), o vacío si no hay nada que arrastrar (vacía, reservada o
+## What a drag from this slot carries ([constant DRAG_KEY]: the origin, [code]uid[/code] and
+## [code]split[/code]: with Shift it splits), or empty if there is nothing to drag (empty, reserved or
 ## provisional).
 func make_drag_data(split: bool) -> Dictionary:
 	if locked or _item == null or ClientInventory.is_provisional(_item):
@@ -118,24 +118,24 @@ func make_drag_data(split: bool) -> Dictionary:
 	return {DRAG_KEY: get_position_key(), "uid": _item.uid, "split": split}
 
 
-## true si se puede soltar [param data] aquí: un arrastre de otra casilla del inventario y esta no reservada.
+## true if [param data] can be dropped here: a drag from another inventory slot and this one not reserved.
 func accepts(data: Variant) -> bool:
 	if locked or not (data is Dictionary) or not (data as Dictionary).has(DRAG_KEY):
 		return false
 	return (data as Dictionary)[DRAG_KEY] != get_position_key()
 
 
-## Suelta [param data] aquí: [member drop_handler] con el origen, esta casilla y si se divide.
+## Drops [param data] here: [member drop_handler] with the origin, this slot and whether it splits.
 func drop(data: Dictionary) -> void:
 	if not accepts(data) or not drop_handler.is_valid():
 		return
 	drop_handler.call(data[DRAG_KEY] as Vector2i, get_position_key(), bool(data.get("split", false)))
 
 
-# --- Presentación (estática: la usan las pruebas y la ventana de personaje) -----------------------
+# --- Presentation (static: used by the tests and the character window) ---------------------------
 
-## El icono de [param definition]: el de [member ItemDefinition.icon_path] si existe y, si no, el nombre corto
-## sobre el color de su categoría ([PlaceholderIcon]).
+## The icon of [param definition]: that of [member ItemDefinition.icon_path] if it exists and, if not, the short name
+## on the color of its category ([PlaceholderIcon]).
 static func icon_for(definition: ItemDefinition) -> Texture2D:
 	if definition == null:
 		return null
@@ -143,7 +143,7 @@ static func icon_for(definition: ItemDefinition) -> Texture2D:
 		var texture: Texture2D = load(definition.icon_path) as Texture2D
 		if texture != null:
 			return texture
-	# ART-12: las armas y las pociones llevan el dibujo de la barra de acciones (por el nombre del recurso de combate).
+	# ART-12: weapons and potions carry the drawing from the action bar (by the combat resource's name).
 	var drawn: Texture2D = null
 	match definition.category:
 		ItemDefinition.Category.WEAPON:
@@ -158,8 +158,8 @@ static func icon_for(definition: ItemDefinition) -> Texture2D:
 	return placeholder
 
 
-## El nombre corto del icono provisional: la inicial de la primera palabra y la de la última (si hay más de
-## una), en mayúsculas («Poción de vida» → «PV», «Arco del Vado» → «AV»).
+## The short name of the provisional icon: the initial of the first word and that of the last (if there is more than
+## one), in uppercase ("Poción de vida" -> "PV", "Arco del Vado" -> "AV").
 static func short_name(display_name: String) -> String:
 	var words: PackedStringArray = display_name.strip_edges().split(" ", false)
 	if words.is_empty():
@@ -170,10 +170,10 @@ static func short_name(display_name: String) -> String:
 	return text.to_upper()
 
 
-## El tooltip de [param item] (§11.2): [code]title[/code] (el nombre), [code]subtitle[/code] (categoría y ranura)
-## y [code]body[/code] en BBCode: nivel requerido (en rojo si [param level] no llega), lo que aporta (un arma, el
-## daño de sus ataques y habilidades de [CombatCatalog]; una poción, su efecto), la comparación con
-## [param compare] (verde si mejora, rojo si empeora), «Ligado», la durabilidad, el valor y la descripción.
+## The tooltip of [param item] (§11.2): [code]title[/code] (the name), [code]subtitle[/code] (category and slot)
+## and [code]body[/code] in BBCode: required level (in red if [param level] falls short), what it provides (a weapon, the
+## damage of its attacks and abilities from [CombatCatalog]; a potion, its effect), the comparison with
+## [param compare] (green if better, red if worse), "Ligado" (bound), durability, value and description.
 static func tooltip_for(item: ItemInstance, db: ItemDatabase, level: int, compare: ItemInstance = null) -> Dictionary:
 	if db == null:
 		db = ItemDatabase.shared()
@@ -205,9 +205,9 @@ static func tooltip_for(item: ItemInstance, db: ItemDatabase, level: int, compar
 	return {"title": definition.display_name, "subtitle": subtitle, "body": "\n".join(lines)}
 
 
-## El daño de un arma de [CombatCatalog] por su id: [code]lights[/code] (el de cada ligero del combo),
-## [code]combo[/code] (su suma), [code]heavy[/code] (el fuerte sin cargar) y [code]abilities[/code]
-## ([code][id de habilidad, daño][/code] de las que golpean).
+## The damage of a [CombatCatalog] weapon by its id: [code]lights[/code] (that of each light attack of the combo),
+## [code]combo[/code] (their sum), [code]heavy[/code] (the uncharged heavy) and [code]abilities[/code]
+## ([code][ability id, damage][/code] of those that hit).
 static func weapon_damage(weapon_id: int) -> Dictionary:
 	var result: Dictionary = {"lights": PackedInt32Array(), "combo": 0, "heavy": 0, "abilities": []}
 	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id)
@@ -254,7 +254,7 @@ static func _weapon_lines(definition: ItemDefinition, compare: ItemInstance, db:
 	return lines
 
 
-# «+30» en verde, «−20» en rojo o «=» en gris.
+# "+30" in green, "−20" in red or "=" in gray.
 static func _difference(value: int) -> String:
 	if value > 0:
 		return _colored("+%d" % value, UIPalette.SUCCESS)
@@ -267,7 +267,7 @@ static func _colored(text: String, color: Color) -> String:
 	return "[color=#%s]%s[/color]" % [color.to_html(false), text]
 
 
-# --- Entrada ------------------------------------------------------------------------------------
+# --- Input --------------------------------------------------------------------------------------
 
 func _gui_input(event: InputEvent) -> void:
 	var click: InputEventMouseButton = event as InputEventMouseButton

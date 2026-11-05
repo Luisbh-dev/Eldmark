@@ -23,7 +23,7 @@ func checkPageHeaders(t *testing.T, res *response) {
 		}
 	}
 	if strings.Contains(strings.ToLower(res.raw), "<script") || strings.Contains(res.raw, "style") {
-		t.Errorf("sin JavaScript ni CSS: %s", res.raw)
+		t.Errorf("no JavaScript or CSS: %s", res.raw)
 	}
 }
 
@@ -34,18 +34,18 @@ func TestVerifyPage(t *testing.T) {
 	id := h.register("pagina@example.org")
 	_, token := h.mailTo("pagina@example.org", "verify_email")
 	if !strings.Contains(mustBody(t, h, "pagina@example.org", "verify_email"), "http://127.0.0.1:24680/verify?token="+token) {
-		t.Fatal("el enlace apunta a ELDMARK_PUBLIC_URL/verify")
+		t.Fatal("the link points to ELDMARK_PUBLIC_URL/verify")
 	}
 	form := h.do(call{method: "GET", path: "/verify?token=" + token, noProtocol: true})
 	checkPageHeaders(t, form)
 	if form.status != 200 || !strings.Contains(form.raw, `<form method="post" action="/verify">`) ||
 		!strings.Contains(form.raw, `name="token" value="`+token+`"`) {
-		t.Fatalf("formulario: %d %s", form.status, form.raw)
+		t.Fatalf("form: %d %s", form.status, form.raw)
 	}
 	var verified bool
 	h.scalar(&verified, `select email_verified_at is not null from accounts where account_id = $1`, id)
 	if verified {
-		t.Fatal("abrir el enlace no verifica: hace falta el POST")
+		t.Fatal("opening the link does not verify: the POST is required")
 	}
 	done := h.do(call{method: "POST", path: "/verify", form: "token=" + url.QueryEscape(token)})
 	checkPageHeaders(t, done)
@@ -54,11 +54,11 @@ func TestVerifyPage(t *testing.T) {
 	}
 	h.scalar(&verified, `select email_verified_at is not null from accounts where account_id = $1`, id)
 	if !verified {
-		t.Fatal("verificado")
+		t.Fatal("verified")
 	}
 	again := h.do(call{method: "POST", path: "/verify", form: "token=" + token})
 	if again.status != 400 || !strings.Contains(again.raw, "ya se ha usado") {
-		t.Fatalf("usado: %d %s", again.status, again.raw)
+		t.Fatalf("used: %d %s", again.status, again.raw)
 	}
 	for _, bad := range []string{"<script>alert(1)</script>", strings.Repeat("A", 42) + "<", "", strings.Repeat("A", 44)} {
 		res := h.do(call{method: "GET", path: "/verify?token=" + url.QueryEscape(bad), noProtocol: true})
@@ -106,15 +106,15 @@ func TestResetAndRevertPages(t *testing.T) {
 	}
 	res := h.do(call{method: "POST", path: "/reset", form: "token=" + token + "&new_password=una+nueva+larga&new_password_repeat=otra+distinta"})
 	if res.status != 400 || !strings.Contains(res.raw, "no coinciden") || !strings.Contains(res.raw, `value="`+token+`"`) {
-		t.Fatalf("no coinciden: %s", res.raw)
+		t.Fatalf("they do not match: %s", res.raw)
 	}
 	res = h.do(call{method: "POST", path: "/reset", form: "token=" + token + "&new_password=corta&new_password_repeat=corta"})
 	if res.status != 400 || !strings.Contains(res.raw, "al menos 10") {
-		t.Fatalf("corta: %s", res.raw)
+		t.Fatalf("short: %s", res.raw)
 	}
 	res = h.do(call{method: "POST", path: "/reset", form: "token=" + token + "&new_password=una+nueva+larga&new_password_repeat=una+nueva+larga"})
 	if res.status != 200 || !strings.Contains(res.raw, "Contraseña cambiada") {
-		t.Fatalf("cambiada: %s", res.raw)
+		t.Fatalf("changed: %s", res.raw)
 	}
 	h.login("formulario@example.org", "una nueva larga")
 
@@ -176,7 +176,7 @@ func TestUnverifiedAccountsArePurged(t *testing.T) {
 		return s
 	}
 	if statusOf(unverified) != "active" {
-		t.Fatal("a los 6 días, no")
+		t.Fatal("at 6 days, no")
 	}
 	h.clock.Advance(24*time.Hour + time.Second)
 	if err := h.svc.PurgeDue(ctx); err != nil {
@@ -184,20 +184,20 @@ func TestUnverifiedAccountsArePurged(t *testing.T) {
 	}
 	if statusOf(unverified) != "purged" || statusOf(verified) != "active" || statusOf(withCharacter) != "active" ||
 		statusOf(sanctioned) != "purged" {
-		t.Fatalf("purga: %s %s %s %s", statusOf(unverified), statusOf(verified), statusOf(withCharacter), statusOf(sanctioned))
+		t.Fatalf("purge: %s %s %s %s", statusOf(unverified), statusOf(verified), statusOf(withCharacter), statusOf(sanctioned))
 	}
 	if !strings.Contains(h.logs.String(), "tiene personajes") {
-		t.Fatal("la cuenta con personajes se registra y se deja")
+		t.Fatal("the account with characters is registered and left alone")
 	}
 	// The sanctioned account's email stays blocked from registering for up to 90 days after the end.
 	var until time.Time
 	h.scalar(&until, `select until from sanctioned_email_hashes where hmac = $1`, hmacOf("sancionada@example.org"))
 	if want := h.clock.Now().Add(-7*24*time.Hour - time.Second).Add(120 * 24 * time.Hour); !until.Equal(want) {
-		t.Fatalf("hasta: %s, no %s", until, want)
+		t.Fatalf("until: %s, not %s", until, want)
 	}
 	h.do(call{method: "POST", path: "/v1/accounts", body: registerBody("sancionada@example.org", password), ip: h.nextIP()})
 	if h.mailCount("sancionada@example.org", "register_blocked") != 1 {
-		t.Fatal("registro bloqueado")
+		t.Fatal("registration blocked")
 	}
 	// In test (and dev) unverified accounts are not purged.
 	plain := newHarness(t)

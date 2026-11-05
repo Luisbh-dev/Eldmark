@@ -1,35 +1,35 @@
 class_name ArmedStanceModifier
 extends SkeletonModifier3D
-## Postura armada (ART-45, solo cliente): pone sobre la pose del [AnimationTree] la guardia con escudo y espada que
-## la locomoción sin arma no trae. Va después del árbol y antes de [CombatPoseModifier] (que, si hay un golpe o una
-## esquiva, la pisa).
+## Combat stance (ART-45, client only): lays over the [AnimationTree] pose the shield-and-sword guard that
+## unarmed locomotion lacks. It runs after the tree and before [CombatPoseModifier] (which, if there is a hit or a
+## dodge, overrides it).
 ## [br][br]
-## [b]Reposo de combate.[/b] Parado, todo el cuerpo es la guardia de [member rest_clip] (por defecto
-## [code]ual2/Idle_Shield_Loop[/code]: el escudo delante del pecho), con peso [member rest_weight]. El brazo derecho
-## sale de [member right_arm_clip] ([code]ual1/Sword_Idle[/code]: la espada baja y adelantada), porque la guardia no
-## lleva espada en la mano.
+## [b]Combat rest.[/b] Standing still, the whole body is the guard from [member rest_clip] (by default
+## [code]ual2/Idle_Shield_Loop[/code]: the shield in front of the chest), with weight [member rest_weight]. The right arm
+## comes from [member right_arm_clip] ([code]ual1/Sword_Idle[/code]: the sword low and forward), because the guard
+## does not hold a sword in the hand.
 ## [br][br]
-## [b]Capa de brazos.[/b] Andando o corriendo, hombro, brazo y mano de cada lado vienen del clip de su lado con
-## peso [member arm_weight] (de 0,6 a 0,9): el escudo se queda delante del torso y la hoja no se va hacia atrás ni
-## sobre la cabeza, que es lo que hacían los clips de locomoción sin arma. Las piernas y el tronco siguen siendo la
-## locomoción.
+## [b]Arm layer.[/b] When walking or running, the shoulder, arm and hand of each side come from the clip of its side with
+## weight [member arm_weight] (0.6 to 0.9): the shield stays in front of the torso and the blade does not swing backward or
+## over the head, which is what the unarmed locomotion clips did. The legs and trunk remain the
+## locomotion.
 ## [br][br]
-## [b]Agarre.[/b] Los dedos de las dos manos van siempre cerrados sobre la empuñadura y el asa del escudo: el
-## primer fotograma de los clips de cada lado, con peso [member grip_weight].
+## [b]Grip.[/b] The fingers of both hands are always closed around the hilt and the shield handle: the
+## first frame of the clips of each side, with weight [member grip_weight].
 ## [br][br]
-## [b]Escudo reservado.[/b] [member left_arm_reserved] (de 0 a 1) sube el peso del brazo izquierdo al de la guardia
-## completa aunque se ande: la usan los ataques de espada, que no tocan ese brazo ([member
+## [b]Reserved shield.[/b] [member left_arm_reserved] (0 to 1) raises the weight of the left arm to that of the full guard
+## even while walking: sword attacks use it, as they do not touch that arm ([member
 ## CombatActionAnim.keep_left_arm]).
 ## [br][br]
-## [b]Perfil zombi[/b] (ART-52): [method use_zombie_profile] cambia el reposo por [code]ual2/Zombie_Idle_Loop[/code],
-## quita la guardia del escudo y pone [code]ual2/Zombie_Walk_Fwd_Loop[/code] de cuerpo entero con peso
-## [member walk_weight]: el Hueco arrastra los pies en lugar de trotar como un soldado. Solo cuando corre (el zombi
-## no esprinta) vuelve la capa del brazo de la espada.
+## [b]Zombie profile[/b] (ART-52): [method use_zombie_profile] swaps the rest for [code]ual2/Zombie_Idle_Loop[/code],
+## removes the shield guard and puts a full-body [code]ual2/Zombie_Walk_Fwd_Loop[/code] with weight
+## [member walk_weight]: the Hollow drags its feet instead of jogging like a soldier. Only when it runs (the zombie
+## does not sprint) does the sword arm layer come back.
 ## [br][br]
-## Lo conduce [CharacterAnimator], que fija los pesos y los instantes cada fotograma. Los clips salen de un
-## [CombatClipSet] ([member clips]); las pistas de cada clip se tabulan una vez por esqueleto.
+## Driven by [CharacterAnimator], which sets the weights and the times every frame. The clips come from a
+## [CombatClipSet] ([member clips]); the tracks of each clip are tabulated once per skeleton.
 
-## Clase de hueso para decidir con qué peso se aplica.
+## Bone class used to decide the weight it is applied with.
 enum Part { BODY, LEFT_ARM, RIGHT_ARM, LEFT_FINGER, RIGHT_FINGER }
 
 const HIPS_BONE: StringName = &"Hips"
@@ -38,48 +38,48 @@ const RIGHT_ARM_ROOT: StringName = &"RightShoulder"
 const LEFT_HAND: StringName = &"LeftHand"
 const RIGHT_HAND: StringName = &"RightHand"
 
-## Clips de la guardia con escudo (el perfil por defecto).
+## Shield guard clips (the default profile).
 const SHIELD_REST: StringName = &"ual2/Idle_Shield_Loop"
 const SWORD_ARM: StringName = &"ual1/Sword_Idle"
-## Clips del perfil zombi.
+## Zombie profile clips.
 const ZOMBIE_REST: StringName = &"ual2/Zombie_Idle_Loop"
 const ZOMBIE_WALK: StringName = &"ual2/Zombie_Walk_Fwd_Loop"
 
-## Juego de clips del que salen las animaciones (el de espada y escudo: tiene las bibliotecas UAL1 y UAL2).
+## Clip set the animations come from (the sword-and-shield one: it has the UAL1 and UAL2 libraries).
 var clips: CombatClipSet = null
-## Reposo de cuerpo entero y clips de cada brazo (vacío = sin esa capa).
+## Full-body rest and the clips of each arm (empty = no such layer).
 var rest_clip: StringName = SHIELD_REST
 var left_arm_clip: StringName = SHIELD_REST
 var right_arm_clip: StringName = SWORD_ARM
-## Caminar de cuerpo entero (solo el perfil zombi; vacío = ninguno).
+## Full-body walk (zombie profile only; empty = none).
 var walk_clip: StringName = &""
-## false: la postura no se aplica (el arco, un personaje sin armas).
+## false: the stance is not applied (the bow, a character with no weapons).
 var enabled: bool = true
-## true: en reposo cada brazo también sale de su clip de brazo (la guardia con la espada baja); false: en reposo los
-## brazos son los del reposo de cuerpo entero y la capa de brazos solo actúa en movimiento (el zombi).
+## true: at rest each arm also comes from its arm clip (the guard with the sword low); false: at rest the
+## arms are those of the full-body rest and the arm layer only acts while moving (the zombie).
 var arms_at_rest: bool = true
 
-## Peso del reposo de cuerpo entero (0 a 1): 1 parado, 0 en movimiento.
+## Weight of the full-body rest (0 to 1): 1 standing still, 0 moving.
 var rest_weight: float = 0.0
-## Peso de la capa de brazos en movimiento (0,6 a 0,9).
+## Weight of the arm layer while moving (0.6 to 0.9).
 var arm_weight: float = 0.8
-## Peso del brazo izquierdo reservado por un ataque (0 a 1).
+## Weight of the left arm reserved by an attack (0 to 1).
 var left_arm_reserved: float = 0.0
-## Peso del agarre de los dedos (0 a 1).
+## Weight of the finger grip (0 to 1).
 var grip_weight: float = 1.0
-## Peso del caminar de cuerpo entero (0 a 1).
+## Weight of the full-body walk (0 to 1).
 var walk_weight: float = 0.0
-## Multiplicador de todo lo anterior (0 a 1): baja en el aire y con clips de cuerpo entero.
+## Multiplier of everything above (0 to 1): drops in the air and with full-body clips.
 var master_weight: float = 1.0
-## Instantes (s) de los clips: del reposo, y del caminar de cuerpo entero.
+## Times (s) of the clips: of the rest, and of the full-body walk.
 var rest_time: float = 0.0
 var walk_time: float = 0.0
-## Con el agarre, el instante de los clips del que salen los dedos (fijo: la mano no se abre ni se cierra).
+## With the grip, the time in the clips the fingers come from (fixed: the hand neither opens nor closes).
 var grip_time: float = 0.0
 
 var _cached_skeleton: Skeleton3D = null
 var _parts: Dictionary[int, int] = {}
-# Animation -> Dictionary[bone, track de rotación] más la pista de posición de la cadera con clave -1.
+# Animation -> Dictionary[bone, rotation track] plus the hip position track under key -1.
 var _tables: Dictionary[Animation, Dictionary] = {}
 var _applied: int = 0
 
@@ -122,12 +122,12 @@ func _process_modification() -> void:
 	_applied += 1
 
 
-## Veces que se ha aplicado la postura desde que existe (para las pruebas).
+## Number of times the stance has been applied since it was created (for the tests).
 func get_applied_count() -> int:
 	return _applied
 
 
-## Perfil de guardia con escudo y espada (el de por defecto).
+## Shield-and-sword guard profile (the default one).
 func use_shield_profile() -> void:
 	rest_clip = SHIELD_REST
 	left_arm_clip = SHIELD_REST
@@ -137,7 +137,7 @@ func use_shield_profile() -> void:
 	enabled = true
 
 
-## Perfil zombi (el Hueco): reposo y caminar de zombi de cuerpo entero, sin capa de brazos ni agarre.
+## Zombie profile (the Hollow): full-body zombie rest and walk, with no arm layer or grip.
 func use_zombie_profile() -> void:
 	rest_clip = ZOMBIE_REST
 	left_arm_clip = &""
@@ -147,14 +147,14 @@ func use_zombie_profile() -> void:
 	enabled = true
 
 
-# Todas las clases de hueso con el mismo peso.
+# All bone classes with the same weight.
 static func _all(weight: float) -> Dictionary:
 	return {Part.BODY: weight, Part.LEFT_ARM: weight, Part.RIGHT_ARM: weight, Part.LEFT_FINGER: weight,
 			Part.RIGHT_FINGER: weight}
 
 
-## Aplica [param animation] en [param time]: cada hueso con el peso de su clase en [param weights] (la que falte, 0).
-## Con [param with_hips] también mezcla la posición de la cadera con el peso de [constant Part.BODY].
+## Applies [param animation] at [param time]: each bone with the weight of its class in [param weights] (0 for a missing one).
+## With [param with_hips] it also blends the hip position with the weight of [constant Part.BODY].
 func _apply(skeleton: Skeleton3D, animation: Animation, time: float, weights: Dictionary,
 		with_hips: bool) -> void:
 	if animation == null:
@@ -179,7 +179,7 @@ func _apply(skeleton: Skeleton3D, animation: Animation, time: float, weights: Di
 					hips_weight))
 
 
-# Clase de cada hueso: los brazos cuelgan de los hombros y los dedos de las manos.
+# Class of each bone: the arms hang from the shoulders and the fingers from the hands.
 func _cache_skeleton(skeleton: Skeleton3D) -> void:
 	_cached_skeleton = skeleton
 	_tables.clear()
@@ -216,8 +216,8 @@ func _cache_skeleton(skeleton: Skeleton3D) -> void:
 		_parts[bone] = part
 
 
-# Tabla de pistas de rotación (hueso -> pista) del clip para este esqueleto; la pista de posición de la cadera va
-# con la clave -1.
+# Table of rotation tracks (bone -> track) of the clip for this skeleton; the hip position track goes
+# under key -1.
 func _table_for(skeleton: Skeleton3D, animation: Animation) -> Dictionary:
 	if _tables.has(animation):
 		return _tables[animation]

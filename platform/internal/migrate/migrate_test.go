@@ -90,20 +90,20 @@ func TestEmbeddedMigrations(t *testing.T) {
 	want := []string{"0001_accounts", "0002_characters", "0003_zones", "0004_war", "0005_social", "0006_privacy",
 		"0010_progress"}
 	if len(ms) < len(want) {
-		t.Fatalf("faltan migraciones: %d", len(ms))
+		t.Fatalf("missing migrations: %d", len(ms))
 	}
 	for i, id := range want {
 		if ms[i].ID() != id {
-			t.Errorf("migración %d: %s, se esperaba %s", i, ms[i].ID(), id)
+			t.Errorf("migration %d: %s, expected %s", i, ms[i].ID(), id)
 		}
 		if ms[i].Irreversible {
-			t.Errorf("%s no es irreversible", id)
+			t.Errorf("%s is not irreversible", id)
 		}
 	}
 	// Numbers 0007-0009 are left unused (platform.md §2.4).
 	for _, m := range ms {
 		if m.Version >= 7 && m.Version <= 9 {
-			t.Errorf("%s usa un número reservado", m.ID())
+			t.Errorf("%s uses a reserved number", m.ID())
 		}
 	}
 }
@@ -119,11 +119,11 @@ func TestUpDownUpKeepsTheSchema(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 	if len(applied) != len(ms) {
-		t.Fatalf("up aplica todas: %d de %d", len(applied), len(ms))
+		t.Fatalf("up applies all of them: %d of %d", len(applied), len(ms))
 	}
 	first := testdb.DumpSchema(t, pool)
 	if !strings.Contains(first, "CREATE TABLE public.accounts") || !strings.Contains(first, "uid_block_seq") {
-		t.Fatalf("el volcado no tiene el esquema:\n%.500s", first)
+		t.Fatalf("the dump does not have the schema:\n%.500s", first)
 	}
 	lastIrreversible := 0
 	for _, m := range ms {
@@ -142,29 +142,29 @@ func TestUpDownUpKeepsTheSchema(t *testing.T) {
 		t.Fatalf("down %d: %v", reversible, err)
 	}
 	if len(undone) != reversible || undone[0].Version != ms[len(ms)-1].Version {
-		t.Fatalf("down deshace de la mayor a la menor: %v", undone)
+		t.Fatalf("down undoes from the highest to the lowest: %v", undone)
 	}
 	if lastIrreversible == 0 {
 		if tables := testdb.Tables(t, pool); len(tables) != 0 {
-			t.Fatalf("down hasta 0 no deja tablas: %v", tables)
+			t.Fatalf("down to 0 leaves no tables: %v", tables)
 		}
 		var seqs int
 		if err := pool.QueryRow(ctx, "select count(*) from pg_class where relkind = 'S' and relname = 'uid_block_seq'").Scan(&seqs); err != nil || seqs != 0 {
-			t.Fatalf("down quita la secuencia: %d %v", seqs, err)
+			t.Fatalf("down removes the sequence: %d %v", seqs, err)
 		}
 	}
 	if _, err := r.Up(ctx); err != nil {
-		t.Fatalf("segundo up: %v", err)
+		t.Fatalf("second up: %v", err)
 	}
 	if second := testdb.DumpSchema(t, pool); second != first {
-		t.Fatalf("el esquema cambia tras up → down → up:\n--- antes\n%s\n--- después\n%s", first, second)
+		t.Fatalf("the schema changes after up -> down -> up:\n--- before\n%s\n--- after\n%s", first, second)
 	}
 	again, err := r.Up(ctx)
 	if err != nil || len(again) != 0 {
-		t.Fatalf("un up sin pendientes no hace nada: %v %v", again, err)
+		t.Fatalf("an up with nothing pending does nothing: %v %v", again, err)
 	}
 	if err := r.Check(ctx); err != nil {
-		t.Fatalf("check con todo aplicado: %v", err)
+		t.Fatalf("check with everything applied: %v", err)
 	}
 }
 
@@ -178,13 +178,13 @@ func TestMigrationsKeepTheRows(t *testing.T) {
 	var before map[string]int64
 	for _, m := range ms {
 		if _, err := runner(t, pool, upTo(t, m.Version)).Up(ctx); err != nil {
-			t.Fatalf("up hasta %s: %v", m.ID(), err)
+			t.Fatalf("up to %s: %v", m.ID(), err)
 		}
 		if before != nil {
 			after := counts(t, pool)
 			for table, n := range before {
 				if after[table] != n {
-					t.Errorf("%s cambia el número de filas de %s: %d → %d", m.ID(), table, n, after[table])
+					t.Errorf("%s changes the row count of %s: %d -> %d", m.ID(), table, n, after[table])
 				}
 			}
 		}
@@ -199,12 +199,12 @@ func TestMigrationsKeepTheRows(t *testing.T) {
 		before = counts(t, pool)
 		for table, n := range before {
 			if n == 0 {
-				t.Errorf("con el esquema %s, la tabla %s no tiene filas: falta en testdata/seed_%04d.sql", m.ID(), table, m.Version)
+				t.Errorf("with schema %s, table %s has no rows: missing in testdata/seed_%04d.sql", m.ID(), table, m.Version)
 			}
 		}
 	}
 	if seeded < 7 {
-		t.Fatalf("hay semilla para 0001–0006 y 0010: %d", seeded)
+		t.Fatalf("there is a seed for 0001-0006 and 0010: %d", seeded)
 	}
 }
 
@@ -222,27 +222,27 @@ func TestIrreversibleMigrationsDoNotGoDown(t *testing.T) {
 	}
 	r := runner(t, pool, fsys)
 	if !r.Migrations()[1].Irreversible || r.Migrations()[0].Irreversible {
-		t.Fatal("la marca de la primera línea hace irreversible a 0002 y solo a ella")
+		t.Fatal("the mark on the first line makes 0002 irreversible, and only it")
 	}
 	if _, err := r.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.Down(ctx, 1); err != nil {
-		t.Fatalf("0003 sí se deshace: %v", err)
+		t.Fatalf("0003 does get undone: %v", err)
 	}
 	_, err := r.Down(ctx, 1)
 	if err == nil || !strings.Contains(err.Error(), "0002_datos es irreversible") {
-		t.Fatalf("0002 no se deshace: %v", err)
+		t.Fatalf("0002 is not undone: %v", err)
 	}
 	// Not within a multi-step down either: nothing is touched.
 	if _, err := r.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.Down(ctx, 2); err == nil {
-		t.Fatal("down 2 pasaría por la irreversible")
+		t.Fatal("down 2 would go through the irreversible one")
 	}
 	if got := appliedVersions(t, pool); fmt.Sprint(got) != "[1 2 3]" {
-		t.Fatalf("un down rechazado no deshace nada: %v", got)
+		t.Fatalf("a rejected down undoes nothing: %v", got)
 	}
 	// An irreversible one's .down.sql has to raise the exception.
 	bad := fstest.MapFS{
@@ -250,7 +250,7 @@ func TestIrreversibleMigrationsDoNotGoDown(t *testing.T) {
 		"0001_x.down.sql": {Data: []byte("select 1;")},
 	}
 	if _, err := migrate.Load(bad); err == nil {
-		t.Fatal("una irreversible sin raise exception en su .down.sql no se carga")
+		t.Fatal("an irreversible one without raise exception in its .down.sql is not loaded")
 	}
 }
 
@@ -269,16 +269,16 @@ func TestChangedChecksumIsRefused(t *testing.T) {
 	fsys["0002_b.down.sql"] = &fstest.MapFile{Data: []byte("drop table b;")}
 	r := runner(t, pool, fsys)
 	if _, err := r.Up(ctx); err == nil || !strings.Contains(err.Error(), "0001_a ha cambiado") {
-		t.Fatalf("up con la suma cambiada: %v", err)
+		t.Fatalf("up with a changed checksum: %v", err)
 	}
 	if got := appliedVersions(t, pool); fmt.Sprint(got) != "[1]" {
-		t.Fatalf("no se aplica nada más: %v", got)
+		t.Fatalf("nothing else is applied: %v", got)
 	}
 	if err := r.Check(ctx); !errors.Is(err, migrate.ErrNotMigrated) {
-		t.Fatalf("check con la suma cambiada: %v", err)
+		t.Fatalf("check with a changed checksum: %v", err)
 	}
 	if _, err := r.Down(ctx, 1); err == nil {
-		t.Fatal("down con la suma cambiada")
+		t.Fatal("down with a changed checksum")
 	}
 	status, err := r.Status(ctx)
 	if err != nil || status[0].State != migrate.StateChanged || status[1].State != migrate.StatePending {
@@ -304,14 +304,14 @@ func TestPendingBelowTheHighestAppliedIsRefused(t *testing.T) {
 	_, err := r.Up(ctx)
 	want := "La migración 0002 está pendiente por debajo de la 0003 ya aplicada: renumérala"
 	if err == nil || err.Error() != want {
-		t.Fatalf("se esperaba «%s»: %v", want, err)
+		t.Fatalf("expected \"%s\": %v", want, err)
 	}
 	if tables := testdb.Tables(t, pool); fmt.Sprint(tables) != "[a c]" {
-		t.Fatalf("no se aplica nada: %v", tables)
+		t.Fatalf("nothing is applied: %v", tables)
 	}
 	status, err := r.Status(ctx)
 	if err != nil || status[1].State != migrate.StateOutOfSeq {
-		t.Fatalf("status marca la pendiente fuera de orden: %+v %v", status, err)
+		t.Fatalf("status flags the out-of-order pending one: %+v %v", status, err)
 	}
 }
 
@@ -326,13 +326,13 @@ func TestAFailedMigrationLeavesNothing(t *testing.T) {
 	}
 	applied, err := runner(t, pool, fsys).Up(ctx)
 	if err == nil || !strings.Contains(err.Error(), "0002_mala") {
-		t.Fatalf("la migración rota falla con su nombre: %v", err)
+		t.Fatalf("the broken migration fails with its name: %v", err)
 	}
 	if len(applied) != 1 {
-		t.Fatalf("la anterior sí queda aplicada: %v", applied)
+		t.Fatalf("the previous one does stay applied: %v", applied)
 	}
 	if tables := testdb.Tables(t, pool); fmt.Sprint(tables) != "[a]" {
-		t.Fatalf("la migración rota no deja nada a medias: %v", tables)
+		t.Fatalf("the broken migration leaves nothing half-done: %v", tables)
 	}
 }
 
@@ -361,7 +361,7 @@ func TestTwoRunnersAtOnce(t *testing.T) {
 	}
 	select {
 	case i := <-finished:
-		t.Fatalf("el ejecutor %d no esperó al bloqueo: %v", i, errs[i])
+		t.Fatalf("runner %d did not wait for the lock: %v", i, errs[i])
 	case <-time.After(300 * time.Millisecond):
 	}
 	if _, err := holder.Exec(ctx, "select pg_advisory_unlock($1)", migrate.LockKey); err != nil {
@@ -372,13 +372,13 @@ func TestTwoRunnersAtOnce(t *testing.T) {
 	total := 0
 	for i := range 2 {
 		if errs[i] != nil {
-			t.Fatalf("ejecutor %d: %v", i, errs[i])
+			t.Fatalf("runner %d: %v", i, errs[i])
 		}
 		total += len(results[i])
 	}
 	n := len(runner(t, pool, migrate.FS()).Migrations())
 	if total != n || len(appliedVersions(t, pool)) != n {
-		t.Fatalf("cada migración se aplica una vez: %d aplicadas entre los dos, %d en la tabla, %d en el binario",
+		t.Fatalf("each migration is applied once: %d applied between the two, %d in the table, %d in the binary",
 			total, len(appliedVersions(t, pool)), n)
 	}
 }
@@ -395,10 +395,10 @@ func TestLaterMigrationsAreAccepted(t *testing.T) {
 	}
 	r := runner(t, pool, migrate.FS())
 	if err := r.Check(ctx); err != nil {
-		t.Fatalf("check con una posterior: %v", err)
+		t.Fatalf("check with a later one: %v", err)
 	}
 	if applied, err := r.Up(ctx); err != nil || len(applied) != 0 {
-		t.Fatalf("up del binario viejo no hace nada: %v %v", applied, err)
+		t.Fatalf("up from the old binary does nothing: %v %v", applied, err)
 	}
 	status, err := r.Status(ctx)
 	if err != nil {
@@ -406,10 +406,10 @@ func TestLaterMigrationsAreAccepted(t *testing.T) {
 	}
 	last := status[len(status)-1]
 	if last.Version != 9999 || last.State != migrate.StateUnknown {
-		t.Fatalf("status enseña la posterior: %+v", last)
+		t.Fatalf("status shows the later one: %+v", last)
 	}
 	if _, err := r.Down(ctx, 1); err == nil {
-		t.Fatal("el binario viejo no deshace una migración que no conoce")
+		t.Fatal("the old binary does not undo a migration it does not know")
 	}
 }
 
@@ -419,20 +419,20 @@ func TestCheckSaysWhy(t *testing.T) {
 	r := runner(t, pool, migrate.FS())
 	err := r.Check(ctx)
 	if !errors.Is(err, migrate.ErrNotMigrated) || !strings.Contains(err.Error(), "migrate up") {
-		t.Fatalf("base vacía: %v", err)
+		t.Fatalf("empty database: %v", err)
 	}
 	if _, err := runner(t, pool, upTo(t, 3)).Up(ctx); err != nil {
 		t.Fatal(err)
 	}
 	err = r.Check(ctx)
 	if !errors.Is(err, migrate.ErrNotMigrated) || !strings.Contains(err.Error(), "0004_war") || strings.Contains(err.Error(), "0003_zones") {
-		t.Fatalf("faltan 0004 en adelante: %v", err)
+		t.Fatalf("0004 onward are missing: %v", err)
 	}
 	if _, err := r.Down(ctx, 7); err == nil {
-		t.Fatal("no se pueden deshacer más de las aplicadas")
+		t.Fatal("more than the applied ones cannot be undone")
 	}
 	if _, err := r.Down(ctx, 0); err == nil {
-		t.Fatal("down 0 no vale")
+		t.Fatal("down 0 is not valid")
 	}
 }
 
@@ -454,13 +454,13 @@ func TestLoadValidatesTheFiles(t *testing.T) {
 		"extensión que sobra": func(f fstest.MapFS) { f["0002_b.sql"] = &fstest.MapFile{Data: []byte("select 1;")} },
 	}
 	if _, err := migrate.Load(ok()); err != nil {
-		t.Fatalf("el conjunto bueno: %v", err)
+		t.Fatalf("the good set: %v", err)
 	}
 	for name, mutate := range cases {
 		f := ok()
 		mutate(f)
 		if _, err := migrate.Load(f); err == nil {
-			t.Errorf("%s: se cargó", name)
+			t.Errorf("%s: it was loaded", name)
 		}
 	}
 }

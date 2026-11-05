@@ -25,12 +25,12 @@ func TestMinRole(t *testing.T) {
 	}
 	for _, c := range cases {
 		if got := MinRole(c.kind, c.d); got != c.want {
-			t.Errorf("%s %s: %q, se esperaba %q", c.kind, c.d, got, c.want)
+			t.Errorf("%s %s: %q, expected %q", c.kind, c.d, got, c.want)
 		}
 	}
 	if !(Rank(RolePlayer) < Rank(RoleModerator) && Rank(RoleModerator) < Rank(RoleGM) && Rank(RoleGM) < Rank(RoleAdmin)) ||
 		Rank("root") != -1 {
-		t.Fatal("rangos")
+		t.Fatal("ranks")
 	}
 }
 
@@ -48,7 +48,7 @@ func TestMessages(t *testing.T) {
 	}
 	long := &Restriction{Kind: KindBan, Reason: strings.Repeat("ñ", 300)}
 	if msg := long.Message(); len(msg) > MaxTextBytes || !utf8.ValidString(msg) || len(msg) < MaxTextBytes-1 {
-		t.Fatalf("cortado a 255 B sin partir un carácter: %d", len(msg))
+		t.Fatalf("cut to 255 B without splitting a character: %d", len(msg))
 	}
 	if got := PendingDeletionMessage(&until); got != "Tu cuenta se borrará el 3/11/2026 18:00 UTC" {
 		t.Fatal(got)
@@ -66,7 +66,7 @@ func TestWarningTextAndTimed(t *testing.T) {
 		t.Fatal(got)
 	}
 	if msg := (Warning{Reason: strings.Repeat("é", 200)}).Text(); len(msg) > MaxTextBytes || !utf8.ValidString(msg) {
-		t.Fatalf("cortado a 255 B: %d", len(msg))
+		t.Fatalf("cut to 255 B: %d", len(msg))
 	}
 	for kind, want := range map[string]bool{KindMute: true, KindSuspension: true, KindWarning: false, KindBan: false,
 		KindRename: false} {

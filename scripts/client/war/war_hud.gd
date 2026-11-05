@@ -1,26 +1,26 @@
 class_name WarHud
 extends Control
-## Interfaz de guerra del cliente en red (fase 4, docs/fuerte.md sección 6): reúne los elementos que
-## solo tienen sentido con un servidor y un fuerte, y los conecta con el [NetClient]. El [HUD] lo crea
-## en [method HUD.bind_net] y lo mantiene encima de las placas y por debajo de la pantalla de muerte.
+## War interface of the networked client (phase 4, docs/fuerte.md section 6): gathers the elements that
+## only make sense with a server and a fort, and connects them to the [NetClient]. The [HUD] creates it
+## in [method HUD.bind_net] and keeps it above the nameplates and below the death screen.
 ## [br][br]
-## Hijos (se crean en [method bind]):
-## [br]- [CapturePanel] (UI-18): el estado del fuerte cuando se está cerca o se combate por él.
-## [br]- [WarBanners] (UI-18, GUE-13): los avisos de guerra.
-## [br]- [BossBar] (UI-18): la vida del jefe más cercano.
-## [br]- [TelegraphMarks] (UI-18): las zonas de peligro de los ataques de los PNJ. Es un nodo 3D: como su
-## padre es un control, Godot lo trata como raíz del mundo 3D del visor (sus posiciones son globales),
-## y así vive y muere con esta interfaz sin colgar nada de la zona.
-## [br]- [Compass] y [WorldMarkers] (UI-19): la brújula y los iconos del fuerte, los campamentos y los
-## pasos, con el mapa horneado de la zona ([ZoneMapDefinition]) para los lugares fijos.
-## [br]- [KillFeed] (UI-41): el registro de bajas de la zona, arriba a la derecha. La tabla del marcador
-## ([ScoreboardPanel], Tab) y las pistas del juego ([HintToasts], UI-42) las monta el [HUD] por encima de la pantalla
-## de muerte (esta interfaz se atenúa con ella).
-## [br]- [Minimap] (UI-20): el minimapa circular, abajo a la derecha. El mapa a pantalla completa
-## ([WorldMap]) lo monta el [HUD], por encima de la pantalla de muerte, con el mismo mapa horneado
+## Children (created in [method bind]):
+## [br]- [CapturePanel] (UI-18): the state of the fort when near it or fighting for it.
+## [br]- [WarBanners] (UI-18, GUE-13): the war notices.
+## [br]- [BossBar] (UI-18): the health of the nearest boss.
+## [br]- [TelegraphMarks] (UI-18): the danger zones of NPC attacks. It is a 3D node: since its
+## parent is a control, Godot treats it as the root of the viewport's 3D world (its positions are global),
+## and so it lives and dies with this interface without hanging anything from the zone.
+## [br]- [Compass] and [WorldMarkers] (UI-19): the compass and the icons of the fort, the camps and the
+## passes, with the zone's baked map ([ZoneMapDefinition]) for the fixed places.
+## [br]- [KillFeed] (UI-41): the zone's kill log, top right. The scoreboard table
+## ([ScoreboardPanel], Tab) and the game hints ([HintToasts], UI-42) are mounted by the [HUD] above the death
+## screen (this interface is dimmed with it).
+## [br]- [Minimap] (UI-20): the circular minimap, bottom right. The full-screen map
+## ([WorldMap]) is mounted by the [HUD], above the death screen, with the same baked map
 ## ([method get_map]).
 ## [br][br]
-## Todo cuelga del cliente de red; sin él (el sandbox) no existe. Solo cliente.
+## Everything hangs from the network client; without it (the sandbox) it does not exist. Client only.
 
 var _client: NetClient = null
 var _capture_panel: CapturePanel = null
@@ -45,8 +45,8 @@ func _process(_delta: float) -> void:
 	_update_compass()
 
 
-## Crea los elementos y los conecta con [param client] y la cámara [param camera_rig] (la brújula y
-## los marcadores la miran; puede ser null). Se puede llamar una vez.
+## Creates the elements and connects them to [param client] and the camera [param camera_rig] (the compass and
+## the markers look at it; it can be null). It can be called once.
 func bind(client: NetClient, camera_rig: CameraRig = null) -> void:
 	_client = client
 	_camera_rig = camera_rig
@@ -126,12 +126,12 @@ func get_kill_feed() -> KillFeed:
 	return _kill_feed
 
 
-## Mapa horneado de la zona (null si no tiene).
+## Baked map of the zone (null if it has none).
 func get_map() -> ZoneMapDefinition:
 	return _map
 
 
-## Cada fotograma pone en la brújula hacia dónde mira la cámara y dónde está el jugador.
+## Every frame it tells the compass where the camera is facing and where the player is.
 func _update_compass() -> void:
 	if _compass == null or not is_instance_valid(_camera_rig) or not is_instance_valid(_client):
 		return
@@ -143,7 +143,7 @@ func _update_compass() -> void:
 			MarkerSource.build(_map, _client.get_fortress_view()))
 
 
-# El mapa horneado de la zona del WELCOME (la de por defecto si aún no hay).
+# The baked map of the WELCOME zone (the default one if there is none yet).
 func _load_map(client: NetClient) -> ZoneMapDefinition:
 	var welcome: NetMessages.Welcome = client.get_welcome()
 	var zone_id: String = welcome.zone_id if welcome != null else NetZones.default_zone_id()
