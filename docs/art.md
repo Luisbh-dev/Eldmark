@@ -342,6 +342,9 @@ ProtonScatter and the server: with the `keep_static_colliders` option the collis
   - ruined variants.
 
 ### 4.5 Git LFS and repo rules
+
+> Note: Git LFS is no longer used; binaries are normal git blobs now (see `.gitattributes`). The LFS rules below are kept as the original decision record.
+
 Add to `.gitattributes`. It already covers glb, bin, fbx, obj, blend, png, jpg, wav and ogg.
 ```
 # Terrain3D region data (exception to the text rule, see CLAUDE.md)
@@ -357,7 +360,7 @@ Add to `.gitignore`: `*.zip`, `*.7z`, `*.blend1` and `addons/*/demo/`.
 
 Add the exception to CLAUDE.md: "the Terrain3D region `.res` files are the only permitted exception to the text format".
 
-LFS quota: the priority 1 zips add up to about 1.1 GB. Uploading only the glTF that is used, the repo should stay at a fraction of that. Check the LFS quota of your GitHub plan before the first big push.
+LFS quota (superseded by the note above): the priority 1 zips add up to about 1.1 GB. Uploading only the glTF that is used, the repo should stay at a fraction of that. Check the LFS quota of your GitHub plan before the first big push.
 
 ### 4.6 Folder structure
 ```
@@ -394,7 +397,7 @@ tools/import/                           # EditorScenePostImport scripts
 | UAL2 might not have the same skeleton as UAL1. | Compare bone names on import. The common BoneMap absorbs small differences. |
 | **The Hollow:** it is not known whether the Bestiary includes a skeleton, and it is QAL. | Plan B: in the meantime, a base body with the Peasant outfit, a desaturated gray bone material and emissive eyes. In the medium term, model a skeleton on the UAL rig from the Base Characters Source. If the repo is made public, remove whatever is QAL. |
 | There is no free bow, block impact or directional dodge on the UAL rig. | Retarget clips from KayKit Character Animations (they may look exaggerated). Last resort: Mixamo (see section 5). |
-| Terrain3D in headless is not documented; it also ships binary `.res` files and DLLs. | Test at the start (section 3). Plan B: HTerrain. Exception in CLAUDE.md and LFS. |
+| Terrain3D in headless is not documented; it also ships binary `.res` files and DLLs. | Test at the start (section 3). Plan B: HTerrain. Exception in CLAUDE.md (LFS was dropped later). |
 | Sky3D: CC BY 4.0 stars and a moon of doubtful provenance. | Credit ESO/S. Brunier or swap them for CC0 stars. Replace MoonMap.png before publishing. |
 | ProtonScatter demo with Textures.com textures. | Do not version `demo/`. |
 | Castle Wall Kit: small, recent author, brick only, Godot version unstated. | Use the glTF, retexture and validate in the style test scene. |

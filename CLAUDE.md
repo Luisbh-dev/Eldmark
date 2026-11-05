@@ -20,8 +20,8 @@ Eldmark is an open source project: the code is MIT-licensed, the assets made by 
 - Follow the official GDScript style guide: files and variables in `snake_case`, `class_name` in `PascalCase`, tabs.
 - Always use static typing (`var speed: float = 5.0`, `func move(dir: Vector3) -> void`).
 - Identifiers, comments, doc comments and documentation in English. UI text and runtime log messages stay in Spanish until localization lands (see the backlog).
-- Scenes and resources in text format (`.tscn`, `.tres`). No binary `.scn`/`.res`. The only exception: the Terrain3D region `.res` files, which go through Git LFS.
-- Large binaries (models, textures, audio, GDExtension DLLs) go through Git LFS; see `.gitattributes`.
+- Scenes and resources in text format (`.tscn`, `.tres`). No binary `.scn`/`.res`. The only exception: the Terrain3D region `.res` files, which are committed as normal binary files.
+- Binaries (models, textures, audio, GDExtension DLLs) are normal git blobs, marked `binary` in `.gitattributes`; no Git LFS (its free bandwidth quota does not survive a public repo). Keep each file under 50 MB and do not commit heavy intermediate versions.
 
 ## Assets
 

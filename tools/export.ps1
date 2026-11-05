@@ -15,9 +15,9 @@ Requirements (see docs/getting-started.md, section Export):
   - Godot 4.7.2: the GODOT environment variable, `godot` on the PATH or the winget install.
   - Unless -PackOnly is used, the export templates of the same version (Editor > Manage Export
     Templates > Download and Install).
-  - The Git LFS objects downloaded (git lfs pull): terrain and textures go through LFS.
+  - Real binary files: a clone older than the move away from Git LFS may hold LFS pointers; the script detects it.
 
-Exit codes: 0 success, 1 failure, 2 Godot, its templates or the LFS objects are missing.
+Exit codes: 0 success, 1 failure, 2 Godot, its templates or the binaries (LFS pointers from an old clone) are missing.
 
 .PARAMETER Target
 client, server or all (the default).
@@ -127,12 +127,12 @@ Para comprobar solo los filtros de los presets, sin plantillas: tools\export.ps1
 	}
 }
 
-# The terrain .res files go through Git LFS: if they are pointers, the export would come out broken.
+# Binaries are normal blobs now, but a clone from before that change may still hold LFS pointers: the export would come out broken.
 $Sample = Join-Path $Root 'scenes/world/zones/vado_gris/terrain/terrain3d_00_00.res'
 if (Test-Path $Sample) {
 	$head = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($Sample)[0..63])
 	if ($head -like '*version https://git-lfs*') {
-		Fail 'Los objetos de Git LFS no están descargados (el terreno es un puntero). Ejecuta: git lfs pull' 2
+		Fail 'El terreno es un puntero de Git LFS (clon anterior al cambio a blobs normales). Actualiza el repositorio (git pull) o clónalo de nuevo.' 2
 	}
 }
 

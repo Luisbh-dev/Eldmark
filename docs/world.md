@@ -426,7 +426,7 @@ scenes/world/zones/<zona>/
                                     particles and ambient audio
 scenes/world/pieces/                kit pieces as scenes: mesh + simple collision
 scenes/world/fortresses/            fort, castle and Aldcor
-assets/models/environment/          kit .glb files (Git LFS), per pack
+assets/models/environment/          kit .glb files, per pack
 assets/materials/realms/<reino>/    materials of each realm
 assets/materials/shaders/           per-realm surface shader, wind, water
 assets/environments/                Environment of each biome (.tres)
@@ -458,7 +458,7 @@ The full structure of `assets/` and `addons/` is in [art.md](art.md).
   and on the headless server. The server has no camera, so the zone's full
   collision is used and not the dynamic one around the camera.
 - Terrain3D stores each region as a binary `.res` and ships native binaries
-  (`.dll`, `.so`, `.dylib`). Both go through Git LFS, and the region `.res` files
+  (`.dll`, `.so`, `.dylib`). Both are committed as normal binary files (Git LFS was used at first and dropped, see `.gitattributes`), and the region `.res` files
   need an explicit exception to the text-format rule of
   CLAUDE.md (detail in [art.md](art.md)).
 - **Plan B** if Terrain3D fails in headless: HTerrain (MIT, pure GDScript) or a
