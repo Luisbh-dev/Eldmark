@@ -61,16 +61,18 @@ and extend `TestCase`; test methods start with `test_`.
 - Follow the [official GDScript style guide](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html).
 - Indent with tabs. Files and variables in `snake_case`, `class_name` in `PascalCase`.
 - Always use static typing: `var speed: float = 5.0`, `func move(dir: Vector3) -> void`.
-- Identifiers, comments, documentation comments (`##`) and assert messages are in English (the Go platform tests' failure messages are still being translated).
+- Identifiers, comments, documentation comments (`##`), assert messages and the failure messages of the Go tests are in English.
   In-game UI text and runtime log messages are currently in Spanish; localization will be
-  handled as a separate task.
+  handled as a separate task, so keep new interface strings in Spanish for now and
+  in one place where they are easy to extract.
 - Scenes and resources are text (`.tscn`, `.tres`). Do not commit binary `.scn` or `.res`
   files. The only exception is Terrain3D region data (`.res`), which goes through Git LFS.
 
 ## Architecture rules
 
-The design is documented in [docs/vision.md](docs/vision.md) and [docs/networking.md](docs/networking.md).
-The essentials:
+The design is documented in [docs/vision.md](docs/vision.md) and [docs/networking.md](docs/networking.md); combat in
+[docs/combat.md](docs/combat.md), the Vado Gris in [docs/zones/vado_gris.md](docs/zones/vado_gris.md) and the
+visual quality plan in [docs/quality.md](docs/quality.md). The essentials:
 
 - The server is **authoritative**. Clients send intents (input, abilities) and the server
   decides the outcome.
@@ -88,12 +90,15 @@ The essentials:
   nothing taken from other games.
 - Keep original zips outside the repo (`../Eldmark-raw/<pack>/`). Only the glTF files and
   textures that are actually used go into the repo.
-- Record every pack you add in `assets/LICENSES.md` (author, version, date, URL, license)
+- Record every pack you add in [assets/LICENSES.md](assets/LICENSES.md) (author, version, date, URL, license)
   and, for third-party material, in [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
 - Large binaries (models, textures, audio, GDExtension libraries) go through Git LFS; see
   `.gitattributes`.
 - Use animation variants **without root motion**.
-- Follow the art direction in [docs/art.md](docs/art.md): one stylized kit, recolored per realm.
+- Follow the art direction in [docs/art.md](docs/art.md): one stylized kit, recolored per realm. Visual changes are
+  judged against the criteria in [docs/quality.md](docs/quality.md); the capture bench in `tools/quality/` regenerates
+  the before and after images (see [docs/getting-started.md](docs/getting-started.md#quality-capture-bench)).
+- Fonts must be SIL OFL (or similar) and keep their license text next to the file in `assets/fonts/`.
 - By contributing, you agree that your code is released under the MIT license and your
   original assets under CC BY 4.0 (see [LICENSE-ASSETS.md](LICENSE-ASSETS.md)).
 

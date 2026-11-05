@@ -2,7 +2,7 @@
 
 How to build, run, test and operate every part of Eldmark: the client, the dedicated server, bots and load tests, the Go platform service, the test suite, continuous integration and exports. For the big picture, read the [README](../README.md) and [architecture.md](architecture.md) first.
 
-Notes on language: the in-game interface, chat commands and server log lines are in Spanish for now (an English localization is planned). Quoted UI strings below keep the Spanish text, with an English gloss where it helps.
+Notes on language: the in-game interface, chat commands and the runtime log lines of the game are in Spanish for now (an English localization is planned). Quoted UI strings below keep the Spanish text, with an English gloss where it helps.
 
 Contents:
 
@@ -39,6 +39,8 @@ git lfs pull
 ```
 
 Open `project.godot` in Godot and press F5 to start the offline sandbox. Controls are listed in the [README](../README.md#controls).
+
+A few keys are easy to miss: **M** opens the map window (mouse wheel zooms, dragging pans, a double click shows the whole zone), **=** and **-** (the two keys right of 0 on a US layout) zoom the minimap, and holding **Alt** frees the cursor and also shows the names of the markers in the world. The marker of the current objective is always visible; the others appear with their name only near the crosshair or while Alt is held.
 
 ## Running Godot from the terminal
 
@@ -110,7 +112,7 @@ The world is split into independent zones (see [world.md](world.md)). The zone r
 
 | Zone | Scene | What it is |
 |---|---|---|
-| `vado_gris` (default) | `scenes/world/zones/vado_gris/vado_gris.tscn` | The phase-4 frontier: a capturable fort between Vardheim (north) and Solmarch (south). See [zonas/vado_gris.md](zones/vado_gris.md) (Spanish for now). Admits Vardheim and Solmarch; 40 players by default |
+| `vado_gris` (default) | `scenes/world/zones/vado_gris/vado_gris.tscn` | The phase-4 frontier: a capturable fort between Vardheim (north) and Solmarch (south). See [zones/vado_gris.md](zones/vado_gris.md). Admits Vardheim and Solmarch; 40 players by default |
 | `test_world` | `scenes/world/test_world.tscn` | Movement and camera test circuit of phase 1; admits all three realms |
 
 The player spawns at the first spawn point of the chosen realm (markers in the `spawn_points` group carry a `realm` metadata value); if the zone has no point for that realm, at the first point of the zone. Zones have a PvP mode: in a `SAFE` zone enemy realms cannot damage each other, in an `RVR` zone they can (both registered zones are `RVR`), and realm camps are safe areas for their own realm only.
@@ -265,7 +267,7 @@ For fort sieges, `tools/war/siege_battle.gd` and `siege_runner.gd` run siege bot
 
 ## Combat balance pass
 
-`tools/combat_balance.gd` builds a network-less server on `test_world`, advances it tick by tick by hand and measures with it the DPS against the dummy, the time to kill (TTK) of a perfect attacker, duels between combat bots and 2v2 and 5v5 fights, in about 20 s and with the same result on any machine (it uses no clock or network). The figures and decisions are in `docs/combat.md` section 12 (Spanish for now).
+`tools/combat_balance.gd` builds a network-less server on `test_world`, advances it tick by tick by hand and measures with it the DPS against the dummy, the time to kill (TTK) of a perfect attacker, duels between combat bots and 2v2 and 5v5 fights, in about 20 s and with the same result on any machine (it uses no clock or network). The figures and decisions are in `docs/combate.md` section 12 (Spanish for now).
 
 ```bash
 godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30 --out=build/combat_balance.json
@@ -360,7 +362,7 @@ godot --headless --path . -s res://tests/run_tests.gd -- --shard=2/4
 
 How it works: `tests/run_tests.gd` discovers `res://tests/test_*.gd` (each extends `TestCase`), runs every method starting with `test_` (they may use `await`) with optional `before_each()` and `after_each()`, prints PASS or FAIL per test and a summary, and exits with 0 if everything passes or 1 if anything fails. A test also fails if a script or engine error is logged while it runs (unless it calls `allow_logged_errors()`, which tolerates engine errors only). It never hangs: every phase has a timeout and there is a global timer. `--shard=K/N` runs only part K (1 to N) of the test files, distributed round-robin in alphabetical order.
 
-There are about 210 test files and over 2,800 test methods. Many of them start servers and clients inside a single process (each in its own `SubViewport` with its own physics world) or launch real Godot processes, so the whole suite takes several minutes on a four-core machine. Two suites can run at once on the same machine: each process picks its own port slot and writes its reports to its own `build/<pid>/` folder. Some tests also need Python with Pillow or the Go toolchain and skip themselves when it is missing.
+There are 217 test files and 2,937 test methods, plus about 300 Go tests under `platform/`. Many of them start servers and clients inside a single process (each in its own `SubViewport` with its own physics world) or launch real Godot processes, so the whole suite takes several minutes on a four-core machine. Two suites can run at once on the same machine: each process picks its own port slot and writes its reports to its own `build/<pid>/` folder. Some tests also need Python with Pillow or the Go toolchain and skip themselves when it is missing.
 
 `tests/test_architecture.gd`, part of the suite, enforces the dependency rules between `scripts/shared`, `scripts/server` and `scripts/client` ([architecture.md](architecture.md#dependency-rules)).
 
@@ -378,7 +380,7 @@ The workflow and job names (`Pruebas`, `Suite completa`, `Plataforma`) are still
 
 ## Quality capture bench
 
-The visual quality plan (`docs/quality.md`, Spanish for now) is verified with captures, not by eye: the bench in `tools/quality/` regenerates, with one command per area, the captures and strips that prove each criterion, at the same resolution and with the same framing, so a before and an after can be shown. It needs a **window and GPU** (it does not work with `--headless`), Python 3 with Pillow (`pip install pillow`) and the Godot console executable (it looks for it in `GODOT`, in the winget install and in the `PATH`; or pass `--godot <path>`). If `override.cfg` exists at the root (ignored by Git), windows open on the second monitor. It uses no accounts or passwords: the server runs with `--debug-commands` and the capture client joins with a throwaway character.
+The visual quality plan ([quality.md](quality.md)) is verified with captures, not by eye: the bench in `tools/quality/` regenerates, with one command per area, the captures and strips that prove each criterion, at the same resolution and with the same framing, so a before and an after can be shown. It needs a **window and GPU** (it does not work with `--headless`), Python 3 with Pillow (`pip install pillow`) and the Godot console executable (it looks for it in `GODOT`, in the winget install and in the `PATH`; or pass `--godot <path>`). If `override.cfg` exists at the root (ignored by Git), windows open on the second monitor. It uses no accounts or passwords: the server runs with `--debug-commands` and the capture client joins with a throwaway character.
 
 ```bash
 # One command per area (all write to build/calidad, or the --out folder, and regenerate their indice.md)
@@ -414,14 +416,20 @@ godot --path . --resolution 1600x900 --write-movie build/calidad/video/combate.a
     --scenario=res://tools/quality/sc_video.gd --out=build/calidad --tag=video --seconds=60
 ```
 
+**Before and after.** `tools/quality/compare_before_after.py`, `compare_pairs.py` and `compare_triple.py` join captures of two or three runs side by side (same file name in each folder), which is how each wave of the quality pass was reviewed.
+
 The tests of this bench (`tests/test_quality_tools.gd`) check without a window that all scripts load, that every catalog NPC has its set of strips, that remote strips are well formed, the recorder logic and, if Python with Pillow exists, the Python pieces with fake data.
 
 ## Interface and audio notes
 
 - The global theme (`assets/ui/theme/eldmark_theme.tres`, assigned in `project.godot` with `gui/theme/custom`) is generated by `tools/ui/build_theme.gd` from the `UIPalette` palette. To change the look, change the palette or `UIThemeBuilder` and run it again: `godot --headless --path . -s res://tools/ui/build_theme.gd`. The faction emblems in `assets/emblems/` are provisional (`tools/assets/make_emblems.py`).
+- Fonts: `assets/fonts/` has Cinzel (titles, war notices, boss names), Noto Sans (text, numbers, nameplates) and IM Fell English SC (map place names), with their OFL files. `UIThemeBuilder` wires the first two into the theme and `UIFonts` gives all three to code that draws text by hand; a test fails if code asks the engine for its default font instead. The two big families are variable fonts, so semibold and bold come from the `wght` axis.
+- Icons: the original icons in `assets/ui/icons/` (action bar, potions, status effects, banners, map symbols) come from `tools/ui/icons/`; `GameIcon` draws each figure over the background of its category (`assets/ui/icons/backgrounds/`).
 - The UI gallery shows every theme style and the shared components (icon slots with rarity and reuse, key glyphs, tooltip, confirmation dialog, focus): `godot --path . res://scenes/tests/ui_gallery.tscn`.
 - Key glyphs (the HUD help line, the slots) read the real `InputMap` assignment, so they reflect any rebound key.
-- Audio is client-only: `default_bus_layout.tres` defines the buses (Master with a limiter, Music, Effects, Ambience, Interface and Voices) and `AudioDirector` distributes sounds in pools with a voice limit per category. The sound effects in `assets/audio/sfx/` are synthesized by `tools/audio/synth_sfx.py`.
+- Audio is client-only: `default_bus_layout.tres` defines the buses (Master with a limiter, Music, Effects, Ambience, Interface and Voices) and `AudioDirector` distributes sounds in pools with a voice limit per category. The sound effects in `assets/audio/sfx/` are synthesized by `tools/audio/synth_sfx.py` (except the grass and wood footsteps, which are Kenney's CC0 Impact Sounds); `CombatAudio` plays them from banks of variants per material, and footsteps follow the surface under the feet (a `surface` metadata value on the collider, or the name of the Terrain3D texture). `tools/audio/listening_sheet.py` builds a sheet to compare alternative sounds by ear.
+- The zone map shown in the minimap and the **M** window is a parchment image baked from the scene. After changing the terrain or the props, bake it again and re-import: `godot --headless --path . -s res://tools/map/bake_parchment_map.gd` and then `godot --headless --path . --import`.
+- The Vado Gris terrain, textures, grass and environment are generated by `tools/terrain/generate_vado_gris.gd`. The ground textures (Poly Haven, CC0) are processed by `tools/assets/process_terrain_textures.py` and the grass materials by `tools/assets/build_grass_materials.py`. Animation clip trims for the combat layer can be inspected with `tools/animation/list_clips.gd`, `analyze_clip.gd` and `phase_speeds.gd`.
 
 ## Export
 

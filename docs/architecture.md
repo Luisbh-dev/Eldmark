@@ -14,10 +14,11 @@ Contents:
 6. [The shared simulation](#the-shared-simulation)
 7. [Combat](#combat)
 8. [NPCs and forts](#npcs-and-forts)
-9. [Social, progression and the platform](#social-progression-and-the-platform)
-10. [Testing](#testing)
-11. [Tools](#tools)
-12. [Where to start reading](#where-to-start-reading)
+9. [Client presentation](#client-presentation)
+10. [Social, progression and the platform](#social-progression-and-the-platform)
+11. [Testing](#testing)
+12. [Tools](#tools)
+13. [Where to start reading](#where-to-start-reading)
 
 ## Principles
 
@@ -139,13 +140,13 @@ Other things that live in `scripts/shared/`: the protocol (`net/`), the combat r
 
 ## Combat
 
-Design docs: `docs/combat.md` (Spanish until translated) and [abilities.md](abilities.md).
+Design docs: [combat.md](combat.md) and [abilities.md](abilities.md).
 
 - **Data first.** Weapons, attacks, abilities, status effects, projectiles, dodges, templates and NPC attacks are `.tres` resources in `data/combat/`. `CombatCatalog` loads them once, assigns stable ids, converts seconds to ticks and bakes the dodge and lunge curves into `AttackTicks`, `AbilityTicks`, `ProjectileTicks` and friends.
 - **One state machine, two places.** `ActionMachine` in `shared/combat/` advances a `CombatState` (action, phase, stamina, cooldowns, equipped weapon) inside `simulate()`. The client predicts the cosmetic result; the server decides whether the action happens and what it hits. Light attacks chain into a combo, a held press charges a heavy attack, block has a 120-degree arc and a short parry window, dodge grants invulnerability frames, and stamina gates the expensive actions.
 - **Hit resolution on the server.** `CombatDirector.process_tick()` runs, in a fixed order each tick: freeze active hits, spawn projectiles and effects, resolve hits (`CombatResolver`, with rewind, using `HitShapes` and line-of-sight checks), apply results (`DamageFormula`, block, control effects, interrupts, knockdowns, deaths), status effects, the downed state (bleed-out, revive, finisher), environment hazards and respawns, then publish health. Hits within a tick are simultaneous and applied in `net_id` order.
 - **Projectiles.** Arrows are ballistic and deterministic from a canonical camera ray (yaw, pitch, shoulder bit); the server simulates them (`ProjectileSystem`) and the client computes the flight from the spawn event instead of receiving per-tick positions.
-- **Feedback.** The client plays hit effects, damage numbers, hit markers, trail and screen feedback from authoritative events, and animates through a combat clip layer that is shared by local and remote characters. Animation is never allowed to move the character: clips are root-motion free and movement comes from the simulation.
+- **Feedback.** The client plays hit effects, damage numbers, hit markers, trail, sounds and screen feedback from authoritative events, and animates through a combat clip layer that is shared by local and remote characters. Animation is never allowed to move the character: clips are root-motion free and movement comes from the simulation. A few cosmetic parts of your own hits (spark, impact sound, hit stop) are predicted locally; see [Client presentation](#client-presentation).
 - **Balance.** `tools/combat_balance.gd` measures DPS, time to kill and duels deterministically from the data files.
 
 ## NPCs and forts
@@ -156,6 +157,19 @@ Design docs: [fortress.md](fortress.md) and [world.md](world.md).
 - **Fortress.** `FortressState` and `FortressDefinition` in `shared/war/` are pure logic (owner, capture progress, captain alive, gate health, consolidation timer). `FortressController` in `server/war/` feeds them with who stands in the capture circle each tick, drives the destructible gate (`StructureTarget`, `FortGate`), emits war events and fort object state, awards capture rewards and updates the scoreboard. A garrison of the owning realm spawns after a consolidation period, the fort becomes a respawn point, and with a platform the owner is persisted (`FortressPersistence`).
 - **Siege bots.** Bots built on `BotBrain` can fight for a fort, and `tools/war/` runs siege battles with them so that capture logic is tested without people.
 
+## Client presentation
+
+Everything the player sees and hears lives in `scripts/client/`, `assets/`, `scenes/` and the zone generators in `tools/`. None of it can change the simulation: the dependency rules above keep it out of `scripts/shared/` and `scripts/server/`, and the server never loads it. The design record, with the criteria each piece is checked against, is [quality.md](quality.md).
+
+- **Feedback hub.** `CombatFeedback` turns the authoritative events (hits, blocks, deaths, knockdowns) into presentation at their draw tick, and re-emits them as signals that the effects (`CombatVfx`, `SwordTrail`, `ChargeAura`), the audio (`CombatAudio`) and the HUD (`HitMarker`, `DamageNumbers`, `DamageIndicator`) subscribe to. For the local player's own attacks it also runs a purely cosmetic prediction: when the local sector check against the drawn positions says the swing connects, it plays the spark, the impact sound and a hit stop of 50 ms (light) or 80 ms (heavy). The hit stop freezes only the animation (the attacker's, and the victim's on a parry or a killing blow), never the simulation. If the server then confirms a normal hit, nothing is repeated; if it does not, nothing was lost but a spark. Damage numbers, the hit marker and the DPS meter always wait for the server.
+- **Animation stack.** A locomotion `AnimationTree`, then a chain of `SkeletonModifier3D`s: `ArmedStanceModifier` (the shield guard at rest and an arm layer while moving, so unarmed locomotion clips do not swing the sword behind the head), `CombatPoseModifier` (attack, dodge and block poses from the combat clip layer, which reads `data/animation/*_clips.tres`; during an attack the feet stay planted and hips and legs come from the clip), `HitReactionModifier` (a procedural flinch on every hit and a push of the shield arm on blocked hits) and `SpineTwistModifier` (aiming). `CharacterAnimator` adds the dead-body slide, the stagger step and the signals for footsteps, jumps and landings. `NpcVisualProfile` gives each NPC type its look (the Hollow without a shield and with a zombie walk, the Ford Captain scaled up and recolored) through the same `HumanoidVisual` that draws players.
+- **Audio.** `AudioDirector` owns the buses (`default_bus_layout.tres`) and a pool of voices per category. `CombatAudio` asks it for sounds from `CombatSoundBank` (banks of variants per material, with random pitch and volume, levels in `assets/audio/sfx/niveles.json`). Swings are requested early enough that the sound's peak falls in the middle of the active window, and `FootstepSurface` picks the footstep from the `surface` metadata of the collider under the feet or, failing that, from the name of the Terrain3D texture painted there.
+- **Interface.** `UIPalette` holds the colors (one color per meaning: red is damage, amber is NPC danger, one hue per realm), `UIThemeBuilder` generates `assets/ui/theme/eldmark_theme.tres` from it, `UIFonts` gives the three fonts to the code that draws text by hand, and `GameIcon` loads the original icons of `assets/ui/icons/`. The war HUD (`scripts/client/war/`) has the fort panel, the compass, `WorldMarkers` and `ObjectiveLine`, the kill feed, the boss bar, `WarBanners` (a queue of notices, one at a time) and `TelegraphMarks` (ground marks of NPC attacks, filled by the predicted tick so that they are full on the last tick when dodging still works).
+- **Maps.** A zone's map is a `ZoneMapDefinition` (scale, fixed places, image), baked from the scene by `tools/map/bake_parchment_map.gd` into `assets/maps/`. `Minimap` and `WorldMap` draw it; `ZonePlaces` and `MapLabelPlacer` position and de-overlap the place names. The same source of markers (`MarkerSource`) feeds the minimap, the map window, the compass and the world markers.
+- **Scenery.** The environment (`assets/environments/vado_gris_frontier.tres`: sky, fog, lighting, tone mapping), the original sky shader (`storm_sky.gdshader`), the Terrain3D texture set, the grass materials and the zone scene are generated by `tools/terrain/generate_vado_gris.gd` and its helpers, so they can be rebuilt and the numbers stay in one place. The keep (`scenes/world/props/fort/fort_keep.tscn`, `scripts/world/fort_keep.gd`) is in `scripts/world/` because it carries the collision layer the simulation walks on; its visual parts are only materials and levels of detail. Walls, towers and gates are tagged by `WallLightTag` so that two mirrored fill lights touch only them.
+
+Two rules hold across all of this. Presentation never decides anything (the exceptions above are cosmetic and reversible), and it is verified with captures from the quality bench (`tools/quality/`, see [getting-started.md](getting-started.md#quality-capture-bench)) next to the unit tests that check the logic around it (`tests/test_combat_feel.gd`, `tests/test_combat_sound_bank.gd`, and so on).
+
 ## Social, progression and the platform
 
 - **Social.** All server logic is in `scripts/server/social/` (`SocialService`, `ChatRouter`, `PartyManager`, `ModerationService`). Recipient lists are filtered by realm before sending, never at display time. Rate limits and sanitizing live in `ChatRouter`. Design and what crosses between realms: [social.md](social.md).
@@ -164,14 +178,15 @@ Design docs: [fortress.md](fortress.md) and [world.md](world.md).
 
 ## Testing
 
-`tests/run_tests.gd` is a custom headless runner. It discovers `tests/test_*.gd` files (each extends `TestCase`), runs their `test_*` methods with optional `before_each` and `after_each`, supports `await`, and fails a test if a script or engine error is logged during it. About 210 files and over 2,800 test methods exist today.
+`tests/run_tests.gd` is a custom headless runner. It discovers `tests/test_*.gd` files (each extends `TestCase`), runs their `test_*` methods with optional `before_each` and `after_each`, supports `await`, and fails a test if a script or engine error is logged during it. There are 217 files and 2,937 test methods today.
 
 - **Unit tests** for the pure shared and server pieces.
 - **In-process network tests.** `tests/net_harness.gd` runs a `ZoneServer` and several `NetClient`s in one process, each in its own `SubViewport` with its own physics world and its own `NetTransport`, with a network simulator for latency, jitter, loss and duplication.
 - **Multi-process tests.** Real Godot processes for the server, bots, swarms and cheating bots, reading their JSON reports.
 - **Architecture tests** (`tests/test_architecture.gd`) for the dependency rules.
 - **Fixtures and probes** (`combat_fixture.gd`, `fortress_fixture.gd`, `zone_fixture.gd`, `prediction_pair.gd`, `fake_zone_platform.gd`...) that other tests reuse. `FakeZonePlatform` lets the zone server be tested with accounts and tickets without Go.
-- **Go tests** in `platform/` run against an ephemeral PostgreSQL, plus end-to-end tests (`platform/e2e`) with real zones and bots.
+- **Go tests** in `platform/` (about 300) run against an ephemeral PostgreSQL, plus end-to-end tests (`platform/e2e`) with real zones and bots.
+- **Presentation tests** that need no window: sound banks and levels, hit feel, the layout of nameplates, map labels and the HUD, the armed-stance and reaction modifiers, and the capture bench scripts. What only a screen can show is checked with the capture bench.
 
 CI runs the suite in four shards plus a Windows job, the Go checks and the end-to-end job. Details and the commands are in [getting-started.md](getting-started.md#continuous-integration).
 
@@ -184,11 +199,11 @@ CI runs the suite in four shards plus a Windows job, the Go checks and the end-t
 | `load_test.gd`, `load_test_summary.gd` | Load scenarios with fake players and bot swarms, with pass/fail criteria |
 | `compare_state_logs.gd`, `state_log_comparer.gd` | Cross-check server and bot state logs bit by bit |
 | `combat_balance.gd` | Deterministic DPS, time-to-kill and duel measurements |
-| `quality/` | Capture bench: animation strips, UI, world, combat and video, for before/after comparisons |
+| `quality/` | Capture bench: animation strips, UI, world, combat and video, plus scripts that join before and after captures side by side |
 | `war/` | Siege battle runners and summaries |
 | `progression/` | Export of the progression rules to the platform; save fixtures |
-| `terrain/`, `props/`, `materials/`, `map/`, `vfx/`, `ui/`, `audio/` | Generators for the Vado Gris terrain, props, materials, zone maps, effects, UI theme and icons, and synthesized sound effects |
-| `blender/`, `assets/`, `animation/`, `render/` | Asset pipeline helpers (the original sword and fort-keep models, kit mesh extraction, texture import presets, review renders) |
+| `terrain/`, `props/`, `materials/`, `map/`, `vfx/`, `ui/`, `audio/` | Generators for the Vado Gris terrain, props, materials, the parchment zone map, effects, UI theme and icons, and synthesized sound effects (`audio/` also builds a listening sheet to compare alternatives) |
+| `blender/`, `assets/`, `animation/`, `render/` | Asset pipeline helpers: the original sword and fort-keep models, kit mesh extraction, terrain texture processing, grass materials, animation clip analysis (`animation/`), review renders |
 | `export.sh`, `export.ps1` | Client and server exports |
 | `check_secrets.sh` | CI check that no secrets are tracked |
 | `i18n/` | Helpers used for the English translation of comments |
@@ -201,7 +216,8 @@ CI runs the suite in four shards plus a Windows job, the Go checks and the end-t
 | See how prediction stays in sync | `scripts/client/client_prediction.gd`, `tick_sync.gd`, `correction_smoother.gd`, and `tests/prediction_pair.gd` |
 | Follow a hit from click to damage number | `scripts/shared/combat/action_machine.gd`, `scripts/server/combat_resolver.gd`, `combat_director.gd`, `scripts/client/combat_feedback.gd` |
 | Add a weapon or ability | the `.tres` files in `data/combat/`, `CombatCatalog`, then [abilities.md](abilities.md) |
-| Add a zone | `scripts/shared/zones.gd`, the Vado Gris scene and `docs/zones/vado_gris.md` (Spanish for now) |
+| Add a zone | `scripts/shared/zones.gd`, the Vado Gris scene and [zones/vado_gris.md](zones/vado_gris.md) |
 | Add an NPC | `data/npcs/`, `scripts/shared/ai/npc_definition.gd`, `scripts/server/ai/` |
 | Work on accounts and saves | [platform.md](platform.md), `platform/internal/`, `scripts/server/platform/` |
-| Know what is planned | [vision.md](vision.md) and `docs/backlog.md` (the master task list, Spanish for now) |
+| Understand the presentation layer | [Client presentation](#client-presentation), `scripts/client/combat_feedback.gd`, `scripts/client/humanoid_visual.gd` and [quality.md](quality.md) |
+| Know what is planned | [vision.md](vision.md) and [backlog.md](backlog.md) (the master task list) |
