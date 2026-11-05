@@ -4,7 +4,7 @@ A short design for the combat expansion announced in [fortress.md 10](fortress.m
 abilities with cooldowns (CMB-19), status effects (CMB-20), sword and shield (CMB-21), projectiles
 with rewind (CMB-22), bow (CMB-23), weapon swap (CMB-24), knocked down (CMB-28), minimal equipment
 (PRG-04), templates (PRG-07), consumables (PRG-08), action bar (UI-11) and status icons
-(UI-45). It continues [combate.md](combate.md) (its §1, §3, §4 and §6 are taken as read), [networking.md](networking.md) (§6,
+(UI-45). It continues [combat.md](combat.md) (its §1, §3, §4 and §6 are taken as read), [networking.md](networking.md) (§6,
 §8, §10, §14) and the tick order of [fortress.md 1.7](fortress.md#17-tick-order-completes-combatemd-42).
 
 Version 2: version 1 after the review by three reviewers (§10). Anything marked "verified" comes from probes in
@@ -207,10 +207,10 @@ s: 6 pulses; refresh), `bleed` (15 per stack every 1 s for 6 s: 6 pulses; up to 
 for NPC weapons and tests), `rooted` (ROOT 1.5 s; tests). Templates: `squire` = [`sword_shield`],
 charges [3, 2]; `marksman` = [`bow`, `sword_shield`], charges [2, 3].
 
-### 2.4 Input for the balance sheet (combate.md §12)
+### 2.4 Input for the balance sheet (combat.md §12)
 
 Computed from the data above, not measured. H5 (§7) measures it with `tools/combat_balance.gd` and
-moves it to combate.md §12 as "12.8 Phase 4 kits".
+moves it to combat.md §12 as "12.8 Phase 4 kits".
 
 | Action | Cycle | Damage | Computed DPS |
 |---|---|---|---|
@@ -281,13 +281,13 @@ packet was already full (36.8 KB/s): what is lost is 2 records per snapshot.
 `PlayerInput`: bit 9 `SWAP_WEAPON` (Q), bit 10 `AIM_LEFT` (left shoulder: set by the client with the
 camera's effective shoulder; it is a level, not a press), bit 11 `CONSUMABLE_1` (R), bit 12
 `CONSUMABLE_2` (T). Bits 13–14 reserved; 15 remains `SUBSTITUTED`. `VALID_BUTTONS = (1 << 13) −
-1`. With `SUBSTITUTED`, as in combate.md §3.2, the machine sees no edges (the substitute repeats the
+1`. With `SUBSTITUTED`, as in combat.md §3.2, the machine sees no edges (the substitute repeats the
 buttons), does not cut a channel for moving and does not release what is held. No loss invents
 an ability, a weapon swap or a potion.
 
 ### 3.3 Per-tick rules
 
-`ActionMachine.step()` with `t = input.tick`, fixed order (extends combate.md §3.3):
+`ActionMachine.step()` with `t = input.tick`, fixed order (extends combat.md §3.3):
 
 0. **Fast path**, as today, if in addition there are no ABILITY, SWAP or CONSUMABLE presses (`AIM_LEFT` does not
    count) nor their bits in `combat_flags2`, nor any movement slot occupied.
@@ -317,7 +317,7 @@ an ability, a weapon swap or a potion.
      finishes within the next 8 ticks).
    - **CONSUMABLE_n**: same, with `t ≥ consumable_ready_tick` and charges > 0.
    - **PRIMARY**: as today; also from ABILITY in recovery. With the bow, the light attack is the quick
-     shot and holding turns it into a draw (combate.md §3.3, unchanged).
+     shot and holding turns it into a draw (combat.md §3.3, unchanged).
    - **SWAP**: `alt_weapon_id ≠ 0`; from NONE, BLOCK, the recovery of LIGHT, HEAVY or ABILITY and DODGE
      from `cancel_to_attack_from`; also in the air. It starts: `action = SWAP`, `action_tick = t`,
      swaps `weapon_id ↔ alt_weapon_id` and `ability_ready[0..2] ↔ [3..5]`, flips bit0 of
@@ -345,7 +345,7 @@ an ability, a weapon swap or a potion.
 
 ### 3.4 Allowed movement
 
-Extends the table in combate.md §3.3:
+Extends the table in combat.md §3.3:
 
 | Action | Target horizontal speed | Turn | Jump | Sprint |
 |---|---|---|---|---|
@@ -364,7 +364,7 @@ like `move_scale` 0. The bow while drawing uses the usual CHARGE row.
 
 ### 3.5 What the server enforces
 
-All followed by `CombatDirector.commit_state` (rounding via `encode/decode`). Those from combate.md §3.4
+All followed by `CombatDirector.commit_state` (rounding via `encode/decode`). Those from combat.md §3.4
 change as follows: `impose_stagger` and `impose_stun` do nothing on DOWNED or DEAD; all those that change the
 action, if they cut a committed channel, set its cooldown on that tick.
 
@@ -427,7 +427,7 @@ removal of a knocked-down player is first a death (§4.5).
 
 - **Hit with its own shape** (shield bash): the synthesized hit goes through the same path as an
   attack: rewind fixed on the first active tick, candidates, shape, line of sight and defenses from
-  combate.md §4.3. `unblockable` skips parry and block. Apply: `stun_ticks` → `impose_stun`; otherwise
+  combat.md §4.3. `unblockable` skips parry and block. Apply: `stun_ticks` → `impose_stun`; otherwise
   stagger and knockback as today; `hyper_armor` and the chain of control effects, the same.
 - **Shield rush**: the dash is simulated by `simulate()` (predicted, collides with walls); the hit is tested on
   each active tick, each target once per action, with radial knockback.
@@ -435,7 +435,7 @@ removal of a knocked-down player is first a death (§4.5).
 - **Own effect**: in step 3, once (the commitment falls on a single tick).
 - **Shield wall**: melee with `DEFENSE_WIDE_BLOCK` → cone of `ability_block_angle_deg` and spend of
   `ability_block_stamina_per_damage`; for projectiles, in addition, the box (§4.4).
-- **Old block sample** (changes combate.md §4.3; H3a): **it does not count if the frozen action is not
+- **Old block sample** (changes combat.md §4.3; H3a): **it does not count if the frozen action is not
   BLOCK and its `action_tick > view_tick`, whether it is NONE or not** (today `_dropped_guard_after` accepts
   any NONE). `_to_none` and `impose_interrupt` keep the `action_tick` of what ends: simply releasing the
   shield still counts; lowering it to drink or revive and returning to NONE does not.
@@ -480,7 +480,7 @@ removal of a knocked-down player is first a death (§4.5).
 
 **Shot** (step 3), for each projectile of the attack or ability that commits at `s`:
 
-1. **Rewind**: the one from combate.md §4.3 step 2, fixed now for the whole flight and **rounded to whole
+1. **Rewind**: the one from combat.md §4.3 step 2, fixed now for the whole flight and **rounded to whole
    ticks** (`rewind` and `defense_rewind`; factored out of `CombatResolver._swing_rewind`). Rejected (more than
    `allowed + 8` ticks; up to that it is clamped to the cap) → **harmless** arrow (it flies and collides with the world, does not
    test characters), suspicion + 1 and a log entry. *(Phase 4 review, "cheats" lens: rejection started
@@ -499,7 +499,7 @@ removal of a knocked-down player is first a death (§4.5).
    depth of the target even if it leads into the air (without convergence it deviated by `|O − C| · (1 − d/t)`,
    0.51 m at 30 m with the background at 150 m). Exit at the chest, `O = feet + (0, muzzle_height, 0)`;
    `dir = (P − O).normalized()`, rotated in yaw by the volley's offsets; `v0 = dir · speed ·
-   lerp(1, charge_speed_scale, f)`, with the `f` of the damage charge (combate.md §4.4; 0 without charge).
+   lerp(1, charge_speed_scale, f)`, with the `f` of the damage charge (combat.md §4.4; 0 without charge).
    Bots and NPCs: `AimRay.look_for(feet, point, left)` gives the `(yaw, pitch)` whose ray passes through a point
    (3 fixed-point iterations); they aim at `O + dir · |target − O|` with the `dir` from `solve_lead`.
 3. **Rounding**: `O` and `v0` are quantized as they travel in the SPAWN (1 cm, 1 cm/s; `Ballistics.quantize`) and
@@ -530,11 +530,11 @@ segment that **starts inside** a box or a capsule gives fraction 0.
   the world and the gate; whoever holds it moves at ×0.3), with `HitShapes.segment_box_fraction`. Only those
   of someone with no protection and not in their realm's safe zone count (the "open" ones, like the
   candidates): through the wall of someone in their camp the arrow passes as through their capsule, and that wall
-  does not cover allies outside either (combate.md §5: inside you neither take nor deal damage). *(Phase 4
+  does not cover allies outside either (combat.md §5: inside you neither take nor deal damage). *(Phase 4
   review, "abilities" lens: before, it stopped it, and whoever held it in their camp spent
   stamina, ended up "in combat" with the shooter and, without stamina, suffered the guard break with its
   stun and the part of the hit it did not pay for, until knocked down inside their safe zone.)*
-- **Characters**: candidates from combate.md §4.3 step 4 (hostile, alive or knocked down, with no protection or
+- **Characters**: candidates from combat.md §4.3 step 4 (hostile, alive or knocked down, with no protection or
   safe zone) at `k − rewind`, read with `StateHistory.position_at(id, tick) -> Vector3` (without creating
   objects; with `rewind = 0`, the frozen one). Culling: a **swept box** per candidate (the union of 4
   blocks of 8 ticks that `StateHistory` maintains while recording, which covers at least `[k − 24, k − 1]`, plus the
@@ -718,7 +718,7 @@ and "weapon swap" carry no event: they travel in the stream (action byte and bit
 remote player like attacks. Damage pulse = HIT with an effect source; healing = HEAL; executed and
 bled out = DEATH with its source; potion = STATUS and HEAL.
 
-**Timing** (combate.md §6): own ones on arrival; a remote player's, at its `render_tick`.
+**Timing** (combat.md §6): own ones on arrival; a remote player's, at its `render_tick`.
 `NetClient._note_imposed_state` also treats as explained: movement STATUS on oneself, DOWNED and
 INTERACT where one is the knocked-down player or the actor, own LOADOUT and own HIT with bit 5.
 
@@ -857,7 +857,7 @@ All of H starts with **F4 and SOC-03 to SOC-08 merged**: H1a touches `attack_def
 | **H3b · projectiles** | `ProjectileSystem`, `allocate_transient_id`, `StateHistory.position_at` and swept boxes, wall box, caps, shooter removals | H3a |
 | **H3c · knocked down and templates** | `DownedSystem`, predicates (§4.5), leaving, `HfsmBrain`/`NpcWorld`, templates, `ServerPeer.pending_template_id`, LOADOUT_SELECT in `ZoneServer`, refill, commands 5, 15 and 16 | H3b |
 | **H4 · client** | `ProjectileWorld`, `ClientPrediction.stepped`, `ActionBar`, `StatusTracker`/`StatusIcons`, knocked-down notices, template selector, bow zoom and reticle, Q/R/T keys and `AIM_LEFT` bit, new `NetClient` explanations, texts (`CombatText`), provisional clips and `WeaponProps` | H1b, H2 |
-| **H5 · integration** | combat `BotBrain` with abilities (holds the button of a channel), weapon swap, potions and bow (`solve_lead` + `look_for`); cheating modes `reuse`, `potion`, `interact` (`bot_cheat_brain.gd`, `bot_cheater.gd`, `client_config.gd`); end-to-end tests and load of §7.3; measured balance sheet (§2.4 → combate.md §12); player limit in networking.md §14 | H3c, H4 |
+| **H5 · integration** | combat `BotBrain` with abilities (holds the button of a channel), weapon swap, potions and bow (`solve_lead` + `look_for`); cheating modes `reuse`, `potion`, `interact` (`bot_cheat_brain.gd`, `bot_cheater.gd`, `client_config.gd`); end-to-end tests and load of §7.3; measured balance sheet (§2.4 → combat.md §12); player limit in networking.md §14 | H3c, H4 |
 
 H2 and H1b in parallel after H1a; H3a → H3b → H3c in series (all touch `zone_server.gd` and
 `combat_director.gd`) and H4 at the same time; H5 at the end. With two agents: one H1a → H1b → H3a → H3b → H3c, the other
@@ -1137,7 +1137,7 @@ behavior and load test) go in PRE3 and SER2–SER3.
 | PRE9 | minor | `pending_template_id` on a `Combatant` that does not exist before CLIENT_READY; `0x07` without dispatch | In `ServerPeer`, copied on registration; `0x07` case with the limiter (§4.6, §5.1) |
 | PRE10 | minor | Replacing `buffered & 3` with `buffered_type()` without more broke `linked` and `_run_buffer` | Dispatch by type; `linked` = PRIMARY or link; expiry sets the combo to 0 (§3.1) |
 | PRE11 | minor | The hash left out P fields (knocked down, interaction, `blocks`) | Every P field enters; test in `test_combat_catalog` (§2.2) |
-| PRE12 | minor | The old block sample counted after returning to NONE from REVIVE, a potion or an interruption | It does not count if the action is not BLOCK and started after `view_tick`; changes combate.md §4.3 (§4.2); tests in H3a |
+| PRE12 | minor | The old block sample counted after returning to NONE from REVIVE, a potion or an interruption | It does not count if the action is not BLOCK and started after `view_tick`; changes combat.md §4.3 (§4.2); tests in H3a |
 | SER11 | minor | Undefined which impact interrupts and what "drinking" is; a knock-down in the middle of the pulses | Defined (§0, §4.2); `StatusSystem.step` gathers the pulses before applying them (§4.1, §4.3) |
 | SER13 | minor | Any template selectable, undefined id 0, command 15 with its own `downed_by` | `selectable` and validation without `npc_*`; 0 = default; command 15 with `downed_by = 0`, only in RVR (§2.1, §4.5, §5.1) |
 | IMP12 | minor | LOADOUT revealed the charges to enemies | `charges` = 0 for whoever is not the owner (§5.4) |
@@ -1282,7 +1282,7 @@ initial value because nobody fills them in yet).
   mitigation_penalty)`.
 - `CombatDirector`: respawn uses the new signature; until templates (H3c) it respawns with the
   weapons it carried, in their slot order (active one is 1), and their charges.
-- Phase 4 notes in combate.md §3.3 (the extended and split machine) and §3.4 (the new signature of
+- Phase 4 notes in combat.md §3.3 (the extended and split machine) and §3.4 (the new signature of
   `reset_for_respawn`); "Done (H1b)" notes in backlog.md.
 
 **Tests.** New: `test_ability_machine` (24: edge, commitment and cooldown also with
@@ -1316,7 +1316,7 @@ in two worlds, with whatever the server imposes in a hook).
   that cannot go to the buffer; as today with DODGE + PRIMARY, a lower-priority one from the same tick
   replaces in the slot one of higher priority (the last press wins). DODGE + ABILITY_1 from NONE
   dodges and leaves the ability in the buffer.
-- **Substituted inputs.** Edges with `SUBSTITUTED` are not ignored: as in combate.md §3.2, the substitute
+- **Substituted inputs.** Edges with `SUBSTITUTED` are not ignored: as in combat.md §3.2, the substitute
   repeats the buttons and does not create them. What the bit does affect is 4a (a substitute neither releases a
   channel, reviving or executing nor breaks it by moving).
 - **Commitment of a channel.** "Committed" is `t > action_tick + cast` when the
@@ -1409,7 +1409,7 @@ H5: bots with `solve_lead` and `look_for`.
   commands and LOADOUT_SELECT in §5.4, 134 B header, 50 records, bit 3 of `status` and of
   `flags`, others' SPAWN, PROJECTILE, DESPAWN reasons, events 7–11, HIT bits and sources in §5.5,
   guarantee in §9.3, buttons in §12, budget in §14 and contracts in §17.3 and §17.5); protocol 6
-  note in combate.md §6; the knocked-down bit of PARTY_STATUS in social.md §12.4; "Done (H2)" notes in
+  note in combat.md §6; the knocked-down bit of PARTY_STATUS in social.md §12.4; "Done (H2)" notes in
   backlog.md.
 
 **Tests.** New `test_net_messages_v6` (17: constants and channels; the new buttons arrive in an
@@ -1530,7 +1530,7 @@ selector that sends LOADOUT_SELECT and the keys that set bits 9 to 12.
 - **Spawn protection**: it is also removed by an ABILITY that is not a consumable
   (`_started_attack`); drinking, SWAP, REVIVE and EXECUTE do not (EXECUTE does since the §11.10 review).
 - **Old sample** (§4.2): `_dropped_guard_after` discards the `view_tick` sample if the frozen
-  action is not BLOCK and its `action_tick > view_tick`, whether NONE or not. Note in combate.md §4.3.
+  action is not BLOCK and its `action_tick > view_tick`, whether NONE or not. Note in combat.md §4.3.
 - **`HitShapes.is_ray_clear`** with `hit_from_inside = true`: from the closed gate's doorway you neither
   hit outward nor get hit.
 - **History byte** (§3.6): `ZoneServer._record_history`, `Combatant.freeze` and
@@ -1615,7 +1615,7 @@ starts inside a body is not clear).
 **Measured** (indicative, shared machine with other jobs). The rush covers **6.000 m** in its
 dash window and **7.75 m** until it stops: when the dash ends it moves at 15 m/s and brakes at 60 m/s²
 (`ground_deceleration`) during recovery, 1.75 m more. §2.3 says "6 m in the active phase" and it stays that way;
-if 6 m total is wanted, the curve can fall off at the end (a balance decision for H5, combate.md §12).
+if 6 m total is wanted, the curve can fall off at the end (a balance decision for H5, combat.md §12).
 `CombatDirector.process_tick` with 64 standing combatants (probe not committed, 600 ticks): 0.49–0.59 ms before
 and after H3a (the machine's noise is larger than the difference); with three effects each (192:
 bleed, healing and slow with synchronized pulses, the worst case) +10–20 µs on average, and
@@ -1683,7 +1683,7 @@ impact that interrupts, the refill in step 8 and commands 15 and 16.
 - **`ZoneServer`**: projectile ids come from the zone's registry; the kind 3 ENTITY_SPAWN goes
   to the shooter's owner and to whoever has them as relevant; the ENTITY_DESPAWN, exactly to whoever received the
   SPAWN; the report counts shots, impacts, removals, culling, peak of live ones and messages sent.
-- Notes in combate.md §4.3, networking.md §5.5 (recipients of SPAWN and DESPAWN) and §17.4 (contracts of
+- Notes in combat.md §4.3, networking.md §5.5 (recipients of SPAWN and DESPAWN) and §17.4 (contracts of
   `NetEntityRegistry` and `StateHistory`) and fortress.md §1.7; "Done (H3b)" notes in
   backlog.md (CMB-19, CMB-21, CMB-22 and CMB-23).
 
@@ -1830,7 +1830,7 @@ server tested), and the harmless one is drawn the same. H5: `test_projectile_loo
   DEATH, whichever comes first; a knocked-down player who later dies only falls once.
 - `NetZones.is_rvr(zone_id)` (new): the server only talks to `Zones` through `NetZones`
   (test_architecture).
-- Notes in combate.md §5, fortress.md §1.7 and §4.2 and networking.md §5.4 and §17; "Done (H3c)" notes in backlog.md.
+- Notes in combat.md §5, fortress.md §1.7 and §4.2 and networking.md §5.4 and §17; "Done (H3c)" notes in backlog.md.
 
 **Tests.** New: `test_downed` (15: the lethal blow between realms knocks down with bit 6 and DOWNED, publishes the
 knocked-down health out of 400 with bit 3 and crawls at ×0.15; revived in 180 ticks with 300 health and NONE,
@@ -2172,7 +2172,7 @@ export, audio, names and realms.
 - **End-to-end tests** with ENet on 127.0.0.1 (§7.3): `test_projectile_loopback`,
   `test_abilities_reconciliation`, `test_loadout_net` and the three of `test_bot_cheat`; `NetHarness.start_bot` gains
   the template (`--loadout`).
-- **Measured balance sheet** (`tools/combat_balance.gd`, §2.4 → [combate.md 12.8](combate.md#128-kits-de-la-fase-4-h5-docshabilidadesmd-sección-24)):
+- **Measured balance sheet** (`tools/combat_balance.gd`, §2.4 → [combat.md 12.8](combat.md#128-kits-de-la-fase-4-h5-docshabilidadesmd-sección-24)):
   kit data, bow against the dummy, ranges at 10, 30 and 50 m, one use of each ability, the wall against one and
   two attackers, duels with the kit (also squire against marksman and marksman against marksman), and 2 versus 2 with the
   two templates; with `--reference`, duels without abilities and with the kit without potions.
@@ -2267,7 +2267,7 @@ fake players use the kit: the combat log also carries ability names, and some mu
   2.94 ms. **The player limit per battle drops from 64 to 40** (networking.md 14; the brawl of 40 was measured in the
   review, §11.10: 12.4 and 0.90 ms, meets). `simulate()` stays at 67–69 µs per
   character; no rewind rejected up to 64; the downstream per client, 36 KB/s with 64.
-- **Balance** (`combat_balance.gd --duels=60 --seconds=30 --reference`, about 3 min, deterministic; combate.md 12.8):
+- **Balance** (`combat_balance.gd --duels=60 --seconds=30 --reference`, about 3 min, deterministic; combat.md 12.8):
   everything computed in §2.4 holds (bow 97.3, 125.6 and 131.7 DPS; abilities +8.1 and +25.8 with the whole volley;
   the wall holds against one, 558 stamina in 6 s, and two break it at 5.4 s). The bot duels with the kit last
   longer (median 18.4 s versus 10.7 without abilities; 14.9 s with the kit and without potions: each duel drinks on average
@@ -2279,7 +2279,7 @@ fake players use the kit: the combat log also carries ability names, and some mu
 **For later.**
 
 - With people: the TTK with both templates, the parry, arrow blocking and proposals P4 and P5 of
-  combate.md 12.8.
+  combat.md 12.8.
 - The cost of projectiles on the Terrain3D (0.3 to 1 ms per tick with arrows: mostly preparing the boxes
   of all candidates, about 6–8 µs per player or NPC, and about 10 µs per live arrow) and `simulate()` (lever 6): what
   is needed to return to 64 per battle with archers.

@@ -1,6 +1,6 @@
 class_name WorldMarkers
 extends Control
-## World markers (UI-19, docs/fuerte.md section 6): for each [WorldMarker] (the fort, its
+## World markers (UI-19, docs/fortress.md section 6): for each [WorldMarker] (the fort, its
 ## gate, the capture circle, the camps and the passes) an icon projected onto the screen with its
 ## name and the distance in meters. If the place falls outside the view (to a side, above, below or
 ## behind) the icon sticks to the screen edge with an arrow toward where it is, and up close it

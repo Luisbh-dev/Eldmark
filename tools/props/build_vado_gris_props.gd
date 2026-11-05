@@ -111,7 +111,7 @@ static func _side_yaw(side: int) -> float:
 ## Wooden gate of the fort: two leaves of vertical planks (plank texture from the Castle
 ## Wall Kit) with three iron straps, square up to the lintel. It is a separate node (group
 ## "fort_gate", script FortGate) because it has health and breaks under blows. It is saved closed and with two
-## bodies (docs/fuerte.md, section 3.1; see scripts/world/fort_gate.gd): the node itself is the
+## bodies (docs/fortress.md, section 3.1; see scripts/world/fort_gate.gd): the node itself is the
 ## movement one (realm layers 5 to 7, all three because the fort starts neutral) and "Vista" is the
 ## view one (structure layer 4), which the camera and the line of sight of the blows see. Origin:
 ## center of the opening at ground level.
@@ -445,7 +445,7 @@ func _build_fort() -> void:
 	_save(root, PROPS_DIR.path_join("fort/vado_gris_fort.tscn"))
 
 
-## Markers for the fort NPCs (docs/fuerte.md, section 4.3), data only for the server:
+## Markers for the fort NPCs (docs/fortress.md, section 4.3), data only for the server:
 ## [br]- Patrol routes of the Hollow (group patrol_points, metadata route): from the yard up the
 ## ramp to the walkway and along it toward the gate, one through the north and another through the south (mirrored).
 ## [br]- A spawner (NpcSpawner) per Hollow at each GuardSpawn, active while the fort is neutral; the

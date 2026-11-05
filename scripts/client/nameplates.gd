@@ -304,7 +304,7 @@ func _show(plate: Nameplate, candidate: Dictionary, camera: Camera3D) -> void:
 		mark = Nameplate.Mark.ALLY if ally else Nameplate.Mark.ENEMY
 	plate.set_mark(mark, realm_color)
 	plate.set_downed((view.get_drawn_action() & 15) == CombatState.Action.DOWNED)
-	# The level only for allies (an enemy's arrives as 0 and is not shown, docs/progresion.md §7.3).
+	# The level only for allies (an enemy's arrives as 0 and is not shown, docs/progression.md §7.3).
 	plate.set_level(view.get_level() if ally else 0)
 	if is_instance_valid(_client):
 		plate.set_statuses(_client.get_status_tracker(net_id),

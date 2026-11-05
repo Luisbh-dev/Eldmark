@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the action bar (UI-11, docs/habilidades.md, sections 6.3 and 7.3, H4): it reads the predicted
+## Tests of the action bar (UI-11, docs/abilities.md, sections 6.3 and 7.3, H4): it reads the predicted
 ## state, so it is fed with the physics-free action machine ([MachineDriver]) or with real
 ## prediction ([PredictionPair]).
 ## [br]- When the weapon changes, the icons change (abilities, attack, block hidden with the bow and the weapon

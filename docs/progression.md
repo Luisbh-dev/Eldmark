@@ -10,7 +10,7 @@ Version 2: version 1 after the review by three reviewers (§18), later reconcile
 Whatever is marked "verified" comes from probes on this machine (Godot 4.7.2 headless, PostgreSQL 16, Go 1.24)
 that are not committed.
 
-It builds on [networking.md](networking.md), [combate.md](combate.md), [fortress.md](fortress.md), [social.md](social.md)
+It builds on [networking.md](networking.md), [combat.md](combat.md), [fortress.md](fortress.md), [social.md](social.md)
 and `docs/abilities.md` (phase 4, already merged into `fase4-fuerte`). With **`docs/platform.md`**
 (TEC-22 to TEC-28), written at the same time, the split is as follows:
 

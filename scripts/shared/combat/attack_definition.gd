@@ -1,6 +1,6 @@
 class_name AttackDefinition
 extends Resource
-## A melee attack or a shot (docs/combate.md, section 2; docs/abilities.md, section
+## A melee attack or a shot (docs/combat.md, section 2; docs/abilities.md, section
 ## 2.1). All times are in seconds and
 ## [CombatCatalog] converts them to ticks with [code]roundi(s * 60)[/code] on load.
 ## [br][br]

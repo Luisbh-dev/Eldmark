@@ -3,7 +3,7 @@ extends RefCounted
 ## UI fonts (UI-02): two OFL families across the whole client. Cinzel for titles and place
 ## labels, Noto Sans for text, numbers and nameplates; IM Fell English SC remains available for
 ## the map labels. The files are in [code]assets/fonts/[/code] (author and license in
-## [code]assets/LICENCIAS.md[/code]).
+## [code]assets/LICENSES.md[/code]).
 ## [br][br]
 ## All code that draws text with [method CanvasItem.draw_string] asks for its font here instead of using the
 ## engine's ("fallback_font" of ThemeDB, which a test forbids in [code]scripts/client[/code]).

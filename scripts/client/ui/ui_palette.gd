@@ -5,7 +5,7 @@ extends RefCounted
 ## [br][br]
 ## Style (backlog decision): dark, minimalist and translucent, with metal and Eld stone
 ## trim and accents in the faction color. The loud part (color) is left to the factions, which come from
-## [RealmCatalog] (mundo.md, "Colores de bando", i.e. "Faction colors"); the rest of the interface is neutral, and the neutral
+## [RealmCatalog] (world.md, "Colores de bando", i.e. "Faction colors"); the rest of the interface is neutral, and the neutral
 ## accent is the Embers of Eld.
 ## [br][br]
 ## Client only. Everything is constants and static functions, with no state.

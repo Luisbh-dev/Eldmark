@@ -1,6 +1,6 @@
 class_name CommandRegistry
 extends RefCounted
-## Single registry of the server's admin commands (docs/combate.md, section 6;
+## Single registry of the server's admin commands (docs/combat.md, section 6;
 ## TEC-19): those that arrive over the network in a DEBUG_COMMAND and those from the standard input
 ## console. CMB-11, GUE-08, PRG-16 and SOC-14 register theirs here.
 ## [br][br]

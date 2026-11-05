@@ -1,6 +1,6 @@
 class_name FortressView
 extends Node
-## View of the fortresses on the client (docs/fuerte.md, sections 2 and 3.2; GUE-09, GUE-12 client
+## View of the fortresses on the client (docs/fortress.md, sections 2 and 3.2; GUE-09, GUE-12 client
 ## part). It receives the ENTITY_SPAWN of each structure ([method on_spawn]) and its OBJECT_STATE
 ## ([method on_object_state]), keeps the change history ([FortressTimeline]) and applies it in two
 ## different ways:

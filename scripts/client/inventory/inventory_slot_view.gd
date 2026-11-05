@@ -1,6 +1,6 @@
 class_name InventorySlotView
 extends UIIconSlot
-## An inventory or equipment slot (docs/progresion.md §11, UI-26): a [UIIconSlot] with drag and
+## An inventory or equipment slot (docs/progression.md §11, UI-26): a [UIIconSlot] with drag and
 ## drop. It shows the item from the [ClientInventory] view ([method show_item]): its icon (or, with no ART-12
 ## icon, the short name in the category color), the stack, the border of its rarity and the §11.2 tooltip.
 ## A provisional stack (that of a SPLIT that does not yet have its real [code]uid[/code]) is shown dimmed.
@@ -23,7 +23,7 @@ const DRAG_KEY: String = "inventory_slot"
 ## Size of the preview that follows the mouse.
 const PREVIEW_SIZE: Vector2 = Vector2(44.0, 44.0)
 ## Color of each category ([enum ItemDefinition.Category]) for the provisional icon. # TODO(art): until the
-## ART-12 icons and the approval of the windows (docs/progresion.md §16).
+## ART-12 icons and the approval of the windows (docs/progression.md §16).
 const CATEGORY_COLORS: Dictionary[int, Color] = {
 	ItemDefinition.Category.WEAPON: Color(0.56, 0.42, 0.26, 1.0),
 	ItemDefinition.Category.ARMOR: Color(0.32, 0.42, 0.55, 1.0),

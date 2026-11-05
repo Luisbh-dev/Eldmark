@@ -1,5 +1,5 @@
 extends SceneTree
-## First combat balance pass (CMB-29; docs/combate.md, section 12). Outside the test runner:
+## First combat balance pass (CMB-29; docs/combat.md, section 12). Outside the test runner:
 ## it sets up a network-less [ZoneServer] over [code]test_world[/code] (fake players with hand-driven brains, no clients or
 ## ENet) and uses it to measure what the data in [code]data/combat/[/code] says.
 ## [br][br]
@@ -36,7 +36,7 @@ extends SceneTree
 ## Between players of enemy realms the killing blow knocks down (docs/abilities.md, section 4.5): the "death" of
 ## these measurements is the fall, DOWNED or DEATH (whichever comes first), which is when the fallen stops fighting.
 ## [br][br]
-## [b]Phase 4 kits[/b] (H5; docs/abilities.md, section 2.4, and combate.md, section 12.8):
+## [b]Phase 4 kits[/b] (H5; docs/abilities.md, section 2.4, and combat.md, section 12.8):
 ## [br]- [b]Bow against the dummy[/b] at 10 m: repeated quick shot and drawn shot with minimum and maximum charge,
 ## aimed like a bot ([method BotBrain.lead_look]); the measured DPS against the one calculated from the data.
 ## [br]- [b]Ranges[/b]: the quick shot and the maximum drawn shot against the dummy at 10, 30 and 50 m: hits, flight time

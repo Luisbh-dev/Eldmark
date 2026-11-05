@@ -1,6 +1,6 @@
 class_name ParchmentMapBaker
 extends RefCounted
-## Bakes the parchment map of a zone (UI-51, docs/calidad.md §2 «Map and minimap»): a map
+## Bakes the parchment map of a zone (UI-51, docs/quality.md §2 «Map and minimap»): a map
 ## drawn in pen and wash on aged paper instead of a dump of the terrain paint
 ## ([ZoneMapBaker]). Used by [code]tools/map/bake_parchment_map.gd[/code]. It is pure CPU (no GPU, no
 ## scene rendering), deterministic and works in headless.
@@ -28,7 +28,7 @@ const Layout: GDScript = preload("res://tools/terrain/vado_gris_layout.gd")
 
 # --- Palette ------------------------------------------------------------------------------------
 
-## Paper: dark parchment, brownish gray and barely saturated (calidad.md §2 and decision 3), like the game's
+## Paper: dark parchment, brownish gray and barely saturated (quality.md §2 and decision 3), like the game's
 ## desaturated palette. The only saturated accents are the realm colors.
 const PAPER: Color = Color(0.645, 0.605, 0.510)
 ## Sepia ink used to draw every stroke.

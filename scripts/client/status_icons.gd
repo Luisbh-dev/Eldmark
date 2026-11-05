@@ -1,6 +1,6 @@
 class_name StatusIcons
 extends HBoxContainer
-## Row of status effect icons (UI-45, docs/habilidades.md, section 6.4): the player's own, above the
+## Row of status effect icons (UI-45, docs/abilities.md, section 6.4): the player's own, above the
 ## health bar, and the small one on nameplates (up to 4, harmful ones first). Each icon
 ## shows the effect (provisional square with its initial, [CombatIcons]), the seconds remaining, the
 ## stacks if there is more than one and a red border if it is harmful or green if not; the tooltip gives its name and

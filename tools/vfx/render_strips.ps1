@@ -11,7 +11,7 @@
 #
 # By default it records with the GAME CAMERA (72 degree field of view, over the shoulder, at the
 # game distance) over the Vado Gris terrain, with its sun, its shadows and its fog: it is what the
-# bar in docs/calidad.md asks for. With -Camera demo and without -Field it records the usual close-ups (40 degree
+# bar in docs/quality.md asks for. With -Camera demo and without -Field it records the usual close-ups (40 degree
 # field of view over a plain ground), useful for reviewing detail.
 # -Realms also records the trail and the aura in the four realms (folders trail_r1..r4 and aura_r1..r4) and composes
 # the comparison sheets. -Shade repeats the dust, the dodge and the cloth in the shade of a roof that only

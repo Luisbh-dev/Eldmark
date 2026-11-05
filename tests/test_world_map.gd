@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the minimap and the full-screen map (UI-20, UI-21, docs/fuerte.md section 6):
+## Tests of the minimap and the full-screen map (UI-20, UI-21, docs/fortress.md section 6):
 ## [Minimap] (projection with north up, crop centered on the player, zoom, icons and companions),
 ## [WorldMap] (geometry, coordinate conversion, legend, respawn choice) and their mounting in the
 ## [HUD] with the death screen. No server: a fake client provides the character, the realm and the tick, and the

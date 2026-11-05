@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the cheap interface fixes from the first windowed test (docs/calidad.md, wave 1; UI-49,
+## Tests of the cheap interface fixes from the first windowed test (docs/quality.md, wave 1; UI-49,
 ## UI-50, UI-52 and UI-54): compass, fort panel and knocked-down notice centered on screen, tooltips that do not
 ## open on focus when a window opens, character figure at rest, hidden help line, proportional
 ## damage vignette, minimap terrain with fog fade and world-marker filter.

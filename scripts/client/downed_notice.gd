@@ -1,6 +1,6 @@
 class_name DownedNotice
 extends Control
-## Knocked-down notices (CMB-28, docs/habilidades.md, section 6.5), at the top center of the screen:
+## Knocked-down notices (CMB-28, docs/abilities.md, section 6.5), at the top center of the screen:
 ## [br]- Knocked down: "Derribado" (knocked down) with the countdown of the knocked-down health (that of the extra block, which drops
 ## 1 every [code]downed_s / downed_health[/code] s and with enemy damage).
 ## [br]- "Ana te está levantando" (Ana is reviving you) with the bar of her INTERACT 1, or "¡Te rematan!" (you are being finished off!) with that of her INTERACT 4.

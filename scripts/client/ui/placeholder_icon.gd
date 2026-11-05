@@ -1,6 +1,6 @@
 class_name PlaceholderIcon
 extends Texture2D
-## Placeholder icon (docs/habilidades.md, sections 6.3 and 6.4; until the ART-12 icons): a square
+## Placeholder icon (docs/abilities.md, sections 6.3 and 6.4; until the ART-12 icons): a square
 ## in the color of the weapon or effect with the action's initial on top. It is a [Texture2D] that draws
 ## itself, so it fits in any [UIIconSlot] and the cooldown sweeps are painted on top
 ## as with a real icon. No image: it costs no video memory. Client only.

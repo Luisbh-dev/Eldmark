@@ -1,6 +1,6 @@
 class_name CombatState
 extends RefCounted
-## A character's combat state (docs/combate.md, section 3.1, extended to version 5 in
+## A character's combat state (docs/combat.md, section 3.1, extended to version 5 in
 ## docs/abilities.md, section 3.1). It lives inside [PlayerState] and goes into
 ## [method PlayerState.encode], so reconciliation also compares the current action, the
 ## stamina, the controls imposed by the server, the cooldowns, the consumable charges

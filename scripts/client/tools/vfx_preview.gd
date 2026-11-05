@@ -489,7 +489,7 @@ func _observe_combat() -> void:
 
 
 # The trail window: the hit's active window with a margin. The attack animation reaches its fast sweep a
-# few ticks BEFORE the simulation's window opens (the clips are not tuned to the ticks, docs/calidad.md,
+# few ticks BEFORE the simulation's window opens (the clips are not tuned to the ticks, docs/quality.md,
 # section 1), so it opens [constant TRAIL_LEAD_TICKS] earlier and closes [constant TRAIL_TAIL_TICKS]
 # later; outside of it (anticipation and recovery) there is no trail. When the clips carry a sweep
 # marker, that marker replaces the margin.

@@ -756,7 +756,7 @@ func _prepare(s: int) -> void:
 		count += 1
 		# Only the wall of whoever is "open": that of someone with protection or in their realm's safe zone does not stop
 		# arrows (they pass as through their capsule), so it spends no stamina, their guard is not broken, and they do not end
-		# up in combat inside their camp (docs/combate.md §5).
+		# up in combat inside their camp (docs/combat.md §5).
 		if open and frame.wall_half_extents != Vector3.ZERO:
 			var wall := _Wall.new()
 			wall.holder = combatant

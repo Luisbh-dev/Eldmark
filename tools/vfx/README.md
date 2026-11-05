@@ -38,7 +38,7 @@ The reuse architecture (`VfxEffect`, `VfxPool`, the metadata `vfx_time`, `vfx_cu
 `vfx_variants`) is explained in the header of `scripts/client/vfx/vfx_effect.gd`. None of this is
 hooked into combat yet.
 
-## Checking (the bar from `docs/calidad.md`)
+## Checking (the bar from `docs/quality.md`)
 
 `render_strips.ps1` opens `scenes/tests/vfx_preview.tscn` in a window, deterministically (`--fixed-fps 60`):
 

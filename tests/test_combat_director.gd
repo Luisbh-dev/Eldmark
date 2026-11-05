@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the [CombatDirector] (docs/combate.md, sections 4.2 and 5) with hand-built fighters:
+## Tests for the [CombatDirector] (docs/combat.md, sections 4.2 and 5) with hand-built fighters:
 ## applying a hit (damage, crits, heavy-attack charge, block, guard break, hitstop), the
 ## controls (stagger cuts a light attack but not a heavy one with poise, knockback, the root and its
 ## immunity), death (a single DEATH and KILL with assisters), the environment (fall, lethal volume,

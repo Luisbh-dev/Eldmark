@@ -15,7 +15,7 @@ extends Node3D
 ## The model faces -Z like the [PlayerCharacter] (Quaternius glTFs face +Z, which is
 ## why [code]Model[/code] is rotated 180°). The origin is at the feet and it stands about 1.8 m tall.
 ## [br][br]
-## [b]Pieces per slot[/b] (docs/progresion.md §7.4, ART-19): the base model's meshes are the
+## [b]Pieces per slot[/b] (docs/progression.md §7.4, ART-19): the base model's meshes are the
 ## [code]body[/code] slot and those of [member part_scenes] are those of [member part_slots] ([code]head[/code],
 ## [code]hair[/code], [code]beard[/code]). [method set_part] and [method clear_part] change a slot without
 ## recreating the character: the node, the skeleton, the animator and the weapons stay; only the meshes of

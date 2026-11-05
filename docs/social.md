@@ -39,7 +39,7 @@ the client cannot ask for something the server does not send.
 | Side color and emblem | Yes | Always visible (also on the nameplate) |
 | Character name | Only when aimed at | The enemy's nameplate shows the name while the reticle points at it (a few seconds of grace after looking away), and it always appears in the combat log and on the death screen ("Te ha derrotado X", "X has defeated you") |
 | Enemy guild, level and equipment | No | Only an ally's are visible. Inspecting an enemy (SOC-29) returns no equipment, attributes, guild or level; only what is already visible and, from phase 8, their war rank |
-| Enemy health | Yes, on their nameplate | When aimed at or after damaging them (combat decision in combate.md) |
+| Enemy health | Yes, on their nameplate | When aimed at or after damaging them (combat decision in combat.md) |
 | Chat (say, zone and the other channels) | No | The server **never** sends a client text from another realm |
 | Whispers | No | Whispering an enemy answers "no está conectado" (is not online), without revealing that they exist |
 | Parties, warbands, guilds, friends, mail, trade | No | Same realm only |

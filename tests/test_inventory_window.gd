@@ -1,5 +1,5 @@
 extends TestCase
-## The inventory and character windows (docs/progresion.md §11 and §15, P6; UI-26): [InventoryWindow],
+## The inventory and character windows (docs/progression.md §11 and §15, P6; UI-26): [InventoryWindow],
 ## [CharacterWindow], [InventorySlotView] and [SplitDialog] over a [ClientInventory] with the squire's kit. The
 ## simulated gestures (drag and drop, Shift to split, double click and right click, drop outside) produce the
 ## right request, or the notice without sending anything; the slots show the view, the tooltip and the coins; the

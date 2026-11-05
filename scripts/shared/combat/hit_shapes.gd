@@ -1,6 +1,6 @@
 class_name HitShapes
 extends RefCounted
-## Hit geometry (docs/combate.md, section 4.1): pure math, no physics bodies,
+## Hit geometry (docs/combat.md, section 4.1): pure math, no physics bodies,
 ## except line of sight, which casts a ray against the world.
 ## [br][br]
 ## All tests are of a volume against a vertical capsule (the character's: radius

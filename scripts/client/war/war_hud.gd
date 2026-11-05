@@ -1,6 +1,6 @@
 class_name WarHud
 extends Control
-## War interface of the networked client (phase 4, docs/fuerte.md section 6): gathers the elements that
+## War interface of the networked client (phase 4, docs/fortress.md section 6): gathers the elements that
 ## only make sense with a server and a fort, and connects them to the [NetClient]. The [HUD] creates it
 ## in [method HUD.bind_net] and keeps it above the nameplates and below the death screen.
 ## [br][br]

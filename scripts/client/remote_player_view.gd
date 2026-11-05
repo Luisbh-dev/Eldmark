@@ -245,7 +245,7 @@ func is_drawn() -> bool:
 	return _drawn_visible
 
 
-## [code]action[/code] byte of the drawn record (docs/combate.md, section 3.4: bits 0-3 the action, 4-5
+## [code]action[/code] byte of the drawn record (docs/combat.md, section 3.4: bits 0-3 the action, 4-5
 ## the phase and 6-7 the combo step or reset counter; [ActionWire]). Read by the remote's combat
 ## animator.
 func get_drawn_action() -> int:

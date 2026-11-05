@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests of [BotCheatBrain], the brain of the [code]reach[/code] and [code]rate[/code] modes of the cheating
-## bot (docs/combate.md, section 4.5), without network or world: with a hand-made enemy finder it
+## bot (docs/combat.md, section 4.5), without network or world: with a hand-made enemy finder it
 ## checks which inputs it generates depending on the distance.
 
 

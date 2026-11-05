@@ -1,6 +1,6 @@
 class_name DpsMeter
 extends RefCounted
-## Damage-per-second meter for the local player (CMB-11, docs/combate.md section 7). Sums the
+## Damage-per-second meter for the local player (CMB-11, docs/combat.md section 7). Sums the
 ## [code]amount[/code] of their own HITs over a window of [constant WINDOW_TICKS] ticks (30 s) and is
 ## shown in the debug panel (F3).
 ## [br][br]

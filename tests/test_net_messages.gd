@@ -1776,7 +1776,7 @@ func test_new_message_channels_and_debug_command_ids() -> void:
 		assert_false(NetProtocol.is_unreliable_channel(NetProtocol.channel_for_type(message_type)),
 				"0x%02X does not drop packets" % message_type)
 
-	# Fixed ids of the debug commands (combate.md, section 6).
+	# Fixed ids of the debug commands (combat.md, section 6).
 	assert_eq(NetProtocol.DEBUG_TELEPORT, 1, "teleport")
 	assert_eq(NetProtocol.DEBUG_HEAL, 2, "heal")
 	assert_eq(NetProtocol.DEBUG_KILL, 3, "kill")

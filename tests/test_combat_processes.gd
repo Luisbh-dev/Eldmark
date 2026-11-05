@@ -1,5 +1,5 @@
 extends TestCase
-## The combat server as a separate process (docs/combate.md, sections 6 and 7; TEC-15 and TEC-19):
+## The combat server as a separate process (docs/combat.md, sections 6 and 7; TEC-15 and TEC-19):
 ## fake players with the combat brain that fight each other and leave their combat log and their
 ## report, and the standard input console ([code]--console[/code]) read in a thread without stopping
 ## the tick: the server keeps simulating while it waits for lines and runs them at the start of a tick.

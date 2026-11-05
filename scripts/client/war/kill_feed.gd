@@ -1,6 +1,6 @@
 class_name KillFeed
 extends Control
-## Kill feed (UI-41, docs/fuerte.md section 6): one line for each KILL in the zone, at the top
+## Kill feed (UI-41, docs/fortress.md section 6): one line for each KILL in the zone, at the top
 ## right, that lasts a few seconds and fades out: "Ana derrotó a Bruno con un golpe pesado (+2)" ("Ana defeated Bruno with a heavy strike (+2)").
 ## [br][br]
 ## KILLs go to the whole zone in phase 4, so kills by those who are not nearby are seen too
@@ -10,7 +10,7 @@ extends Control
 ## a boss ([BossInfo]); those by the environment ([code]killer = 0[/code]) show up as "Bruno cayó" ("Bruno fell"). Lines in
 ## which you take part (you kill, die or assist) carry a background so you can find them.
 ## [br][br]
-## Since protocol 6 (docs/habilidades.md, section 5.4) the DOWNED events, which also go to the whole zone,
+## Since protocol 6 (docs/abilities.md, section 5.4) the DOWNED events, which also go to the whole zone,
 ## leave their line: "Ana derribó a Bruno con una flecha lastrante" ("Ana knocked down Bruno with a weighted arrow") ([method show_downed]); the KILL that arrives
 ## afterward (finished off or bled out) leaves its own.
 ## [br][br]

@@ -62,7 +62,7 @@ presented as original work (label them "CC0, modified"):
 ## Third-party assets and addons
 
 Only material that is present in `main` is listed. The per-file detail (source URL, archive
-checksum, version and date, local modifications) is in `assets/LICENCIAS.md`, which is currently
+checksum, version and date, local modifications) is in `assets/LICENSES.md`, which is currently
 written in Spanish and will be translated to `assets/LICENSES.md`.
 
 | Pack | Author | License | Paths | Attribution required |
@@ -103,7 +103,7 @@ fully cleared:
   in the original archive does not name the license. A saved copy of the itch.io page is still
   pending. Until then it is listed as CC0 on the strength of the itch.io field only.
 - **Modular Character Outfits Fantasy.** The exact pack version is still unconfirmed in
-  `assets/LICENCIAS.md`. This does not change the license (CC0).
+  `assets/LICENSES.md`. This does not change the license (CC0).
 - **Derived files.** The modified third-party files listed above must be labelled "CC0, modified"
   wherever they are credited.
 

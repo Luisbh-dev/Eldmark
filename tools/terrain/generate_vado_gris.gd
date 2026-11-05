@@ -8,7 +8,7 @@ extends SceneTree
 ## [/codeblock]
 ## Prerequisites (once): tools/assets/copy_vado_gris_assets.gd, --import,
 ## tools/assets/extract_kit_meshes.gd, tools/materials/build_realm_materials.gd and
-## tools/props/build_vado_gris_props.gd. See docs/zonas/vado_gris.md.
+## tools/props/build_vado_gris_props.gd. See docs/zones/vado_gris.md.
 ## [br][br]
 ## It is deterministic and can be repeated: it deletes and rewrites the region data
 ## (scenes/world/zones/vado_gris/terrain/*.res), the terrain assets and vado_gris.tscn. Everything
@@ -1155,7 +1155,7 @@ func _add_environment() -> void:
 	sun.shadow_blur = 1.4
 	# Four splits up to 130 m (before, two up to 120 m): the long shadows of a low sun reach
 	# the trees and the wall. The cost in draw calls is measured with
-	# tools/render/render_screenshot_points.gd (docs/zonas/vado_gris.md, «Measured performance»).
+	# tools/render/render_screenshot_points.gd (docs/zones/vado_gris.md, «Measured performance»).
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_max_distance = 110.0
 	sun.directional_shadow_blend_splits = false
@@ -1247,7 +1247,7 @@ func _add_water() -> void:
 	group.add_child(water)
 
 
-## The fort is the fortress node (docs/fuerte.md, section 1.6): in the `fortresses` group and with
+## The fort is the fortress node (docs/fortress.md, section 1.6): in the `fortresses` group and with
 ## the `definition` metadata. Its children are the markers the controller uses: `CaptureCircle`
 ## (with `radius`), `CaptainSpawn`, `GuardSpawn1`..4, `FortGate` and the banners `Estandarte`,
 ## `EstandartePuertaN` and `EstandartePuertaS`, plus the NPC spawners (`NpcSpawner`) and the
@@ -1781,7 +1781,7 @@ func _add_spawn_points() -> void:
 			group.add_child(marker)
 
 
-## Respawn points after death (docs/fuerte.md, section 5), in scene order, which is
+## Respawn points after death (docs/fortress.md, section 5), in scene order, which is
 ## the index that client and server use: first those of the two camps (at the place of their
 ## spawn points, with the `realm` metadata) and then those inside the fort (with the
 ## `fortress` metadata, the fortress id; without `realm`, because they are valid for whichever realm
@@ -1812,7 +1812,7 @@ func _add_respawn_points() -> void:
 		group.add_child(marker)
 
 
-## The two Gate Guardians of each camp (docs/fuerte.md, section 4.3): NPC spawners
+## The two Gate Guardians of each camp (docs/fortress.md, section 4.3): NPC spawners
 ## (`NpcSpawner`, data only) of the camp's realm, always active, that look at the
 ## fort from the sides of the gate in their wall.
 func _add_gate_guardians() -> void:
@@ -1837,7 +1837,7 @@ func _add_gate_guardians() -> void:
 			group.add_child(spawner)
 
 
-## Safe zones (docs/combate.md, section 5): one per camp, centered on the center of its
+## Safe zones (docs/combat.md, section 5): one per camp, centered on the center of its
 ## spawn points (x = 0, z = ±138) and with the camp's radius (24 m). They only protect their
 ## realm ([code]realm[/code] metadata); the server reads them from the [code]safe_areas[/code] group.
 func _add_safe_areas() -> void:

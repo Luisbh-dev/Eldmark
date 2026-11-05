@@ -1,6 +1,6 @@
 class_name TelegraphMarks
 extends Node3D
-## Ground marks for NPC attacks (UI-18, GUE: TELEGRAPH in docs/fuerte.md section 5). The
+## Ground marks for NPC attacks (UI-18, GUE: TELEGRAPH in docs/fortress.md section 5). The
 ## server warns a few ticks before the hit ([signal NetClient.telegraph_received]: shape, origin,
 ## orientation, radius and ticks until impact) and here the danger zone is drawn on the ground:
 ## a translucent red circle or sector, with a more intense fill that grows from the center until

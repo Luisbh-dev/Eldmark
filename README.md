@@ -52,7 +52,7 @@ Eldmark is set in **The Broken Crown**. The three peoples were once a single kin
 
 Each realm is enclosed by a wall with gates facing **Eldrun**, the central war zone, where the ruined citadel of Aldcor stands and where forts (small, quick objectives) and castles (large, with walls, gates and several lines of defense) can be captured and held. Realm-vs-realm combat happens there; inside a realm's own safe areas, enemies cannot hurt you. There is no diplomacy and no cross-realm chat: you see the enemy's body and banner, never their voice.
 
-The first playable zone is the **Vado Gris** ("Gray Ford"), a compressed frontier of about 300 by 300 m between Vardheim's Frost Wall (north) and Solmarch's Dawn Wall (south), with a horseshoe river, a stone bridge and a wide ford, ruins on the flanks and a palisade fort on the central hill. Full lore and geography are in [docs/world.md](docs/world.md) and the zone notes in [docs/zonas/vado_gris.md](docs/zonas/vado_gris.md) (Spanish until translated).
+The first playable zone is the **Vado Gris** ("Gray Ford"), a compressed frontier of about 300 by 300 m between Vardheim's Frost Wall (north) and Solmarch's Dawn Wall (south), with a horseshoe river, a stone bridge and a wide ford, ruins on the flanks and a palisade fort on the central hill. Full lore and geography are in [docs/world.md](docs/world.md) and the zone notes in [docs/zones/vado_gris.md](docs/zones/vado_gris.md) (Spanish until translated).
 
 ## Quick start
 
@@ -189,7 +189,7 @@ The design documents are long and written as decision records, including what wa
 | [docs/art.md](docs/art.md) | Art direction and asset plan |
 | [docs/history/](docs/history) | Archived reports from past work sessions |
 
-The following documents are still in Spanish and are being translated: [docs/combate.md](docs/combate.md) (combat design), [docs/zonas/](docs/zonas) (zone notes), [docs/calidad.md](docs/calidad.md) (visual quality plan) and [docs/backlog.md](docs/backlog.md) (the master task list, with what is done and what is next).
+The following documents are still in Spanish and are being translated: [docs/combat.md](docs/combat.md) (combat design), [docs/zones/](docs/zones) (zone notes), [docs/quality.md](docs/quality.md) (visual quality plan) and [docs/backlog.md](docs/backlog.md) (the master task list, with what is done and what is next).
 
 ## Contributing
 
@@ -220,7 +220,7 @@ In parallel: a visual quality pass (animation, map, HUD, hit feel, scenery), an 
 
 - **Code** (GDScript, Go, Python, shaders and tooling): [MIT](LICENSE).
 - **Original assets made by this project** (the sword models, interface icons and emblems, sound effects, visual effects, materials and zone maps): [CC BY 4.0](LICENSE-ASSETS.md). The file lists exactly which folders it covers.
-- **Third-party material keeps its own license** and is not relicensed: the addons in `addons/` (MIT), and the CC0 asset packs listed below. Details and per-folder scope are in [LICENSE-ASSETS.md](LICENSE-ASSETS.md) and the per-pack records in `assets/LICENCIAS.md` (which is in Spanish for now).
+- **Third-party material keeps its own license** and is not relicensed: the addons in `addons/` (MIT), and the CC0 asset packs listed below. Details and per-folder scope are in [LICENSE-ASSETS.md](LICENSE-ASSETS.md) and the per-pack records in `assets/LICENSES.md` (which is in Spanish for now).
 
 ## Third-party credits
 

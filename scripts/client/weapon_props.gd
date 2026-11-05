@@ -12,7 +12,7 @@ extends RefCounted
 ## shield is gripped with its disc perpendicular to Z, in front of the hand (toward -Z). If it does not
 ## fit when viewed, the offsets and rotations below are the only thing to touch.
 ## [br][br]
-## [b]Provisional bow[/b] (phase 4, docs/habilidades.md, section 6.6): three thin cylinders in an arc (the
+## [b]Provisional bow[/b] (phase 4, docs/abilities.md, section 6.6): three thin cylinders in an arc (the
 ## two limbs and the grip) and a string, in the left hand (it hangs from the same [BoneAttachment3D] as
 ## the shield, as a second child; it is created the first time it is needed). [method show_weapon] shows the
 ## accessories of the weapon being carried (the bow, or the sword and shield) on remote players too: the

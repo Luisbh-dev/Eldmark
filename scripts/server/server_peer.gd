@@ -75,7 +75,7 @@ var chat: ChatPeerState = ChatPeerState.new()
 ## Strikes added in total and the reason for the last one.
 var strikes_total: int = 0
 var last_strike_reason: String = ""
-## Combat suspicion score (docs/combate.md, 4.5): adds 1 for each hit whose rewind exceeds the cap and is not tested. In
+## Combat suspicion score (docs/combat.md, 4.5): adds 1 for each hit whose rewind exceeds the cap and is not tested. In
 ## phase 3 it is only logged (report and [code]--combat-log[/code]).
 var suspicion_score: int = 0
 ## Hits rejected for excessive rewind.

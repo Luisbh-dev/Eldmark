@@ -169,7 +169,7 @@ func test_font_slots_are_ready_and_nothing_uses_a_system_font() -> void:
 
 
 func test_the_licence_file_notes_the_missing_fonts_and_the_placeholder_emblems() -> void:
-	var text: String = FileAccess.get_file_as_string("res://assets/LICENCIAS.md")
+	var text: String = FileAccess.get_file_as_string("res://assets/LICENSES.md")
 	assert_true(text.contains("Noto Sans"), "records the body font")
 	assert_true(text.contains("Cinzel"), "and the titles'")
 	assert_true(text.contains("assets/emblems"), "and the placeholder emblems")

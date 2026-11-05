@@ -1,6 +1,6 @@
 class_name CombatFeedback
 extends Node
-## Distributes the combat feel on the client (docs/combate.md, section 8; UI-12, basic ART-09,
+## Distributes the combat feel on the client (docs/combat.md, section 8; UI-12, basic ART-09,
 ## CMB-11). It receives the ENTITY_EVENTs [b]already timed[/b] by [NetClient] ([signal
 ## NetClient.combat_event]: the player's own on arrival, other players' on their draw tick) and distributes them:
 ## [br]- [b]Confirmed own hits[/b] ([method handle_event], HIT with the local player as attacker):
@@ -22,7 +22,7 @@ extends Node
 ## [br]- [b]Sound and effect hooks[/b]: the signal [signal sound_requested] with the sound name and its
 ## position, and [signal hit_impact], once for each confirmed HIT, whoever's it is and blocked or not, on its draw
 ## tick, from which the impact sound ([CombatAudio]) and the sparks ([CombatVfx]) hang.
-## [br]- [b]Predicted hit[/b] (ART-09, decision 6 of calidad.md): while the own hit is active it is checked
+## [br]- [b]Predicted hit[/b] (ART-09, decision 6 of quality.md): while the own hit is active it is checked
 ## against the DRAWN positions of the enemies to see whether it would reach any ([method _try_predict]). If so, the
 ## impact already sounds, the sparks fly and the animation does the hitstop (50 ms for light, 80 ms for heavy),
 ## without waiting for the server ([signal hit_predicted]). It is cosmetic only: the number, the marker and the DPS keep

@@ -1,6 +1,6 @@
 class_name SwordTrail
 extends Node3D
-## Sword strike trail (ART-09, docs/calidad.md decision 8). Client only.
+## Sword strike trail (ART-09, docs/quality.md decision 8). Client only.
 ## [br][br]
 ## It is a ribbon that is born from the blade itself: it runs from [constant INNER_FRACTION] (40 %) of the edge between the
 ## [code]TrailBase[/code] and [code]TrailTip[/code] marks of the model ([SwordModel]) to the tip, and does not go past

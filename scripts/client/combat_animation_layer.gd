@@ -26,7 +26,7 @@ extends RefCounted
 ## _lag_s], clip seconds) that is subtracted from the clip time while the stop lasts and recovered afterward
 ## by speeding the clip up (to 1.5x) during the recovery, so the action ends on time. Changing clip cancels it.
 ## [br][br]
-## [b]Phase 4[/b] (docs/habilidades.md, section 6.6, provisional): each weapon animates with its own clip set
+## [b]Phase 4[/b] (docs/abilities.md, section 6.6, provisional): each weapon animates with its own clip set
 ## ([method clips_for]: [code]data/animation/<weapon>_clips.tres[/code], or the default one if it has none);
 ## the remote gives its active weapon (weapon pair and slot bit of its record). An ABILITY comes from
 ## the input of its ability (the remote's, by the slot in the action byte); a knocked-down character crawls if it

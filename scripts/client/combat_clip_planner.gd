@@ -17,7 +17,7 @@ extends RefCounted
 ## [member CombatActionAnim.hold_end] they stay on the last pose and with [member CombatActionAnim.loop] they
 ## repeat.
 ## [br][br]
-## [b]Phase 4[/b] (docs/habilidades.md, section 6.6; provisional, pending the user's eye): an
+## [b]Phase 4[/b] (docs/abilities.md, section 6.6; provisional, pending the user's eye): an
 ## ability is animated with the entry named after it ([code]shield_bash[/code]...; with three spans they are
 ## rescaled to its cast, active and recovery, like an attack), a potion with
 ## [constant KEY_DRINK], a weapon swap with [constant KEY_SWAP], knocked down with [constant KEY_DOWNED]

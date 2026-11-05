@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [CombatCatalog] (docs/combate.md section 2; docs/abilities.md section 2.2): loading
+## Tests for [CombatCatalog] (docs/combat.md section 2; docs/abilities.md section 2.2): loading
 ## data/combat/, IDs of each space requested by name, repeated ids, validation of ranges and of the
 ## rules of section 2.2, conversion to ticks, baked curves (dodge and advances), synthesized hit
 ## of the abilities, footprint of the predicted part and the fast path of simulate().

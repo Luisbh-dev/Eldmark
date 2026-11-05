@@ -1,6 +1,6 @@
 class_name CombatEventQueue
 extends RefCounted
-## Queue of other entities' combat events, ordered by server tick (docs/combate.md, section 6).
+## Queue of other entities' combat events, ordered by server tick (docs/combat.md, section 6).
 ## [br][br]
 ## An ENTITY_EVENT about other players is not shown on arrival, but when the render tick
 ## ([method InterpolationClock.get_render_tick]) reaches its [code]tick[/code]: that way the flash,

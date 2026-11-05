@@ -11,7 +11,7 @@ found; the summary is in the [annex](#annex-corrections-to-the-proposals).
 It builds on the phase 1 code:
 
 - `PlayerInput`: 12 B quantized.
-- `PlayerState`: 35 B (69 B with the phase 3 combat state, [combate.md 3.1](combate.md#31-combatstate-en-playerstate-entra-en-encode), and 111 B with the abilities of protocol 6, [abilities.md 3.1](abilities.md#31-combatstate-v5); the figures in this document are those of protocol 6 where marked "v6" and, otherwise, those of phase 3).
+- `PlayerState`: 35 B (69 B with the phase 3 combat state, [combat.md 3.1](combat.md#31-combatstate-en-playerstate-entra-en-encode), and 111 B with the abilities of protocol 6, [abilities.md 3.1](abilities.md#31-combatstate-v5); the figures in this document are those of protocol 6 where marked "v6" and, otherwise, those of phase 3).
 - `PlayerCharacter.simulate()`: deterministic, one physics tick per call.
 - `LocalPlayerController`.
 
@@ -786,7 +786,7 @@ removal without waiting for the timeout.
   `apply_status`, 15 `down` and 16 `refill` and, since version 7 ([progression.md](progression.md) §10), the
   progression GM ones, always on the player themself: 40 `item_give`, 41 `currency_add`, 42 `level_set` and 43
   `xp_add`. The data for 2 to 6 is defined by the server
-  ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); `decode` only requires at most 64 B of
+  ([combat.md 6](combat.md#6-protocolo-tec-13-protocol_version--2)); `decode` only requires at most 64 B of
   data. Those for 7 to 16 and 40 to 43 are validated by `decode`: 7, 8, 10, 15 and 16, no data; 9, `u8` with the
   realm (0 to 3); 11, `u8` with the factor (1 to 255); 12 and 13, `u8` (0 turns off, 1 turns on); 14, `u8
   status_id` (1 to 255) and `u16` ticks (0 = the duration from the data); v7: 40, `u16` item net id (from 1; whether
@@ -809,7 +809,7 @@ removal without waiting for the timeout.
 respawn at point `point_index` of the list of points of their realm (since phase 4, the static list
 of all the points in the zone, `NetZones.get_all_respawn_points`; the server checks
 that it is valid for their realm, [fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions))
-([combate.md 5](combate.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
+([combat.md 5](combat.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
 Out of time or with an invalid index, the server counts a warning. It is sent by the button on the death
 screen, by `SwarmBot` and, since the phase 4 revision, by `--bot` (point 0, as soon as the server's estimated tick
 reaches the `respawn_tick` of the extra block, and every second while still dead); the server's fake players
@@ -845,7 +845,7 @@ player (the SPAWN already goes out with their weapons) and on every respawn, wit
 | … | | sections | each one: `u8 kind`, `u8 count` and `count` records of the fixed size of that `kind` |
 
 **Own extra block** (9 B). Carries what the server decides and does not go into `PlayerState`
-because it does not change the simulation ([combate.md 1](combate.md#1-qué-se-predice-y-qué-decide-el-servidor)):
+because it does not change the simulation ([combat.md 1](combat.md#1-qué-se-predice-y-qué-decide-el-servidor)):
 
 | Offset | Type | Field | Notes |
 |---|---|---|---|
@@ -942,7 +942,7 @@ position, velocity, turn and ground, and of the combat only the action in progre
 and the weapon; the rest of the `CombatState` (exact stamina, exhaustion, parry cooldown, buffer,
 combo step, controls, push), the buttons of the last tick and the jump counters revert to their
 initial values. The opposite would dump to anyone entering the zone the private state of each
-enemy (combate.md 6). Since v6 the weapon in the other slot (`alt_weapon_id`) and the active
+enemy (combat.md 6). Since v6 the weapon in the other slot (`alt_weapon_id`) and the active
 slot (bit 0 of `combat_flags2`) are also public: weapons are visible. Cooldowns, charges, the cooldown of
 consumables, the movement-effect slots and the pressed-button bits revert to their initial
 values ([abilities.md 5.2](abilities.md#52-state-snapshot-and-record)).
@@ -957,7 +957,7 @@ values ([abilities.md 5.2](abilities.md#52-state-snapshot-and-record)).
 | 7 | u8 | reason | 0 out of interest, 1 disconnection, 2 death, 3 handoff; v6, for projectiles: 4 impact (at `despawn_tick`, on the segment `[pos(n), pos(n + 1)]` with `n = despawn_tick − spawn_tick`) and 5 expired or withdrawn |
 
 **ENTITY_EVENT** (`0x23`, channel 3). Combat facts that do not fit in a stream record
-([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)). Reliable and ordered with the
+([combat.md 6](combat.md#6-protocolo-tec-13-protocol_version--2)). Reliable and ordered with the
 other messages of channel 3.
 
 | Offset | Type | Field | Notes |
@@ -1015,7 +1015,7 @@ other messages of channel 3.
   or an INTERACT carries an `op` out of range, or an applied STATUS carries 0 stacks (v6), or a LEVEL_UP carries
   a level outside 1 to 40 (v7).
   `encode` trims a KILL to 16 assistants.
-- **Recipients and timing:** see [combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2).
+- **Recipients and timing:** see [combat.md 6](combat.md#6-protocolo-tec-13-protocol_version--2).
 
 **NOTICE** (`0x30`, channel 3): `u8 type`, `u8 code`, `u8 len` and the UTF-8 text (≤ 200 B).
 
@@ -1435,7 +1435,7 @@ func get_ack_tick() -> int:                                  # max(contiguous re
   - What an action held through a long disconnection does (a charged attack, for
     example) is decided by phase 3, without breaking this rule.
   - **Substituted inputs in phase 3.** Resolved by
-    [combate.md 3.2](combate.md#32-entradas-sustituidas-cierra-la-nota-de-redmd-82): the substitute
+    [combat.md 3.2](combat.md#32-entradas-sustituidas-cierra-la-nota-de-redmd-82): the substitute
     carries the `PlayerInput.SUBSTITUTED` bit (bit 15, outside `VALID_BUTTONS`) and, with it, the
     action machine does not count the press, does not fire the heavy attack on reaching maximum
     charge and does not open parry windows. No loss invents a blow or a parry.
@@ -1796,7 +1796,7 @@ The downstream in this table is that of protocol 6 ([abilities.md 5.6](abilities
 section header; with v5 they were 94 (92 and 2). Below the cap, the 111 B state adds +42 B × 30/s = +1.26 KB/s
 per client; at the cap the packet was already full and what is lost is 2 records per snapshot (50 instead of
 52). Added to the downstream are the ENTITY_EVENT messages, about 27 B per recipient and hit
-([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)), and the projectile SPAWN and DESPAWN
+([combat.md 6](combat.md#6-protocolo-tec-13-protocol_version--2)), and the projectile SPAWN and DESPAWN
 messages (v6). The measurements below are from phase 2 (20 B record and 35 B state), from phases 3 and 4 (69 B state)
 and, the last one, from v6 with the phase 4 kit (H5, [abilities.md 7.3](abilities.md#73-tests-each--30-s)): with
 the 111 B state, each client downloads 36.1 KB/s with 64 combatants (35.3 with v5).
@@ -1900,7 +1900,7 @@ but here there are always 10.
   (69%) and `combat` plus `combat_events` 0.9 (10%). `simulate()` costs 69–72 µs per
   character, against the 42–50 µs of phase 2, and the whole `sim` section 97–104 µs per player, against
   57–66 µs: the action machine and the fake players' combat brain add about 25–40 µs per
-  character (the "`simulate()` cost" risk in combate.md §10; figures from another session and another
+  character (the "`simulate()` cost" risk in combat.md §10; figures from another session and another
   machine, so not comparable in detail). All the combat work grows linearly with
   the combatants: about 0.14 hits per second per combatant in the three brawls (260, 551 and 1044
   hits in 60 s), with 18, 50 and 96 deaths.
@@ -2319,7 +2319,7 @@ all copies of the project.
   that do not coincide with a rise in `substitutions`, a teleport or, since phase 3, an own
   combat event: what the server imposes on the player —stagger, stun, push,
   stamina spent on blocking, death, respawn— and the client does not predict; see
-  [combate.md 11](combate.md#11-cambios-durante-la-implementación)).
+  [combat.md 11](combat.md#11-cambios-durante-la-implementación)).
 - **Second pass with `--net-sim`** on the bots: exact final convergence (idle for the last
   60 ticks) and no hard resync.
 - **Interference detection.** It also detects whether the server's foreign bodies or the

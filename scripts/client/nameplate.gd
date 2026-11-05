@@ -4,11 +4,11 @@ extends Control
 ## the health bar. It is a drawing with no logic: [Nameplates] places it on screen and tells it what
 ## to show with [method configure]. It is reused (pool): releasing it hides it.
 ## [br][br]
-## Phase 4 (UI-45, docs/habilidades.md, section 6.4): above the name, up to 4 icons of their effects
+## Phase 4 (UI-45, docs/abilities.md, section 6.4): above the name, up to 4 icons of their effects
 ## (harmful ones first, [method set_statuses]); when knocked down ([method set_downed]), the bar is their
 ## knocked-down health, in orange, with a knocked-down icon on its left.
 ## [br][br]
-## Phase 5 (docs/progresion.md §7.3): in front of the name, the player's level ([method set_level]) in gray, only if
+## Phase 5 (docs/progression.md §7.3): in front of the name, the player's level ([method set_level]) in gray, only if
 ## known (an enemy's does not cross the network and arrives as 0).
 
 ## Size of the plate (px) and of the bar.

@@ -12,7 +12,7 @@ runes, inlaid gold or blackened steel with an emissive crack), because from the 
 only the blade is readable.
 
 Heroic proportions: the blade is about 10.8 cm wide and 3 cm thick, not the 8.9 x 1.4 of a real
-sword, and the tip stays at 0.94 m from the grip (decision 8 of docs/calidad.md: the strike's reach
+sword, and the tip stays at 0.94 m from the grip (decision 8 of docs/quality.md: the strike's reach
 does not depend on the mesh). The bevel faces that `slab` creates are mapped to the polished-edge
 strip of the metal atlas; `check_triangulation` warns if a bevel larger than the piece breaks a
 polygon.
@@ -65,7 +65,7 @@ POMMEL_Z = -0.078
 
 # Blade: (z, half width, half thickness). Heroic proportions: about 10.8 cm wide and 3 cm thick
 # at mid-blade (a real sword would be 8.9 and 1.4), a soft widening up to 65 % and an ogival tip.
-# The tip stays at TIP_Z = 0.94 (decision 8 of docs/calidad.md: the strike's reach does not change).
+# The tip stays at TIP_Z = 0.94 (decision 8 of docs/quality.md: the strike's reach does not change).
 BLADE_STATIONS = [
 	(0.075, 0.0420, 0.0150), (0.145, 0.0420, 0.0150), (0.195, 0.0428, 0.0138),
 	(0.215, 0.0434, 0.0134), (0.235, 0.0439, 0.0132), (0.255, 0.0445, 0.0130), (0.330, 0.0468, 0.0124), (0.420, 0.0498, 0.0117),

@@ -110,7 +110,7 @@ The world is split into independent zones (see [world.md](world.md)). The zone r
 
 | Zone | Scene | What it is |
 |---|---|---|
-| `vado_gris` (default) | `scenes/world/zones/vado_gris/vado_gris.tscn` | The phase-4 frontier: a capturable fort between Vardheim (north) and Solmarch (south). See [zonas/vado_gris.md](zonas/vado_gris.md) (Spanish for now). Admits Vardheim and Solmarch; 40 players by default |
+| `vado_gris` (default) | `scenes/world/zones/vado_gris/vado_gris.tscn` | The phase-4 frontier: a capturable fort between Vardheim (north) and Solmarch (south). See [zonas/vado_gris.md](zones/vado_gris.md) (Spanish for now). Admits Vardheim and Solmarch; 40 players by default |
 | `test_world` | `scenes/world/test_world.tscn` | Movement and camera test circuit of phase 1; admits all three realms |
 
 The player spawns at the first spawn point of the chosen realm (markers in the `spawn_points` group carry a `realm` metadata value); if the zone has no point for that realm, at the first point of the zone. Zones have a PvP mode: in a `SAFE` zone enemy realms cannot damage each other, in an `RVR` zone they can (both registered zones are `RVR`), and realm camps are safe areas for their own realm only.
@@ -265,7 +265,7 @@ For fort sieges, `tools/war/siege_battle.gd` and `siege_runner.gd` run siege bot
 
 ## Combat balance pass
 
-`tools/combat_balance.gd` builds a network-less server on `test_world`, advances it tick by tick by hand and measures with it the DPS against the dummy, the time to kill (TTK) of a perfect attacker, duels between combat bots and 2v2 and 5v5 fights, in about 20 s and with the same result on any machine (it uses no clock or network). The figures and decisions are in `docs/combate.md` section 12 (Spanish for now).
+`tools/combat_balance.gd` builds a network-less server on `test_world`, advances it tick by tick by hand and measures with it the DPS against the dummy, the time to kill (TTK) of a perfect attacker, duels between combat bots and 2v2 and 5v5 fights, in about 20 s and with the same result on any machine (it uses no clock or network). The figures and decisions are in `docs/combat.md` section 12 (Spanish for now).
 
 ```bash
 godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30 --out=build/combat_balance.json
@@ -378,7 +378,7 @@ The workflow and job names (`Pruebas`, `Suite completa`, `Plataforma`) are still
 
 ## Quality capture bench
 
-The visual quality plan (`docs/calidad.md`, Spanish for now) is verified with captures, not by eye: the bench in `tools/quality/` regenerates, with one command per area, the captures and strips that prove each criterion, at the same resolution and with the same framing, so a before and an after can be shown. It needs a **window and GPU** (it does not work with `--headless`), Python 3 with Pillow (`pip install pillow`) and the Godot console executable (it looks for it in `GODOT`, in the winget install and in the `PATH`; or pass `--godot <path>`). If `override.cfg` exists at the root (ignored by Git), windows open on the second monitor. It uses no accounts or passwords: the server runs with `--debug-commands` and the capture client joins with a throwaway character.
+The visual quality plan (`docs/quality.md`, Spanish for now) is verified with captures, not by eye: the bench in `tools/quality/` regenerates, with one command per area, the captures and strips that prove each criterion, at the same resolution and with the same framing, so a before and an after can be shown. It needs a **window and GPU** (it does not work with `--headless`), Python 3 with Pillow (`pip install pillow`) and the Godot console executable (it looks for it in `GODOT`, in the winget install and in the `PATH`; or pass `--godot <path>`). If `override.cfg` exists at the root (ignored by Git), windows open on the second monitor. It uses no accounts or passwords: the server runs with `--debug-commands` and the capture client joins with a throwaway character.
 
 ```bash
 # One command per area (all write to build/calidad, or the --out folder, and regenerate their indice.md)

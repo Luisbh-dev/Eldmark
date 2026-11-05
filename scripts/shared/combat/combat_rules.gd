@@ -1,6 +1,6 @@
 class_name CombatRules
 extends Resource
-## General combat rules (docs/combate.md, section 2), in
+## General combat rules (docs/combat.md, section 2), in
 ## [code]data/combat/combat_rules.tres[/code].
 ## [br][br]
 ## The "predicted" fields go into [method CombatCatalog.prediction_hash] because they change what

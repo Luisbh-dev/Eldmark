@@ -2126,7 +2126,7 @@ class ObjectState:
 		return object_state
 
 
-## ENTITY_EVENT (S→C, channel 3): 9 B + data depending on the event (docs/combate.md, section 6).
+## ENTITY_EVENT (S→C, channel 3): 9 B + data depending on the event (docs/combat.md, section 6).
 ## [br][br]
 ## [code]u8 type, u16 net_id, u32 tick, u8 event, u8 len[/code] and [code]len[/code] bytes of
 ## data. [member net_id] is the entity the event is attached to: the victim in HIT, DEATH and
@@ -2671,7 +2671,7 @@ class EntityEvent:
 
 
 ## RESPAWN_REQUEST (C→S, channel 3): 2 B. The dead player asks to respawn at point
-## [member point_index] of their realm's list of points (docs/combate.md, section 5). Out of
+## [member point_index] of their realm's list of points (docs/combat.md, section 5). Out of
 ## time or with an invalid index the server counts a warning.
 class RespawnRequest:
 	const SIZE: int = 2

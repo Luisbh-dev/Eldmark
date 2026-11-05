@@ -1,6 +1,6 @@
 class_name WorldMap
 extends Control
-## Full-screen zone map (UI-20, UI-21, docs/fuerte.md section 6). It opens with M
+## Full-screen zone map (UI-20, UI-21, docs/fortress.md section 6). It opens with M
 ## ([code]open_map[/code]) and closes with M or Esc: it shows the baked top-down image with the fort (in
 ## its owner's color and its capture state), its gate and its circle, the camps, the passes,
 ## your position and the direction you are facing, your party members in view and, on the right, a legend and the

@@ -136,7 +136,7 @@ func test_the_new_buffered_layout() -> void:
 
 
 func test_the_machine_buffer_keeps_working_with_the_new_layout() -> void:
-	# A dodge pressed in the air waits in the buffer for input_buffer_ticks ticks (combate.md 3.3)
+	# A dodge pressed in the air waits in the buffer for input_buffer_ticks ticks (combat.md 3.3)
 	# with the new format.
 	var c: CombatState = CombatState.initial(CombatCatalog.rules(), CombatCatalog.default_weapon_id())
 	var input := PlayerInput.new()

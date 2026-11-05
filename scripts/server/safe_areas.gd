@@ -1,6 +1,6 @@
 class_name SafeAreas
 extends RefCounted
-## Safe zones of a zone (docs/combate.md, section 5; GUE-03): the camps of Vado Gris.
+## Safe zones of a zone (docs/combat.md, section 5; GUE-03): the camps of Vado Gris.
 ## [br][br]
 ## Each is a [Marker3D] in the [constant Zones.SAFE_AREA_GROUP] group with the [code]realm[/code] metadata (whom it
 ## protects) and [code]radius[/code] (24 m by default). It only protects its realm: a player of that realm inside it

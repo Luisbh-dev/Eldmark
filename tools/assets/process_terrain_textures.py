@@ -7,7 +7,7 @@ alpha, as Terrain3D requires) and <id>_nrm_rough.png (OpenGL normal, with the ro
 normal at 512 so that the server package, which carries every resource in the repo, stays under the 35 MB
 of tests/test_export_config.gd).
 
-Style (docs/arte.md): stylized and muted, so it is desaturated, the contrast is compressed a little
+Style (docs/art.md): stylized and muted, so it is desaturated, the contrast is compressed a little
 and part of the ambient occlusion is baked into the color. Usage: python tools/assets/process_terrain_textures.py
 """
 import os

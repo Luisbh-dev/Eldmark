@@ -139,7 +139,7 @@ Other things that live in `scripts/shared/`: the protocol (`net/`), the combat r
 
 ## Combat
 
-Design docs: `docs/combate.md` (Spanish until translated) and [abilities.md](abilities.md).
+Design docs: `docs/combat.md` (Spanish until translated) and [abilities.md](abilities.md).
 
 - **Data first.** Weapons, attacks, abilities, status effects, projectiles, dodges, templates and NPC attacks are `.tres` resources in `data/combat/`. `CombatCatalog` loads them once, assigns stable ids, converts seconds to ticks and bakes the dodge and lunge curves into `AttackTicks`, `AbilityTicks`, `ProjectileTicks` and friends.
 - **One state machine, two places.** `ActionMachine` in `shared/combat/` advances a `CombatState` (action, phase, stamina, cooldowns, equipped weapon) inside `simulate()`. The client predicts the cosmetic result; the server decides whether the action happens and what it hits. Light attacks chain into a combo, a held press charges a heavy attack, block has a 120-degree arc and a short parry window, dodge grants invulnerability frames, and stamina gates the expensive actions.
@@ -201,7 +201,7 @@ CI runs the suite in four shards plus a Windows job, the Go checks and the end-t
 | See how prediction stays in sync | `scripts/client/client_prediction.gd`, `tick_sync.gd`, `correction_smoother.gd`, and `tests/prediction_pair.gd` |
 | Follow a hit from click to damage number | `scripts/shared/combat/action_machine.gd`, `scripts/server/combat_resolver.gd`, `combat_director.gd`, `scripts/client/combat_feedback.gd` |
 | Add a weapon or ability | the `.tres` files in `data/combat/`, `CombatCatalog`, then [abilities.md](abilities.md) |
-| Add a zone | `scripts/shared/zones.gd`, the Vado Gris scene and `docs/zonas/vado_gris.md` (Spanish for now) |
+| Add a zone | `scripts/shared/zones.gd`, the Vado Gris scene and `docs/zones/vado_gris.md` (Spanish for now) |
 | Add an NPC | `data/npcs/`, `scripts/shared/ai/npc_definition.gd`, `scripts/server/ai/` |
 | Work on accounts and saves | [platform.md](platform.md), `platform/internal/`, `scripts/server/platform/` |
 | Know what is planned | [vision.md](vision.md) and `docs/backlog.md` (the master task list, Spanish for now) |

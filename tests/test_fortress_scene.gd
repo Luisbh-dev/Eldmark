@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the Vado Gris fort markers (docs/fuerte.md, section 8, package F0): the
+## Tests of the Vado Gris fort markers (docs/fortress.md, section 8, package F0): the
 ## fortress node with its definition, the respawn points of the camps and of the
 ## fort's interior (in scene order), the NPC spawners (Hollows, Ford Captain and
 ## Gate Guardians) and the patrol routes. It loads the whole zone, like the server.

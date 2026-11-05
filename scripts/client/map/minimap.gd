@@ -1,6 +1,6 @@
 class_name Minimap
 extends Control
-## Circular minimap (UI-20, docs/fuerte.md section 6): a piece of the zone's baked top-down image
+## Circular minimap (UI-20, docs/fortress.md section 6): a piece of the zone's baked top-down image
 ## ([ZoneMapDefinition]) centered on the player, with north (-Z) up, and icons on top: the player's
 ## arrow with the camera cone, the fort in its owner's color, its gate, the capture
 ## circle while active, camps, passes and realm companions in sight. What

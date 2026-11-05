@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the [DamageLedger] (docs/combate.md, section 5; GUE-05): the 900-tick window, the
+## Tests for the [DamageLedger] (docs/combat.md, section 5; GUE-05): the 900-tick window, the
 ## assist split (at least 10 % of the window's damage), the credit for the last kill and
 ## what does not count (the environment, self-harm and empty amounts).
 

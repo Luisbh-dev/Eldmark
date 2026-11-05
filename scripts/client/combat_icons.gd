@@ -1,6 +1,6 @@
 class_name CombatIcons
 extends RefCounted
-## Combat icons (docs/habilidades.md, sections 6.3 and 6.4; ART-12). The drawn ones in
+## Combat icons (docs/abilities.md, sections 6.3 and 6.4; ART-12). The drawn ones in
 ## `assets/ui/icons/` ([GameIcon]: figure on the background of its category) are looked up by the [b]name[/b] of the
 ## resource (the catalog ids are not fixed): [method named] for actions, abilities, potions and weapons,
 ## and [method status_icon] for effects (the small variants already come with their background). What has no drawing

@@ -1,7 +1,7 @@
 extends SceneTree
 ## Generates the realm materials (assets/materials/realms/<realm>/*.tres) and the water one from
 ## a table: the same kit texture, recolored with realm_surface.gdshader toward the palette
-## of docs/mundo.md ("Palette per material").
+## of docs/world.md ("Palette per material").
 ##
 ## Usage: [code]godot --headless --path . -s res://tools/materials/build_realm_materials.gd[/code]
 ## It is deterministic; running it again overwrites the .tres files with the values of the table. To tweak a

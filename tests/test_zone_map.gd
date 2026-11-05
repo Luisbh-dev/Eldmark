@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the zone's baked map (UI-20, docs/fuerte.md section 6): the image and its scale exist and
+## Tests of the zone's baked map (UI-20, docs/fortress.md section 6): the image and its scale exist and
 ## are consistent ([ZoneMapDefinition]), the fixed places are those of the scene, the bake is the one that
 ## comes out of today's scene (if the relief, the water or the collisions change, you must repeat
 ## [code]tools/map/bake_parchment_map.gd[/code], UI-51) and the [ZoneMapBaker] pieces do what they say.

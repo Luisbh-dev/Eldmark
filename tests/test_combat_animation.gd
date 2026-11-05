@@ -803,7 +803,7 @@ class RemoteWorldClock extends InterpolationClock:
 		return render
 
 
-# --- Phase 4: abilities, bow, knockdown (provisional, docs/habilidades.md, section 6.6) ----------
+# --- Phase 4: abilities, bow, knockdown (provisional, docs/abilities.md, section 6.6) ----------
 
 const BOW_CLIPS_PATH: String = "res://data/animation/bow_clips.tres"
 

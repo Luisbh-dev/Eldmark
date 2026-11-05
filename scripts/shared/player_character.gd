@@ -104,7 +104,7 @@ var last_input_tick: int = 0
 var coyote_ticks: int = 0
 ## Ticks remaining for a jump press stored in the buffer (0 = none pending).
 var jump_buffer_ticks: int = 0
-## Combat state (docs/combate.md, section 3): current action, stamina, crowd controls...
+## Combat state (docs/combat.md, section 3): current action, stamina, crowd controls...
 ## It is part of [method get_state] and [method set_state], and [method simulate] advances it with
 ## [method ActionMachine.step] at the start of each tick.
 var combat: CombatState = CombatState.initial(

@@ -1,6 +1,6 @@
 class_name ActionBar
 extends Control
-## Action bar (UI-11, docs/habilidades.md, section 6.3): bottom center, above health and
+## Action bar (UI-11, docs/abilities.md, section 6.3): bottom center, above health and
 ## stamina. Slots ([UIIconSlot]) for the light and heavy attack (with the bow, the quick shot and the
 ## draw), the block (hidden if the weapon cannot block), the dodge, abilities 1-3 of the active weapon,
 ## the two potions with their charges and the weapon swap with the icon of the weapon in the other slot.

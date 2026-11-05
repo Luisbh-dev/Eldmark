@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the fort capture interface (UI-18, docs/fuerte.md section 6) with fake states:
+## Tests of the fort capture interface (UI-18, docs/fortress.md section 6) with fake states:
 ## the capture panel ([CapturePanel]: owner, phase, progress, "disputado" (contested), those present, gate and when
 ## it is visible), the war banners ([WarBanners]), the boss bar ([BossBar], [BossInfo]) and the ground
 ## marks of NPC attacks ([TelegraphMarks]). No server: a fake client provides the

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the status icons (UI-45, docs/habilidades.md, sections 6.4 and 7.3, H4): the
+## Tests of the status icons (UI-45, docs/abilities.md, sections 6.4 and 7.3, H4): the
 ## [StatusTracker] of each entity follows the already-timed STATUS of [NetClient] (removed by STATUS 2,
 ## DEATH, DOWNED, RESPAWN and ENTITY_DESPAWN); the [HUD]'s own row shows duration and stacks
 ## against the estimated server tick and a remote's plate up to 4 icons, harmful ones first,

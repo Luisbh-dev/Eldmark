@@ -1,5 +1,5 @@
 extends TestCase
-## Animation quality wave 2 (docs/calidad.md, section 4):
+## Animation quality wave 2 (docs/quality.md, section 4):
 ## [br]- ART-07: no attack, ability or block segment plays outside 0.7x to 1.5x of its speed
 ## (the dodge allows 2x; NPCs lengthen the anticipation on purpose: [code]test_npc_animation.gd[/code]). The fort's
 ## charge breathes and links with its anticipation.

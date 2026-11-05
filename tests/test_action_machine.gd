@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the action machine ([ActionMachine], docs/combate.md section 3).
+## Tests of the action machine ([ActionMachine], docs/combat.md section 3).
 ## [br][br]
 ## The first half uses a physics-free [Driver]: it advances the machine tick by tick with scripted
 ## buttons and checks the exact tick of each phase, the combo, the charge, the buffer, the

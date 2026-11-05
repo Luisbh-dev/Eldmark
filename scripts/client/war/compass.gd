@@ -1,6 +1,6 @@
 class_name Compass
 extends Control
-## Compass at the top of the screen (UI-19, docs/fuerte.md section 6): a tape with the
+## Compass at the top of the screen (UI-19, docs/fortress.md section 6): a tape with the
 ## headings (N, NE, E, SE, S, SO, O, NO and the degrees every 15°) that slides according to where the
 ## camera is facing, with the [WorldMarker] entries (the fort, the camps, the passes) at the heading they are at.
 ## [br][br]

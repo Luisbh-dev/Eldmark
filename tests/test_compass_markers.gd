@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the compass and the world markers (UI-19, docs/fuerte.md section 6): [Compass]
+## Tests of the compass and the world markers (UI-19, docs/fortress.md section 6): [Compass]
 ## (headings, north = -Z, matching the camera yaw), [WorldMarkers] (projection onto the screen,
 ## edge, fade up close) and [MarkerSource] (where the markers come from and with what color). The
 ## places are those of Vado Gris: the fort in the center and a camp on each side, 138 m away.

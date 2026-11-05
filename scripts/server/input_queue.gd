@@ -15,7 +15,7 @@ extends RefCounted
 ## client that left silently stands still) and the buttons are kept.
 ## [br][br]
 ## [b]The substitute carries [constant PlayerInput.SUBSTITUTED].[/b] The combat action machine
-## (docs/combate.md, section 3.2) respects it: a repeated input does not count as a held press,
+## (docs/combat.md, section 3.2) respects it: a repeated input does not count as a held press,
 ## does not turn a light attack into a charge, does not launch the heavy attack on reaching maximum charge and does not open
 ## parry windows, so no packet loss invents a heavy attack or a parry.
 
@@ -219,7 +219,7 @@ func get_view_offset_q(tick: int) -> int:
 	return -1
 
 
-## Rewind parameters of a hit whose input is from tick [param tick] (docs/combate.md,
+## Rewind parameters of a hit whose input is from tick [param tick] (docs/combat.md,
 ## section 4.3): a [Vector2i] with [code]x = view_offset_q[/code] and [code]y = lead[/code] (the
 ## lead with which that input arrived). If the tick's input was real they are its own; if it was
 ## substituted (or is no longer in the ring), those of the last real input consumed; and
@@ -235,7 +235,7 @@ func get_rewind_params(tick: int) -> Vector2i:
 ## The client's [i]usual[/i] lead: the median of the first-copy leads of the real inputs
 ## (received or already consumed) of the [constant LEAD_WINDOW_TICKS] ticks up to [param tick], this one
 ## included; that of the last real input if there is none. Substituted ones do not count (they have no
-## lead). The rewind (docs/combate.md, 4.3) uses it to bound the lead of a hit's input,
+## lead). The rewind (docs/combat.md, 4.3) uses it to bound the lead of a hit's input,
 ## which the client chooses: sending only its hit's inputs ahead of time does not move the median.
 func get_typical_lead(tick: int) -> int:
 	var leads := PackedInt32Array()

@@ -1,6 +1,6 @@
 class_name ZoneMapBaker
 extends RefCounted
-## Bakes the top-down image of a zone without a GPU (docs/fuerte.md, section 6; UI-20). Used by
+## Bakes the top-down image of a zone without a GPU (docs/fortress.md, section 6; UI-20). Used by
 ## [code]tools/bake_zone_map.gd[/code]; the tests use it with small data and with the whole zone.
 ## [br][br]
 ## Everything is computed on the CPU from the scene data (nothing is rendered, so it works in

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of the [NpcSpawnerSystem] (MUN-09 to MUN-12, GUE-11; docs/fuerte.md 4.3): the zone's spawners create the
+## Tests of the [NpcSpawnerSystem] (MUN-09 to MUN-12, GUE-11; docs/fortress.md 4.3): the zone's spawners create the
 ## Hollow, the Ford Captain, the owner's garrison and the Gate Guardians; NPCs respawn on the exact
 ## tick, are withdrawn when the spawner is deactivated, the fortress controller learns of its captain and its
 ## defenders, and the Hollow return at full health if nobody approaches within two minutes. Some tests use the real Vado Gris

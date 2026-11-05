@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the [CombatResolver] (docs/combate.md, section 4.3) with hand-built scenarios in a
+## Tests for the [CombatResolver] (docs/combat.md, section 4.3) with hand-built scenarios in a
 ## [SubViewport]: fighters with their character, their input queue and their [Combatant], a
 ## hand-recorded [StateHistory] and the server without a network.
 ## [br][br]

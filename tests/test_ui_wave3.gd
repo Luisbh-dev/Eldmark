@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of interface quality wave 3 (docs/calidad.md; UI-02, ART-12, UI-55, UI-56, UI-18, UI-08,
+## Tests of interface quality wave 3 (docs/quality.md; UI-02, ART-12, UI-55, UI-56, UI-18, UI-08,
 ## UI-41 and UI-50): own fonts throughout the client, drawn icons in the action bar and the statuses,
 ## mouse glyph inside the slot, nameplate stacking, faction mark, boss bar only while fighting, queued notices over
 ## a band, kill feed with icon and telegraph in amber.
@@ -37,9 +37,9 @@ func test_the_three_font_families_are_in_the_repo_with_their_licences() -> void:
 		assert_true(load(path) is FontFile, "%s loads as a font" % path)
 	for licence: String in ["OFL-NotoSans.txt", "OFL-Cinzel.txt", "OFL-IMFellEnglishSC.txt"]:
 		assert_true(FileAccess.file_exists("res://assets/fonts/" + licence), "the license %s" % licence)
-	var credits: String = FileAccess.get_file_as_string("res://assets/LICENCIAS.md")
+	var credits: String = FileAccess.get_file_as_string("res://assets/LICENSES.md")
 	for family: String in ["Noto Sans", "Cinzel", "IM Fell English SC"]:
-		assert_true(credits.contains(family), "%s anotada en LICENCIAS.md" % family)
+		assert_true(credits.contains(family), "%s anotada en LICENSES.md" % family)
 
 
 func test_the_theme_uses_noto_sans_for_text_and_cinzel_for_titles() -> void:

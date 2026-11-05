@@ -1,6 +1,6 @@
 class_name CapturePanel
 extends PanelContainer
-## Fort capture panel (UI-18, docs/fuerte.md section 6): owner with their color and emblem, phase,
+## Fort capture panel (UI-18, docs/fortress.md section 6): owner with their color and emblem, phase,
 ## progress bar in the capturer's color, "contested", players present from each faction in the
 ## circle, gate health and whether the fort is under attack.
 ## [br][br]

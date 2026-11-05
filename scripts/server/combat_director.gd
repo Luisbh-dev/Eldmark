@@ -1,6 +1,6 @@
 class_name CombatDirector
 extends RefCounted
-## A zone's combat on the server (docs/combate.md, sections 4.2 and 5): it keeps one
+## A zone's combat on the server (docs/combat.md, sections 4.2 and 5): it keeps one
 ## [Combatant] per entity with a body and, once per tick, freezes, resolves, applies and publishes.
 ## [br][br]
 ## [method process_tick] is the tick's "combat" step (networking.md 8.1, after simulating all

@@ -21,7 +21,7 @@ extends CanvasLayer
 ## [b]Respawn and map (UI-21).[/b] The death screen list is the options valid right now
 ## ([method RespawnPointList.valid_options]: your camp and a calm fort of yours), it is updated while
 ## open (the fort may change hands) and each option sends the index of its marker among all
-## those in the zone (docs/fuerte.md, section 5). "Elegir en el mapa" (choose on the map) (or M with the screen open) opens the
+## those in the zone (docs/fortress.md, section 5). "Elegir en el mapa" (choose on the map) (or M with the screen open) opens the
 ## [WorldMap] in respawn mode on top of it: clicking a valid point leaves it chosen in the list.
 ## [br][br]
 ## [b]Scoreboard (UI-41).[/b] While Tab is held, the [ScoreboardPanel] (the last child, above everything)
@@ -44,14 +44,14 @@ extends CanvasLayer
 ## [b]Social menu (SOC-07).[/b] The [code]social_menu[/code] key opens the [SocialMenu] on the ally the
 ## reticle points at, within 20 m and in sight ([method open_social_menu]): invite to the party and whisper.
 ## [br][br]
-## [b]Abilities (phase 4, docs/habilidades.md, section 6).[/b] Above health, the row of own effects
+## [b]Abilities (phase 4, docs/abilities.md, section 6).[/b] Above health, the row of own effects
 ## ([StatusIcons] with the local player's [StatusTracker], against the estimated server tick) and, above that, the
 ## [ActionBar] (also in the sandbox: it reads the predicted state). At the top, the knocked-down notices
 ## ([DownedNotice]); on the death screen, the loadout selector, which sends the LOADOUT_SELECT. While drawing
 ## the bow, the camera narrows the field of view ([method CameraRig.set_aim_zoom]) and the reticle closes
 ## with the charge ([method Crosshair.set_tension]).
 ## [br][br]
-## [b]Inventory and character (phase 5, docs/progresion.md §11, UI-26).[/b] Online, I opens the [InventoryWindow] (on the
+## [b]Inventory and character (phase 5, docs/progression.md §11, UI-26).[/b] Online, I opens the [InventoryWindow] (on the
 ## right) and C the [CharacterWindow] (on the left), with the client's [ClientInventory] and [ClientProgress]; they
 ## open together, free the cursor and you drag from one to the other. The split ([SplitDialog]) and destroy
 ## ([UIConfirmDialog]) dialogs go on top of both. Notices of a rejected request appear in the chat.
@@ -699,7 +699,7 @@ func _update_ability_hud() -> void:
 
 
 # While drawing the bow: the camera narrows the field of view on reaching the minimum charge and the reticle
-# closes with the charge (docs/habilidades.md, section 6.5). On any other action, nothing.
+# closes with the charge (docs/abilities.md, section 6.5). On any other action, nothing.
 func _update_bow_aim() -> void:
 	var zoom: float = 0.0
 	var tension: float = 0.0
@@ -828,7 +828,7 @@ func _open_death_screen() -> void:
 	_death.set_point_indices(RespawnPointList.option_indices(options, own_id))
 	_death_signature = _options_signature(options, own_id)
 	# The selected template is the one requested last time (or the default one). With inventory it is not shown: the
-	# respawn takes the weapons from the equipment and LOADOUT_SELECT no longer changes anything (docs/progresion.md §2.5).
+	# respawn takes the weapons from the equipment and LOADOUT_SELECT no longer changes anything (docs/progression.md §2.5).
 	if _client.get_config() != null:
 		_death.get_template_selector().select(_client.get_config().get_loadout_template_id())
 	_death.get_template_selector().visible = not _client.get_inventory().has_inventory()

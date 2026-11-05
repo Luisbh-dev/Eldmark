@@ -88,7 +88,7 @@ The essentials:
   nothing taken from other games.
 - Keep original zips outside the repo (`../Eldmark-raw/<pack>/`). Only the glTF files and
   textures that are actually used go into the repo.
-- Record every pack you add in `assets/LICENCIAS.md` (author, version, date, URL, license)
+- Record every pack you add in `assets/LICENSES.md` (author, version, date, URL, license)
   and, for third-party material, in [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
 - Large binaries (models, textures, audio, GDExtension libraries) go through Git LFS; see
   `.gitattributes`.

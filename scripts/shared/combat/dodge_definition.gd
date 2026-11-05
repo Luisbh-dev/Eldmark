@@ -1,6 +1,6 @@
 class_name DodgeDefinition
 extends Resource
-## A weapon's dodge (docs/combate.md, section 2). Times in seconds; the catalog converts them
+## A weapon's dodge (docs/combat.md, section 2). Times in seconds; the catalog converts them
 ## to ticks and bakes [member speed_curve] into a per-tick speed table.
 
 ## Total duration (s).
