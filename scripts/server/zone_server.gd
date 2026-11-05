@@ -1368,12 +1368,20 @@ func write_report(path: String) -> Error:
 		var made: Error = DirAccess.make_dir_recursive_absolute(directory)
 		if made != OK:
 			return made
-	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	# Written to a temporary file and renamed into place, so a server killed mid-write (SIGKILL,
+	# docker stop) never leaves an empty or truncated report: readers see the old one or the new one.
+	var temp_path: String = path + ".tmp"
+	var file: FileAccess = FileAccess.open(temp_path, FileAccess.WRITE)
 	if file == null:
 		return FileAccess.get_open_error()
 	file.store_string(JSON.stringify(_build_report(), "\t"))
 	file.close()
-	return OK
+	var renamed: Error = DirAccess.rename_absolute(temp_path, path)
+	if renamed != OK and FileAccess.file_exists(path):
+		# Some platforms refuse to rename onto an existing file: replace it explicitly.
+		DirAccess.remove_absolute(path)
+		renamed = DirAccess.rename_absolute(temp_path, path)
+	return renamed
 
 
 # --- Tick loop --------------------------------------------------------------------------------
