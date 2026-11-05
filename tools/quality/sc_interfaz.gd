@@ -6,6 +6,12 @@ extends RefCounted
 
 var d: Variant
 
+## File name slug of each settings tab, by tab id. The captures are named after the id (not after the title, which
+## depends on the language), and these are the names the archive already has for the Spanish titles.
+const TAB_SLUGS: Dictionary = {
+	&"graphics": "graficos", &"audio": "audio", &"camera": "camara", &"interface": "interfaz",
+}
+
 
 func run(drv: Variant) -> void:
 	d = drv
@@ -135,7 +141,8 @@ func _windows() -> void:
 			tabs.current_tab = i
 			await d.wait(0.5)
 			var title: String = tabs.get_tab_title(i)
-			await d.shot("interfaz/ajustes_f10_%d_%s.png" % [i + 1, title.to_lower().replace(" ", "_").replace("á", "a").replace("í", "i").replace("é", "e").replace("ó", "o")],
+			var slug: String = String(TAB_SLUGS.get(ClientSettings.TABS[i], ClientSettings.TABS[i]))
+			await d.shot("interfaz/ajustes_f10_%d_%s.png" % [i + 1, slug],
 					"ajustes (F10), pestaña «%s»" % title, "tecla F10 y cambio de pestaña")
 	await d.key(KEY_F10)
 	await d.wait(0.4)

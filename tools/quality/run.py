@@ -15,6 +15,9 @@ Main options:
   --port <port>         UDP port of the server that is launched (by default 24711, or ELDMARK_QUALITY_PORT)
   --resolution WxH      capture resolution (by default 1920x1080)
   --steps a,b           only some steps of the area (see `listar`)
+  --locale es|en|pseudo interface language of the capture clients (by default es, so the existing commands keep making the
+                        Spanish captures); pseudo is pseudolocalized English, for looking for cut texts. It goes to the
+                        clients only (the driver, the gallery and the chat preview), never to the server or the bots
   --only a,b            animacion: only the actions with those ids (see `listar`)
   --phases a,b          combate (npc step): only those phases: hueco, capitan, guardia, guardian
   --bots N              siege bots per realm in mapa, interfaz and brawls (by default 6; in mundo, 0)
@@ -58,6 +61,7 @@ STEPS = {
 DRIVER = "res://tools/quality/online_driver.gd"
 SCENARIO = "res://tools/quality/%s"
 DEFAULT_PORT = 24711
+LOCALES = ("es", "en", "pseudo")
 
 _STARTED = []
 _FAILED = []
@@ -118,6 +122,7 @@ class Ctx:
         self.port = args.port
         self.godot = find_godot(args.godot)
         self.res = args.resolution
+        self.locale = args.locale
         self.steps = [s for s in (args.steps or "").split(",") if s]
         for folder in (self.out, self.raw, self.logs, self.out / "indices"):
             folder.mkdir(parents=True, exist_ok=True)
@@ -127,6 +132,10 @@ class Ctx:
 
     def posix(self, path):
         return Path(path).as_posix()
+
+    def locale_arg(self):
+        """The user argument that sets the interface language of a client (docs/localization.md section 13)."""
+        return "--locale=%s" % self.locale
 
 
 def spawn(ctx, name, args, cwd=ROOT):
@@ -266,7 +275,7 @@ def driver(ctx, scenario, tag, realm="vardheim", name="Capturador", connect=True
     if name:
         args.append("--name=%s" % name)
     args += ["--scenario=" + SCENARIO % scenario, "--out=%s" % ctx.posix(ctx.out), "--tag=%s" % tag,
-             "--raw=%s" % ctx.posix(ctx.raw), *extra]
+             "--raw=%s" % ctx.posix(ctx.raw), ctx.locale_arg(), *extra]
     return run_godot(ctx, "cliente_" + tag, args, timeout=timeout, ok_text="[driver] terminado")
 
 
@@ -330,7 +339,7 @@ def area_interfaz(ctx):
         folder = ctx.out / "interfaz" / "chat_preview"
         folder.mkdir(parents=True, exist_ok=True)
         run_godot(ctx, "chat_preview", ["--path", ROOT, "--resolution", ctx.res, "res://scenes/tests/chat_preview.tscn",
-                                        "--", "--shots=%s" % ctx.posix(folder)], timeout=300)
+                                        "--", "--shots=%s" % ctx.posix(folder), ctx.locale_arg()], timeout=300)
     made = make_crops(str(ctx.out))
     if made:
         print("[banco] recortes de la interfaz: %d" % len(made))
@@ -481,6 +490,7 @@ def build_parser():
     parser.add_argument("--port", type=int, default=int(os.environ.get("ELDMARK_QUALITY_PORT", DEFAULT_PORT)))
     parser.add_argument("--resolution", default="1920x1080")
     parser.add_argument("--steps", default="")
+    parser.add_argument("--locale", choices=LOCALES, default="es")
     parser.add_argument("--only", default="")
     parser.add_argument("--phases", default="")
     parser.add_argument("--bots", type=int, default=None)
