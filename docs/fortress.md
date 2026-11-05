@@ -358,7 +358,7 @@ of the owner realm; each query (`NavigationPathQueryParameters3D`) filters with
 - **Map** (UI-20, UI-21): `tools/bake_zone_map.gd` (no GPU, checked): shading from
   `Terrain3D.get_height`, water from its mesh's vertices, outlines of the collisions and of
   `BakedMultiMesh.instance_transforms` (MultiMeshes return identity in headless), saved
-  as `assets/maps/vado_gris.png` (through LFS) with its scale in a `.tres`. Circular minimap and
+  as `assets/maps/vado_gris.png` with its scale in a `.tres`. Circular minimap and
   full-screen map with the respawn choice.
 - **Scoreboard** (UI-41, Tab): new message `0x32 SCOREBOARD` (S→C, channel 3, every 2 s to the whole
   zone): header `u8 type, u8 page_index, u8 page_count, u8 row_count` and, per player, `u16 net_id,
@@ -842,7 +842,7 @@ touches the NPCs) will find this:
   that fills up to the impact with the predicted clock, only for whoever can damage you; section 5), `Compass` and `WorldMarkers` (`MarkerSource`
   gathers fort, gate, circle, camps and passes), `Minimap` and `KillFeed`. The `HUD` also mounts, above the death screen,
   `HintToasts` (without dimming), `WorldMap` and `ScoreboardPanel`, in that order.
-- **Map** (`tools/bake_zone_map.gd` and `ZoneMapBaker`): `assets/maps/vado_gris.png` (1024 x 1024 px, 0.6 MB, through LFS) and
+- **Map** (`tools/bake_zone_map.gd` and `ZoneMapBaker`): `assets/maps/vado_gris.png` (1024 x 1024 px, 0.6 MB) and
   `vado_gris_map.tres` (`ZoneMapDefinition`: origin (−160, −160), 320 x 320 m and the fixed places); see docs/zones/vado_gris.md. The
   minimap goes bottom right (the top corner belongs to the F3 debug panel) and zooms in and out with `map_zoom_in` and
   `map_zoom_out`.

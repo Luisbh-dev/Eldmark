@@ -1805,7 +1805,7 @@ without a role, own `item_give` without `admin`) and fencing with `item_give` be
 **P10, end to end** (`go test -tags e2e ./e2e`):
 
 - **Harness.** `ELDMARK_GODOT` (path to the Godot 4.7.2 executable; if missing, `t.Skip`). `TestMain` runs
-  `godot --headless --path .. --import` once (with LFS already pulled). Platform in the test's process, ephemeral
+  `godot --headless --path .. --import` once . Platform in the test's process, ephemeral
   PostgreSQL (§2.6), `ELDMARK_HEARTBEAT_S=1`, `ELDMARK_LEASE_TTL_S=6`, the `1:test_world:0` token in
   `ELDMARK_ZONE_TOKENS` and `ELDMARK_ENTRY_ZONES=vardheim=test_world,solmarch=test_world` (a new character enters its
   realm's zone, and the tests only start `test_world`). progression.md P8 uses the same harness.
@@ -1816,7 +1816,7 @@ without a role, own `item_give` without `admin`) and fencing with `item_give` be
   without a heartbeat; then it moves it to `lost` itself, §5.3) and **a second `--bot` process** with the same account
   enters it. It checks: `kill − saved_at < 5 s + 1 s margin` and that the character is in the new instance. The first
   bot does not need to reconnect.
-- **CI:** "Plataforma e2e" job in `tests.yml`, which reuses the Godot and LFS cache from the Godot job and exports
+- **CI:** "Plataforma e2e" job in `tests.yml`, which reuses the Godot cache from the Godot job and exports
   `ELDMARK_GODOT`.
 - **Time** (measured in P10, §19.19): `TestEnterAndSave` 11–13 s and `TestZoneCrash` 25–27 s, within the goal of
   < 30 s per test; the 60 s cap is not needed. If a change exceeds it, P10's cap goes up to 60 s and is noted here and
@@ -2052,7 +2052,7 @@ preservation test picks it up by itself and fails if any table is left without r
   Tested in a disposable repository: clean → 0; a `staging.env`, a `secrets/ticket_keys` or a `zone.key` in the index
   → 1 and it names them; an `ELDMARK_TICKET_KEYS=…` in an `*.example` → 1 without repeating the value.
   `ELDMARK_X_FILE=` does not count.
-- **CI:** the "Plataforma" job runs apart from the Godot ones (without touching them): checkout without LFS, the
+- **CI:** the "Plataforma" job runs apart from the Godot ones (without touching them): plain checkout, the
   secrets check, `actions/setup-go@v5` with `go-version-file: platform/go.mod`, `ubuntu-latest`'s PostgreSQL (or
   `apt-get install postgresql-16` if missing), `gofmt -l`, `go vet ./...` and `go test -p 2 ./...` with
   `GOTOOLCHAIN=local` and `ELDMARK_REQUIRE_PG=1`. For it to block merging it must be marked as required.
@@ -3769,7 +3769,7 @@ job. No change in Godot or in what the platform does:
 | Queries | `WaitFor` (every 100 ms, with a deadline), `WaitCharacter`, `Scalar`, `Exists`, `PlatformLogContains`, `Process.LogContains` and **`CheckBooks`**: by definition, Σ `count_delta` of `item_events` = Σ `count` of living items; per currency, Σ `delta` of `ledger_entries` = balance; a single STARTER_KIT operation and some living item |
 | Logs | Each test leaves `plataforma.log` (`slog` JSON, INFO level), `zonaN.log`/`.json` and `botN.log`/`.json` in a temporary folder or, with `ELDMARK_E2E_ARTIFACTS=<folder>`, in `<folder>/<test>/` (emptied at the start), where they remain |
 | `internal/services` (new) | `Mount` and `ProgressStore`, which were `mountServices` and `progressStore` in `cmd/eldmark-platform/services.go` (file moved; `serve`, `admin` and their tests call them there): this way the harness mounts exactly what `serve` does, without copying it. §2.1 names it |
-| CI | "Plataforma e2e" job in `tests.yml`: checkout without LFS, the LFS and Godot caches with the Godot jobs' keys (`git lfs pull` fetches what is missing; Godot is only downloaded if the cache misses), `setup-go`, `ubuntu-latest`'s PostgreSQL, `ELDMARK_GODOT`, `ELDMARK_REQUIRE_PG=1`, `ELDMARK_REQUIRE_GODOT=1` and `go test -tags e2e -count=1 -v -timeout 14m ./e2e`; the logs, in `$RUNNER_TEMP/e2e` (outside the project, which Godot imports), are uploaded as an artifact on failure and the result and timing lines go to the summary. The "Plataforma" job adds `go vet -tags e2e ./e2e` |
+| CI | "Plataforma e2e" job in `tests.yml`: plain checkout, the Godot cache with the Godot jobs' key (Godot is only downloaded if the cache misses), `setup-go`, `ubuntu-latest`'s PostgreSQL, `ELDMARK_GODOT`, `ELDMARK_REQUIRE_PG=1`, `ELDMARK_REQUIRE_GODOT=1` and `go test -tags e2e -count=1 -v -timeout 14m ./e2e`; the logs, in `$RUNNER_TEMP/e2e` (outside the project, which Godot imports), are uploaded as an artifact on failure and the result and timing lines go to the summary. The "Plataforma" job adds `go vet -tags e2e ./e2e` |
 
 **The tests.**
 

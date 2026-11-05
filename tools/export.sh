@@ -21,9 +21,9 @@
 #   - Godot 4.7.2 (GODOT variable or `godot` on the PATH) and, except with --pack-only, the export
 #     templates of the same version (Editor > Manage Export Templates > Download and
 #     Install).
-#   - The Git LFS objects downloaded (git lfs pull): the terrain and the textures go through LFS.
+#   - Real binary files: a clone older than the move away from Git LFS may hold LFS pointers; the script detects it.
 #
-# Exit codes: 0 success, 1 failure or incorrect usage, 2 Godot, its templates or the LFS objects are missing.
+# Exit codes: 0 success, 1 failure or incorrect usage, 2 Godot, its templates or the binaries (LFS pointers from an old clone) are missing.
 set -euo pipefail
 
 # Preset names (those in export_presets.cfg; test_export_config.gd checks that they match).
@@ -97,10 +97,11 @@ EOF
 	fi
 }
 
-check_lfs() {
+# Binaries are normal blobs now, but a clone from before that change may still hold LFS pointers.
+check_lfs_pointers() {
 	local sample="scenes/world/zones/vado_gris/terrain/terrain3d_00_00.res"
 	if [ -f "$sample" ] && head -c 64 "$sample" | grep -q "version https://git-lfs"; then
-		echo "Los objetos de Git LFS no están descargados (el terreno es un puntero). Ejecuta: git lfs pull" >&2
+		echo "El terreno es un puntero de Git LFS (clon anterior al cambio a blobs normales). Actualiza el repositorio (git pull) o clónalo de nuevo." >&2
 		exit 2
 	fi
 }
@@ -116,7 +117,7 @@ zip_dir() {
 	(cd "$dir" && zip -qr "../$name" .)
 }
 
-check_lfs
+check_lfs_pointers
 if [ "$PACK_ONLY" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
 	if [ "$TARGET" = "client" ] || [ "$TARGET" = "all" ]; then
 		check_templates "windows_${MODE}_x86_64*" "Windows"

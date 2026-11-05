@@ -1,6 +1,6 @@
 extends SceneTree
 ## Bakes the parchment map of a zone (UI-51) with [ParchmentMapBaker] and saves it as the zone map: the
-## image in [code]assets/maps/<zone>.png[/code] (through Git LFS) and its scale and fixed places in
+## image in [code]assets/maps/<zone>.png[/code] and its scale and fixed places in
 ## [code]assets/maps/<zone>_map.tres[/code] ([ZoneMapDefinition], in text). It is the map used by the M window and the
 ## minimap, and [code]tests/test_zone_map.gd[/code] checks it.
 ##

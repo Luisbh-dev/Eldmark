@@ -11,7 +11,7 @@ Issues and pull requests are accepted in **English or Spanish**.
 ## Requirements
 
 - [Godot 4.7.2](https://godotengine.org/) (standard build, not .NET)
-- Git and [Git LFS](https://git-lfs.com/)
+- Git (no Git LFS needed)
 - Go (see `platform/go.mod`), only if you work on the platform service in `platform/`
 
 ## Setting up
@@ -19,13 +19,15 @@ Issues and pull requests are accepted in **English or Spanish**.
 ```bash
 git clone https://github.com/Luisbh-dev/Eldmark
 cd Eldmark
-git lfs install
-git lfs pull
 godot --headless --path . --import   # imports resources and validates the project
 ```
 
-Models, textures, audio and native addon binaries are stored with Git LFS, so a clone
-without `git lfs pull` will not run.
+Models, textures, audio and native addon binaries are normal files in the repository, so a
+plain clone is enough. Git LFS is not used any more: its monthly bandwidth quota on GitHub would run out
+with a few dozen clones. Commits from before that change still hold LFS pointers in the history, which
+is harmless for a fresh checkout of the current tree.
+To build a commit from before the change (for example with `git bisect`), install Git LFS and run
+`git lfs pull`; this uses the LFS bandwidth quota.
 
 ## Running the client, the server and the bots
 
@@ -66,7 +68,7 @@ and extend `TestCase`; test methods start with `test_`.
   handled as a separate task, so keep new interface strings in Spanish for now and
   in one place where they are easy to extract.
 - Scenes and resources are text (`.tscn`, `.tres`). Do not commit binary `.scn` or `.res`
-  files. The only exception is Terrain3D region data (`.res`), which goes through Git LFS.
+  files. The only exception is Terrain3D region data (`.res`), which is committed as a normal binary file.
 
 ## Architecture rules
 
@@ -92,8 +94,10 @@ visual quality plan in [docs/quality.md](docs/quality.md). The essentials:
   textures that are actually used go into the repo.
 - Record every pack you add in [assets/LICENSES.md](assets/LICENSES.md) (author, version, date, URL, license)
   and, for third-party material, in [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
-- Large binaries (models, textures, audio, GDExtension libraries) go through Git LFS; see
-  `.gitattributes`.
+- Binaries (models, textures, audio, GDExtension libraries) are committed as normal files, marked
+  `binary` in `.gitattributes`. Keep every file under 50 MB, prefer compressed formats (`.glb`, `.ogg`,
+  `.webp`, lossless PNG only where needed) and do not commit heavy intermediate versions (source
+  `.blend` or `.psd` files, uncompressed renders or `.wav` masters); keep those outside the repo.
 - Use animation variants **without root motion**.
 - Follow the art direction in [docs/art.md](docs/art.md): one stylized kit, recolored per realm. Visual changes are
   judged against the criteria in [docs/quality.md](docs/quality.md); the capture bench in `tools/quality/` regenerates

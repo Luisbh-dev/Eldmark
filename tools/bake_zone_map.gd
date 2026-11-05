@@ -1,6 +1,6 @@
 extends SceneTree
 ## Bakes a zone's top-down map without a GPU (docs/fortress.md, section 6; UI-20) and saves it to
-## [code]assets/maps/<zone>.png[/code] (through Git LFS) together with its scale and its fixed places in
+## [code]assets/maps/<zone>.png[/code] together with its scale and its fixed places in
 ## [code]assets/maps/<zone>_map.tres[/code] ([ZoneMapDefinition], as text).
 ##
 ## Usage (from the project root, without a window; a few seconds):

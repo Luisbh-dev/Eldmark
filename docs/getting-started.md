@@ -27,15 +27,13 @@ Contents:
 ## Requirements
 
 - Godot 4.7 (standard build, GDScript). CI uses 4.7.2-stable.
-- Git and [Git LFS](https://git-lfs.com/). Models, textures, audio, terrain region files and native binaries are stored in LFS (see `.gitattributes`).
+- Git. Models, textures, audio, terrain region files and native binaries are normal files in the repository (see `.gitattributes`); Git LFS is not used.
 - For the platform service: Go 1.24 and PostgreSQL 16 binaries.
 - For the capture bench: Python 3 with Pillow, and a machine with a window and a GPU.
 
 ```bash
 git clone https://github.com/Luisbh-dev/Eldmark
 cd Eldmark
-git lfs install
-git lfs pull
 ```
 
 Open `project.godot` in Godot and press F5 to start the offline sandbox. Controls are listed in the [README](../README.md#controls).
@@ -286,7 +284,7 @@ go run ./cmd/eldmark-platform serve             # public API on :24680 and inter
 
 The tests need the PostgreSQL binaries (`ELDMARK_PG_BIN`, `pg_config` or `/usr/lib/postgresql/*/bin`; if absent they are skipped) or a server in `ELDMARK_TEST_DATABASE_URL`. As root, `initdb` runs through `runuser -u postgres`, which must be able to enter `TMPDIR`.
 
-The end-to-end tests (`platform/e2e`, [platform.md](platform.md) P10) carry the `e2e` build tag and start the platform inside the test process against a `test_world` zone and real Godot bots; without `ELDMARK_GODOT` they are skipped. They import the project at start (with the LFS objects pulled) and take under a minute:
+The end-to-end tests (`platform/e2e`, [platform.md](platform.md) P10) carry the `e2e` build tag and start the platform inside the test process against a `test_world` zone and real Godot bots; without `ELDMARK_GODOT` they are skipped. They import the project at start and take under a minute:
 
 ```bash
 cd platform
@@ -370,7 +368,7 @@ There are 217 test files and 2,938 test methods, plus about 300 Go tests under `
 
 `.github/workflows/tests.yml` (GitHub Actions) runs on every push to `main`, on every pull request, and by hand from the Actions tab (`workflow_dispatch`). A new push to the same branch cancels the run still in progress. It has these jobs:
 
-- **Suite K/4** (`ubuntu-latest`, four in parallel): downloads Godot 4.7.2-stable for Linux (SHA-512 checked and cached), restores the Git LFS objects from a cache and pulls only what is missing, imports the project and runs `tests/run_tests.gd -- --shard=K/4` with a 15-minute step limit. If one fails it uploads its `build/` folder (logs and reports) as the artifact `build-logs-K`.
+- **Suite K/4** (`ubuntu-latest`, four in parallel): downloads Godot 4.7.2-stable for Linux (SHA-512 checked and cached), imports the project and runs `tests/run_tests.gd -- --shard=K/4` with a 15-minute step limit. If one fails it uploads its `build/` folder (logs and reports) as the artifact `build-logs-K`.
 - **Suite completa** (full suite): a single check that passes only if the four shards pass. To make a broken test block merging, mark it as a required status check in the branch protection rules; that cannot be configured from the workflow file.
 - **Windows (LocalServerLauncher)**: Windows is the main development platform, and there `OS.is_process_running` only knows the process's own children, so this job runs the `LocalServerLauncher` tests (with their helper processes). The complete suite is run by hand on Windows.
 - **Plataforma**: checks that no secrets are in the Git index (`tools/check_secrets.sh`) and runs `gofmt`, `go vet` and `go test` for the platform service against an ephemeral PostgreSQL, plus the deployment-script checks (backup and restore scripts, shellcheck, `docker compose config`).
@@ -445,7 +443,7 @@ Both leave out `build/`, `docs/`, `tests/`, `tools/`, `exports/`, `.github/` and
 **Steps (once, on your machine):**
 
 1. Install the **4.7.2 export templates** (they do not ship with the editor): open Godot 4.7.2, menu *Editor > Manage Export Templates > Download and Install*, or download `Godot_v4.7.2-stable_export_templates.tpz` from the release page and use *Install from File*. They end up in `%APPDATA%\Godot\export_templates\4.7.2.stable` (Windows) or `~/.local/share/godot/export_templates/4.7.2.stable` (Linux). Without them the script stops and says so.
-2. Pull the Git LFS objects (`git lfs pull`): terrain and textures are in LFS and the script refuses to export if they are pointers.
+2. Use a current checkout: the binaries are normal files now, and the script refuses to export if the terrain is still a Git LFS pointer (a clone from before the change; update it or clone again).
 3. Export:
 
 ```bash

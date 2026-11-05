@@ -68,13 +68,11 @@ The first playable zone is the **Vado Gris** ("Gray Ford"), a compressed frontie
 You need:
 
 - [Godot 4.7](https://godotengine.org/) (standard build, GDScript; 4.7.2 is what CI uses)
-- [Git](https://git-scm.com/) and [Git LFS](https://git-lfs.com/): models, textures, audio and terrain data are stored in LFS
+- [Git](https://git-scm.com/): models, textures, audio and terrain data are normal files in the repository (no Git LFS)
 
 ```bash
 git clone https://github.com/Luisbh-dev/Eldmark
 cd Eldmark
-git lfs install
-git lfs pull
 ```
 
 ### Try it in the editor
@@ -152,7 +150,7 @@ In the map window, the mouse wheel zooms, dragging with the left or middle butto
 ## Project structure
 
 ```
-assets/        Models, animations, textures, materials, audio, fonts, UI theme and icons, maps, emblems (binaries in Git LFS)
+assets/        Models, animations, textures, materials, audio, fonts, UI theme and icons, maps, emblems (binaries as normal files)
 addons/        Third-party plugins (Terrain3D, ProtonScatter)
 data/          Game data as .tres resources: combat catalog, NPCs, items, fortresses, races, level curve
 docs/          Design and technical documentation (see the index below)

@@ -7,7 +7,7 @@
 
 - **Scene:** `scenes/world/zones/vado_gris/vado_gris.tscn` (root `VadoGris`, script `ZoneRoot`).
 - **Terrain:** 500 × 500 m in 2 × 2 Terrain3D regions of 256 m, one vertex per meter. Data in
-  `scenes/world/zones/vado_gris/terrain/` (the region `.res` files, via Git LFS).
+  `scenes/world/zones/vado_gris/terrain/` (the region `.res` files).
 - **Playable area:** 300 × 300 m in the center (x and z between -150 and 150), closed off by the
   two walls to the north and south and by invisible walls to the east and west. Outside it, about
   100 m of mountains and hills close off the horizon.
@@ -414,7 +414,7 @@ godot --path . -s res://tools/render/render_screenshot_points.gd -- --out=<path>
 - The NPC navigation mesh has to be re-baked (`tools/bake_navmesh.gd`, see docs/fortress.md 4.1)
   every time the gameplay geometry changes: ramps, walkway, gate, bridges, walls, blockers...
   `tests/test_navmesh.gd` reminds you with broken routes.
-- The map for the minimap and the full-screen map (`assets/maps/vado_gris.png`, via LFS, and its
+- The map for the minimap and the full-screen map (`assets/maps/vado_gris.png`, and its
   scale and fixed places in `vado_gris_map.tres`) is baked without a GPU with
   `tools/bake_zone_map.gd`: shaded relief from `Terrain3D.data.get_height`, water from the river
   mesh and outlines of the collisions and the `BakedMultiMesh` nodes. It covers the playable area
@@ -423,8 +423,7 @@ godot --path . -s res://tools/render/render_screenshot_points.gd -- --out=<path>
   camps, the fort and the passes it marks (`tests/test_zone_map.gd` reminds you).
 - Only the first two steps are needed if the assets change. In a git worktree the packs folder is
   not next to the repo: it is passed with `-- --raw=<path to Eldmark-raw>` to
-  `copy_vado_gris_assets.gd`, and a new worktree brings the terrain `.res` files as LFS pointers:
-  `git lfs checkout` fills them in before importing. To change the layout, edit
+  `copy_vado_gris_assets.gd`, and the terrain `.res` files are normal files, so a new worktree has them already. To change the layout, edit
   `tools/terrain/vado_gris_layout.gd` (positions, river, roads, height function) and run the
   generator again; the vegetation, the painting and the piece scenes are in their own scripts.
 - Everything is deterministic (fixed seeds): repeating it on the same machine leaves the same

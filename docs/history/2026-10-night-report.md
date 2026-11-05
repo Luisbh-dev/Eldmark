@@ -645,7 +645,7 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
   counts as n). Default names "Jugador" + 4 letters and, for bots, "Bot" + 4 letters.
 - **Realms per zone** (GUE-02): Vado Gris only admits Vardheim and Solmarch (Askarra receives
   REJECT REALM); `test_world`, all three.
-- **CI** (TEC-03): the checkout does not download LFS; the `.git/lfs` cache is restored and then `git lfs
+- **CI** (TEC-03; LFS was dropped later, so none of this applies now): the checkout does not download LFS; the `.git/lfs` cache is restored and then `git lfs
   pull`. For a failing test to block the merge, "Suite completa" (full suite) must be marked as a required
   check in the branch protection (only from GitHub).
 - Package E: without a server, `--local` and `--bots` gave an error (until M4–M5); in headless bot mode the

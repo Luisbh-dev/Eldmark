@@ -1,51 +1,57 @@
+# Binary policy: every binary is a normal git blob (no Git LFS). Git LFS bandwidth is metered on
+# GitHub (10 GiB per month on the free tier) and a public repo would exhaust it after a few dozen
+# clones, while regular git traffic has no quota. The largest tracked file is about 8 MB, so keep
+# single files well under 50 MB (see CONTRIBUTING.md).
+# Note: commits made before this policy used Git LFS, so old history still contains LFS pointers.
+
 # Normalize line endings to LF
 * text=auto eol=lf
 
 # 3D models
-*.glb filter=lfs diff=lfs merge=lfs -text
-*.bin filter=lfs diff=lfs merge=lfs -text
-*.fbx filter=lfs diff=lfs merge=lfs -text
-*.obj filter=lfs diff=lfs merge=lfs -text
-*.blend filter=lfs diff=lfs merge=lfs -text
+*.glb binary
+*.bin binary
+*.fbx binary
+*.obj binary
+*.blend binary
 
 # Textures and images
-*.png filter=lfs diff=lfs merge=lfs -text
-*.jpg filter=lfs diff=lfs merge=lfs -text
-*.jpeg filter=lfs diff=lfs merge=lfs -text
-*.tga filter=lfs diff=lfs merge=lfs -text
-*.webp filter=lfs diff=lfs merge=lfs -text
-*.exr filter=lfs diff=lfs merge=lfs -text
-*.hdr filter=lfs diff=lfs merge=lfs -text
-*.psd filter=lfs diff=lfs merge=lfs -text
-*.kra filter=lfs diff=lfs merge=lfs -text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.tga binary
+*.webp binary
+*.exr binary
+*.hdr binary
+*.psd binary
+*.kra binary
 
 # Audio
-*.wav filter=lfs diff=lfs merge=lfs -text
-*.ogg filter=lfs diff=lfs merge=lfs -text
-*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.wav binary
+*.ogg binary
+*.mp3 binary
 
 # Fonts
-*.ttf filter=lfs diff=lfs merge=lfs -text
-*.otf filter=lfs diff=lfs merge=lfs -text
+*.ttf binary
+*.otf binary
 
 # Video
-*.ogv filter=lfs diff=lfs merge=lfs -text
-*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.ogv binary
+*.mp4 binary
 
 # Terrain3D region data (the only exception to the text format, see CLAUDE.md)
-*.res filter=lfs diff=lfs merge=lfs -text
+*.res binary
 
 # Native GDExtension binaries (Terrain3D)
-*.dll filter=lfs diff=lfs merge=lfs -text
-*.so filter=lfs diff=lfs merge=lfs -text
-*.dylib filter=lfs diff=lfs merge=lfs -text
-**/*.framework/** filter=lfs diff=lfs merge=lfs -text
+*.dll binary
+*.so binary
+*.dylib binary
+**/*.framework/** binary
 
-# Screenshots shown in the README stay as normal blobs so the repo front page never depends on LFS.
-docs/screenshots/** -filter -diff -merge binary
+# Screenshots shown in the README.
+docs/screenshots/** binary
 
-# The website must work from a plain checkout (GitHub Pages does not resolve LFS pointers), so its
-# small binaries are normal blobs too. Keep web/ light: the whole folder is a few MB.
-web/assets/** -filter -diff -merge binary
+# The website must work from a plain checkout (GitHub Pages serves files as they are), so its
+# assets are normal blobs. Keep web/ light: the whole folder is a few MB.
+web/assets/** binary
 web/assets/**/*.svg text diff eol=lf
 web/assets/**/*.txt text diff eol=lf

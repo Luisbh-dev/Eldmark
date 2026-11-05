@@ -2,7 +2,7 @@
 
 Everything is original content, generated with code and versioned: textures with numpy and PIL
 (`make_vfx_textures.py`, fixed seeds), scenes and materials with Godot (`build_vfx_scenes.gd`) and
-hand-written shaders (`scenes/vfx/shaders/`). Only the text results and the PNGs (through LFS) are committed to Git;
+hand-written shaders (`scenes/vfx/shaders/`). Only the text results and the PNGs are committed to Git;
 everything else is regenerated.
 
 ## Regenerating

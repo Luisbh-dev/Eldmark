@@ -89,7 +89,7 @@ func testMain(m *testing.M) int {
 }
 
 // importProject imports the project once (godot --headless --import): zones and bots load imported
-// scenes and resources. It needs the LFS objects already downloaded.
+// scenes and resources. It needs a normal checkout.
 func importProject() error {
 	if _, err := os.Stat(filepath.Join(repoRoot, "project.godot")); err != nil {
 		return fmt.Errorf("no está el proyecto de Godot en %s: %w", repoRoot, err)

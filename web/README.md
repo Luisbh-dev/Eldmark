@@ -52,7 +52,7 @@ Code style follows the rest of the project: tabs, English identifiers and commen
 
 ## Assets
 
-Everything in `web/assets/` is a normal git blob, not Git LFS (see `.gitattributes`), so the site
+Everything in `web/assets/` is a normal git blob, like every other binary in the repo (see `.gitattributes`), so the site
 works from a plain checkout and on GitHub Pages. Keep it small: images as WebP around 1600 px wide,
 video as short H.264 loops without audio.
 

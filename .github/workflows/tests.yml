@@ -41,29 +41,8 @@ jobs:
       run:
         shell: bash
     steps:
-      # No lfs: the checkout leaves the LFS pointers. The objects are downloaded after restoring the
-      # cache, so only the missing ones get downloaded (with lfs: true the checkout would download all of
-      # them on every run, before the cache could be consulted).
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          lfs: false
-        env:
-          GIT_LFS_SKIP_SMUDGE: "1"
-
-      - name: List LFS objects
-        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
-
-      - name: LFS objects cache
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs
-          key: lfs-${{ hashFiles('.lfs-assets-id') }}
-          restore-keys: |
-            lfs-
-
-      - name: Fetch LFS objects
-        run: git lfs pull
 
       - name: Godot cache
         id: godot-cache
@@ -151,24 +130,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          lfs: false
-        env:
-          GIT_LFS_SKIP_SMUDGE: "1"
-
-      - name: List LFS objects
-        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
-
-      - name: LFS objects cache
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs
-          key: lfs-${{ hashFiles('.lfs-assets-id') }}
-          restore-keys: |
-            lfs-
-
-      - name: Fetch LFS objects
-        run: git lfs pull
 
       - name: Godot cache
         id: godot-cache
@@ -249,10 +210,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          lfs: false
-        env:
-          GIT_LFS_SKIP_SMUDGE: "1"
 
       - name: Secrets outside the repository
         run: tools/check_secrets.sh
@@ -298,7 +255,7 @@ jobs:
   # End to end (docs/platform.md P10, §15): the real Go platform in the test process, with an
   # ephemeral PostgreSQL, against test_world zones with --platform and bots with a real Godot account
   # (platform/e2e, e2e tag: TestEnterAndSave and TestZoneCrash, and those of progression.md P8 when
-  # they arrive). It reuses the LFS and Godot caches of the Godot jobs (same keys) and exports
+  # they arrive). It reuses the Godot cache of the Godot jobs (same key) and exports
   # ELDMARK_GODOT; TestMain imports the project. If it fails, it uploads the platform, zone and bot
   # logs. For it to block the merge, "Plataforma e2e" must be marked as a required check in the branch
   # protection.
@@ -316,24 +273,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          lfs: false
-        env:
-          GIT_LFS_SKIP_SMUDGE: "1"
-
-      - name: List LFS objects
-        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
-
-      - name: LFS objects cache
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs
-          key: lfs-${{ hashFiles('.lfs-assets-id') }}
-          restore-keys: |
-            lfs-
-
-      - name: Fetch LFS objects
-        run: git lfs pull
 
       - name: Godot cache
         id: godot-cache

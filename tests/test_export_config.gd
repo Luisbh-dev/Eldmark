@@ -200,7 +200,7 @@ func test_the_export_scripts_use_the_presets_and_their_paths() -> void:
 		assert_true(text.contains(client_out), "%s writes the client to %s" % [path, client_out])
 		assert_true(text.contains("--export-pack"), "%s supports exporting only the pack" % path)
 		assert_true(text.contains("export_templates"), "%s checks the export templates" % path)
-		assert_true(text.contains("lfs pull"), "%s warns if the LFS objects are missing" % path)
+		assert_true(text.contains("version https://git-lfs"), "%s detects LFS pointers left by an old clone" % path)
 		assert_true(text.contains("--headless"), "%s exports without a window" % path)
 		assert_true(text.contains("run-server.sh"), "%s leaves the server launcher" % path)
 	var shell: String = FileAccess.get_file_as_string(SCRIPT_SH)
