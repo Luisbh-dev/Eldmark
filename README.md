@@ -199,6 +199,7 @@ The design documents are long and written as decision records, including what wa
 | [docs/combat.md](docs/combat.md) | Combat design: states, timings, hit feedback, animation and sound |
 | [docs/zones/](docs/zones) | Zone notes; [docs/zones/vado_gris.md](docs/zones/vado_gris.md) covers the Vado Gris: terrain, sky, fort |
 | [docs/quality.md](docs/quality.md) | Visual quality plan: what each wave delivered and what is still open |
+| [docs/localization.md](docs/localization.md) | English and Spanish localization: format, runtime, tooling and the increments |
 | [docs/backlog.md](docs/backlog.md) | The master task list: what is done and what is next |
 | [docs/history/](docs/history) | Archived reports from past work sessions |
 

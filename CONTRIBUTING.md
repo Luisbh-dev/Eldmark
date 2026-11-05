@@ -64,8 +64,9 @@ and extend `TestCase`; test methods start with `test_`.
 - Indent with tabs. Files and variables in `snake_case`, `class_name` in `PascalCase`.
 - Always use static typing: `var speed: float = 5.0`, `func move(dir: Vector3) -> void`.
 - Identifiers, comments, documentation comments (`##`), assert messages and the failure messages of the Go tests are in English.
-  In-game UI text and runtime log messages are currently in Spanish; localization will be
-  handled as a separate task, so keep new interface strings in Spanish for now and
+  In-game UI text and runtime log messages are currently in Spanish; localization is
+  being rolled out in increments (see [docs/localization.md](docs/localization.md)),
+  so keep new interface strings in Spanish until the file they live in is migrated, and
   in one place where they are easy to extract.
 - Scenes and resources are text (`.tscn`, `.tres`). Do not commit binary `.scn` or `.res`
   files. The only exception is Terrain3D region data (`.res`), which is committed as a normal binary file.
