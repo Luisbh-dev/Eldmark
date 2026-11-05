@@ -173,6 +173,22 @@ para que el tema las cablee (`UIThemeBuilder` carga esas rutas si existen). Si s
 basta cambiar `UIThemeBuilder.TITLE_FONT_PATH`. La OFL pide conservar el aviso de copyright y la
 licencia de cada familia dentro del juego exportado.
 
+## Fuentes de la web (`web/assets/fonts/`)
+
+La web del proyecto (`web/`) ya usa las tres familias del pack `fuentes_google_fonts` de `../Eldmark-raw/`
+(descargado el 2026-11-03 de https://github.com/google/fonts, rama main; ver `FUENTE.txt` del pack con
+los commits y sha256 de cada archivo):
+
+| Archivo en el repo | Origen | Autor | Licencia |
+|---|---|---|---|
+| `web/assets/fonts/cinzel.woff2` | `ofl/cinzel/Cinzel[wght].ttf` | The Cinzel Project Authors | SIL OFL 1.1 (`OFL-Cinzel.txt`) |
+| `web/assets/fonts/im-fell-english-sc.woff2` | `ofl/imfellenglishsc/IMFeENsc28P.ttf` | Igino Marini | SIL OFL 1.1 (`OFL-IMFell.txt`) |
+| `web/assets/fonts/noto-sans.woff2` | `ofl/notosans/NotoSans[wdth,wght].ttf` | The Noto Project Authors | SIL OFL 1.1 (`OFL-NotoSans.txt`) |
+
+**Modificadas:** subconjunto latino (Latin-1 y puntuación) en WOFF2 con fontTools; a Noto Sans se le fija
+el ancho al 100 % y conserva el eje de peso 300–800. Ninguna declara nombre reservado, así que mantienen
+el suyo. El juego (`assets/fonts/`) sigue pendiente, como dice la sección anterior.
+
 ## Contenido propio (no es de terceros)
 
 Hecho para Eldmark a partir de los packs anteriores o desde cero. Es del proyecto, que todavía no

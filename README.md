@@ -155,6 +155,7 @@ scripts/
   world/       Nodes used by zone scenes
 tests/         Automated tests: run_tests.gd, test_*.gd and the network harness
 tools/         Generators, quality bench, load tests, balance and state-log tools, export scripts
+web/           The project website: static HTML, CSS and JavaScript, no build step (see web/README.md)
 ```
 
 One Godot project holds client and server. `scripts/shared/` never depends on `scripts/client/` or `scripts/server/`, and server and client never depend on each other; `tests/test_architecture.gd` enforces it. More in [docs/architecture.md](docs/architecture.md).

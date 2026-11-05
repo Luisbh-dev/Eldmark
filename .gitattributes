@@ -43,3 +43,9 @@
 
 # Screenshots shown in the README stay as normal blobs so the repo front page never depends on LFS.
 docs/screenshots/** -filter -diff -merge binary
+
+# The website must work from a plain checkout (GitHub Pages does not resolve LFS pointers), so its
+# small binaries are normal blobs too. Keep web/ light: the whole folder is a few MB.
+web/assets/** -filter -diff -merge binary
+web/assets/**/*.svg text diff eol=lf
+web/assets/**/*.txt text diff eol=lf

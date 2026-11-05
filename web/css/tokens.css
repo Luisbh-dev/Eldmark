@@ -1,0 +1,81 @@
+/*
+ * Eldmark website design tokens. Every stylesheet reads these; none redefines them.
+ * --accent, --accent-deep and --accent-glow follow the realm the visitor pledged to
+ * (core.js rewrites them on :root); without a realm they are the ember of the Flame of Eld.
+ */
+@font-face {
+	font-family: 'Cinzel';
+	src: url('../assets/fonts/cinzel.woff2') format('woff2');
+	font-weight: 400 900;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'IM Fell English SC';
+	src: url('../assets/fonts/im-fell-english-sc.woff2') format('woff2');
+	font-weight: 400;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'Noto Sans';
+	src: url('../assets/fonts/noto-sans.woff2') format('woff2');
+	font-weight: 300 800;
+	font-display: swap;
+}
+
+:root {
+	/* Ground: warm ash and soot */
+	--bg: #0c0a09;
+	--bg-2: #13100d;
+	--bg-3: #1b1713;
+	--panel: rgba(27, 23, 19, 0.78);
+	--panel-solid: #1a1612;
+	--line: rgba(201, 164, 92, 0.2);
+	--line-strong: rgba(201, 164, 92, 0.48);
+
+	/* Ink */
+	--text: #ece3cf;
+	--text-dim: #a99e89;
+	--text-faint: #6f665a;
+
+	/* The Flame of Eld */
+	--gold: #c9a45c;
+	--gold-bright: #f0d595;
+	--ember: #ff8a3d;
+	--ember-hot: #ffc070;
+	--ember-deep: #b8401a;
+
+	/* Current realm accent (defaults to the ember) */
+	--accent: var(--ember);
+	--accent-deep: var(--ember-deep);
+	--accent-glow: rgba(255, 138, 61, 0.45);
+
+	/* Realms and the Hollow */
+	--vardheim: #8fd3f0;
+	--vardheim-deep: #4e7c90;
+	--solmarch: #ecc94f;
+	--solmarch-deep: #a3882e;
+	--askarra: #e8574e;
+	--askarra-deep: #9e1c25;
+	--bronze: #cd7f32;
+	--hollow: #bdb6a6;
+	--hollow-deep: #716d64;
+
+	/* Type */
+	--font-display: 'Cinzel', 'Trajan Pro', 'Palatino Linotype', Georgia, serif;
+	--font-label: 'IM Fell English SC', 'Palatino Linotype', Georgia, serif;
+	--font-body: 'Noto Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-mono: ui-monospace, 'Cascadia Code', 'Consolas', 'SF Mono', monospace;
+
+	/* Shape and motion */
+	--radius: 3px;
+	--radius-lg: 6px;
+	--ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+	--shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.8);
+
+	/* Layout */
+	--gutter: clamp(16px, 4vw, 48px);
+	--max: 1240px;
+
+	color-scheme: dark;
+}

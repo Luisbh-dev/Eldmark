@@ -1,0 +1,325 @@
+/*
+ * Eldmark website: the war table (styles for js/war-map.js). Every class is prefixed wm-.
+ * Colors come from tokens.css; per-owner colors flow through --c / --cd custom properties.
+ */
+.wm {
+	--wm-ink: #0c0a09;
+	--c: var(--hollow);
+	--cd: var(--hollow-deep);
+	position: relative;
+	color: var(--text);
+	font-family: var(--font-body);
+	display: grid;
+	gap: 14px;
+	min-width: 0;
+}
+.wm *, .wm *::before, .wm *::after { box-sizing: border-box; }
+.wm .wm-r-vardheim, .wm.wm-r-vardheim { --c: var(--vardheim); --cd: var(--vardheim-deep); }
+.wm .wm-r-solmarch { --c: var(--solmarch); --cd: var(--solmarch-deep); }
+.wm .wm-r-askarra { --c: var(--askarra); --cd: var(--askarra-deep); }
+.wm .wm-r-hollow { --c: var(--hollow); --cd: var(--hollow-deep); }
+
+/* ---------- Control bar ---------- */
+.wm-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px 20px;
+	padding: 10px 14px;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-lg);
+}
+.wm-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wm-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 36px;
+	padding: 6px 14px;
+	font: 600 0.8rem/1 var(--font-display);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--gold-bright);
+	background: rgba(201, 164, 92, 0.08);
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	cursor: pointer;
+	transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out), color 0.2s;
+}
+.wm-btn svg { width: 12px; height: 12px; fill: currentColor; flex: none; }
+.wm-btn:hover { background: rgba(201, 164, 92, 0.18); border-color: var(--gold); }
+.wm-btn:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+.wm-btn[aria-pressed='true'].wm-btn-speed { background: rgba(255, 138, 61, 0.2); border-color: var(--ember); color: var(--ember-hot); }
+.wm-speed { display: inline-flex; align-items: center; gap: 6px; margin: 0 4px; }
+.wm-speed-label { font: 0.8rem var(--font-label); letter-spacing: 0.08em; color: var(--text-dim); text-transform: uppercase; margin-right: 2px; }
+.wm-btn-speed { padding: 6px 11px; }
+
+.wm-counters { display: flex; flex-wrap: wrap; gap: 8px; }
+.wm-counter {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 5px 12px 5px 8px;
+	background: rgba(0, 0, 0, 0.28);
+	border: 1px solid color-mix(in srgb, var(--c) 38%, transparent);
+	border-radius: var(--radius);
+	min-width: 0;
+}
+.wm-counter.is-mine { border-color: var(--c); box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 40%, transparent), 0 0 18px -4px var(--c); }
+.wm-counter.has-flame::after {
+	content: '';
+	position: absolute;
+	right: 6px;
+	top: 5px;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--ember-hot);
+	box-shadow: 0 0 8px 2px var(--ember);
+}
+.wm-emblem { width: 28px; height: 28px; flex: none; }
+.wm-counter-text { display: grid; line-height: 1.1; }
+.wm-counter-name { font: 600 0.68rem var(--font-display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--c); }
+.wm-counter-val { font: 600 1.15rem var(--font-display); font-variant-numeric: tabular-nums; color: var(--text); min-width: 3.4ch; }
+.wm-counter-rate { font: 0.72rem var(--font-body); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* ---------- Layout ---------- */
+.wm-body { display: grid; align-items: start; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.wm-side { display: grid; gap: 14px; align-content: start; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) and (max-width: 1179px) {
+	.wm-side { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+	.wm-card { grid-column: 1 / -1; }
+}
+@media (min-width: 1180px) {
+	.wm-body { grid-template-columns: minmax(0, 1fr) 330px; }
+}
+
+/* ---------- Stage ---------- */
+.wm-stage {
+	position: relative;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius-lg);
+	background: #0e0b09;
+	overflow: hidden;
+	box-shadow: var(--shadow), inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.wm-stage::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 2;
+	background: radial-gradient(ellipse at 50% 46%, transparent 52%, rgba(6, 4, 3, 0.55) 100%);
+}
+.wm-stage::after {
+	content: '';
+	position: absolute;
+	inset: 7px;
+	pointer-events: none;
+	z-index: 2;
+	border: 1px solid rgba(201, 164, 92, 0.26);
+	border-radius: 3px;
+}
+.wm-svg { display: block; width: 100%; height: auto; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+/* Ground */
+.wm-ruin-ring { fill: none; stroke: rgba(201, 164, 92, 0.2); stroke-width: 1.4; }
+.wm-crack-glow { fill: none; stroke: var(--ember); stroke-width: 5; opacity: 0.5; stroke-linejoin: round; }
+.wm-crack-core { fill: none; stroke: var(--ember-hot); stroke-width: 1.15; opacity: 0.85; stroke-linejoin: round; stroke-linecap: round; }
+@keyframes wm-smolder { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
+.wm.is-running .wm-cracks { animation: wm-smolder 4.5s ease-in-out infinite; }
+.wm-river-bed { fill: none; stroke: #10171b; stroke-width: 10; stroke-linecap: round; opacity: 0.7; }
+.wm-river-line { fill: none; stroke: #5d7f8d; stroke-width: 5; stroke-linecap: round; opacity: 0.36; }
+
+/* Territories, ridges, walls */
+.wm-territory-mine { fill: none; stroke: var(--c); stroke-width: 2; stroke-dasharray: 6 6; opacity: 0; transition: opacity 0.4s; }
+.wm-territory-mine.is-on { opacity: 0.55; }
+.wm-wall-aura { fill: none; stroke: var(--c); stroke-width: 34; opacity: 0.07; stroke-linecap: round; }
+.wm-ridge-band { fill: none; stroke: #120e0b; stroke-width: 20; stroke-linecap: round; stroke-linejoin: round; opacity: 0.75; }
+.wm-peak-l { fill: #2a221b; stroke: rgba(0, 0, 0, 0.5); stroke-width: 0.6; }
+.wm-peak-r { fill: #4a3e32; stroke: rgba(0, 0, 0, 0.4); stroke-width: 0.6; }
+.wm-wall-bed { fill: none; stroke: var(--wm-ink); stroke-width: 13; stroke-linecap: round; }
+.wm-wall-body { fill: none; stroke: var(--cd); stroke-width: 8; stroke-dasharray: 11 3.5; }
+.wm-wall-edge { fill: none; stroke: var(--c); stroke-width: 1.6; opacity: 0.85; }
+
+/* Roads */
+.wm-road path { fill: none; stroke-linecap: round; }
+.wm-road-bed { stroke: rgba(8, 6, 5, 0.85); stroke-width: 7; }
+.wm-road-line { stroke: rgba(201, 164, 92, 0.42); stroke-width: 1.6; stroke-dasharray: 7 5; }
+.wm-road-lit { stroke: var(--c); stroke-width: 2.6; opacity: 0; transition: opacity 0.6s; }
+.wm-road-hot { stroke: var(--gold-bright); stroke-width: 3; opacity: 0; transition: opacity 0.25s; }
+.wm-road.is-lit .wm-road-lit { opacity: 0.78; }
+.wm-road.is-hot .wm-road-hot { opacity: 0.5; }
+.wm-brazier-halo { fill: #4a3a2c; opacity: 0.08; transition: fill 0.5s, opacity 0.5s; }
+.wm-brazier-core { fill: #3a2f27; stroke: #14100d; stroke-width: 0.8; transition: fill 0.5s; }
+.wm-road.is-lit .wm-brazier-halo { fill: var(--c); opacity: 0.3; }
+.wm-road.is-lit .wm-brazier-core { fill: var(--c); filter: drop-shadow(0 0 2px var(--c)); }
+@keyframes wm-flicker { 0%, 100% { opacity: 1; } 30% { opacity: 0.72; } 55% { opacity: 1; } 80% { opacity: 0.84; } }
+.wm.is-running .wm-road.is-lit .wm-brazier-core { animation: wm-flicker 1.7s ease-in-out infinite; }
+
+/* Realm labels */
+.wm-realm-emblem { filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7)); opacity: 0.92; }
+.wm-realm-name { font: 700 25px var(--font-display); letter-spacing: 0.2em; text-transform: uppercase; fill: var(--c); paint-order: stroke; stroke: var(--wm-ink); stroke-width: 5px; stroke-linejoin: round; text-indent: 0.3em; }
+.wm-realm-wall { font: 15px var(--font-label); letter-spacing: 0.1em; fill: var(--text-dim); paint-order: stroke; stroke: var(--wm-ink); stroke-width: 3px; }
+.wm-realm-gloss { font-size: 13px; fill: var(--text-faint); }
+.wm-realm-mine { font: 600 13px var(--font-display); letter-spacing: 0.22em; text-transform: uppercase; fill: var(--c); paint-order: stroke; stroke: var(--wm-ink); stroke-width: 3px; }
+
+/* Nodes */
+.wm-node { --c: var(--hollow); --cd: var(--hollow-deep); cursor: pointer; outline: none; }
+.wm-own-vardheim { --c: var(--vardheim); --cd: var(--vardheim-deep); }
+.wm-own-solmarch { --c: var(--solmarch); --cd: var(--solmarch-deep); }
+.wm-own-askarra { --c: var(--askarra); --cd: var(--askarra-deep); }
+.wm-own-hollow { --c: var(--hollow); --cd: var(--hollow-deep); }
+.wm-hit { fill: transparent; }
+.wm-halo { fill: var(--c); opacity: 0.13; transition: fill 0.5s, opacity 0.5s; }
+.wm-own-hollow .wm-halo { opacity: 0.05; }
+.wm-sel { fill: none; stroke: var(--gold-bright); stroke-width: 1.6; stroke-dasharray: 3 4; opacity: 0; transition: opacity 0.2s; }
+.wm-node.is-selected .wm-sel, .wm-node:focus-visible .wm-sel { opacity: 0.95; }
+.wm-node.is-selected .wm-halo { opacity: 0.28; }
+.wm-ico { transition: opacity 0.4s; }
+.wm-node:hover .wm-ico { filter: brightness(1.18); }
+.wm-ring-track { fill: none; stroke: rgba(255, 255, 255, 0.07); stroke-width: 3; opacity: 0; }
+.wm-ring { fill: none; stroke: var(--rc, var(--ember)); stroke-width: 3.4; stroke-linecap: butt; stroke-dasharray: 0 100; opacity: 0; filter: drop-shadow(0 0 3px var(--rc, var(--ember))); }
+.wm-attacked .wm-ring, .wm-attacked .wm-ring-track { opacity: 1; }
+.wm-isolated .wm-ico { opacity: 0.5; }
+.wm-isolated .wm-halo { opacity: 0.04; }
+@keyframes wm-gutter { 0%, 100% { opacity: 0.62; } 20% { opacity: 0.34; } 40% { opacity: 0.58; } 70% { opacity: 0.28; } }
+.wm.is-running .wm-isolated .wm-ico { animation: wm-gutter 2.4s steps(1, end) infinite; }
+.wm-flame .wm-halo { opacity: 0.42; fill: var(--c); }
+.wm-flame .wm-ico { filter: drop-shadow(0 0 7px var(--c)) drop-shadow(0 0 16px var(--c)); }
+@keyframes wm-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+.wm.is-running .wm-flame .wm-halo { animation: wm-breathe 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.wm-t-gate.wm-mine .wm-halo { opacity: 0.4; }
+.wm-t-gate.wm-mine .wm-sel { opacity: 0.7; stroke: var(--c); }
+
+/* Labels */
+.wm-label {
+	font: 600 13.5px var(--font-display);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	fill: var(--text);
+	paint-order: stroke;
+	stroke: var(--wm-ink);
+	stroke-width: 4px;
+	stroke-linejoin: round;
+	pointer-events: none;
+}
+.wm-l-minor { font-size: 12.5px; fill: #d9cfba; letter-spacing: 0.08em; }
+.wm-l-castle { font-size: 16.5px; letter-spacing: 0.16em; fill: var(--gold-bright); }
+.wm-l-aldcor { font-size: 21px; letter-spacing: 0.24em; fill: var(--gold-bright); stroke-width: 5px; }
+.wm-node.is-selected .wm-label { fill: #fff; }
+.wm-isolated .wm-label { opacity: 0.65; }
+
+/* Banner */
+.wm-banner {
+	position: absolute;
+	left: 50%;
+	top: 44%;
+	z-index: 3;
+	display: grid;
+	justify-items: center;
+	gap: 6px;
+	padding: 16px clamp(18px, 5vw, 44px);
+	text-align: center;
+	pointer-events: none;
+	background: linear-gradient(90deg, transparent, rgba(8, 5, 3, 0.9) 18%, rgba(8, 5, 3, 0.9) 82%, transparent);
+	border-top: 1px solid var(--c);
+	border-bottom: 1px solid var(--c);
+	opacity: 0;
+	transform: translate(-50%, -50%) scaleY(0.6);
+	visibility: hidden;
+	width: min(92%, 640px);
+}
+.wm-banner.is-on { opacity: 1; transform: translate(-50%, -50%); visibility: visible; }
+.wm:not(.wm-reduced) .wm-banner { transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out), visibility 0.6s; }
+.wm-banner-title { font: 700 clamp(1.05rem, 3.6vw, 1.7rem) var(--font-display); letter-spacing: 0.2em; text-transform: uppercase; color: var(--c); text-shadow: 0 0 22px var(--c); }
+.wm-banner-sub { font: clamp(0.8rem, 2.4vw, 1rem) var(--font-label); letter-spacing: 0.12em; color: var(--text); text-transform: uppercase; }
+
+/* ---------- Side panels ---------- */
+.wm-card, .wm-chronicle, .wm-legend {
+	padding: 14px 16px;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-lg);
+	min-width: 0;
+}
+.wm-card { min-height: 244px; border-color: var(--line-strong); }
+.wm-hint { margin: 0; color: var(--text-dim); font-size: 0.9rem; line-height: 1.5; }
+.wm-card-head { display: flex; gap: 12px; align-items: center; }
+.wm-card-ico { width: 44px; height: 44px; flex: none; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--c) 40%, transparent)); }
+.wm-card-head.wm-isolated .wm-card-ico { opacity: 0.55; }
+.wm-card-name { margin: 0; font: 700 1.15rem/1.15 var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-bright); overflow-wrap: anywhere; }
+.wm-card-gloss { margin: 3px 0 0; font: 0.95rem var(--font-label); letter-spacing: 0.08em; color: var(--text-dim); }
+.wm-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 10px; }
+.wm-badge { padding: 3px 8px; font: 0.72rem var(--font-label); letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-dim); border: 1px solid var(--line); border-radius: 2px; }
+.wm-badge-hot { color: var(--ember-hot); border-color: var(--ember); background: rgba(255, 138, 61, 0.14); }
+.wm-badge-mine { color: var(--accent); border-color: var(--accent); }
+.wm-card-fx { margin: 0 0 12px; font-size: 0.88rem; line-height: 1.55; color: var(--text); }
+.wm-rows { margin: 0; display: grid; grid-template-columns: 5.6rem minmax(0, 1fr); gap: 6px 12px; font-size: 0.82rem; line-height: 1.45; }
+.wm-rows dt { font: 0.72rem var(--font-label); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); padding-top: 2px; }
+.wm-rows dd { margin: 0; color: var(--text-dim); }
+.wm-pair { white-space: nowrap; }
+.wm-warn { color: #f0a070; }
+.wm-rn { font-weight: 700; color: var(--c); }
+.wm-r-hollow.wm-rn { color: var(--hollow); }
+
+.wm-h { margin: 0 0 10px; font: 600 0.78rem var(--font-display); letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); }
+.wm-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.wm-log-item { --age: 1; display: flex; gap: 9px; align-items: baseline; padding: 4px 0; font-size: 0.84rem; line-height: 1.4; opacity: var(--age); border-bottom: 1px dotted rgba(201, 164, 92, 0.12); }
+.wm-log-item:last-child { border-bottom: 0; }
+.wm-log-item em { font-style: normal; color: var(--gold-bright); }
+.wm-log-item .wm-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c); transform: translateY(-1px); box-shadow: 0 0 6px var(--c); }
+.wm-log-empty { color: var(--text-faint); font-size: 0.84rem; }
+@keyframes wm-slide { from { opacity: 0; transform: translateY(-6px); } to { opacity: var(--age); transform: none; } }
+.wm-log-item.is-new { animation: wm-slide 0.5s var(--ease-out); }
+
+.wm-lg { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.78rem; color: var(--text-dim); }
+.wm-lg li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wm-lg-ico { width: 22px; height: 22px; flex: none; --c: var(--gold); --cd: #6b5733; }
+.wm-lg-ico.wm-own-vardheim { --c: var(--vardheim); --cd: var(--vardheim-deep); }
+.wm-lg li.wm-isolated { opacity: 0.8; }
+.wm-lg li.wm-isolated .wm-lg-ico { opacity: 0.5; }
+.wm-lg-road { width: 30px; height: 12px; flex: none; overflow: visible; }
+.wm-lg-road .wm-road-line { fill: none; stroke: rgba(201, 164, 92, 0.5); stroke-width: 1.6; stroke-dasharray: 5 4; }
+.wm-lg-lit { --c: var(--askarra); }
+.wm-lg-lit .wm-road-lit { fill: none; stroke: var(--c); stroke-width: 2.6; opacity: 0.85; }
+.wm-lg-lit circle { fill: var(--c); }
+.wm-lg-road .wm-cold { fill: #3a2f27; stroke: #14100d; stroke-width: 0.8; }
+
+/* ---------- Narrow screens: bigger touch targets, fewer labels ---------- */
+.wm-compact .wm-realm-name { font-size: 30px; }
+.wm-compact .wm-realm-wall { font-size: 17px; }
+.wm-narrow .wm-ico { transform: scale(1.5); }
+.wm-narrow .wm-t-aldcor .wm-ico { transform: scale(1.25); }
+.wm-narrow .wm-hit { r: 40; }
+.wm-narrow .wm-l-minor { display: none; }
+.wm-narrow .wm-node.is-selected .wm-l-minor { display: block; font-size: 24px; stroke-width: 6px; fill: #fff; }
+.wm-narrow .wm-l-castle { font-size: 21px; stroke-width: 6px; }
+.wm-narrow .wm-l-aldcor { font-size: 25px; stroke-width: 6px; }
+.wm-narrow .wm-realm-name { font-size: 25px; letter-spacing: 0.08em; }
+.wm-narrow .wm-t-aldcor .wm-label { transform: translateY(-24px); }
+.wm-narrow .wm-realm-wall { display: none; }
+.wm-narrow .wm-realm-gloss { font-size: 13px; fill: var(--text-faint); }
+.wm-realm-mine { font-size: 17px; letter-spacing: 0.08em; }
+.wm-narrow .wm-ring, .wm-narrow .wm-ring-track, .wm-narrow .wm-halo, .wm-narrow .wm-sel { transform: scale(1.4); }
+.wm-narrow .wm-ring { transform: rotate(-90deg) scale(1.4); }
+.wm-narrow .wm-lg { grid-template-columns: 1fr; }
+.wm-narrow .wm-card { min-height: 170px; }
+@media (max-width: 560px) {
+	.wm-bar { padding: 10px; }
+	.wm-counters { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+	.wm-counter { padding: 5px 6px; gap: 6px; }
+	.wm-emblem { width: 22px; height: 22px; }
+	.wm-counter-name { font-size: 0.58rem; letter-spacing: 0.08em; }
+	.wm-counter-val { font-size: 1rem; }
+	.wm-counter-rate { display: none; }
+	.wm-btn { padding: 6px 10px; letter-spacing: 0.06em; }
+	.wm-speed-label { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wm *, .wm *::before, .wm *::after { animation: none !important; transition: none !important; }
+}

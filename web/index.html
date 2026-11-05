@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Eldmark · Three realms. One broken crown.</title>
+	<meta name="description" content="Eldmark is an open-source medieval-fantasy MMORPG made with Godot 4: three realms at war over forts and castles, third-person action combat and an authoritative server you can study and fork.">
+	<meta name="theme-color" content="#0c0a09">
+	<meta property="og:type" content="website">
+	<meta property="og:title" content="Eldmark · Three realms. One broken crown.">
+	<meta property="og:description" content="An open-source medieval-fantasy MMORPG made with Godot 4.">
+	<meta property="og:image" content="assets/img/devlog_00.webp">
+	<meta name="twitter:card" content="summary_large_image">
+	<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+	<link rel="preload" href="assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+	<link rel="stylesheet" href="css/tokens.css">
+	<link rel="stylesheet" href="css/style.css">
+	<link rel="stylesheet" href="css/war-map.css">
+	<link rel="stylesheet" href="css/netcode.css">
+	<script src="js/core.js"></script>
+	<script src="js/i18n.js" defer></script>
+	<script src="js/embers.js" defer></script>
+	<script src="js/legend.js" defer></script>
+	<script src="js/parry.js" defer></script>
+	<script src="js/war-map.js" defer></script>
+	<script src="js/netcode.js" defer></script>
+	<script src="js/main.js" defer></script>
+</head>
+<body>
+
+<!-- Shared symbols: realm emblems (from assets/emblems) and the Broken Crown -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+	<symbol id="em-vardheim" viewBox="0 0 128 128">
+		<polygon points="28,50 30,8 58,38" fill="#4E7C90"/>
+		<polygon points="100,50 98,8 70,38" fill="#4E7C90"/>
+		<polygon points="33,40 32,20 49,37" fill="#7EC8E8"/>
+		<polygon points="95,40 96,20 79,37" fill="#7EC8E8"/>
+		<polygon points="22,66 36,38 64,70" fill="#7EC8E8"/>
+		<polygon points="36,38 92,38 64,70" fill="#95D2EC"/>
+		<polygon points="22,66 64,70 44,100" fill="#4E7C90"/>
+		<polygon points="44,100 84,100 64,70" fill="#7EC8E8"/>
+		<polygon points="44,100 84,100 64,118" fill="#4E7C90"/>
+		<polygon points="106,66 92,38 64,70" fill="#7EC8E8"/>
+		<polygon points="106,66 64,70 84,100" fill="#4E7C90"/>
+		<polygon points="40,56 58,60 44,67" fill="#10242E"/>
+		<polygon points="88,56 70,60 84,67" fill="#10242E"/>
+		<polygon points="57,102 71,102 64,111" fill="#10242E"/>
+	</symbol>
+	<symbol id="em-solmarch" viewBox="0 0 128 128">
+		<g transform="translate(-3.5 0)">
+			<polygon points="48.9885,120.024 59.9537,94.7348 52.1368,92.6403" fill="#E9C341"/>
+			<polygon points="30.766,97.234 45.1284,88.594 39.406,82.8716" fill="#A3882E"/>
+			<polygon points="7.9763,79.0115 35.3597,75.8632 33.2652,68.0463" fill="#E9C341"/>
+			<polygon points="18.6015,51.8355 33.2652,59.9537 35.3597,52.1368" fill="#A3882E"/>
+			<polygon points="22.9878,22.9878 39.406,45.1284 45.1284,39.406" fill="#E9C341"/>
+			<polygon points="51.8355,18.6015 52.1368,35.3597 59.9537,33.2652" fill="#A3882E"/>
+			<path d="M64 38 A26 26 0 0 0 64 90 Z" fill="#E9C341"/>
+		</g>
+		<g transform="translate(3.5 0)">
+			<polygon points="79.0115,7.9763 68.0463,33.2652 75.8632,35.3597" fill="#E9C341"/>
+			<polygon points="97.234,30.766 82.8716,39.406 88.594,45.1284" fill="#A3882E"/>
+			<polygon points="120.024,48.9885 92.6403,52.1368 94.7348,59.9537" fill="#E9C341"/>
+			<polygon points="109.399,76.1645 94.7348,68.0463 92.6403,75.8632" fill="#A3882E"/>
+			<polygon points="105.012,105.012 88.594,82.8716 82.8716,88.594" fill="#E9C341"/>
+			<polygon points="76.1645,109.399 75.8632,92.6403 68.0463,94.7348" fill="#A3882E"/>
+			<path d="M64 38 A26 26 0 0 1 64 90 Z" fill="#E9C341"/>
+		</g>
+	</symbol>
+	<symbol id="em-askarra" viewBox="0 0 128 128">
+		<polygon points="34,34 112,34 112,52 34,52" fill="#C3242F"/>
+		<polygon points="34,36 8,44 34,52" fill="#D25B63"/>
+		<polygon points="46,52 100,52 90,78 56,78" fill="#79161D"/>
+		<polygon points="38,78 108,78 118,96 28,96" fill="#C3242F"/>
+		<polyline points="12,112 30,104 44,114 62,102 78,116 94,104 116,112" fill="none" stroke="#CD7F32" stroke-width="5"/>
+		<polygon points="28,118 36,104 44,118" fill="#CD7F32"/>
+		<polygon points="70,120 80,104 90,120" fill="#CD7F32"/>
+	</symbol>
+	<symbol id="em-hollow" viewBox="0 0 128 128">
+		<g transform="translate(-3 2)">
+			<polygon points="22,104 22,50 42,74 64,34 65,36 60,56 69,72 59,88 66,104" fill="#BDB6A6"/>
+			<line x1="22" y1="91" x2="60" y2="91" stroke="#716D64" stroke-width="4"/>
+		</g>
+		<g transform="translate(3 -2)">
+			<polygon points="65,36 86,74 106,50 106,104 66,104 59,88 69,72 60,56" fill="#AAA495"/>
+			<line x1="66" y1="91" x2="106" y2="91" stroke="#716D64" stroke-width="4"/>
+		</g>
+	</symbol>
+	<symbol id="ic-github" viewBox="0 0 16 16">
+		<path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+	</symbol>
+</svg>
+
+<a class="skip" href="#main" data-i18n="nav.skip">Skip to content</a>
+
+<header class="nav" id="nav">
+	<a class="nav-brand" href="#top" aria-label="Eldmark">
+		<svg class="nav-crown" viewBox="0 0 240 140" aria-hidden="true"><use href="#crown-shape"/></svg>
+		<span>Eldmark</span>
+	</a>
+	<nav class="nav-links" id="nav-links" aria-label="Sections" data-i18n-attr="aria-label:nav.sections">
+		<a href="#legend" data-i18n="nav.legend">Legend</a>
+		<a href="#realms" data-i18n="nav.realms">Realms</a>
+		<a href="#war" data-i18n="nav.war">War</a>
+		<a href="#combat" data-i18n="nav.combat">Combat</a>
+		<a href="#engine" data-i18n="nav.engine">Under the hood</a>
+		<a href="#chronicle" data-i18n="nav.chronicle">Chronicle</a>
+		<a href="#road" data-i18n="nav.road">Roadmap</a>
+	</nav>
+	<div class="nav-tools">
+		<span class="nav-pledge" id="nav-pledge" hidden>
+			<svg viewBox="0 0 128 128" aria-hidden="true"><use href="#em-hollow"/></svg>
+		</span>
+		<button class="icon-btn" id="sound-toggle" type="button" aria-pressed="false" data-i18n-attr="aria-label:nav.sound;title:nav.sound" aria-label="Sound">
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>
+				<path class="sound-waves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+				<path class="sound-off" d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+			</svg>
+		</button>
+		<div class="lang-switch" role="group" aria-label="Language">
+			<button type="button" data-lang="en" aria-pressed="true">EN</button>
+			<button type="button" data-lang="es" aria-pressed="false">ES</button>
+		</div>
+		<a class="btn btn-small btn-ghost nav-gh" href="https://github.com/Luisbh-dev/Eldmark" rel="noopener">
+			<svg viewBox="0 0 16 16" aria-hidden="true"><use href="#ic-github"/></svg><span>GitHub</span>
+		</a>
+		<button class="icon-btn nav-burger" id="nav-burger" type="button" aria-expanded="false" aria-controls="nav-links" data-i18n-attr="aria-label:nav.menu" aria-label="Menu">
+			<span></span><span></span><span></span>
+		</button>
+	</div>
+</header>
+
+<main id="main">
+
+<!-- ============================== HERO ============================== -->
+<section class="hero" id="top">
+	<div class="hero-media" aria-hidden="true">
+		<video id="hero-video" autoplay muted loop playsinline preload="auto" poster="assets/video/hero_poster.jpg">
+			<source src="assets/video/hero.mp4" type="video/mp4">
+		</video>
+	</div>
+	<div class="hero-grade" aria-hidden="true"></div>
+	<div class="hero-light" aria-hidden="true"></div>
+	<canvas class="hero-embers" id="embers" aria-hidden="true"></canvas>
+
+	<div class="hero-content">
+		<p class="hero-kicker" data-i18n="hero.kicker">An open-source MMORPG made with Godot 4</p>
+
+		<div class="crown" id="crown" aria-hidden="true">
+			<svg viewBox="0 0 240 140">
+				<defs>
+					<symbol id="crown-shape" viewBox="0 0 240 140">
+						<path d="M28 126 L24 46 L60 86 L84 34 L106 80 L120 12 L134 80 L156 34 L180 86 L216 46 L212 126 Z" fill="currentColor"/>
+						<path d="M30 104 H210" stroke="rgba(0,0,0,0.35)" stroke-width="3"/>
+						<path d="M29 114 H211" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+					</symbol>
+					<linearGradient id="crown-sheen" x1="0" y1="0" x2="0" y2="1">
+						<stop offset="0" stop-color="#fff" stop-opacity="0.55"/>
+						<stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+						<stop offset="1" stop-color="#000" stop-opacity="0.35"/>
+					</linearGradient>
+					<clipPath id="clip-l"><polygon points="0,0 100,0 104,40 96,70 104,96 98,140 0,140"/></clipPath>
+					<clipPath id="clip-c"><polygon points="100,0 142,0 136,44 144,74 136,100 142,140 98,140 104,96 96,70 104,40"/></clipPath>
+					<clipPath id="clip-r"><polygon points="142,0 240,0 240,140 142,140 136,100 144,74 136,44"/></clipPath>
+					<filter id="crack-glow" x="-50%" y="-50%" width="200%" height="200%">
+						<feGaussianBlur stdDeviation="3" result="b"/>
+						<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+					</filter>
+				</defs>
+				<g class="shard shard-l" clip-path="url(#clip-l)">
+					<use href="#crown-shape"/>
+					<path d="M28 126 L24 46 L60 86 L84 34 L106 80 L120 12 L134 80 L156 34 L180 86 L216 46 L212 126 Z" fill="url(#crown-sheen)"/>
+					<circle cx="60" cy="114" r="5" class="gem"/>
+				</g>
+				<g class="shard shard-c" clip-path="url(#clip-c)">
+					<use href="#crown-shape"/>
+					<path d="M28 126 L24 46 L60 86 L84 34 L106 80 L120 12 L134 80 L156 34 L180 86 L216 46 L212 126 Z" fill="url(#crown-sheen)"/>
+					<path d="M120 96 l8 9 -8 9 -8 -9 z" class="gem"/>
+				</g>
+				<g class="shard shard-r" clip-path="url(#clip-r)">
+					<use href="#crown-shape"/>
+					<path d="M28 126 L24 46 L60 86 L84 34 L106 80 L120 12 L134 80 L156 34 L180 86 L216 46 L212 126 Z" fill="url(#crown-sheen)"/>
+					<circle cx="180" cy="114" r="5" class="gem"/>
+				</g>
+				<g class="cracks" filter="url(#crack-glow)">
+					<polyline points="100,10 104,40 96,70 104,96 98,130"/>
+					<polyline points="142,10 136,44 144,74 136,100 142,130"/>
+				</g>
+			</svg>
+		</div>
+
+		<h1 class="hero-title" aria-label="Eldmark">
+			<span aria-hidden="true">E</span><span aria-hidden="true">L</span><span aria-hidden="true">D</span><span aria-hidden="true">M</span><span aria-hidden="true">A</span><span aria-hidden="true">R</span><span aria-hidden="true">K</span>
+		</h1>
+		<p class="hero-tagline" data-i18n="hero.tagline">Three realms. One broken crown.</p>
+		<p class="hero-lede" data-i18n="hero.lede">Pick a realm, level up behind its wall, then march out through its gate to take forts from the other two. Third-person action combat, an authoritative server, and every line of it open source.</p>
+		<div class="hero-cta">
+			<a class="btn btn-primary" href="#realms" data-i18n="hero.cta">Choose your banner</a>
+			<a class="btn btn-ghost" href="https://github.com/Luisbh-dev/Eldmark" rel="noopener">
+				<svg viewBox="0 0 16 16" aria-hidden="true"><use href="#ic-github"/></svg><span data-i18n="hero.source">Read the source</span>
+			</a>
+		</div>
+		<p class="hero-status"><span class="pulse" aria-hidden="true"></span><span data-i18n="hero.status">Pre-alpha · a playable vertical slice</span></p>
+	</div>
+
+	<a class="hero-scroll" href="#legend"><span data-i18n="hero.scroll">Descend</span><i aria-hidden="true"></i></a>
+</section>
+
+<!-- ============================== LEGEND ============================== -->
+<section class="legend" id="legend" aria-labelledby="legend-title">
+	<div class="legend-stage" aria-hidden="true">
+		<canvas id="flame"></canvas>
+		<svg class="legend-crack" viewBox="0 0 400 800" preserveAspectRatio="none">
+			<path id="legend-crack-path" d="M210 0 L196 90 L222 170 L188 260 L214 330 L176 420 L206 500 L184 590 L216 680 L198 800"/>
+			<path class="branch" d="M222 170 L268 200 L300 260"/>
+			<path class="branch" d="M188 260 L140 300 L118 360"/>
+			<path class="branch" d="M176 420 L120 460"/>
+			<path class="branch" d="M206 500 L262 540 L280 610"/>
+		</svg>
+		<div class="legend-numeral" id="legend-numeral">I</div>
+	</div>
+	<div class="legend-steps">
+		<article class="legend-step is-active" data-step="0">
+			<p class="eyebrow" data-i18n="legend.eyebrow">The legend of the Broken Crown</p>
+			<h2 id="legend-title" data-i18n="legend.s0.title">Eld, the one kingdom</h2>
+			<p data-i18n="legend.s0.text">Three centuries ago the three peoples were a single kingdom, ruled from the citadel of Aldcor, where the Flame of Eld burned: an ancient fire that made the land fertile and bound the three lineages by oath.</p>
+		</article>
+		<article class="legend-step" data-step="1">
+			<p class="eyebrow">II</p>
+			<h3 data-i18n="legend.s1.title">The last king</h3>
+			<p data-i18n="legend.s1.text">The last king died without an heir. The three lineages claimed the throne, and the oath that had bound them for generations began to fray.</p>
+		</article>
+		<article class="legend-step" data-step="2">
+			<p class="eyebrow">III</p>
+			<h3 data-i18n="legend.s2.title">The Sundering</h3>
+			<p data-i18n="legend.s2.text">In the battle of Aldcor the Flame burst. The citadel sank, the land cracked open, and each people shut itself behind a wall, blaming the others.</p>
+		</article>
+		<article class="legend-step" data-step="3">
+			<p class="eyebrow">IV</p>
+			<h3 data-i18n="legend.s3.title">The Embers of Eld</h3>
+			<p data-i18n="legend.s3.text">Shards of the Flame still burn among the ruins and grant power to whoever holds them. It is said that whoever gathers enough of them will rekindle the Flame and wear the Broken Crown.</p>
+			<blockquote data-i18n="legend.s3.quote">The war zone is the corpse of the kingdom they once were: a shared past that only one can inherit.</blockquote>
+		</article>
+	</div>
+</section>
+
+<!-- ============================== REALMS ============================== -->
+<section class="section realms" id="realms" aria-labelledby="realms-title">
+	<header class="section-head reveal">
+		<p class="eyebrow" data-i18n="realms.eyebrow">Choose your banner</p>
+		<h2 id="realms-title" data-i18n="realms.title">Three realms behind three walls</h2>
+		<p class="lede" data-i18n="realms.lede">Every player belongs to a realm. Inside its wall you level up in safety; beyond its gates lies Eldrun, where the other two are waiting. Pledge to one and the whole site takes its colors.</p>
+	</header>
+
+	<div class="banners reveal" role="tablist" aria-labelledby="realms-title">
+		<button class="banner" type="button" role="tab" id="tab-vardheim" data-realm="vardheim" aria-selected="false" aria-controls="realm-vardheim">
+			<span class="banner-pole" aria-hidden="true"></span>
+			<span class="banner-cloth">
+				<svg class="banner-emblem" viewBox="0 0 128 128" aria-hidden="true"><use href="#em-vardheim"/></svg>
+				<span class="banner-name">Vardheim</span>
+				<span class="banner-motto" data-i18n="realm.vardheim.motto">The clans of the north</span>
+				<span class="banner-pledge"><span class="bp-off" data-i18n="realms.pledge">Pledge</span><span class="bp-on" data-i18n="realms.sworn.badge">Sworn</span></span>
+			</span>
+		</button>
+		<button class="banner" type="button" role="tab" id="tab-solmarch" data-realm="solmarch" aria-selected="false" aria-controls="realm-solmarch">
+			<span class="banner-pole" aria-hidden="true"></span>
+			<span class="banner-cloth">
+				<svg class="banner-emblem" viewBox="0 0 128 128" aria-hidden="true"><use href="#em-solmarch"/></svg>
+				<span class="banner-name">Solmarch</span>
+				<span class="banner-motto" data-i18n="realm.solmarch.motto">The realm of the Dawn</span>
+				<span class="banner-pledge"><span class="bp-off" data-i18n="realms.pledge">Pledge</span><span class="bp-on" data-i18n="realms.sworn.badge">Sworn</span></span>
+			</span>
+		</button>
+		<button class="banner" type="button" role="tab" id="tab-askarra" data-realm="askarra" aria-selected="false" aria-controls="realm-askarra">
+			<span class="banner-pole" aria-hidden="true"></span>
+			<span class="banner-cloth">
+				<svg class="banner-emblem" viewBox="0 0 128 128" aria-hidden="true"><use href="#em-askarra"/></svg>
+				<span class="banner-name">Askarra</span>
+				<span class="banner-motto" data-i18n="realm.askarra.motto">The ash forges</span>
+				<span class="banner-pledge"><span class="bp-off" data-i18n="realms.pledge">Pledge</span><span class="bp-on" data-i18n="realms.sworn.badge">Sworn</span></span>
+			</span>
+		</button>
+	</div>
+
+	<div class="realm-panels">
+		<p class="realm-hint" id="realm-hint" data-i18n="realms.hint">Raise a banner to read its chronicle.</p>
+
+		<article class="realm-panel" id="realm-vardheim" role="tabpanel" aria-labelledby="tab-vardheim" data-realm="vardheim" hidden>
+			<div class="realm-figure">
+				<img src="assets/img/muralla_vardheim_sm.webp" srcset="assets/img/muralla_vardheim_sm.webp 720w, assets/img/muralla_vardheim.webp 1600w" sizes="(max-width: 900px) 100vw, 520px" alt="The Frost Wall of Vardheim with its camp, in the game" data-i18n-attr="alt:realm.vardheim.alt" loading="lazy" width="720" height="405">
+				<figcaption data-i18n="realm.vardheim.caption">The Frost Wall and the Vardheim camp, in the Vado Gris</figcaption>
+			</div>
+			<div class="realm-body">
+				<p class="realm-tone" data-i18n="realm.vardheim.tone">Fatalistic and harsh. They swore to guard the throne, and failed.</p>
+				<dl class="realm-facts">
+					<div><dt data-i18n="realm.f.culture">Culture</dt><dd data-i18n="realm.vardheim.culture">Clans inspired by Norse and Anglo-Saxon cultures. A council of jarls elects the king. Once the Squires of Eld, guardians of the throne.</dd></div>
+					<div><dt data-i18n="realm.f.land">Landscape</dt><dd data-i18n="realm.vardheim.land">Fjords, pine forests, tundra and glaciers; long winters and auroras.</dd></div>
+					<div><dt data-i18n="realm.f.arch">Architecture</dt><dd data-i18n="realm.vardheim.arch">Dark-wood longhouses, palisades, rough stone towers and knotwork carvings.</dd></div>
+					<div><dt data-i18n="realm.f.heraldry">Heraldry</dt><dd data-i18n="realm.vardheim.heraldry">Steel gray and ice blue. A white wolf on a gray field.</dd></div>
+					<div><dt data-i18n="realm.f.capital">Capital</dt><dd data-i18n="realm.vardheim.capital">Isenholm, a fortress at the head of a fjord.</dd></div>
+					<div><dt data-i18n="realm.f.wall">Wall and gates</dt><dd data-i18n="realm.vardheim.wall">Muro de Escarcha, the Frost Wall: dry stone and logs. Wolf Gate and Hrafn Gate.</dd></div>
+				</dl>
+				<ol class="realm-ladder" aria-label="From the capital to the front" data-i18n-attr="aria-label:realm.ladder">
+					<li><b>Isenholm</b><span data-i18n="realm.cap">Capital</span></li>
+					<li><b>Hondal</b><span>1–10</span></li>
+					<li><b>Skarven</b><span>10–20</span></li>
+					<li><b>Grimfell</b><span>20–30</span></li>
+					<li><b>Marca del Lobo</b><span>30–40</span></li>
+					<li class="is-front"><b>Eldrun</b><span data-i18n="realm.front">The front</span></li>
+				</ol>
+			</div>
+		</article>
+
+		<article class="realm-panel" id="realm-solmarch" role="tabpanel" aria-labelledby="tab-solmarch" data-realm="solmarch" hidden>
+			<div class="realm-figure">
+				<img src="assets/img/campamento_solmarch_sm.webp" srcset="assets/img/campamento_solmarch_sm.webp 720w, assets/img/campamento_solmarch.webp 1600w" sizes="(max-width: 900px) 100vw, 520px" alt="The Dawn Wall of Solmarch with its conical towers, in the game" data-i18n-attr="alt:realm.solmarch.alt" loading="lazy" width="720" height="405">
+				<figcaption data-i18n="realm.solmarch.caption">The Dawn Wall and the Solmarch camp, in the Vado Gris</figcaption>
+			</div>
+			<div class="realm-body">
+				<p class="realm-tone" data-i18n="realm.solmarch.tone">A luminous faith that ends in fanaticism. They see the rebuilding of the Flame as a crusade.</p>
+				<dl class="realm-facts">
+					<div><dt data-i18n="realm.f.culture">Culture</dt><dd data-i18n="realm.solmarch.culture">A Gothic theocracy ruled by the Order of the Dawn and a chivalric nobility.</dd></div>
+					<div><dt data-i18n="realm.f.land">Landscape</dt><dd data-i18n="realm.solmarch.land">Fertile valleys, vineyards and slow rivers; mild and rainy. To the east, swamps poisoned by the Sundering.</dd></div>
+					<div><dt data-i18n="realm.f.arch">Architecture</dt><dd data-i18n="realm.solmarch.arch">Pale limestone, cathedrals with flying buttresses, conical towers of blue slate and stained glass.</dd></div>
+					<div><dt data-i18n="realm.f.heraldry">Heraldry</dt><dd data-i18n="realm.solmarch.heraldry">White and gold. A radiant sun split in two.</dd></div>
+					<div><dt data-i18n="realm.f.capital">Capital</dt><dd data-i18n="realm.solmarch.capital">Valcorin, a cathedral city in a river bend.</dd></div>
+					<div><dt data-i18n="realm.f.wall">Wall and gates</dt><dd data-i18n="realm.solmarch.wall">Muralla del Alba, the Dawn Wall: limestone and conical towers. Golden Gate and Gate of the Penitents.</dd></div>
+				</dl>
+				<ol class="realm-ladder" aria-label="From the capital to the front" data-i18n-attr="aria-label:realm.ladder">
+					<li><b>Valcorin</b><span data-i18n="realm.cap">Capital</span></li>
+					<li><b>Campos de Ambre</b><span>1–10</span></li>
+					<li><b>Bosque de Lirien</b><span>10–20</span></li>
+					<li><b>Ciénaga de Morvel</b><span>20–30</span></li>
+					<li><b>Llanos del Penitente</b><span>30–40</span></li>
+					<li class="is-front"><b>Eldrun</b><span data-i18n="realm.front">The front</span></li>
+				</ol>
+			</div>
+		</article>
+
+		<article class="realm-panel" id="realm-askarra" role="tabpanel" aria-labelledby="tab-askarra" data-realm="askarra" hidden>
+			<div class="realm-figure realm-figure-tower">
+				<img src="assets/img/torreones.webp" alt="The fort tower recolored for each realm; the red sandstone one is Askarra's" data-i18n-attr="alt:realm.askarra.alt" loading="lazy" width="1400" height="788">
+				<figcaption data-i18n="realm.askarra.caption">One kit, recolored per realm: the sandstone tower of Askarra. Its lands are still being forged.</figcaption>
+			</div>
+			<div class="realm-body">
+				<p class="realm-tone" data-i18n="realm.askarra.tone">Pragmatic and desperate. Their land is dying, and only the Embers keep it alive.</p>
+				<dl class="realm-facts">
+					<div><dt data-i18n="realm.f.culture">Culture</dt><dd data-i18n="realm.askarra.culture">An oligarchy of forge lords and merchants, with Byzantine and Mediterranean echoes.</dd></div>
+					<div><dt data-i18n="realm.f.land">Landscape</dt><dd data-i18n="realm.askarra.land">Red canyons, plateaus, oases and volcanic fields; dry heat and ash rain. Here the cracks of the Sundering still burn.</dd></div>
+					<div><dt data-i18n="realm.f.arch">Architecture</dt><dd data-i18n="realm.askarra.arch">Red sandstone and terracotta, low domes, arches, terraced cities carved into the rock and forge chimneys.</dd></div>
+					<div><dt data-i18n="realm.f.heraldry">Heraldry</dt><dd data-i18n="realm.askarra.heraldry">Crimson and bronze. A bronze anvil over a burning crack.</dd></div>
+					<div><dt data-i18n="realm.f.capital">Capital</dt><dd data-i18n="realm.askarra.capital">Kassar, “the city of a thousand steps”, carved into a canyon.</dd></div>
+					<div><dt data-i18n="realm.f.wall">Wall and gates</dt><dd data-i18n="realm.askarra.wall">Cinturón de Bronce, the Bronze Belt: reinforced sandstone. Ash Gate and Canyon Gate.</dd></div>
+				</dl>
+				<ol class="realm-ladder" aria-label="From the capital to the front" data-i18n-attr="aria-label:realm.ladder">
+					<li><b>Kassar</b><span data-i18n="realm.cap">Capital</span></li>
+					<li><b>Oasis de Thal</b><span>1–10</span></li>
+					<li><b>Cañones de Ruhn</b><span>10–20</span></li>
+					<li><b>Yermo de Ceniza</b><span>20–30</span></li>
+					<li><b>Forjas de Ossar</b><span>30–40</span></li>
+					<li class="is-front"><b>Eldrun</b><span data-i18n="realm.front">The front</span></li>
+				</ol>
+			</div>
+		</article>
+
+		<div class="realm-actions" id="realm-actions" hidden>
+			<p class="realm-sworn"><span data-i18n="realms.sworn">You fight for</span> <b id="realm-sworn-name"></b></p>
+			<button class="btn btn-ghost btn-small" type="button" id="realm-release" data-i18n="realms.release">Lower the banner</button>
+		</div>
+	</div>
+
+	<p class="realms-note reveal" data-i18n-html="realms.note">No diplomacy, no cross-realm chat: of an enemy you see the body, the banner and, when you aim at them, the name. Never the voice.</p>
+</section>
+
+<!-- ============================== WAR ============================== -->
+<section class="section war" id="war" aria-labelledby="war-title">
+	<header class="section-head reveal">
+		<p class="eyebrow" data-i18n="war.eyebrow">Eldrun, the war zone</p>
+		<h2 id="war-title" data-i18n="war.title">Take the forts. Hold the lines.</h2>
+		<p class="lede" data-i18n="war.lede">Six forts, three castles and the ruined citadel of Aldcor, joined by the Ember Lines. You can only attack what your chain of strongholds reaches; cut an enemy’s chain and everything behind it is isolated. Press play and watch a war unfold by the real rules.</p>
+	</header>
+	<div id="war-map" class="reveal"></div>
+	<div class="war-facts">
+		<article class="fact-card reveal">
+			<h3 data-i18n="war.fort.title">Forts</h3>
+			<p data-i18n="war.fort.text">Small, quick objectives. Break the gate, kill the captain, then hold the circle under the standard for 30 seconds. More allies capture faster; any enemy inside freezes it.</p>
+		</article>
+		<article class="fact-card reveal">
+			<h3 data-i18n="war.castle.title">Castles</h3>
+			<p data-i18n="war.castle.text">Velmont, Grauholt and Sarnath: walls, gates and several lines of defense, one between each pair of realms. Siege weapons arrive with the full war zone.</p>
+		</article>
+		<article class="fact-card reveal">
+			<h3 data-i18n="war.aldcor.title">Aldcor</h3>
+			<p data-i18n="war.aldcor.text">The Broken Throne. Only a realm that holds two of the three castles may attack it. Whoever takes it rekindles the Flame for a few hours, while the other two strike back with a bonus.</p>
+		</article>
+	</div>
+</section>
+
+<!-- ============================== COMBAT ============================== -->
+<section class="section combat" id="combat" aria-labelledby="combat-title">
+	<header class="section-head reveal">
+		<p class="eyebrow" data-i18n="combat.eyebrow">Action combat</p>
+		<h2 id="combat-title" data-i18n="combat.title">Aim it. Time it. Earn it.</h2>
+		<p class="lede" data-i18n="combat.lede">No target lock and no tab-targeting: a swing lands if the blade’s arc touches the enemy. Over-the-shoulder camera, crosshair aiming, blocking and dodging, all paid for with stamina.</p>
+	</header>
+
+	<div class="combat-grid">
+		<ul class="moves reveal">
+			<li class="move">
+				<img src="assets/icons/sword_light.webp" alt="" width="64" height="64" loading="lazy">
+				<div><h3><span data-i18n="move.light.title">Light combo, charged heavy</span><kbd data-i18n="key.lmb">LMB</kbd></h3><p data-i18n="move.light.text">Click to chain light slashes; hold to charge a heavy blow that breaks guards.</p></div>
+			</li>
+			<li class="move">
+				<img src="assets/icons/block.webp" alt="" width="64" height="64" loading="lazy">
+				<div><h3><span data-i18n="move.block.title">Block and parry</span><kbd data-i18n="key.rmb">RMB</kbd></h3><p data-i18n="move.block.text">Raise the shield to block. Tap it just before the hit to parry and stagger the attacker.</p></div>
+			</li>
+			<li class="move">
+				<img src="assets/icons/dodge.webp" alt="" width="64" height="64" loading="lazy">
+				<div><h3><span data-i18n="move.dodge.title">Dodge</span><kbd>Ctrl</kbd></h3><p data-i18n="move.dodge.text">Roll in the direction you are moving, with invulnerability frames.</p></div>
+			</li>
+			<li class="move">
+				<img src="assets/icons/bow_drawn.webp" alt="" width="64" height="64" loading="lazy">
+				<div><h3><span data-i18n="move.bow.title">The bow</span><kbd>Q</kbd></h3><p data-i18n="move.bow.text">Quick shots and fully drawn shots, with projectiles simulated deterministically on the server.</p></div>
+			</li>
+			<li class="move">
+				<img src="assets/icons/shield_bash.webp" alt="" width="64" height="64" loading="lazy">
+				<div><h3><span data-i18n="move.abilities.title">Weapon abilities</span><kbd>1 2 3</kbd></h3><p data-i18n="move.abilities.text">Shield Bash, Shield Rush and Shield Wall; Volley, Evasive Shot and Slowing Shot. Each weapon brings three.</p></div>
+			</li>
+			<li class="move">
+				<img src="assets/icons/downed.webp" alt="" width="64" height="64" loading="lazy">
+				<div><h3><span data-i18n="move.downed.title">Downed, not dead</span><kbd data-i18n="key.hold">Hold E</kbd></h3><p data-i18n="move.downed.text">A fallen fighter can still be revived by an ally, or finished off by an enemy.</p></div>
+			</li>
+		</ul>
+
+		<div class="trial reveal">
+			<div id="parry-trial"></div>
+		</div>
+	</div>
+</section>
+
+<!-- ============================== ENGINE ============================== -->
+<section class="section engine" id="engine" aria-labelledby="engine-title">
+	<header class="section-head reveal">
+		<p class="eyebrow" data-i18n="engine.eyebrow">Under the hood</p>
+		<h2 id="engine-title" data-i18n="engine.title">An MMO you can read</h2>
+		<p class="lede" data-i18n="engine.lede">Eldmark is also a reference architecture for networked action games in Godot: an authoritative server, client-side prediction, interpolation and lag compensation, written down and tested. The lab below runs on the same numbers as the game.</p>
+	</header>
+
+	<ul class="stats reveal">
+		<li><b data-count="60">60</b><span>Hz</span><em data-i18n="stat.ticks">simulation ticks</em></li>
+		<li><b data-count="30">30</b><span>Hz</span><em data-i18n="stat.snapshots">snapshots</em></li>
+		<li><b data-count="400">400</b><span>ms</span><em data-i18n="stat.rewind">max hitbox rewind</em></li>
+		<li><b data-count="2800" data-suffix="+">2,800+</b><em data-i18n="stat.tests">automated tests</em></li>
+		<li><b data-count="40">40</b><em data-i18n="stat.combatants">combatants per battle, measured</em></li>
+		<li><b data-count="1">1</b><em data-i18n="stat.project">Godot project for client and server</em></li>
+	</ul>
+
+	<div id="netcode-lab" class="reveal"></div>
+
+	<div class="arch reveal">
+		<h3 class="arch-title" data-i18n="arch.title">How the pieces fit</h3>
+		<svg class="arch-diagram" viewBox="0 0 960 400" role="img" aria-labelledby="arch-desc">
+			<desc id="arch-desc" data-i18n="arch.desc">The client sends only inputs to the zone server over ENet; the server runs the shared simulation and sends snapshots back. A Go platform service with PostgreSQL holds accounts and characters and signs the hand-off tickets that let a zone admit a character.</desc>
+			<defs>
+				<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c9a45c"/></marker>
+			</defs>
+			<path class="arch-wire" d="M145 76 V36 H815 V76"/>
+			<text x="480" y="24" class="arch-tag" text-anchor="middle" data-i18n="arch.wire">ENet · inputs up, snapshots down</text>
+			<circle class="arch-packet" r="4.5"><animateMotion dur="2.6s" repeatCount="indefinite" path="M145 76 V36 H815 V76"/></circle>
+			<circle class="arch-packet arch-packet-down" r="4.5"><animateMotion dur="2.6s" begin="-1.3s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear" path="M145 76 V36 H815 V76"/></circle>
+			<g class="arch-node" transform="translate(10 76)">
+				<rect width="270" height="196" rx="4"/>
+				<text x="20" y="38" class="arch-h" data-i18n="arch.client">Client</text>
+				<text x="20" y="68" class="arch-p" data-i18n="arch.client.1">camera · input · UI · audio</text>
+				<text x="20" y="92" class="arch-p" data-i18n="arch.client.2">predicts the local player</text>
+				<text x="20" y="116" class="arch-p" data-i18n="arch.client.3">interpolates everyone else</text>
+				<text x="20" y="172" class="arch-code">scripts/client/</text>
+			</g>
+			<g class="arch-node arch-node-core" transform="translate(345 76)">
+				<rect width="270" height="196" rx="4"/>
+				<text x="20" y="38" class="arch-h" data-i18n="arch.shared">Shared simulation</text>
+				<text x="20" y="68" class="arch-p" data-i18n="arch.shared.1">deterministic, 60 Hz ticks</text>
+				<text x="20" y="92" class="arch-p" data-i18n="arch.shared.2">movement · combat · protocol</text>
+				<text x="20" y="116" class="arch-p" data-i18n="arch.shared.3">bit for bit on both sides</text>
+				<text x="20" y="172" class="arch-code">scripts/shared/</text>
+			</g>
+			<g class="arch-node" transform="translate(680 76)">
+				<rect width="270" height="196" rx="4"/>
+				<text x="20" y="38" class="arch-h" data-i18n="arch.server">Zone server</text>
+				<text x="20" y="68" class="arch-p" data-i18n="arch.server.1">headless, one process per zone</text>
+				<text x="20" y="92" class="arch-p" data-i18n="arch.server.2">authoritative, rewinds hitboxes</text>
+				<text x="20" y="116" class="arch-p" data-i18n="arch.server.3">AI · forts · chat by realm</text>
+				<text x="20" y="172" class="arch-code">scripts/server/</text>
+			</g>
+			<g class="arch-node arch-node-go" transform="translate(680 318)">
+				<rect width="270" height="70" rx="4"/>
+				<text x="20" y="30" class="arch-h arch-h-sm" data-i18n="arch.platform">Platform service</text>
+				<text x="20" y="54" class="arch-p" data-i18n="arch.platform.1">Go · PostgreSQL · accounts</text>
+			</g>
+			<path class="arch-link" d="M280 174 H339" marker-end="url(#arrow)"/>
+			<path class="arch-link" d="M680 174 H621" marker-end="url(#arrow)"/>
+			<text x="312" y="162" class="arch-tag" text-anchor="middle" data-i18n="arch.uses">uses</text>
+			<text x="648" y="162" class="arch-tag" text-anchor="middle" data-i18n="arch.uses">uses</text>
+			<path class="arch-link" d="M815 272 V312" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+			<text x="830" y="298" class="arch-tag" data-i18n="arch.tickets">tickets · saves</text>
+			<text x="20" y="322" class="arch-rule" data-i18n="arch.rule">Client and server never depend on each other;</text>
+			<text x="20" y="346" class="arch-rule" data-i18n="arch.rule2">the architecture test fails the build if they do.</text>
+		</svg>
+	</div>
+</section>
+
+<!-- ============================== CHRONICLE ============================== -->
+<section class="section chronicle" id="chronicle" aria-labelledby="chronicle-title">
+	<header class="section-head reveal">
+		<p class="eyebrow" data-i18n="chronicle.eyebrow">From the front</p>
+		<h2 id="chronicle-title" data-i18n="chronicle.title">Chronicle of the Vado Gris</h2>
+		<p class="lede" data-i18n="chronicle.lede">The first playable zone: a 300 × 300 m frontier between Vardheim’s Frost Wall and Solmarch’s Dawn Wall, with a horseshoe river, a stone bridge, a wide ford and a palisade fort on the hill. Real captures from the game, pre-alpha and honest.</p>
+	</header>
+
+	<div class="compare-wrap reveal">
+		<div class="compare" id="compare" style="--pos: 50%">
+			<img class="compare-after" src="assets/img/muralla_vardheim.webp" alt="" width="1600" height="900" loading="lazy">
+			<div class="compare-before-clip">
+				<img class="compare-before" src="assets/img/antes_muralla_vardheim.webp" alt="" width="1600" height="900" loading="lazy">
+			</div>
+			<span class="compare-label compare-label-before" data-i18n="compare.before">Before · 3 Nov</span>
+			<span class="compare-label compare-label-after" data-i18n="compare.after">After the quality pass</span>
+			<div class="compare-handle" aria-hidden="true"><span></span></div>
+			<input class="compare-range" type="range" min="0" max="100" value="50" aria-label="Before and after" data-i18n-attr="aria-label:compare.aria">
+		</div>
+		<div class="compare-tabs" role="group" aria-label="Scene" data-i18n-attr="aria-label:compare.scene">
+			<button type="button" class="is-active" data-pair="muralla_vardheim" data-i18n="compare.wall">The Frost Wall</button>
+			<button type="button" data-pair="fuerte_de_cerca" data-i18n="compare.fort">The fort</button>
+			<button type="button" data-pair="campamento_solmarch" data-i18n="compare.camp">Solmarch’s camp</button>
+		</div>
+	</div>
+
+	<div class="gallery reveal" id="gallery">
+		<button class="shot shot-big" type="button" data-full="assets/img/fuerte_de_cerca.webp">
+			<img src="assets/img/fuerte_de_cerca_sm.webp" srcset="assets/img/fuerte_de_cerca_sm.webp 720w, assets/img/fuerte_de_cerca.webp 1600w" sizes="(max-width: 520px) 100vw, 50vw" alt="The Vado Gris fort: a palisade and a stone tower on the hill" data-i18n-attr="alt:shot.fort" loading="lazy" width="720" height="405">
+			<span data-i18n="shot.fort.cap">The fort on the hill</span>
+		</button>
+		<button class="shot" type="button" data-full="assets/img/pelea.webp">
+			<img src="assets/img/pelea_sm.webp" alt="Sword-and-shield fight against the Hollow at the fort" data-i18n-attr="alt:shot.fight" loading="lazy" width="720" height="405">
+			<span data-i18n="shot.fight.cap">Against the Hollow</span>
+		</button>
+		<button class="shot" type="button" data-full="assets/img/puente_norte.webp">
+			<img src="assets/img/puente_norte_sm.webp" alt="The stone bridge over the river" data-i18n-attr="alt:shot.bridge" loading="lazy" width="720" height="405">
+			<span data-i18n="shot.bridge.cap">The north bridge</span>
+		</button>
+		<button class="shot" type="button" data-full="assets/img/ruinas_aldea.webp">
+			<img src="assets/img/ruinas_aldea_sm.webp" alt="Ruins of a village of old Eld on the flank" data-i18n-attr="alt:shot.ruins" loading="lazy" width="720" height="405">
+			<span data-i18n="shot.ruins.cap">Ruins of old Eld</span>
+		</button>
+		<button class="shot" type="button" data-full="assets/img/vado.webp">
+			<img src="assets/img/vado_sm.webp" alt="The wide ford, with the fort in the distance" data-i18n-attr="alt:shot.ford" loading="lazy" width="720" height="405">
+			<span data-i18n="shot.ford.cap">The Gray Ford</span>
+		</button>
+		<button class="shot shot-wide" type="button" data-full="assets/img/vista_desde_puerta_vardheim.webp">
+			<img src="assets/img/vista_desde_puerta_vardheim_sm.webp" alt="The valley seen from Vardheim's gate" data-i18n-attr="alt:shot.view" loading="lazy" width="720" height="405">
+			<span data-i18n="shot.view.cap">From the Wolf Gate</span>
+		</button>
+		<button class="shot" type="button" data-full="assets/img/espadas.webp">
+			<img src="assets/img/espadas_sm.webp" alt="Four original sword models, one per realm" data-i18n-attr="alt:shot.swords" loading="lazy" width="720" height="405">
+			<span data-i18n="shot.swords.cap">Swords forged in-house</span>
+		</button>
+		<button class="shot" type="button" data-full="assets/img/creacion.webp">
+			<img src="assets/img/creacion_sm.webp" alt="Character creation screen" data-i18n-attr="alt:shot.creation" loading="lazy" width="720" height="405">
+			<span data-i18n="shot.creation.cap">Character creation</span>
+		</button>
+	</div>
+
+	<article class="devlog reveal">
+		<div class="devlog-thumb">
+			<img src="assets/img/devlog_00.webp" alt="Devlog #0 title card over the Vado Gris" data-i18n-attr="alt:devlog.alt" loading="lazy" width="1280" height="720">
+			<span class="devlog-play" aria-hidden="true"></span>
+		</div>
+		<div class="devlog-body">
+			<p class="eyebrow">Devlog #0</p>
+			<h3 data-i18n="devlog.title">The open-source MMORPG we are building in Godot</h3>
+			<p data-i18n="devlog.text">Two minutes on what Eldmark is, how the netcode works and how far it got in its first week. A video series follows the development, with before-and-after captures of every improvement.</p>
+			<p class="devlog-soon" data-i18n="devlog.soon">Coming soon to YouTube</p>
+		</div>
+	</article>
+</section>
+
+<!-- ============================== ROADMAP ============================== -->
+<section class="section road" id="road" aria-labelledby="road-title">
+	<header class="section-head reveal">
+		<p class="eyebrow" data-i18n="road.eyebrow">The road to Aldcor</p>
+		<h2 id="road-title" data-i18n="road.title">Where the march stands</h2>
+		<p class="lede" data-i18n="road.lede">Every lit brazier is a step that works today and is covered by the test suite. The cold ones are the road ahead.</p>
+	</header>
+	<div class="road-wrap">
+		<div class="road-spine" id="road-spine" aria-hidden="true"><div class="road-spine-fill"></div></div>
+		<ol class="road-steps">
+			<li class="road-step is-done"><span class="brazier" aria-hidden="true"><i></i></span><div><h3 data-i18n="road.1">Character and camera</h3><p data-i18n="road.1.text">Movement and the over-the-shoulder action camera.</p><span class="tag" data-i18n="road.done">Done</span></div></li>
+			<li class="road-step is-done"><span class="brazier" aria-hidden="true"><i></i></span><div><h3 data-i18n="road.2">Networking</h3><p data-i18n="road.2.text">Dedicated server, several players, prediction, interpolation and realm selection.</p><span class="tag" data-i18n="road.done">Done</span></div></li>
+			<li class="road-step is-done"><span class="brazier" aria-hidden="true"><i></i></span><div><h3 data-i18n="road.3">Action combat</h3><p data-i18n="road.3.text">Attacks, block, dodge, stamina, lag compensation, death and respawn.</p><span class="tag" data-i18n="road.done">Done</span></div></li>
+			<li class="road-step is-done"><span class="brazier" aria-hidden="true"><i></i></span><div><h3 data-i18n="road.4">The first fort</h3><p data-i18n="road.4.text">A capturable fort on a small frontier map: the Vado Gris.</p><span class="tag" data-i18n="road.done">Done</span></div></li>
+			<li class="road-step is-done is-partial"><span class="brazier" aria-hidden="true"><i></i></span><div><h3 data-i18n="road.5">Accounts and persistence</h3><p data-i18n="road.5.text">Accounts, characters and saves through the Go platform service.</p><span class="tag" data-i18n="road.built">Built, not yet deployed</span></div></li>
+			<li class="road-step is-next"><span class="brazier" aria-hidden="true"><i></i></span><div><h3 data-i18n="road.6">The first realm</h3><p data-i18n="road.6.text">A capital city, a PvE zone, the wall and its gate.</p><span class="tag" data-i18n="road.next">Next</span></div></li>
+			<li class="road-step"><span class="brazier" aria-hidden="true"><i></i></span><div><h3 data-i18n="road.7">The full war zone</h3><p data-i18n="road.7.text">Every fort and castle of Eldrun, siege weapons and rewards.</p><span class="tag" data-i18n="road.ahead">Ahead</span></div></li>
+			<li class="road-step"><span class="brazier" aria-hidden="true"><i></i></span><div><h3 data-i18n="road.8">Three realms, many servers</h3><p data-i18n="road.8.text">All three realms complete, scaled across several servers.</p><span class="tag" data-i18n="road.ahead">Ahead</span></div></li>
+		</ol>
+	</div>
+	<p class="road-parallel reveal" data-i18n="road.parallel">In parallel: a visual quality pass (animation, map, HUD, hit feel and scenery), the English localization of the interface, and builds for closed tests.</p>
+</section>
+
+<!-- ============================== FORGE ============================== -->
+<section class="section forge" id="forge" aria-labelledby="forge-title">
+	<header class="section-head reveal">
+		<p class="eyebrow" data-i18n="forge.eyebrow">Open source</p>
+		<h2 id="forge-title" data-i18n="forge.title">Forge it with us</h2>
+		<p class="lede" data-i18n="forge.lede">MIT for the code, CC BY 4.0 for the art and sound the project makes. Clone it, study it, break it, or build your own realm on top of it.</p>
+	</header>
+	<div class="forge-grid">
+		<div class="terminal reveal">
+			<div class="terminal-bar">
+				<i></i><i></i><i></i>
+				<span data-i18n="forge.term">Play with a local server</span>
+				<button class="terminal-copy" type="button" id="terminal-copy" data-i18n="forge.copy">Copy</button>
+			</div>
+<pre class="terminal-body" id="terminal-body"><code><span class="c"># Godot 4.7, Git and Git LFS</span>
+git clone https://github.com/Luisbh-dev/Eldmark
+cd Eldmark
+git lfs install &amp;&amp; git lfs pull
+godot --headless --path . --import
+<span class="c"># starts a local server if none is running, then connects</span>
+godot --path . -- --local --realm=vardheim --name=Ana</code></pre>
+		</div>
+		<div class="forge-cards">
+			<a class="forge-card reveal" href="https://github.com/Luisbh-dev/Eldmark/blob/main/CONTRIBUTING.md" rel="noopener">
+				<h3 data-i18n="forge.c1.title">Contribute</h3>
+				<p data-i18n="forge.c1.text">Bug reports, tests, content, art. Open an issue before anything large.</p>
+			</a>
+			<a class="forge-card reveal" href="https://github.com/Luisbh-dev/Eldmark/blob/main/docs/networking.md" rel="noopener">
+				<h3 data-i18n="forge.c2.title">Study the netcode</h3>
+				<p data-i18n="forge.c2.text">Decision records with what was tried, what failed and what is still provisional.</p>
+			</a>
+			<a class="forge-card reveal" href="https://github.com/Luisbh-dev/Eldmark/blob/main/docs/world.md" rel="noopener">
+				<h3 data-i18n="forge.c3.title">Read the lore</h3>
+				<p data-i18n="forge.c3.text">The Broken Crown: realms, walls, gates, castles and the Ember Lines.</p>
+			</a>
+			<a class="forge-card reveal" href="https://github.com/Luisbh-dev/Eldmark/blob/main/LICENSE-ASSETS.md" rel="noopener">
+				<h3 data-i18n="forge.c4.title">Licenses</h3>
+				<p data-i18n="forge.c4.text">MIT code, CC BY 4.0 original assets, CC0 kits credited by name.</p>
+			</a>
+		</div>
+	</div>
+</section>
+
+</main>
+
+<footer class="footer">
+	<div class="footer-emblems" aria-hidden="true">
+		<svg viewBox="0 0 128 128"><use href="#em-vardheim"/></svg>
+		<svg viewBox="0 0 128 128"><use href="#em-solmarch"/></svg>
+		<svg viewBox="0 0 128 128"><use href="#em-askarra"/></svg>
+	</div>
+	<p class="footer-brand">Eldmark</p>
+	<p class="footer-credits" data-i18n-html="footer.credits">Made with the <a href="https://godotengine.org" rel="noopener">Godot Engine</a>. The world is built on CC0 kits by <a href="https://quaternius.com" rel="noopener">Quaternius</a>, <a href="https://www.kenney.nl" rel="noopener">Kenney</a> and <a href="https://loafbrr.itch.io/castle-wall-kit" rel="noopener">loafbrr</a>; the swords, icons, emblems, sounds and effects are made by the project. Fonts: Cinzel, IM Fell English SC and Noto Sans (OFL).</p>
+	<p class="footer-legal" data-i18n="footer.legal">Eldmark is an independent project, not affiliated with Amazon Games or New World.</p>
+	<p class="footer-secret" data-i18n="footer.secret">Some say the Flame can still be rekindled. ↑ ↑ ↓ ↓ ← → ← → B A</p>
+	<a class="footer-top" href="#top" data-i18n="footer.top">Back to the gate ↑</a>
+</footer>
+
+<div class="lightbox" id="lightbox" hidden>
+	<button class="lightbox-close icon-btn" type="button" data-i18n-attr="aria-label:lightbox.close" aria-label="Close">✕</button>
+	<button class="lightbox-nav lightbox-prev icon-btn" type="button" data-i18n-attr="aria-label:lightbox.prev" aria-label="Previous">‹</button>
+	<figure><img alt=""><figcaption></figcaption></figure>
+	<button class="lightbox-nav lightbox-next icon-btn" type="button" data-i18n-attr="aria-label:lightbox.next" aria-label="Next">›</button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="flare" id="flare" aria-hidden="true"></div>
+
+</body>
+</html>

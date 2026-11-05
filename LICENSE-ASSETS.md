@@ -45,6 +45,10 @@ Suggested attribution:
   `tools/terrain/generate_vado_gris.gd`, and navigation meshes. They reference third-party CC0
   meshes, which keep their own license.
 - `docs/world_map.svg` and `docs/screenshots/*`: the world map and in-game screenshots.
+- The project website in `web/`: `web/assets/img/**` (in-game screenshots and the Devlog #0 card),
+  `web/assets/video/**` (an in-game flythrough), `web/assets/favicon.svg`, and the copies of project
+  assets in `web/assets/icons/**` and `web/assets/sfx/**`. The site's HTML, CSS and JavaScript are
+  code (MIT). **Exception:** `web/assets/fonts/` is third-party (SIL OFL 1.1, see the table below).
 
 Scripts under `tools/` that generate these assets are code, so they are MIT.
 
@@ -79,6 +83,7 @@ written in Spanish and will be translated to `assets/LICENSES.md`.
 | Castle Wall Kit | loafbrr | CC0 1.0 (per the itch.io license field) | `assets/models/environment/castle_wall/` | No (courtesy: loafbrr.itch.io) |
 | Castle Kit 2.0 (blockout pieces) | Kenney (www.kenney.nl) | CC0 1.0 | `assets/models/blockout/kenney_castle/` | No (courtesy) |
 | Hand-Painted Watercolor Terrain Texture Pack 1024px | Jonas Voland (Voxel Core Lab GmbH) | CC0 1.0 | `assets/textures/terrain/watercolor/*_alb_ht.png` | No (courtesy) |
+| Cinzel, IM Fell English SC and Noto Sans (Latin subsets as WOFF2, for the website) | The Cinzel Project Authors; Igino Marini; The Noto Project Authors | SIL OFL 1.1 | `web/assets/fonts/` | Keep the `OFL-*.txt` files next to the fonts. No Reserved Font Names are declared, so the subsets keep their names |
 | Go dependencies (jackc/pgx and others; golang.org/x) | jackc and contributors; The Go Authors | MIT; BSD-3-Clause | `platform/go.mod`, `platform/go.sum` (referenced, not copied) | Include their notices if you distribute the platform binaries |
 
 Notes:
