@@ -91,7 +91,7 @@ func test_the_tracker_follows_status_events_and_forgets_on_death_downed_and_resp
 	assert_eq(tracker.get_active(289).size(), 2)
 	assert_eq(tracker.get_active(290).size(), 1, "the heal ended at its until_tick (exclusive)")
 	assert_eq(tracker.prune(300), 1)
-	# STATUS 2 quita; DEATH, DOWNED y RESPAWN quitan todo.
+	# STATUS 2 removes it; DEATH, DOWNED and RESPAWN remove everything.
 	tracker.handle_event(_removed(OWN_ID, 200, &"bleed"))
 	assert_eq(tracker.size(), 0)
 	for clearing: NetMessages.EntityEvent in [NetMessages.EntityEvent.death(OWN_ID, 300, 77, 1),
@@ -227,7 +227,7 @@ func test_a_nameplate_shows_up_to_four_icons_harmful_first_and_the_downed_mark()
 	h.client.fake_clock.render = 600.0
 	plates.refresh(0.016)
 	assert_eq(icons.get_shown_count(), 0, "none is left")
-	# Derribado (la acción DOWNED de su registro dibujado): barra de derribado e icono.
+	# Knocked down (the DOWNED action of its drawn record): knocked-down bar and icon.
 	var record: EntityRecord = EntityRecord.from_state(ALLY_ID, NetProtocol.EntityKind.PLAYER,
 			_ally_spawn(ALLY_ID, Vector3(0.0, 0.0, -8.0)).state, 0)
 	record.action = CombatState.Action.DOWNED | (ActionMachine.PHASE_NONE << 4)

@@ -147,7 +147,7 @@ def _smooth(edge0, edge1, x):
 
 
 def _pack(color, rough, metal):
-	"""Apila albedo (sRGB) y metal/rugosidad (lineal) en dos RGBA de 8 bits."""
+	"""Stacks albedo (sRGB) and metal/roughness (linear) into two 8-bit RGBA images."""
 	height, width = rough.shape
 	albedo = np.concatenate([np.clip(color, 0.0, 1.0), np.ones((height, width, 1))], axis=2)
 	mr = np.stack([np.ones_like(rough), np.clip(rough, 0.0, 1.0), np.clip(metal, 0.0, 1.0),
@@ -256,8 +256,8 @@ def blade_textures(palette="base", width=256, height=512):
 	rim_line = np.exp(-(((s_eff - rim) / 0.011) ** 2)) * groove * 0.12
 	shoulder_line = np.exp(-(((s - sh) / 0.012) ** 2)) * 0.07
 	tone = tone + (rim_line + shoulder_line) * (1.0 - is_edge)
-	# Pulido: un grano fino casi invisible y unas rayas a lo largo muy tenues (con más amplitud, junto al
-	# recazo se ven como rayas verticales estiradas).
+	# Polish: an almost invisible fine grain and very faint streaks along the blade (with more amplitude, next to the
+	# ricasso they look like stretched vertical streaks).
 	brushed = fft_noise(width, height, 70.0, 4.0, 11)
 	grain = fft_noise(width, height, 100.0, 100.0, 12)
 	tone = tone + brushed * 0.003 + grain * 0.006
@@ -299,7 +299,7 @@ def blade_textures(palette="base", width=256, height=512):
 		rough = rough + 0.14
 		metal = np.full_like(rough, 0.72)
 		distance = np.abs(s_signed - _crack_path(v))
-		gaps = fft_noise(width, height, 1.0, 9.0, 41)[:, :1]  # roturas a lo largo, iguales a lo ancho
+		gaps = fft_noise(width, height, 1.0, 9.0, 41)[:, :1]  # breaks along the length, equal across the width
 		live = _smooth(-0.55, -0.10, gaps)
 		bell = np.sin(np.pi * np.clip((v - 0.20) / 0.66, 0.0, 1.0)) ** 0.6
 		core = np.clip(1.6 * np.exp(-((distance / 0.034) ** 2)), 0.0, 1.0) * bell * (0.50 + 0.50 * live)

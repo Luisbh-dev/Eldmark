@@ -22,7 +22,7 @@ func after_each() -> void:
 	_rig = null
 
 
-# --- Ayudantes (zona plana con una fortaleza de pruebas) ---------------------------------------
+# --- Helpers (flat zone with a test fortress) ---------------------------------------
 
 ## Test fortress with two Hollow, the Captain and, if [param guardian_respawn_s] is greater than 0, a Guardian
 ## of Vardheim with that respawn.
@@ -96,7 +96,7 @@ func test_the_vado_gris_spawns_the_hollows_the_captain_and_the_gate_guardians() 
 	for guardian_id: int in _rig.alive_of(&"gate_guardian"):
 		assert_true(_rig.combatant(guardian_id).ignores_safe_area, "the Guardians ignore the safe zone")
 		camps[_rig.entity(guardian_id).realm] += 1
-	assert_eq(camps, {VARDHEIM: 2, SOLMARCH: 2}, "dos de cada reino")
+	assert_eq(camps, {VARDHEIM: 2, SOLMARCH: 2}, "two of each realm")
 	for hollow_id: int in _rig.alive_of(&"hollow"):
 		assert_eq(_rig.combatant(hollow_id).max_health, NpcCatalog.get_definition(&"hollow").max_health)
 		assert_eq(_rig.character(hollow_id).combat.weapon_id, CombatCatalog.weapon_id(&"npc_hollow"), "with its weapon")
@@ -235,8 +235,8 @@ func test_two_or_three_bots_clear_the_hollows_in_a_reasonable_time() -> void:
 	var seconds: float = float(_rig.server.get_tick() - started) / 60.0
 	print("[huecos] 3 bots limpian los 4 Huecos en %.1f s de juego" % seconds)
 	assert_true(cleared, "the Hollow fall")
-	assert_true(seconds < 90.0, "en menos de 90 s (%.1f s)" % seconds)
-	assert_true(seconds > 15.0, "y no en un suspiro (%.1f s)" % seconds)
+	assert_true(seconds < 90.0, "in under 90 s (%.1f s)" % seconds)
+	assert_true(seconds > 15.0, "and not in the blink of an eye (%.1f s)" % seconds)
 
 
 func test_four_bots_that_do_not_die_beat_the_ford_captain_in_a_reasonable_time() -> void:

@@ -153,12 +153,12 @@ func test_ally_shows_name_realm_color_and_health_bar_within_range() -> void:
 	_spawn(ALLY_ID, VARDHEIM, "Ana", Vector3(6.0, 0.0, -15.0), 128)
 	_frame()
 	var plate: Nameplate = _plates.get_plate_for(ALLY_ID)
-	if not assert_not_null(plate, "un aliado cerca tiene placa"):
+	if not assert_not_null(plate, "a nearby ally has a nameplate"):
 		return
 	assert_true(plate.visible)
 	assert_eq(plate.get_name_text(), "Ana")
 	assert_true(plate.is_name_shown(), "with a name")
-	assert_true(plate.is_bar_shown(), "y barra de vida siempre")
+	assert_true(plate.is_bar_shown(), "and always a health bar")
 	assert_true(plate.is_ally())
 	assert_eq(plate.get_color(), RealmCatalog.color_of(RealmCatalog.VARDHEIM), "with its realm color")
 	assert_near(plate.get_health_fraction(), 128.0 / 255.0, 0.001, "the bar comes from health_q")
@@ -207,7 +207,7 @@ func test_dead_players_and_players_behind_the_camera_have_no_plate() -> void:
 	_spawn(ALLY_ID, VARDHEIM, "Ana", Vector3(2.0, 0.0, -10.0), 0)
 	_spawn(OTHER_ENEMY_ID, VARDHEIM, "Bruno", Vector3(0.0, 0.0, 12.0))
 	_frame()
-	assert_null(_plates.get_plate_for(ALLY_ID), "un muerto (health_q 0) no tiene placa")
+	assert_null(_plates.get_plate_for(ALLY_ID), "a dead player (health_q 0) has no nameplate")
 	assert_null(_plates.get_plate_for(OTHER_ENEMY_ID), "nor whoever is behind the camera")
 	assert_eq(_plates.get_visible_count(), 0)
 
@@ -241,7 +241,7 @@ func _assert_mark_only(net_id: int, message: String) -> void:
 		return
 	assert_false(plate.is_name_shown(), message + " (sin nombre)")
 	assert_false(plate.is_bar_shown(), message + " (sin barra)")
-	assert_eq(plate.get_mark(), Nameplate.Mark.ENEMY, message + " (con la marca de enemigo)")
+	assert_eq(plate.get_mark(), Nameplate.Mark.ENEMY, message + " (with the enemy mark)")
 
 func test_enemy_has_no_plate_unless_aimed_at_or_recently_damaged() -> void:
 	_spawn(ENEMY_ID, SOLMARCH, "Hostil", Vector3(9.0, 0.0, -14.0))
@@ -359,7 +359,7 @@ func test_occlusion_rays_are_spread_over_frames() -> void:
 		_frame()
 	var total: int = _plates.get_ray_count()
 	var per_frame_cost: int = 12 * (Nameplates.OCCLUSION_INTERVAL_FRAMES * 2 + 1)
-	assert_true(total < per_frame_cost / 3, "unos %d rayos en lugar de %d (uno por jugador y fotograma)" % [total, per_frame_cost])
+	assert_true(total < per_frame_cost / 3, "about %d rays instead of %d (one per player and frame)" % [total, per_frame_cost])
 	assert_true(total >= 12 * 2, "but each player repeats theirs (%d)" % total)
 	assert_eq(_plates.get_visible_count(), 12)
 

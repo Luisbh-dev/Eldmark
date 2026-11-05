@@ -65,7 +65,7 @@ func test_the_compass_is_centered_on_the_screen() -> void:
 	var compass: Compass = _add(Compass.new(), screen) as Compass
 	await wait_process_frames(2)
 	var rect: Rect2 = compass.get_global_rect()
-	assert_near(rect.get_center().x, SCREEN.x * 0.5, 1.0, "centro en x = 960 ± 1 (estaba con el borde izquierdo en 960)")
+	assert_near(rect.get_center().x, SCREEN.x * 0.5, 1.0, "center at x = 960 ± 1 (it used to have the left edge at 960)")
 	assert_near(rect.size.x, Compass.WIDTH, 0.5)
 	assert_near(rect.position.y, Compass.TOP_MARGIN, 0.5)
 	screen.size = Vector2(1280.0, 720.0)
@@ -191,7 +191,7 @@ func test_focus_opens_no_tooltip_unless_it_comes_from_the_keyboard_and_not_from_
 	drift.axis_value = 0.1
 	tooltip.note_input(InputEventMouseButton.new())
 	tooltip.note_input(drift)
-	assert_false(tooltip.allows_focus_tooltip(), "un eje de mando casi quieto no cuenta")
+	assert_false(tooltip.allows_focus_tooltip(), "an almost still gamepad axis does not count")
 	drift.axis_value = 0.9
 	tooltip.note_input(drift)
 	assert_true(tooltip.allows_focus_tooltip(), "one held down, yes")
@@ -332,7 +332,7 @@ func test_the_terrain_fades_to_fog_at_the_edge_of_the_image_without_stretched_st
 		var weight: float = MinimapTerrain.terrain_weight(Vector2(0.04 - float(step) * 0.001, 0.5), fade)
 		assert_true(weight <= previous + 1e-6, "the fade drops without jumps")
 		previous = weight
-	assert_true(MinimapTerrain.terrain_weight(Vector2(0.02, 0.5), fade) > 0.0, "y a medias queda algo de terreno")
+	assert_true(MinimapTerrain.terrain_weight(Vector2(0.02, 0.5), fade) > 0.0, "and halfway there is still some terrain")
 	assert_eq(MinimapTerrain.terrain_weight(Vector2(0.5, 0.01), fade), MinimapTerrain.terrain_weight(Vector2(0.01, 0.5), fade), "the same on both axes")
 
 

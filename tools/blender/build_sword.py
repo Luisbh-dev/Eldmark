@@ -52,7 +52,7 @@ import sword_textures as tex  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
 
-# --- Medidas (metros, con el origen en el centro de la empuñadura) --------------------------------
+# --- Measurements (meters, with the origin at the center of the grip) --------------------------------
 
 TIP_Z = 0.94
 BLADE_ROOT_Z = 0.075
@@ -498,7 +498,7 @@ def guard_vardheim(detail):
 
 
 def sun_outline(center_z, rays, hub, step=12.0):
-	"""Silueta de sol: `rays` = [(ángulo en grados, largo, semiángulo de la base)], antihorario."""
+	"""Sun silhouette: `rays` = [(angle in degrees, length, half-angle of the base)], counterclockwise."""
 	rays = sorted(rays)
 	outline = []
 	count = len(rays)
@@ -591,7 +591,7 @@ def guard_askarra(detail):
 # --- Pommels by variant ---------------------------------------------------------------------------
 
 def pommel_base(detail):
-	"""Pomo de gema facetada: doce caras, collar y banda de oro."""
+	"""Faceted gem pommel: twelve faces, collar and gold band."""
 	profile = [(0.024, 0.000), (0.029, 0.006), (0.024, 0.013), (0.034, 0.028), (0.043, 0.050),
 			(0.040, 0.070), (0.029, 0.088), (0.013, 0.097), (0.0, 0.101)]
 	segments = 12 if detail == 0 else 6

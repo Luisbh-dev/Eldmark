@@ -198,7 +198,7 @@ func test_dragging_onto_another_slot_sends_a_move() -> void:
 	var data: Dictionary = _view_of(bow).make_drag_data(false)
 	assert_eq(data[InventorySlotView.DRAG_KEY], bow)
 	assert_eq(data["uid"], bow_uid)
-	assert_true(_window.get_slot_view(target).accepts(data), "otra casilla lo acepta")
+	assert_true(_window.get_slot_view(target).accepts(data), "another slot accepts it")
 	assert_false(_view_of(bow).accepts(data), "the same slot does not")
 	_window.get_slot_view(target)._drop_data(Vector2.ZERO, data)
 	assert_eq(_sent.size(), 1, "one request")

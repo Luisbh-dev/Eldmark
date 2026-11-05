@@ -279,9 +279,9 @@ func test_the_band_and_the_boss_bar_and_the_downed_notice_never_overlap_on_scree
 	var band: Rect2 = banners.get_band().get_global_rect()
 	var boss_rect: Rect2 = (boss.get_node(^"Columna") as Control).get_global_rect()
 	var notice_rect: Rect2 = (notice.get_node(^"Columna") as Control).get_global_rect()
-	assert_false(band.intersects(boss_rect), "banda %s y barra de jefe %s" % [band, boss_rect])
-	assert_false(band.intersects(notice_rect), "banda %s y aviso de derribado %s" % [band, notice_rect])
-	assert_false(boss_rect.intersects(notice_rect), "barra de jefe %s y aviso de derribado %s" % [boss_rect, notice_rect])
+	assert_false(band.intersects(boss_rect), "band %s and boss bar %s" % [band, boss_rect])
+	assert_false(band.intersects(notice_rect), "band %s and knocked-down notice %s" % [band, notice_rect])
+	assert_false(boss_rect.intersects(notice_rect), "boss bar %s and knocked-down notice %s" % [boss_rect, notice_rect])
 	for rect: Rect2 in [band, boss_rect]:
 		assert_near(rect.get_center().x, SCREEN.x * 0.5, 1.0, "centrado en x = 960")
 

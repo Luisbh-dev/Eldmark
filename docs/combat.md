@@ -1,6 +1,6 @@
 # Eldmark · Phase 3: action combat design
 
-Design of step 3 of the [roadmap](vision.md#hoja-de-ruta): light and heavy attacks,
+Design of step 3 of the [roadmap](vision.md#roadmap): light and heavy attacks,
 block, dodge, stamina, latency compensation, death and respawn, over the network and with the
 server as the authority. It builds on the phase 2 networking ([networking.md](networking.md), above all §6.7, §8,
 §10 and §15).
@@ -16,7 +16,7 @@ precedences, contracts between packages).
 
 ## 0. Decisions
 
-Taken from the recommendations in [backlog.md](backlog.md#decisiones-pendientes) (provisional,
+Taken from the recommendations in [backlog.md](backlog.md#pending-decisions) (provisional,
 taken at night; they are in "Decisions taken" in the backlog):
 
 | Question | Decision |
@@ -291,7 +291,7 @@ air goes to the buffer.
 
 **Phase 4.** The machine gains abilities, consumables, weapon swap, channeling, knocked down,
 getting up and finishing off, and the movement effects, with the order 0–6 of
-[abilities.md 3.3](abilities.md#33-reglas-por-tick) and the movement table in its §3.4; that
+[abilities.md 3.3](abilities.md#33-per-tick-rules) and the movement table in its §3.4; that
 part lives in `scripts/shared/combat/ability_rules.gd` (`ActionMachine` remains the entry point).
 
 ### 3.4 What the server imposes
@@ -304,7 +304,7 @@ part lives in `scripts/shared/combat/ability_rules.gd` (`ActionMachine` remains 
 - `impose_death(c, t)`: DEAD.
 - `reset_for_respawn(c, t, rules)`: everything to its initial values (full stamina) except the
   weapon. In phase 4 it becomes `reset_for_respawn(c, t, weapon_1, weapon_2, charges)`, with the gear
-  from the loadout, and the impositions in [abilities.md 3.5](abilities.md#35-lo-que-impone-el-servidor) are added.
+  from the loadout, and the impositions in [abilities.md 3.5](abilities.md#35-what-the-server-enforces) are added.
 - `drain_stamina(c, amount, t)`: subtracts, sets the delay and, if it reaches 0, the exhaustion.
 
 Queries (used by the server and the animator): `phase(c, t)` (0 windup or charge, 1 active,
@@ -413,14 +413,14 @@ For each attacker in an active strike on `s`:
      attacker saw. Without this, a stunned character who was blocking 20 ticks ago "blocked" the light of a
      second attacker with rewind: with 0 stamina that is a guard break that
      lengthened its stun.
-     **Phase 4** ([abilities.md 4.2](abilities.md#42-habilidades), package H3a): the rule becomes
+     **Phase 4** ([abilities.md 4.2](abilities.md#42-abilities), package H3a): the rule becomes
      "it does not count if the action at `s` is not BLOCK and its `action_tick > view_tick`, **whether NONE or
      not**". NONE keeps the `action_tick` of what ends (`_to_none` and `impose_interrupt`): dropping
      the shield for no reason still counts, but returning to NONE after drinking, an interrupted potion or a
      released REVIVE (started after `view_tick`) no longer does. The shield wall (bit 7 of the history,
      `DEFENSE_WIDE_BLOCK`) blocks with the cone of `ability_block_angle_deg` in the sample that
      carries it.
-     **Projectiles** ([abilities.md 4.4](abilities.md#44-proyectiles-projectilesystem-scriptsserverprojectile_systemgd),
+     **Projectiles** ([abilities.md 4.4](abilities.md#44-projectiles-projectilesystem-scriptsserverprojectile_systemgd),
      package H3b): the rewind of step 2 comes from `CombatResolver.compute_rewind` (factored out of
      `_swing_rewind`), is rounded to whole ticks and is fixed once per shot for the whole flight; the
      defenses are the ones here without parry, with the cone facing the direction the arrow comes from.
@@ -429,7 +429,7 @@ For each attacker in an active strike on `s`:
 `StateHistory` adds to its per-tick flags: bit 3 blocking, bit 4 parry window, bit 5
 invulnerable, bit 6 dead (`ActionMachine.defense_flags`); in phase 4, bit 7 wide block (the shield
 wall). Bits 0–2 are those of the record (`EntityRecord.HISTORY_FLAGS_MASK`): its bit 3 (weapon
-slot 2) never goes in ([abilities.md 3.6](abilities.md#36-consultas)).
+slot 2) never goes in ([abilities.md 3.6](abilities.md#36-queries)).
 
 ### 4.4 Damage (`scripts/shared/combat/damage_formula.gd`)
 
@@ -477,13 +477,13 @@ none of them should do extra damage.
   ticks; allies and self-harm do not count).
 - **Respawn**: from `respawn_tick` the client can request it with **RESPAWN_REQUEST**
   (`point_index`); after 30 s without requesting it, automatic at the first point (with the phase 4 waves, in
-  the first wave from then on: [fortress.md 5](fortress.md#5-avisos-reaparición-salida-y-atascado)). Points: nodes of the group
+  the first wave from then on: [fortress.md 5](fortress.md#5-notices-respawn-leaving-and-atascado)). Points: nodes of the group
   `respawn_points` (or, if the zone has none, `spawn_points`) with `realm` metadata, in the order of the
   scene, which the client knows because it loads the same zone; in phase 4 the index becomes that of the
   **static** list of all points and the condition is added (the own fort, not under attack:
-  [fortress.md 5](fortress.md#5-avisos-reaparición-salida-y-atascado)). On respawning: teleport (counter), `reset_for_respawn`, full health,
+  [fortress.md 5](fortress.md#5-notices-respawn-leaving-and-atascado)). On respawning: teleport (counter), `reset_for_respawn`, full health,
   `protected_until = s + 3 s` (lost when starting an attack), RESPAWN event.
-- **Phase 4** ([abilities.md 4.5 and 4.6](abilities.md#45-derribado-levantar-y-rematar-downedsystem-scriptsserverdowned_systemgd),
+- **Phase 4** ([abilities.md 4.5 and 4.6](abilities.md#45-knocked-down-reviving-and-executing-downedsystem-scriptsserverdowned_systemgd),
   H3c): the killing blow of a **player** of another realm against a player in an RVR zone does not kill, it **downs**
   (DOWNED, 20 s of bleeding out, getting up and finishing off); against NPCs, the environment or the Hollows, direct death. A
   downed character is neither alive nor dead (`Combatant.is_downed`), does not respawn or heal, and its kill counts as a
@@ -556,7 +556,7 @@ none of them should do extra damage.
   visible: ~37 KB/s) plus the ENTITY_EVENTs (~27 B per recipient and hit). networking.md §5.5, §5.6, §9.3, §14 and
   `test_snapshot_builder` must be updated.
 
-**Phase 4: protocol 6** ([abilities.md 5](abilities.md#5-protocolo-protocol_version--6), package H2).
+**Phase 4: protocol 6** ([abilities.md 5](abilities.md#5-protocol-protocol_version--6), package H2).
 `PlayerState` goes to 111 B (header with state and extra block of 134 B, **50 records** per snapshot;
 downstream of ~11.6 KB/s with 10 visible and the same cap of ~36.8 KB/s from 50); the valid buttons, to bits
 0–12; the `u16 attack_id` of HIT, DEATH, KILL and TELEGRAPH become a **source** (`CombatSource`: the
@@ -781,7 +781,7 @@ Closed during K3 (server) and K4 (client):
   someone pressing the button as soon as they can, at 10 s (or in their wave) and not at 30.)*
   *(Changed in F3, phase 4: the index goes over `NetZones.get_all_respawn_points(zone)`, the static list
   of all points; the server validates with `RespawnRules.points_for` and, if it is not valid, uses the first
-  valid camp of the realm; see [fortress.md 8.3](fortress.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).
+  valid camp of the realm; see [fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions).
   `CombatDirector.get_respawn_points(realm)` no longer exists: they are `get_all_respawn_points()` and
   `get_valid_respawn_points(realm, tick)`.)*
 - **Static targets (F3)**: `CombatResolver.structure_targets` (the fort gates,
@@ -855,10 +855,10 @@ Closed during K5 (integration):
   within the following 12 as explained (`COMBAT_EXPLAIN_TICKS`); the event goes over the reliable channel and may arrive
   after the snapshot, so a difference waits 90 ticks (`DIFF_SETTLE_TICKS`) for its event
   before counting as a failure (meanwhile `get_stats()` counts it according to what it knows). New
-  statistic: `combat_diffs`. Phase 4 (H4, [abilities.md 5.4](abilities.md#54-entity_event-y-fuentes)): also
+  statistic: `combat_diffs`. Phase 4 (H4, [abilities.md 5.4](abilities.md#54-entity_event-and-sources)): also
   a movement STATUS on oneself, its DOWNED, an INTERACT where it is the downed one or the one acting, and its
   LOADOUT. Phase 4 review (client): also a change of the fort gate for the own realm
-  that arrives with the prediction already ahead (`gate_diffs`, [fortress.md 3.2](fortress.md#32-predicción-exacta)).
+  that arrives with the prediction already ahead (`gate_diffs`, [fortress.md 3.2](fortress.md#32-exact-prediction)).
   Measured in a melee of 6 combat bots with rtt=120, jitter=20 and 5% loss
   (`test_combat_reconciliation`): 40 hits, 4 deaths, 2-4 corrections per bot, all explained
   (substitution or combat), no hard reset or resync and exact convergence once they stop
@@ -1026,7 +1026,7 @@ CMB-21 and GUE-15 arrive.
 
 ### 12.8 Phase 4 kits (H5; docs/abilities.md, section 2.4)
 
-The calculated sheet from [abilities.md 2.4](abilities.md#24-entrada-para-la-hoja-de-equilibrio-combatemd-12),
+The calculated sheet from [abilities.md 2.4](abilities.md#24-input-for-the-balance-sheet-combatmd-12),
 measured. It comes from the same tool, extended in H5 (deterministic: the same JSON on every run):
 
 ```

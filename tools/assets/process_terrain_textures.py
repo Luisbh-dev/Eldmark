@@ -36,7 +36,7 @@ OUT = Path(__file__).resolve().parents[2] / "assets" / "textures" / "terrain" / 
 SIZE = 1024
 NORMAL_SIZE = 512
 
-# id: (saturación, brillo, contraste, parte de AO en el color, fuerza de la normal)
+# id: (saturation, brightness, contrast, share of AO in the color, normal strength)
 SETS: dict[str, tuple[float, float, float, float, float]] = {
     "grass_ground": (0.62, 0.95, 0.9, 0.5, 1.0),
     "dirt_floor": (0.55, 0.9, 0.9, 0.5, 1.0),

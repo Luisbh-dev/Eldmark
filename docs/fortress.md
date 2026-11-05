@@ -20,7 +20,7 @@ Two blocks:
 
 ## 0. Decisions
 
-Provisional, made overnight, from the recommendations in [backlog.md](backlog.md#decisiones-pendientes):
+Provisional, made overnight, from the recommendations in [backlog.md](backlog.md#pending-decisions):
 
 | Question | Decision |
 |---|---|

@@ -316,7 +316,7 @@ func test_the_map_rect_is_a_square_inside_the_screen_and_converts_coordinates_bo
 	assert_vec_near(world_map.world_to_screen(Vector3(200.0, 0.0, 200.0)), rect.end, 1e-3, "and the southeast one, bottom right")
 	for point: Vector3 in [VARDHEIM_CAMP, Vector3(60.0, 0.0, 30.0), Vector3(-90.0, 0.0, 120.0)]:
 		var back: Vector3 = world_map.screen_to_world(world_map.world_to_screen(point))
-		assert_near(back.x, point.x, 1e-3, "ida y vuelta en x (%s)" % point)
+		assert_near(back.x, point.x, 1e-3, "round trip in x (%s)" % point)
 		assert_near(back.z, point.z, 1e-3, "y en z")
 	assert_true(world_map.get_title_text().contains("Vado Gris"), "the title states the zone: %s" % world_map.get_title_text())
 	assert_eq(world_map.get_hint_text(), WorldMap.TEXT_HINT_OPEN)

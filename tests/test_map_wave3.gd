@@ -36,7 +36,7 @@ func test_labels_never_overlap_each_other_or_leave_the_bounds() -> void:
 	for i: int in 7:
 		items.append(_item("lugar_%d" % i, Vector2(400.0 + 14.0 * i, 300.0 + 6.0 * i), Vector2(150.0, 20.0), 50 + i))
 	var placed: Array[Dictionary] = MapLabelPlacer.place(items, bounds)
-	assert_eq(placed.size(), items.size(), "mismos elementos, mismo orden")
+	assert_eq(placed.size(), items.size(), "same items, same order")
 	var rects: Array[Rect2] = []
 	for label: Dictionary in placed:
 		if not bool(label["placed"]):
@@ -46,7 +46,7 @@ func test_labels_never_overlap_each_other_or_leave_the_bounds() -> void:
 		for other: Rect2 in rects:
 			assert_false(rect.intersects(other), "%s does not overlap another label" % label["id"])
 		rects.append(rect)
-	assert_true(rects.size() >= 5, "caben casi todos (%d de 7)" % rects.size())
+	assert_true(rects.size() >= 5, "almost all of them fit (%d of 7)" % rects.size())
 
 
 func test_labels_do_not_cover_icons_and_higher_priority_picks_first() -> void:
@@ -169,7 +169,7 @@ func test_world_and_screen_still_convert_both_ways_when_zoomed_and_panned() -> v
 	world_map.pan_by(Vector2(-30.0, 17.0))
 	for point: Vector3 in [Vector3(0.0, 0.0, 0.0), Vector3(-40.0, 0.0, 25.0), Vector3(60.0, 0.0, -35.0)]:
 		var back: Vector3 = world_map.screen_to_world(world_map.world_to_screen(point))
-		assert_near(back.x, point.x, 1e-3, "ida y vuelta en x (%s)" % point)
+		assert_near(back.x, point.x, 1e-3, "round trip in x (%s)" % point)
 		assert_near(back.z, point.z, 1e-3, "y en z")
 
 

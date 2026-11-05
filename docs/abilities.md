@@ -5,7 +5,7 @@ abilities with cooldowns (CMB-19), status effects (CMB-20), sword and shield (CM
 with rewind (CMB-22), bow (CMB-23), weapon swap (CMB-24), knocked down (CMB-28), minimal equipment
 (PRG-04), templates (PRG-07), consumables (PRG-08), action bar (UI-11) and status icons
 (UI-45). It continues [combat.md](combat.md) (its §1, §3, §4 and §6 are taken as read), [networking.md](networking.md) (§6,
-§8, §10, §14) and the tick order of [fortress.md 1.7](fortress.md#17-tick-order-completes-combatemd-42).
+§8, §10, §14) and the tick order of [fortress.md 1.7](fortress.md#17-tick-order-completes-combatmd-42).
 
 Version 2: version 1 after the review by three reviewers (§10). Anything marked "verified" comes from probes in
 headless Godot 4.7.2 (not committed).
@@ -2172,7 +2172,7 @@ export, audio, names and realms.
 - **End-to-end tests** with ENet on 127.0.0.1 (§7.3): `test_projectile_loopback`,
   `test_abilities_reconciliation`, `test_loadout_net` and the three of `test_bot_cheat`; `NetHarness.start_bot` gains
   the template (`--loadout`).
-- **Measured balance sheet** (`tools/combat_balance.gd`, §2.4 → [combat.md 12.8](combat.md#128-kits-de-la-fase-4-h5-docshabilidadesmd-sección-24)):
+- **Measured balance sheet** (`tools/combat_balance.gd`, §2.4 → [combat.md 12.8](combat.md#128-phase-4-kits-h5-docsabilitiesmd-section-24)):
   kit data, bow against the dummy, ranges at 10, 30 and 50 m, one use of each ability, the wall against one and
   two attackers, duels with the kit (also squire against marksman and marksman against marksman), and 2 versus 2 with the
   two templates; with `--reference`, duels without abilities and with the kit without potions.

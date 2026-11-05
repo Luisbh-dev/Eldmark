@@ -60,7 +60,7 @@ func test_world_and_image_coordinates_convert_both_ways() -> void:
 	assert_true(definition.world_to_pixel(Vector3(100.0, 0.0, 0.0)).x > definition.world_to_pixel(Vector3(-100.0, 0.0, 0.0)).x,
 			"and east (+X) to the right")
 	for point: Vector3 in [Vector3(12.5, 0.0, -33.0), Vector3(-150.0, 0.0, 149.0), Vector3(1.0, 0.0, 2.0)]:
-		assert_vec_near(definition.pixel_to_world(definition.world_to_pixel(point)), point, 1e-4, "ida y vuelta de %s" % point)
+		assert_vec_near(definition.pixel_to_world(definition.world_to_pixel(point)), point, 1e-4, "round trip of %s" % point)
 		assert_vec_near(definition.uv_to_world(definition.world_to_uv(point)), point, 1e-4, "and by uv")
 	assert_eq(definition.world_to_uv(Vector3(0.0, 0.0, 0.0)), Vector2(0.5, 0.5))
 	assert_true(definition.contains(Vector3(0.0, 0.0, 0.0)))
