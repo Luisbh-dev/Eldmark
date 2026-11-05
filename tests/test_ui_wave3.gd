@@ -307,6 +307,44 @@ func test_the_band_stays_below_the_fort_panel_while_capturing() -> void:
 			"band %s below panel %s" % [banners.get_band().get_global_rect(), panel_rect])
 
 
+func test_nothing_in_the_war_hud_overlaps_the_tallest_fort_panel_at_both_resolutions() -> void:
+	var definition: FortressDefinition = load("res://data/fortresses/vado_gris.tres") as FortressDefinition
+	for screen_size: Vector2 in [SCREEN, Vector2(1280.0, 720.0)]:
+		var screen := Control.new()
+		screen.size = screen_size
+		_add(screen)
+		screen.size = screen_size
+		# Tallest state: attacked, capture bar, "in the circle" row and gate bar all visible.
+		var state: FortressState = FortressState.initial(definition, 100)
+		state.phase = FortressState.Phase.CAPTURING
+		state.capture_realm = NetProtocol.Realm.SOLMARCH
+		state.under_attack_until_tick = 10000
+		var panel: CapturePanel = _add(CapturePanel.new(), screen) as CapturePanel
+		panel.show_state(state, 0.4, "Fuerte del Vado Gris", 100)
+		var banners: WarBanners = _add(WarBanners.new(), screen) as WarBanners
+		banners.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		banners.add_banner("Aviso", Color.WHITE, true)
+		var boss: BossBar = _add(BossBar.new(), screen) as BossBar
+		boss.show_boss(7, "Capitán del Vado", 1.0)
+		var notice: DownedNotice = _add(DownedNotice.new(), screen) as DownedNotice
+		notice.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		notice.set_own_id(1)
+		notice.update_view(true, 100, 0)
+		await wait_process_frames(3)
+		var rects: Array[Rect2] = [
+			banners.get_band().get_global_rect(),
+			(boss.get_node(^"Columna") as Control).get_global_rect(),
+			(notice.get_node(^"Columna") as Control).get_global_rect(),
+		]
+		var panel_rect: Rect2 = panel.get_global_rect()
+		assert_true(panel.is_gate_shown(), "the gate bar is part of the measured panel")
+		for rect: Rect2 in rects:
+			assert_false(panel_rect.intersects(rect), "%s: panel %s overlaps %s" % [screen_size, panel_rect, rect])
+		assert_true(ObjectiveLine.TOP_MARGIN + ObjectiveLine.HEIGHT <= WarBanners.TOP_OFFSET,
+				"the objective line (which stands in for the panel) is above the band")
+		screen.queue_free()
+
+
 # --- UI-41: registro de bajas ------------------------------------------------------------------
 
 func test_kill_lines_use_a_weapon_icon_when_there_is_one() -> void:

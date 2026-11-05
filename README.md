@@ -2,7 +2,7 @@
 
 **An open-source 3D medieval-fantasy MMORPG built with Godot 4.** A playable game with its own identity, and a reference architecture for authoritative-server action combat that you can study, fork or build on.
 
-![Eldmark: the Vado Gris fort on its hill, seen from the Vardheim gate](docs/screenshots/hero.jpg)
+![Eldmark: the Vado Gris fort, with its stone keep and palisade on the hill, and the Solmarch wall behind](docs/screenshots/hero.jpg)
 
 Three realms fight over the forts and castles of a central war zone. You pick a realm, level up inside its walls, and march out through its gate to take fortresses from the other two. Combat is third-person action in the style of New World: over-the-shoulder camera, crosshair aiming, no target lock, blocking and dodging. The server decides everything that matters; the client predicts what it can.
 
@@ -38,12 +38,12 @@ Not there yet, to be honest about it: the other two war-zone regions, siege weap
 
 | | |
 |---|---|
-| ![Fighting the garrison in the fort courtyard](docs/screenshots/combat.jpg) | ![A skirmish by the ford, with compass, fort panel, kill log, minimap and action bar](docs/screenshots/hud.jpg) |
-| Sword-and-shield fight against the fort garrison, with the Ford Captain's boss bar and a war notice | The HUD in a skirmish by the ford: compass, fort panel, kill log, damage numbers, minimap and action bar |
-| ![Solmarch announces an attack on the fort](docs/screenshots/fort_capture.jpg) | ![The M map window](docs/screenshots/map.jpg) |
-| Attacking the Vado Gris gate: war notice, gate health in the fort panel and the kill log | The **M** window: parchment map of the zone with place names, camps, bridges and the fort |
+| ![Fighting the garrison in the fort courtyard](docs/screenshots/combat.jpg) | ![A skirmish at the fort gate, with compass, fort panel, kill log, minimap and action bar](docs/screenshots/hud.jpg) |
+| Sword-and-shield fight against the fort garrison in the courtyard, with the Ford Captain's boss bar, damage numbers and an amber NPC attack telegraph on the ground | The HUD in a skirmish at the gate: compass, fort panel with the gate bar, kill log, damage numbers, minimap and action bar |
+| ![Vardheim captures the fort: the Ford Captain has fallen](docs/screenshots/fort_capture.jpg) | ![The M map window](docs/screenshots/map.jpg) |
+| The war notice banner sits below the fort panel, which shows the capture progress, the players in the circle and the gate health | The **M** window: parchment map of the zone with place names, camps, bridges and the fort |
 | ![The Vardheim wall and camp](docs/screenshots/world.jpg) | ![Character creation](docs/screenshots/character_creation.jpg) |
-| The Vardheim wall and camp, north end of the zone | Character creation (the interface is in Spanish for now) |
+| The Vardheim wall and camp, north end of the zone (snow patches on the Vardheim half) | Character creation (the interface is in Spanish for now) |
 
 The swords are original models, one base design and one variant per realm:
 
