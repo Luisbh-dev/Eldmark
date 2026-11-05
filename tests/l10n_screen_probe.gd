@@ -36,8 +36,9 @@ static func texts_with_content(lines: PackedStringArray) -> PackedStringArray:
 static func _has_letter_or_digit(text: String) -> bool:
 	for i: int in text.length():
 		var code: int = text.unicode_at(i)
+		var latin_letter: bool = code >= 192 and code <= 591 and code != 215 and code != 247
 		if (code >= 48 and code <= 57) or (code >= 65 and code <= 90) or (code >= 97 and code <= 122) \
-				or code >= 192:
+				or latin_letter:
 			return true
 	return false
 

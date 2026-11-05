@@ -201,7 +201,7 @@ func test_the_setting_exists_on_by_default_and_in_the_interface_tab() -> void:
 	assert_false(spec.is_empty(), "the setting exists")
 	assert_eq(spec["default"], true, "enabled by default")
 	assert_eq(spec["tab"], ClientSettings.TAB_INTERFACE)
-	assert_eq(spec["label"], "Pistas del juego")
+	assert_eq(spec["label"], "Game hints")
 	assert_eq(int(spec["kind"]), ClientSettings.Kind.BOOL)
 
 

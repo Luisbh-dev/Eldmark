@@ -31,13 +31,14 @@ func test_the_scenes_the_launcher_switches_to_exist() -> void:
 func test_the_sandbox_starts_through_the_launcher_and_reports_unknown_options() -> void:
 	var args: PackedStringArray = PackedStringArray(["--headless", "--path",
 			ProjectSettings.globalize_path("res://"), "--quit-after", "60", "--",
-			"--zone=no_existe", "--realm=solmarch", "--opcion-inventada"])
+			"--locale=en", "--zone=no_existe", "--realm=solmarch", "--opcion-inventada"])
 	var output: Array = []
 	var code: int = OS.execute(OS.get_executable_path(), args, output, true)
 	var text: String = String(output[0]) if not output.is_empty() else ""
 	assert_eq(code, 0, "the sandbox process ends well: %s" % text.right(600))
 	assert_true(text.contains("Zona desconocida 'no_existe'"), "it warns about the unknown zone: %s" % text)
 	assert_true(text.contains("Argumento desconocido: --opcion-inventada"), "and about the argument")
+	assert_false(text.contains("Argumento desconocido: --locale"), "but not about --locale")
 	assert_true(text.contains("Sin pantalla (headless): arrancando el cliente"), "and starts the client")
 	assert_false(text.contains("SCRIPT ERROR"), "without script errors: %s" % text)
 
@@ -57,7 +58,7 @@ func test_the_title_starts_through_the_launcher_without_a_platform() -> void:
 	var log_path: String = NetHarness.build_path("title_without_platform.log")
 	var args: PackedStringArray = PackedStringArray(["--headless", "--path",
 			ProjectSettings.globalize_path("res://"), "--log-file", log_path, "--fixed-fps", "60",
-			"--quit-after", "1200", "--", "--title", "--platform=http://127.0.0.1:%d" % port])
+			"--quit-after", "1200", "--", "--locale=en", "--title", "--platform=http://127.0.0.1:%d" % port])
 	var output: Array = []
 	var code: int = OS.execute(OS.get_executable_path(), args, output, true)
 	var text: String = FileAccess.get_file_as_string(log_path)

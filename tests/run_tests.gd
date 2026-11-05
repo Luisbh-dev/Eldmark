@@ -34,6 +34,10 @@ const GLOBAL_TIMEOUT_SEC: float = 3600.0
 
 const TestCaseScript = preload("res://tests/test_case.gd")
 
+## Settings file the tests use instead of the developer's real [code]user://settings.cfg[/code] (one per
+## shard, so that shards running at once do not share it).
+const TEST_SETTINGS_FORMAT: String = "user://test_run_settings_%d.cfg"
+
 
 ## Captures engine and script errors while each test runs.
 ## It can be called from any thread, hence the mutex.
@@ -220,6 +224,7 @@ func _run_file(path: String) -> void:
 func _run_test(instance: TestCaseScript, method_name: String, full_name: String) -> void:
 	instance.tree = self
 	instance.reset_results()
+	_prepare_environment()
 	var problems: Array[String] = []
 	var started_usec: int = Time.get_ticks_usec()
 	_catcher.begin()
@@ -238,6 +243,9 @@ func _run_test(instance: TestCaseScript, method_name: String, full_name: String)
 	var failures: PackedStringArray = instance.get_failures().duplicate()
 	for problem: String in problems:
 		failures.append(problem)
+	# Strict mode: a lookup with no Spanish entry fails the test even if it allowed logged engine errors.
+	for miss: String in L10n.take_misses():
+		failures.append("Búsqueda de L10n sin entrada española (modo estricto): %s" % miss.replace("␟", " | "))
 	for error: String in _catcher.get_script_errors():
 		failures.append("Error de script: %s" % error)
 	if not instance.are_logged_errors_allowed():
@@ -252,6 +260,23 @@ func _run_test(instance: TestCaseScript, method_name: String, full_name: String)
 		print("PASS %s (%.1f ms)%s" % [full_name, elapsed_ms, note])
 	else:
 		_record_failure(full_name, failures, elapsed_ms)
+
+
+## Leaves the same environment before every test, whatever the machine is set to: English forced, strict
+## mode on (every lookup must have a Spanish entry), no pseudolocalization, no recorded misses or drawn
+## text, and the settings read from an empty temporary file instead of the developer's real one
+## (docs/localization.md section 12.1).
+func _prepare_environment() -> void:
+	L10n.force("en")
+	L10n.set_language("auto")
+	L10n.set_strict(true)
+	L10n.take_misses()
+	L10n.take_drawn()
+	var settings_path: String = TEST_SETTINGS_FORMAT % _shard_index
+	ClientSettings.default_path = settings_path
+	if FileAccess.file_exists(settings_path):
+		DirAccess.remove_absolute(settings_path)
+	ClientSettings.set_current(null)
 
 
 ## Calls a method (synchronous or coroutine) and waits for it to finish, with a time limit.

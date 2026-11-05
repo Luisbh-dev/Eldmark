@@ -10,8 +10,8 @@ extends Node
 ## none of the client's), and must not load any of this. [method install] is the alternative for mounting it by hand (tests,
 ## tools).
 ## [br][br]
-## [b]Settings.[/b] On entering the tree it loads the settings ([method ClientSettings.current]) and applies
-## the ones the player has saved ([method ClientSettings.apply_all] with [code]stored_only[/code]):
+## [b]Settings.[/b] On entering the tree it loads the settings ([method ClientSettings.current]), applies the
+## language ([L10n]) and then the ones the player has saved ([method ClientSettings.apply_all] with [code]stored_only[/code]):
 ## a client with no saved settings starts exactly as before. Afterwards it applies each
 ## change live ([signal ClientSettings.changed]). Lights and terrains that arrive later (the zone
 ## is loaded afterwards) receive the player's shadows and grass distance on entering the tree,
@@ -41,6 +41,13 @@ static func install(parent: Node) -> ClientServices:
 
 
 func _ready() -> void:
+	# The language goes first, so that every screen built afterwards (this node is a child of the root
+	# scene, and its _ready runs before the root's) starts in the player's language. A language forced with
+	# --locale wins over the saved one (L10n ignores the setting while it is forced).
+	_settings = ClientSettings.current()
+	L10n.set_language(String(_settings.get_value(ClientSettings.LANGUAGE)))
+	L10n.flush()
+
 	_audio = AudioDirector.new()
 	# Volumes are governed by the settings: first the factory ones, then the player's.
 	_audio.load_volumes_on_ready = false
@@ -56,7 +63,6 @@ func _ready() -> void:
 	_menu = SettingsMenu.new()
 	_layer.add_child(_menu)
 
-	_settings = ClientSettings.current()
 	_menu.setup(_settings, _confirm)
 	_settings.apply_all(get_tree(), true)
 	_settings.changed.connect(_on_setting_changed)
@@ -93,7 +99,7 @@ func get_settings_menu() -> SettingsMenu:
 	return _menu
 
 
-## The confirmation dialog shared by the windows (the one for "Restaurar todo", Restore all).
+## The confirmation dialog shared by the windows (the one for "Restore all").
 func get_confirm_dialog() -> UIConfirmDialog:
 	return _confirm
 

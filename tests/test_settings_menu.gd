@@ -96,12 +96,15 @@ func _press(key: Key) -> void:
 
 func test_the_menu_has_a_tab_per_group_and_a_control_per_setting() -> void:
 	var menu: SettingsMenu = _make_menu()
-	assert_eq(menu.window_title, "Ajustes")
+	assert_eq(menu.window_title, "Settings")
 	assert_eq(menu.get_tabs().get_tab_count(), 4)
 	var names: Array[String] = []
 	for index: int in 4:
 		names.append(menu.get_tabs().get_tab_title(index))
-	assert_eq(names, ["Gráficos", "Audio", "Cámara", "Interfaz"] as Array[String])
+	assert_eq(names, ["Graphics", "Audio", "Camera", "Interface"] as Array[String])
+	for index: int in 4:
+		assert_eq(menu.get_tabs().get_child(index).name, String(ClientSettings.TABS[index]),
+				"the page is named after the tab's id, not after its title")
 	for spec: Dictionary in ClientSettings.get_schema():
 		var id: StringName = spec["id"]
 		var control: Control = menu.get_control(id)
@@ -145,7 +148,7 @@ func test_the_controls_start_at_the_current_values() -> void:
 	assert_eq(fps.get_item_text(fps.selected), "144 FPS")
 	var music: HSlider = menu.get_control(ClientSettings.volume_id(AudioBuses.MUSIC)) as HSlider
 	assert_near(music.value, 0.25, 0.0001)
-	assert_eq(menu.get_value_label(ClientSettings.volume_id(AudioBuses.MUSIC)).text, "25 %")
+	assert_eq(menu.get_value_label(ClientSettings.volume_id(AudioBuses.MUSIC)).text, "25%")
 	var resolution: OptionButton = menu.get_control(ClientSettings.RESOLUTION) as OptionButton
 	assert_true(resolution.disabled, "the resolution only applies in windowed mode")
 	_settings.set_value(ClientSettings.WINDOW_MODE, ClientSettings.MODE_WINDOWED)
@@ -210,10 +213,14 @@ func test_restore_tab_and_restore_all() -> void:
 	assert_false((menu.get_control(ClientSettings.INVERT_Y) as CheckButton).button_pressed)
 	menu.get_restore_all_button().pressed.emit()
 	for spec: Dictionary in ClientSettings.get_schema():
+		if spec["id"] == ClientSettings.LANGUAGE:
+			assert_true(_settings.get_value(spec["id"]) != spec["default"], "restore all leaves the language alone")
+			assert_true(_settings.is_stored(spec["id"]))
+			continue
 		assert_eq(_settings.get_value(spec["id"]), spec["default"], "%s restored" % spec["id"])
 		assert_false(_settings.is_stored(spec["id"]))
 	assert_eq((menu.get_control(ClientSettings.RENDER_SCALE) as HSlider).value, 1.0)
-	assert_eq(menu.get_value_label(ClientSettings.RENDER_SCALE).text, "100 %")
+	assert_eq(menu.get_value_label(ClientSettings.RENDER_SCALE).text, "100%")
 
 
 func test_restore_all_asks_before_when_there_is_a_dialog() -> void:

@@ -26,6 +26,9 @@ extends Node
 ## every 90 ticks into that folder ([code]shot_000.png[/code], ...) and, when finished, one from
 ## each of the zone's review cameras ([code]zona_<nombre>.png[/code]).
 ## [br]        - [code]--quit-after-demo[/code]: closes the game when the demo ends.
+## [br]Any client mode also accepts [code]--locale=<en|es|pseudo>[/code] (interface language for this run,
+## never saved; read by [code]L10n[/code]) and [code]--l10n-strict[/code] (debug: report every lookup with no
+## Spanish entry).
 ## [br]With no arguments (also in headless mode) it starts the client in Vado Gris.
 ## [br][br]
 ## [b]This script names no class from [code]scripts/client/[/code][/b]: the dedicated server also
@@ -50,12 +53,15 @@ const ZONE_ARG_PREFIX: String = "--zone="
 const REALM_ARG_PREFIX: String = "--realm="
 ## Arguments of the networked modes (docs/networking.md, section 1.2) that the sandbox ignores silently:
 ## they are interpreted by [ServerConfig] and the networked client modes, not by [method parse_client_options].
-const NETWORK_ARGS: Array[String] = ["--local", "--bot", "--title"]
+## It also ignores the localization ones, which [code]L10n[/code] reads by itself on first use
+## ([code]--l10n-strict[/code] and [code]--locale=<en|es|pseudo>[/code]; docs/localization.md section 4.3):
+## this script names no class of [code]scripts/client/[/code], so it only lists their spelling.
+const NETWORK_ARGS: Array[String] = ["--local", "--bot", "--title", "--l10n-strict"]
 const NETWORK_ARG_PREFIXES: Array[String] = [
 	"--connect=", "--bots=", "--name=", "--port=", "--net-sim=", "--quit-after-ticks=",
 	"--quit-at-server-tick=", "--report=", "--state-log=", "--bot-seed=", "--bot-cheat=", "--bot-brain=",
 	"--loadout=", "--platform=", "--login=", "--password-file=", "--character=", "--world=", "--dtls-cert=",
-	"--dtls-name=", "--bot-scenario=",
+	"--dtls-name=", "--bot-scenario=", "--locale=",
 ]
 
 

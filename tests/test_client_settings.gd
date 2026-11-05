@@ -81,12 +81,12 @@ func test_the_schema_covers_every_requested_setting() -> void:
 			ClientSettings.VSYNC, ClientSettings.FPS_LIMIT, ClientSettings.RENDER_SCALE,
 			ClientSettings.SHADOWS, ClientSettings.GRASS_DISTANCE, ClientSettings.ANTIALIASING,
 			ClientSettings.MOUSE_SENSITIVITY, ClientSettings.INVERT_Y, ClientSettings.FOV,
-			ClientSettings.DEFAULT_SHOULDER, ClientSettings.DAMAGE_NUMBERS,
+			ClientSettings.DEFAULT_SHOULDER, ClientSettings.LANGUAGE, ClientSettings.DAMAGE_NUMBERS,
 			ClientSettings.NAMEPLATES, ClientSettings.HINTS, ClientSettings.HELP_BAR]:
 		assert_true(ids.has(id), "setting %s is missing" % id)
 	for bus: StringName in AudioBuses.ALL:
 		assert_true(ids.has(ClientSettings.volume_id(bus)), "the volume of %s is missing" % bus)
-	assert_eq(ids.size(), 16 + AudioBuses.ALL.size())
+	assert_eq(ids.size(), 17 + AudioBuses.ALL.size())
 	var seen_ids: Dictionary = {}
 	var seen_keys: Dictionary = {}
 	for spec: Dictionary in ClientSettings.get_schema():
@@ -97,7 +97,7 @@ func test_the_schema_covers_every_requested_setting() -> void:
 		assert_false(seen_keys.has(file_key), "repeated key %s" % file_key)
 		seen_keys[file_key] = true
 		assert_true(ClientSettings.TABS.has(spec["tab"]), "%s has a valid tab" % id)
-		assert_false(String(spec["label"]).is_empty(), "%s has text in Spanish" % id)
+		assert_false(String(spec["label"]).is_empty(), "%s has a label (its msgid)" % id)
 		assert_eq(ClientSettings.normalize(spec, spec["default"]), spec["default"],
 				"the default value of %s is valid" % id)
 		match int(spec["kind"]):
@@ -216,18 +216,35 @@ func test_changes_are_announced_once_and_marked_as_the_players() -> void:
 
 
 func test_formatting_values_for_the_menu() -> void:
-	assert_eq(ClientSettings.format_value(ClientSettings.RENDER_SCALE, 0.75), "75 %")
-	assert_eq(ClientSettings.format_value(ClientSettings.MOUSE_SENSITIVITY, 1.25), "x1,25")
+	assert_eq(ClientSettings.format_value(ClientSettings.RENDER_SCALE, 0.75), "75%")
+	assert_eq(ClientSettings.format_value(ClientSettings.MOUSE_SENSITIVITY, 1.25), "x1.25")
 	assert_eq(ClientSettings.format_value(ClientSettings.FOV, 90.0), "90°")
 	assert_eq(ClientSettings.format_value(ClientSettings.GRASS_DISTANCE, 60.0), "60 m")
+	assert_eq(ClientSettings.format_value(ClientSettings.GRASS_DISTANCE, 0.0), "Off")
+	assert_eq(ClientSettings.format_value(ClientSettings.INVERT_Y, true), "Yes")
+	assert_eq(ClientSettings.format_value(ClientSettings.INVERT_Y, false), "No")
+	assert_eq(ClientSettings.format_value(ClientSettings.FPS_LIMIT, 0), "No limit")
+	assert_eq(ClientSettings.format_value(ClientSettings.FPS_LIMIT, 144), "144 FPS")
+	assert_eq(ClientSettings.format_value(ClientSettings.DEFAULT_SHOULDER, -1), "Left")
+	assert_eq(ClientSettings.format_value(ClientSettings.RESOLUTION, "1920x1080"), "1920 x 1080")
+	assert_eq(ClientSettings.format_value(ClientSettings.LANGUAGE, "es"), "Español", "an endonym")
+	assert_eq(ClientSettings.format_value(ClientSettings.LANGUAGE, "auto"), "Automatic (Spanish)")
+	assert_eq(ClientSettings.format_value(&"no_existe", 5), "5")
+
+
+func test_the_spanish_texts_of_the_menu_keep_the_decimal_comma_and_the_percent_space() -> void:
+	with_locale("es")
+	assert_eq(ClientSettings.format_value(ClientSettings.RENDER_SCALE, 0.75), "75 %")
+	assert_eq(ClientSettings.format_value(ClientSettings.MOUSE_SENSITIVITY, 1.25), "x1,25")
 	assert_eq(ClientSettings.format_value(ClientSettings.GRASS_DISTANCE, 0.0), "Desactivada")
 	assert_eq(ClientSettings.format_value(ClientSettings.INVERT_Y, true), "Sí")
-	assert_eq(ClientSettings.format_value(ClientSettings.INVERT_Y, false), "No")
 	assert_eq(ClientSettings.format_value(ClientSettings.FPS_LIMIT, 0), "Sin límite")
-	assert_eq(ClientSettings.format_value(ClientSettings.FPS_LIMIT, 144), "144 FPS")
 	assert_eq(ClientSettings.format_value(ClientSettings.DEFAULT_SHOULDER, -1), "Izquierdo")
-	assert_eq(ClientSettings.format_value(ClientSettings.RESOLUTION, "1920x1080"), "1920 x 1080")
-	assert_eq(ClientSettings.format_value(&"no_existe", 5), "5")
+	assert_eq(ClientSettings.format_value(ClientSettings.LANGUAGE, "auto"), "Automático (español)")
+	var titles: Array[String] = []
+	for tab: StringName in ClientSettings.TABS:
+		titles.append(ClientSettings.tab_title(tab))
+	assert_eq(titles, ["Gráficos", "Audio", "Cámara", "Interfaz"] as Array[String])
 
 
 # --- File -------------------------------------------------------------------------------------
@@ -370,11 +387,35 @@ func test_restoring_a_tab_or_everything_goes_back_to_the_defaults() -> void:
 	assert_true(settings.is_stored(ClientSettings.SHADOWS))
 	seen.clear()
 	settings.reset_all()
-	assert_eq(seen.size(), ClientSettings.get_ids().size() - ClientSettings.CAMERA_IDS.size(),
-			"notifies about the ones that change")
+	assert_eq(seen.size(), ClientSettings.get_ids().size() - ClientSettings.CAMERA_IDS.size() - 1,
+			"notifies about the ones that change, except the language")
 	for spec: Dictionary in ClientSettings.get_schema():
+		if spec["id"] == ClientSettings.LANGUAGE:
+			assert_true(settings.is_stored(ClientSettings.LANGUAGE), "restoring leaves the language alone")
+			assert_false(settings.get_value(ClientSettings.LANGUAGE) == spec["default"])
+			continue
 		assert_eq(settings.get_value(spec["id"]), spec["default"])
 		assert_false(settings.is_stored(spec["id"]))
+
+
+func test_the_language_is_automatic_by_default_and_is_not_restorable() -> void:
+	var spec: Dictionary = ClientSettings.get_spec(ClientSettings.LANGUAGE)
+	assert_eq(spec["default"], "auto")
+	assert_eq(spec["tab"], ClientSettings.TAB_INTERFACE)
+	assert_eq(ClientSettings.get_ids().find(ClientSettings.LANGUAGE),
+			ClientSettings.get_ids().find(ClientSettings.DAMAGE_NUMBERS) - 1, "first row of the Interface tab")
+	assert_false(ClientSettings.is_restorable(ClientSettings.LANGUAGE))
+	assert_true(ClientSettings.is_restorable(ClientSettings.FOV))
+	var settings: ClientSettings = ClientSettings.new()
+	assert_true(settings.set_value(ClientSettings.LANGUAGE, "en"))
+	assert_false(settings.set_value(ClientSettings.LANGUAGE, "fr"), "only auto, en and es")
+	settings.reset_tab(ClientSettings.TAB_INTERFACE)
+	assert_eq(settings.get_value(ClientSettings.LANGUAGE), "en", "restore tab leaves it alone")
+	settings.reset_all()
+	assert_eq(settings.get_value(ClientSettings.LANGUAGE), "en", "restore all too")
+	assert_true(settings.is_stored(ClientSettings.LANGUAGE))
+	settings.reset(ClientSettings.LANGUAGE)
+	assert_eq(settings.get_value(ClientSettings.LANGUAGE), "auto", "asking for that setting by name still works")
 
 
 # --- Conversions ------------------------------------------------------------------------------

@@ -4,10 +4,14 @@ extends RefCounted
 ## [code]user://settings.cfg[/code], applied live and at startup.
 ## [br][br]
 ## [b]Data.[/b] Each setting has a definition in [method get_schema]: identifier, tab, section and file
-## key, Spanish text, default value and its type ([enum Kind]): a toggle, a list of allowed values or a
-## range with a step. [method set_value] validates and normalizes (clamps to range, snaps to the step,
-## rejects what is not in the list) and emits [signal changed] only if the value changes.
+## key, English text ([code]msgid[/code]), default value and its type ([enum Kind]): a toggle, a list of
+## allowed values or a range with a step. [method set_value] validates and normalizes (clamps to range,
+## snaps to the step, rejects what is not in the list) and emits [signal changed] only if the value changes.
 ## [SettingsMenu] is built by reading this table.
+## [br][br]
+## [b]Text.[/b] The table stores [code]msgid[/code]s with their context and parameters, never formatted
+## text, so the settings window follows a language change: [method label_text], [method item_text],
+## [method tab_title] and [method format_value] translate through [L10n] when they are asked for.
 ## [br][br]
 ## [b]File.[/b] [method save] writes only the settings the player has touched ([method is_stored]) and
 ## preserves any other sections in the file; [method load] reads whatever is there and leaves the default
@@ -23,7 +27,9 @@ extends RefCounted
 ## antialiasing. Audio: [AudioBuses]. Camera: sensitivity, invert Y, field of view and default shoulder on
 ## every [CameraRig] (group [constant CameraRig.GROUP]). Interface: controls bound with
 ## [method bind_visibility] ([DamageNumbers], [Nameplates], the [HUD]'s help line) show or hide
-## themselves and the hints ([HintToasts]) read [constant HINTS] when shown.
+## themselves and the hints ([HintToasts]) read [constant HINTS] when shown. The language ([constant
+## LANGUAGE]) goes to [L10n]. It is not restorable: restoring a tab or everything leaves it alone, because
+## a player who restores the defaults into a language they cannot read may not find the way back.
 ## [br][br]
 ## Window mode, resolution and vsync are not touched in headless mode (there is no window): their
 ## conversion tables ([method window_mode_for], [method vsync_mode_for], [method parse_resolution]) are
@@ -44,11 +50,16 @@ const TAB_GRAPHICS: StringName = &"graphics"
 const TAB_AUDIO: StringName = &"audio"
 const TAB_CAMERA: StringName = &"camera"
 const TAB_INTERFACE: StringName = &"interface"
-## Tabs in order, with their Spanish text.
+## Tabs in order.
 const TABS: Array[StringName] = [TAB_GRAPHICS, TAB_AUDIO, TAB_CAMERA, TAB_INTERFACE]
-const TAB_NAMES: Dictionary = {
-	TAB_GRAPHICS: "Gráficos", TAB_AUDIO: "Audio", TAB_CAMERA: "Cámara", TAB_INTERFACE: "Interfaz",
+## English title of each tab: a [code]msgid[/code] with the context [constant TAB_CONTEXT].
+const TAB_NAMES: Dictionary = {  # l10n ctx=settings_tab
+	TAB_GRAPHICS: "Graphics", TAB_AUDIO: "Audio", TAB_CAMERA: "Camera", TAB_INTERFACE: "Interface",
 }
+const TAB_CONTEXT: StringName = &"settings_tab"
+## Values of [constant LANGUAGE]: follow the system (Spanish until UI-39), English or Spanish.
+const LANGUAGE_AUTO: String = "auto"
+const LANGUAGE_VALUES: Array[String] = [LANGUAGE_AUTO, "en", "es"]
 
 # Setting identifiers (the file key is the same, except for the volumes).
 const WINDOW_MODE: StringName = &"window_mode"
@@ -63,6 +74,8 @@ const MOUSE_SENSITIVITY: StringName = &"mouse_sensitivity"
 const INVERT_Y: StringName = &"invert_y"
 const FOV: StringName = &"fov"
 const DEFAULT_SHOULDER: StringName = &"default_shoulder"
+## Interface language: [code]auto[/code], [code]en[/code] or [code]es[/code] ([L10n]). Not restorable.
+const LANGUAGE: StringName = &"language"
 const DAMAGE_NUMBERS: StringName = &"damage_numbers"
 const NAMEPLATES: StringName = &"nameplates"
 ## Game hints (UI-42): tips that appear only once per player ([HintToasts]).
@@ -71,7 +84,7 @@ const HINTS: StringName = &"hints"
 const HELP_BAR: StringName = &"help_bar"
 ## Camera settings, graphics settings that walk the scene, and interface settings.
 const CAMERA_IDS: Array[StringName] = [MOUSE_SENSITIVITY, INVERT_Y, FOV, DEFAULT_SHOULDER]
-const INTERFACE_IDS: Array[StringName] = [DAMAGE_NUMBERS, NAMEPLATES, HINTS, HELP_BAR]
+const INTERFACE_IDS: Array[StringName] = [LANGUAGE, DAMAGE_NUMBERS, NAMEPLATES, HINTS, HELP_BAR]
 
 ## Window resolutions on offer (text "width x height" without spaces).
 const RESOLUTIONS: Array[String] = ["1280x720", "1600x900", "1920x1080", "2560x1440"]
@@ -97,6 +110,10 @@ const GRASS_META: StringName = &"client_settings_grass_default"
 ## A [code]Terrain3DMeshAsset[/code] is grass if its name starts like this.
 const GRASS_ASSET_PREFIXES: Array[String] = ["Hierba", "Grass"]
 
+## Where [method current] loads the settings from. The test runner points it to a temporary file so that no
+## test reads or writes the developer's real settings.
+static var default_path: String = PATH
+
 static var _schema: Array[Dictionary] = []
 static var _current: ClientSettings = null
 
@@ -112,10 +129,13 @@ var _dirty: bool = false
 
 ## Definition of all the settings, in the order the settings menu shows them. Each dictionary:
 ## [code]id[/code], [code]tab[/code], [code]section[/code], [code]key[/code] (file),
-## [code]label[/code] (Spanish), [code]kind[/code] ([enum Kind]), [code]default[/code] and, depending on
-## the type, [code]values[/code] and [code]labels[/code] (list) or [code]min[/code], [code]max[/code],
-## [code]step[/code] and [code]format[/code] ([code]percent[/code], [code]multiplier[/code],
-## [code]degrees[/code] or [code]meters[/code]).
+## [code]label[/code] (the [code]msgid[/code]; [code]label_ctx[/code] is its context), [code]kind[/code] ([enum Kind]), [code]default[/code] and, depending on
+## the type, [code]values[/code] and [code]labels[/code] (list; [code]item_ctx[/code] and
+## [code]item_params[/code] are the context and the parameters of the items, and [code]raw_items[/code] the
+## indexes of items shown as they are) or [code]min[/code],
+## [code]max[/code], [code]step[/code] and [code]format[/code] ([code]percent[/code], [code]multiplier[/code],
+## [code]degrees[/code] or [code]meters[/code]). A setting with [code]restorable[/code] false is left alone by
+## "restore tab" and "restore all".
 static func get_schema() -> Array[Dictionary]:
 	if _schema.is_empty():
 		_schema = _build_schema()
@@ -148,73 +168,134 @@ static func get_default(id: StringName) -> Variant:
 	return get_spec(id).get("default", null)
 
 
-## Text of [param value] to show next to the control of [param id] ("75 %", "x1,25", "90°", "60 m",
-## "Desactivada" (Disabled)...). For lists, the value's label.
+## Title of tab [param tab], translated.
+static func tab_title(tab: StringName) -> String:
+	return L10n.t(String(TAB_NAMES[tab]), TAB_CONTEXT)
+
+
+## Text of the label of [param spec] (the setting's name), translated.
+static func label_text(spec: Dictionary) -> String:
+	return L10n.t(String(spec["label"]), StringName(spec.get("label_ctx", &"")))
+
+
+## Text of item [param index] of a list setting, translated and with its parameters filled in.
+static func item_text(spec: Dictionary, index: int) -> String:
+	var msgid: String = String((spec["labels"] as Array)[index])
+	if (spec.get("raw_items", []) as Array).has(index):
+		return msgid
+	var ctx: StringName = StringName(spec.get("item_ctx", &""))
+	var params_list: Array = spec.get("item_params", [])
+	if index < params_list.size() and not (params_list[index] as Dictionary).is_empty():
+		return L10n.tf(msgid, params_list[index], ctx)
+	return L10n.t(msgid, ctx)
+
+
+## Whether "restore tab" and "restore all" return setting [param id] to its default value.
+static func is_restorable(id: StringName) -> bool:
+	return bool(get_spec(id).get("restorable", true))
+
+
+## Text of [param value] to show next to the control of [param id] ("75%", "x1.25", "90°", "60 m", "Off",
+## "Yes"...), in the language in use. For lists, the value's label.
 static func format_value(id: StringName, value: Variant) -> String:
 	var spec: Dictionary = get_spec(id)
 	if spec.is_empty():
 		return str(value)
 	match int(spec["kind"]):
 		Kind.BOOL:
-			return "Sí" if bool(value) else "No"
+			return L10n.t("Yes" if bool(value) else "No", &"answer")
 		Kind.CHOICE:
 			var index: int = (spec["values"] as Array).find(value)
-			return String(spec["labels"][index]) if index >= 0 else str(value)
+			return item_text(spec, index) if index >= 0 else str(value)
 	var number: float = float(value)
 	match String(spec.get("format", "")):
 		"percent":
-			return "%d %%" % roundi(number * 100.0)
+			return L10n.format_percent(number)
 		"multiplier":
-			return "x%s" % ("%.2f" % number).replace(".", ",")
+			return L10n.format_multiplier(number)
 		"degrees":
-			return "%d°" % roundi(number)
+			return L10n.format_unit("{value}°", str(roundi(number)))
 		"meters":
-			return "Desactivada" if number <= 0.0 else "%d m" % roundi(number)
+			if number <= 0.0:
+				return L10n.t("Off", &"grass_distance")
+			return L10n.format_unit("{value} m", str(roundi(number)))
 	return str(number)
 
 
 static func _build_schema() -> Array[Dictionary]:
 	var schema: Array[Dictionary] = []
-	schema.append(_choice(TAB_GRAPHICS, WINDOW_MODE, "Modo de ventana", MODE_WINDOWED,
+	schema.append(_choice(TAB_GRAPHICS, WINDOW_MODE, L10n.mark("Window mode"), MODE_WINDOWED,
 			[MODE_WINDOWED, MODE_FULLSCREEN, MODE_EXCLUSIVE],
-			["Ventana", "Pantalla completa sin bordes", "Pantalla completa exclusiva"]))
+			[L10n.mark("Windowed"), L10n.mark("Borderless fullscreen"),
+					L10n.mark("Exclusive fullscreen")]))
 	var resolution_labels: Array = []
+	var resolution_params: Array = []
 	for text: String in RESOLUTIONS:
-		resolution_labels.append(text.replace("x", " x "))
-	schema.append(_choice(TAB_GRAPHICS, RESOLUTION, "Resolución de la ventana", "1600x900",
-			RESOLUTIONS, resolution_labels))
-	schema.append(_choice(TAB_GRAPHICS, VSYNC, "Sincronía vertical", 1, [0, 1, 2],
-			["Desactivada", "Activada", "Adaptativa"]))
+		var parts: PackedStringArray = text.split("x")
+		resolution_labels.append(L10n.mark("{width} x {height}", &"resolution"))
+		resolution_params.append({"width": parts[0], "height": parts[1]})
+	var resolution: Dictionary = _choice(TAB_GRAPHICS, RESOLUTION, L10n.mark("Window resolution"),
+			"1600x900", RESOLUTIONS, resolution_labels)
+	resolution["item_ctx"] = &"resolution"
+	resolution["item_params"] = resolution_params
+	schema.append(resolution)
+	var vsync: Dictionary = _choice(TAB_GRAPHICS, VSYNC, L10n.mark("Vertical sync"), 1, [0, 1, 2],
+			[L10n.mark("Off", &"vsync"), L10n.mark("On", &"vsync"), L10n.mark("Adaptive", &"vsync")])
+	vsync["item_ctx"] = &"vsync"
+	schema.append(vsync)
 	var fps_labels: Array = []
+	var fps_params: Array = []
 	for limit: int in FPS_LIMITS:
-		fps_labels.append("Sin límite" if limit == 0 else "%d FPS" % limit)
-	schema.append(_choice(TAB_GRAPHICS, FPS_LIMIT, "Límite de FPS", 0, FPS_LIMITS, fps_labels))
-	schema.append(_range(TAB_GRAPHICS, RENDER_SCALE, "Escala de render", 1.0, 0.5, 1.0, 0.05,
+		fps_labels.append(L10n.mark("No limit", &"fps_limit") if limit == 0
+				else L10n.mark("{fps} FPS", &"fps_limit"))
+		fps_params.append({} if limit == 0 else {"fps": limit})
+	var fps: Dictionary = _choice(TAB_GRAPHICS, FPS_LIMIT, L10n.mark("FPS limit"), 0, FPS_LIMITS,
+			fps_labels)
+	fps["item_ctx"] = &"fps_limit"
+	fps["item_params"] = fps_params
+	schema.append(fps)
+	schema.append(_range(TAB_GRAPHICS, RENDER_SCALE, L10n.mark("Render scale"), 1.0, 0.5, 1.0, 0.05,
 			"percent"))
-	schema.append(_choice(TAB_GRAPHICS, SHADOWS, "Sombras", SHADOWS_HIGH, [0, 1, 2, 3],
-			["Desactivadas", "Bajas", "Medias", "Altas"]))
-	schema.append(_range(TAB_GRAPHICS, GRASS_DISTANCE, "Distancia de la hierba", 60.0, 0.0, 120.0,
+	var shadows: Dictionary = _choice(TAB_GRAPHICS, SHADOWS, L10n.mark("Shadows"), SHADOWS_HIGH,
+			[0, 1, 2, 3], [L10n.mark("Off", &"shadows"), L10n.mark("Low", &"shadows"),
+					L10n.mark("Medium", &"shadows"), L10n.mark("High", &"shadows")])
+	shadows["item_ctx"] = &"shadows"
+	schema.append(shadows)
+	schema.append(_range(TAB_GRAPHICS, GRASS_DISTANCE, L10n.mark("Grass distance"), 60.0, 0.0, 120.0,
 			10.0, "meters"))
-	schema.append(_choice(TAB_GRAPHICS, ANTIALIASING, "Suavizado de bordes", AA_MSAA_4X,
-			[AA_NONE, AA_FXAA, AA_MSAA_2X, AA_MSAA_4X],
-			["Ninguno", "FXAA", "MSAA 2x", "MSAA 4x"]))
+	var antialiasing: Dictionary = _choice(TAB_GRAPHICS, ANTIALIASING, L10n.mark("Antialiasing"),
+			AA_MSAA_4X, [AA_NONE, AA_FXAA, AA_MSAA_2X, AA_MSAA_4X],
+			[L10n.mark("None", &"antialiasing"), L10n.mark("FXAA", &"antialiasing"),
+					L10n.mark("MSAA 2x", &"antialiasing"), L10n.mark("MSAA 4x", &"antialiasing")])
+	antialiasing["item_ctx"] = &"antialiasing"
+	schema.append(antialiasing)
 	for bus: StringName in AudioBuses.ALL:
-		var spec: Dictionary = _range(TAB_AUDIO, volume_id(bus),
-				"Volumen: %s" % AudioBuses.display_name(bus), AudioBuses.default_volume(bus), 0.0,
-				1.0, 0.05, "percent")
+		var spec: Dictionary = _range(TAB_AUDIO, volume_id(bus), AudioBuses.volume_label(bus),
+				AudioBuses.default_volume(bus), 0.0, 1.0, 0.05, "percent")
 		spec["section"] = String(AudioBuses.SETTINGS_SECTION)
 		spec["bus"] = bus
 		schema.append(spec)
-	schema.append(_range(TAB_CAMERA, MOUSE_SENSITIVITY, "Sensibilidad del ratón", 1.0, 0.2, 3.0,
+	schema.append(_range(TAB_CAMERA, MOUSE_SENSITIVITY, L10n.mark("Mouse sensitivity"), 1.0, 0.2, 3.0,
 			0.05, "multiplier"))
-	schema.append(_bool(TAB_CAMERA, INVERT_Y, "Invertir el eje vertical", false))
-	schema.append(_range(TAB_CAMERA, FOV, "Campo de visión", 72.0, 60.0, 100.0, 1.0, "degrees"))
-	schema.append(_choice(TAB_CAMERA, DEFAULT_SHOULDER, "Hombro por defecto", 1, [1, -1],
-			["Derecho", "Izquierdo"]))
-	schema.append(_bool(TAB_INTERFACE, DAMAGE_NUMBERS, "Números de daño", true))
-	schema.append(_bool(TAB_INTERFACE, NAMEPLATES, "Placas de nombre", true))
-	schema.append(_bool(TAB_INTERFACE, HINTS, "Pistas del juego", true))
-	schema.append(_bool(TAB_INTERFACE, HELP_BAR, "Línea de ayuda de controles (F1)", false))
+	schema.append(_bool(TAB_CAMERA, INVERT_Y, L10n.mark("Invert vertical axis"), false))
+	schema.append(_range(TAB_CAMERA, FOV, L10n.mark("Field of view"), 72.0, 60.0, 100.0, 1.0, "degrees"))
+	var shoulder: Dictionary = _choice(TAB_CAMERA, DEFAULT_SHOULDER, L10n.mark("Default shoulder"), 1,
+			[1, -1], [L10n.mark("Right", &"shoulder"), L10n.mark("Left", &"shoulder")])
+	shoulder["item_ctx"] = &"shoulder"
+	schema.append(shoulder)
+	# The language options: "Español" and "English" are endonyms; the notes in the other two say what
+	# "Automatic" means and that the English text is still incomplete, until the final review (UI-39).
+	var language: Dictionary = _choice(TAB_INTERFACE, LANGUAGE, L10n.mark("Language"), LANGUAGE_AUTO,
+			LANGUAGE_VALUES, [L10n.mark("Automatic (Spanish)", &"language"),
+					L10n.mark("English (incomplete)", &"language"), "Español"])
+	language["item_ctx"] = &"language"
+	language["raw_items"] = [2]  # l10n-ignore: endonym, shown as it is in every language
+	language["restorable"] = false
+	schema.append(language)
+	schema.append(_bool(TAB_INTERFACE, DAMAGE_NUMBERS, L10n.mark("Damage numbers"), true))
+	schema.append(_bool(TAB_INTERFACE, NAMEPLATES, L10n.mark("Nameplates"), true))
+	schema.append(_bool(TAB_INTERFACE, HINTS, L10n.mark("Game hints"), true))
+	schema.append(_bool(TAB_INTERFACE, HELP_BAR, L10n.mark("Controls help line (F1)"), false))
 	return schema
 
 
@@ -248,14 +329,15 @@ static func _range(tab: StringName, id: StringName, label: String, default: floa
 
 # --- The setting in use ------------------------------------------------------------------------
 
-## The client's settings: loaded from [constant PATH] the first time they are requested.
+## The client's settings: loaded from [member default_path] the first time they are requested.
 static func current() -> ClientSettings:
 	if _current == null:
-		_current = load_from(PATH)
+		_current = load_from(default_path)
 	return _current
 
 
-## Replaces the settings in use (null forgets them and they are reloaded from the file when requested).
+## Replaces the settings in use (null forgets them and they are reloaded from [member default_path] when
+## requested).
 static func set_current(settings: ClientSettings) -> void:
 	_current = settings
 
@@ -326,7 +408,8 @@ func reset(id: StringName) -> void:
 func reset_all(emit_changes: bool = true) -> void:
 	for spec: Dictionary in get_schema():
 		if emit_changes:
-			reset(spec["id"])
+			if bool(spec.get("restorable", true)):
+				reset(spec["id"])
 		else:
 			_values[spec["id"]] = spec["default"]
 	if not emit_changes:
@@ -337,7 +420,7 @@ func reset_all(emit_changes: bool = true) -> void:
 ## Returns the settings of tab [param tab] to their default value.
 func reset_tab(tab: StringName) -> void:
 	for spec: Dictionary in get_schema():
-		if spec["tab"] == tab:
+		if spec["tab"] == tab and bool(spec.get("restorable", true)):
 			reset(spec["id"])
 
 
@@ -472,6 +555,9 @@ func apply_value(id: StringName, tree: SceneTree) -> void:
 			var profile: Dictionary = antialiasing_for(int(value))
 			tree.root.msaa_3d = profile["msaa"]
 			tree.root.screen_space_aa = profile["screen_space"]
+		LANGUAGE:
+			# Deferred to the end of the frame: the usual caller is the language selector itself.
+			L10n.set_language(String(value))
 		_:
 			var spec: Dictionary = get_spec(id)
 			if spec.has("bus"):

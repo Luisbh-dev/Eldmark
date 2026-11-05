@@ -1,15 +1,19 @@
 class_name UIConfirmDialog
 extends Control
-## Modal confirmation dialog (UI-09): a title, a message and two buttons ("Aceptar" (Accept) and
-## "Cancelar" (Cancel) by default) over a veil that dims and blocks the rest of the screen. It emits
+## Modal confirmation dialog (UI-09): a title, a message and two buttons ("Accept" and "Cancel" by
+## default) over a veil that dims and blocks the rest of the screen. It emits
 ## [signal confirmed] or [signal canceled] and closes before emitting.
 ## [br][br]
 ## Esc cancels; the buttons are focusable and are traversed with left and right ([UIFocus]); focus does
 ## not leave the dialog. For destructive actions ([param danger]) the confirm button uses the danger style
-## and focus starts on "Cancelar" (by default: an extra Enter destroys nothing). It sounds through
+## and focus starts on "Cancel" (by default: an extra Enter destroys nothing). It sounds through
 ## [UISounds] on opening, on confirming and on canceling.
 ## [br][br]
 ## Like the windows ([UIWindow]), it frees the cursor while open if bound with [method bind_camera].
+## [br][br]
+## [b]Language.[/b] The caller passes the title and message already translated ([L10n]); the default button
+## texts are translated when the dialog opens. It is modal, so it cannot be open while the language changes
+## and needs no refresh on a switch (it is listed in [code]L10N_REFRESH_ON_OPEN[/code] of the screen tests).
 ## [br][br]
 ## Client only.
 
@@ -18,8 +22,6 @@ signal confirmed
 ## The player canceled (button, Esc or [method cancel]).
 signal canceled
 
-const DEFAULT_CONFIRM_TEXT: String = "Aceptar"
-const DEFAULT_CANCEL_TEXT: String = "Cancelar"
 const MIN_WIDTH: float = 380.0
 
 var _open: bool = false
@@ -90,17 +92,17 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Opens the dialog with [param title] and [param message]. [param danger] puts the confirm button in the
-## danger style and, with [param focus_cancel] (or whenever it is dangerous), focus starts on "Cancelar"
-## (Cancel).
-func open(title: String, message: String, confirm_text: String = DEFAULT_CONFIRM_TEXT,
-		cancel_text: String = DEFAULT_CANCEL_TEXT, danger: bool = false,
-		focus_cancel: bool = true) -> void:
+## Opens the dialog with [param title] and [param message]. An empty [param confirm_text] or
+## [param cancel_text] means the default one ("Accept", "Cancel"), translated now. [param danger] puts the
+## confirm button in the danger style and, with [param focus_cancel] (or whenever it is dangerous), focus
+## starts on "Cancel".
+func open(title: String, message: String, confirm_text: String = "", cancel_text: String = "",
+		danger: bool = false, focus_cancel: bool = true) -> void:
 	_title.text = title
 	_title.visible = not title.is_empty()
 	_message.text = message
-	_confirm_button.text = confirm_text
-	_cancel_button.text = cancel_text
+	_confirm_button.text = confirm_text if not confirm_text.is_empty() else L10n.t("Accept", &"button")
+	_cancel_button.text = cancel_text if not cancel_text.is_empty() else L10n.t("Cancel", &"button")
 	_confirm_button.theme_type_variation = &"DangerButton" if danger else &""
 	_focus_cancel = focus_cancel or danger
 	var was_open: bool = _open

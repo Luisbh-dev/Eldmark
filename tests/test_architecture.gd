@@ -119,6 +119,19 @@ const ASSET_CLASSES: Array[String] = ["Texture2D", "Texture", "PackedScene", "Me
 ## Folders whose [code]class_name[/code] values cannot be repeated: Godot silently registers only one.
 const CLASS_NAME_DIRS: Array[String] = ["res://scripts", "res://tests", "res://tools", "res://addons"]
 
+## Localization (docs/localization.md section 6): the code the server loads never produces text for players.
+## It returns codes and numbers, and the client turns them into text with [L10n].
+const NO_TEXT_DIRS: Array[String] = ["res://scripts/shared", "res://scripts/world", "res://scripts/server"]
+const LOCALIZATION_FORBIDDEN: Array[Array] = [
+	["L10n", "\\bL10n\\b"],
+	["TranslationServer", "\\bTranslationServer\\b"],
+]
+## The engine's own translation calls are banned everywhere: its main domain is empty on purpose, so
+## [code]tr()[/code] would not find our catalog ([L10n] is the only way).
+const BANNED_TR_CALLS: Array[Array] = [
+	["tr()", "\\btr\\("], ["tr_n()", "\\btr_n\\("], ["atr()", "\\batr\\("], ["atr_n()", "\\batr_n\\("],
+]
+
 
 func test_shared_scripts_exist() -> void:
 	var files: PackedStringArray = _list_scripts(SHARED_DIR)
@@ -175,6 +188,41 @@ func test_scanner_detects_forbidden_references() -> void:
 		assert_eq(_find_matches(line, FORBIDDEN_REFERENCES).size(), 1, "must detect: %s" % line)
 	assert_eq(_extract_class_names("@tool\nclass_name CameraRig\nextends Node3D\n"),
 			PackedStringArray(["CameraRig"]), "extracts the class_name of a script")
+
+
+func test_localization_scanner_detects_what_it_forbids() -> void:
+	var harmless: String = "
+".join([
+		"var text: String = str(5) + String.num(3.0)",
+		"var strength: int = 4 # tr(\"x\") in a comment",
+		"## L10n and TranslationServer in documentation",
+		"var l10n_like: int = 1",
+	])
+	assert_eq(_find_matches(harmless, BANNED_TR_CALLS), PackedStringArray(), "str() is not tr()")
+	assert_eq(_find_matches(harmless, LOCALIZATION_FORBIDDEN), PackedStringArray(), "comments and lookalikes are fine")
+	for line: String in ["var a: String = tr(\"x\")", "label.tr(\"x\")", "var a: String = atr(\"x\")",
+			"tr_n(\"a\", \"b\", 2)", "atr_n(\"a\", \"b\", 2)"]:
+		assert_eq(_find_matches(line, BANNED_TR_CALLS).size(), 1, "must detect: %s" % line)
+	for line: String in ["var a: String = L10n.t(\"x\")", "TranslationServer.set_locale(\"es\")"]:
+		assert_eq(_find_matches(line, LOCALIZATION_FORBIDDEN).size(), 1, "must detect: %s" % line)
+
+
+func test_shared_world_and_server_do_not_translate_or_use_l10n() -> void:
+	for dir: String in NO_TEXT_DIRS:
+		var files: PackedStringArray = _list_scripts(dir)
+		assert_false(files.is_empty(), "no script was found in %s" % dir)
+		for path: String in files:
+			for found: String in _find_matches(_read_text(path), LOCALIZATION_FORBIDDEN):
+				fail("%s uses %s: shared, world and server code returns codes and the client makes the text" % [path, found])
+
+
+func test_no_script_calls_the_engine_translation_functions() -> void:
+	var scanned: int = 0
+	for path: String in _list_scripts("res://scripts"):
+		scanned += 1
+		for found: String in _find_matches(_read_text(path), BANNED_TR_CALLS):
+			fail("%s calls %s: use L10n, whose catalog lives in its own translation domain" % [path, found])
+	assert_true(scanned > 100, "the scripts were scanned (%d)" % scanned)
 
 
 func test_shared_does_not_reference_client_only_apis() -> void:
