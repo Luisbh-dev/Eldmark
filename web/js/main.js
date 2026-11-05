@@ -304,6 +304,23 @@
 		}
 	});
 
+	/* ---------------------------------------------------------------- devlog */
+	/* Click to load: nothing is requested from YouTube until the visitor presses play */
+	const devlogStart = $('#devlog-start');
+	if (devlogStart) {
+		devlogStart.addEventListener('click', () => {
+			const frame = document.createElement('iframe');
+			const lang = E.lang === 'es' ? 'es' : 'en';
+			frame.src = `https://www.youtube-nocookie.com/embed/${devlogStart.dataset.video}?autoplay=1&rel=0&hl=${lang}`;
+			frame.title = E.t('devlog.frame');
+			frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+			frame.allowFullscreen = true;
+			frame.referrerPolicy = 'strict-origin-when-cross-origin';
+			$('#devlog-thumb').replaceChildren(frame);
+			frame.focus();
+		});
+	}
+
 	/* ---------------------------------------------------------------- roadmap */
 	const road = $('.road-wrap');
 	if (road) {

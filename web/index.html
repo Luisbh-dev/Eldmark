@@ -571,15 +571,24 @@
 	</div>
 
 	<article class="devlog reveal">
-		<div class="devlog-thumb">
-			<img src="assets/img/devlog_00.webp" alt="Devlog #0 title card over the Vado Gris" data-i18n-attr="alt:devlog.alt" loading="lazy" width="1280" height="720">
-			<span class="devlog-play" aria-hidden="true"></span>
+		<div class="devlog-thumb" id="devlog-thumb">
+			<button class="devlog-start" type="button" id="devlog-start" data-video="kinJ8xtBIO4" aria-label="Play Devlog #0" data-i18n-attr="aria-label:devlog.play">
+				<img src="assets/img/devlog_00.webp" alt="Devlog #0 title card over the Vado Gris" data-i18n-attr="alt:devlog.alt" loading="lazy" width="1280" height="720">
+				<span class="devlog-play" aria-hidden="true"></span>
+				<span class="devlog-time" aria-hidden="true">2:23</span>
+			</button>
 		</div>
 		<div class="devlog-body">
 			<p class="eyebrow">Devlog #0</p>
 			<h3 data-i18n="devlog.title">The open-source MMORPG we are building in Godot</h3>
 			<p data-i18n="devlog.text">Two minutes on what Eldmark is, how the netcode works and how far it got in its first week. A video series follows the development, with before-and-after captures of every improvement.</p>
-			<p class="devlog-soon" data-i18n="devlog.soon">Coming soon to YouTube</p>
+			<div class="devlog-actions">
+				<a class="btn btn-primary btn-small" href="https://www.youtube.com/watch?v=kinJ8xtBIO4" target="_blank" rel="noopener">
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8zM9.75 15.02V8.98L15.5 12z"/></svg>
+					<span data-i18n="devlog.watch">Watch on YouTube</span>
+				</a>
+			</div>
+			<p class="devlog-note" data-i18n="devlog.note">The player only loads from YouTube when you press play.</p>
 		</div>
 	</article>
 </section>

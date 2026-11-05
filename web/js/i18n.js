@@ -30,6 +30,7 @@
 		'toast.rekindled': 'The Flame of Eld burns again… for a moment.',
 		'toast.sound.on': 'Sound on: horns, steel and shields from the game itself.',
 		'nav.sound.on': 'Sound on',
+		'devlog.frame': 'Eldmark Devlog #0 on YouTube',
 	});
 
 	const es = {
@@ -218,7 +219,10 @@
 		'devlog.alt': 'Cartela del Devlog #0 sobre el Vado Gris',
 		'devlog.title': 'El MMORPG de código abierto que estamos haciendo con Godot',
 		'devlog.text': 'Dos minutos sobre qué es Eldmark, cómo funciona el código de red y hasta dónde llegó en su primera semana. Una serie de vídeos sigue el desarrollo, con capturas de antes y después de cada mejora.',
-		'devlog.soon': 'Muy pronto en YouTube',
+		'devlog.play': 'Reproducir el Devlog #0',
+		'devlog.watch': 'Verlo en YouTube',
+		'devlog.note': 'El reproductor solo se carga desde YouTube cuando pulsas play.',
+		'devlog.frame': 'Devlog #0 de Eldmark en YouTube',
 
 		'road.eyebrow': 'El camino a Aldcor',
 		'road.title': 'Por dónde va la marcha',
