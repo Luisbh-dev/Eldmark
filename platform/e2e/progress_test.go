@@ -257,16 +257,16 @@ func TestProgressEndToEnd(t *testing.T) {
 		!reflect.DeepEqual(sc.BowSlot, []int{1, 1}) {
 		t.Fatalf("report scenario: %+v (expected done, no error, with the bow equipped in WEAPON_2)", sc)
 	}
-	h.Logf("el bot ha hecho el escenario con el personaje %d: %v", id, sc.Completed)
+	h.Logf("the bot ran the scenario with character %d: %v", id, sc.Completed)
 
 	// The final save and the release come out when the body leaves.
-	h.WaitFor(saveTimeout, "el guardado final y la liberación", func() bool {
+	h.WaitFor(saveTimeout, "the final save and the release", func() bool {
 		requireRunning(t, zone.Process)
 		return h.Exists(`select 1 from character_leases where character_id = $1 and zone_instance_id is null
 			and released_at is not null and last_save_version > 0`, id)
 	})
 	rec := loadRecord(h, rules, id)
-	compareWithLoad(t, rules, "tras salir", seen.Progress, rec)
+	compareWithLoad(t, rules, "after leaving", seen.Progress, rec)
 
 	// What has to be there, besides the bot and the database saying the same thing.
 	if rec.StarterTemplateID != "squire" || !rec.StarterGranted {
@@ -352,7 +352,7 @@ func TestProgressCrash(t *testing.T) {
 		"--quit-after-ticks=7200")
 	id := h.WaitCharacter("Caida", botTimeout, first.Process, old.Process)
 	var phase string
-	h.WaitFor(scenarioTimeout, "el oro en el bot", func() bool {
+	h.WaitFor(scenarioTimeout, "the gold in the bot", func() bool {
 		requireRunning(t, first.Process, old.Process)
 		r, err := readProgressReport(first.Report) // partial while being written: read again
 		if err != nil || r.Scenario == nil {
@@ -370,7 +370,7 @@ func TestProgressCrash(t *testing.T) {
 	h.Scalar(&gold, `select balance from character_wallets where character_id = $1 and currency = 1`, id)
 	var savedAt *time.Time
 	h.Scalar(&savedAt, `select saved_at from character_progress where character_id = $1`, id)
-	h.Logf("kill -9 a %s con el bot en «%s»; en la base, %d de oro (último guardado %.2f s antes del kill)", old.Name,
+	h.Logf("kill -9 to %s with the bot in \"%s\"; in the database, %d gold (last save %.2f s before the kill)", old.Name,
 		phase, gold, killedAt.Sub(*savedAt).Seconds())
 
 	replacement := h.StartZone("--debug-commands", "--save-interval=5")
@@ -395,14 +395,14 @@ func TestProgressCrash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compareWithLoad(t, rules, "al volver tras la caída", seen.Progress, before)
-	h.WaitFor(saveTimeout, "el guardado final y la liberación", func() bool {
+	compareWithLoad(t, rules, "on returning after the crash", seen.Progress, before)
+	h.WaitFor(saveTimeout, "the final save and the release", func() bool {
 		requireRunning(t, replacement.Process)
 		return h.Exists(`select 1 from character_leases where character_id = $1 and zone_instance_id is null
 			and released_at is not null and claimed_by = $2::uuid`, id, newInstance)
 	})
 	after := loadRecord(h, rules, id)
-	compareWithLoad(t, rules, "tras salir de la nueva", seen.Progress, after)
+	compareWithLoad(t, rules, "after leaving the new one", seen.Progress, after)
 	h.CheckBooks(id) // and after joining again: the kit is not repeated and nothing is duplicated
 	if code := replacement.Stop(zoneStop); code != 0 {
 		t.Fatalf("the new zone exits with code %d after the orderly shutdown", code)

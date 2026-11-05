@@ -25,7 +25,7 @@ extends Node3D
 
 ## [b]Sound and effects of each character[/b] (ART-11, ART-09): footsteps come from the feet (the
 ## [constant FOOT_BONES] bones, with the surface from [FootstepSurface]), and the jump, the landing and the actions of
-## remotes from the animator's signals; the fort's charge aura hangs from the sword and the hitstop
+## remotes from the animator's signals; the heavy attack's charge aura hangs from the sword and the hitstop
 ## freezes the combat clip ([method start_hitstop]). It is all client-side and requested from [CombatAudio] and [CombatVfx] if
 ## they exist.
 ## [br][br]

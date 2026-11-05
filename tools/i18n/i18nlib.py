@@ -982,7 +982,7 @@ def go_helpers_of(text: str, known: dict[str, int] | None = None) -> dict[str, i
 
 
 def _package_helpers(path: str, text: str) -> dict[str, int]:
-	"""Helpers declared in the _test.go files of the same directory (cached) and in this file."""
+	"""Helpers declared in the _test.go files of the same directory (cached, current file included) and in this file."""
 	d = str(PurePosixPath(path).parent)
 	cached = _GO_HELPER_CACHE.get(d)
 	if cached is None:
@@ -990,8 +990,6 @@ def _package_helpers(path: str, text: str) -> dict[str, int]:
 		folder = REPO_ROOT / d
 		if folder.is_dir():
 			for f in sorted(folder.glob("*_test.go")):
-				if f.name == PurePosixPath(path).name:
-					continue
 				try:
 					cached.update(go_helpers_of(read_source(f).text, cached))
 				except (OSError, UnicodeDecodeError, ValueError):

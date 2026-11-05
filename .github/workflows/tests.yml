@@ -62,7 +62,7 @@ jobs:
           restore-keys: |
             lfs-
 
-      - name: Descargar objetos LFS
+      - name: Fetch LFS objects
         run: git lfs pull
 
       - name: Godot cache
@@ -72,7 +72,7 @@ jobs:
           path: ~/godot
           key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
 
-      - name: Descargar Godot
+      - name: Download Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/godot"
@@ -82,7 +82,7 @@ jobs:
           unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
           chmod +x "$HOME/godot/${GODOT_FILE}"
 
-      - name: Godot en el PATH
+      - name: Godot on the PATH
         run: |
           mkdir -p "$HOME/.local/bin"
           ln -sf "$HOME/godot/${GODOT_FILE}" "$HOME/.local/bin/godot"
@@ -91,7 +91,7 @@ jobs:
       - name: Godot version
         run: godot --headless --version
 
-      - name: Importar el proyecto
+      - name: Import the project
         run: |
           mkdir -p build
           godot --headless --path . --import > build/import.log 2>&1 || {
@@ -107,14 +107,14 @@ jobs:
           set -o pipefail
           godot --headless --path . -s res://tests/run_tests.gd -- --shard=${{ matrix.shard }}/4 2>&1 | tee build/tests.log
 
-      - name: Resumen
+      - name: Summary
         if: always()
         run: |
           if [ -f build/tests.log ]; then
             grep -E "^(FAIL|Resumen)" build/tests.log | tee -a "$GITHUB_STEP_SUMMARY" || true
           fi
 
-      - name: Subir logs e informes
+      - name: Upload logs and reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -167,7 +167,7 @@ jobs:
           restore-keys: |
             lfs-
 
-      - name: Descargar objetos LFS
+      - name: Fetch LFS objects
         run: git lfs pull
 
       - name: Godot cache
@@ -177,7 +177,7 @@ jobs:
           path: ~/godot
           key: godot-win-${{ env.GODOT_VERSION }}-${{ env.GODOT_WIN_SHA512 }}
 
-      - name: Descargar Godot
+      - name: Download Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/godot"
@@ -189,7 +189,7 @@ jobs:
       # The console executable (the one that writes to standard output) is a wrapper that launches the
       # main one by looking it up under its own name without "_console": if renamed, it fails with
       # "Invalid wrapper executable name". A "godot" script calls it by its original name.
-      - name: Godot en el PATH
+      - name: Godot on the PATH
         run: |
           printf '#!/usr/bin/env bash\nexec "%s/%s_console.exe" "$@"\n' "$HOME/godot" "$GODOT_WIN_FILE" > "$HOME/godot/godot"
           chmod +x "$HOME/godot/godot"
@@ -198,7 +198,7 @@ jobs:
       - name: Godot version
         run: godot --headless --version
 
-      - name: Importar el proyecto
+      - name: Import the project
         run: |
           mkdir -p build
           godot --headless --path . --import > build/import.log 2>&1 || {
@@ -212,14 +212,14 @@ jobs:
           set -o pipefail
           godot --headless --path . -s res://tests/run_tests.gd -- --filter=test_local_server_launcher 2>&1 | tee build/tests.log
 
-      - name: Resumen
+      - name: Summary
         if: always()
         run: |
           if [ -f build/tests.log ]; then
             grep -E "^(FAIL|Resumen)" build/tests.log | tee -a "$GITHUB_STEP_SUMMARY" || true
           fi
 
-      - name: Subir logs e informes
+      - name: Upload logs and reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -254,7 +254,7 @@ jobs:
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
 
-      - name: Secretos fuera del repositorio
+      - name: Secrets outside the repository
         run: tools/check_secrets.sh
 
       - name: Go
@@ -277,7 +277,7 @@ jobs:
         run: |
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
-            echo "Archivos sin gofmt:"
+            echo "Files not gofmt-formatted:"
             echo "$unformatted"
             exit 1
           fi
@@ -332,7 +332,7 @@ jobs:
           restore-keys: |
             lfs-
 
-      - name: Descargar objetos LFS
+      - name: Fetch LFS objects
         run: git lfs pull
 
       - name: Godot cache
@@ -342,7 +342,7 @@ jobs:
           path: ~/godot
           key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
 
-      - name: Descargar Godot
+      - name: Download Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/godot"
@@ -366,7 +366,7 @@ jobs:
           fi
           ls -d /usr/lib/postgresql/*/bin
 
-      - name: Versiones
+      - name: Versions
         run: |
           go version
           "$HOME/godot/${GODOT_FILE}" --headless --version
@@ -382,14 +382,14 @@ jobs:
           mkdir -p "$ELDMARK_E2E_ARTIFACTS"
           go test -tags e2e -count=1 -v -timeout 14m ./e2e 2>&1 | tee "$ELDMARK_E2E_ARTIFACTS/go-test.log"
 
-      - name: Resumen
+      - name: Summary
         if: always()
         run: |
           if [ -f "$RUNNER_TEMP/e2e/go-test.log" ]; then
             grep -E "^(--- |ok|FAIL)|: Test[A-Za-z]+: [0-9.]+ s" "$RUNNER_TEMP/e2e/go-test.log" | tee -a "$GITHUB_STEP_SUMMARY" || true
           fi
 
-      - name: Subir registros
+      - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:

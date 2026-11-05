@@ -1,9 +1,9 @@
 extends TestCase
 ## Animation quality wave 2 (docs/quality.md, section 4):
 ## [br]- ART-07: no attack, ability or block segment plays outside 0.7x to 1.5x of its speed
-## (the dodge allows 2x; NPCs lengthen the anticipation on purpose: [code]test_npc_animation.gd[/code]). The fort's
+## (the dodge allows 2x; NPCs lengthen the anticipation on purpose: [code]test_npc_animation.gd[/code]). The heavy attack's
 ## charge breathes and links with its anticipation.
-## [br]- ART-45: the armed stance ([ArmedStanceModifier]): combat rest, arm layer and finger grip.
+## [br]- ART-45: the combat stance ([ArmedStanceModifier]): combat rest, arm layer and finger grip.
 ## [br]- ART-46: full-body attacks with the feet planted and without touching the shield arm.
 ## [br]- ART-48 and ART-50: procedural reaction to the hit received and to the blocked hit ([HitReactionModifier]).
 ## [br]- ART-51: short alternating stagger, knocked down on the knees and drag at the pace of the speed.
@@ -252,7 +252,7 @@ func test_a_reserved_shield_arm_is_not_touched_by_the_attack_clip() -> void:
 	assert_true(skeleton.get_bone_pose_rotation(right).angle_to(right_before) > 0.05, "the sword's does not")
 
 
-# --- ART-45: armed stance ---------------------------------------------------------------------------
+# --- ART-45: combat stance ---------------------------------------------------------------------------
 
 func test_the_stance_puts_the_shield_guard_at_rest_and_closes_the_fingers() -> void:
 	var visual: HumanoidVisual = _make_visual()
@@ -261,7 +261,7 @@ func test_the_stance_puts_the_shield_guard_at_rest_and_closes_the_fingers() -> v
 	var skeleton: Skeleton3D = visual.get_skeleton()
 	await wait_process_frames(3)
 	animator.set_process(false)
-	if not assert_not_null(stance, "the visual installs the armed stance"):
+	if not assert_not_null(stance, "the visual installs the combat stance"):
 		return
 	var rest: Animation = _clips.get_animation(ArmedStanceModifier.SHIELD_REST)
 	var sword_arm: Animation = _clips.get_animation(ArmedStanceModifier.SWORD_ARM)

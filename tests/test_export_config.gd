@@ -143,7 +143,7 @@ func test_both_presets_keep_the_development_folders_out_but_the_licences_in() ->
 		for pattern: String in String(_value(section, "include_filter")).split(","):
 			includes.append(pattern.strip_edges())
 		for licence: String in ["addons/terrain_3d/LICENSE.txt", "addons/proton_scatter/LICENSE",
-				"assets/LICENSES.md", "assets/fonts/OFL-Cinzel.txt", "assets/fonts/OFL-IMFellEnglishSC.txt",
+				"LICENSE", "LICENSE-ASSETS.md", "assets/LICENSES.md", "assets/fonts/OFL-Cinzel.txt", "assets/fonts/OFL-IMFellEnglishSC.txt",
 				"assets/fonts/OFL-NotoSans.txt"]:
 			assert_true(_matches_any(licence, includes), "%s carries %s (the MIT license requires it)" % [preset_name, licence])
 			assert_true(FileAccess.file_exists("res://" + licence), "%s exists" % licence)

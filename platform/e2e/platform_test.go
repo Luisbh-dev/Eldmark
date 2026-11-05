@@ -38,11 +38,11 @@ func TestEnterAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("character_id of the report: %q", report.Platform.CharacterID)
 	}
-	h.Logf("el bot ha jugado y salido con el personaje %d", id)
+	h.Logf("the bot played and left with character %d", id)
 
 	// The final save and the release come out when the body leaves: they can arrive just after the bot
 	// closes.
-	h.WaitFor(saveTimeout, "el guardado final y la liberación", func() bool {
+	h.WaitFor(saveTimeout, "the final save and the release", func() bool {
 		requireRunning(t, zone.Process)
 		return h.Exists(`select 1 from character_leases where character_id = $1 and zone_instance_id is null
 			and released_at is not null and last_save_version > 0`, id)
@@ -65,7 +65,7 @@ func TestEnterAndSave(t *testing.T) {
 		t.Fatalf("character's consumed tickets: %d (expected 1)", n)
 	}
 	h.CheckBooks(id)
-	h.Logf("guardado: save_version %d, saved_at %s", saveVersion, savedAt.Format(time.RFC3339Nano))
+	h.Logf("saved: save_version %d, saved_at %s", saveVersion, savedAt.Format(time.RFC3339Nano))
 
 	if code := zone.Stop(zoneStop); code != 0 {
 		t.Fatalf("the zone exits with code %d after the orderly shutdown", code)
@@ -98,7 +98,7 @@ func TestZoneCrash(t *testing.T) {
 	first := h.StartBot(acc, "--character=Superviviente", "--quit-after-ticks=7200")
 	id := h.WaitCharacter("Superviviente", botTimeout, first.Process, old.Process)
 	var firstSave time.Time
-	h.WaitFor(saveTimeout, "el primer guardado del personaje", func() bool {
+	h.WaitFor(saveTimeout, "the first save of the character", func() bool {
 		requireRunning(t, first.Process, old.Process)
 		var at *time.Time
 		h.Scalar(&at, `select saved_at from character_progress where character_id = $1`, id)
@@ -108,7 +108,7 @@ func TestZoneCrash(t *testing.T) {
 		firstSave = *at
 		return true
 	})
-	h.Logf("primer guardado del personaje %d: %s", id, firstSave.Format(time.RFC3339Nano))
+	h.Logf("first save of character %d: %s", id, firstSave.Format(time.RFC3339Nano))
 
 	// More than an interval after the first save: without checkpoints, the kill would land more than 5 s
 	// + 1 s away.
@@ -116,7 +116,7 @@ func TestZoneCrash(t *testing.T) {
 	requireRunning(t, first.Process, old.Process)
 	killedAt := old.Kill()
 	first.Kill() // it does not need to reconnect: that way it does not burn CPU while the other one starts
-	h.Logf("kill -9 a %s", old.Name)
+	h.Logf("kill -9 to %s", old.Name)
 
 	replacement := h.StartZone("--save-interval=5")
 	newInstance := replacement.WaitLive(liveTimeout)
@@ -147,12 +147,12 @@ func TestZoneCrash(t *testing.T) {
 	h.CheckBooks(id) // what was left by the old one: nothing half-done
 
 	second := h.StartBot(acc, "--character=Superviviente", "--quit-after-ticks=240")
-	h.WaitFor(botTimeout, "el personaje en la instancia nueva", func() bool {
+	h.WaitFor(botTimeout, "the character in the new instance", func() bool {
 		requireRunning(t, second.Process, replacement.Process)
 		return h.Exists(`select 1 from character_leases where character_id = $1 and zone_instance_id = $2::uuid`,
 			id, newInstance)
 	})
-	h.Logf("el segundo bot ha entrado con el personaje %d en %s", id, newInstance)
+	h.Logf("the second bot joined with character %d in %s", id, newInstance)
 	if code := second.Wait(t, botTimeout); code != 0 {
 		t.Fatalf("the second bot exits with code %d", code)
 	}
@@ -167,8 +167,8 @@ func TestZoneCrash(t *testing.T) {
 	// Who marks the old one as lost depends on when the new one's registration arrives: the lost-instances
 	// job (every min(5 s, HEARTBEAT_S) = 1 s) or the registration itself (§5.3). Either is valid; which
 	// one it was is noted.
-	h.Logf("registro de la nueva con 409 instance_alive: %v; la vieja pasó a lost por el trabajo de perdidas: %v, "+
-		"por el registro: %v", replacement.LogContains("Hay otra instancia viva"),
+	h.Logf("registration of the new one with 409 instance_alive: %v; the old one went to lost through the lost-instances job: %v, "+
+		"through the registration: %v", replacement.LogContains("Hay otra instancia viva"),
 		h.PlatformLogContains("instancia perdida: sin latido"),
 		h.PlatformLogContains("instancia sin latido dada por perdida al registrar otra"))
 	h.Logf("TestZoneCrash: %.1f s", h.Elapsed().Seconds())

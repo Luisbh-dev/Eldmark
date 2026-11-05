@@ -19,7 +19,7 @@ Eldmark is an open source project: the code is MIT-licensed, the assets made by 
 
 - Follow the official GDScript style guide: files and variables in `snake_case`, `class_name` in `PascalCase`, tabs.
 - Always use static typing (`var speed: float = 5.0`, `func move(dir: Vector3) -> void`).
-- Identifiers, comments, doc comments and documentation in English. UI text and runtime log messages stay in Spanish until localization lands (see the backlog). Files changed by the pending quality-waves branch (wip/o2-integracion) still have Spanish comments and docs; translate them with tools/i18n after merging.
+- Identifiers, comments, doc comments and documentation in English. UI text and runtime log messages stay in Spanish until localization lands (see the backlog).
 - Scenes and resources in text format (`.tscn`, `.tres`). No binary `.scn`/`.res`. The only exception: the Terrain3D region `.res` files, which go through Git LFS.
 - Large binaries (models, textures, audio, GDExtension DLLs) go through Git LFS; see `.gitattributes`.
 

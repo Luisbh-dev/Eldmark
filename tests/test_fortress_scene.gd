@@ -1,7 +1,7 @@
 extends TestCase
 ## Tests of the Vado Gris fort markers (docs/fortress.md, section 8, package F0): the
 ## fortress node with its definition, the respawn points of the camps and of the
-## fort's interior (in scene order), the NPC spawners (Hollows, Ford Captain and
+## fort's interior (in scene order), the NPC spawners (Hollow, Ford Captain and
 ## Gate Guardians) and the patrol routes. It loads the whole zone, like the server.
 
 const ZONE_SCENE_PATH: String = "res://scenes/world/zones/vado_gris/vado_gris.tscn"
@@ -154,15 +154,15 @@ func test_npc_spawners_for_hollows_the_captain_and_the_gate_guardians() -> void:
 		if not by_npc.has(spawner.npc_id):
 			by_npc[spawner.npc_id] = [] as Array[NpcSpawner]
 		(by_npc[spawner.npc_id] as Array[NpcSpawner]).append(spawner)
-	assert_eq(spawners.size(), 9, "4 Hollows, the Captain and 4 Guardians")
+	assert_eq(spawners.size(), 9, "4 Hollow, the Captain and 4 Guardians")
 	var hollows: Array[NpcSpawner] = _list(by_npc, &"hollow")
 	var captains: Array[NpcSpawner] = _list(by_npc, &"ford_captain")
 	var guardians: Array[NpcSpawner] = _list(by_npc, &"gate_guardian")
-	assert_eq(hollows.size(), 4, "four Hollows")
+	assert_eq(hollows.size(), 4, "four Hollow")
 	assert_eq(captains.size(), 1, "one Ford Captain")
 	assert_eq(guardians.size(), 4, "two Guardians per camp")
 
-	# Hollows: one per GuardSpawn, active with the fort neutral, with group alert, two patrol.
+	# Hollow: one per GuardSpawn, active with the fort neutral, with group alert, two patrol.
 	var patrolling: int = 0
 	for i: int in hollows.size():
 		var hollow: NpcSpawner = hollows[i]
@@ -176,13 +176,13 @@ func test_npc_spawners_for_hollows_the_captain_and_the_gate_guardians() -> void:
 		assert_eq(hollow.realm, &"", "%s: neutral faction" % hollow.name)
 		if hollow.patrol_route != &"":
 			patrolling += 1
-	assert_eq(patrolling, 2, "two Hollows patrol")
+	assert_eq(patrolling, 2, "two Hollow patrol")
 
-	# Captain: at the CaptainSpawn, inside the circle, and alerts the Hollows.
+	# Captain: at the CaptainSpawn, inside the circle, and alerts the Hollow.
 	var captain: NpcSpawner = captains[0]
 	assert_vec_near(captain.global_position, _fort.get_node(^"CaptainSpawn").global_position, 0.001)
 	assert_eq(captain.condition, NpcSpawner.Condition.FORT_NEUTRAL)
-	assert_eq(captain.alert_group, &"vado_gris_hollows", "the captain's shout alerts the Hollows")
+	assert_eq(captain.alert_group, &"vado_gris_hollows", "the captain's shout alerts the Hollow")
 	assert_eq(captain.get_fortress(), _fort)
 
 	# Guardians: two per camp, always active, inside their realm's safe zone.

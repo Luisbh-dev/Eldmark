@@ -18,9 +18,9 @@ Before writing it I reviewed the screenshots behind the serious findings myself 
 
 ## 1. Verdict
 
-**Animation.** This is the weakest part and the most noticeable. Idle and locomotion use unarmed clips, so the sword and shield, which are a box and a disc stuck to the hands, point in any direction and there is never a guard. Attacks only move the torso: the legs follow the walk cycle that the lunge triggers and every slash ends in a little hop on one foot, with the shield sticking out behind the shoulder (`animacion/lado/com_combo_completo.png`, frames 2 and 8 to 10). When each segment is rescaled to the combat ticks, speeds range from 0.35x to 3.3x: the heavy attack's windup looks frozen and the recoveries are spasms. The block is a parry with the sword frozen on one frame, with the shield hanging down (`camara_juego/com_bloqueo__mantener.png`). The dodge is a forward somersault even when dodging backwards. The Hollows and the Captain do not have a single attack clip: their unstoppable blow is a man walking (`lado/npc_hollow_ataque_ligero.png`). Half of this is fixed with clips already in the repo and animator code; strafing, the sideways dodge, the bow and the second death require buying UAL1 Pro and UAL2 Source.
+**Animation.** This is the weakest part and the most noticeable. Idle and locomotion use unarmed clips, so the sword and shield, which are a box and a disc stuck to the hands, point in any direction and there is never a guard. Attacks only move the torso: the legs follow the walk cycle that the lunge triggers and every slash ends in a little hop on one foot, with the shield sticking out behind the shoulder (`animacion/lado/com_combo_completo.png`, frames 2 and 8 to 10). When each segment is rescaled to the combat ticks, speeds range from 0.35x to 3.3x: the heavy attack's windup looks frozen and the recoveries are spasms. The block is a parry with the sword frozen on one frame, with the shield hanging down (`camara_juego/com_bloqueo__mantener.png`). The dodge is a forward somersault even when dodging backwards. The Hollow and the Captain do not have a single attack clip: their unstoppable blow is a man walking (`lado/npc_hollow_ataque_ligero.png`). Half of this is fixed with clips already in the repo and animator code; strafing, the sideways dodge, the bow and the second death require buying UAL1 Pro and UAL2 Source.
 
-**Combat feel.** The simulation works, but on screen the hit does not exist. There is not a single sound, spark, trail or hitstop, and two out of three light attacks do not move the victim. The only signal is a flat red cutout lasting 0.12 s and a number, and a red vignette that tints half the screen at any scratch (`combate/pelea_b_05.png`, at 910 of 1000 health). Hollows, Captain, allies and enemies are the same dummy. Almost all of it is missing content and missing connections: the signals already exist in `CombatFeedback` and nobody listens to them.
+**Combat feel.** The simulation works, but on screen the hit does not exist. There is not a single sound, spark, trail or hitstop, and two out of three light attacks do not move the victim. The only signal is a flat red cutout lasting 0.12 s and a number, and a red vignette that tints half the screen at any scratch (`combate/pelea_b_05.png`, at 910 of 1000 health). Hollow, Captain, allies and enemies are the same dummy. Almost all of it is missing content and missing connections: the signals already exist in `CombatFeedback` and nobody listens to them.
 
 **Map and minimap.** The M map is not a map: it is a dump of the terrain paint with stair-stepped camouflage blotches, a poster-blue river, trees as polka dots and a gray band in the west (`mapa/imagen_horneada_vado_gris.png`). It does not look like the misty Vado Gris of the game. The window overlaps labels, leaves the ford, the ruins, the bridges and the chapel unnamed, has no zoom and leaves the HUD underneath. The minimap stretches the edge of the image into stripes as soon as the player nears a boundary, and the spawn camp is always stretched (`mapa/minimapa_06_borde_este_recorte.png`).
 
@@ -49,7 +49,7 @@ Before writing it I reviewed the screenshots behind the serious findings myself 
 
 ### Combat feel
 
-It is checked with the screenshots and with a one-minute video with sound recorded with the engine's Movie Maker mode (`--write-movie`), against two Hollows and a player.
+It is checked with the screenshots and with a one-minute video with sound recorded with the engine's Movie Maker mode (`--write-movie`), against two Hollow and a player.
 
 1. Every own hit that lands gives, within its active window, an impact sound depending on the material, a spark or dust at the contact point, a 50 to 80 ms hitstop in the animation and a visible reaction on the victim, light attacks included.
 2. Every hit, swing, block and dodge makes a sound, other players' too, in 3D position.
@@ -96,7 +96,7 @@ Fixes of one session or less, with no purchases, ordered by effect. Together the
 
 | Fix | What changes on screen | Effort | Item |
 |---|---|---|---|
-| Attack clips for Hollows, Captain, guards and guardians with clips from the repo (`Zombie_Scratch`, `Sword_Attack`, `Sword_Regular_C`, `Sword_Heavy_Combo`), and a coverage test | NPCs stop attacking while walking; the Captain's unstoppable blow can be seen coming | S | ART-47 |
+| Attack clips for Hollow, Captain, guards and guardians with clips from the repo (`Zombie_Scratch`, `Sword_Attack`, `Sword_Regular_C`, `Sword_Heavy_Combo`), and a coverage test | NPCs stop attacking while walking; the Captain's unstoppable blow can be seen coming | S | ART-47 |
 | Block with `Idle_Shield_Loop` looping instead of `Sword_Block` frozen | The shield covers the chest; the main defensive verb finally reads | S | ART-48 |
 | Remove the two light fills, raise the sun to 2–2.5, lower the ambient to 0.35–0.5 and lengthen the shadows | The valley gains volume and direction in every view | S | ART-54 |
 | Proportional damage vignette, only at the edge; brief white flash on the victim | The world stops turning red at every scratch | S | UI-50 |
@@ -149,7 +149,7 @@ The order puts first what makes it possible to demonstrate the improvement, then
 
 **Tasks.** ART-45 (combat stance: combat idle with `Idle_Shield_Loop`, arms layer during locomotion and finger grip), ART-46 (full-body attacks with planted feet, shield-arm mask and leg speed without the lunge), the segment trimming of ART-07 (0.7x to 1.5x, automatic test, loop loading), ART-50 (visible reaction to every hit), ART-51 (death with inertia and distinguishable knocked down) and ART-52 (visual profile per NPC type: Hollow without shield, with gray bone and emissive eyes; bigger Captain).
 
-**Screenshots that demonstrate it.** All the `animacion/*/loc_*` and `com_*` strips against animation criteria 1 to 5, 7 and 10; `lado/com_recibir_golpe.png`, `lado/com_muerte_corriendo.png`, `lado/com_derribado.png`; `combate/pelea_b_20.png` with distinguishable Hollows.
+**Screenshots that demonstrate it.** All the `animacion/*/loc_*` and `com_*` strips against animation criteria 1 to 5, 7 and 10; `lado/com_recibir_golpe.png`, `lado/com_muerte_corriendo.png`, `lado/com_derribado.png`; `combate/pelea_b_20.png` with distinguishable Hollow.
 
 **Depends on the user.** If some segment does not fit 0.7x to 1.5x with any clip, decide whether to touch the combat ticks (decision 7). Changing `lunge_speed` affects the balance of CMB-29.
 
@@ -177,7 +177,7 @@ The order puts first what makes it possible to demonstrate the improvement, then
 
 **Screenshots that demonstrate it.** The TEC-50 video with sound against combat feel criteria 1 to 3 and 7; `combate/pelea_b_*` and `combate/bloqueo_recibiendo_*` with sparks and trail; `camara_juego/com_habilidad_3_shield_wall.png` with its effect.
 
-**Status.** Done (4 November 2026): ART-11 (`CombatAudio` with banks per material and variations, footsteps per surface from the feet, synchronized swings and also the remotes'), ART-09 (impact at the contact point of every hit, distinct block and parry, redone fort trail, 50/80 ms hitstop in the animation only and predicted locally, charge aura, effects of the three sword and shield abilities, death dust) and UI-12 (readable numbers and marker). Decision 6 was applied as a provisional cosmetic (the number, the marker and the DPS are still waiting for the server). Also the fixes to the own sword (base blade, wolf pommel, Askarra guard). Still to choose by ear among the alternatives of the listening sheet (`build/o4_hoja_escucha/`) and to judge the hitstop figures by playing. The tests are in `tests/test_combat_sound_bank.gd` and `tests/test_combat_feel.gd`; the video with sound comes from `python tools/quality/run.py video --mp4`.
+**Status.** Done (4 November 2026): ART-11 (`CombatAudio` with banks per material and variations, footsteps per surface from the feet, synchronized swings and also the remotes'), ART-09 (impact at the contact point of every hit, distinct block and parry, redone heavy-attack trail, 50/80 ms hitstop in the animation only and predicted locally, charge aura, effects of the three sword and shield abilities, death dust) and UI-12 (readable numbers and marker). Decision 6 was applied as a provisional cosmetic (the number, the marker and the DPS are still waiting for the server). Also the fixes to the own sword (base blade, wolf pommel, Askarra guard). Still to choose by ear among the alternatives of the listening sheet (`build/o4_hoja_escucha/`) and to judge the hitstop figures by playing. The tests are in `tests/test_combat_sound_bank.gd` and `tests/test_combat_feel.gd`; the video with sound comes from `python tools/quality/run.py video --mp4`.
 
 **Depends on the user.** Approve the downloads of Kenney RPG Audio, Impact Sounds and Particle Pack, Still North, 80 CC0 RPG SFX and Binbun Hit FX and Battle FX Free (all free). Decide whether hitstop and impact sound are predicted locally (decision 6).
 
@@ -197,7 +197,7 @@ The order puts first what makes it possible to demonstrate the improvement, then
 
 **Goal.** Close what has no decent fix with the free clips.
 
-**Tasks.** ART-04 (BlendSpace2D with UAL2 Source walk and UAL1 Pro jog in 8 directions, 90° turns and sprint entry and exit), the UAL1 Pro sideways dodge in ART-49, ART-41 (bow with the BOW clips of UAL2 Source and the bow from RPG Weapons Pro), ART-06 (sword and shields with model), the directional hits and the second death from UAL1 Pro in ART-50 and ART-51, and ART-16 (final model of the Hollows: Bestiary if it ships a skeleton, otherwise plan B).
+**Tasks.** ART-04 (BlendSpace2D with UAL2 Source walk and UAL1 Pro jog in 8 directions, 90° turns and sprint entry and exit), the UAL1 Pro sideways dodge in ART-49, ART-41 (bow with the BOW clips of UAL2 Source and the bow from RPG Weapons Pro), ART-06 (sword and shields with model), the directional hits and the second death from UAL1 Pro in ART-50 and ART-51, and ART-16 (final model of the Hollow: Bestiary if it ships a skeleton, otherwise plan B).
 
 **Screenshots that demonstrate it.** `animacion/*/loc_lateral_*`, `loc_atras`, `com_esquiva_*` and `arc_*` against animation criteria 6, 8 and 9; `combate/pelea_*` without boxes or discs.
 
@@ -222,10 +222,10 @@ The user makes the purchases; the free downloads need their approval and a perso
 | # | What | Price | License | What it unlocks | Item |
 |---|---|---|---|---|---|
 | 1 | Universal Animation Library (UAL1) Pro | 9.99 | CC0 | 8-direction jog, left and right dodge, hits to shoulders and stomach, second death, crawling in 4 directions, 90° turns and sprint entry and exit. Same skeleton, no retargeting. Strafing in Pro is already confirmed by the official image on the page. | ART-04, ART-49, ART-50, ART-51 |
-| 2 | UAL2 Source (there is no Pro) | 14.99 | CC0 | The only 8-direction walk in the family, the bow clips (aim up, center and down, nock, shoot), sprint with shield and 8-direction zombie for the Hollows. | ART-04, ART-41, ART-16 |
+| 2 | UAL2 Source (there is no Pro) | 14.99 | CC0 | The only 8-direction walk in the family, the bow clips (aim up, center and down, nock, shoot), sprint with shield and 8-direction zombie for the Hollow. | ART-04, ART-41, ART-16 |
 | 3 | Cinzel, Noto Sans and IM Fell English SC (google/fonts) | Free | OFL | Titles, body and map labels with ñ and accents; `UIThemeBuilder` already expects them. | UI-02, UI-51 |
 | 4 | Kenney RPG Audio and Impact Sounds | Free | CC0 | The first footsteps, swings and impacts while `assets/audio` is empty. | ART-11 |
-| 5 | Still North Weapon Impacts and Weapon Textures, and 80 CC0 RPG SFX | Free | CC0 | Weapon clashes, unsheathing, bow and creature voices for the Hollows. | ART-11 |
+| 5 | Still North Weapon Impacts and Weapon Textures, and 80 CC0 RPG SFX | Free | CC0 | Weapon clashes, unsheathing, bow and creature voices for the Hollow. | ART-11 |
 | 6 | game-icons.net | Free | CC BY 3.0 (each author must be credited) | The first set of icons for actions, potions, statuses and weapons. | ART-12 |
 | 7 | Kenney Particle Pack and Binbun Hit FX and Battle FX (Free) | Free (the Full versions, 3.49 each, only if they convince) | CC0 | Sparks, dust, trails, impacts and shield effects. | ART-09 |
 | 8 | 6 to 8 textures from Poly Haven or ambientCG (grass, dirt, gravel, rock, shore mud, snow) | Free | CC0 | Terrain with normals and height, processed and desaturated as art.md asks. | ART-55 |
@@ -234,7 +234,7 @@ The user makes the purchases; the free downloads need their approval and a perso
 | 11 | Medieval Village MegaKit Source | 14.99 | CC0 | Collisions, .blend and Godot project to model the keep, the tents and wall pieces with the kit's textures. | ART-14, ART-57, ART-61, ART-22 |
 | 12 | Modular Character Outfits Source | 20.00 | CC0 | Knight, noble and mage of the same family: realm guards, Captain and per-realm look. | ART-27, ART-16, ART-03 |
 | 13 | Stylized Nature MegaKit Pro | 9.99 | CC0 | About 40 trees, 35 plants and 27 rocks. Optional: first use the 52 models of the Standard already downloaded. | ART-59 |
-| 14 | Bestiary Standard (to try) | Free | QAL v1.0, not CC0 | Check whether it ships a skeleton for the Hollows. | ART-16 |
+| 14 | Bestiary Standard (to try) | Free | QAL v1.0, not CC0 | Check whether it ships a skeleton for the Hollow. | ART-16 |
 | 15 | KayKit Character Animations 1.1 | Free | CC0 | Fallback for a backward dodge or the impact on block, with a style risk. | ART-49, ART-48 |
 | 16 | Medieval Animation Pack 2.0 (Hadukis), try first | 19.99 | Use in own projects; CC BY 4.0 credit to 100STYLE | The only thing found with walking block, backward dodge and bow strafe. Very recent pack, no ratings and with another skeleton. | ART-48, ART-49 |
 | 17 | Terrain3D 1.1.0 (try on a branch) | Free | MIT | Ocean mesh with water shader, height displacement and slope colorizer. It has API changes compared to 1.0. | ART-55, ART-60 |
@@ -257,4 +257,4 @@ Discarded for license or provenance: Unity Asset Store packs (they prohibit the 
 8. **Strike reach versus blade.** The sword connects at 3.0 m between centers and the drawn blade reaches about 1.6 m. Options: a 1.1 m sword plus a trail that draws up to 2.2 m; lower the reach to 2.2 m; or more advance toward the target during the windup. I recommend the first and not touching the reach, which forgives with latency.
 9. **Backward dodge.** No pack in the family ships a backward dodge. Options: a somersault oriented toward the direction of travel (the body turns); a short step or hop backwards New World style with an own clip or one from KayKit; or Hadukis' `dodge_back` after trying it. I recommend the short step backwards, because it is the most used dodge in combat and does not force turning your back on the enemy.
 10. **Interface frames.** Keep the minimalist dark style and give it its own trait with iron 9-slice frames made from SVG in `tools/ui`, or try kibbitz's Fantasy RPG UI Kit (0.24 USD, tagged "AI Assisted" in the graphics). I recommend the own frames: no cost, no doubts about provenance and applicable to all windows at once from `UIThemeBuilder`.
-11. **Hollows.** The backlog decision remains open. I recommend the quick profile of ART-52 now and downloading the Bestiary Standard only to see whether it ships a skeleton, knowing that it is QAL and that it would have to be removed if the repo goes public.
+11. **Hollow.** The backlog decision remains open. I recommend the quick profile of ART-52 now and downloading the Bestiary Standard only to see whether it ships a skeleton, knowing that it is QAL and that it would have to be removed if the repo goes public.

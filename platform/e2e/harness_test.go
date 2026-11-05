@@ -463,12 +463,12 @@ func (h *Harness) CheckBooks(characterID int64) {
 			t.Fatalf("%s of character %d do not add up: %s", what, characterID, strings.Join(bad, "; "))
 		}
 	}
-	mismatches("los objetos", `select coalesce(e.def_id, i.def_id), coalesce(e.n, 0), coalesce(i.n, 0)
+	mismatches("the objects", `select coalesce(e.def_id, i.def_id), coalesce(e.n, 0), coalesce(i.n, 0)
 		from (select def_id, sum(count_delta) n from item_events where character_id = $1 group by def_id) e
 		full join (select def_id, sum(count) n from item_instances where character_id = $1 and retired_at is null
 			group by def_id) i on i.def_id = e.def_id
 		where coalesce(e.n, 0) <> coalesce(i.n, 0)`)
-	mismatches("los saldos", `select coalesce(l.currency, w.currency)::text, coalesce(l.n, 0), coalesce(w.balance, 0)
+	mismatches("the balances", `select coalesce(l.currency, w.currency)::text, coalesce(l.n, 0), coalesce(w.balance, 0)
 		from (select currency, sum(delta) n from ledger_entries where character_id = $1 group by currency) l
 		full join (select currency, balance from character_wallets where character_id = $1) w on w.currency = l.currency
 		where coalesce(l.n, 0) <> coalesce(w.balance, 0)`)
@@ -487,7 +487,7 @@ func (h *Harness) CheckBooks(characterID int64) {
 func (h *Harness) WaitCharacter(name string, timeout time.Duration, procs ...*Process) int64 {
 	h.T.Helper()
 	var id int64
-	h.WaitFor(timeout, "el personaje "+name, func() bool {
+	h.WaitFor(timeout, "character "+name, func() bool {
 		requireRunning(h.T, procs...)
 		err := h.Pool.QueryRow(context.Background(), `select character_id from characters
 			where world_id = $1 and name = $2 and deleted_at is null`, WorldID, name).Scan(&id)
@@ -681,7 +681,7 @@ func (h *Harness) StartZone(args ...string) *Zone {
 func (z *Zone) WaitLive(timeout time.Duration) string {
 	h := z.h
 	h.T.Helper()
-	h.WaitFor(timeout, z.Name+" en live", func() bool {
+	h.WaitFor(timeout, z.Name+" in live", func() bool {
 		requireRunning(h.T, z.Process)
 		err := h.Pool.QueryRow(context.Background(), `select zone_instance_id::text from zone_instances
 			where public_port = $1 and status = 'live'`, z.Port).Scan(&z.Instance)

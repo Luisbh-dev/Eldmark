@@ -32,7 +32,7 @@ The first four were pending backlog items that blocked progress; they are taken 
 | HUD and secondary resource | Action layout: health, stamina and bar at the bottom center; stamina hides when full; the secondary resource slot stays reserved for staves. *Provisional, decided overnight.* |
 | When the cooldown starts | At **commitment**: the first active tick of the ability. Channels set it when they end. A control effect or a dodge before commitment does not spend it. |
 | Potions | Two fixed ones (health on R, stamina on T), shared 20 s cooldown and charges per life from the template. They are spent when the drink finishes: a hit that interrupts does not consume the potion. |
-| Bow | The light attack is the quick shot and the fort's charge is the draw: the phase 3 machine with no shape changes. No block. No random spread: accuracy is ballistics. |
+| Bow | The light attack is the quick shot and the heavy attack's charge is the draw: the phase 3 machine with no shape changes. No block. No random spread: accuracy is ballistics. |
 | Projectiles over the network | No records in the snapshot: reliable ENTITY_SPAWN and ENTITY_DESPAWN with the ballistics (§5.3); the client computes the flight. 40 arrows in the air would cost 840 B per snapshot. |
 | Own arrow | Seen instantly (predicted); marker and number on confirmation, like melee. |
 | Weapon swap | Q, 0.4 s; the weapon changes on the first tick; cooldowns are kept (absolute ticks). Active weapon in `CombatState` and in bit 3 of the record's `flags`. |

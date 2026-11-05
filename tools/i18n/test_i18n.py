@@ -221,5 +221,41 @@ class Rename(unittest.TestCase):
 			self.assertEqual(self.rw(text), text)
 
 
+class GoHelperCacheOrder(unittest.TestCase):
+	"""A helper declared in the first file (alphabetically) must be seen from the other files."""
+
+	DECL = """package x
+
+func (h *H) Logf(format string, args ...any) {
+	h.t.Logf(format, args...)
+}
+"""
+	USE = """package x
+
+func TestA(t *testing.T) {
+	h.Logf("el bot ha jugado %d", 1)
+}
+"""
+
+	def test_helper_declared_in_first_file(self):
+		import tempfile
+		old_root = L.REPO_ROOT
+		with tempfile.TemporaryDirectory() as tmp:
+			d = Path(tmp) / "pkg"
+			d.mkdir()
+			(d / "a_test.go").write_text(self.DECL, encoding="utf-8")
+			(d / "b_test.go").write_text(self.USE, encoding="utf-8")
+			L.REPO_ROOT = Path(tmp)
+			L._GO_HELPER_CACHE.clear()
+			try:
+				# the declaring file is analysed first, as the extractor does (sorted order)
+				segs("pkg/a_test.go", self.DECL)
+				found = [s.text for s in segs("pkg/b_test.go", self.USE) if s.kind == "gotest"]
+			finally:
+				L.REPO_ROOT = old_root
+				L._GO_HELPER_CACHE.clear()
+		self.assertEqual(found, ["el bot ha jugado %d"])
+
+
 if __name__ == "__main__":
 	unittest.main()

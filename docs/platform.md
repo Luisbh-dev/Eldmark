@@ -2043,7 +2043,7 @@ preservation test picks it up by itself and fails if any table is left without r
   `\restrict`/`\unrestrict` lines, which PostgreSQL 16.10 and later put with a different key in every dump.
   `max_connections = 200`.
 - **`TMPDIR` must be accessible to the `postgres` user** when tests run as root. On this machine, under the session's
-  scratchpad the server dies mid-test (`/tmp/claude-0` goes back to 0700 while it runs); with the default `TMPDIR`
+  scratchpad the server dies mid-test (a session-specific `TMPDIR` goes back to 0700 while it runs); with the default `TMPDIR`
   (`/tmp`) it works fine.
 - **`db.InTx`:** the "three times" of §7.3 are three retries, four attempts in total (`MaxAttempts`).
 - **413:** code `too_large` ("La petición es demasiado grande", i.e. the request is too large), which §4.1 did not

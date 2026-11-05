@@ -267,7 +267,7 @@ For fort sieges, `tools/war/siege_battle.gd` and `siege_runner.gd` run siege bot
 
 ## Combat balance pass
 
-`tools/combat_balance.gd` builds a network-less server on `test_world`, advances it tick by tick by hand and measures with it the DPS against the dummy, the time to kill (TTK) of a perfect attacker, duels between combat bots and 2v2 and 5v5 fights, in about 20 s and with the same result on any machine (it uses no clock or network). The figures and decisions are in `docs/combate.md` section 12 (Spanish for now).
+`tools/combat_balance.gd` builds a network-less server on `test_world`, advances it tick by tick by hand and measures with it the DPS against the dummy, the time to kill (TTK) of a perfect attacker, duels between combat bots and 2v2 and 5v5 fights, in about 20 s and with the same result on any machine (it uses no clock or network). The figures and decisions are in [combat.md](combat.md#12-first-balance-pass-cmb-29), section 12.
 
 ```bash
 godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30 --out=build/combat_balance.json
@@ -440,7 +440,7 @@ The tests of this bench (`tests/test_quality_tools.gd`) check without a window t
 | `Cliente Windows` | Windows x86_64 | `exports/windows/Eldmark.exe` (plus `Eldmark.pck` and the Terrain3D DLL) | All resources; the .pck is separate from the executable |
 | `Servidor Linux` | Linux x86_64, dedicated server | `exports/server/eldmark-server.x86_64` (plus its .pck and the Terrain3D `.so`) and `run-server.sh` | Models, materials, audio and animations stripped (no visual layer, but the scene still loads); terrain textures are kept because Terrain3D validates them |
 
-Both leave out `build/`, `docs/`, `tests/`, `tools/`, `exports/`, `.github/` and `scenes/tests/`, and keep the addon licenses and the asset license records (the MIT license requires them).
+Both leave out `build/`, `docs/`, `tests/`, `tools/`, `exports/`, `.github/` and `scenes/tests/`, and keep the addon licenses, the project's own `LICENSE` and `LICENSE-ASSETS.md` (which carries the godot-cpp notice for the Terrain3D binaries) and the asset license records (the MIT license requires them).
 
 **Steps (once, on your machine):**
 

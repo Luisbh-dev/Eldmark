@@ -6,10 +6,13 @@ kept outside the repo, in `../Eldmark-raw/<pack>/`, and only the glTF/GLB files 
 that are used make it into the repo (textures larger than 2048 px are downscaled before they come
 in).
 
-Summary: all the art is **CC0 1.0** (public domain) and the two addons are **MIT**. The MIT
-requires keeping the copyright notice and the license: they live inside each addon's folder and
-must accompany the exported game. No asset requires attribution; the courtesy credits that the
-authors ask for are in the last section.
+Summary: the third-party art is **CC0 1.0** (public domain) except the three UI fonts, which are
+**SIL OFL 1.1** (their license text sits next to the font files and must accompany the exported
+game); the two addons are **MIT** (the copyright notice and license live inside each addon's folder
+and must accompany the exported game; the Terrain3D binaries are built with godot-cpp, whose MIT
+notice is in `LICENSE-ASSETS.md`, also shipped with the export). Content made by the project is
+**CC BY 4.0** and the code is MIT (see `LICENSE` and `LICENSE-ASSETS.md`). No CC0 asset requires
+attribution; the courtesy credits that the authors ask for are in the last section.
 
 ## Addons (code)
 
@@ -211,8 +214,8 @@ text by hand. The two large ones are variable fonts: semibold and bold come from
 
 ## Own content (not third-party)
 
-Made for Eldmark from the packs above or from scratch. It belongs to the project, which does not
-yet declare a license of its own:
+Made for Eldmark from the packs above or from scratch. The original assets are licensed
+**CC BY 4.0** (see `LICENSE-ASSETS.md`, "Original assets"); the code and shaders are MIT:
 
 - Shaders `assets/materials/shaders/` (`realm_surface`, `water`, and the `fort_keep_*` ones for the keep) and materials in
   `assets/materials/{realms,vegetation,water}/`.
@@ -296,7 +299,7 @@ yet declare a license of its own:
   `ParchmentMapBaker` and `ParchmentCanvas` (`tools/map/`); to regenerate it:
   `godot --headless --path . -s res://tools/map/bake_parchment_map.gd` and then
   `godot --headless --path . --import`. It is deterministic: same scene, same map. The header of
-  `tools/map/bake_parchment_map.gd` notes what to change to enable it in the game (today it is not connected).
+  `tools/map/bake_parchment_map.gd` describes the map, which the M window and the minimap use.
 
 - UI icons `assets/ui/icons/` (ART-12): 33 shapes of 128 px with no background
   (`assets/ui/icons/<name>.png`: light and heavy attack, quick and drawn shot, block, dodge,
@@ -317,7 +320,8 @@ None is mandatory, but the authors appreciate it. For the credits screen:
 
 - Models and animations: **Quaternius** (quaternius.com).
 - Walls: **loafbrr**.
-- Blockout pieces: **Kenney** (www.kenney.nl).
+- Blockout pieces, grass and wood footsteps (Castle Kit, Impact Sounds): **Kenney** (www.kenney.nl).
+- Fonts: **Noto Sans** (The Noto Project Authors), **Cinzel** (The Cinzel Project Authors) and **IM Fell English SC** (Igino Marini), under the SIL OFL 1.1.
 - Terrain textures: **Jonas Voland** and **Poly Haven** (Dimitrios Savva, eye-candy.xyz, Charlotte Baglioni, Rob Tuytel, Rico Cilliers, Amal Kumar).
 - Terrain: **Terrain3D**, by Cory Petkovsek, Roope Palmroos and contributors (MIT).
 - Scattering: **ProtonScatter**, by HungryProton (MIT).

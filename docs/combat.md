@@ -485,7 +485,7 @@ none of them should do extra damage.
   `protected_until = s + 3 s` (lost when starting an attack), RESPAWN event.
 - **Phase 4** ([abilities.md 4.5 and 4.6](abilities.md#45-knocked-down-reviving-and-executing-downedsystem-scriptsserverdowned_systemgd),
   H3c): the killing blow of a **player** of another realm against a player in an RVR zone does not kill, it **downs**
-  (DOWNED, 20 s of bleeding out, getting up and finishing off); against NPCs, the environment or the Hollows, direct death. A
+  (DOWNED, 20 s of bleeding out, getting up and finishing off); against NPCs, the environment or the Hollow, direct death. A
   downed character is neither alive nor dead (`Combatant.is_downed`), does not respawn or heal, and its kill counts as a
   death first. Respawn sets the weapons and charges of its **loadout** (the one chosen with LOADOUT_SELECT or the
   default one) with LOADOUT.
@@ -500,7 +500,7 @@ none of them should do extra damage.
   `death_tick`.
 - **`FactionRules`** (`scripts/shared/war/faction_rules.gd`):
   `static func can_damage(attacker_realm: int, victim_realm: int, zone_id: StringName) -> bool`:
-  no friendly fire, Hollows (code 0 with neutral faction) hostile to everyone, enemy realms only in
+  no friendly fire, Hollow (code 0 with neutral faction) hostile to everyone, enemy realms only in
   RVR zones. `Zones.get_pvp_mode(zone_id) -> PvpMode` (SAFE or RVR; Vado Gris and test_world RVR).
   **Safe zones**: `Marker3D` of the group `safe_areas` with `realm` and `radius` (24 m) metadata at
   each Vado Gris camp. **It only protects its realm**: a player of that realm inside neither
@@ -756,7 +756,7 @@ Gaps in the document that were closed when implementing (K1a, K1b, K2):
   elemental damage: `is_physical()` lets the server decide.
 - **`HitShapes.has_line_of_sight(space, attacker_feet, victim_feet)`** adds the heights (1.4 and
   0.9 m); `is_ray_clear` for points already calculated.
-- **`FactionRules`**: an unknown realm code neither damages nor takes damage; Hollows are
+- **`FactionRules`**: an unknown realm code neither damages nor takes damage; Hollow are
   hostile to realms in any zone, not to each other.
 - **Extra block**: always present whenever the own state is (bit 0 ⇔ bit 3). Until `Combatant`
   exists, `NetEntity.set_health_view()` announces 1000/1000.

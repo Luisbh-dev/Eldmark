@@ -653,7 +653,7 @@ func test_weapons_follow_the_hand_bone() -> void:
 	var skeleton: Skeleton3D = visual.get_skeleton()
 	var sword: BoneAttachment3D = skeleton.get_node(NodePath(WeaponProps.SWORD_ATTACHMENT)) \
 			as BoneAttachment3D
-	# The armed stance moves the hand after the tree sets its pose: here only the grip on the
+	# The combat stance moves the hand after the tree sets its pose: here only the grip on the
 	# bone is checked, so it is switched off to read the bone and the sword at the same instant.
 	visual.get_animator().get_stance_modifier().active = false
 	await wait_process_frames(3)
