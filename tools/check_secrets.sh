@@ -30,6 +30,23 @@ if [ ${#examples[@]} -gt 0 ]; then
 	fi
 fi
 
+# Binary policy (.gitattributes): no Git LFS pointers committed as normal files and no file over 50 MB.
+pointers="$(git grep -l -I --cached -E '^version https://git-lfs\.github\.com/spec/v1$' || true)"
+if [ -n "$pointers" ]; then
+	echo "El índice lleva punteros de Git LFS (los binarios son blobs normales, ver .gitattributes):"
+	printf '%s\n' "$pointers" | sed 's/^/  /'
+	status=1
+fi
+big="$(git ls-files -s | awk '{ print $2 }' | git cat-file --batch-check='%(objectsize)' |
+	awk -v max=$((50 * 1024 * 1024)) '$1 > max { print NR }' | while read -r n; do
+	git ls-files | sed -n "${n}p"
+done || true)"
+if [ -n "$big" ]; then
+	echo "Archivos de más de 50 MB en el índice (ver CONTRIBUTING.md):"
+	printf '%s\n' "$big" | sed 's/^/  /'
+	status=1
+fi
+
 if [ "$status" -eq 0 ]; then
 	echo "Sin secretos en el índice ni en los ejemplos."
 fi

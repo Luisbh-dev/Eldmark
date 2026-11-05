@@ -284,7 +284,7 @@ go run ./cmd/eldmark-platform serve             # public API on :24680 and inter
 
 The tests need the PostgreSQL binaries (`ELDMARK_PG_BIN`, `pg_config` or `/usr/lib/postgresql/*/bin`; if absent they are skipped) or a server in `ELDMARK_TEST_DATABASE_URL`. As root, `initdb` runs through `runuser -u postgres`, which must be able to enter `TMPDIR`.
 
-The end-to-end tests (`platform/e2e`, [platform.md](platform.md) P10) carry the `e2e` build tag and start the platform inside the test process against a `test_world` zone and real Godot bots; without `ELDMARK_GODOT` they are skipped. They import the project at start (with the LFS objects pulled) and take under a minute:
+The end-to-end tests (`platform/e2e`, [platform.md](platform.md) P10) carry the `e2e` build tag and start the platform inside the test process against a `test_world` zone and real Godot bots; without `ELDMARK_GODOT` they are skipped. They import the project at start and take under a minute:
 
 ```bash
 cd platform

@@ -1,6 +1,6 @@
 # Binary policy: every binary is a normal git blob (no Git LFS). Git LFS bandwidth is metered on
 # GitHub (10 GiB per month on the free tier) and a public repo would exhaust it after a few dozen
-# clones, while regular git traffic has no quota. The largest tracked file is about 12 MB, so keep
+# clones, while regular git traffic has no quota. The largest tracked file is about 8 MB, so keep
 # single files well under 50 MB (see CONTRIBUTING.md).
 # Note: commits made before this policy used Git LFS, so old history still contains LFS pointers.
 

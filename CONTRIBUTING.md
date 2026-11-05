@@ -26,6 +26,8 @@ Models, textures, audio and native addon binaries are normal files in the reposi
 plain clone is enough. Git LFS is not used any more: its monthly bandwidth quota on GitHub would run out
 with a few dozen clones. Commits from before that change still hold LFS pointers in the history, which
 is harmless for a fresh checkout of the current tree.
+To build a commit from before the change (for example with `git bisect`), install Git LFS and run
+`git lfs pull`; this uses the LFS bandwidth quota.
 
 ## Running the client, the server and the bots
 
