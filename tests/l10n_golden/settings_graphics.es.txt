@@ -1,0 +1,45 @@
+label	Ajustes
+button	✕
+tab	Gráficos
+tab	Audio
+tab	Cámara
+tab	Interfaz
+label	Modo de ventana
+option_item	Ventana
+option_item	Pantalla completa sin bordes
+option_item	Pantalla completa exclusiva
+label	Resolución de la ventana
+option_item	1280 x 720
+option_item	1600 x 900
+option_item	1920 x 1080
+option_item	2560 x 1440
+label	Sincronía vertical
+option_item	Desactivada
+option_item	Activada
+option_item	Adaptativa
+label	Límite de FPS
+option_item	Sin límite
+option_item	30 FPS
+option_item	60 FPS
+option_item	90 FPS
+option_item	120 FPS
+option_item	144 FPS
+option_item	165 FPS
+option_item	240 FPS
+label	Escala de render
+label	100 %
+label	Sombras
+option_item	Desactivadas
+option_item	Bajas
+option_item	Medias
+option_item	Altas
+label	Distancia de la hierba
+label	60 m
+label	Suavizado de bordes
+option_item	Ninguno
+option_item	FXAA
+option_item	MSAA 2x
+option_item	MSAA 4x
+button	Restaurar pestaña
+button	Restaurar todo
+button	Cerrar

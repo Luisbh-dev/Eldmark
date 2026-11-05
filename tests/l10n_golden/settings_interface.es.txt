@@ -1,0 +1,13 @@
+label	Ajustes
+button	✕
+tab	Gráficos
+tab	Audio
+tab	Cámara
+tab	Interfaz
+label	Números de daño
+label	Placas de nombre
+label	Pistas del juego
+label	Línea de ayuda de controles (F1)
+button	Restaurar pestaña
+button	Restaurar todo
+button	Cerrar

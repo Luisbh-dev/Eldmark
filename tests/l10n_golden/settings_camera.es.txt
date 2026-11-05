@@ -1,0 +1,17 @@
+label	Ajustes
+button	✕
+tab	Gráficos
+tab	Audio
+tab	Cámara
+tab	Interfaz
+label	Sensibilidad del ratón
+label	x1,00
+label	Invertir el eje vertical
+label	Campo de visión
+label	72°
+label	Hombro por defecto
+option_item	Derecho
+option_item	Izquierdo
+button	Restaurar pestaña
+button	Restaurar todo
+button	Cerrar

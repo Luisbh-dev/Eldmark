@@ -1,0 +1,21 @@
+label	Ajustes
+button	✕
+tab	Gráficos
+tab	Audio
+tab	Cámara
+tab	Interfaz
+label	Volumen: General
+label	100 %
+label	Volumen: Música
+label	70 %
+label	Volumen: Efectos
+label	100 %
+label	Volumen: Ambiente
+label	80 %
+label	Volumen: Interfaz
+label	80 %
+label	Volumen: Voces
+label	100 %
+button	Restaurar pestaña
+button	Restaurar todo
+button	Cerrar
