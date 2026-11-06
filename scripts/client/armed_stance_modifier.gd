@@ -31,6 +31,7 @@ extends SkeletonModifier3D
 
 ## Bone class used to decide the weight it is applied with.
 enum Part { BODY, LEFT_ARM, RIGHT_ARM, LEFT_FINGER, RIGHT_FINGER }
+const PART_COUNT: int = 5
 
 const HIPS_BONE: StringName = &"Hips"
 const LEFT_ARM_ROOT: StringName = &"LeftShoulder"
@@ -71,6 +72,12 @@ var grip_weight: float = 1.0
 var walk_weight: float = 0.0
 ## Multiplier of everything above (0 to 1): drops in the air and with full-body clips.
 var master_weight: float = 1.0
+## Beyond this distance (m) from the camera the stance is not applied (0 = always). The weight falls to zero over the last
+## [constant FADE_METERS], so nothing pops. It is far enough for the Hollow of a distant fort to keep their zombie rest
+## and walk. Without a camera (headless) it is always applied.
+var cull_distance: float = 160.0
+## Length (m) of the fade before [member cull_distance].
+const FADE_METERS: float = 25.0
 ## Times (s) of the clips: of the rest, and of the full-body walk.
 var rest_time: float = 0.0
 var walk_time: float = 0.0
@@ -79,8 +86,9 @@ var grip_time: float = 0.0
 
 var _cached_skeleton: Skeleton3D = null
 var _parts: Dictionary[int, int] = {}
-# Animation -> Dictionary[bone, rotation track] plus the hip position track under key -1.
-var _tables: Dictionary[Animation, Dictionary] = {}
+# Animation -> tracks by bone class (see _table_for).
+var _tables: Dictionary[Animation, Array] = {}
+var _weights: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
 var _applied: int = 0
 
 
@@ -90,35 +98,43 @@ func _process_modification() -> void:
 	var skeleton: Skeleton3D = get_skeleton()
 	if skeleton == null:
 		return
+	var fade: float = _distance_fade(skeleton)
+	if fade <= 0.001:
+		return
 	if skeleton != _cached_skeleton:
 		_cache_skeleton(skeleton)
-	var master: float = clampf(master_weight, 0.0, 1.0)
+	var master: float = clampf(master_weight, 0.0, 1.0) * fade
 	var rest: float = clampf(rest_weight, 0.0, 1.0) * master
 	var arms: float = clampf(arm_weight, 0.0, 1.0) * master
 	var left: float = maxf(maxf(rest if arms_at_rest else 0.0, arms), clampf(left_arm_reserved, 0.0, 1.0) * master)
 	var right: float = maxf(rest if arms_at_rest else 0.0, arms)
 	var grip: float = clampf(grip_weight, 0.0, 1.0) * master
 	if walk_clip != &"":
-		_apply(skeleton, clips.get_animation(walk_clip), walk_time, _all(clampf(walk_weight, 0.0, 1.0) * master), true)
+		_set_all_weights(clampf(walk_weight, 0.0, 1.0) * master)
+		_apply(skeleton, clips.get_animation(walk_clip), walk_time, true)
 	if rest_clip != &"":
-		var rest_parts: Dictionary = _all(rest)
+		_set_all_weights(rest)
 		if arms_at_rest:
 			if left_arm_clip != &"":
-				rest_parts[Part.LEFT_ARM] = left if left_arm_clip == rest_clip else 0.0
-				rest_parts[Part.LEFT_FINGER] = 0.0
+				_weights[Part.LEFT_ARM] = left if left_arm_clip == rest_clip else 0.0
+				_weights[Part.LEFT_FINGER] = 0.0
 			if right_arm_clip != &"":
-				rest_parts[Part.RIGHT_ARM] = 0.0
-				rest_parts[Part.RIGHT_FINGER] = 0.0
-		_apply(skeleton, clips.get_animation(rest_clip), rest_time, rest_parts, true)
+				_weights[Part.RIGHT_ARM] = 0.0
+				_weights[Part.RIGHT_FINGER] = 0.0
+		_apply(skeleton, clips.get_animation(rest_clip), rest_time, true)
 	if right_arm_clip != &"":
-		_apply(skeleton, clips.get_animation(right_arm_clip), rest_time, {Part.RIGHT_ARM: right}, false)
+		_set_one_weight(Part.RIGHT_ARM, right)
+		_apply(skeleton, clips.get_animation(right_arm_clip), rest_time, false)
 	if left_arm_clip != &"" and left_arm_clip != rest_clip:
-		_apply(skeleton, clips.get_animation(left_arm_clip), rest_time, {Part.LEFT_ARM: left}, false)
+		_set_one_weight(Part.LEFT_ARM, left)
+		_apply(skeleton, clips.get_animation(left_arm_clip), rest_time, false)
 	if grip > 0.001:
 		if left_arm_clip != &"":
-			_apply(skeleton, clips.get_animation(left_arm_clip), grip_time, {Part.LEFT_FINGER: grip}, false)
+			_set_one_weight(Part.LEFT_FINGER, grip)
+			_apply(skeleton, clips.get_animation(left_arm_clip), grip_time, false)
 		if right_arm_clip != &"":
-			_apply(skeleton, clips.get_animation(right_arm_clip), grip_time, {Part.RIGHT_FINGER: grip}, false)
+			_set_one_weight(Part.RIGHT_FINGER, grip)
+			_apply(skeleton, clips.get_animation(right_arm_clip), grip_time, false)
 	_applied += 1
 
 
@@ -147,34 +163,60 @@ func use_zombie_profile() -> void:
 	enabled = true
 
 
-# All bone classes with the same weight.
-static func _all(weight: float) -> Dictionary:
-	return {Part.BODY: weight, Part.LEFT_ARM: weight, Part.RIGHT_ARM: weight, Part.LEFT_FINGER: weight,
-			Part.RIGHT_FINGER: weight}
+# Every bone class with the same weight (reuses the weights array: no allocation per pass).
+func _set_all_weights(weight: float) -> void:
+	_weights.fill(weight)
 
 
-## Applies [param animation] at [param time]: each bone with the weight of its class in [param weights] (0 for a missing one).
+# Only one bone class with weight (the rest 0).
+func _set_one_weight(part: int, weight: float) -> void:
+	_weights.fill(0.0)
+	_weights[part] = weight
+
+
+## Weight factor (1 near, 0 at [member cull_distance]) for a character [param distance] m from the camera.
+func get_distance_fade(distance: float) -> float:
+	if cull_distance <= 0.0:
+		return 1.0
+	return 1.0 - smoothstep(cull_distance - FADE_METERS, cull_distance, distance)
+
+
+# Fade factor of the character from the camera (1 without a camera).
+func _distance_fade(skeleton: Skeleton3D) -> float:
+	if cull_distance <= 0.0 or not skeleton.is_inside_tree():
+		return 1.0
+	var camera: Camera3D = skeleton.get_viewport().get_camera_3d()
+	if camera == null:
+		return 1.0
+	return get_distance_fade(camera.global_position.distance_to(skeleton.global_position))
+
+
+## Applies [param animation] at [param time]: each bone with the weight of its class in the weights set before the call (0 for
+## a class that is not in it). Only the bones of the classes with weight are visited.
 ## With [param with_hips] it also blends the hip position with the weight of [constant Part.BODY].
-func _apply(skeleton: Skeleton3D, animation: Animation, time: float, weights: Dictionary,
-		with_hips: bool) -> void:
+func _apply(skeleton: Skeleton3D, animation: Animation, time: float, with_hips: bool) -> void:
 	if animation == null:
 		return
-	var table: Dictionary = _table_for(skeleton, animation)
+	var table: Array = _table_for(skeleton, animation)
 	var clamped_time: float = clampf(time, 0.0, animation.length)
-	for bone: int in table:
-		if bone < 0:
-			continue
-		var weight: float = float(weights.get(_parts.get(bone, Part.BODY), 0.0))
+	for part: int in PART_COUNT:
+		var weight: float = _weights[part]
 		if weight <= 0.001:
 			continue
-		var target: Quaternion = animation.rotation_track_interpolate(int(table[bone]), clamped_time)
-		var current: Quaternion = skeleton.get_bone_pose_rotation(bone)
-		skeleton.set_bone_pose_rotation(bone, current.slerp(target, weight))
-	if with_hips and table.has(-1):
+		var pairs: PackedInt32Array = table[part]
+		var index: int = 0
+		while index < pairs.size():
+			var bone: int = pairs[index]
+			var target: Quaternion = animation.rotation_track_interpolate(pairs[index + 1], clamped_time)
+			var current: Quaternion = skeleton.get_bone_pose_rotation(bone)
+			skeleton.set_bone_pose_rotation(bone, current.slerp(target, weight))
+			index += 2
+	var hips_track: int = int(table[PART_COUNT])
+	if with_hips and hips_track >= 0:
 		var hips: int = skeleton.find_bone(HIPS_BONE)
-		var hips_weight: float = float(weights.get(Part.BODY, 0.0))
+		var hips_weight: float = _weights[Part.BODY]
 		if hips >= 0 and hips_weight > 0.001:
-			var target_position: Vector3 = animation.position_track_interpolate(int(table[-1]), clamped_time)
+			var target_position: Vector3 = animation.position_track_interpolate(hips_track, clamped_time)
 			skeleton.set_bone_pose_position(hips, skeleton.get_bone_pose_position(hips).lerp(target_position,
 					hips_weight))
 
@@ -216,12 +258,15 @@ func _cache_skeleton(skeleton: Skeleton3D) -> void:
 		_parts[bone] = part
 
 
-# Table of rotation tracks (bone -> track) of the clip for this skeleton; the hip position track goes
-# under key -1.
-func _table_for(skeleton: Skeleton3D, animation: Animation) -> Dictionary:
+# Tracks of the clip for this skeleton, by bone class: an array with one PackedInt32Array of (bone, rotation track) pairs
+# per [enum Part], and at index [constant PART_COUNT] the hip position track (-1 if it has none).
+func _table_for(skeleton: Skeleton3D, animation: Animation) -> Array:
 	if _tables.has(animation):
 		return _tables[animation]
-	var table: Dictionary = {}
+	var table: Array = []
+	for part: int in PART_COUNT:
+		table.append(PackedInt32Array())
+	var hips_track: int = -1
 	for track: int in animation.get_track_count():
 		var type: int = animation.track_get_type(track)
 		if type != Animation.TYPE_ROTATION_3D and type != Animation.TYPE_POSITION_3D:
@@ -231,8 +276,12 @@ func _table_for(skeleton: Skeleton3D, animation: Animation) -> Dictionary:
 		if bone < 0:
 			continue
 		if type == Animation.TYPE_ROTATION_3D:
-			table[bone] = track
+			var pairs: PackedInt32Array = table[int(_parts.get(bone, Part.BODY))]
+			pairs.append(bone)
+			pairs.append(track)
+			table[int(_parts.get(bone, Part.BODY))] = pairs
 		elif skeleton.get_bone_name(bone) == HIPS_BONE:
-			table[-1] = track
+			hips_track = track
+	table.append(hips_track)
 	_tables[animation] = table
 	return table

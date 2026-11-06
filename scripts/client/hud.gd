@@ -486,6 +486,8 @@ func _setup_war_hud() -> void:
 	add_child(_war_hud)
 	move_child(_war_hud, _death.get_index())
 	_war_hud.bind(_client, _camera_rig)
+	# Damage numbers keep out of the war notice band and the boss bar.
+	_numbers.reserved_provider = _war_hud.get_reserved_rects
 
 
 # Creates (again, if there already was one) the full-screen map: the last child, above the death

@@ -3187,8 +3187,9 @@ platform.md §19.17. What concerns this document:
 - **Backlog.** PRG-13 (the level is saved), PRG-14 (creation offers each realm's people) and ART-19
   (the two halves of the criterion together) are closed; UI-24 stays open (two clients with a window and the visual approval).
 
-**Left for later:** P8 (`test_progress_loopback`, `test_progress_platform_loopback`, `--bot-scenario=progress` and
-`platform/e2e/progress_test.go`).
+**Status (6 November 2026):** P8 is done: `test_progress_loopback`, `test_progress_platform_loopback`, the
+`--bot-scenario=progress` bot and `platform/e2e/progress_test.go` (`TestProgressEndToEnd` and `TestProgressCrash`) are
+in `main` and pass, including in the "Plataforma e2e" job. CMB-30 is closed with them.
 
 ### 19.21 What platform.md P10 leaves
 
@@ -3202,6 +3203,6 @@ platform.md P10 (its §19.19) leaves the end-to-end harness that P8 uses for `pl
   `StartBot(acc, "--bot-scenario=progress", …)`, `Bot.ReadReport` (the whole report in `Raw`), `Process.Kill` and
   `CheckBooks`, which already checks the books for `TestProgressCrash` (per definition, Σ `count_delta` = Σ `count` of
   the live items; per currency, Σ `delta` = balance; a single STARTER_KIT).
-- **What P8 is missing:** the `admin` account (SQL on `h.Pool` or the `admin` command) and the comparison with `Load`
+- **What P8 was missing (now in `progress_test.go`):** the `admin` account (SQL on `h.Pool` or the `admin` command) and the comparison with `Load`
   (`progress.New(rules, nil).Load` on `h.Pool`). `TestZoneCrash` already kills the zone with `--save-interval=5` and re-enters
   with the same character on another instance without repeating the kit.

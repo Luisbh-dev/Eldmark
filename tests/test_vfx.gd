@@ -105,7 +105,8 @@ func test_rings_are_thin_edges_in_the_impact_plane_never_bubbles() -> void:
 		var effect: VfxEffect = _spawn(load(EFFECT_SCENES[key]) as PackedScene)
 		for node: Node in effect.find_children("*", "MeshInstance3D", true, false):
 			var material: ShaderMaterial = (node as MeshInstance3D).material_override as ShaderMaterial
-			if material == null or material.get_shader_parameter("mode") == null 					or int(material.get_shader_parameter("mode")) != 1:
+			if material == null or material.get_shader_parameter("mode") == null \
+					or int(material.get_shader_parameter("mode")) != 1:
 				continue
 			assert_false(bool(material.get_shader_parameter("billboard")),
 					"%s/%s: the ring is oriented by the normal, it does not face the camera" % [key, node.name])

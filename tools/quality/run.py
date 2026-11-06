@@ -190,6 +190,16 @@ def wait_log(proc, needle, timeout, count=1):
 # ---------------------------------------------------------------------------------------------
 # Server, bots and capture client
 # ---------------------------------------------------------------------------------------------
+# Believable names for the bench bots, one list per realm (northern for Vardheim, southern for Solmarch), so that the
+# captures do not give the bench away with "Botaaab". Valid for NameRules, none reserved.
+BOT_NAMES = {
+    "vardheim": ("Hakon", "Brenna", "Torvald", "Sigrid", "Ulfar", "Ragna", "Leif", "Astrid", "Bjorn", "Freya",
+                 "Gunnar", "Ingrid", "Halvard", "Solveig", "Eirik", "Thora", "Arvid", "Runa", "Orm", "Yrsa"),
+    "solmarch": ("Rodrigo", "Lucía", "Mateo", "Inés", "Alonso", "Beatriz", "Tomás", "Elena", "Gonzalo", "Marcela",
+                 "Íñigo", "Catalina", "Bastián", "Valeria", "Ramiro", "Olalla", "Dario", "Ximena", "Nuño", "Aurelia"),
+}
+
+
 def swarms(ctx, per_realm):
     """Two siege swarms (one per realm) with [per_realm] bots each."""
     if per_realm <= 0:
@@ -198,6 +208,11 @@ def swarms(ctx, per_realm):
         {"kind": "swarm", "n": per_realm, "realm": "vardheim", "seed": 100, "brain": "siege"},
         {"kind": "swarm", "n": per_realm, "realm": "solmarch", "seed": 200, "brain": "siege"},
     ]
+
+
+def bot_names_arg(realm, count):
+    """The --bot-names argument with [count] names of the realm's list (without repeating them)."""
+    return "--bot-names=%s" % ",".join(BOT_NAMES.get(realm, ())[:count])
 
 
 def single_bot(realm="solmarch", brain="combat", seed=300, name="Esgrimista"):
@@ -222,7 +237,7 @@ def server(ctx, name, extra=(), bots=()):
         for i, bot in enumerate(bots):
             bargs = ["--headless", "--path", ROOT, "--"]
             if bot["kind"] == "swarm":
-                bargs += ["--bots=%d" % bot["n"]]
+                bargs += ["--bots=%d" % bot["n"], bot_names_arg(bot["realm"], bot["n"])]
             else:
                 bargs += ["--bot", "--name=%s" % bot.get("name", "Esgrimista")]
             bargs += ["--connect=127.0.0.1:%d" % ctx.port, "--realm=%s" % bot["realm"],
@@ -415,7 +430,7 @@ def area_video(ctx):
             ffmpeg = shutil.which("ffmpeg")
             if ffmpeg:
                 mp4 = video / "combate.mp4"
-                subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(avi), "-c:v", "libx264", "-crf", "20",
+                subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-ss", "1.5", "-i", str(avi), "-c:v", "libx264", "-crf", str(ctx.args.crf),
                                 "-pix_fmt", "yuv420p", "-c:a", "aac", str(mp4)], check=False)
                 if mp4.exists():
                     info["mp4_mb"] = round(mp4.stat().st_size / 1e6, 1)
@@ -497,6 +512,7 @@ def build_parser():
     parser.add_argument("--seconds", type=int, default=60)
     parser.add_argument("--movie-resolution", default="1600x900")
     parser.add_argument("--mp4", action="store_true")
+    parser.add_argument("--crf", type=int, default=26, help="x264 quality of --mp4 (higher is smaller; 26 keeps a minute under 50 MB)")
     parser.add_argument("--sin-capsulas", action="store_true")
     parser.add_argument("--clean-raw", action="store_true")
     parser.add_argument("--godot", default=None)

@@ -416,8 +416,8 @@ func (l *loader) zoneTokens() []ZoneToken {
 			l.fail(name, "la entrada %d no tiene la forma <mundo>:<zona>:<canal>:<hash>", i+1)
 			continue
 		}
-		world, errW := strconv.Atoi(parts[0])
-		channel, errC := strconv.Atoi(parts[2])
+		world, errW := strconv.ParseInt(parts[0], 10, 16)
+		channel, errC := strconv.ParseInt(parts[2], 10, 16)
 		hash, errH := hex.DecodeString(parts[3])
 		switch {
 		case errW != nil || world < 1 || world > 32767:

@@ -24,7 +24,8 @@ extends Control
 ## labels would overlap) and, for [constant COMBAT_SECONDS] s after a hit dealt or received
 ## ([method notify_combat]), only the objective and without names.
 ## [br]- The camp and the pass of an enemy realm are not marked ([method is_markable]).
-## [br]- Nothing stuck to the HUD edges: the bottom edge leaves [constant BOTTOM_MARGIN] px free.
+## [br]- Nothing stuck to the HUD edges: the bottom edge leaves [constant BOTTOM_MARGIN] px free and the top one
+## [constant TOP_MARGIN] px (the compass and its heading plate).
 ## [br]- [b]Text never falls closer than [constant LABEL_MIN_AIM_DISTANCE] px to the crosshair[/b] ([method push_from_aim]):
 ## if the icon is near it, the label moves aside and stays joined to the icon by a guide line.
 ## [br][br]
@@ -42,6 +43,8 @@ const FADE_NEAR_START: float = 5.0
 const FADE_NEAR_END: float = 16.0
 ## Free margin (px) at the bottom edge of the screen (the action bar and the health bars).
 const BOTTOM_MARGIN: float = 150.0
+## Free margin (px) at the top edge: the compass with its heading plate, plus a little air (Q12).
+const TOP_MARGIN: float = Compass.TOP_MARGIN + Compass.HEIGHT + 28.0
 ## Minimum distance (px) between the crosshair and any marker label.
 const LABEL_MIN_AIM_DISTANCE: float = 150.0
 const ICON_SIZE: float = 9.0
@@ -57,6 +60,10 @@ const COMBAT_SECONDS: float = 5.0
 ## Minimum separation (px, in x and y) between the icons of two markers drawn at once: any closer, their labels would
 ## overlap (the fort and a pass that falls behind it in the distance), and the one that comes later is not drawn.
 const LABEL_SPACING: Vector2 = Vector2(240.0, 24.0)
+
+## Optional [code]func() -> float[/code]: bottom edge (px, in the coordinates of this control) of what the HUD shows
+## under the compass (the fort panel and the objective line), so that markers stuck to the top edge do not land on it.
+var top_clearance_provider: Callable = Callable()
 
 var _client: NetClient = null
 var _view: FortressView = null
@@ -98,6 +105,13 @@ func bind(client: NetClient, view: FortressView, camera_rig: CameraRig, map: Zon
 	_objective_id = &""
 
 
+## Free margin (px) at the top: [constant TOP_MARGIN], or more when the fort panel or the objective line hang below it.
+func top_margin() -> float:
+	if not top_clearance_provider.is_valid():
+		return TOP_MARGIN
+	return maxf(TOP_MARGIN, float(top_clearance_provider.call()) + 14.0)
+
+
 ## Recomputes where each marker falls on the screen, which ones are drawn, and redraws.
 func refresh() -> void:
 	_items.clear()
@@ -121,7 +135,7 @@ func refresh() -> void:
 		var distance: float = marker.distance_from(here)
 		if distance > max_distance_for(marker.kind):
 			continue
-		var projected: Dictionary = project(camera, screen_size, marker.position, EDGE_MARGIN, BOTTOM_MARGIN)
+		var projected: Dictionary = project(camera, screen_size, marker.position, EDGE_MARGIN, BOTTOM_MARGIN, top_margin())
 		_items.append({
 			"marker": marker, "distance": distance, "screen": projected["screen"],
 			"on_edge": projected["on_edge"], "angle": projected["angle"],
@@ -228,7 +242,7 @@ static func select_shown(items: Array[Dictionary], aim: Vector2, alt_held: bool,
 ## whether it is behind the camera; and the angle (radians, 0 = up, positive toward the right) of the
 ## direction in which it falls from the center, for the arrow.
 static func project(camera: Camera3D, screen_size: Vector2, world: Vector3, margin: float,
-		bottom_margin: float = -1.0) -> Dictionary:
+		bottom_margin: float = -1.0, top_margin: float = -1.0) -> Dictionary:
 	var camera_transform: Transform3D = camera.get_camera_transform()
 	var local: Vector3 = camera_transform.affine_inverse() * world
 	# Behind the camera (or on its plane, where the projection does not exist) the icon goes to the edge on the
@@ -241,7 +255,8 @@ static func project(camera: Camera3D, screen_size: Vector2, world: Vector3, marg
 		screen = camera.unproject_position(world)
 		direction = screen - center
 	var bottom: float = margin if bottom_margin < 0.0 else bottom_margin
-	var inside := Rect2(Vector2(margin, margin), screen_size - Vector2(margin * 2.0, margin + bottom))
+	var top: float = margin if top_margin < 0.0 else top_margin
+	var inside := Rect2(Vector2(margin, top), screen_size - Vector2(margin * 2.0, top + bottom))
 	var on_edge: bool = behind or not inside.has_point(screen)
 	if on_edge:
 		if direction.length() < 0.001:
@@ -269,26 +284,40 @@ static func is_markable(marker: WorldMarker, own_realm: int) -> bool:
 	return marker.realm == 0 or own_realm == NetProtocol.Realm.NONE or marker.realm == own_realm
 
 
-## Moves [param rect] (the label) in a straight line away from [param aim] until its closest point is
-## [param min_distance] px or more from it. If it already complies, it is left where it is; if it is right on top, it is moved up.
-static func push_from_aim(rect: Rect2, aim: Vector2, min_distance: float) -> Rect2:
+## Moves [param rect] (the label) away from [param aim] until its closest point is [param min_distance] px or more from
+## it. If it already complies, it is left where it is. The label goes [b]up or to a side, never down[/b]: in third
+## person the character stands right below the crosshair and a label there would be drawn over it. Of the
+## placements above, left and right of the crosshair the nearest one that fits inside [param bounds] (ignored when it
+## has no area) wins, with the sides costing double so that up is preferred; if none fits, the nearest one.
+static func push_from_aim(rect: Rect2, aim: Vector2, min_distance: float, bounds: Rect2 = Rect2()) -> Rect2:
 	var closest: Vector2 = Vector2(clampf(aim.x, rect.position.x, rect.end.x), clampf(aim.y, rect.position.y, rect.end.y))
-	var gap: float = closest.distance_to(aim)
-	if gap >= min_distance:
+	if closest.distance_to(aim) >= min_distance:
 		return rect
-	var direction: Vector2 = rect.get_center() - aim
-	if direction.length() < 0.001:
-		direction = Vector2.UP
-	direction = direction.normalized()
-	# Advances until it complies (the rectangle is small: a few steps are enough and the solution is monotonic).
-	var moved: Rect2 = rect
-	for step: int in 400:
-		moved.position += direction * 2.0
-		var nearest: Vector2 = Vector2(clampf(aim.x, moved.position.x, moved.end.x),
-				clampf(aim.y, moved.position.y, moved.end.y))
-		if nearest.distance_to(aim) >= min_distance:
-			break
-	return moved
+	var placements: Array[Rect2] = []
+	var costs: Array[float] = []
+	var above: Rect2 = Rect2(Vector2(rect.position.x, aim.y - min_distance - rect.size.y), rect.size)
+	# The sides stay at the height of the crosshair at most: below it is where the character stands (Q5).
+	var side_y: float = minf(rect.position.y, aim.y - rect.size.y)
+	var left: Rect2 = Rect2(Vector2(aim.x - min_distance - rect.size.x, side_y), rect.size)
+	var right: Rect2 = Rect2(Vector2(aim.x + min_distance, side_y), rect.size)
+	placements.append(above)
+	costs.append(1.0)
+	placements.append(left)
+	costs.append(2.0)
+	placements.append(right)
+	costs.append(2.0)
+	var best: Rect2 = above
+	var best_score: float = INF
+	var best_fits: bool = false
+	for index: int in placements.size():
+		var candidate: Rect2 = placements[index]
+		var fits: bool = bounds.size == Vector2.ZERO or bounds.encloses(candidate)
+		var score: float = candidate.position.distance_to(rect.position) * costs[index]
+		if (fits and not best_fits) or (fits == best_fits and score < best_score):
+			best = candidate
+			best_score = score
+			best_fits = fits
+	return best
 
 
 ## Opacity (0 to 1) of a marker at [param distance] m: invisible on arrival and opaque from
@@ -332,7 +361,8 @@ func _draw() -> void:
 		var size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE)
 		var rect := Rect2(Vector2(screen.x - size.x * 0.5, screen.y + ICON_SIZE + 4.0), size)
 		rect.position.x = clampf(rect.position.x, 2.0, maxf(self.size.x - size.x - 2.0, 2.0))
-		var pushed: Rect2 = push_from_aim(rect, self.size * 0.5, LABEL_MIN_AIM_DISTANCE)
+		var pushed: Rect2 = push_from_aim(rect, self.size * 0.5, LABEL_MIN_AIM_DISTANCE,
+				Rect2(Vector2(2.0, top_margin()), self.size - Vector2(4.0, top_margin() + BOTTOM_MARGIN * 0.5)))
 		if pushed.position != rect.position:
 			# Label moved away from the crosshair: guide line to the icon.
 			var edge := Vector2(clampf(screen.x, pushed.position.x, pushed.end.x),

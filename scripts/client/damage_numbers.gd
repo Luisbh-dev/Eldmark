@@ -17,6 +17,10 @@ extends Control
 ## arrive within the [constant GROUP_WINDOW_SECONDS] s after the first one of a number are added to it,
 ## instead of stacking labels: the number grows larger and its life starts over.
 ## [br][br]
+## [b]Reserved strips (R2).[/b] A number is never drawn over the notices of the middle of the screen (the war notice
+## band and the boss bar): [member reserved_provider] returns their rectangles and [method avoid_rects] moves the number
+## out of them, to a side or just below, never upward so that it does not jump across the strip as it rises.
+## [br][br]
 ## Time is driven by [method advance] ([method _process] calls it with each frame's delta).
 
 ## Number variants (the same as those of [HitMarker]).
@@ -57,6 +61,9 @@ const STACK_STEP_PX: float = 26.0
 ## Distance (m) at which two numbers of different victims count as close and are stacked, and maximum steps.
 const NEAR_METERS: float = 1.5
 const MAX_STACK_STEPS: int = 6
+## Air (px) left around a reserved strip, and the shift (px) up to which going down is preferred to going sideways.
+const RESERVED_MARGIN: float = 6.0
+const SIDE_STEP_LIMIT: float = 40.0
 const POP_SCALE: float = 1.4
 const POP_SECONDS: float = 0.08
 
@@ -66,6 +73,9 @@ var enabled: bool = true:
 		enabled = value
 		if not enabled:
 			clear()
+
+## Returns the screen rectangles ([Rect2], in this control's coordinates) that numbers must not cover. Optional.
+var reserved_provider: Callable = Callable()
 
 var _camera: Camera3D = null
 var _pool: Array[Label] = []
@@ -291,7 +301,45 @@ func _place(number: _Number) -> void:
 			return
 		screen = _camera.unproject_position(anchor)
 	screen.y -= number.age * RISE_SPEED
-	screen += number.offset
-	label.position = screen - label.size * 0.5
 	var pop: float = lerpf(POP_SCALE, 1.0, clampf(number.age / POP_SECONDS, 0.0, 1.0))
 	label.scale = Vector2.ONE * pop
+	if reserved_provider.is_valid():
+		# The stack is resolved after the avoidance, from the anchor: a displaced group keeps its spacing.
+		var text_size: Vector2 = label.get_minimum_size() * pop
+		var base := Rect2(screen + Vector2(number.offset.x, 0.0) - text_size * 0.5, text_size)
+		var placed: Rect2 = place_stacked(base, -number.offset.y, reserved_provider.call() as Array)
+		label.position = placed.position + text_size * 0.5 - label.size * 0.5
+	else:
+		screen += number.offset
+		label.position = screen - label.size * 0.5
+
+
+## Places [param base] (a number without its stack offset) out of the [param reserved] rectangles and then stacks it
+## [param stack_px] away from the anchor. The stack grows upward, or downward when the number was pushed down under a
+## strip, so the numbers of one target keep their spacing instead of piling on the strip's lower edge.
+static func place_stacked(base: Rect2, stack_px: float, reserved: Array) -> Rect2:
+	var moved: Rect2 = avoid_rects(base, reserved)
+	var direction: float = 1.0 if moved.position.y > base.position.y + 0.5 else -1.0
+	moved.position.y += direction * stack_px
+	return avoid_rects(moved, reserved) if direction < 0.0 else moved
+
+
+## Moves [param rect] (the text of a number) out of the [param reserved] rectangles it overlaps (with
+## [constant RESERVED_MARGIN] px of air): the nearest of left, right and down. Never up: a number rises, and choosing
+## "up" would make it jump across the strip. A rectangle that overlaps nothing is returned as it is.
+static func avoid_rects(rect: Rect2, reserved: Array) -> Rect2:
+	var moved: Rect2 = rect
+	for entry: Variant in reserved:
+		var strip: Rect2 = (entry as Rect2).grow(RESERVED_MARGIN)
+		if not strip.intersects(moved):
+			continue
+		var to_left: float = moved.end.x - strip.position.x
+		var to_right: float = strip.end.x - moved.position.x
+		var to_down: float = strip.end.y - moved.position.y
+		if to_down <= minf(to_left, to_right) or to_down <= SIDE_STEP_LIMIT:
+			moved.position.y += to_down
+		elif to_left <= to_right:
+			moved.position.x -= to_left
+		else:
+			moved.position.x += to_right
+	return moved

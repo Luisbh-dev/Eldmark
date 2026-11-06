@@ -588,7 +588,8 @@ func _try_predict(character: PlayerCharacter, state: CombatState) -> void:
 			continue
 		var feet: Vector3 = view.get_drawn_position()
 		if HitShapes.sector_hits_capsule(origin, character.yaw, attack.shape, feet,
-				HitShapes.CAPSULE_RADIUS, HitShapes.CAPSULE_HEIGHT) 				and (space == null or HitShapes.has_line_of_sight(space, origin, feet)):
+				HitShapes.CAPSULE_RADIUS, HitShapes.CAPSULE_HEIGHT) \
+						and (space == null or HitShapes.has_line_of_sight(space, origin, feet)):
 			_predicted_this_swing = true
 			_predicted_attack = state.action_id
 			_predicted_msec = Time.get_ticks_msec()

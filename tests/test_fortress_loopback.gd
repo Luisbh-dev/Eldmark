@@ -89,6 +89,12 @@ func test_a_bot_client_sees_a_full_capture_as_object_states_and_war_events() -> 
 	assert_eq(int(stats["war_events"]), 3, "captain fallen, capture started and fort captured")
 	assert_true(int(stats["object_states"]) >= 3, "and the OBJECT_STATEs of presence, capture and owner")
 	assert_eq(int(stats["structure_spawns"]), 1)
+	# The client's own view of the fort ends up with the new owner, not only the server.
+	var view_id: int = _client.get_fortress_view().get_primary_id()
+	var seen: bool = await _wait_until(func() -> bool:
+		var latest: FortressState = _client.get_fortress_view().get_latest_state(view_id)
+		return latest != null and latest.owner == VARDHEIM)
+	assert_true(seen, "the client's FortressView shows Vardheim as the owner")
 	assert_eq(int(stats["malformed_packets"]), 0, "not a single malformed packet")
 	# The scoreboard arrives every 2 s.
 	var board: bool = await _wait_until(func() -> bool:

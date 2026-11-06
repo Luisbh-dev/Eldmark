@@ -32,6 +32,8 @@ const CONE_COLOR: Color = Color(1.0, 1.0, 1.0, 0.2)
 ## Icons closer than this distance (px) merge into one; allies, closer than [constant ALLY_MERGE_DISTANCE].
 const MERGE_DISTANCE: float = 11.0
 const ALLY_MERGE_DISTANCE: float = 6.0
+## An ally closer than this (px) to an icon or to the player arrow is not drawn: the icon covers it.
+const ALLY_ICON_MERGE: float = 8.0
 ## Priority of each type when merging (the highest stays).
 const KIND_PRIORITY: Dictionary = {
 	WorldMarker.Kind.CIRCLE: 5,
@@ -179,7 +181,11 @@ func get_ally_points() -> Array[Vector2]:
 		# Allies outside the circle are not shown (only the objective goes to the ring) and those that touch become one.
 		if point.distance_to(center()) > radius() - ALLY_RADIUS:
 			continue
-		var merged: bool = false
+		# An ally on top of an icon or of the player arrow is absorbed by it (same rule as the world map window).
+		var merged: bool = point.distance_to(center()) < ALLY_ICON_MERGE
+		for icon: Dictionary in _icons:
+			if (icon["point"] as Vector2).distance_to(point) < ALLY_ICON_MERGE:
+				merged = true
 		for other: Vector2 in points:
 			if other.distance_to(point) < ALLY_MERGE_DISTANCE:
 				merged = true

@@ -57,6 +57,15 @@ const PRIORITY_AREA: int = 20
 const OPTION_RADIUS: float = 13.0
 const PICK_RADIUS: float = 16.0
 const FONT_SIZE: int = 15
+## Icons (markers, places) closer than this to an ally dot absorb it, so the dot does not cover them.
+const ALLY_MERGE_RADIUS: float = 11.0
+## The baked scale bar (southeast corner of the image): 80 m in four sections, [code]SCALE_BAR_END_MARGIN[/code] m
+## from the east edge and [code]SCALE_BAR_SOUTH_MARGIN[/code] m from the south one (see the parchment baker).
+const SCALE_BAR_SPAN: float = 80.0
+const SCALE_BAR_SECTION: float = 20.0
+const SCALE_BAR_END_MARGIN: float = 14.0
+const SCALE_BAR_SOUTH_MARGIN: float = 23.0
+const SCALE_LABEL_SIZE: int = 13
 const TITLE_SIZE: int = 24
 
 const TEXT_TITLE: String = "Mapa · %s"
@@ -68,6 +77,10 @@ const TEXT_YOU: String = "Tú"
 const TEXT_ALLIES: String = "Compañeros de reino"
 const TEXT_RESPAWN_VALID: String = "Reaparición disponible"
 const TEXT_RESPAWN_INVALID: String = "Reaparición no disponible"
+const TEXT_REALMS: String = "Bandos"
+## Free space (px) under the last legend line.
+const LEGEND_BOTTOM_PAD: float = 20.0
+const TEXT_SCALE_UNIT: String = "%d m"
 const TEXT_NO_MAP: String = "Esta zona no tiene mapa"
 const TEXT_CAPTURE: String = "Captura: %d %%"
 const KIND_NAMES: Dictionary = {
@@ -514,8 +527,8 @@ func _build_labels() -> void:
 		items.append(you)
 	# Ally icons must not be covered either, but they have no label: they count as small obstacles.
 	var extra: Array[Rect2] = []
-	for ally: Vector3 in _allies:
-		extra.append(Rect2(world_to_screen(ally) - Vector2.ONE * 5.0, Vector2.ONE * 10.0))
+	for ally_at: Vector2 in get_free_ally_points():
+		extra.append(Rect2(ally_at - Vector2.ONE * 5.0, Vector2.ONE * 10.0))
 	_labels = MapLabelPlacer.place(items, rect.grow(-4.0), extra)
 
 
@@ -568,11 +581,23 @@ func _draw() -> void:
 		var place_at: Vector2 = world_to_screen(landmark.position)
 		if not landmark.area and rect.has_point(place_at):
 			_draw_place_icon(place_at)
+	var icon_points: PackedVector2Array = _icon_points()
+	var absorbed: Dictionary[int, int] = {}
 	for ally: Vector3 in _allies:
 		var ally_at: Vector2 = world_to_screen(ally)
-		if rect.has_point(ally_at):
-			draw_circle(ally_at, 4.5, MarkerIcons.OUTLINE_COLOR)
-			draw_circle(ally_at, 3.5, UIPalette.faction_color_of_code(_realm()))
+		if not rect.has_point(ally_at):
+			continue
+		var icon: int = nearest_icon(ally_at, icon_points)
+		if icon >= 0:
+			absorbed[icon] = int(absorbed.get(icon, 0)) + 1
+			continue
+		draw_circle(ally_at, 4.5, MarkerIcons.OUTLINE_COLOR)
+		draw_circle(ally_at, 3.5, UIPalette.faction_color_of_code(_realm()))
+	for icon: int in absorbed:
+		if not (_has_player and icon == icon_points.size() - 1):
+			draw_arc(icon_points[icon], ALLY_MERGE_RADIUS + 1.0, 0.0, TAU, 24,
+					UIPalette.faction_color_of_code(_realm()), 2.0, true)
+	_draw_scale_numbers(rect)
 	_draw_options()
 	_draw_point_labels()
 	if _has_player and rect.has_point(world_to_screen(_player_position)):
@@ -648,16 +673,82 @@ func _draw_options() -> void:
 		draw_arc(at, radius, 0.0, TAU, 28, color, 3.0, true)
 
 
-func _draw_legend() -> void:
-	var rect: Rect2 = get_legend_rect()
-	draw_rect(rect, BACK_COLOR)
-	draw_rect(rect, FRAME_COLOR, false, 1.5)
+## Index of the icon of [param icons] within [constant ALLY_MERGE_RADIUS] of [param point] (the nearest), or -1.
+static func nearest_icon(point: Vector2, icons: PackedVector2Array) -> int:
+	var best: int = -1
+	var best_distance: float = ALLY_MERGE_RADIUS
+	for index: int in icons.size():
+		var distance: float = icons[index].distance_to(point)
+		if distance < best_distance:
+			best = index
+			best_distance = distance
+	return best
+
+
+## Screen points of every icon an ally can be absorbed by: markers, point places and the player.
+func _icon_points() -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for marker: WorldMarker in _markers:
+		points.append(world_to_screen(marker.position))
+	for landmark: MapLandmark in _places:
+		if not landmark.area:
+			points.append(world_to_screen(landmark.position))
+	if _has_player:
+		points.append(world_to_screen(_player_position))
+	return points
+
+
+## Allies that stand apart from every icon (screen points). The ones that touch an icon are absorbed by it and are drawn
+## as a ring around it ([method _draw_absorbed_rings]); they are not obstacles for the labels either.
+func get_free_ally_points() -> PackedVector2Array:
+	var icons: PackedVector2Array = _icon_points()
+	var free := PackedVector2Array()
+	for ally: Vector3 in _allies:
+		var at: Vector2 = world_to_screen(ally)
+		if nearest_icon(at, icons) < 0:
+			free.append(at)
+	return free
+
+
+## Numbers under the baked scale bar (0, 20, 40, 60 and 80 m), placed with the map so they follow zoom and drag.
+func _draw_scale_numbers(rect: Rect2) -> void:
+	if _map == null:
+		return
+	var x_end: float = _map.world_origin.x + _map.world_size.x - SCALE_BAR_END_MARGIN
+	var z: float = _map.world_origin.y + _map.world_size.y - SCALE_BAR_SOUTH_MARGIN + 6.0
+	var font: Font = get_theme_default_font()
+	var count: int = roundi(SCALE_BAR_SPAN / SCALE_BAR_SECTION)
+	for i: int in count + 1:
+		var meters: int = roundi(SCALE_BAR_SECTION * float(i))
+		var at: Vector2 = world_to_screen(Vector3(x_end - SCALE_BAR_SPAN + float(meters), 0.0, z))
+		if not rect.grow(-4.0).has_point(at):
+			continue
+		var text: String = TEXT_SCALE_UNIT % meters if i == count else str(meters)
+		var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, SCALE_LABEL_SIZE).x
+		var origin: Vector2 = Vector2(at.x - width * 0.5, at.y)
+		draw_string_outline(font, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, SCALE_LABEL_SIZE, 3, INK_HALO)
+		draw_string(font, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, SCALE_LABEL_SIZE, INK_COLOR)
+
+
+## Height the legend content needs (the panel is drawn only that tall, never beyond [method get_legend_rect]). It is
+## measured by the same pass that draws, so a new line cannot be cut off.
+func _legend_content_height() -> float:
+	return _legend_pass(Rect2(), false) + LEGEND_BOTTOM_PAD
+
+
+## One pass over the legend: draws it into [param rect] when [param draw] is true, and returns the y it ends at
+## (relative to the top of the panel when measuring).
+func _legend_pass(rect: Rect2, draw: bool) -> float:
+	var x: float = rect.position.x
 	var y: float = rect.position.y + 26.0
-	_draw_label(TEXT_LEGEND, Vector2(rect.position.x + 14.0, y), FONT_SIZE + 2, UIPalette.TITLE)
+	if draw:
+		_draw_label(TEXT_LEGEND, Vector2(x + 14.0, y), FONT_SIZE + 2, UIPalette.TITLE)
 	y += 12.0
 	for entry: Dictionary in get_legend_entries():
 		y += 26.0
-		var icon_at := Vector2(rect.position.x + 24.0, y - 5.0)
+		if not draw:
+			continue
+		var icon_at := Vector2(x + 24.0, y - 5.0)
 		var kind: Variant = entry["kind"]
 		var color: Color = entry["color"]
 		if typeof(kind) == TYPE_INT:
@@ -668,11 +759,32 @@ func _draw_legend() -> void:
 			draw_circle(icon_at, 4.5, color)
 		else:
 			draw_arc(icon_at, 7.0, 0.0, TAU, 20, color, 2.5, true)
-		_draw_label(String(entry["text"]), Vector2(rect.position.x + 44.0, y), FONT_SIZE - 1, TEXT_COLOR)
+		_draw_label(String(entry["text"]), Vector2(x + 44.0, y), FONT_SIZE - 1, TEXT_COLOR)
 	y += 30.0
 	for line: String in get_fortress_lines():
 		y += 22.0
-		_draw_label(line, Vector2(rect.position.x + 14.0, y), FONT_SIZE - 1, TEXT_COLOR)
+		if draw:
+			_draw_label(line, Vector2(x + 14.0, y), FONT_SIZE - 1, TEXT_COLOR)
+	y += 40.0
+	if draw:
+		_draw_label(TEXT_REALMS, Vector2(x + 14.0, y), FONT_SIZE, UIPalette.TITLE)
+	for realm_id: StringName in RealmCatalog.FACTION_IDS:
+		y += 26.0
+		if not draw:
+			continue
+		var swatch: Rect2 = Rect2(Vector2(x + 18.0, y - 15.0), Vector2(12.0, 12.0))
+		draw_rect(swatch.grow(1.5), MarkerIcons.OUTLINE_COLOR)
+		draw_rect(swatch, RealmCatalog.color_of(realm_id))
+		_draw_label(RealmCatalog.display_name(realm_id), Vector2(x + 44.0, y), FONT_SIZE - 1, TEXT_COLOR)
+	return y - rect.position.y
+
+
+func _draw_legend() -> void:
+	var rect: Rect2 = get_legend_rect()
+	rect.size.y = minf(rect.size.y, _legend_content_height())
+	draw_rect(rect, BACK_COLOR)
+	draw_rect(rect, FRAME_COLOR, false, 1.5)
+	_legend_pass(rect, true)
 
 
 func _draw_label(text: String, at: Vector2, font_size: int, color: Color) -> void:

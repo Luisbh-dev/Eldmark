@@ -42,7 +42,9 @@ def main() -> None:
 	parser.add_argument("--per-area", type=int, default=6)
 	parser.add_argument("--width", type=int, default=2400)
 	parser.add_argument("--areas", default="animacion,mapa,interfaz,mundo,combate")
+	parser.add_argument("--titles", default="", help="Three column titles separated by |; defaults to the original ones")
 	args = parser.parse_args()
+	titles = tuple(args.titles.split("|")) if args.titles else TITLES
 	roots = [Path(args.antes), Path(args.oleada1), Path(args.ahora)]
 	out_root = Path(args.salida)
 	third = args.width // 3
@@ -59,7 +61,7 @@ def main() -> None:
 			images = [Image.open(root / relative).convert("RGB") for root in roots]
 			height = round(third * images[2].height / images[2].width)
 			panels = []
-			for image, title in zip(images, TITLES):
+			for image, title in zip(images, titles):
 				panel = image.resize((third, height), Image.LANCZOS)
 				label(panel, title)
 				panels.append(panel)
