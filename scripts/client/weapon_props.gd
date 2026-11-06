@@ -271,53 +271,86 @@ static func _make_sword() -> Node3D:
 	return root
 
 
+# Meshes and materials of the shield, built once and shared by every shield (a fort full of armed characters would
+# otherwise build four meshes, a shader and two materials each).
+static var _shield_parts: Dictionary[StringName, Mesh] = {}
+
+
+static func _shield_part(part: StringName) -> Mesh:
+	if _shield_parts.has(part):
+		return _shield_parts[part]
+	var wood: ShaderMaterial = _shield_wood_material()
+	var steel: StandardMaterial3D = _material(SHIELD_RIM_COLOR, 0.85, 0.42)
+	var mesh: Mesh = null
+	match part:
+		&"disc":
+			var cylinder := CylinderMesh.new()
+			cylinder.top_radius = SHIELD_RADIUS
+			cylinder.bottom_radius = SHIELD_RADIUS
+			cylinder.height = SHIELD_THICKNESS
+			cylinder.radial_segments = 28
+			cylinder.rings = 1
+			cylinder.material = wood
+			mesh = cylinder
+		&"dome":
+			# A hemisphere: the back half would stick out behind the board, toward the forearm.
+			var dome_mesh := SphereMesh.new()
+			dome_mesh.radius = SHIELD_RADIUS * 0.97
+			dome_mesh.height = SHIELD_RADIUS * 0.97
+			dome_mesh.is_hemisphere = true
+			dome_mesh.radial_segments = 28
+			dome_mesh.rings = 7
+			dome_mesh.material = wood
+			mesh = dome_mesh
+		&"rim":
+			var rim_mesh := TorusMesh.new()
+			rim_mesh.inner_radius = SHIELD_RADIUS - SHIELD_RIM_WIDTH
+			rim_mesh.outer_radius = SHIELD_RADIUS + SHIELD_RIM_WIDTH * 0.35
+			rim_mesh.rings = 28
+			rim_mesh.ring_segments = 8
+			rim_mesh.material = steel
+			mesh = rim_mesh
+		_:
+			var boss_mesh := SphereMesh.new()
+			boss_mesh.radius = SHIELD_BOSS_RADIUS
+			boss_mesh.height = SHIELD_BOSS_RADIUS
+			boss_mesh.is_hemisphere = true
+			boss_mesh.radial_segments = 16
+			boss_mesh.rings = 4
+			boss_mesh.material = steel
+			mesh = boss_mesh
+	_shield_parts[part] = mesh
+	return mesh
+
+
 # The shield: a round wooden shield whose axis is Z, in front of the hand (toward -Z): planked wood face with a shallow dome,
 # a steel rim and a central boss, so that it catches the light like a real shield instead of a flat disc.
 static func _make_shield() -> Node3D:
 	var root := Node3D.new()
 	root.name = SHIELD_MESH
 	root.set_meta(&"placeholder", true)
-	var wood: ShaderMaterial = _shield_wood_material()
-	var steel: StandardMaterial3D = _material(SHIELD_RIM_COLOR, 0.85, 0.42)
-	# Godot's cylinder, sphere and torus have their axis on Y: they are laid down so the axis is Z.
+	# Godot's cylinder and torus have their axis on Y: they are laid down so the axis is Z. The hemispheres
+	# point their dome along +Y, which is turned toward -Z (away from the arm).
 	var lay_down := Vector3(PI * 0.5, 0.0, 0.0)
+	var dome_out := Vector3(-PI * 0.5, 0.0, 0.0)
 	var center := Vector3(0.0, 0.0, -SHIELD_FORWARD)
 	var disc := MeshInstance3D.new()
 	disc.name = "Disco"
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = SHIELD_RADIUS
-	mesh.bottom_radius = SHIELD_RADIUS
-	mesh.height = SHIELD_THICKNESS
-	mesh.radial_segments = 28
-	mesh.rings = 1
-	mesh.material = wood
-	disc.mesh = mesh
+	disc.mesh = _shield_part(&"disc")
 	disc.rotation = lay_down
 	disc.position = center
 	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.add_child(disc)
 	var dome := MeshInstance3D.new()
 	dome.name = "Cupula"
-	var dome_mesh := SphereMesh.new()
-	dome_mesh.radius = SHIELD_RADIUS * 0.97
-	dome_mesh.height = SHIELD_RADIUS * 1.94
-	dome_mesh.radial_segments = 28
-	dome_mesh.rings = 14
-	dome_mesh.material = wood
-	dome.mesh = dome_mesh
-	dome.rotation = lay_down
+	dome.mesh = _shield_part(&"dome")
+	dome.rotation = dome_out
 	dome.scale = Vector3(1.0, SHIELD_DOME, 1.0)
 	dome.position = center
 	root.add_child(dome)
 	var rim := MeshInstance3D.new()
 	rim.name = "Aro"
-	var rim_mesh := TorusMesh.new()
-	rim_mesh.inner_radius = SHIELD_RADIUS - SHIELD_RIM_WIDTH
-	rim_mesh.outer_radius = SHIELD_RADIUS + SHIELD_RIM_WIDTH * 0.35
-	rim_mesh.rings = 28
-	rim_mesh.ring_segments = 8
-	rim_mesh.material = steel
-	rim.mesh = rim_mesh
+	rim.mesh = _shield_part(&"rim")
 	rim.rotation = lay_down
 	rim.scale = Vector3(1.0, 1.6, 1.0)
 	rim.position = center
@@ -325,14 +358,8 @@ static func _make_shield() -> Node3D:
 	root.add_child(rim)
 	var boss := MeshInstance3D.new()
 	boss.name = "Broca"
-	var boss_mesh := SphereMesh.new()
-	boss_mesh.radius = SHIELD_BOSS_RADIUS
-	boss_mesh.height = SHIELD_BOSS_RADIUS * 2.0
-	boss_mesh.radial_segments = 16
-	boss_mesh.rings = 8
-	boss_mesh.material = steel
-	boss.mesh = boss_mesh
-	boss.rotation = lay_down
+	boss.mesh = _shield_part(&"boss")
+	boss.rotation = dome_out
 	boss.scale = Vector3(1.0, 0.6, 1.0)
 	boss.position = center + Vector3(0.0, 0.0, -SHIELD_RADIUS * SHIELD_DOME * 0.85)
 	boss.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON

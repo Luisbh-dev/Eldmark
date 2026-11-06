@@ -72,9 +72,12 @@ var grip_weight: float = 1.0
 var walk_weight: float = 0.0
 ## Multiplier of everything above (0 to 1): drops in the air and with full-body clips.
 var master_weight: float = 1.0
-## Beyond this distance (m) from the camera the stance is not applied (0 = always): at that range nobody sees the guard
-## and the character is a handful of pixels. Without a camera (headless) it is always applied.
-var cull_distance: float = 70.0
+## Beyond this distance (m) from the camera the stance is not applied (0 = always). The weight falls to zero over the last
+## [constant FADE_METERS], so nothing pops. It is far enough for the Hollow of a distant fort to keep their zombie rest
+## and walk. Without a camera (headless) it is always applied.
+var cull_distance: float = 160.0
+## Length (m) of the fade before [member cull_distance].
+const FADE_METERS: float = 25.0
 ## Times (s) of the clips: of the rest, and of the full-body walk.
 var rest_time: float = 0.0
 var walk_time: float = 0.0
@@ -95,11 +98,12 @@ func _process_modification() -> void:
 	var skeleton: Skeleton3D = get_skeleton()
 	if skeleton == null:
 		return
-	if _is_too_far(skeleton):
+	var fade: float = _distance_fade(skeleton)
+	if fade <= 0.001:
 		return
 	if skeleton != _cached_skeleton:
 		_cache_skeleton(skeleton)
-	var master: float = clampf(master_weight, 0.0, 1.0)
+	var master: float = clampf(master_weight, 0.0, 1.0) * fade
 	var rest: float = clampf(rest_weight, 0.0, 1.0) * master
 	var arms: float = clampf(arm_weight, 0.0, 1.0) * master
 	var left: float = maxf(maxf(rest if arms_at_rest else 0.0, arms), clampf(left_arm_reserved, 0.0, 1.0) * master)
@@ -170,14 +174,21 @@ func _set_one_weight(part: int, weight: float) -> void:
 	_weights[part] = weight
 
 
-# true if the character is beyond [member cull_distance] from the camera (nobody sees the guard that far away).
-func _is_too_far(skeleton: Skeleton3D) -> bool:
+## Weight factor (1 near, 0 at [member cull_distance]) for a character [param distance] m from the camera.
+func get_distance_fade(distance: float) -> float:
+	if cull_distance <= 0.0:
+		return 1.0
+	return 1.0 - smoothstep(cull_distance - FADE_METERS, cull_distance, distance)
+
+
+# Fade factor of the character from the camera (1 without a camera).
+func _distance_fade(skeleton: Skeleton3D) -> float:
 	if cull_distance <= 0.0 or not skeleton.is_inside_tree():
-		return false
+		return 1.0
 	var camera: Camera3D = skeleton.get_viewport().get_camera_3d()
 	if camera == null:
-		return false
-	return camera.global_position.distance_squared_to(skeleton.global_position) > cull_distance * cull_distance
+		return 1.0
+	return get_distance_fade(camera.global_position.distance_to(skeleton.global_position))
 
 
 ## Applies [param animation] at [param time]: each bone with the weight of its class in the weights set before the call (0 for

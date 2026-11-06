@@ -660,16 +660,19 @@ func test_the_lunge_of_an_attack_does_not_make_the_legs_stride() -> void:
 	assert_true(animator.get_move_weight() > 0.9, "real walking during the attack does stride")
 
 
-func test_the_third_light_attack_and_the_heavy_one_use_the_stance_legs_in_the_windup() -> void:
-	for attack_name: StringName in [&"sword_light_3", &"sword_heavy"]:
-		var entry: CombatActionAnim = _clips.find(attack_name)
-		assert_near(entry.lower_weight_for_phase(ActionMachine.PHASE_WINDUP), 0.0, 0.0001,
-				"%s: the anticipation clip does not take the legs (its jump and raised foot)" % attack_name)
-		assert_near(entry.lower_weight_for_phase(ActionMachine.PHASE_ACTIVE), 1.0, 0.0001,
-				"%s: the hit still takes the whole body" % attack_name)
+func test_the_third_light_attack_uses_the_stance_legs_and_the_heavy_one_half_in_the_windup() -> void:
+	var third: CombatActionAnim = _clips.find(&"sword_light_3")
+	assert_near(third.lower_weight_for_phase(ActionMachine.PHASE_WINDUP), 0.0, 0.0001,
+			"the third: the anticipation clip does not take the legs (its jump)")
+	assert_near(third.lower_weight_for_phase(ActionMachine.PHASE_ACTIVE), 1.0, 0.0001)
+	# The heavy one keeps half of the clip legs: the raised foot is gone and the body does not stand up and sink again.
+	var heavy: CombatActionAnim = _clips.find(&"sword_heavy")
+	var windup: float = heavy.lower_weight_for_phase(ActionMachine.PHASE_WINDUP)
+	assert_true(windup >= 0.4 and windup <= 0.6, "the heavy windup blends the legs (%.2f)" % windup)
+	assert_near(heavy.lower_weight_for_phase(ActionMachine.PHASE_ACTIVE), 1.0, 0.0001)
 
 
-func test_the_stance_is_not_applied_beyond_the_cull_distance_from_the_camera() -> void:
+func test_the_stance_fades_out_towards_the_cull_distance_and_not_at_once() -> void:
 	var visual: HumanoidVisual = _make_visual()
 	var animator: CharacterAnimator = visual.get_animator()
 	var stance: ArmedStanceModifier = animator.get_stance_modifier()
@@ -680,13 +683,20 @@ func test_the_stance_is_not_applied_beyond_the_cull_distance_from_the_camera() -
 	camera.current = true
 	stance.master_weight = 1.0
 	stance.rest_weight = 1.0
+	assert_true(stance.cull_distance >= 150.0, "the Hollow of a distant fort keep their walk and rest")
 	camera.global_position = visual.global_position + Vector3(0.0, 1.5, stance.cull_distance + 10.0)
 	var before: int = stance.get_applied_count()
 	stance._process_modification()
-	assert_eq(stance.get_applied_count(), before, "far from the camera nothing is applied")
+	assert_eq(stance.get_applied_count(), before, "beyond the cull distance nothing is applied")
 	camera.global_position = visual.global_position + Vector3(0.0, 1.5, 5.0)
 	stance._process_modification()
-	assert_eq(stance.get_applied_count(), before + 1, "near it, it is")
+	assert_eq(stance.get_applied_count(), before + 1, "near the camera, it is")
+	camera.global_position = visual.global_position + Vector3(0.0, 1.5, stance.cull_distance - 3.0)
+	stance._process_modification()
+	assert_eq(stance.get_applied_count(), before + 2, "just inside the limit it is still applied, with less weight")
+	var inside: float = stance.get_distance_fade(stance.cull_distance - 3.0)
+	assert_true(inside > 0.0 and inside < 0.5, "the weight drops gradually (%.2f)" % inside)
+	assert_near(stance.get_distance_fade(10.0), 1.0, 0.0001)
 	camera.current = false
 	tree.root.remove_child(camera)
 	camera.free()
@@ -702,3 +712,21 @@ func test_the_shield_is_a_domed_planked_shield_with_a_rim_and_a_boss() -> void:
 	var rim: MeshInstance3D = shield.find_child("Aro", true, false) as MeshInstance3D
 	var steel: StandardMaterial3D = rim.mesh.material as StandardMaterial3D
 	assert_true(steel != null and steel.metallic > 0.5, "the rim is metal, so it catches the light")
+
+
+func test_shields_share_their_meshes_and_materials_and_the_dome_is_a_hemisphere() -> void:
+	var first: Node3D = WeaponProps._make_shield()
+	var second: Node3D = WeaponProps._make_shield()
+	_nodes.append(first)
+	_nodes.append(second)
+	for part: String in ["Disco", "Cupula", "Aro", "Broca"]:
+		var a: MeshInstance3D = first.find_child(part, true, false) as MeshInstance3D
+		var b: MeshInstance3D = second.find_child(part, true, false) as MeshInstance3D
+		assert_true(a.mesh == b.mesh, "%s: one mesh for every shield" % part)
+	var dome: MeshInstance3D = first.find_child("Cupula", true, false) as MeshInstance3D
+	assert_true((dome.mesh as SphereMesh).is_hemisphere, "the back half of the dome is not built")
+	# Nothing of the dome sticks out behind the board (toward the forearm).
+	var back: float = dome.position.z + (dome.transform.basis * dome.mesh.get_aabb().position).z
+	var back_end: float = dome.position.z + (dome.transform.basis * dome.mesh.get_aabb().end).z
+	assert_true(maxf(back, back_end) <= dome.position.z + 0.001, "the dome only goes forward (-Z)")
+
