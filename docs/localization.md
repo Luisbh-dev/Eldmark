@@ -39,6 +39,7 @@ Related documents:
 | Layering | `scripts/shared`, `scripts/world` and `scripts/server` never produce text for players. They return codes and parameters, and the client turns them into text. | 6 |
 | Server messages | NOTICE, REJECT details and system chat travel as a message id plus typed parameters (protocol 8). A transitional `legacy.text` id lets the wire format land first and the senders move area by area. | 7 |
 | Content data | `display_name`, `description` and `label` in `.tres` files hold the English text; the Spanish lives in `es.po`, with one context per type. No duplicated resources and no remaps. | 8.1 |
+| Phase 6-8 content text | Quests, lore, events, dialogues, talents, specializations, affixes, professions and NPC text use one context per field and the `msgid` in English. A sentence is never built around a noun placeholder, and descriptions and dialogues carry a translator note. Message ids 600-849 and parameter kinds 8-12 are reserved for them | 7.1, 7.2, 8.1 |
 | Proper names | Descriptive names are translated (Puente del Norte → North Bridge, los Huecos → the Hollow). Invented names stay as they are (Vado Gris, Eldrun, Vardheim...). | 8.2 |
 | Chat commands | Canonical English ids. The long names work in both languages; the short aliases follow the client's language. | 9 |
 | Legal texts | Spanish is binding. The English version is a translation and says so. | L7b |
@@ -385,6 +386,10 @@ const _DEFS: Dictionary = {
 | 300–399 | Chat and moderation |
 | 400–499 | Progression and inventory |
 | 500–599 | World commands (`/unstuck`) |
+| 600–699 | Quests and world events ([quests.md](quests.md) section 5.2) |
+| 700–749 | Build and specialization |
+| 750–799 | Loot and economy services |
+| 800–849 | Interaction and dialogue |
 | 900–998 | Staff |
 | 999 | `legacy.text {text: TEXT}`: transitional, removed in L4d |
 
@@ -426,7 +431,15 @@ NOTICE and REJECT share this block (`NetMessages.MessageBlock`):
 | 5 SECONDS | u32 | `L10n.format_duration` |
 | 6 REALM | u8 realm code | realm name |
 | 7 ITEM | u16 item wire id | item name (context `item`) |
+| 8 QUEST | u16 quest wire id | quest title (context `quest`) |
+| 9 EVENT | u16 world event wire id | event name (context `event`) |
+| 10 SPEC | u8 specialization id | specialization name (context `specialization`) |
+| 11 NPC | u16 NPC definition wire id | NPC name (context `npc`) |
+| 12 PLACE | u16 place wire id | zone, place, pole or pass name (context `place`) |
 
+- Kinds 8-12 are the phase 6-8 additions: 8 and 9 come with the quest messages (600-699), 10 with the build messages
+  (700-749), 11 and 12 with the interaction messages (800-849). A parameter never replaces a noun inside a sentence
+  (section 8.1, "Sentences and nouns"): the title is a whole value that the client prints with its own context.
 - TEXT has a u16 length because staff replies such as `inv_show` and `ledger_show` listings travel today as system chat lines of up to 768 B; 200 B would cut them.
 - The whole block is at most 1024 B, within the 1200 B packet budget. `encode` trims TEXT at a UTF-8 boundary to fit.
 - Each parameter carries its kind, so the decoder does not need the catalog. `decode` checks structure, sizes and UTF-8 and returns null on any error, like every other message.
@@ -517,6 +530,47 @@ Each `.tres` keeps a single copy of each text field, holding the English text. T
 | `FortressDefinition` | `display_name` | `fort` | `data/fortresses/*` |
 | `MapLandmark` | `label` | `place` | `assets/maps/vado_gris_map.tres` |
 
+Phase 6-8 content adds the contexts below (the registry of the common contexts is fixed in the integrated content
+design). They are all English `msgid`s in the `.tres` with the Spanish in `es.po`, extracted by the same table:
+
+| Script | Fields | Context | Where |
+|---|---|---|---|
+| `QuestDefinition` | `title`, `summary`, `description`, `progress_text`, `completion_text` | `quest`, `quest_summary`, `quest_desc`, `quest_progress`, `quest_done` | `data/quests/**` |
+| `QuestDefinition` | `translator_note` | (not a message: becomes a `#.` comment) | same |
+| `QuestObjective` | `text` | `quest_obj` | same; also each `CommissionTemplate` entry |
+| `QuestStage` | `text` | `quest_stage` | same |
+| `LoreEntry` | `title`, `text` | `lore_title`, `lore` | `data/lore/**` |
+| `WorldEventDefinition` | `display_name`, `description`, phase text | `event`, `event_desc`, `event_phase` | `data/events/*` |
+| `CommissionTemplate` | `title` | `commission` | `data/commissions/*` |
+| `TalentDefinition` | `display_name`, `description` | `talent`, `talent_desc` | talent trees |
+| `SpecializationDefinition` | `display_name`, `description` | `specialization`, `specialization_desc` | specializations |
+| Passive of a talent or a rank | `description` | `passive_desc` | trees and specializations |
+| Attribute | `display_name` | `attribute` | the five attributes |
+| `AbilityDefinition` | `display_name`, `description` | `ability`, `ability_desc` | weapons (until now in `CombatText`) |
+| `AffixDefinition` | `display_name` | `affix` | `data/items/affixes.tres` |
+| `ProfessionDefinition` | `display_name` | `profession` | professions |
+| `NpcDefinition` | `title` | `npc_title` | `data/npcs/*` |
+| NPC family | `display_name` | `npc_family` | `data/npcs/families.tres` |
+| `DialogueNode` | `text` | `dialogue` | `data/dialogues/*` |
+| `DialogueOption` | `text` | `dialogue_option` | same |
+| Ambient phrases and shouts | `text` | `bark` | NPC definitions |
+| Interaction type | verb ("Talk", "Open", "Read") | `interact_verb` | interaction table |
+| Zones, places, camps, poles and passes | `display_name` / `name_msgid` | `place` | zone definitions, `NpcCamp`, `TravelPoint` |
+
+The limits per field (title 32 characters, offer 600, lore 1 200...) are in [quests.md](quests.md) section 7.2, and the
+validator of the quest tools checks them with the entry in `es.po` in strict mode.
+
+**Sentences and nouns.** A sentence is never built around a noun placeholder. "Hunt {count} {target}" cannot be
+translated well: Spanish needs "Caza 8 lobos", "Caza 8 jabalíes" and "Mata a 8 desertores", with the gender, number and
+verb that follow the noun. Each entry carries its whole sentence and only numbers as parameters
+(`Wolves hunted: {count}/{total}`); a name of a person goes in a NAME parameter. A quest title or an event name that
+travels in a notice is a whole parameter of kind QUEST or EVENT, printed by the client with its own context (section 7.2),
+never a word inside the sentence.
+
+**Translator note.** Dialogue lines, quest descriptions and lore carry a mandatory translator note (`translator_note`
+in the resource; `#.` in the template): who speaks, in what tone and where it is seen. The validator fails a description
+or a dialogue without it.
+
 - No duplicated resources and no Godot remaps. The extractor works out the script of each `[resource]` and `[sub_resource]` block; `appearance_catalog.tres` has 29 sub-resources.
 - The client translates where it shows the value (`ItemText.name(def)`, `NpcText.name(def)` and so on). The server only uses `display_name` in logs, where English is fine.
 - The context per palette keeps the Spanish gender right: "Light" skin is "Clara", "Light brown" hair is "Castaño claro".
@@ -546,6 +600,48 @@ Glossary to start from, consistent with [world.md](world.md) and the README. Eac
 | Pinar de Escarcha, Arboleda del Alba | Frost Pines, Dawn Grove | descriptive |
 | Río Eldrun, Sierra del Poniente / del Levante | Eldrun River, Western Ridge / Eastern Ridge | mixed / descriptive |
 | Gente de Vardheim | People of Vardheim | mixed |
+
+Additions for the phase 6-8 content (quests, story, world, specializations and items). The names of the story are those
+of [story.md](story.md); they stay provisional until the user confirms the bible (P3).
+
+| Spanish | English | Kind |
+|---|---|---|
+| Hondal, Granvik, Eldhald, Hrimgard, Skarven, Grimfell | unchanged | invented |
+| los Desjurados / Desjurado | the Forsworn / Forsworn | descriptive |
+| los Juramentados | the Oathbound | descriptive |
+| Juramento de las Tres Sangres | Oath of the Three Bloods | descriptive |
+| Ecos de Eld | Echoes of Eld | mixed |
+| el Senescal Corvan | Seneschal Corvan | mixed |
+| Brasas de Eld | Embers of Eld | mixed (canon of [world.md](world.md)) |
+| Esquirla de Brasa | Ember Shard | descriptive |
+| Lluvia de Brasas | Ember Rain | descriptive |
+| Nova de Brasas | Ember Nova | descriptive |
+| Incursión de los Huecos | Hollow Incursion | descriptive |
+| Pilar de Granvik | Granvik Pillar | mixed |
+| Tablón de encargos / encargo | Commission Board / commission | descriptive |
+| Llamada a las armas | Call to Arms | descriptive |
+| La Elección del Escudero | The Squire's Choice | descriptive |
+| Salón de Armas | Hall of Arms | descriptive |
+| Maestre de las Órdenes | Master of the Orders | descriptive |
+| Glaciar de Hrimvald | Hrimvald Glacier | mixed |
+| Altos de Vaucelle | Vaucelle Heights | mixed |
+| Salares de Qesh | Qesh Salt Flats | mixed |
+| Osarios de Eld | Ossuaries of Eld | mixed |
+| Acueducto Hundido | Sunken Aqueduct | descriptive |
+| Archivo del Juramento | Oath Archive | descriptive |
+| Fundición de la Llama | Flame Foundry | descriptive |
+| Raíces de la Quiebra | Sundering Roots | descriptive |
+| Cámara del Último Rey | Last King's Chamber | descriptive |
+| Vanguardia | Vanguard | descriptive (specialization) |
+| Rompefilas | Linebreaker | descriptive (specialization) |
+| Cazador | Hunter | descriptive (specialization) |
+| Sanador | Healer | descriptive (specialization) |
+| Arcanista | Arcanist | descriptive (specialization) |
+| Zapador | Sapper | descriptive (specialization, phase 7) |
+| Hoja de guerra | War Sheet | descriptive |
+| Sello de veterano | Veteran Seal | descriptive |
+| Puntuación de equipo | Equipment Score | descriptive |
+| alforja | Loot Satchel | descriptive |
 
 ## 9. Chat commands and other typed input
 
