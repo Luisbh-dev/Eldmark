@@ -26,10 +26,8 @@ run_case() { # name, prefix command, server options...
 	wait "$pid"; echo "$name: server exit $?"
 }
 CERT="$ROOT/tests/fixtures/dtls/zone_cert.pem"; KEY="$ROOT/tests/fixtures/dtls/zone_key.pem"
-run_case plain_perturb "env MALLOC_PERTURB_=85" --stop-file="$OUT/stop"
-run_case dtls_perturb "env MALLOC_PERTURB_=85" --stop-file="$OUT/stop" --dtls-cert="$CERT" --dtls-key="$KEY"
-run_case plain_checked "env MALLOC_CHECK_=3 MALLOC_PERTURB_=170" --stop-file="$OUT/stop"
-run_case dtls_plain_arena "env MALLOC_ARENA_MAX=1" --stop-file="$OUT/stop" --dtls-cert="$CERT" --dtls-key="$KEY"
+run_case plain_serverfirst "" --stop-file="$OUT/stop"
+run_case plain_serverfirst2 "env MALLOC_PERTURB_=85" --stop-file="$OUT/stop"
 
 for core in "$OUT"/core.*; do
 	[ -f "$core" ] || continue

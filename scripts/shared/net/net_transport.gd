@@ -341,7 +341,7 @@ func disconnect_after_flush(peer_id: int) -> void:
 			_send_packet_now(packet)
 	_flush_host()
 	var packet_peer: ENetPacketPeer = _enet.get_peer(peer_id)
-	if packet_peer != null and (_is_server or not _dtls):
+	if packet_peer != null and _is_server:
 		packet_peer.peer_disconnect_later()
 	if _guard != null:
 		# It is already being disconnected: anything it keeps sending is dropped without being counted.
@@ -604,7 +604,7 @@ func _force_pending_disconnects() -> void:
 		if _enet == null:
 			_closing.erase(peer_id)
 			continue
-		if not _is_server and _dtls and _is_known(peer_id):
+		if not _is_server and _is_known(peer_id):
 			# With DTLS, the client closes the whole connection (see disconnect_after_flush).
 			var was_mp_connected: bool = _mp_connected.has(peer_id)
 			_forget_peer(peer_id)
