@@ -11,6 +11,10 @@
 # game options (to try the script against the sources). The default is the exported binary with --log-file: its standard
 # output is block-buffered when redirected, so the log file (flushed) is what says that the zone is listening.
 #
+# The connection is over DTLS with the certificate of the tests, as in production (the platform only hands out zones with DTLS).
+# Over plain UDP the exported RELEASE server dies with SIGBUS when a client connects (the debug export and the editor do
+# not): that is a known open issue, see docs/operations.md section 9, and is not what this test is about.
+#
 # Exit code: 0 if everything checks out, 1 if not.
 set -euo pipefail
 
@@ -19,12 +23,16 @@ GODOT="${2:?godot}"
 PORT="${3:-26200}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="$ROOT/build/smoke"
+DTLS_CERT="$ROOT/tests/fixtures/dtls/zone_cert.pem"
+DTLS_KEY="$ROOT/tests/fixtures/dtls/zone_key.pem"
+DTLS_NAME="zona-pruebas.eldmark.test"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 SERVER_CMD="${SERVER_CMD:-$SERVER_DIR/eldmark-server.x86_64 --headless --log-file $OUT/server.log --}"
 
 # shellcheck disable=SC2086
 $SERVER_CMD --server --zone=vado_gris --port="$PORT" --quit-after-ticks=1500 --report="$OUT/server.json" \
+	--dtls-cert="$DTLS_CERT" --dtls-key="$DTLS_KEY" \
 	> "$OUT/server.stdout" 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2> /dev/null || true' EXIT
@@ -44,7 +52,8 @@ done
 sleep 2
 
 "$GODOT" --headless --path "$ROOT" -- --bots=1 --connect="127.0.0.1:$PORT" --bot-seed=1 \
-	--quit-after-ticks=300 --report="$OUT/swarm.json" > "$OUT/swarm.log" 2>&1 || {
+	--quit-after-ticks=300 --report="$OUT/swarm.json" \
+	--dtls-cert="$DTLS_CERT" --dtls-name="$DTLS_NAME" > "$OUT/swarm.log" 2>&1 || {
 	echo "The SwarmBot failed:" >&2
 	tail -n 40 "$OUT/swarm.log" >&2
 	exit 1

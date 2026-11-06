@@ -127,6 +127,13 @@ Daily dumps, the weekly restore test and point-in-time recovery are in [platform
 | Determinism | the same seeded scenario (16 fake players with the combat brain, 3600 ticks) on Linux and on Windows, compared by `tools/diff_state_logs.gd`; the figures are in [networking.md](networking.md) §14 |
 | Zone in a container | the image built from the exported server; with the database and the platform (`docker compose`, test secrets): a bot enters over DTLS with a ticket, plays the progress scenario (bow, 50 gold, potion), leaves; the same account comes back and sees it; `docker stop` with a bot inside gives code 0, the shutdown messages, a final save, a released lease, an instance in `stopped` and a report with `closed: true` |
 
+**Known open issue (found while building the smoke test):** the exported *release* server dies with SIGBUS (exit code 135)
+a few seconds after a client connects over **plain UDP** (no DTLS), with or without NPCs and with or without a platform. The
+debug export and the editor do not, and neither does the release server over DTLS (the smoke test and the container job
+connect over DTLS, which is also how production runs: the platform only hands out zones with DTLS). It does not block the test
+server, but it must be understood before anything runs a release server without a certificate; the repro is
+`tools/export.sh server`, then the server without `--dtls-*` and `--bots=1` against it.
+
 `tools/ci/zone_container_check.sh <godot>` runs the last one on any machine with Docker, after `tools/export.sh server`.
 
 ## 10. The 2-hour test

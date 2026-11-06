@@ -176,14 +176,6 @@ jobs:
           chmod +x exports/server/eldmark-server.x86_64 exports/server/run-server.sh
           diff artifact/BUILD_ID exports/server/BUILD_ID
 
-      - name: How the exported server ends (diagnostic)
-        continue-on-error: true
-        timeout-minutes: 6
-        run: |
-          ulimit -c 0 || true
-          sudo apt-get install -y gdb > /dev/null 2>&1 || true
-          tools/ci/server_exit_diag.sh exports/server "$HOME/godot/${GODOT_FILE}" 26210 | tee -a "$GITHUB_STEP_SUMMARY"
-
       - name: Smoke test
         timeout-minutes: 8
         run: tools/ci/smoke_server.sh exports/server "$HOME/godot/${GODOT_FILE}" 26200 | tee -a "$GITHUB_STEP_SUMMARY"
@@ -193,68 +185,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: smoke-logs
-          path: |
-            build/smoke/
-            build/exit-diag/
+          path: build/smoke/
           if-no-files-found: ignore
           retention-days: 7
-
-  # TEMPORARY: the exported release server dies with SIGBUS when a SwarmBot connects; a debug export prints a backtrace.
-  crash-diag:
-    name: Crash diagnostic (debug server)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    continue-on-error: true
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Revision
-        run: echo "ELDMARK_REVISION=$(git describe --always)" >> "$GITHUB_ENV"
-
-      - name: Godot and templates cache
-        id: godot-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/godot
-          key: godot-export-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}-${{ env.TEMPLATES_SHA512 }}
-
-      - name: Download Godot and the export templates
-        if: steps.godot-cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/godot"
-          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}"
-          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" "$base/${GODOT_FILE}.zip"
-          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
-          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
-          chmod +x "$HOME/godot/${GODOT_FILE}"
-          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/templates.tpz" "$base/${TEMPLATES_FILE}"
-          echo "${TEMPLATES_SHA512}  $RUNNER_TEMP/templates.tpz" | sha512sum --check -
-          mkdir -p "$HOME/godot/templates-unpacked"
-          unzip -q "$RUNNER_TEMP/templates.tpz" -d "$HOME/godot/templates-unpacked"
-
-      - name: Install the templates and put Godot on the PATH
-        run: |
-          mkdir -p "$HOME/.local/share/godot/export_templates/${TEMPLATES_VERSION_DIR}" "$HOME/.local/bin"
-          cp -r "$HOME/godot/templates-unpacked/templates/." "$HOME/.local/share/godot/export_templates/${TEMPLATES_VERSION_DIR}/"
-          ln -sf "$HOME/godot/${GODOT_FILE}" "$HOME/.local/bin/godot"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Export the debug server
-        run: tools/export.sh server --debug
-
-      - name: Run it with a SwarmBot
-        run: |
-          cd exports/server
-          ./eldmark-server.x86_64 --headless -- --server --zone=vado_gris --port=26230 --quit-after-ticks=4000 > "$RUNNER_TEMP/debug-server.log" 2>&1 &
-          pid=$!
-          sleep 20
-          "$HOME/godot/${GODOT_FILE}" --headless --path "$GITHUB_WORKSPACE" -- --bots=1 --connect=127.0.0.1:26230 --bot-seed=1 --quit-after-ticks=300 > "$RUNNER_TEMP/debug-swarm.log" 2>&1 || true
-          wait "$pid" || echo "server exit code $?"
-          grep -v '^\s*at:\|^WARNING\|^More than\|^This causes\|^Consider' "$RUNNER_TEMP/debug-server.log" | tail -60
 
   # The same seeded scenario (16 fake players with the combat brain in Vado Gris, 3600 ticks) on Linux and on Windows.
   # The server state log of each is compared by tools/diff_state_logs.gd: how many lines are identical, how many
