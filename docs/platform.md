@@ -95,7 +95,7 @@ loads the zone, CLIENT_READY ─────────────────
 ## 2. The service (TEC-22)
 ### 2.1 Structure
 ```
-platform/            go.mod: module eldmark/platform, go 1.24.0, toolchain go1.24.7 · .gdignore (Godot does not scan it)
+platform/            go.mod: module eldmark/platform, go 1.26.10 (raised from 1.24.7 on 6 November 2026 for the standard-library advisories that govulncheck reports) · .gdignore (Godot does not scan it)
   cmd/eldmark-platform/   subcommands serve, migrate, admin
   internal/  config logx db httpx (router, errors, limits) jsonx (JSON integers and ids, §4.1) migrate
              (+ migrations/*.sql with embed) testdb passwords accounts names gamedata (progression_rules.json, §4.4)
