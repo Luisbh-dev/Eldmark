@@ -191,7 +191,7 @@ func lines(t *testing.T, path string) int {
 // The scripts pass bash -n and, if present, shellcheck (no warnings).
 func TestScriptsPassShellcheck(t *testing.T) {
 	scripts := files(t, ".", "*.sh")
-	if len(scripts) != 5 {
+	if len(scripts) != 6 {
 		t.Fatalf("scripts: %v", scripts)
 	}
 	bash := requireTool(t, "bash")
@@ -457,6 +457,18 @@ type composeConfig struct {
 			Source string `json:"source"`
 		} `json:"secrets"`
 		Profiles []string `json:"profiles"`
+
+		StopGracePeriod string `json:"stop_grace_period"`
+
+		Volumes []struct {
+			Source string `json:"source"`
+			Target string `json:"target"`
+		} `json:"volumes"`
+
+		Build struct {
+			Context    string `json:"context"`
+			Dockerfile string `json:"dockerfile"`
+		} `json:"build"`
 	} `json:"services"`
 	Networks map[string]struct {
 		Internal bool `json:"internal"`
@@ -539,6 +551,27 @@ func TestComposeConfig(t *testing.T) {
 			if filepath.Base(s.File) != name || filepath.Base(filepath.Dir(s.File)) != "secrets" {
 				t.Errorf("%s: the secret %s comes from %s", envFile, name, s.File)
 			}
+		}
+		// The zone (TEC-20): built from the exported server, with time to save before the kill and a volume for
+		// Godot's logs.
+		zone := cfg.Services["zone-vado-gris"]
+		if len(zone.Profiles) != 1 || zone.Profiles[0] != "zonas" {
+			t.Errorf("%s: the zone is not in the zonas profile: %v", envFile, zone.Profiles)
+		}
+		if grace, err := time.ParseDuration(zone.StopGracePeriod); err != nil || grace < 30*time.Second {
+			t.Errorf("%s: stop_grace_period %q is too short for the final saves", envFile, zone.StopGracePeriod)
+		}
+		if zone.Build.Dockerfile != "platform/deploy/zone.Dockerfile" || zone.Build.Context == "" {
+			t.Errorf("%s: the zone is not built from zone.Dockerfile: %+v", envFile, zone.Build)
+		}
+		hasLogs := false
+		for _, v := range zone.Volumes {
+			if v.Source == "zone_vado_gris_logs" && strings.HasPrefix(v.Target, "/home/eldmark/") {
+				hasLogs = true
+			}
+		}
+		if !hasLogs {
+			t.Errorf("%s: the zone has no volume for its logs: %+v", envFile, zone.Volumes)
 		}
 		for _, ops := range []string{"backup", "restore-check", "pitr-check"} {
 			if p := cfg.Services[ops].Profiles; len(p) != 1 || p[0] != "ops" {
@@ -650,4 +683,129 @@ func TestCheckSecrets(t *testing.T) {
 			t.Fatalf("the repository does not pass the secrets check: %v\n%s", err, out)
 		}
 	}
+}
+
+// The zone image (TEC-20): the exported server on debian-slim with an unprivileged user, an entrypoint that
+// turns SIGTERM and SIGINT into the server's --stop-file (Godot scripts cannot catch signals) and a HEALTHCHECK
+// on the freshness of the report. The Dockerfile has its own ignore file so that the build context stays small.
+func TestZoneImageFiles(t *testing.T) {
+	dockerfile := string(readFile(t, "zone.Dockerfile"))
+	for _, want := range []string{"FROM debian:bookworm-slim", "--uid 10001", "USER eldmark:eldmark", "HEALTHCHECK",
+		"ENTRYPOINT [\"/usr/local/bin/zone-entrypoint.sh\"]", "exports/server", "EXPOSE 24600/udp"} {
+		if !strings.Contains(dockerfile, want) {
+			t.Errorf("zone.Dockerfile lacks %q", want)
+		}
+	}
+	entrypoint := string(readFile(t, "zone-entrypoint.sh"))
+	for _, want := range []string{"trap request_stop TERM INT", "--stop-file=", "--report=", "--healthcheck", "wait \"$pid\""} {
+		if !strings.Contains(entrypoint, want) {
+			t.Errorf("zone-entrypoint.sh lacks %q", want)
+		}
+	}
+	ignore := string(readFile(t, "zone.Dockerfile.dockerignore"))
+	if !strings.HasPrefix(ignore, "*
+") || !strings.Contains(ignore, "!exports/server") {
+		t.Errorf("zone.Dockerfile.dockerignore does not restrict the context: %q", ignore)
+	}
+}
+
+// The entrypoint, run for real with a fake server (a script that waits for the stop-file): SIGTERM creates the
+// --stop-file, the server finishes by itself and the entrypoint exits with the server's code; the health check
+// follows the age of the report.
+func TestZoneEntrypoint(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("signals and bash scripts")
+	}
+	bash := requireTool(t, "bash")
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-server.sh")
+	// The "server": arguments after "--" are the options; it writes the report, waits for the stop-file and exits 0
+	// (or with the code in FAKE_EXIT).
+	script := "#!/usr/bin/env bash
+" +
+		"for a in \"$@\"; do case \"$a\" in --stop-file=*) stop=\"${a#*=}\";; --report=*) report=\"${a#*=}\";; esac; done
+" +
+		"echo '{\"closed\": false}' > \"$report\"
+" +
+		"echo ready
+" +
+		"while [ ! -f \"$stop\" ]; do sleep 0.1; done
+" +
+		"echo '{\"closed\": true}' > \"$report\"
+" +
+		"exit \"${FAKE_EXIT:-0}\"
+"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		sig  syscall.Signal
+		exit string
+		want int
+	}{{syscall.SIGTERM, "0", 0}, {syscall.SIGINT, "3", 3}} {
+		run := filepath.Join(dir, "run"+tc.exit)
+		cmd := exec.Command(bash, "zone-entrypoint.sh", "--server", "--zone=vado_gris")
+		cmd.Env = append(os.Environ(), "ELDMARK_RUN_DIR="+run, "ELDMARK_SERVER_BIN="+fake, "FAKE_EXIT="+tc.exit)
+		var out bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &out
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		report := filepath.Join(run, "report.json")
+		deadline := time.Now().Add(10 * time.Second)
+		for !strings.Contains(string(readFileOrEmpty(report)), "false") {
+			if time.Now().After(deadline) {
+				_ = cmd.Process.Kill()
+				t.Fatalf("the fake server never wrote its report:
+%s", out.String())
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		health := func() error {
+			c := exec.Command(bash, "zone-entrypoint.sh", "--healthcheck")
+			c.Env = append(os.Environ(), "ELDMARK_RUN_DIR="+run)
+			return c.Run()
+		}
+		if err := health(); err != nil {
+			t.Fatalf("a fresh report is healthy: %v", err)
+		}
+		old := time.Now().Add(-2 * time.Minute)
+		if err := os.Chtimes(report, old, old); err != nil {
+			t.Fatal(err)
+		}
+		if err := health(); err == nil {
+			t.Fatal("a report two minutes old is unhealthy")
+		}
+		if err := cmd.Process.Signal(tc.sig); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case err := <-done:
+			code := 0
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				code = exitErr.ExitCode()
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if code != tc.want {
+				t.Fatalf("%v: the entrypoint exits with %d, expected the server's %d:
+%s", tc.sig, code, tc.want, out.String())
+			}
+		case <-time.After(10 * time.Second):
+			_ = cmd.Process.Kill()
+			t.Fatalf("%v: the entrypoint does not finish:
+%s", tc.sig, out.String())
+		}
+		if !strings.Contains(string(readFileOrEmpty(report)), "true") {
+			t.Fatalf("%v: the server did not get to write its final report", tc.sig)
+		}
+	}
+}
+
+func readFileOrEmpty(path string) []byte {
+	data, _ := os.ReadFile(path)
+	return data
 }
