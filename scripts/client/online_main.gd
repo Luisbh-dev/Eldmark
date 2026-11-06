@@ -872,7 +872,7 @@ func _write_report() -> void:
 # Report of a bot with an account that never got to connect to the zone.
 func _write_account_report() -> void:
 	var report: Dictionary = {
-		"version": 1, "name": config.character_name, "mode": ClientConfig.Mode.keys()[config.mode],
+		"version": 1, "build": BuildInfo.build_id(), "name": config.character_name, "mode": ClientConfig.Mode.keys()[config.mode],
 		"state": "ACCOUNT", "rejected": false, "platform": _account_report,
 	}
 	var directory: String = config.report_path.get_base_dir()

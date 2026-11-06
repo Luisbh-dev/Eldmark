@@ -58,3 +58,9 @@ func test_build_id_does_not_enter_the_sim_hash() -> void:
 	var source: String = FileAccess.get_file_as_string("res://scripts/shared/net/net_protocol.gd")
 	assert_true(source.contains("func compute_sim_hash"), "the hash function is where this test expects it")
 	assert_false(source.contains("BuildInfo"), "NetProtocol never reads the build id")
+
+
+func test_the_reports_of_the_client_and_the_swarm_carry_the_build_id() -> void:
+	for path: String in ["res://scripts/client/net_client.gd", "res://scripts/client/bot_swarm.gd",
+			"res://scripts/client/online_main.gd", "res://scripts/server/zone_server.gd"]:
+		assert_true(FileAccess.get_file_as_string(path).contains("BuildInfo.build_id()"), "%s reports the build id" % path)

@@ -127,6 +127,7 @@ func test_texts_are_filled_from_a_bound_loopback_client() -> void:
 	await wait_physics_frames(180)
 	overlay.refresh()
 	var text: String = overlay.get_text()
+	assert_true(text.contains("Build: " + BuildInfo.build_id()), "the F3 panel shows the build id: %s" % text)
 	for label: String in ["RTT ENet:", "al entrar:", "Por delante del servidor:", "pérdida ENet:",
 			"Subida:", "Bajada:", "KB/s", "input_margin:", "ventana:", "objetivo:",
 			"Ajustes de TickSync:", "Sustituciones:", "Correcciones:", "última", "máxima",
@@ -194,6 +195,7 @@ func test_an_unbound_overlay_says_so_and_a_freed_client_does_not_break_it() -> v
 	_root.add_child(overlay)
 	overlay.refresh()
 	assert_true(overlay.get_text().contains("sin cliente"), overlay.get_text())
+	assert_true(overlay.get_text().contains("Build: " + BuildInfo.build_id()), "the build id is there even without a client")
 	var orphan := NetClient.new()
 	overlay.bind(orphan)
 	overlay.refresh()

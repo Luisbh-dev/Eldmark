@@ -153,7 +153,7 @@ func refresh(now_seconds: float = -1.0) -> void:
 	if now_seconds < 0.0:
 		now_seconds = float(Time.get_ticks_msec()) / 1000.0
 	if _client == null or not is_instance_valid(_client):
-		_text = "RED · sin cliente"
+		_text = "RED · sin cliente\n%s" % _build_line()
 	else:
 		var stats: Dictionary = _client.get_stats()
 		_record_sample(now_seconds, stats)
@@ -253,6 +253,7 @@ func _build_text(stats: Dictionary) -> String:
 			visible_remotes += 1
 	var lines: PackedStringArray = [
 		"RED · F3 oculta · F4 fantasma %s" % ("(sí)" if _ghost_enabled else "(no)"),
+		_build_line(),
 		"RTT ENet: %s (sin simulador) · al entrar: %d ticks" % [rtt_text, int(stats["rtt_ticks"])],
 		"Por delante del servidor: %d ticks · pérdida ENet: %s" % [ahead, loss_text],
 		"Subida: %s · Bajada: %s" % [_kilobytes_per_second(&"wire_out"),
@@ -275,6 +276,12 @@ func _build_text(stats: Dictionary) -> String:
 				known_remotes, _bytes_per_snapshot()],
 	]
 	return "\n".join(lines)
+
+
+# The build id line (TEC-12). Developer text, in English and outside L10n: it is the same id the --report files of the
+# client and the zone carry and the BUILD_ID file next to the export.
+func _build_line() -> String:
+	return "Build: %s" % BuildInfo.build_id()
 
 
 func _margin_text(margin: int) -> String:

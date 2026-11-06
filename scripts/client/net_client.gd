@@ -1838,6 +1838,7 @@ func _close_state_log() -> void:
 func _build_report() -> Dictionary:
 	var report: Dictionary = get_stats()
 	report["version"] = 1
+	report["build"] = BuildInfo.build_id()
 	report["name"] = _config.display_name if _config != null else ""
 	report["realm"] = NetProtocol.realm_display_name(_config.realm) if _config != null else ""
 	report["mode"] = ClientConfig.Mode.keys()[_config.mode] if _config != null else ""

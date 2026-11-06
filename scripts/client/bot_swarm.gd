@@ -179,6 +179,7 @@ func build_report() -> Dictionary:
 			seconds_up = maxf(seconds_up, float(stats["world_ticks"]) / float(Engine.physics_ticks_per_second))
 	return {
 		"version": 1,
+		"build": BuildInfo.build_id(),
 		"mode": "SWARM",
 		"address": _config.address if _config != null else "",
 		"port": _config.port if _config != null else 0,
