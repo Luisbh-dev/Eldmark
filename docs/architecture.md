@@ -95,6 +95,22 @@ flowchart TB
 - A zone process owns its map, its NPCs, its fortresses and its connected players. State that must outlive the process (characters, fortress ownership) goes to the platform.
 - Without the platform, the server runs standalone: clients get a throwaway character. This is the default for development and for most tests.
 
+Inside the zone process, `ZoneServer` (`scripts/server/zone_server.gd`) keeps the wiring, the public API and the order of the tick (normative, documented in its header). Each concern has a subsystem in `scripts/server/zone/`, a plain `RefCounted` that the zone builds in `_init` and that reaches the rest of the zone through its `_z`:
+
+| Subsystem | Concern |
+|---|---|
+| `ZoneSessions` | connections: authentication, HELLO and loading deadlines, kicks and cooldowns, seats, platform events of the poll |
+| `ZoneIntents` | what each client packet does (the dispatch and the input, ready, leave, respawn and loadout handlers) |
+| `ZoneBodies` | who is in the world: spawns and removals of players, fake players, NPCs and dummies |
+| `ZoneEvents` | combat and war events once resolved: who is told, the rewards of a death, the scoreboard |
+| `ZoneCommands` | administration commands and the console |
+| `ZoneLifecycle` | shutdown, maintenance windows and the drain that waits for the final saves |
+| `ZoneLingering` | bodies that stay after leaving in combat, and `/atascado` |
+| `ZoneBotSupport` | what the fake players see: target, threat and ally caches, siege views |
+| `ZoneReport` | the metrics line and the JSON report |
+
+The split is mechanical: no subsystem runs a step of the tick by itself, `_physics_process` calls them in the documented order, and a seeded run writes the same state log with and without it. Put a new concern in the subsystem that owns it (or in a new one) rather than in `zone_server.gd`; `tests/test_architecture.gd` keeps that file under 2,000 lines.
+
 ## Network flow
 
 The design is in [networking.md](networking.md). The short version:
@@ -102,6 +118,8 @@ The design is in [networking.md](networking.md). The short version:
 **Transport.** `ENetMultiplayerPeer` and `SceneMultiplayer` are used only to connect, authenticate and move raw binary packets. No RPCs, `MultiplayerSynchronizer` or `MultiplayerSpawner`: prediction, interpolation and rewind need an explicit tick on every datum and exact control of the bytes. Everything goes through `NetTransport`. Three channels: inputs, snapshots and reliable messages. The server wraps the engine peer in `GuardedEnetPeer`, which discards anything that is not the protocol before the engine logs an error per packet. Optional DTLS secures the zone port. The protocol is versioned (`NetProtocol.PROTOCOL_VERSION`) and a client with another version is rejected at the handshake.
 
 **The tick loop.** Both sides poll at the start of their physics tick and flush at the end: receive, simulate, send.
+
+On the server the steps of the tick are called from `ZoneServer._physics_process` in a fixed order (poll, removals, NPC brains, simulate, combat, forts, NPCs, spawns, inventory, saves, social, history, snapshots, flush, metrics); the work of each step lives in the subsystems listed above.
 
 ```mermaid
 sequenceDiagram
@@ -212,7 +230,7 @@ CI runs the suite in four shards plus a Windows job, the Go checks and the end-t
 
 | If you want to... | Read |
 |---|---|
-| Understand the netcode end to end | [networking.md](networking.md), then `scripts/server/zone_server.gd` (the header documents the tick order) and `scripts/client/net_client.gd` |
+| Understand the netcode end to end | [networking.md](networking.md), then `scripts/server/zone_server.gd` (the header documents the tick order), the subsystems in `scripts/server/zone/` and `scripts/client/net_client.gd` |
 | See how prediction stays in sync | `scripts/client/client_prediction.gd`, `tick_sync.gd`, `correction_smoother.gd`, and `tests/prediction_pair.gd` |
 | Follow a hit from click to damage number | `scripts/shared/combat/action_machine.gd`, `scripts/server/combat_resolver.gd`, `combat_director.gd`, `scripts/client/combat_feedback.gd` |
 | Add a weapon or ability | the `.tres` files in `data/combat/`, `CombatCatalog`, then [abilities.md](abilities.md) |

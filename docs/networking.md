@@ -1342,7 +1342,9 @@ func _physics_process(delta: float) -> void:
 This is a phase 2 sketch: the normative order, with all the steps that have been added since (NPC
 brains, combat with abilities, projectiles, effects and the phase 4 knocked-down state
 ([abilities.md 4.1](abilities.md#41-tick-order-completes-fortressmd-17)), forts, NPCs, the social step and the
-per-section metrics), is the one in the header of `scripts/server/zone_server.gd`.
+per-section metrics), is the one in the header of `scripts/server/zone_server.gd`, which is also the code that calls
+the steps: the work of each one lives in the subsystems of `scripts/server/zone/` (TEC-65, see
+[architecture.md](architecture.md#zones-and-processes)), but their order is decided only in `_physics_process`.
 
 - **Staggered sends.** Each client receives its snapshot on the ticks matching the parity of its
   `net_id`, so the cost is spread across the two ticks of the interval. Each party's PARTY_STATUS

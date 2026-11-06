@@ -26,6 +26,10 @@ const CLIENT_SERVICES_SCRIPT: String = "res://scripts/client/client_services.gd"
 ## Boot scripts loaded by both client and server: they name no client class.
 const BOOT_SCRIPTS: Array[String] = ["res://scripts/boot.gd"]
 const SERVER_DIR: String = "res://scripts/server"
+## Subsystems of the zone server (TEC-65), the limit of lines of zone_server.gd and how many subsystems exist.
+const ZONE_SUBSYSTEMS_DIR: String = "res://scripts/server/zone"
+const ZONE_SERVER_MAX_LINES: int = 2000
+const ZONE_SUBSYSTEM_COUNT: int = 9
 ## Scenes, besides the zone ones, that the dedicated server loads: the character (preloaded by
 ## [code]ZoneServer[/code]) and the server's root scene. They cannot depend on the client either.
 const SERVER_SCENES: Array[String] = [
@@ -323,6 +327,23 @@ func test_server_scripts_exist() -> void:
 	for required: String in REQUIRED_SERVER_SCRIPTS:
 		assert_true(files.has(SERVER_DIR.path_join(required)),
 				"%s/%s is missing" % [SERVER_DIR, required])
+
+
+## The zone server is split into subsystems (TEC-65): zone_server.gd keeps the wiring, the public API and the
+## order of the tick, and each concern lives in scripts/server/zone/ so that the packages that touch the server do
+## not queue up behind one file (docs/platform.md §14.5).
+func test_zone_server_stays_split_into_subsystems() -> void:
+	var lines: int = _read_text(SERVER_DIR.path_join("zone_server.gd")).split("\n").size()
+	assert_true(lines <= ZONE_SERVER_MAX_LINES,
+			"zone_server.gd has %d lines (limit %d): put the new logic in a subsystem of %s"
+			% [lines, ZONE_SERVER_MAX_LINES, ZONE_SUBSYSTEMS_DIR])
+	var scripts: PackedStringArray = _list_scripts(ZONE_SUBSYSTEMS_DIR)
+	assert_true(scripts.size() >= ZONE_SUBSYSTEM_COUNT,
+			"%s has %d scripts, at least %d expected" % [ZONE_SUBSYSTEMS_DIR, scripts.size(), ZONE_SUBSYSTEM_COUNT])
+	for path: String in scripts:
+		var text: String = _read_text(path)
+		assert_true(text.contains("extends RefCounted"), "%s is a plain RefCounted owned by the ZoneServer" % path)
+		assert_true(text.contains("var _z: ZoneServer"), "%s reaches the zone through _z" % path)
 
 
 ## scripts/server does not use paths or classes from scripts/client.

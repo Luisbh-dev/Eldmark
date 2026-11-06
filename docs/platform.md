@@ -1750,6 +1750,30 @@ func pending_count() -> int
   before `begin_flush`; the shutdown of §6.1 is `ZoneServer.close_instance(code)`, which `ServerMain` calls with the
   code of `instance_closed` (P5, §19.9).
 
+### 14.5 Where a package lands in the zone server (TEC-65)
+
+`ZoneServer` (`scripts/server/zone_server.gd`) keeps the wiring, the public API and the normative tick order; the
+logic lives in subsystems under `scripts/server/zone/` (list in [architecture.md](architecture.md#zones-and-processes)).
+The tick-step names of §14.3 are the same: `_physics_process` still calls them in that order, and the extraction
+changed no behavior (a seeded run writes the same state log before and after). The packages that used to queue up
+behind one file now touch different ones:
+
+| Package | File it touches | Why |
+|---|---|---|
+| TEC-57 (L4a, protocol 8) | `zone_sessions.gd` (REJECT and NOTICE), `zone_lifecycle.gd` (shutdown and maintenance notices), `zone_events.gd`, `zone_server.gd` (`send_notice`) | the server messages that carry text today |
+| TEC-58 (L4b) | `zone_sessions.gd`, `zone_lifecycle.gd`, `zone_commands.gd` (console replies) | operation, session and authentication messages |
+| TEC-59 (L4c) | none in the zone (`party_manager.gd` and `chat_router.gd`) | the messages are built outside the zone |
+| TEC-60 (L4d) | `zone_lingering.gd` (`/atascado` replies) | moderation and progress texts are outside the zone |
+| TEC-64 (L8b) | every subsystem (their `_log` lines), one commit per file | the logs are written where the event happens |
+| PRG-09 (merits) | `zone_events.gd` (`_reward_kill`, `_reward_npc_death`, `_track_battle`) | rewards of a death |
+| SOC-10 (pings) | `zone_intents.gd` (the new message) | a new client intent |
+| MUN-16 and MUN-17 (interaction, quests) | `zone_intents.gd` (INTERACT) and a new step in `zone_server.gd::_physics_process` | a new intent and a new tick step; the service itself is its own class |
+| PRG-23 (merchants) | `zone_intents.gd` and `zone_commands.gd` if it adds commands | buying and selling are intents |
+| TEC-29 and TEC-30 (directory, handoff) | `zone_sessions.gd` (platform events, `_poll_platform`) and `zone_lifecycle.gd` (leaving the instance) | the handoff is a platform event and a kind of departure |
+
+A change in the tick order (a new step, or a call moved between steps) is always in `zone_server.gd` and is the only
+reason two packages can still conflict there: the header of that file is updated in the same commit.
+
 ### 14.4 Contracts in GDScript (client)
 ```gdscript
 # scripts/client/platform/platform_api.gd
@@ -1841,7 +1865,7 @@ its text.
 | A single platform instance (single point of failure; limits and password failures in memory) | Fine for closed tests; those playing carry on if it goes down (§7.4); restarting the platform resets the counters. Several instances with TEC-38 |
 | A compromised zone (Godot receives UDP from the Internet) | Scoped token, `public_host` from a list, sanction authorization on the platform, batches validated against the instance (§6), ids only from its blocks, S1–S8 in Go (progression.md §13.3). **Remaining risk:** S1–S8 bound the shape, the caps, the ids and the GM actor, not the quantities; they are a net against a zone with a bug, not against a compromised one, which can still mint gold, merits and XP with GAMEPLAY or with `source = console` on the characters it has inside. PRG-30 and PRG-39 detect it |
 | Legal texts, age, retention (ledger, sanctioned emails) and export | Marked drafts; human review before any public test |
-| `zone_server.gd` is touched by nine packages of the two documents (and before that abilities.md) | A fixed joint order, starting after abilities.md H3c (§14.1), and named tick steps (§14.3) |
+| `zone_server.gd` is touched by nine packages of the two documents (and before that abilities.md) | A fixed joint order, starting after abilities.md H3c (§14.1), and named tick steps (§14.3). Resolved for the packages that follow by TEC-65: the logic moved to nine subsystems in `scripts/server/zone/` and each package has its file (§14.5) |
 | P10 may exceed 30 s | Measured in P10 (§19.19): about 12 s and 25 s; if it goes over, an explicit 60 s cap (§15) |
 
 ## 17. Interface with progression.md (reconciled)
