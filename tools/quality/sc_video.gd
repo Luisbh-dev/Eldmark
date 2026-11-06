@@ -61,8 +61,10 @@ func _elapsed_fraction() -> float:
 
 
 # Fights the nearest enemy of the requested kind until the fraction [param until] of the video has passed.
-func _fight_until(until: float, kind: String) -> void:
+func _fight_until(until: float, wanted_kind: String) -> void:
+	var kind: String = wanted_kind
 	var next_heal: int = 0
+	var no_rival_since: int = 0
 	spar.set_mode("fight")
 	var heavy_next: int = Time.get_ticks_msec() + 6000
 	var next_reset: int = 0
@@ -79,6 +81,18 @@ func _fight_until(until: float, kind: String) -> void:
 			else:
 				await d.tp(_bot_spot.x, _bot_spot.y, 180.0, 6.0, NAN, 0.6)
 		var enemy: Dictionary = _nearest(kind)
+		if enemy.is_empty() and kind == "player":
+			# The sparring bot did not show up (or left): go back to the fort instead of standing still.
+			if no_rival_since == 0:
+				no_rival_since = now
+			elif now - no_rival_since > 3000:
+				kind = "npc"
+				no_rival_since = 0
+				d.note("vídeo: sin rival humano, se vuelve al fuerte")
+				await d.tp(_fort_spot.x, _fort_spot.y, d.yaw_to(_fort_spot.x, _fort_spot.y, 0.0, 0.0), 5.0, NAN, 0.6)
+				continue
+		elif not enemy.is_empty():
+			no_rival_since = 0
 		if enemy.is_empty():
 			spar.stop()
 			if kind == "npc" and now >= next_reset:

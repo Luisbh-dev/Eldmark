@@ -430,7 +430,7 @@ def area_video(ctx):
             ffmpeg = shutil.which("ffmpeg")
             if ffmpeg:
                 mp4 = video / "combate.mp4"
-                subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(avi), "-c:v", "libx264", "-crf", "20",
+                subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-ss", "1.5", "-i", str(avi), "-c:v", "libx264", "-crf", str(ctx.args.crf),
                                 "-pix_fmt", "yuv420p", "-c:a", "aac", str(mp4)], check=False)
                 if mp4.exists():
                     info["mp4_mb"] = round(mp4.stat().st_size / 1e6, 1)
@@ -512,6 +512,7 @@ def build_parser():
     parser.add_argument("--seconds", type=int, default=60)
     parser.add_argument("--movie-resolution", default="1600x900")
     parser.add_argument("--mp4", action="store_true")
+    parser.add_argument("--crf", type=int, default=26, help="x264 quality of --mp4 (higher is smaller; 26 keeps a minute under 50 MB)")
     parser.add_argument("--sin-capsulas", action="store_true")
     parser.add_argument("--clean-raw", action="store_true")
     parser.add_argument("--godot", default=None)
