@@ -1,0 +1,28 @@
+# CI override (TEC-20, the "zone in a container" job of .github/workflows/export.yml; tools/ci/zone_container_check.sh):
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml --env-file <ci.env> --profile zonas ...
+# It publishes the platform's public API on the loopback so that a bot outside the containers can log in, lets the
+# zone take debug commands (the progress scenario gives gold to the test character) and writes the logs as JSON
+# files so that "docker compose logs" can read them (journald is for the VPS). Never used in production.
+services:
+  db:
+    logging: !override
+      driver: json-file
+  platform:
+    ports:
+      - "127.0.0.1:24680:24680"
+    logging: !override
+      driver: json-file
+  zone-vado-gris:
+    command: !override
+      - --server
+      - --zone=vado_gris
+      - --port=24600
+      - --platform=http://platform:24681
+      - --world=1
+      - --channel=0
+      - --public-address=${ELDMARK_PUBLIC_HOST:?ELDMARK_PUBLIC_HOST}:24600
+      - --dtls-cert=/run/secrets/vado_gris_dtls_cert
+      - --dtls-key=/run/secrets/vado_gris_dtls_key
+      - --debug-commands
+    logging: !override
+      driver: json-file

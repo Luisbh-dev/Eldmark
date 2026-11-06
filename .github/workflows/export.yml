@@ -1,0 +1,417 @@
+name: Export
+
+# Real executables (TEC-12) and the zone in a container (TEC-20). Nothing is downloaded or installed on the
+# developer's laptop: this workflow downloads Godot 4.7.2 and its export templates (checking their SHA-512, with a
+# cache), exports the two presets of export_presets.cfg and checks what came out:
+#   - export:         "Cliente Windows" and "Servidor Linux", as artifacts with BUILD_ID and SHA256SUMS
+#   - smoke:          the exported server loads Vado Gris, simulates ticks and a SwarmBot plays on it
+#   - determinism:    the same seeded scenario on Linux and Windows, compared with tools/diff_state_logs.gd
+#   - zone-container: the image of platform/deploy/zone.Dockerfile with the database and the platform (docker compose):
+#                     a bot enters over DTLS, plays, leaves and comes back, and "docker stop" shuts the zone down in order
+# It publishes nothing: no Release, no image in GHCR (that is deploy.yml, which is switched off). Every action is
+# pinned by commit SHA.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    # TEMPORARY (to try the workflow before it reaches main, where workflow_dispatch exists): removed at the end.
+    branches: ["wip/release-ci"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: export-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2-stable
+  GODOT_FILE: Godot_v4.7.2-stable_linux.x86_64
+  # SHA-512 checksums, from SHA512-SUMS.txt of the 4.7.2-stable release.
+  GODOT_SHA512: 9aa00f7a605200940bce3027a567b782f49bd8e940dd06ae9e987bd65aee1b1467edd56ed84fcdcbdd44354bf613bdbb4e5d2913e925850368e150c59ed54c65
+  GODOT_WIN_FILE: Godot_v4.7.2-stable_win64
+  GODOT_WIN_SHA512: 83decd58fdf67b9d657958a1ae6bf1929c20785315a81effe245874cdc57acb709bf868e00778a96984338c1b29dafdb453c6847747694621c6ecf5da2259993
+  TEMPLATES_FILE: Godot_v4.7.2-stable_export_templates.tpz
+  TEMPLATES_SHA512: ca4d71c4d7b81dfc15d1a98baa07534aa95b03fdda78a0075b06672e1648d2e5f40980c9adc28d23e1b92e732ee7bf3461997aa804af74ec2fcd7a93ccb84079
+  # Folder where Godot looks for the templates of this version (the "4.7.2.stable" of --version).
+  TEMPLATES_VERSION_DIR: 4.7.2.stable
+
+jobs:
+  export:
+    name: Export
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      build-id: ${{ steps.ids.outputs.build_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # The revision is taken BEFORE importing, so that the import does not make the tree look dirty.
+      - name: Revision
+        run: echo "ELDMARK_REVISION=$(git describe --always)" >> "$GITHUB_ENV"
+
+      - name: Godot and templates cache
+        id: godot-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/godot
+          key: godot-export-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}-${{ env.TEMPLATES_SHA512 }}
+
+      - name: Download Godot and the export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" "$base/${GODOT_FILE}.zip"
+          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
+          chmod +x "$HOME/godot/${GODOT_FILE}"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/templates.tpz" "$base/${TEMPLATES_FILE}"
+          echo "${TEMPLATES_SHA512}  $RUNNER_TEMP/templates.tpz" | sha512sum --check -
+          mkdir -p "$HOME/godot/templates-unpacked"
+          unzip -q "$RUNNER_TEMP/templates.tpz" -d "$HOME/godot/templates-unpacked"
+
+      - name: Install the templates and put Godot on the PATH
+        run: |
+          mkdir -p "$HOME/.local/share/godot/export_templates/${TEMPLATES_VERSION_DIR}" "$HOME/.local/bin"
+          cp -r "$HOME/godot/templates-unpacked/templates/." "$HOME/.local/share/godot/export_templates/${TEMPLATES_VERSION_DIR}/"
+          ln -sf "$HOME/godot/${GODOT_FILE}" "$HOME/.local/bin/godot"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          ls "$HOME/.local/share/godot/export_templates/${TEMPLATES_VERSION_DIR}" | head -n 30
+          "$HOME/.local/bin/godot" --headless --version
+
+      - name: Export both presets
+        timeout-minutes: 30
+        run: tools/export.sh all --zip
+
+      - name: Identifiers and checksums
+        id: ids
+        run: |
+          set -euo pipefail
+          build_id="$(cat exports/server/BUILD_ID)"
+          test "$build_id" = "$(cat exports/windows/BUILD_ID)"
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+          echo "Build id: $build_id" | tee -a "$GITHUB_STEP_SUMMARY"
+          # The revision really went into the packs (strings of the .pck, which is not compressed).
+          revision="${build_id#*+}"
+          grep -aq "build_id.txt" exports/server/eldmark-server.pck
+          grep -aqF "$revision" exports/server/eldmark-server.pck
+          grep -aqF "$revision" exports/windows/Eldmark.pck
+          mkdir -p dist/windows dist/server
+          cp exports/Eldmark-windows.zip dist/windows/
+          cp exports/Eldmark-server.zip dist/server/
+          for target in windows server; do
+            echo "$build_id" > "dist/$target/BUILD_ID"
+            (cd "dist/$target" && sha256sum Eldmark-*.zip > SHA256SUMS)
+          done
+          ls -l dist/*
+          cat dist/*/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Artifact, Windows client
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eldmark-windows-client
+          path: dist/windows/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Artifact, Linux server
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eldmark-linux-server
+          path: dist/server/
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: Smoke test of the exported server
+    needs: export
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Godot cache
+        id: godot-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
+
+      - name: Download Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_FILE}.zip"
+          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
+          chmod +x "$HOME/godot/${GODOT_FILE}"
+
+      - name: Import the project (for the bot)
+        run: |
+          mkdir -p build
+          "$HOME/godot/${GODOT_FILE}" --headless --path . --import > build/import.log 2>&1 || { cat build/import.log; exit 1; }
+
+      - name: The exported server
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: eldmark-linux-server
+          path: artifact
+
+      - name: Unpack and check
+        run: |
+          (cd artifact && sha256sum --check SHA256SUMS)
+          mkdir -p exports/server
+          unzip -q artifact/Eldmark-server.zip -d exports/server
+          chmod +x exports/server/eldmark-server.x86_64 exports/server/run-server.sh
+          diff artifact/BUILD_ID exports/server/BUILD_ID
+
+      - name: Smoke test
+        timeout-minutes: 8
+        run: tools/ci/smoke_server.sh exports/server "$HOME/godot/${GODOT_FILE}" 26200 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: smoke-logs
+          path: build/smoke/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The same seeded scenario (16 fake players with the combat brain in Vado Gris, 3600 ticks) on Linux and on Windows.
+  # The server state log of each is compared by tools/diff_state_logs.gd: how many lines are identical, how many
+  # differ in the last bit only and whether any differs more (networking.md section 14).
+  determinism-run:
+    name: Determinism, ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Godot cache
+        id: godot-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/godot
+          key: godot-${{ matrix.name == 'Windows' && 'win-' || '' }}${{ env.GODOT_VERSION }}-${{ matrix.name == 'Windows' && env.GODOT_WIN_SHA512 || env.GODOT_SHA512 }}
+
+      - name: Download Godot (Linux)
+        if: matrix.name == 'Linux' && steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_FILE}.zip"
+          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
+          chmod +x "$HOME/godot/${GODOT_FILE}"
+
+      - name: Download Godot (Windows)
+        if: matrix.name == 'Windows' && steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_WIN_FILE}.exe.zip"
+          echo "${GODOT_WIN_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          7z x -y -o"$HOME/godot" "$RUNNER_TEMP/godot.zip"
+
+      - name: Godot on the PATH
+        run: |
+          if [ "${{ matrix.name }}" = "Windows" ]; then
+            printf '#!/usr/bin/env bash\nexec "%s/%s_console.exe" "$@"\n' "$HOME/godot" "$GODOT_WIN_FILE" > "$HOME/godot/godot"
+            chmod +x "$HOME/godot/godot"
+            cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
+          else
+            mkdir -p "$HOME/.local/bin"
+            ln -sf "$HOME/godot/${GODOT_FILE}" "$HOME/.local/bin/godot"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Import the project
+        run: |
+          mkdir -p build
+          godot --headless --path . --import > build/import.log 2>&1 || { cat build/import.log; exit 1; }
+
+      - name: Run the scenario
+        timeout-minutes: 15
+        run: |
+          mkdir -p build/det
+          godot --headless --path . -- --server --zone=vado_gris --port=26220 --fake-players=16 --fake-layout=cluster \
+            --fake-brain=combat --quit-after-ticks=3600 --state-log=build/det/state.txt --report=build/det/report.json \
+            2>&1 | tee build/det/server.log | tail -n 5
+          test "$(wc -l < build/det/state.txt)" -ge 3600
+          python3 -I -c "import json; r = json.load(open('build/det/report.json')); print('sim_hash', r['sim_hash'], 'build', r['build'])"
+
+      - name: Upload the state log
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: state-log-${{ matrix.name }}
+          path: |
+            build/det/state.txt
+            build/det/report.json
+          if-no-files-found: error
+          retention-days: 7
+
+  determinism-compare:
+    name: Determinism, Linux against Windows
+    needs: determinism-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Godot cache
+        id: godot-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
+
+      - name: Download Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_FILE}.zip"
+          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
+          chmod +x "$HOME/godot/${GODOT_FILE}"
+
+      - name: Import the project
+        run: |
+          mkdir -p build
+          "$HOME/godot/${GODOT_FILE}" --headless --path . --import > build/import.log 2>&1 || { cat build/import.log; exit 1; }
+
+      - name: Linux log
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: state-log-Linux
+          path: build/linux
+
+      - name: Windows log
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: state-log-Windows
+          path: build/windows
+
+      - name: Compare
+        run: |
+          set +e
+          "$HOME/godot/${GODOT_FILE}" --headless --path . -s res://tools/diff_state_logs.gd -- \
+            build/linux/state.txt build/windows/state.txt | tee build/diff.txt
+          code="${PIPESTATUS[0]}"
+          {
+            echo '### Linux against Windows (same seeded scenario)'
+            echo '```'
+            grep -v '^Godot Engine' build/diff.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+
+      - name: Upload the comparison
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: state-log-diff
+          path: build/diff.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  zone-container:
+    name: Zone in a container
+    needs: export
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Godot cache
+        id: godot-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
+
+      - name: Download Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_FILE}.zip"
+          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
+          chmod +x "$HOME/godot/${GODOT_FILE}"
+
+      - name: Import the project (for the bots)
+        run: |
+          mkdir -p build
+          "$HOME/godot/${GODOT_FILE}" --headless --path . --import > build/import.log 2>&1 || { cat build/import.log; exit 1; }
+
+      - name: The exported server
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: eldmark-linux-server
+          path: artifact
+
+      - name: Unpack
+        run: |
+          (cd artifact && sha256sum --check SHA256SUMS)
+          mkdir -p exports/server
+          unzip -q artifact/Eldmark-server.zip -d exports/server
+          chmod +x exports/server/eldmark-server.x86_64 exports/server/run-server.sh
+
+      - name: Versions
+        run: docker version --format '{{.Server.Version}}' && docker compose version
+
+      - name: Check
+        timeout-minutes: 20
+        run: tools/ci/zone_container_check.sh "$HOME/godot/${GODOT_FILE}" 2>&1 | tee build/zone-container-check.log
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f build/zone-container-check.log ]; then
+            grep -E "^(First session|second session|docker stop|The container|final report|CONTAINER CHECK|FAILED)" build/zone-container-check.log | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zone-container-logs
+          path: |
+            build/zone-container/*.log
+            build/zone-container/*.json
+            build/zone-container-check.log
+          if-no-files-found: ignore
+          retention-days: 7

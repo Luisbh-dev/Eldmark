@@ -3,7 +3,8 @@
 #   cp staging.env.example staging.env        (and fill it in; staging.env does not go into git)
 #   docker compose --env-file staging.env up -d                       database, platform and Caddy
 #   docker compose --env-file staging.env run --rm platform migrate up
-#   docker compose --env-file staging.env --profile zonas up -d       the zones (TEC-20 image)
+#   docker compose --env-file staging.env --profile zonas up -d       the zones (TEC-20 image; build it first
+#                                                                     with tools/export.sh server, see docs/operations.md)
 #   docker compose --env-file staging.env run --rm backup             daily backup (VPS cron)
 #   docker compose --env-file staging.env run --rm restore-check      weekly test restore
 #   docker compose --env-file staging.env run --rm pitr-check         point-in-time recovery test
@@ -90,7 +91,7 @@ services:
       ELDMARK_MIN_PROTOCOL: ${ELDMARK_MIN_PROTOCOL:?ELDMARK_MIN_PROTOCOL (el protocolo mínimo del cliente)}
       ELDMARK_OPEN_REALMS: ${ELDMARK_OPEN_REALMS:-vardheim,solmarch}
       ELDMARK_ENTRY_ZONES: ${ELDMARK_ENTRY_ZONES:-vardheim=vado_gris,solmarch=vado_gris}
-      ELDMARK_MAIL: smtp
+      ELDMARK_MAIL: ${ELDMARK_MAIL:-smtp}
       ELDMARK_MAIL_FROM: ${ELDMARK_MAIL_FROM:?ELDMARK_MAIL_FROM (el remitente de los correos)}
       ELDMARK_DATABASE_URL_FILE: /run/secrets/database_url
       ELDMARK_TICKET_KEYS_FILE: /run/secrets/ticket_keys
@@ -130,11 +131,18 @@ services:
         ipv4_address: ${ELDMARK_CADDY_IP:-172.30.0.2}
     logging: *logging
 
-  # The zones (TEC-20 builds the image: the exported server as ENTRYPOINT, with "--headless --").
-  # The options --platform, --world, --channel and --public-address are from platform.md P4, and
+  # The zones (TEC-20): the image of zone.Dockerfile is the exported server, whose entrypoint turns SIGTERM into
+  # the server's --stop-file (final saves, deregistration, report with closed: true) and whose HEALTHCHECK looks at
+  # how fresh the --report is. The command is what goes after "--headless --" (the entrypoint adds --stop-file and
+  # --report). The options --platform, --world, --channel and --public-address are from platform.md P4, and
   # --dtls-* from P9c. One entry per zone deployment, each with its token.
   zone-vado-gris:
     image: ${ELDMARK_ZONE_IMAGE:-eldmark-zone:local}
+    build:
+      # The root of the repository: zone.Dockerfile.dockerignore lets only exports/server and the entrypoint in
+      # (tools/export.sh server, or the artifact of the export workflow, unzipped there).
+      context: ../..
+      dockerfile: platform/deploy/zone.Dockerfile
     profiles: [zonas]
     restart: unless-stopped
     depends_on:
@@ -159,9 +167,13 @@ services:
       - vado_gris_dtls_key
     ports:
       - "24600:24600/udp"
+    volumes:
+      # Godot's own logs (user://logs) survive the container; journald keeps the standard output.
+      - zone_vado_gris_logs:/home/eldmark/.local/share/godot
     networks:
       - zones
-    stop_grace_period: 30s
+    # Enough for the shutdown notice, the final save of every character and the deregistration.
+    stop_grace_period: 45s
     logging: *logging
 
   # Operations (ops profile; "docker compose run --rm <service>" starts them even if the profile is
@@ -218,6 +230,7 @@ networks:
 
 volumes:
   pgdata: {}
+  zone_vado_gris_logs: {}
   caddy_data: {}
   caddy_config: {}
 
