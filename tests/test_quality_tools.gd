@@ -359,11 +359,12 @@ func test_run_py_takes_a_locale_for_the_clients_only() -> void:
 	if python.is_empty():
 		return
 	var script_dir: String = ProjectSettings.globalize_path(QUALITY_DIR)
-	var code_text: String = "import sys; sys.path.insert(0, r'%s'); import run; p = run.build_parser(); " % script_dir 			+ "print(p.parse_args(['interfaz']).locale, p.parse_args(['interfaz', '--locale', 'pseudo']).locale, " 			+ "p.parse_args(['interfaz', '--locale=en']).locale)"
+	var code_text: String = "import sys; sys.path.insert(0, r'%s'); import run; p = run.build_parser(); " % script_dir \
+			+ "print(p.parse_args(['interfaz']).locale, p.parse_args(['interfaz', '--locale', 'pseudo']).locale, " \
+			+ "p.parse_args(['interfaz', '--locale=en']).locale)"
 	var output: Array = []
 	assert_eq(OS.execute(python, ["-c", code_text], output, true), 0, "run.py's parser loads: %s" % [output])
-	assert_eq("
-".join(output).strip_edges(), "es pseudo en")
+	assert_eq("\n".join(output).strip_edges(), "es pseudo en")
 	var bad: Array = []
 	assert_true(OS.execute(python, ["-c", code_text.replace("'pseudo'", "'klingon'")], bad, true) != 0,
 			"an unknown language is refused")

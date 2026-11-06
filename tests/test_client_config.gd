@@ -388,4 +388,3 @@ func test_locale_forces_the_interface_language_and_boot_does_not_report_it() -> 
 	assert_true(bad.warnings[0].contains("klingon"))
 	var options: Dictionary = BootScript.parse_client_options(PackedStringArray(["--locale=en", "--l10n-strict"]))
 	assert_eq(options["warnings"], PackedStringArray(), "boot lists --locale and --l10n-strict among its arguments")
-

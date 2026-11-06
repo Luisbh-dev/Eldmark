@@ -191,8 +191,7 @@ func test_scanner_detects_forbidden_references() -> void:
 
 
 func test_localization_scanner_detects_what_it_forbids() -> void:
-	var harmless: String = "
-".join([
+	var harmless: String = "\n".join([
 		"var text: String = str(5) + String.num(3.0)",
 		"var strength: int = 4 # tr(\"x\") in a comment",
 		"## L10n and TranslationServer in documentation",
