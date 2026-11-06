@@ -14,8 +14,8 @@ earlier proposal, the integrated one wins and the "Why" column says so.
 It builds on what is merged: the save model, the ledger and the levels of phase 5 ([progression.md](progression.md) §3, §5,
 §6), abilities, effects and `CombatState` v5 ([abilities.md](abilities.md) §2, §3), the damage formula and the first balance
 pass ([combat.md](combat.md) §4.4, §12), the world by zones ([world.md](world.md)) and the platform store
-([platform.md](platform.md) §7). Weapons, abilities and their catalog are in `weapons.md`; NPC ranks, bestiary and AI in
-`npcs.md`; quests in `quests.md` (all written in the same pass). Code paths are relative to the repository root.
+([platform.md](platform.md) §7). Weapons, abilities and their catalog are in [weapons.md](weapons.md); NPC ranks, bestiary and AI in
+[npcs.md](npcs.md); quests in [quests.md](quests.md) (all written in the same pass). Code paths are relative to the repository root.
 
 Clock note: the simulation runs at **60 Hz** and snapshots at 30 Hz ([networking.md](networking.md) §1,
 `physics_ticks_per_second=60`). Durations in this document are seconds in the `.tres` files and become ticks on load with
@@ -45,16 +45,16 @@ design. Decisions that only the user can close are marked "user" in the Why colu
 | I10 | Talent tree | 2 branches × 6 rows × 15 nodes (30 per weapon), a single capstone reachable with 20 points (11 + 9). Row *f* opens with points in the branch `[0, 2, 4, 6, 8, 10]` and level `[1, 1, 8, 14, 20, 25]`. Budget **≤ 8 %** of efficacy per tree | 10 % was asked: with 8 % the normalization closes (§10) |
 | I11 | Abilities per weapon | **5 active** (3 base and 1 opened by each branch, in row 2) **plus up to 2 variants** (`<id>_2`, one per branch, row 4). Carry **3 per weapon**, chosen freely out of combat | Production: 50 actives at launch instead of 70. The other 20 sheets of the weapons proposal stay as data reserve (`ability_pool` admits 15) |
 | I12 | Unlocks by level | Ability slots at levels 1, 3 and 6; 4th and 5th ability (row 2) from 8; specialization and ultimate at 10; rows 3-5 at 14, 20 and 25 (§3) | It is the "abilities unlocked by level" request. Weapon-level 5/15/30 was proposed: the tree rows are used instead |
-| I13 | Curve | Generated: pace `r(L) = 6000·(1 + 0.1·(L − 1))` XP/h and minutes per level `m(L) = 8 + 8.5·√(L − 1)`; `xp_to_next = round10(r·m/60)`; **1 327 340 XP, about 50 h** (§1) | 59 h in four 15-level bands was proposed, and about 40 h by the world design. It is anchored on the content hours of each world band |
+| I13 | Curve | Generated: pace `r(L) = 6000·(1 + 0.1·(L − 1))` XP/h and minutes per level `m(L) = 8 + 8.5·√(L − 1)`; `xp_to_next = round10(r·m/60)`; **1 327 360 XP, about 50 h** (§1) | 59 h in four 15-level bands was proposed, and about 40 h by the world design. It is anchored on the content hours of each world band |
 | I14 | XP sources | Fractions of `r(L)` (per hour): normal NPC 0.006, main quest 0.11, side 0.075, act finale 0.22, trial 0.12, daily 0.06, discovery 0.02, merit 0.0025, capture 0.05, dungeon 0.5. **Gold** in fractions of `g_ref(L)` (§2.6) | The quests proposal used fractions of `xp_to_next(L)`: with minutes per level growing, a 12-minute quest would be worth half an hour of pace at high level. In `r(L)` time is preserved |
 | I15 | At the cap | The overflow XP goes to **veteran XP**: one Veteran Seal (currency 3, per character) per 40 000 XP; horizontal rewards and a few Ember Shards per week | The quests proposal turned quest XP into mastery at 60: dropped (two paths for the same thing). "Ember dust" for equipment is replaced by the Ember Shards of items.md |
 | I16 | Group XP | Each member within 100 m with an action in the last 60 s receives the **whole** XP | Progression, NPC and quest proposals agree |
 | I17 | War ranks | Realm points (PRG-32): 0 / 1 500 / 5 000 / 12 000 / 25 000 / 45 000 / 75 000 / 120 000 / 180 000 / 260 000; horizontal only | — |
 | I18 | What anchors the balance? | The **reference character** is today's numbers: level 60, attributes 75/25 and CON 33 (143 in total), **item level 52** gear in every slot, medium armor. It gives health 1000, damage factor 1.0, stamina 1000, sword 90/90/130 and a TTK of 10.7 s. The weapon `.tres` are at the reference | Items (today's numbers at item level 1 and ×2.77 at 60), weapons (×1.47 at 60) and NPCs (health from 1000 to 3655) anchored today's numbers at level 1. With the anchor at 60, the normalized zones (Vado Gris, Eldrun) play exactly the balance measured in [combat.md](combat.md) §12 and no balance test changes |
-| I19 | Item scale | See [items.md](items.md): item level 1-60 per instance, effective level `NOe = NO + upgrade`, all item stats multiplied by `k(NOe) / k(52)`; equipment score 600 at level 60 and 700 at most | One scale instead of the GS 100 → 500 → 600 of the earlier proposal |
+| I19 | Item scale | See [items.md](items.md): item level 1-60 per instance, effective level `eff_ilvl = ilvl + upgrade`, all item stats multiplied by `k(eff_ilvl) / k(52)`; equipment score 600 at level 60 and 700 at most | One scale instead of the GS 100 → 500 → 600 of the earlier proposal |
 | I20 | Health and mitigation | Base health `600 + round(301·(L − 1)/59)` (615 at level 1 with CON 5; 1000 the reference). Mitigation **relative to the reference**: `final = raw · (1000 + armor_ref) / (1000 + armor)`, with `armor_ref` = medium set at item level 52 (393 physical) | Health scaled by the item level was proposed and rejected: progression decides health |
 | I21 | What may differ per character | Only the **weapons** (LOADOUT), the **ability slots** (`ability_picks`), the **ultimate**, **mana** (magic weapons only) and the **load class**. **Passives, talents, attributes, specialization and affixes touch server values only** (damage, mitigation, healing, effects, controls, block cost). Whatever must change a predicted field (cooldown, timings, displacement, projectiles) is a **catalog variant** | The earlier proposal sent per-character cooldowns in BUILD_STATE with the tick they apply: removed. Fewer prediction divergences |
-| I22 | Normalization | In zones with `ZoneDefinition.normalized = true` (Eldrun, Vado Gris, `test_world`): effective level 60, **total attributes rescaled to 143** keeping proportions, `NOe_eff = clamp(52 + 0.2·(NOe − 50), 52, 54)`, non-attribute affixes and gems at ×0.25 with a **joint cap of 3 %**, PvE affixes at 0, real mastery and talents (≤ 8 %), elixirs and food inactive. Product of caps **1.139 ≤ 1.15**, measured with bots (§10) | The items proposal clamped the item level to [55, 65] and scaled affixes ×0.75: 11 % from gear alone, it did not close |
+| I22 | Normalization | In zones with `ZoneDefinition.normalized = true` (Eldrun, Vado Gris, `test_world`): effective level 60, **total attributes rescaled to 143** keeping proportions, `eff_ilvl = clamp(52 + 0.2·(eff_ilvl − 50), 52, 54)`, non-attribute affixes and gems at ×0.25 with a **joint cap of 3 %**, PvE affixes at 0, real mastery and talents (≤ 8 %), elixirs and food inactive. Product of caps **1.139 ≤ 1.15**, measured with bots (§10) | The items proposal clamped the item level to [55, 65] and scaled affixes ×0.75: 11 % from gear alone, it did not close |
 | I23 | Entry | Vado Gris from **level 10** (normalized skirmish, the "Baptism of fire" of the story); Eldrun from **level 20** (10 h of play), normalized | With everything normalized, entering early only gives up mastery and talents, which are bounded. 20 matches the end of zone 2 |
 | I24 | PvE scale | A player "at their level" (60/20/20 split, own-level gear, medium armor) has offense `O(L)` and effective health `D(L)` relative to the reference (§11). **NPCs of level L have health ∝ O(L) and damage ∝ D(L)**; in normalized zones, the reference (1.0). A normal NPC dies in 8-12 s and kills an undefended player in 25-35 s | NPC design had a provisional health of 1000 to 3655 and a normal that killed in 20-33 s; progression had 35-50 s |
 | I64 | Data format | **Numeric tables** (curve, XP sources, mastery, items, loot, recipes, vendors, affixes and, from T2, the bestiary figures) are written in **CSV** and a deterministic generator writes the `.tres` with a "generated" header, with a test that requires the repo to be its output. **Structured content** (weapons and abilities, trees, specializations, quests, dialogues, bosses, `ZoneLayout`) are typed `.tres` written by hand or scaffolded, with a validator and a round-trip CSV export for balancing | Each side is right in its field: weapons wanted the `.tres` as the single source, items the CSV. Closes "In what format are design data created and balanced?" |
@@ -70,15 +70,15 @@ The generator (the data is the table; the formula only fills it in, as in [progr
 - **Reference pace** `r(L) = 6000 · (1 + 0.1 · (L − 1))` XP/h: what a typical player of level L earns in an hour (mix of quests,
   camps, events and war). 6000 at level 1, 41 400 at level 60.
 - **Minutes per level** `m(L) = 8 + 8.5 · √(L − 1)`: 8 min from 1 to 2, 72.7 min from 59 to 60.
-- `xp_to_next(L) = round10(r(L) · m(L) / 60)`, rounding to the nearest ten.
+- `xp_to_next(L) = round10(r(L) · m(L) / 60)`, rounding to the nearest ten with ties going up (`floor(x / 10 + 0.5) · 10`; `r · m / 60` is exactly 6365.0 at level 10 and 39825.0 at level 50, so the tie rule decides those two values: 6370 and 39830). GDScript's `round()` and the spreadsheet implement the same rule; Python's `round()` rounds ties to even and must not be used in the generator's reference model.
 
 | Band | Zone | Hours | Cumulative | XP of the band | Content that fills it |
 |---|---|---|---|---|---|
 | 1-10 | Z1 (Hondal) | 3.5 h | 3.5 h | 31 080 | Act I: 13 main quests, 15 side quests, lore, board, Raid |
-| 10-20 | Z2 (Skarven) | 6.5 h | 10.0 h | 92 730 | Zone 2 3-4 h, D1, Vado Gris, commissions |
+| 10-20 | Z2 (Skarven) | 6.5 h | 10.0 h | 92 740 | Zone 2 3-4 h, D1, Vado Gris, commissions |
 | 20-32 | Z3 (Grimfell) | 10.0 h | 20.0 h | 208 090 | Zone 3 5-6 h, D2, Eldrun |
 | 32-45 | Z4 (Hrimvald) | 12.9 h | 32.9 h | 365 650 | Zone 4 5-6 h, D3, D4, Eldrun |
-| 45-60 | Frontier (Marca del Lobo) | 17.2 h | **50.1 h** | 629 790 | Frontier 5 h, D5, D6, Eldrun, repeatables |
+| 45-60 | Frontier (Wolf March) | 17.2 h | **50.1 h** | 629 800 | Frontier 5 h, D5, D6, Eldrun, repeatables |
 
 Milestones: specialization and Vado Gris at 3.5 h; Eldrun (level 20) at 10 h; capstones (level 25) at 13.9 h; level 60 at about
 50 h. The world design estimated 22-25 h of open world: the rest is filled by dungeons, Eldrun and repeatables, which is what a game
@@ -94,34 +94,34 @@ from real play).
 | 3 | 2 400 | 2 620 | 20.0 |
 | 5 | 3 500 | 7 970 | 25.0 |
 | 9 | 5 770 | 25 310 | 32.0 |
-| 10 | 6 360 | 31 080 | 33.5 |
-| 15 | 9 550 | 69 150 | 39.8 |
-| 20 | 13 060 | 123 810 | 45.1 |
-| 25 | 16 880 | 196 640 | 49.6 |
-| 30 | 20 970 | 289 110 | 53.8 |
-| 32 | 22 680 | 331 900 | 55.3 |
-| 40 | 29 930 | 538 320 | 61.1 |
-| 45 | 34 770 | 697 550 | 64.4 |
-| 50 | 39 820 | 881 420 | 67.5 |
-| 55 | 45 100 | 1 090 990 | 70.5 |
-| 59 | 49 460 | 1 277 880 | 72.7 |
-| **60** | — | **1 327 340** | — |
+| 10 | 6 370 | 31 080 | 33.5 |
+| 15 | 9 550 | 69 160 | 39.8 |
+| 20 | 13 060 | 123 820 | 45.1 |
+| 25 | 16 880 | 196 650 | 49.6 |
+| 30 | 20 970 | 289 120 | 53.8 |
+| 32 | 22 680 | 331 910 | 55.3 |
+| 40 | 29 930 | 538 330 | 61.1 |
+| 45 | 34 770 | 697 560 | 64.4 |
+| 50 | 39 830 | 881 430 | 67.5 |
+| 55 | 45 100 | 1 091 010 | 70.5 |
+| 59 | 49 460 | 1 277 900 | 72.7 |
+| **60** | — | **1 327 360** | — |
 
-The 59 values, in full: 800, 1820, 2400, 2950, 3500, 4050, 4610, 5180, 5770, 6360, 6980, 7600, 8240, 8890, 9550, 10230, 10920,
+The 59 values, in full: 800, 1820, 2400, 2950, 3500, 4050, 4610, 5180, 5770, 6370, 6980, 7600, 8240, 8890, 9550, 10230, 10920,
 11620, 12340, 13060, 13800, 14560, 15320, 16090, 16880, 17680, 18480, 19300, 20130, 20970, 21820, 22680, 23550, 24440, 25330,
-26230, 27140, 28060, 28990, 29930, 30880, 31840, 32800, 33780, 34770, 35760, 36760, 37780, 38800, 39820, 40860, 41910, 42960,
-44020, 45100, 46170, 47260, 48360, 49460. Total up to 60: **1 327 340**.
+26230, 27140, 28060, 28990, 29930, 30880, 31840, 32800, 33780, 34770, 35760, 36760, 37780, 38800, 39830, 40860, 41910, 42960,
+44020, 45100, 46170, 47260, 48360, 49460. Total up to 60: **1 327 360**.
 
-- It fits a `PackedInt32Array` and the `u32` of PROGRESS_UPDATE ([progression.md](progression.md) §12); `total_to(60)` = 1 327 340.
+- It fits a `PackedInt32Array` and the `u32` of PROGRESS_UPDATE ([progression.md](progression.md) §12); `total_to(60)` = 1 327 360.
 - **Generated, not typed**: `tools/progression/build_tables.gd` reads `data/progression/src/levels.csv` (level, pace, minutes,
   manual adjustment, `g_ref`, `O`, `D`, §11) and writes `level_curve.tres`, `level_rewards.tres`, `xp_sources.tres`,
   `mastery_curve.tres` and `pve_scale.tres`. Deterministic; `tests/test_progression_tables.gd` checks that the repo files are the
   tool's output (as the Vado Gris terrain is), so balancing is editing a spreadsheet (I64).
 - **Migration from the cap 40** (migration 0011, §13): `character_progress.level` becomes `check (level between 1 and 60)` and the
   same migration **recomputes `level` from `xp_total`** with the new curve (a CTE of thresholds generated by `build_tables.gd`).
-  Levels move in both directions (an old level 10, 25 060 XP, becomes 8; an old 40, 783 780 XP, becomes 47). They are phase 5
+  Levels move in both directions (an old level 10, 19 510 XP, becomes 7; an old 40, 783 780 XP, becomes 47). They are phase 5
   test data, which [progression.md](progression.md) §5.1 already allows wiping; the level is recomputed anyway so that invariant
-  I8 holds.
+  INV-8 holds.
 
 ---
 
@@ -149,7 +149,7 @@ Everything is expressed through `r(L)`, so the pace of every source survives a c
 
 ### 2.2 NPC rank multipliers
 
-The eight ranks of `npcs.md` (I53); health ×0.4/1/2/6/10/25/45/120, XP and mastery as below. Mastery follows the XP proportion
+The eight ranks of [npcs.md](npcs.md) (I53); health ×0.4/1/2/6/10/25/45/120, XP and mastery as below. Mastery follows the XP proportion
 (10 per normal, §6).
 
 | Rank | XP × | Mastery XP | Normal-NPC XP at L1 | at L30 | at L60 |
@@ -168,7 +168,7 @@ The minion's 2.5 mastery rounds up to 3.
 ### 2.3 Level difference (`NPC level − player level`)
 
 Applies to NPC XP and to mastery XP. In combat the PvE damage adjustment is separate (±4 % per level beyond ±2, capped at ±40 %,
-[combat.md](combat.md) / `npcs.md`).
+[combat.md](combat.md) / [npcs.md](npcs.md)).
 
 | ≤ −8 (gray) | −7…−5 | −4…−3 | −2…−1 | 0 | +1…+2 | +3…+4 | ≥ +5 |
 |---|---|---|---|---|---|---|---|
@@ -196,7 +196,7 @@ hours of a band differ more than ±10 % from §1.1. It runs also with the real s
 | 20-45 | 25-30 % | 30 % | 15 % | 15 % | 10 % | 5 % |
 | 45-60 | 15 % | 30 % | 15 % | 15 % | 25 % | — |
 
-Check with Hondal (the 29 quests of `quests.md`, in order, with the kills they ask for × 1.3 and 12 places discovered):
+Check with Hondal (the 29 quests of [quests.md](quests.md), in order, with the kills they ask for × 1.3 and 12 places discovered):
 
 | Milestone | Level |
 |---|---|
@@ -227,7 +227,7 @@ from war (25 %), kills (30 %), repeatables (15 %) and dungeons and events (15 %)
 
 ### 2.6 Quest rewards (`data/progression/quest_rewards.tres`, owned here)
 
-`quests.md` names the **kind** of a quest and this table gives its reward; a quest never carries a raw number of XP or gold. XP
+[quests.md](quests.md) names the **kind** of a quest and this table gives its reward; a quest never carries a raw number of XP or gold. XP
 is a fraction of `r(L_quest)` and gold a fraction of `g_ref(L_quest)` (gold per hour of the reference player, defined in
 [items.md](items.md) §15; 138 g/h in 1-10 up to 1 152 in 51-60, interpolated linearly between band midpoints). Merits are fixed.
 
@@ -237,18 +237,18 @@ is a fraction of `r(L_quest)` and gold a fraction of `g_ref(L_quest)` (gold per 
 | Side quest | 0.075 | 0.05 | — | |
 | Act finale | 0.22 | 0.16 | — | |
 | Role trial | 0.12 | 0.08 | — | |
-| Daily PvE commission | 0.06 | 0.04 | — | 6 per day, each with the whole reward (`quests.md`) |
+| Daily PvE commission | 0.06 | 0.04 | — | 6 per day, each with the whole reward ([quests.md](quests.md)) |
 | War commission | 0.05 | — | 50 | War merits do not raise realm points; ≤ 1 000 merits/week from quests |
 | Call to arms | 0.05 | — | 40 | |
 | Weekly order | 0.35 | 0.25 | +300 for war orders | |
 | Bounty | 0.08 | 0.06 | — | |
-| World event, bronze | 0.05 | 0.04 | — | Event reward tiers by participation |
-| World event, silver | 0.08 | 0.06 | — | |
-| World event, gold | 0.12 | 0.10 | — | |
+| World event, bronze | 0.05 | 0.04 | 20 in Eldrun | Event reward tiers by participation |
+| World event, silver | 0.08 | 0.06 | 30 in Eldrun | |
+| World event, gold | 0.12 | 0.10 | 50 in Eldrun | |
 
 Examples (XP): main quest 1 254 at level 10, 2 574 at 30, 4 554 at 60; weekly order 3 990 at level 10 and 14 490 at 60; gold
 event 1 368 / 2 808 / 4 968. Gold examples with `g_ref(10) ≈ 195`, `g_ref(30) ≈ 546`, `g_ref(60) = 1 152`: main quest 16 / 44 / 92,
-side quest 10 / 27 / 58, weekly order 49 / 137 / 288. Hondal (29 quests) pays about **320 gold** of quests and ~100 of kills in
+side quest 10 / 27 / 58, weekly order 49 / 137 / 288. Hondal (29 quests) pays about **310 gold** of quests and ~100 of kills in
 ~4.5 h, against 807 that a reward of `10 + 4L` per main quest would have given: 4 times what the economy foresees.
 
 The quest proposal gave XP as fractions of `xp_to_next(L)`; with fractions of `r(L)` a quest is worth the same amount of
@@ -416,12 +416,14 @@ normalized zones every row reads level 60):
 - **Variants** replace the base ability on the bar if you have the node; the bar holds the variant id (`ability_picks` indexes the
   `ability_pool`, which has up to 15 entries).
 - **Resetting a family's tree:** free with mastery < 5 or level < 15; otherwise `4 · L + 10 · mastery` gold (440 at level 60 and
-  mastery 20). Out of combat. `RESPEC` with `ref_kind` 8 (talents) and `ref_id` = the family's fingerprint.
+  mastery 20). Out of combat and **in a capital, at the Master of the Orders** (the same service as the specialization,
+  `OPEN_SPECIALIZATION`; the server checks the distance to the NPC in `RESET_TALENTS`). Changing the talents of a tree you keep is
+  free anywhere out of combat; only the reset (refunding the points) goes through the Master. `RESPEC` with `ref_kind` 8 (talents) and `ref_id` = the family's fingerprint.
 - **Budget:** a complete tree (20 optimal points) cannot raise efficacy (§10) more than **8 %** against no node. Caps per node in §7.3.
 
 ### 7.2 The two trees that close PRG-19
 
-The abilities are those of `weapons.md`: sword and shield has the base Shield Bash (`shield_bash`), Shield Rush (`shield_rush`) and
+The abilities are those of [weapons.md](weapons.md): sword and shield has the base Shield Bash (`shield_bash`), Shield Rush (`shield_rush`) and
 Shield Wall (`shield_wall`) and the branch abilities **Challenge** (`sword_challenge`: 360° and 8 m, taunts the NPCs it touches for
 4 s, `fortified` 15 % on yourself for 4 s, cooldown 20 s) and **Rending Thrust** (`sword_rending_thrust`: 3.0 m, 40°, 110
 piercing and `vulnerable` +10 % for 6 s, cooldown 12 s); the bow has Volley (`bow_volley`), Slowing Arrow (`bow_slowing_shot`) and
@@ -445,12 +447,12 @@ through up to 3 enemies, cooldown 16 s) and **Poison Arrow** (`bow_poison_arrow`
 | 3 | M Shield Wall | Cost per blocked point 0.6 → 0.51 and the box +0.4 m wide |
 | 3 | P Reprisal | Blocking a melee hit returns 30 blunt damage to the attacker (ICD 6 s) |
 | 3 | P Firm Footing | While blocking, the knockback you take is halved |
-| 4 | **V Charging Rush** (`shield_rush_2`) | Rush distance +25 % (a predicted field: a variant) |
+| 4 | **V Quick Bash** (`shield_bash_2`) | Shield Bash cooldown 12 → 10 s (a predicted field: a variant) |
 | 4 | P Bastion | +6 % mitigation with health above 50 % |
 | 4 | M Challenge | Taunt 4 → 6 s |
 | 5 | **Capstone: Unbreakable** | If a hit leaves you under 30 %, `fortified` 25 % for 4 s (ICD 45 s) |
 
-**Sword and shield · Edge branch (attack and bleeding)**
+**Sword and shield · Steel branch (attack and bleeding)**
 
 | Row | Node | Effect |
 |---|---|---|
@@ -467,7 +469,7 @@ through up to 3 enemies, cooldown 16 s) and **Poison Arrow** (`bow_poison_arrow`
 | 3 | P Finisher | +8 % damage to enemies under 30 % |
 | 4 | M Heavy | A fully charged heavy attack applies 2 stacks of `bleed` |
 | 4 | P Ruthless | +2 % damage per stack of `bleed` on the target (max +6 %) |
-| 4 | M Rending Thrust | Damage 110 → 130 |
+| 4 | **V Quick Thrust** (`sword_rending_thrust_2`) | Rending Thrust cooldown 12 → 10 s (a predicted field: a variant) |
 | 5 | **Capstone: Thirst for Steel** | Knocking down or killing an enemy gives +12 % damage for 6 s (ICD 20 s) |
 
 **Bow · Marksman branch (precision and distance)**
@@ -505,7 +507,7 @@ through up to 3 enemies, cooldown 16 s) and **Poison Arrow** (`bow_poison_arrow`
 | 3 | M Volley | The arrows apply `poisoned` for 2 s |
 | 3 | P Hit and Run | +6 % damage within 8 m |
 | 3 | P Venom Rush | Downing or killing a poisoned enemy gives +8 % damage for 4 s (ICD 8 s) |
-| 4 | **V Long Evasive Shot** (`bow_evasive_shot_2`) | The backward hop 4 → 5.5 m (a predicted field: a variant) |
+| 4 | M Evasive Shot | Damage 75 → 90 (the bow has no catalog variant: its upgrades are server fields) |
 | 4 | P Harrying | +2 % damage per distinct negative effect on the target (max +6 %) |
 | 4 | M Poison Arrow | The poison pulse damage +25 % |
 | 5 | **Capstone: Plague** | When a poisoned enemy dies, the poison jumps to up to 3 enemies within 5 m (ICD 20 s) |
@@ -541,7 +543,7 @@ Shared by talents, specialization ranks and attribute thresholds.
 
 ### 8.1 Rules
 
-- **Chosen from level 10** in a capital, with the **Master of the Orders** (one per capital; `npcs.md`). The quest "The Squire's
+- **Chosen from level 10** in a capital, with the **Master of the Orders** (one per capital; [npcs.md](npcs.md)). The quest "The Squire's
   Choice" (MUN-68) takes the player to the **mentor** of the specialization they want (one mentor per specialization), who gives the
   role trial and the flavor. The first choice is **free** (I05).
 - **Changing it:** only in a capital, out of combat, for `8·L + 20` gold (100 at level 10, 500 at level 60), no cooldown. Ledger
@@ -560,14 +562,14 @@ Shared by talents, specialization ranks and attribute thresholds.
 
 Tags (`WeaponDefinition.tags`): sword and shield `melee, one_handed, shield`; bow `ranged`; hatchet `melee, one_handed, thrown`; life
 staff `magic, staff, healing`; fire staff `magic, staff, elemental`; crossbow `ranged`; frost gauntlet `magic, elemental`; war hammer
-`melee, two_handed`; greatsword `melee, two_handed`; spear `melee, two_handed, polearm`; twin daggers `melee, one_handed`; great axe
+`melee, two_handed`; greatsword `melee, two_handed`; spear `melee, two_handed, polearm`; twin daggers `melee, one_handed, skirmish`; great axe
 `melee, two_handed`.
 
 | Specialization (msgid) | Fantasy | Favored tags | Favored weapons at launch | First vertical slice | Suggested split (str/dex/int/foc/con) | Ultimate |
 |---|---|---|---|---|---|---|
 | **Vanguard** | The first row of the realm: holds the line and protects its own | `shield`, `polearm` | Sword and shield, spear | Sword and shield | 30 / 10 / 5 / 5 / 50 | Bulwark Banner |
 | **Linebreaker** | Charges that break formations and gates | `two_handed`, `thrown` | War hammer, greatsword, spear, hatchet | Hatchet | 50 / 10 / 5 / 5 / 30 | Ram's Charge |
-| **Hunter** | Harries from the ridge and punishes whoever strays | `ranged`, `thrown` | Bow, crossbow, hatchet | Bow, hatchet | 30 / 50 / 5 / 5 / 10 | Hail of Shafts |
+| **Hunter** | Harries from the ridge and punishes whoever strays | `ranged`, `thrown`, `skirmish` | Bow, crossbow, hatchet (twin daggers after launch) | Bow, hatchet | 30 / 50 / 5 / 5 / 10 | Hail of Shafts |
 | **Healer** | Whoever heals decides who holds the siege | `healing`, `shield` | Life staff, sword and shield | Life staff, sword and shield | 5 / 5 / 10 / 50 / 30 | Prayer of the Flame |
 | **Arcanist** | Masters the Embers of Eld: fire that denies zones | `elemental`, `staff` | Fire staff, frost gauntlet, life staff | — (arrives with the fire staff, right after the slice) | 5 / 5 / 50 / 30 / 10 | Ember Nova |
 | *Sapper* (phase 7) | Opens breaches and sustains the siege machines | `two_handed`, `siege` | War hammer, greatsword | — | 50 / 10 / 5 / 5 / 30 | Breach Charge |
@@ -617,7 +619,7 @@ Baluarte, Carga del Ariete, Lluvia de Saetas, Plegaria de la Llama, Nova de Bras
 | Specialization (first time) | 0 | Always | — |
 | Specialization (change) | `8·L + 20` gold | Never | `RESPEC` 69 · 9 |
 | Attributes | `5·L` gold | Level ≤ 19 | `RESPEC` 69 · 7 |
-| A family's talent tree | `4·L + 10·mastery` gold | Mastery < 5 or level < 15 | `RESPEC` 69 · 8 |
+| A family's talent tree (reset, at the Master of the Orders) | `4·L + 10·mastery` gold | Mastery < 5 or level < 15 | `RESPEC` 69 · 8 |
 | Ability picks | 0 | Always (out of combat) | — |
 
 Against the reference income (`g_ref`, [items.md](items.md) §15): a specialization change is 31 min at level 10 and 26 min at level 60;
@@ -641,9 +643,9 @@ economy asks for.
 
 ### 9.2 Equipment (contract with [items.md](items.md))
 
-- Equipment score (PE) is 10 × the weighted mean of the effective item level: **600** at level 60 with no upgrades and **700** at most
+- Equipment score (ES) is 10 × the weighted mean of the effective item level: **600** at level 60 with no upgrades and **700** at most
   (upgrades +1…+10, [items.md](items.md) §11). It replaces the GS 100 → 500 → 600 of the first proposal.
-- The factor of damage or armor of the equipment is `k(NOe) / k(52)` (1.0 at the reference, 1.10 at item level 60, 1.21 at NOe 70).
+- The factor of damage or armor of the equipment is `k(eff_ilvl) / k(52)` (1.0 at the reference, 1.10 at item level 60, 1.21 at eff_ilvl 70).
   Items decide the curve; the only condition from here is §10.
 
 ### 9.3 Mastery and war ranks (PRG-32)
@@ -682,7 +684,7 @@ In a zone with `ZoneDefinition.normalized = true` (world design, MUN-13): Eldrun
 |---|---|---|
 | Level (base health, slots, rows, ranks) | Effective level 60, rank V | 0 % |
 | Attributes (spent and from affixes) | The **total** (base + spent + affixes) is **rescaled to 143** keeping proportions (largest remainders, deterministic); free points are placed first with the `suggested_attributes` of the specialization, or the weapon's reference split if none | 0 % of power (a worse split costs up to 6 %) |
-| Base of the equipment | Each slot counts as `NOe_eff = clamp(52 + 0.2·(NOe − 50), 52, 54)`; an empty slot is a common piece of NOe 52 | `k(54)/k(52)` = **1.024** |
+| Base of the equipment | Each slot counts as `eff_ilvl = clamp(52 + 0.2·(eff_ilvl − 50), 52, 54)`; an empty slot is a common piece of eff_ilvl 52 | `k(54)/k(52)` = **1.024** |
 | Non-attribute affixes and gems | ×0.25 with a **joint cap of 3 % efficacy**; PvE affixes at 0 | **1.03** |
 | Mastery and talents | Real (not touched; budget of §7.1) | **1.08** |
 | Consumables | Only the fixed potions: elixirs, food and oils do nothing | 0 % |
@@ -707,7 +709,7 @@ If the measure with bots goes above 1.15, the following are cut, **in this order
 
 ## 11. The PvE scale contract (I24)
 
-This is the table `npcs.md` consumes (`data/progression/pve_scale.tres`, generated from `levels.csv`). A player "at their level"
+This is the table [npcs.md](npcs.md) consumes (`data/progression/pve_scale.tres`, generated from `levels.csv`). A player "at their level"
 (60/20/20 split of the points, common gear of the item level of their level, medium armor) has, against the reference:
 
 | Level | O(L) offense | D(L) effective health | Health | Average armor | Health of a normal NPC |
@@ -721,11 +723,11 @@ This is the table `npcs.md` consumes (`data/progression/pve_scale.tres`, generat
 | 60 | 1.10 | 1.01 | 987 | 430 | 1 103 |
 
 - `O(L) = factor_atr(60/20/20) · k(L) / k(52)`; `D(L) = (health(L)/1000) · (1000 + armor_ref) / (1000 + armor(L))`.
-- **NPCs of level L:** health ∝ `1000 · O(L)` (times the rank multiplier of `npcs.md`) and damage ∝ `D(L)`. The contract that is checked
+- **NPCs of level L:** health ∝ `1000 · O(L)` (times the rank multiplier of [npcs.md](npcs.md)) and damage ∝ `D(L)`. The contract that is checked
   is the **time to kill**: the player's DPS is `O(L) × DPS`, so a normal NPC falls in the same time at any level: 10.8 s with the DPS
   of the bots (93), 8.3 s with a real player (~120) and 6.4 s with the ideal combo (156), inside the 8-12 s of I24. An elite falls in 25-40 s, and a normal kills an
   undefended player in 25-35 s. `tools/combat_balance.gd` measures one NPC per band.
-- The hit of an NPC is always the same share of the player's health, the envelopes of `npcs.md` (a normal's light hit 5-7 %).
+- The hit of an NPC is always the same share of the player's health, the envelopes of [npcs.md](npcs.md) (a normal's light hit 5-7 %).
 - **In normalized zones the NPCs use the reference (1.0):** the five of Vado Gris do not change.
 - **Load classes against the reference** ([items.md](items.md) §3): light ×1.18, heavy ×0.86 damage taken.
 
@@ -784,7 +786,7 @@ class_name MasteryCurve extends Resource          # data/progression/mastery_cur
 
 class_name TalentTree extends Resource            # data/progression/talents/<family>.tres (by hand or scaffold, validated)
 @export var family: StringName
-@export var branch_names: PackedStringArray        # 2 English msgids ("Bulwark", "Edge")
+@export var branch_names: PackedStringArray        # 2 English msgids ("Bulwark", "Steel")
 @export var nodes: Array[TalentNode]               # 30; the order is frozen: it is the wire bit
 
 class_name TalentNode extends Resource            # sub-resource of the same .tres
@@ -834,8 +836,8 @@ class_name SpecializationDefinition extends Resource   # data/progression/specia
 
 class_name NormalizationRules extends Resource    # data/progression/normalization.tres
 @export var effective_level: int = 60; @export var attribute_total: int = 143
-@export var noe_pivot: int = 50; @export var noe_floor: int = 52; @export var noe_cap: int = 54
-@export var noe_compression: float = 0.2
+@export var ilvl_pivot: int = 50; @export var ilvl_floor: int = 52; @export var ilvl_cap: int = 54
+@export var ilvl_compression: float = 0.2
 @export var affix_scale: float = 0.25; @export var affix_cap: float = 0.03
 @export var efficacy_cap: float = 1.15
 
@@ -859,7 +861,7 @@ Changes to existing resources:
   specialization as it does one that belongs to a single weapon ([abilities.md](abilities.md) §2.2).
 - `StatusEffectDefinition.Kind`: the new server-only kinds of CMB-46 (`FORTIFY`, `VULNERABLE`, `WEAKEN`, `HEALING_DOWN`, `LIFESTEAL`,
   `UNSTOPPABLE`).
-- `NpcDefinition`: `rank` (8 ranks), level and role (`npcs.md`); `xp_reward` and `gold_reward` stay as a fixed value if > 0.
+- `NpcDefinition`: `rank` (8 ranks), level and role ([npcs.md](npcs.md)); `xp_reward` and `gold_reward` stay as a fixed value if > 0.
 - `ZoneDefinition`: `normalized` and `min_level` (world design, MUN-13).
 
 ### 12.2 Tools and validators (PRG-51, PRG-52)
@@ -875,7 +877,7 @@ Changes to existing resources:
   60; trees with the shape of §7.1, unique ids, parents in the same branch and in an earlier row, A nodes that open abilities of their
   family, M only with server fields, V only where a predicted field changes, no cooldown node, the caps of §7.3, and that every capstone
   is reachable with 20 points (11 + 9); specializations with 5 ranks at `spec_rank_levels`, an ultimate with cooldown ≥ 120 s and cap
-  ≤ 10, ≥ 40 % of general value, a favored weapon for every weapon, and `available` consistent with the catalog; normalization with
+  ≤ 10 targets, its areas exempt from the weapon area caps of [weapons.md](weapons.md) §3.8 and V9 (radius ≤ 10 m, ≤ 10 targets per pulse), ≥ 40 % of general value, a favored weapon for every weapon, and `available` consistent with the catalog; normalization with
   the static budget E ≤ 1.15.
 - `tools/combat_balance.gd` gains `--sheet=<veteran|newcomer|reference>` and the measure of E (§10.1).
 - **Texts:** English in the `.tres` and the translation in `es.po`, with the contexts `talent`, `talent_desc`, `specialization`,
@@ -907,18 +909,19 @@ ability, and the picks only choose which ability is in which slot.
 
 ### 13.2 Invariants
 
-The numbering continues that of [progression.md](progression.md) §3.2 (they are **invariants** I8 and I14-I19, not the integrated
-decisions I14-I19 of §0).
+They continue the invariants of [progression.md](progression.md) §3.2, which are numbered I8 to I13 there. To keep them apart from the
+integrated decisions I01-I68 of §0 (which also reach I14-I19), this document writes the new ones **INV-14 to INV-19** and the changed
+one INV-8.
 
 | # | Invariant |
 |---|---|
-| I8 (changes) | `level = level_for(xp_total)`, **between 1 and 60** |
-| I14 | Each spent attribute ≥ 0 and Σ ≤ `2 · (level − 1)` |
-| I15 | Mastery XP ≥ 0 and ≤ the total of the curve; derived level; it only goes down with a GM or REVERSAL |
-| I16 | Nodes of a tree that exists, without repeats, ≤ the mastery level, each with its row open by points of its branch and by level, and with its parent |
-| I17 | Chosen abilities: ≤ 3, distinct, from the family's pool and open (base, or with their A or V node) |
-| I18 | Specialization null, or `level ≥ 10` and `available` |
-| I19 | `veteran_xp > 0` only at the cap |
+| INV-8 (changes I8 of progression.md) | `level = level_for(xp_total)`, **between 1 and 60** |
+| INV-14 | Each spent attribute ≥ 0 and Σ ≤ `2 · (level − 1)` |
+| INV-15 | Mastery XP ≥ 0 and ≤ the total of the curve; derived level; it only goes down with a GM or REVERSAL |
+| INV-16 | Nodes of a tree that exists, without repeats, ≤ the mastery level, each with its row open by points of its branch and by level, and with its parent |
+| INV-17 | Chosen abilities: ≤ 3, distinct, from the family's pool and open (base, or with their A or V node) |
+| INV-18 | Specialization null, or `level ≥ 10` and `available` |
+| INV-19 | `veteran_xp > 0` only at the cap |
 
 ### 13.3 Database (migration 0011, [platform.md](platform.md) §20)
 
@@ -930,7 +933,7 @@ currency 3 in `character_wallets`; and creates `character_masteries`, `character
 
 ### 13.4 Go checks
 
-**S9** (invariant I14), **S10** (I15-I17, with the exported trees) and **S11** (I18-I19), with the same cases generated by
+**S9** (invariant INV-14), **S10** (INV-15 to INV-17, with the exported trees) and **S11** (INV-18 and INV-19), with the same cases generated by
 `write_fixtures.gd` that the zone reads ([progression.md](progression.md) §13.3). S6 uses the 60-level curve; S2 admits the new reasons
 per operation kind (RESPEC 69 in PLAYER operations, VETERAN_SEAL 18 in GAMEPLAY; the full registry is in
 [progression.md](progression.md) §5.3). The exported rules ([progression.md](progression.md) §13.4) gain `level_curve` of 59 values,
@@ -954,7 +957,7 @@ this section only defines the bytes of the messages of the build.
 | PLAYER ENTITY_SPAWN | +1 B: specialization (0 toward another realm) |
 | ENTITY_EVENT `17 SPEC_CHANGED` | `u8`, only to the own realm |
 | `PlayerInput` | Button 13 `ULTIMATE`; `VALID_BUTTONS = (1 << 14) − 1` |
-| `CombatState` v6 | ≤ +13 B (`PlayerState` 111 → 124 B): `ability_picks` 3 B, `ultimate_ready` u32, `mana` u16 and `mana_regen_tick` u32, `load_class` in 2 bits of `combat_flags2`. The id of the ultimate travels in LOADOUT v2. **50 records** still fit in a snapshot |
+| `CombatState` v6 | ≤ +13 B (`PlayerState` 111 → 124 B): `ability_picks` 3 B, `ultimate_ready` u32, `mana` u16 and `mana_regen_tick` u32, `load_class` in bits 10-11 of the `mana` u16 ([abilities.md](abilities.md) §3.1). The id of the ultimate travels in LOADOUT v2. **50 records** still fit in a snapshot |
 | `sim_hash` | The trees and specializations enter (their network ids travel in the masks) |
 
 The picks, mana and load class are configuration applied out of combat and imposed at the end of the tick like `set_weapons`
@@ -983,7 +986,7 @@ The picks, mana and load class are configuration applied out of combat and impos
 | Domain | What advancement needs | What it gives |
 |---|---|---|
 | **Weapons** (CMB) | The 2 branch abilities per weapon with their `.tres`; `family`, `tags` and attributes of each weapon; trees of the later weapons with the shape of §7.1; ground areas and pulses on allies (CMB-47, CMB-49) for three ultimates; mana and picks in `CombatState` (CMB-45, CMB-48) | Shape and validator of the trees, `ActionModifier`, the closed passive set, slot F |
-| **Items** ([items.md](items.md)) | The item level scale and PE; affixes that scale with the item level of the piece; conditional equipment effects inside the 3 % cap; food without effect in normalized zones; cheap practice weapons of each family in the capital | The reference and the ceiling of war, respec costs (gold, `RESPEC`), `g_ref` consumers |
+| **Items** ([items.md](items.md)) | The item level scale and ES; affixes that scale with the item level of the piece; conditional equipment effects inside the 3 % cap; food without effect in normalized zones; cheap practice weapons of each family in the capital | The reference and the ceiling of war, respec costs (gold, `RESPEC`), `g_ref` consumers |
 | **Economy** | `g_ref(L)` ([items.md](items.md) §15): the costs of §8.5 are meant to be ~10-30 min of income and are re-tuned with it | New `RESPEC` sinks |
 | **NPCs** | `NpcDefinition.rank`, level from the zone, the scale of §11, the Master of the Orders and mentors in each capital, dummies in the capital to try ultimates, healing credit | XP and mastery tables by rank and difference, the O/D table |
 | **Quests** | ≈ 150 unique quests per realm (§2.5), the quest "The Squire's Choice" at level 10, a `quest_completed` event with its level and kind | The reward table of §2.6 |

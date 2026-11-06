@@ -410,7 +410,7 @@ rejects the record.
 | 1 EQUIPMENT | Phase 5: 7 (0 WEAPON_1, 1 WEAPON_2; 2 HEAD, 3 CHEST, 4 HANDS, 5 LEGS, 6 FEET reserved). **Phases 6-8: 11** (adds 7 AMULET, 8 and 9 RING, 10 EARRING; 11 TABARD reserved) | One definition of its `EquipSlot` per slot; in phase 5 slots 2–6 give CANNOT_EQUIP ([items.md](items.md) §2) |
 | 2 BANK | 40 base, +10 per purchase up to 120 | Phase 6+; reserved ([items.md](items.md) §14) |
 | 3 LOOT_SATCHEL | 24 | Phase 6+: loot that did not fit in the bag; items are taken out with MOVE and nothing can be put in ([items.md](items.md) §8.4). Does not grow |
-| 4 QUEST | 30 (provisional) | Phase 6+: quest objects; they cannot be sold, traded or destroyed except by their quest (`quests.md`). Does not grow |
+| 4 QUEST | 30 (provisional) | Phase 6+: quest objects; they cannot be sold, traded or destroyed except by their quest ([quests.md](quests.md)). Does not grow |
 
 The worn equipment **is** the EQUIPMENT container. After each confirmed change to slots 0 or 1, the
 zone imposes the weapons on the `CombatState`:
@@ -660,7 +660,7 @@ The same codes serve for item events. Operation kinds (`economy_ops.kind`,
 
 | Code | Reason | Defined by | Code | Reason | Defined by |
 |---|---|---|---|---|---|
-| 14 | WORLD_EVENT | `quests.md` | 75 | QUEST_TURN_IN | `quests.md` |
+| 14 | WORLD_EVENT | [quests.md](quests.md) | 75 | QUEST_TURN_IN | [quests.md](quests.md) |
 | 15 | GATHER | [items.md](items.md) §10 | 76 | SALVAGE_INPUT | [items.md](items.md) §11.5 |
 | 16 | SALVAGE_OUTPUT | [items.md](items.md) §11.5 | 77 | UPGRADE | [items.md](items.md) §11.1 |
 | 17 | TRANSFORM_OUTPUT | [items.md](items.md) §11 | 78 | REFORGE | [items.md](items.md) §11.4 |
@@ -692,7 +692,7 @@ The same codes serve for item events. Operation kinds (`economy_ops.kind`,
 
 ### 6.1 Curve
 
-> **Historical (phase 5).** Phases 6-8 replace this curve: the cap is **60**, the curve is generated and totals 1 327 340 XP (about 50 h):
+> **Historical (phase 5).** Phases 6-8 replace this curve: the cap is **60**, the curve is generated and totals 1 327 360 XP (about 50 h):
 > see [advancement.md](advancement.md) §1. Below is the phase 5 text as merged.
 
 `LevelCurve` (`data/progression/level_curve.tres`): `level_cap = 40`, `xp_to_next:
