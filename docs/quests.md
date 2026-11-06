@@ -12,8 +12,8 @@ ids that are never reused) is not.
 It builds on [progression.md](progression.md) (ledger, `ProgressService`, save), [platform.md](platform.md)
 (`CharacterSaver`, claim, Go store), [networking.md](networking.md) (messages), [localization.md](localization.md)
 (text) and [social.md](social.md) (parties). Three documents written at the same time own pieces this one uses:
-`advancement.md` (level curve 1-60, XP sources and the reward table of section 3.6), `npcs.md` (NPC data, interaction
-and dialogue) and `items.md` (the QUEST container and item choices). Until they are merged, their numbers are the ones
+[advancement.md](advancement.md) (level curve 1-60, XP sources and the reward table of section 3.6), [npcs.md](npcs.md) (NPC data, interaction
+and dialogue) and [items.md](items.md) (the QUEST container and item choices). Until they are merged, their numbers are the ones
 quoted here.
 
 **Assumptions.**
@@ -24,7 +24,7 @@ quoted here.
 - Vardheim is the first realm built. The complete example is Hondal. Quest ids carry a realm prefix (`vdh`, `sol`,
   `ask`).
 - Quests are written by act and level band, not by zone name, so moving a band does not rewrite them (the band table
-  is in [world.md](world.md) and `docs/story.md`).
+  is in [world.md](world.md) and [story.md](story.md)).
 
 ## 0. Decisions
 
@@ -34,8 +34,8 @@ quoted here.
 | D2 | **Closed catalog of 21 objective types** (section 3.2) and no code per quest | With agents producing hundreds of quests, code per quest cannot be audited. A new type is tested once and serves all of them |
 | D3 | `GameEventBus` on the server: a single point where the zone publishes kills, items, interactions, areas, merits, captures and combat actions | Quests, commissions, events and achievements (PRG-42) listen to the same thing, instead of four systems hooked one by one into `zone_server.gd` |
 | D4 | Persistence in a new `quests` section of the save, in the same transaction as `progress`; a turn-in stores the `op_id` of its reward | The reward (gold, items) and "quest completed" cannot be separated: both or neither. [platform.md](platform.md) §7.3 already applies the whole envelope in one transaction |
-| D5 | **Rewards are fractions of the hourly rate**: XP as a fraction of `r(L)` and gold as a fraction of `g_ref(L)`, both from the table that `advancement.md` owns (section 3.6) | Time is conserved: a quest worth 12 minutes pays 12 minutes of progress at any level, and it rescales by itself when the curve changes. Fractions of `xp_to_next(L)` would pay up to half an hour at high levels, because the minutes per level grow |
-| D6 | **At the cap the surplus XP goes to veteran XP**, not to mastery. A Veteran Seal (coin 3, per character) is earned every 40 000 XP | Two paths for the same thing is one too many; the veteran rules are `advancement.md`'s |
+| D5 | **Rewards are fractions of the hourly rate**: XP as a fraction of `r(L)` and gold as a fraction of `g_ref(L)`, both from the table that [advancement.md](advancement.md) owns (section 3.6) | Time is conserved: a quest worth 12 minutes pays 12 minutes of progress at any level, and it rescales by itself when the curve changes. Fractions of `xp_to_next(L)` would pay up to half an hour at high levels, because the minutes per level grow |
+| D6 | **At the cap the surplus XP goes to veteran XP**, not to mastery. A Veteran Seal (coin 3, per character) is earned every 40 000 XP | Two paths for the same thing is one too many; the veteran rules are [advancement.md](advancement.md)'s |
 | D7 | No *phasing* and no per-quest instances. At most **personal interactables** (a clue you already examined, a chest only you open) | Phasing multiplies server and test cost. Personal interactables are per-player state, like personal loot |
 | D8 | Quest items live in their own **container** (`4 QUEST`), bound and worthless, and are erased on turn-in or abandon | A full bag never blocks a quest, and they stay out of trade and out of the gold validator |
 | D9 | In a group: quests are shared inside a zone and kill credit goes to members within 100 m with an action in the last 60 s; quest items are rolled per person | Matches the 10 % contribution rule, the party of 5 and the 100 m radius of [social.md](social.md) |
@@ -193,7 +193,7 @@ amounts of healing or damage).
 | 20 | READ | Read a lore entry | `LoreEntry` id | MUN-16 |
 | 21 | ESCORT | Keep an NPC alive along a route | n/a | Reserved (phase 8): needs NPCs that follow routes with players |
 
-`weapon_tag` filters by the weapon tags of `weapons.md` (`two_handed`, `thrown`, `ranged`...), which the role trials
+`weapon_tag` filters by the weapon tags of [weapons.md](weapons.md) (`two_handed`, `thrown`, `ranged`...), which the role trials
 (section 10) use. `STRUCTURE_DAMAGE` counts damage to a structure with health (a gate, a training palisade).
 
 **Quest drops.** `chance` per kill with **pity**: after `pity` consecutive failures the next one drops for sure. Rolled
@@ -218,9 +218,10 @@ level clamped to the board's or zone's band.
 ### 3.6 Rewards
 
 Rewards are **fractions of the hourly rate**. `r(L)` is the XP rate per hour of level `L` and `g_ref(L)` the reference
-gold income per hour, both from `advancement.md` (`r(L) = 6000 · (1 + 0.1 · (L − 1))`; `g_ref` is 138 g/h at levels
-1-10, 264 at 11-20, 441 at 21-30, 675, 896 and 1 152 at 51-60). `L` is the quest's level; `Lp` the player's, clamped
-to the band. XP rounds to 10 and gold to 1. The table lives in `data/progression/quest_rewards.tres`, owned by the
+gold income per hour, both from [advancement.md](advancement.md) (`r(L) = 6000 · (1 + 0.1 · (L − 1))`; `g_ref` is the income column
+of [items.md](items.md) section 15 interpolated linearly between band midpoints: 138 g/h up to level 5, about 195 at level 10,
+264 at 15.5, 441 at 25.5, 675, 896 and 1 152 from level 55.5). `L` is the quest's level; `Lp` the player's, clamped
+to the band. XP and gold round half up to a whole number (no rounding to tens), as in [advancement.md](advancement.md) section 2.6. The table lives in `data/progression/quest_rewards.tres`, owned by the
 progression domain:
 
 | Kind | XP | Gold | Merits | Items |
@@ -235,21 +236,21 @@ progression domain:
 | War weekly | 0.35 · r(Lp) | 0.25 · g_ref(Lp) | 300 | War chest (PRG-33) |
 | PvE weekly | 0.35 · r(Lp) | 0.25 · g_ref(Lp) | n/a | Choose 1 of 3 |
 | Bounty | 0.08 · r(L) | 0.06 · g_ref(L) | n/a | Trophy of the rare (chance) |
-| Event bronze / silver / gold | 0.05 / 0.08 / 0.12 · r(Lp) | 0.04 / 0.08 / 0.12 · g_ref(Lp) | In Eldrun 20 / 30 / 50 | Material (Ember Shard in the Ember Rain) |
+| Event bronze / silver / gold | 0.05 / 0.08 / 0.12 · r(Lp) | 0.04 / 0.06 / 0.10 · g_ref(Lp) | In Eldrun 20 / 30 / 50 | Material (Ember Shard in the Ember Rain) |
 
-- The event gold column keeps the proportions of the earlier draft on the new scale (0.5 / 1 / 1.5 times a main
-  quest's gold); it is the least checked figure of the table.
+- The event gold column is the one of [advancement.md](advancement.md) section 2.6 (0.5 / 0.75 / 1.25 times a main quest's gold); it is the
+  least checked figure of the table. The event merits (20 / 30 / 50, only in Eldrun) are in `QuestRewards.merits` too.
 - **Caps.** 6 daily commissions with full reward per day and character; the merits from commissions, calls to arms and
   weekly orders are at most **1 000 per week**.
 - **Ledger.** Everything goes with reason `QUEST` (9, reserved in [progression.md](progression.md) §5.3) in one
   operation per turn-in, with `ref_kind` **5 = quest** (`ref_id` = u32 fingerprint of the id, the same function as
   `HandoffTicket.zone_key_of`). Events use the reason `WORLD_EVENT` (14) and `ref_kind` 6. Quest items are given with
   `QUEST` and withdrawn with the sink reason `QUEST_TURN_IN` (75). These codes are fixed in the common registry of
-  [progression.md](progression.md) §5.3 and `advancement.md`.
+  [progression.md](progression.md) §5.3 and [advancement.md](advancement.md).
 - **Level 60.** The XP of a quest goes to veteran XP (D6).
 - An override (`xp_override`, `gold_override`) passes the validator only between 0.5x and 2x of the formula.
 - A quest with an empty reward ("by formula") pays the table's value for its kind and level. Example: a main quest
-  at level 3 pays 790 XP and 11 gold.
+  at level 3 pays 792 XP and 11 gold.
 
 ## 4. Code systems
 
@@ -440,7 +441,7 @@ claim carries the full state and `QuestService.prepare` loads it before the WELC
 
 `state` in `upsert`: 1 ACTIVE, 2 READY, 3 FAILED; the completed ones go in their own list and the abandoned in
 `removed`. The envelope also gains the `quests` section next to `progress` (database migration: the next free number
-after the build's, with the items one following; the registry is in `advancement.md`).
+after the build's, with the items one following; the registry is in [advancement.md](advancement.md)).
 
 ### 6.2 Go store
 
@@ -455,10 +456,10 @@ after the build's, with the items one following; the registry is in `advancement
 
 - It is applied in step 4 of [platform.md](platform.md) §7.3, **after** `ProgressStore.Apply` and in the same
   transaction. The envelope is strict (`DisallowUnknownFields`): the `quests` key is added to the Go envelope.
-- **Checks Q1-Q6.** Q1 format and ids (`^[a-z0-9_]{3,48}$`); Q2 a completed non-repeatable quest never goes back to
+- **Checks QC1-QC6.** QC1 format and ids (`^[a-z0-9_]{3,48}$`); QC2 a completed non-repeatable quest never goes back to
   ACTIVE nor raises `completions` above 1 (the zone exports `quest_rules.json` with the repeatables and their period,
-  like the rules of [progression.md](progression.md) §13.4); Q3 `counters` ≤ 8 and ≥ 0; Q4 `reward_op` exists in the
-  `ops` of this body or in `economy_ops`; Q5 sizes (≤ 30 actives, ≤ 64 flags and ≤ 64 lore per body); Q6
+  like the rules of [progression.md](progression.md) §13.4); QC3 `counters` ≤ 8 and ≥ 0; QC4 `reward_op` exists in the
+  `ops` of this body or in `economy_ops`; QC5 sizes (≤ 30 actives, ≤ 64 flags and ≤ 64 lore per body); QC6
   `daily_done` ≤ 6 per period.
 - GDPR export ([platform.md](platform.md) §11.2): the four tables. Purge: with the character.
 - **Critical save** ([progression.md](progression.md) §9.2 keeps the list): a turn-in with gold or items, the
@@ -580,7 +581,7 @@ msgstr "Pistas examinadas: {count}/{total}"
 | World event | A band with phase, time, wave and progress; the event marker on compass and map | Section 9.5 |
 
 The end of UI-29 per the backlog: a quest of a PvE zone is accepted, tracked and turned in with the interface alone.
-The first version (increment Q4) already shows the tracker with the Vado Gris quests, before NPCs with dialogue exist.
+The first version (increment QI4) already shows the tracker with the Vado Gris quests, before NPCs with dialogue exist.
 The journal, the Chronicle and the markers move to UI-82; the offer and the turn-in close with UI-28.
 
 ### 8.2 Boards
@@ -681,7 +682,7 @@ Eldrun opens at level 20 and is normalized, so the same rewards are earned at an
 ### 9.4 Templates for the next zones (phase 8, MUN-86)
 
 Same framework, five archetypes: defense of a place (like the Incursion), rare world boss (an announced beast), rift
-(close 3 points with channeling under waves: Askarra, Ash Wastes), caravan (once ESCORT exists) and contested gathering
+(close 3 points with channeling under waves: Askarra, Ash Waste), caravan (once ESCORT exists) and contested gathering
 (a rare resource that blooms in a clearing). One event per PvE zone.
 
 ### 9.5 Network and HUD
@@ -719,7 +720,7 @@ Rules:
 
 ## 11. Quests and specialization
 
-The number and names of the specializations are in `advancement.md`: **Vanguard, Linebreaker, Hunter, Healer and
+The number and names of the specializations are in [advancement.md](advancement.md): **Vanguard, Linebreaker, Hunter, Healer and
 Arcanist**, plus the **Sapper** in phase 7. The first choice is free and requires a role trial; afterwards it is
 changed only in the capital, with the **Master of the Orders**, out of combat, for `8·L + 20` gold with no cooldown
 (about 25-30 minutes of income at any level). There is one Master per capital and **one mentor per specialization**,
@@ -760,10 +761,11 @@ Shared by the three realms (`all_spec_*`), giver by role `role:spec_mentor`. Fou
 The story bible and the full Hondal chain (cast, places, 13 main quests, 15 side quests, 21 lore texts, the Granvik
 board and the Incursion) are in [story.md](story.md) section 6. Their reward figures follow section 3.6:
 
-- Main quests at levels 1-10 pay 0.11 · r(L): from 660 XP and 11 gold (level 1) to 1 250 XP (level 10); the act
-  finale (m13) pays 2 510 XP and 22 gold; the trial, 1 370 XP and 11 gold.
-- The side quests pay 0.075 · r(L): from 500 to 770 XP and 7 gold each.
-- Together the 28 quests are about **23 600 XP** and about 270 gold (with the trial). With the kills they ask for and
+- Main quests at levels 1-10 pay 0.11 · r(L): from 660 XP and 11 gold (level 1) to 1 254 XP and 16 gold (level 10); the
+  act finale (m13) pays 2 508 XP and 31 gold; the trial, 1 368 XP and 16 gold.
+- The side quests pay 0.075 · r(L): from 495 to 765 XP and 7 or 8 gold each.
+- Together the 29 quests (13 main, 15 side and the trial) are about **24 900 XP** and about 310 gold (23 600 XP and 293 gold
+  without the trial). With the kills they ask for and
   the discoveries, a new character reaches level 4.4 on delivering m04, 7.2 on m07, 9.8 on m10 (with every side quest
   up to level 8 and the discovered places), 10.3 on m11 (level 10 required) and 10.9 on m13.
 - Split in 1-10: quests 71 %, kills 24 %, discovery 5 %. With the main quests alone a character gets about half of what
@@ -912,26 +914,26 @@ is text), archived in `Eldmark-capturas`.
 
 | # | Increment | Needs | Checked with |
 |---|---|---|---|
-| Q1 | Data model, catalog, validator v0 and 4 Vado Gris quests ("Clear the Ford", "The Ford Captain", "Scout the Front", "Baptism of Fire") | n/a | `test_quest_catalog`; capture of the review sheet |
-| Q2 | Pure `QuestState` and `QuestRules` with table tests | Q1 | Tests |
-| Q3 | `GameEventBus`, `QuestService` in the zone, rewards with `ProgressService`, GM commands | Q2 | Headless test with bots in the Vado Gris; chat notice capture |
-| Q4 | Protocol, `ClientQuests` and the HUD tracker | Q3, TEC-57 | Capture of the tracker "Hollow destroyed: 3/5" in the Vado Gris, in es and en |
-| Q5 | Persistence: `quests` section, Go store, Q1-Q6 | Q3 | End-to-end reconnect test; capture of the same progress on return |
-| Q6 | Journal, empty Chronicle, markers on compass and map | Q4 | Captures of the journal and marker |
-| Q7 | Tools: templates, sheet, simulator, bot in `teleport` mode | Q4 | Simulator chart; bot report |
-| Q8 | Group: sharing and credit | Q3, SOC-06 | Two bots; capture of the shared offer |
-| Q9 | INTERACT, TALK, DELIVER and the offer and turn-in in the dialogue | MUN-16, MUN-18, UI-27, UI-28 | Capture of the offer window with the item choice |
-| Q10 | Hondal m01-m05 | MUN-22 (layout and spawners), MUN-24 | Bot in `walk`; one capture per quest (giver, objective, turn-in) |
-| Q11 | Hondal m06-m10, Eldhald lore and Echo I | Q10, Chronicle | Captures of the Echo and the boss |
-| Q12 | Isenholm: m08-m09, s13, s15 | MUN-21, TEC-30 | Captures of the walk |
-| Q13 | The Squire's Choice and the four trials | Specialization (classes) | Capture of the choice |
-| Q14 | m12-m13: the Baptism in the Vado Gris | MUN-23 | Capture of the tracker at the fort |
-| Q15 | Hondal side quests | Q11 | The bot completes them all (MUN-46 criterion) |
-| Q16 | PvE boards of Granvik and Isenholm | MUN-32 | Board capture; day-change test |
-| Q17 | Event framework and the Hollow Incursion | MUN-31 | Captures of the warning, waves and success |
-| Q18 | (F7) Ember Rain | GUE-22, MUN-29 | Bots of three realms; capture of the trail and the circle |
-| Q19 | (F7) Eldrun war commissions, weekly orders and calls to arms | GUE-20, GUE-29 | Capture of the call in the capital |
-| Q20+ | (F8) Act I of Solmarch and Askarra, then Acts II-VI | Their zones | Validator, bot and simulator per zone |
+| QI1 | Data model, catalog, validator v0 and 4 Vado Gris quests ("Clear the Ford", "The Ford Captain", "Scout the Front", "Baptism of Fire") | n/a | `test_quest_catalog`; capture of the review sheet |
+| QI2 | Pure `QuestState` and `QuestRules` with table tests | QI1 | Tests |
+| QI3 | `GameEventBus`, `QuestService` in the zone, rewards with `ProgressService`, GM commands | QI2 | Headless test with bots in the Vado Gris; chat notice capture |
+| QI4 | Protocol, `ClientQuests` and the HUD tracker | QI3, TEC-57 | Capture of the tracker "Hollow destroyed: 3/5" in the Vado Gris, in es and en |
+| QI5 | Persistence: `quests` section, Go store, QC1-QC6 | QI3 | End-to-end reconnect test; capture of the same progress on return |
+| QI6 | Journal, empty Chronicle, markers on compass and map | QI4 | Captures of the journal and marker |
+| QI7 | Tools: templates, sheet, simulator, bot in `teleport` mode | QI4 | Simulator chart; bot report |
+| QI8 | Group: sharing and credit | QI3, SOC-06 | Two bots; capture of the shared offer |
+| QI9 | INTERACT, TALK, DELIVER and the offer and turn-in in the dialogue | MUN-16, MUN-18, UI-27, UI-28 | Capture of the offer window with the item choice |
+| QI10 | Hondal m01-m05 | MUN-22 (layout and spawners), MUN-24 | Bot in `walk`; one capture per quest (giver, objective, turn-in) |
+| QI11 | Hondal m06-m10, Eldhald lore and Echo I | QI10, Chronicle | Captures of the Echo and the boss |
+| QI12 | Isenholm: m08-m09, s13, s15 | MUN-21, TEC-30 | Captures of the walk |
+| QI13 | The Squire's Choice and the four trials | Specialization (classes) | Capture of the choice |
+| QI14 | m12-m13: the Baptism in the Vado Gris | MUN-23 | Capture of the tracker at the fort |
+| QI15 | Hondal side quests | QI11 | The bot completes them all (MUN-46 criterion) |
+| QI16 | PvE boards of Granvik and Isenholm | MUN-32 | Board capture; day-change test |
+| QI17 | Event framework and the Hollow Incursion | MUN-31 | Captures of the warning, waves and success |
+| QI18 | (F7) Ember Rain | GUE-22, MUN-29 | Bots of three realms; capture of the trail and the circle |
+| QI19 | (F7) Eldrun war commissions, weekly orders and calls to arms | GUE-20, GUE-29 | Capture of the call in the capital |
+| QI20+ | (F8) Act I of Solmarch and Askarra, then Acts II-VI | Their zones | Validator, bot and simulator per zone |
 
 ## 16. Risks
 
@@ -939,7 +941,7 @@ is text), archived in `Eldmark-capturas`.
 |---|---|
 | Volume (about 150 quests per realm from 1 to 60, about 450 in all) exceeds what can be produced | Templates, generated commissions, Acts V-VI with shared structure, tools before content; one complete realm 1-10 before opening the next |
 | Custom quests sneak in (code per quest) | D2: the validator and the review reject any quest that is not data; a new objective type is a backlog item |
-| Many phase 6 dependencies (MUN-16, MUN-18, MUN-19, MUN-22, MUN-25, TEC-30) delay everything | Q1-Q8 are done in the Vado Gris with what exists; Hondal's content starts when its zone has spawners |
+| Many phase 6 dependencies (MUN-16, MUN-18, MUN-19, MUN-22, MUN-25, TEC-30) delay everything | QI1-QI8 are done in the Vado Gris with what exists; Hondal's content starts when its zone has spawners |
 | Weak text or rigid translation (English msgid, Spanish-speaking author) | Tone guide, mandatory translator note, bilingual sheet reviewed by the user in Spanish |
 | Data change while players are mid-quest | `revision`, `retired`, ids never reused, objectives appended at the end |
 | Duplicate rewards from retries or crashes | Turn-in and reward in the same transaction with `reward_op` and idempotence `(lease_id, seq)` |

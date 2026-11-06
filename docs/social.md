@@ -126,7 +126,7 @@ Experience is **not divided**: grouping never makes a kill worth less to anyone,
 
 The contribution threshold of the NPC (10 % for a normal NPC, 5 / 3 / 1 % for higher ranks) is **shared with the
 party** within the same 100 m, so a healer who does little direct damage still counts. The exact definition of an
-action for an NPC kill is in `npcs.md`. A fake or forced party member (`--fake-players`, GM) never gives credit that
+action for an NPC kill is in [npcs.md](npcs.md). A fake or forced party member (`--fake-players`, GM) never gives credit that
 pays something persistent.
 
 ### 3.2 Inspecting allies (SOC-29)

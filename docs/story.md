@@ -83,8 +83,8 @@ the zone table below; the names of the zones are the ones the bands have today a
 | Act | Levels | Zones (Vardheim / Solmarch / Askarra) | Vardheim: "The Last Guard" | Solmarch: "The Broken Dawn" | Askarra: "The Burning Land" | War moment |
 |---|---|---|---|---|---|---|
 | I | 1-10 | Hondal / Amber Fields / Thal Oasis (Z1) | Hondal and Isenholm: the Hollow wake; the Forsworn dig at Eldhald; the first Ember | Amber Fields and Valcorin: the harvest feast, the ash plague, pilgrim Hollow, the Inquisitor arrives | Thal Oasis and Kassar: the oasis dries up, the Ember pumps fail, the Hollow assault the Well Ember | Baptism of Fire (Vado Gris, level 10) |
-| II | 10-20 | Skarven / Lirien Wood / Ruhn Canyons (Z2) | Shipwrecks with Ember cargo; smuggling through Eldrun; Jarl Sten divides the clans; first dungeon (D1, Ossuaries of Eld) | Abbeys; purges of the "Ember-touched"; the dungeon under the abbey | Miners' strike; Ember mining causes tremors; the dungeon in the mines | Entry to Eldrun (level 20) |
-| III | 20-32 | Grimfell / Morvel Marsh / Ash Wastes (Z3) | The barrows of the first Squires; the Echo shows they abandoned the king's chamber; the First Squire | The founders of the Dawn tried a "False Sun" with Embers and poisoned the marsh | The cracks are the veins of the Flame; the Consortium wants to drink from the Sundering | War commissions |
+| II | 10-20 | Skarven / Lirien Forest / Ruhn Canyons (Z2) | Shipwrecks with Ember cargo; smuggling through Eldrun; Jarl Sten divides the clans; first dungeon (D1, Ossuaries of Eld) | Abbeys; purges of the "Ember-touched"; the dungeon under the abbey | Miners' strike; Ember mining causes tremors; the dungeon in the mines | Entry to Eldrun (level 20) |
+| III | 20-32 | Grimfell / Morvel Marsh / Ash Waste (Z3) | The barrows of the first Squires; the Echo shows they abandoned the king's chamber; the First Squire | The founders of the Dawn tried a "False Sun" with Embers and poisoned the marsh | The cracks are the veins of the Flame; the Consortium wants to drink from the Sundering | War commissions |
 | IV | 32-45 | Hrimvald Glacier / Vaucelle Heights / Qesh Salt Flats (Z4) | The Forsworn sabotage the Frost Wall's far reaches; the Seneschal's herald offers a pact; the glacier gate | The Heights: the Order's relic vaults; the first trial of the Dawn's "purification" | The Salt Flats: caravans of Embers sold to the Consortium; siege weapons (GUE-25) | First siege of a castle |
 | V | 45-55 | The borders: Wolf March / Penitent Plains / Ossar Forges | The Sundering: the Oath, the Oathbound and the origin of the Seneschal | Same, seen from Solmarch | Same, seen from Askarra | Borders war thread |
 | VI | 55-60 | Eldrun and Aldcor | Aldcor: the Seneschal tries to rekindle the Flame with the Embers the three antagonists gave him; the last Echo; the claim | Same | Same | Aldcor (GUE-31) |
@@ -177,23 +177,23 @@ Named: **Greyfang** and **Fencebreaker** (rares), **Gunnar Half-Hand** (named de
 ### 6.3 Main chain: Act I, "The Last Guard: Frost and Ember"
 
 Rewards by the formula of [quests.md](quests.md) section 3.6 (main 0.11 r, finale 0.22 r; gold 0.08 and 0.16 of
-`g_ref`, 138 g/h at levels 1-10). "Choose" is an item choice.
+`g_ref`, interpolated between band midpoints: 138 g/h up to level 5, about 195 at level 10). XP and gold round half up to a whole number. "Choose" is an item choice.
 
 | Id | Lv | Title (es / en) | Giver → turn-in | Objectives | Teaches | XP / gold | Item |
 |---|---|---|---|---|---|---|---|
 | m01 | 1 | Llegada a Granvik / Arrival at Granvik | Automatic offer on entry → Ingrid | REACH the square; TALK Ingrid | Move, camera, E | 660 / 11 | n/a |
 | m02 | 1 | Acero de escudero / Squire's Steel | Torvald | COMBAT_ACTION on the dummy: 5 light, 2 heavy; 1 dodge; 1 weapon swap (Q) | Combat, free weapons | 660 / 11 | Choose your second weapon (all that exist) |
-| m03 | 2 | Lobos en el pinar / Wolves in the Pines | Hilde | KILL 6 `wolf` in the pines; COLLECT 4 pelts (0.6, pity 2) | Blocking and dodging against a pack | 730 / 11 | n/a |
-| m04 | 3 | La granja de Asbjorn / The Asbjorn Farm | Ingrid | S1: REACH the farm; INTERACT 3 distinct clues. S2: TALK Kari; KILL 5 `hollow` at the farm | Interacting, stages | 790 / 11 | n/a |
-| m05 | 4 | Ceniza de hueso / Bone Ash | Sigrun | COLLECT 5 Hollow ashes (0.5, pity 3); DELIVER to Sigrun; UNLOCK_LORE of Sigrun's vision (points to Eldhald) | Quest drops, Chronicle | 860 / 11 | Choose armor (light, medium, heavy) |
-| m06 | 5 | Desertores del Muro / Deserters of the Wall | Ingrid | KILL 8 `deserter`; INTERACT 3 grain sacks; KILL Gunnar Half-Hand; COLLECT his letter (1.0) | Named elite | 920 / 11 | n/a |
-| m07 | 6 | La Brasa de Eldhald / The Ember of Eldhald | Sigrun | REACH Eldhald; KILL 8 `hollow`; KILL the Guardian; INTERACT the Ember (3 s channel) → item "Spent Ember" + **Echo I** | The first Ember | 990 / 11 | Choose weapon |
-| m08 | 7 | El camino de Isenholm / The Road to Isenholm | Sigrun → Ragnhild | REACH Isenholm (zone handoff); DELIVER the Ember | Zone handoff, the capital | 1 060 / 11 | n/a |
-| m09 | 8 | Las tres voces del consejo / Three Voices of the Council | Ragnhild | TALK Jarl Ase (market), Jarl Sten (harbor) and Thane Gudrun (barracks) | Tour of the capital; Sten, suspect (Act II hook) | 1 120 / 11 | n/a |
-| m10 | 9 | Los Desjurados / The Forsworn (**close of the PvE part**) | Ragnhild → Torvald | REACH the Sealed Gate; KILL 6 `forsworn`; INTERACT 3 braziers (put out, group credit at 30 m); KILL Hjalmar; COLLECT the Seneschal's letter | Two-phase boss | 1 190 / 11 | Choose a piece, higher rarity |
-| m11 | 10 | La Elección del Escudero / The Squire's Choice | Hakon (Hall of Arms) | [quests.md](quests.md) section 11.1: TALK → trial → TALK | Specialization | 1 250 / 11 (+ the trial: 1 370 / 11) | Title and trim |
-| m12 | 10 | Al Muro de Escarcha / To the Frost Wall | Torvald → Eydis | S1: REACH the garrison; TALK Eydis. S2 (`any_of` 1): WAR_CAPTURE `vado_gris`; WAR_MERITS 30 in `vado_gris`; KILL 5 fort defenders (Hollow or enemy guards) | The front, RvR | 1 250 / 11 | n/a |
-| m13 | 10 | Informe del frente / Report from the Front (**close of Act I**) | Eydis → Ragnhild | TALK Ragnhild (reads the Seneschal's letter) | Act II hook: Skarven | 2 510 / 22 | Choose 1 of 4, higher rarity |
+| m03 | 2 | Lobos en el pinar / Wolves in the Pines | Hilde | KILL 6 `wolf` in the pines; COLLECT 4 pelts (0.6, pity 2) | Blocking and dodging against a pack | 726 / 11 | n/a |
+| m04 | 3 | La granja de Asbjorn / The Asbjorn Farm | Ingrid | S1: REACH the farm; INTERACT 3 distinct clues. S2: TALK Kari; KILL 5 `hollow` at the farm | Interacting, stages | 792 / 11 | n/a |
+| m05 | 4 | Ceniza de hueso / Bone Ash | Sigrun | COLLECT 5 Hollow ashes (0.5, pity 3); DELIVER to Sigrun; UNLOCK_LORE of Sigrun's vision (points to Eldhald) | Quest drops, Chronicle | 858 / 11 | Choose armor (light, medium, heavy) |
+| m06 | 5 | Desertores del Muro / Deserters of the Wall | Ingrid | KILL 8 `deserter`; INTERACT 3 grain sacks; KILL Gunnar Half-Hand; COLLECT his letter (1.0) | Named elite | 924 / 11 | n/a |
+| m07 | 6 | La Brasa de Eldhald / The Ember of Eldhald | Sigrun | REACH Eldhald; KILL 8 `hollow`; KILL the Guardian; INTERACT the Ember (3 s channel) → item "Spent Ember" + **Echo I** | The first Ember | 990 / 12 | Choose weapon |
+| m08 | 7 | El camino de Isenholm / The Road to Isenholm | Sigrun → Ragnhild | REACH Isenholm (zone handoff); DELIVER the Ember | Zone handoff, the capital | 1 056 / 13 | n/a |
+| m09 | 8 | Las tres voces del consejo / Three Voices of the Council | Ragnhild | TALK Jarl Ase (market), Jarl Sten (harbor) and Thane Gudrun (barracks) | Tour of the capital; Sten, suspect (Act II hook) | 1 122 / 14 | n/a |
+| m10 | 9 | Los Desjurados / The Forsworn (**close of the PvE part**) | Ragnhild → Torvald | REACH the Sealed Gate; KILL 6 `forsworn`; INTERACT 3 braziers (put out, group credit at 30 m); KILL Hjalmar; COLLECT the Seneschal's letter | Two-phase boss | 1 188 / 15 | Choose a piece, higher rarity |
+| m11 | 10 | La Elección del Escudero / The Squire's Choice | Hakon (Hall of Arms) | [quests.md](quests.md) section 11.1: TALK → trial → TALK | Specialization | 1 254 / 16 (+ the trial: 1 368 / 16) | Title and trim |
+| m12 | 10 | Al Muro de Escarcha / To the Frost Wall | Torvald → Eydis | S1: REACH the garrison; TALK Eydis. S2 (`any_of` 1): WAR_CAPTURE `vado_gris`; WAR_MERITS 30 in `vado_gris`; KILL 5 fort defenders (Hollow or enemy guards) | The front, RvR | 1 254 / 16 | n/a |
+| m13 | 10 | Informe del frente / Report from the Front (**close of Act I**) | Eydis → Ragnhild | TALK Ragnhild (reads the Seneschal's letter) | Act II hook: Skarven | 2 508 / 31 | Choose 1 of 4, higher rarity |
 
 Level milestones (computed with the kills each quest asks for times 1.3, and 12 discovered places; see
 [quests.md](quests.md) section 12): m04 delivered at about **4.4**, m07 at **7.2**, m10 at **9.8** (with every side
@@ -206,25 +206,25 @@ Jarla (changes Sten's dialogue in Act II). No branches in the quests.
 
 ### 6.4 Side quests (MUN-46)
 
-Rewards at 0.075 r (7 gold each).
+Rewards at 0.075 r and 0.05 `g_ref` (7 or 8 gold each).
 
 | Id | Lv | Title (es / en) | Giver | Objectives | Place | XP |
 |---|---|---|---|---|---|---|
-| s01 | 2 | Leña para el invierno / Winter Firewood | Yrsa | GATHER 6 firewood (until PRG-26: INTERACT fallen logs) | Granvik | 500 |
+| s01 | 2 | Leña para el invierno / Winter Firewood | Yrsa | GATHER 6 firewood (until PRG-26: INTERACT fallen logs) | Granvik | 495 |
 | s02 | 3 | El fuelle de Brann / Brann's Bellows | Brann | CRAFT 1 rivets (until PRG-27: DELIVER 4 scraps from the deserters' crates) | Granvik | 540 |
-| s03 | 4 | Colmillo Gris / Greyfang | Hilde | KILL the rare; afterwards the bounty remains (BOUNTY, 20 h) | Pines | 580 |
+| s03 | 4 | Colmillo Gris / Greyfang | Hilde | KILL the rare; afterwards the bounty remains (BOUNTY, 20 h) | Pines | 585 |
 | s04 | 3 | Pieles para el invierno / Hides for Winter | Hilde | COLLECT 6 boar hides (0.6, pity 2) | Meadows | 540 |
-| s05 | 2 | El carro volcado / The Overturned Cart | Oddvar | INTERACT 4 distinct crates by the road (wolves nearby) | Road | 500 |
+| s05 | 2 | El carro volcado / The Overturned Cart | Oddvar | INTERACT 4 distinct crates by the road (wolves nearby) | Road | 495 |
 | s06 | 5 | Cartas sin entregar / Undelivered Letters | Starts with an item (dead mail) | DELIVER 3 letters: TALK three villagers | Road / Granvik | 630 |
-| s07 | 6 | La hija del molinero / The Miller's Daughter | Arne | REACH the forest edge; KILL 4 `hollow` next to Liv; TALK Liv | Eldhald edge | 680 |
-| s08 | 4 | Piedras que hablan / Stones That Speak | Sigrun | READ 4 rune stones across Hondal | Whole zone (exploration) | 580 |
-| s09 | 6 | Sal y hierro / Salt and Iron | Sigrun | USE_ITEM_AT blessed salt on 3 graves; KILL 5 rising Hollow | Graveyard | 680 |
+| s07 | 6 | La hija del molinero / The Miller's Daughter | Arne | REACH the forest edge; KILL 4 `hollow` next to Liv; TALK Liv | Eldhald edge | 675 |
+| s08 | 4 | Piedras que hablan / Stones That Speak | Sigrun | READ 4 rune stones across Hondal | Whole zone (exploration) | 585 |
+| s09 | 6 | Sal y hierro / Salt and Iron | Sigrun | USE_ITEM_AT blessed salt on 3 graves; KILL 5 rising Hollow | Graveyard | 675 |
 | s10 | 5 | El botín de Gunnar / Gunnar's Hoard | Starts with Gunnar's key | INTERACT the hidden chest (personal) | Camp | 630 |
 | s11 | 7 | El santuario del río / The River Shrine | Ingrid | REACH the shrine; INTERACT 3 offerings (group 30 m); KILL 4 looting deserters | River | 720 |
-| s12 | 8 | Tablones para la empalizada / Planks for the Palisade | Ingrid | COLLECT 6 planks from carts; INTERACT 3 palisade breaches (introduces the event) | Granvik | 770 |
-| s13 | 7 | Oro, acero y bóveda / Gold, Steel and Vault | Einar (Isenholm) | TALK banker, merchant and armorer; ECONOMY buy 1; ECONOMY deposit 1 | Isenholm | 720 |
-| s14 | 8 | Rompecercas / Fencebreaker | Ketil | KILL the rare boar (telegraphed charge); afterwards the bounty | Neighboring farm | 770 |
-| s15 | 8 | Los nombres de los caídos / Names of the Fallen | A widow (Isenholm) | INTERACT the Wall of Names; READ the list of the Squires; TALK the widow | Isenholm | 770 |
+| s12 | 8 | Tablones para la empalizada / Planks for the Palisade | Ingrid | COLLECT 6 planks from carts; INTERACT 3 palisade breaches (introduces the event) | Granvik | 765 |
+| s13 | 7 | Oro, acero y bóveda / Gold, Steel and Vault | Einar (Isenholm) | TALK banker, merchant and armorer; ECONOMY buy 1; ECONOMY deposit 1 (until PRG-25: the objective is only to TALK the banker, with no deposit) | Isenholm | 720 |
+| s14 | 8 | Rompecercas / Fencebreaker | Ketil | KILL the rare boar (telegraphed charge); afterwards the bounty | Neighboring farm | 765 |
+| s15 | 8 | Los nombres de los caídos / Names of the Fallen | A widow (Isenholm) | INTERACT the Wall of Names; READ the list of the Squires; TALK the widow | Isenholm | 765 |
 
 ### 6.5 Lore (18 texts in Hondal + 3 in Isenholm = 21)
 

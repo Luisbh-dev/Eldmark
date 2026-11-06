@@ -542,9 +542,9 @@ design). They are all English `msgid`s in the `.tres` with the Spanish in `es.po
 | `LoreEntry` | `title`, `text` | `lore_title`, `lore` | `data/lore/**` |
 | `WorldEventDefinition` | `display_name`, `description`, phase text | `event`, `event_desc`, `event_phase` | `data/events/*` |
 | `CommissionTemplate` | `title` | `commission` | `data/commissions/*` |
-| `TalentDefinition` | `display_name`, `description` | `talent`, `talent_desc` | talent trees |
+| `TalentNode` | `display_name`, `description` | `talent`, `talent_desc` | talent trees |
 | `SpecializationDefinition` | `display_name`, `description` | `specialization`, `specialization_desc` | specializations |
-| Passive of a talent or a rank | `description` | `passive_desc` | trees and specializations |
+| `PassiveDefinition` (a talent or a rank) | `description` | `passive_desc` | trees and specializations |
 | Attribute | `display_name` | `attribute` | the five attributes |
 | `AbilityDefinition` | `display_name`, `description` | `ability`, `ability_desc` | weapons (until now in `CombatText`) |
 | `AffixDefinition` | `display_name` | `affix` | `data/items/affixes.tres` |
@@ -626,6 +626,15 @@ of [story.md](story.md); they stay provisional until the user confirms the bible
 | Glaciar de Hrimvald | Hrimvald Glacier | mixed |
 | Altos de Vaucelle | Vaucelle Heights | mixed |
 | Salares de Qesh | Qesh Salt Flats | mixed |
+| Campos de Ambre | Amber Fields | descriptive (zone, [world.md](world.md) §3.2) |
+| Oasis de Thal | Thal Oasis | mixed (zone) |
+| Bosque de Lirien | Lirien Forest | mixed (zone) |
+| Cañones de Ruhn | Ruhn Canyons | mixed (zone) |
+| Ciénaga de Morvel | Morvel Marsh | mixed (zone) |
+| Yermo de Ceniza | Ash Waste | descriptive (zone) |
+| Marca del Lobo | Wolf March | descriptive (zone) |
+| Llanos del Penitente | Penitent Plains | descriptive (zone) |
+| Forjas de Ossar | Ossar Forges | mixed (zone) |
 | Osarios de Eld | Ossuaries of Eld | mixed |
 | Acueducto Hundido | Sunken Aqueduct | descriptive |
 | Archivo del Juramento | Oath Archive | descriptive |
