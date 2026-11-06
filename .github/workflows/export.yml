@@ -176,6 +176,13 @@ jobs:
           chmod +x exports/server/eldmark-server.x86_64 exports/server/run-server.sh
           diff artifact/BUILD_ID exports/server/BUILD_ID
 
+      - name: How the exported server ends (diagnostic)
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          ulimit -c 0 || true
+          tools/ci/server_exit_diag.sh exports/server 26210 | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Smoke test
         timeout-minutes: 8
         run: tools/ci/smoke_server.sh exports/server "$HOME/godot/${GODOT_FILE}" 26200 | tee -a "$GITHUB_STEP_SUMMARY"
@@ -185,7 +192,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: smoke-logs
-          path: build/smoke/
+          path: |
+            build/smoke/
+            build/exit-diag/
           if-no-files-found: ignore
           retention-days: 7
 
