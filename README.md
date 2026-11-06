@@ -30,7 +30,7 @@ Everything below is in `main`. The gameplay and network parts are covered by the
 - **Progression.** Races and character appearance, inventory with an authoritative ledger, currencies, levels and experience, starter templates (Squire with sword and shield, Marksman with bow).
 - **Platform service in Go** (`platform/`, Go 1.24 on PostgreSQL 16): accounts with email verification and password reset, characters, hand-off tickets that let a zone admit a character, periodic persistence with integrity checks, an admin CLI, privacy tooling (data export and retention purges), and Docker-based deployment with backups. Optional: you can run the whole game without it.
 - **Bots and load testing.** Full headless bot clients and a lightweight swarm that can load a zone with dozens of connections, a battery of cheating bots that checks the server cannot be fooled, and tools that compare the predicted and authoritative state bit by bit.
-- **Tests and CI.** 2,938 test methods in 217 files for the Godot project, plus about 300 Go tests for the platform, including multi-process network tests, run on every pull request and every push to `main` through GitHub Actions (see [docs/getting-started.md](docs/getting-started.md#continuous-integration)).
+- **Tests and CI.** 2,993 test methods in 221 files for the Godot project, plus about 300 Go tests for the platform, including multi-process network tests, run on every pull request and every push to `main` through GitHub Actions (see [docs/getting-started.md](docs/getting-started.md#continuous-integration)).
 
 Not there yet, to be honest about it: the other two war-zone regions, siege weapons, the capital cities and PvE zones, Askarra gameplay content (the realm exists in the catalog and the realm-select screen, but the Vado Gris only admits Vardheim and Solmarch), classes beyond the two starter templates, guilds, and a finished art pass. The visual quality waves lifted the Vado Gris well above a prototype, but the known gaps are written down in [docs/quality.md](docs/quality.md): characters, outfits and animations are still stand-in kits shared by every realm, the tents are plain prisms, the wind-up of the heavy attack still lifts a foot, the map legend is half empty and the grass near the player is not yet a continuous meadow. Sound effects are synthesized and provisional. Interest management is a stub that sends every entity to every client; a grid-based policy is designed but not built.
 
@@ -199,6 +199,7 @@ The design documents are long and written as decision records, including what wa
 | [docs/combat.md](docs/combat.md) | Combat design: states, timings, hit feedback, animation and sound |
 | [docs/zones/](docs/zones) | Zone notes; [docs/zones/vado_gris.md](docs/zones/vado_gris.md) covers the Vado Gris: terrain, sky, fort |
 | [docs/quality.md](docs/quality.md) | Visual quality plan: what each wave delivered and what is still open |
+| [docs/localization.md](docs/localization.md) | English and Spanish localization: format, runtime, tooling and the increments |
 | [docs/backlog.md](docs/backlog.md) | The master task list: what is done and what is next |
 | [docs/history/](docs/history) | Archived reports from past work sessions |
 

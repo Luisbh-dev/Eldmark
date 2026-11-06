@@ -5,8 +5,8 @@ extends RefCounted
 ## The layout is in [code]default_bus_layout.tres[/code] (the project root, which Godot loads on
 ## its own): [code]Master[/code] (with a limiter that prevents saturating the output) and, sending
 ## to it, [code]Music[/code], [code]SFX[/code], [code]Ambience[/code], [code]UI[/code] and
-## [code]Voices[/code]. Identifiers are in English; [method display_name] gives the Spanish name
-## that the settings show.
+## [code]Voices[/code]. Identifiers are in English; [method volume_label] gives the English text of the
+## volume setting of each bus, which the settings window translates when it shows it.
 ## [br][br]
 ## Volumes are linear (0 to 1, like a slider) and are converted to decibels when applied; at 0 the
 ## bus is fully muted. They are saved in the [code][audio][/code] section of
@@ -27,10 +27,11 @@ const VOICES: StringName = &"Voices"
 ## All the buses, in the bus layout's order.
 const ALL: Array[StringName] = [MASTER, MUSIC, SFX, AMBIENCE, UI, VOICES]
 
-## Spanish name of each bus (for the settings).
-const DISPLAY_NAMES: Dictionary = {
-	MASTER: "General", MUSIC: "Música", SFX: "Efectos", AMBIENCE: "Ambiente",
-	UI: "Interfaz", VOICES: "Voces",
+## English text ([code]msgid[/code]) of the volume setting of each bus. They are whole labels, not a name
+## to glue after "Volume: ", because the word order is not the same in every language.
+const VOLUME_LABELS: Dictionary = {
+	MASTER: "Master volume", MUSIC: "Music volume", SFX: "Effects volume",
+	AMBIENCE: "Ambience volume", UI: "Interface volume", VOICES: "Voice volume",
 }
 ## Default linear volume of each bus.
 const DEFAULT_VOLUMES: Dictionary = {
@@ -44,9 +45,10 @@ const SETTINGS_SECTION: String = "audio"
 const MUTE_THRESHOLD: float = 0.0001
 
 
-## Spanish name of [param bus] ("Efectos"...); the identifier itself if it is not known.
-static func display_name(bus: StringName) -> String:
-	return DISPLAY_NAMES.get(bus, String(bus))
+## English text of the volume setting of [param bus] ("Effects volume"...), to translate with [L10n] when it
+## is shown; the identifier itself if the bus is not known.
+static func volume_label(bus: StringName) -> String:
+	return L10n.mark(String(VOLUME_LABELS.get(bus, String(bus))))
 
 
 ## Key of the volume of [param bus] in the settings file ([code]volume_sfx[/code]...).

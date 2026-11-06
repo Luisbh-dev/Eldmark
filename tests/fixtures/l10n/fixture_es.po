@@ -1,0 +1,38 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: es\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Restore tab"
+msgstr "Restaurar pestaña"
+
+msgctxt "shadows"
+msgid "Off"
+msgstr "Desactivadas"
+
+msgctxt "vsync"
+msgid "Off"
+msgstr "Desactivada"
+
+# The Spanish word is the same as the English one.
+msgid "Audio"
+msgstr "Audio"
+
+msgid "Untranslated"
+msgstr ""
+
+#, fuzzy
+msgid "Fuzzy"
+msgstr "Difuso"
+
+msgid "Free slots: {free} of {total}"
+msgstr "Huecos libres: {free} de {total}"
+
+msgid "You can restore it for {days} day."
+msgid_plural "You can restore it for {days} days."
+msgstr[0] "Puedes restaurarlo durante {days} día."
+msgstr[1] "Puedes restaurarlo durante {days} días."
+
+msgid "Escapes: \"x\"\ttab \\ end"
+msgstr "Escapes: \"x\"\tpestaña \\ fin"

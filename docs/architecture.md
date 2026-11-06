@@ -178,7 +178,7 @@ Two rules hold across all of this. Presentation never decides anything (the exce
 
 ## Testing
 
-`tests/run_tests.gd` is a custom headless runner. It discovers `tests/test_*.gd` files (each extends `TestCase`), runs their `test_*` methods with optional `before_each` and `after_each`, supports `await`, and fails a test if a script or engine error is logged during it. There are 217 files and 2,938 test methods today.
+`tests/run_tests.gd` is a custom headless runner. It discovers `tests/test_*.gd` files (each extends `TestCase`), runs their `test_*` methods with optional `before_each` and `after_each`, supports `await`, and fails a test if a script or engine error is logged during it. There are 221 files and 2,993 test methods today.
 
 - **Unit tests** for the pure shared and server pieces.
 - **In-process network tests.** `tests/net_harness.gd` runs a `ZoneServer` and several `NetClient`s in one process, each in its own `SubViewport` with its own physics world and its own `NetTransport`, with a network simulator for latency, jitter, loss and duplication.

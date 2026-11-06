@@ -128,11 +128,11 @@ func test_missing_file_and_bad_values_use_the_defaults() -> void:
 
 
 func test_names_and_keys() -> void:
-	assert_eq(AudioBuses.display_name(AudioBuses.SFX), "Efectos")
-	assert_eq(AudioBuses.display_name(&"Otro"), "Otro")
+	assert_eq(AudioBuses.volume_label(AudioBuses.SFX), "Effects volume")
+	assert_eq(AudioBuses.volume_label(&"Other"), "Other")
 	assert_eq(AudioBuses.volume_key(AudioBuses.UI), "volume_ui")
 	for bus: StringName in AudioBuses.ALL:
-		assert_true(AudioBuses.DISPLAY_NAMES.has(bus), "%s has a Spanish name" % bus)
+		assert_true(AudioBuses.VOLUME_LABELS.has(bus), "%s has a volume label" % bus)
 		assert_true(AudioBuses.DEFAULT_VOLUMES.has(bus), "and a default volume")
 
 

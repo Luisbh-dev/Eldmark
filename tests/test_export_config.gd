@@ -172,6 +172,23 @@ func test_no_filter_removes_what_the_game_loads() -> void:
 	assert_false(_matches_any("scripts/client/audio/audio_director.gd", sample))
 
 
+## The Spanish catalog (docs/localization.md section 3): the client carries every [code]locale/*.po[/code]
+## whatever [code]all_resources[/code] decides, and the server, which has no interface, never carries the
+## [code]locale/[/code] folder.
+func test_the_client_carries_the_catalog_and_the_server_leaves_it_out() -> void:
+	assert_true(FileAccess.file_exists("res://locale/es.po"), "the Spanish catalog exists")
+	var client: String = _section_of(CLIENT_PRESET)
+	var includes: PackedStringArray = PackedStringArray()
+	for pattern: String in String(_value(client, "include_filter")).split(","):
+		includes.append(pattern.strip_edges())
+	assert_true(_matches_any("locale/es.po", includes), "the client preset includes locale/*.po")
+	assert_false(_matches_any("locale/es.po", _excludes(client)), "and does not exclude it")
+	var server: PackedStringArray = _excludes(_section_of(SERVER_PRESET))
+	assert_true(_matches_any("locale/es.po", server), "the server preset excludes the .po files")
+	assert_true(_matches_any("locale/eldmark.pot", server), "and the template")
+	assert_false(_matches_any("scripts/client/l10n/l10n.gd", server), "but not the scripts: the pack still needs them")
+
+
 func test_exports_are_not_tracked() -> void:
 	var ignore: String = FileAccess.get_file_as_string("res://.gitignore")
 	assert_true(ignore.contains("/exports/"), "what is exported is not versioned")
@@ -277,6 +294,8 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 			if file_name.begins_with(dir):
 				fail("the pack carries %s" % file_name)
 				break
+	for file_name: String in files:
+		assert_false(file_name.begins_with("locale/"), "the server pack carries %s: it has no interface" % file_name)
 	for required: String in ["project.binary", "addons/terrain_3d/terrain.gdextension",
 			"addons/terrain_3d/LICENSE.txt", "assets/LICENSES.md",
 			"scenes/world/zones/vado_gris/vado_gris.tscn.remap",

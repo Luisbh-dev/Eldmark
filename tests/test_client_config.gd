@@ -373,3 +373,18 @@ func test_account_arguments_are_not_reported_as_unknown_by_boot() -> void:
 		"--character=Aneira", "--world=1", "--dtls-cert=zona.pem", "--dtls-name=zona",
 	]))
 	assert_eq(options["warnings"], PackedStringArray(), "no account argument is unknown")
+
+
+func test_locale_forces_the_interface_language_and_boot_does_not_report_it() -> void:
+	assert_eq(ClientConfig.from_args(PackedStringArray()).locale, "", "no language forced by default")
+	for code: String in ["en", "es", "pseudo"]:
+		var config: ClientConfig = ClientConfig.from_args(PackedStringArray(["--locale=%s" % code]))
+		assert_eq(config.locale, code)
+		assert_eq(config.warnings, PackedStringArray(), "%s is valid" % code)
+	assert_eq(ClientConfig.from_args(PackedStringArray(["--locale=PSEUDO"])).locale, "pseudo", "case does not matter")
+	var bad: ClientConfig = ClientConfig.from_args(PackedStringArray(["--locale=klingon"]))
+	assert_eq(bad.locale, "", "an unknown language is ignored")
+	assert_eq(bad.warnings.size(), 1, "with a warning")
+	assert_true(bad.warnings[0].contains("klingon"))
+	var options: Dictionary = BootScript.parse_client_options(PackedStringArray(["--locale=en", "--l10n-strict"]))
+	assert_eq(options["warnings"], PackedStringArray(), "boot lists --locale and --l10n-strict among its arguments")

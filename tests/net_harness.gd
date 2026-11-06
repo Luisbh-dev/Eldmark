@@ -213,12 +213,20 @@ static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: in
 ## Launches another process of this same executable, windowless and inside this project, with
 ## [param user_args] as user arguments (those after [code]--[/code]) and its Godot log in
 ## [code]build/<pid>/<log_name>.log[/code] ([method build_path]). Returns the pid, or -1 if it
-## could not launch it.
+## could not launch it. A client process gets [code]--locale=en[/code] (unless the caller passes its own), so
+## the language of the machine or of its settings never reaches a test (docs/localization.md section 12.1);
+## the server has no interface language and does not get it.
 static func launch_process(user_args: PackedStringArray, log_name: String) -> int:
 	var project_dir: String = ProjectSettings.globalize_path("res://")
 	var args := PackedStringArray(["--headless", "--path", project_dir, "--log-file",
 			build_path("%s.log" % log_name), "--"])
 	args.append_array(user_args)
+	if not user_args.has("--server"):
+		var has_locale: bool = false
+		for arg: String in user_args:
+			has_locale = has_locale or arg.begins_with("--locale=")
+		if not has_locale:
+			args.append("--locale=en")
 	return OS.create_process(OS.get_executable_path(), args)
 
 

@@ -10,7 +10,7 @@ extends RefCounted
 ## --bot-cheat=<mode>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --quit-at-server-tick=N
 ## --report=<path.json>  --state-log=<path.csv>  --dev-lock-path=<path.json>  --loadout=<template>
 ## --title  --platform=<url>  --login=<email>  --password-file=<path>  --character=<name>  --world=N
-## --dtls-cert=<pem>  --dtls-name=<cn>  --bot-scenario=<scenario>
+## --dtls-cert=<pem>  --dtls-name=<cn>  --bot-scenario=<scenario>  --locale=<en|es|pseudo>
 ## [/codeblock]
 ## [br]The mode ([enum Mode]) comes from them with this priority (docs/platform.md §13.3):
 ## [code]--bots[/code] ([constant SWARM]) > [code]--bot[/code] ([constant BOT]) > [code]--local[/code]
@@ -120,6 +120,10 @@ var dev_lock_path: String = ""
 ## [code]--platform[/code] does not send it: it is the starting template of the character it creates if
 ## it does not exist yet ([method AccountFlow.ensure_character], docs/progression.md §2.5).
 var loadout: String = ""
+## Interface language forced for this run ([code]--locale=<en|es|pseudo>[/code]); empty = the saved
+## setting decides. [L10n] reads the argument by itself, so the galleries and the tests get the same
+## behavior; it is kept here to validate it and to forward it to the processes a client starts.
+var locale: String = ""
 ## Warnings for the user about network arguments that could not be interpreted.
 var warnings: PackedStringArray = PackedStringArray()
 
@@ -190,6 +194,11 @@ static func from_args(args: PackedStringArray, exported: bool = false) -> Client
 		config.warnings.append("Escenario de bot desconocido '%s' (hay: %s); se juega sin escenario" % [
 				config.bot_scenario, ", ".join(BOT_SCENARIOS)])
 		config.bot_scenario = ""
+	config.locale = _string_option(args, "--locale=").to_lower()
+	if not config.locale.is_empty() and not L10n.FORCEABLE.has(config.locale):
+		config.warnings.append("Idioma desconocido '%s' (hay: %s); se usa el de los ajustes" % [
+				config.locale, ", ".join(L10n.FORCEABLE)])
+		config.locale = ""
 	config.report_path = _clean_path(_string_option(args, "--report="))
 	config.state_log_path = _clean_path(_string_option(args, "--state-log="))
 	config.dev_lock_path = _clean_path(_string_option(args, "--dev-lock-path="))

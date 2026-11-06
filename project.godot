@@ -38,6 +38,11 @@ platform/ca_cert=""
 
 theme/custom="res://assets/ui/theme/eldmark_theme.tres"
 
+[internationalization]
+
+locale/fallback="en"
+rendering/root_node_auto_translate=false
+
 [physics]
 
 common/physics_ticks_per_second=60

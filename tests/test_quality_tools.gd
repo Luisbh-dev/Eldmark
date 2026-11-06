@@ -347,6 +347,36 @@ func test_run_py_lists_areas_without_godot() -> void:
 		assert_true(text.contains(area), "lists the area %s" % area)
 
 
+## [code]run.py --locale es|en|pseudo[/code] (docs/localization.md section 13): Spanish by default, so the
+## existing commands keep making the Spanish captures, and only the clients get the argument, never the
+## server or the bots.
+func test_run_py_takes_a_locale_for_the_clients_only() -> void:
+	var python: String = ""
+	for candidate: String in ["python", "python3"]:
+		if OS.execute(candidate, ["--version"], [], true) == 0:
+			python = candidate
+			break
+	if python.is_empty():
+		return
+	var script_dir: String = ProjectSettings.globalize_path(QUALITY_DIR)
+	var code_text: String = "import sys; sys.path.insert(0, r'%s'); import run; p = run.build_parser(); " % script_dir \
+			+ "print(p.parse_args(['interfaz']).locale, p.parse_args(['interfaz', '--locale', 'pseudo']).locale, " \
+			+ "p.parse_args(['interfaz', '--locale=en']).locale)"
+	var output: Array = []
+	assert_eq(OS.execute(python, ["-c", code_text], output, true), 0, "run.py's parser loads: %s" % [output])
+	assert_eq("\n".join(output).strip_edges(), "es pseudo en")
+	var bad: Array = []
+	assert_true(OS.execute(python, ["-c", code_text.replace("'pseudo'", "'klingon'")], bad, true) != 0,
+			"an unknown language is refused")
+	var source: String = FileAccess.get_file_as_string(QUALITY_DIR.path_join("run.py"))
+	var server_part: String = source.substr(source.find("def server("), source.find("def run_godot(") - source.find("def server("))
+	assert_false(server_part.contains("locale"), "the server and the bots get no --locale")
+	var driver_part: String = source.substr(source.find("def driver("), source.find("def compose_all(") - source.find("def driver("))
+	assert_true(driver_part.contains("ctx.locale_arg()"), "the capture client does")
+	assert_true(source.contains("\"--shots=%s\" % ctx.posix(folder), ctx.locale_arg()"), "and so does the chat preview")
+	assert_true(source.contains("\"--quit-after-demo\", ctx.locale_arg()"), "and the offline demo")
+
+
 func _remove_dir(path: String) -> void:
 	var dir: DirAccess = DirAccess.open(path)
 	if dir == null:

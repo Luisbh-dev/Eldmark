@@ -3,9 +3,16 @@ extends RefCounted
 ##
 ## Title screen with account (FrontMain): without the accounts platform running (not needed: the bench uses no accounts or passwords), so what is seen is the
 ## title with its error notice and, forcing the screen with fake data (no real passwords or accounts),
-## sign-up, character selection and the four character creation steps.
+## sign-up, character selection and the four character creation steps. It also captures the settings window
+## (F10) over the title screen, one capture per tab, which needs no server: that is the light capture the
+## localization increments use to compare the languages (docs/localization.md section 13).
 
 var d: Variant
+
+## File name slug of each settings tab, by tab id (the same names as in sc_interfaz.gd).
+const TAB_SLUGS: Dictionary = {
+	&"graphics": "graficos", &"audio": "audio", &"camera": "camara", &"interface": "interfaz",
+}
 
 
 func run(drv: Variant) -> void:
@@ -13,6 +20,7 @@ func run(drv: Variant) -> void:
 	await d.wait(3.0)
 	var main: Node = d.main
 	await d.shot("interfaz/titulo_01_inicio.png", "pantalla de título con cuenta: inicio (la plataforma de cuentas no está en marcha)", "online_driver --front --title")
+	await _settings_over_the_title(main)
 	var title: Variant = main.get_title_screen()
 	if title != null:
 		# Attempt to log in without typing anything (the button must be disabled) and the "forgot your password?" panel.
@@ -71,3 +79,30 @@ func run(drv: Variant) -> void:
 		create.next()
 		await d.wait(0.8)
 		await d.shot("interfaz/creacion_04_nombre.png", "creación, paso 4: nombre", "next()")
+
+
+# The settings window over the title screen: one capture per tab, named after the tab id.
+func _settings_over_the_title(main: Node) -> void:
+	var services: ClientServices = main.get_node_or_null(ClientServices.NODE_NAME) as ClientServices
+	if services == null:
+		d.note("no se encontró ClientServices en la pantalla de título")
+		return
+	var menu: SettingsMenu = services.get_settings_menu()
+	await d.key(KEY_F10)
+	await d.wait(0.8)
+	var tabs: TabContainer = menu.get_tabs()
+	for i: int in tabs.get_tab_count():
+		tabs.current_tab = i
+		await d.wait(0.5)
+		var slug: String = String(TAB_SLUGS.get(ClientSettings.TABS[i], ClientSettings.TABS[i]))
+		await d.shot("interfaz/titulo_ajustes_f10_%d_%s.png" % [i + 1, slug],
+				"ajustes (F10) sobre el título, pestaña «%s»" % tabs.get_tab_title(i), "tecla F10 y cambio de pestaña")
+	# "Restore all" opens the confirmation dialog (UIConfirmDialog) with its default button texts.
+	menu.restore_all()
+	await d.wait(0.5)
+	await d.shot("interfaz/titulo_ajustes_f10_5_confirmar.png", "ajustes (F10) sobre el título, diálogo de confirmación de «Restaurar todo»",
+			"tecla F10 y restore_all()")
+	services.get_confirm_dialog().cancel()
+	await d.wait(0.3)
+	await d.key(KEY_F10)
+	await d.wait(0.4)

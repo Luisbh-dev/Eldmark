@@ -9,10 +9,15 @@ extends UIWindow
 ## to keep the controls up to date when the value changes elsewhere (on restore). When it is closed the
 ## changes are saved ([method ClientSettings.save_if_dirty]).
 ## [br][br]
-## "Restaurar pestaña" (Restore tab) returns the settings of the open tab to their default value and
-## "Restaurar todo" (Restore all) those of all of them (with confirmation if given a
-## [UIConfirmDialog]). The resolution can only be chosen in windowed mode. It opens with F10
-## ([ClientServices]) and, like every [UIWindow], closes with Esc and frees the cursor while open.
+## "Restore tab" returns the settings of the open tab to their default value and "Restore all" those of
+## all of them (with confirmation if given a [UIConfirmDialog]); the language is left alone by both. The
+## resolution can only be chosen in windowed mode. It opens with F10 ([ClientServices]) and, like every
+## [UIWindow], closes with Esc and frees the cursor while open.
+## [br][br]
+## [b]Language.[/b] The window is localized ([L10n], docs/localization.md): fixed texts are bound and follow
+## a language change, and [method _refresh_texts] rewrites the rest (tab titles, list items, the values next
+## to the sliders) in place, without rebuilding any control: the language selector is one of those
+## controls and it is the one that triggers the change.
 ## [br][br]
 ## Client only.
 
@@ -24,12 +29,6 @@ const WINDOW_WIDTH: float = 700.0
 const TABS_HEIGHT: float = 340.0
 const LABEL_WIDTH: float = 250.0
 const VALUE_WIDTH: float = 120.0
-const TITLE_TEXT: String = "Ajustes"
-const RESTORE_TAB_TEXT: String = "Restaurar pestaña"
-const RESTORE_ALL_TEXT: String = "Restaurar todo"
-const CLOSE_TEXT_BUTTON: String = "Cerrar"
-const CONFIRM_TITLE: String = "Restaurar todos los ajustes"
-const CONFIRM_MESSAGE: String = "Todos los ajustes volverán a sus valores por defecto."
 
 var _settings: ClientSettings = null
 var _confirm: UIConfirmDialog = null
@@ -46,12 +45,12 @@ var _syncing: bool = false
 func _init() -> void:
 	# Creates the window's title bar and content column.
 	super()
-	window_title = TITLE_TEXT
+	L10n.bind(self, "Settings", &"", &"window_title")
 	custom_minimum_size = Vector2(WINDOW_WIDTH, 0.0)
 
 
 ## Assembles the window with the settings of [param settings]. [param confirm] is the confirmation
-## dialog for "Restaurar todo" (Restore all) (without it, it restores directly). It can be called once.
+## dialog for "Restore all" (without it, it restores directly). It can be called once.
 func setup(settings: ClientSettings, confirm: UIConfirmDialog = null) -> void:
 	_settings = settings
 	_confirm = confirm
@@ -111,7 +110,9 @@ func restore_current_tab() -> void:
 ## its response.
 func restore_all() -> void:
 	if _confirm != null:
-		_confirm.open(CONFIRM_TITLE, CONFIRM_MESSAGE, RESTORE_ALL_TEXT, "Cancelar", true)
+		_confirm.open(L10n.t("Restore all settings"),
+				L10n.t("All settings except the language will return to their default values."), L10n.t("Restore all"),
+				L10n.t("Cancel", &"button"), true)
 	else:
 		_on_restore_confirmed()
 
@@ -133,9 +134,11 @@ func _build() -> void:
 	get_content().add_child(_tabs)
 	for tab: StringName in ClientSettings.TABS:
 		var page: VBoxContainer = VBoxContainer.new()
-		page.name = String(ClientSettings.TAB_NAMES[tab])
+		# The node name is the tab's id; the title is set apart so that it follows the language.
+		page.name = String(tab)
 		page.add_theme_constant_override(&"separation", 10)
 		_tabs.add_child(page)
+		_tabs.set_tab_title(_tabs.get_tab_count() - 1, ClientSettings.tab_title(tab))
 	for spec: Dictionary in ClientSettings.get_schema():
 		var page: Control = _tabs.get_child(ClientSettings.TABS.find(spec["tab"])) as Control
 		page.add_child(_make_row(spec))
@@ -143,18 +146,18 @@ func _build() -> void:
 	buttons.add_theme_constant_override(&"separation", 10)
 	get_content().add_child(buttons)
 	_restore_tab_button = Button.new()
-	_restore_tab_button.text = RESTORE_TAB_TEXT
+	L10n.bind(_restore_tab_button, "Restore tab")
 	_restore_tab_button.pressed.connect(restore_current_tab)
 	buttons.add_child(_restore_tab_button)
 	_restore_all_button = Button.new()
-	_restore_all_button.text = RESTORE_ALL_TEXT
+	L10n.bind(_restore_all_button, "Restore all")
 	_restore_all_button.pressed.connect(restore_all)
 	buttons.add_child(_restore_all_button)
 	var spacer: Control = Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	buttons.add_child(spacer)
 	_close_button_bottom = Button.new()
-	_close_button_bottom.text = CLOSE_TEXT_BUTTON
+	L10n.bind(_close_button_bottom, "Close", &"button")
 	_close_button_bottom.pressed.connect(close)
 	buttons.add_child(_close_button_bottom)
 	_sync_all()
@@ -166,7 +169,7 @@ func _make_row(spec: Dictionary) -> HBoxContainer:
 	row.name = String(id)
 	row.add_theme_constant_override(&"separation", 14)
 	var label: Label = Label.new()
-	label.text = spec["label"]
+	L10n.bind(label, String(spec["label"]), StringName(spec.get("label_ctx", &"")))
 	label.custom_minimum_size = Vector2(LABEL_WIDTH, 0.0)
 	row.add_child(label)
 	var control: Control = null
@@ -178,8 +181,8 @@ func _make_row(spec: Dictionary) -> HBoxContainer:
 		ClientSettings.Kind.CHOICE:
 			var option: OptionButton = OptionButton.new()
 			option.custom_minimum_size = Vector2(260.0, 0.0)
-			for text: String in spec["labels"]:
-				option.add_item(text)
+			for index: int in (spec["labels"] as Array).size():
+				option.add_item(ClientSettings.item_text(spec, index))
 			option.item_selected.connect(func(index: int) -> void:
 				_on_control_changed(id, (spec["values"] as Array)[index]))
 			control = option
@@ -205,6 +208,30 @@ func _make_row(spec: Dictionary) -> HBoxContainer:
 		row.add_child(_value_labels[id])
 	_controls[id] = control
 	return row
+
+
+# --- Language -----------------------------------------------------------------------------------
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		_refresh_texts()
+
+
+# Rewrites in place the texts that are not bound: tab titles, list items and the values next to the
+# sliders. It never rebuilds a control (no clear() or add_item()).
+func _refresh_texts() -> void:
+	if _tabs == null or _settings == null:
+		return
+	for index: int in ClientSettings.TABS.size():
+		_tabs.set_tab_title(index, ClientSettings.tab_title(ClientSettings.TABS[index]))
+	for id: StringName in _controls:
+		var option: OptionButton = _controls[id] as OptionButton
+		if option == null:
+			continue
+		var spec: Dictionary = ClientSettings.get_spec(id)
+		for index: int in option.item_count:
+			option.set_item_text(index, ClientSettings.item_text(spec, index))
+	_sync_all()
 
 
 # --- Synchronization between controls and settings --------------------------------------------

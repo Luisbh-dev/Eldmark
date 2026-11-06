@@ -88,6 +88,14 @@ func allow_logged_errors() -> void:
 	_logged_errors_allowed = true
 
 
+## Forces the interface language ([code]en[/code], [code]es[/code] or [code]pseudo[/code]) for this test only:
+## the runner puts English back before the next one. Tests run in English whatever the machine is set to;
+## the few that check the Spanish on purpose (tab names, the decimal comma, the date pattern, one sentence
+## per catalog) call this first. See docs/localization.md section 12.1.
+func with_locale(code: String) -> void:
+	L10n.force(code)
+
+
 ## Waits [param count] physics steps. On return, the code runs inside the physics
 ## step ([method Engine.is_in_physics_frame] is true) until the next [code]await[/code].
 func wait_physics_frames(count: int = 1) -> void:
