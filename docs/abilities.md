@@ -42,14 +42,14 @@ The first four were pending backlog items that blocked progress; they are taken 
 | Own arrow | Seen instantly (predicted); marker and number on confirmation, like melee. |
 | Weapon swap | Q, 0.4 s; the weapon changes on the first tick; cooldowns are kept (absolute ticks). Active weapon in `CombatState` and in bit 3 of the record's `flags`. |
 | Templates | Squire (sword and shield) and marksman (bow and sword and shield). They are chosen before entering or on the death screen; they apply on the next spawn. *Superseded for characters in phases 6-8*: weapons are free (any two, from the character's loadout, [weapons.md W1](weapons.md#0-decisions)); templates stay for the camp refill, tests and NPCs. |
-| Equipment | Only the two weapons. Armor, `StatBlock` and derived sheet are left for PRG-01 and PRG-06 (§9). *Superseded in phases 6-8*: 11 equipment slots, load classes and the item scale are in `items.md`. |
+| Equipment | Only the two weapons. Armor, `StatBlock` and derived sheet are left for PRG-01 and PRG-06 (§9). *Superseded in phases 6-8*: 11 equipment slots, load classes and the item scale are in [items.md](items.md). |
 | Effects that move | Two slots in `CombatState` (slow, root); the rest lives on the server. |
 | Shield bash | Unblockable (`AttackDefinition.unblockable`, from F4) and stuns for 0.8 s. It can be dodged. |
 | Shield wall | 180° block and a box that stops enemy projectiles: it protects those behind from arrows, not from blows. |
 | Interruption | Only a HIT from a blow or an arrow with result IMPACT, damage > 0 and a hostile author (not pulses or environment) cuts drinking and the marked casts (phase 0, `[0, cast)`), reviving and executing. Control effects cut any action, as today. |
 | Friendly fire | Still none: arrows and areas pass through allies. |
 | New keys | Q swap weapon, R health potion, T stamina potion. They are rebindable with UI-17. **Phases 6-8**: **F** is the ultimate (`PlayerInput` bit 13 `ULTIMATE`, rebindable): 150 s cooldown that survives death and logout. |
-| Classes (phases 6-8) | *Superseded*: there are no fixed classes; the role comes from the two weapons plus a **specialization** chosen at level 10 (`advancement.md`). Each character carries 3 of the 5 abilities of each weapon, chosen for free out of combat ([weapons.md §3.2](weapons.md#32-the-ability-set-of-a-weapon)). |
+| Classes (phases 6-8) | *Superseded*: there are no fixed classes; the role comes from the two weapons plus a **specialization** chosen at level 10 ([advancement.md](advancement.md)). Each character carries 3 of the 5 abilities of each weapon, chosen for free out of combat ([weapons.md §3.2](weapons.md#32-the-ability-set-of-a-weapon)). |
 | Dodge (phases 6-8) | `sword_dodge` is renamed `standard_dodge`: one dodge for every weapon, changed only by the armor load class ([weapons.md §3.4](weapons.md#34-dodge-and-block)). |
 | Deviations from the backlog | CMB-21: the wall protects those behind only from arrows. CMB-23: no spread; the charge gives damage and speed (flatter trajectory). CMB-24: the active weapon goes in bit 3 of the record's `flags`, not in the action byte. PRG-04: only the two weapons, no derived sheet (§9). Noted in backlog.md. |
 
@@ -812,7 +812,7 @@ document's formats gain:
 - **Header and capacity**: 147 B with own state and extra block, 50 records per snapshot (§3.1).
 - **Entity kind 5 AREA** (kind 4 is STRUCTURE since protocol 3) and the other formats of the content design:
   [networking.md §5.8](networking.md#58-phases-6-8-content-additions).
-- Changing the picks goes through BUILD_REQUEST (`SET_ABILITIES`, `advancement.md`), validated against what the character
+- Changing the picks goes through BUILD_REQUEST (`SET_ABILITIES`, [advancement.md](advancement.md)), validated against what the character
   has unlocked; a locked pick counts a warning and is replaced by the default.
 
 ---

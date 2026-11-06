@@ -1087,8 +1087,8 @@ reserved in phase 3 and OBJECT_STATE (`0x22`) in phase 4 (protocol 3): their for
 ### 5.8 Phases 6-8 content additions
 
 What the content design of phases 6 to 8 puts on the wire, assigned in one place so the lanes do not collide. Each
-document that owns a system defines the bytes of its messages (quests in `quests.md`, build in `advancement.md`, items and
-economy in `items.md`, interaction and NPCs in `npcs.md`, combat in [weapons.md §6](weapons.md#6-state-machine-and-protocol)
+document that owns a system defines the bytes of its messages (quests in [quests.md](quests.md), build in [advancement.md](advancement.md), items and
+economy in [items.md](items.md), interaction and NPCs in [npcs.md](npcs.md), combat in [weapons.md §6](weapons.md#6-state-machine-and-protocol)
 and [abilities.md 5.7](abilities.md#57-phases-6-8-changes)); this section fixes the numbers.
 
 **Message-type registry.** Free before this design: `0x08`-`0x0F`, `0x24`-`0x2F`, `0x33`-`0x3F`, `0x42`-`0x47` and
@@ -1148,7 +1148,7 @@ players per channel) and the capitals (60-120 ambient NPCs) need interest by dis
 | Evaluation | Every 6 ticks, staggered by `(s + net_id) % 6`, and on every spawn (§11) |
 | Weight | `clamp(1 − d/R, 0.1, 1)`, more if the entity is fighting the observer or has them as a target; fortresses and objects `ALWAYS_RELEVANT` |
 | Expected load | A client in a camp sees 10-15 NPCs and about 20 players, at most 50 records |
-| Done when | 240 NPCs in the test zone stay below 37 KB/s per client and a client receives only what is near |
+| Done when | 240 NPCs in the stress scene stay below 37 KB/s per client (the snapshot limit of phase 2; it is the worst case, not the zone budget: the PvE zones of `world.md` §11, TEC-68 and point 6 of the first vertical slice ask for **≤ 30 KB/s per client** at normal density) and a client receives only what is near |
 
 Areas and projectiles follow the owner's relevance. Delta snapshots and the Eldrun budget stay with TEC-33 and TEC-34.
 

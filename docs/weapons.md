@@ -9,8 +9,8 @@ their §0 to §4 as read, and puts the new fields on the wire in [networking.md]
 
 It applies the decisions of the integrated content design of 2026-11-07 (I01, I06, I11, I20 to I33, I64, I65 and I67:
 the ids are those of the integrated design, kept in the "Decision" column below so the two can be read side by side).
-The specializations themselves, the mastery trees, the level curve and the item scale live in `advancement.md` and
-`items.md`; this document only fixes what touches the weapons. Those two files are written in parallel to this one, so
+The specializations themselves, the mastery trees, the level curve and the item scale live in [advancement.md](advancement.md) and
+[items.md](items.md); this document only fixes what touches the weapons. Those two files are written in parallel to this one, so
 they are named here without a link: the links are added when they land.
 
 Version 1. Every figure is a **starting value (provisional)**: the data is tuned with `tools/combat_balance.gd` and
@@ -22,28 +22,31 @@ snapshots at 30 Hz), so a zone that drops to 30 Hz keeps the same data.
 
 ## 0. Decisions
 
+The ids W1-W20 are local to this document: other documents cite them with the file ("weapons.md W4"), because
+`world.md` also numbers its decisions W1-W17.
+
 Almost all of them come from the integrated design; the user's three (free weapons plus a specialization at level 10,
 maximum level 60, free assets only) are the first three rows.
 
 | # | Decision | Why |
 |---|---|---|
-| W1 | **Free weapons.** Any character can carry any weapon, two at a time with Q; no weapon belongs to a realm (the realm only changes the model and what each garrison carries). The class is a **specialization** chosen at level 10 (`advancement.md`). Replaces "No classes" (combat.md §0). *(I01, user)* | Swapping weapon has to be cheap and symmetric between realms: an exclusive weapon would unbalance the war and triple the tuning. |
+| W1 | **Free weapons.** Any character can carry any weapon, two at a time with Q; no weapon belongs to a realm (the realm only changes the model and what each garrison carries). The class is a **specialization** chosen at level 10 ([advancement.md](advancement.md)). Replaces "No classes" (combat.md §0). *(I01, user)* | Swapping weapon has to be cheap and symmetric between realms: an exclusive weapon would unbalance the war and triple the tuning. |
 | W2 | **Catalog of 12 weapons, 10 at launch** (end of phase 8). Phase 6: hatchet, life staff, fire staff (after sword and shield and bow, which exist). Phase 7: crossbow, frost gauntlet, war hammer, greatsword. Phase 8: spear. After launch: twin daggers, great axe. **No gunpowder** and no ammunition. *(I25)* | The order follows the animation clips that exist (§8.4) and what the war needs: the hammer is moved up to phase 7 for the sieges. Gunpowder has no place in the world (world.md: Askarra is bronze and embers) and the crossbow covers the slow piercing shot. Ammunition would add an economy and a bag slot with no decision in RvR. |
 | W3 | **Five actives per weapon**: 3 of base and 1 that opens each of the two branches of the mastery tree. You carry **3 per weapon** (6 with the swap) plus the ultimate, chosen for free out of combat. At most **2 catalog variants** `<id>_2` per weapon (one per branch). The other 20 abilities of the original proposal stay as a **reserve pool** of data for after the launch (appendix A). *(I11)* | Production: 50 actives at launch instead of 70, each one with data, icon, VFX, clip and a test. Three of five is a real choice without a bar nobody can fill. |
-| W4 | **Slots and unlocks by level.** Ability slots 1, 2 and 3 open at character levels 1, 3 and 6; the 4th and 5th ability of each weapon open from level 8 with the row-2 node of its tree (mastery); variants come with row 4 (level 20); the ultimate with the specialization at 10 (`advancement.md`). *(I12)* | It is the "abilities by level unlock" request, without tying the mastery to the level. |
+| W4 | **Slots and unlocks by level.** Ability slots 1, 2 and 3 open at character levels 1, 3 and 6; the 4th and 5th ability of each weapon open from level 8 with the row-2 node of its tree (mastery); variants come with row 4 (level 20); the ultimate with the specialization at 10 ([advancement.md](advancement.md)). *(I12)* | It is the "abilities by level unlock" request, without tying the mastery to the level. |
 | W5 | **Only some things are predicted per character**: the weapons, the picked abilities, the ultimate, the mana and the load class. Passives, talents, attributes, specialization and affixes touch **server-only values** (damage, mitigation, healing, effects, controls, block cost). Whatever needs to change a predicted field (cooldown, timings, displacement, projectile) is a **catalog variant** with its own id. *(I21)* | Fewer prediction divergences: the `prediction_hash` stays one for all the players and the state carries only which ability is in each slot. |
 | W6 | **Mana only on the three magic weapons** (life staff, fire staff, frost gauntlet): 1000, regenerates 1 per tick (60/s) after 1.5 s without spending, shared by the two weapons; light attacks are free, heavies cost 60-100, abilities 120-300, and abilities keep their cooldown. **The stamina potion becomes the tonic**: +400 stamina and +300 mana. Concentration does not regenerate mana. *(I27, I08)* | Stamina stays the defensive resource (abilities.md §0). The cooldown is still needed: the re-arm rule of the action byte (abilities.md §5.5) demands it and it stops a mage from emptying the pool in one second. Regeneration by an attribute would be a predicted value that differs per character (W5). |
 | W7 | **Attributes per weapon**: sword and shield STR/DEX, bow DEX/STR, hatchet STR/DEX, life staff FOC/INT, fire staff INT/FOC, crossbow DEX/INT, frost gauntlet INT/FOC, war hammer STR/DEX, greatsword STR/DEX, spear DEX/STR, twin daggers DEX/INT, great axe STR/DEX. **CON is never a weapon attribute.** Weight 1.0 for the principal and 0.5 for the secondary. *(I26)* | The hammer was proposed with CON as secondary; CON already adds health, so it would count twice. The two staves share attributes so that fire plus life is a natural pair. |
-| W8 | **The dodge belongs to the load, not to the weapon.** `sword_dodge` becomes `standard_dodge`; only the armor load class changes it (5.5 / 4.5 / 3.0 m for 250 / 300 / 350 stamina, regeneration delay 0.5 / 0.6 / 0.8 s; `items.md`). *(I28, I35)* | If the greatsword also dodged worse than the others, the heavy armor would punish the same player twice. One lever is easier to tune and to read. |
+| W8 | **The dodge belongs to the load, not to the weapon.** `sword_dodge` becomes `standard_dodge`; only the armor load class changes it (5.5 / 4.5 / 3.0 m for 250 / 300 / 350 stamina, regeneration delay 0.5 / 0.6 / 0.8 s; [items.md](items.md)). *(I28, I35)* | If the greatsword also dodged worse than the others, the heavy armor would punish the same player twice. One lever is easier to tune and to read. |
 | W9 | **Every melee weapon blocks**, with a mitigation per weapon: shield 1.0, two-handed 0.7, one-handed and spear 0.6, daggers 0.5; against magic damage the shield mitigates 0.5 and the rest 0.3. Ranged and magic weapons do not block. *(I28)* | The numbers are already data (`block_mitigation`, combat.md §2); only the table is fixed. With no block, the ranged weapons live by position and dodge, like the bow today. |
 | W10 | **Damage types**: slashing 0, piercing 1, blunt 2, **fire 3** (the `ELEMENTAL` of today), frost 4, light 5. **Physical and elemental armor** are separate and resistances are per type. Closes what CMB-07 was missing. *(I29)* | Resistances per type need types with meaning; three elements give realm armors (Vardheim against frost) without inventing a large table. |
 | W11 | **Healing without a target**: projectiles that stop at the first ally, areas on the ground, areas around the caster, with a cap on targets. Self-healing ×0.6; sustained healing on one ally ≤ **117 HPS**; healing generates threat (0.5 × healed); wounded allied NPCs can be healed; a knocked-down player is picked up, not healed. *(I30)* | Same principle as the rest of the combat (vision.md: no target selection). The self-heal reduction prevents the immortal healer in a duel. The role trial of the Healer needs healable NPCs. |
 | W12 | **Role bands and budgets** (§3.1): DPS bands over the 156.3 DPS of the sword combo; control ≤ 2.5 s every 20 s; burst ≤ 500 in 3 s; areas ≤ 6 m and ≤ 8 targets per pulse, with a warning if a hit does 150 or more; 48 areas per zone and 2 per owner. Passives of one weapon tree add at most **8 %** of effectiveness. *(I31, I10)* | The bands are relations between weapons, so they hold at any power. The 8 % (instead of 10 %) leaves the normalization of Eldrun room to close at 1.15. |
 | W13 | **New status kinds, all server-only**: `FORTIFY`, `VULNERABLE`, `WEAKEN`, `HEALING_DOWN`, `LIFESTEAL`, `UNSTOPPABLE`. `FORTIFY` is the `MITIGATION_UP` of the progression proposal and `VULNERABLE` its `MITIGATION_DOWN`: one name each. *(I32)* | Rule of networking.md §6.7: what changes the simulation enters `PlayerState`. These do not, so state and hash do not grow. |
 | W14 | **Ground areas** are a new resource (`GroundAreaDefinition`) and a new server system (`AreaSystem`); on the wire an entity of kind AREA with no snapshot records (§6.5). *(armas D4, I67)* | Healing zones, traps, walls and rains are the same machine. Like the projectiles, they cost two reliable messages and no snapshot bytes. |
-| W15 | **The ultimate is one more ability**, of the specialization and not of the weapon: its own slot, key **F**, `PlayerInput` bit 13 `ULTIMATE`, cooldown 150 s that survives death and logout, at most 10 targets. The data of the five ultimates is `advancement.md`'s; the slot is this document's. *(I06)* | It reuses the whole ability system. With 150 s and 150 players in Eldrun that is one ultimate per second, which the CPU and the readability can take. |
+| W15 | **The ultimate is one more ability**, of the specialization and not of the weapon: its own slot, key **F**, `PlayerInput` bit 13 `ULTIMATE`, cooldown 150 s that survives death and logout, at most 10 targets. The data of the five ultimates is [advancement.md](advancement.md)'s; the slot is this document's. *(I06)* | It reuses the whole ability system. With 150 s and 150 players in Eldrun that is one ultimate per second, which the CPU and the readability can take. |
 | W16 | **Two-weapon combos are suggestions** for the five specializations (§2.5); the Herald of the original proposal is dropped. A specialization favors weapons by **tags** (§2.4), never by id. *(I03, I33)* | The Banner of the Vanguard and the control of the Arcanist already cover support; each specialization costs ranks, an ultimate, VFX, a test, a mentor and an icon. |
-| W17 | **Numbers at the level-60 reference.** The `.tres` figures are those of the reference character (level 60, equipment of item level 52, attributes 75/25 and CON 33; health 1000, damage factor 1.0). Item level, attributes and affixes scale them on the server (`items.md`, `advancement.md`). Mitigation is relative to the reference armor (combat.md §4.4). *(I18, I20)* | The measured sheet of combat.md §12 stays valid and no balance test changes. |
+| W17 | **Numbers at the level-60 reference.** The `.tres` figures are those of the reference character (level 60, equipment of item level 52, attributes 75/25 and CON 33; health 1000, damage factor 1.0). Item level, attributes and affixes scale them on the server ([items.md](items.md), [advancement.md](advancement.md)). Mitigation is relative to the reference armor (combat.md §4.4). *(I18, I20)* | The measured sheet of combat.md §12 stays valid and no balance test changes. |
 | W18 | **Tables as CSV, structure as `.tres`.** Weapons and abilities are typed `.tres` written by hand (or from a scaffold) with a validator and a **CSV export and apply round trip** to balance in a spreadsheet; the numeric tables of other systems are CSV that a generator turns into `.tres`. *(I64)* | The `.tres` is the single source of the combat data; the CSV is a view for balancing and is not versioned as a source. |
 | W19 | **Animations only from free sources**: the clips of UAL1 and UAL2 Standard, segments, left-hand IK, an own pose-clip tool, and a KayKit Free retarget trial as a **decision gate (ART-70)**. No paid pack. *(user)* | See the animation risk in §12. |
 | W20 | **`PROTOCOL_VERSION` goes up when a lane that changes the format merges**: 8 is L4a (TEC-57), then each lane bumps its own (9, 10...). No numbers are reserved per lane. *(I65)* | Six lanes would otherwise fight for the number. |
@@ -69,7 +72,7 @@ character, only the first group of rows is predicted; everything else is the ser
 | Ground areas | `AreaSystem` | **No** (the slows and roots they apply enter through the movement slots) | AREA SPAWN and DESPAWN |
 | Projectiles | `ProjectileSystem` | Only the own one, as an image | PROJECTILE SPAWN and DESPAWN |
 
-A talent, passive or affix that would change a predicted field is rejected by the validator of `advancement.md`: it
+A talent, passive or affix that would change a predicted field is rejected by the validator of [advancement.md](advancement.md): it
 becomes a variant of the catalog (§3.2) or a server-only value.
 
 ---
@@ -116,9 +119,9 @@ an attribute.
 
 ### 2.3 Attributes
 
-The five attributes are those of `advancement.md` (STR, DEX, INT, FOC, CON). Each weapon scales its damage with the
+The five attributes are those of [advancement.md](advancement.md) (STR, DEX, INT, FOC, CON). Each weapon scales its damage with the
 principal (weight 1.0) and, if it has one, the secondary (weight 0.5); the bonus per point and its diminishing returns
-are `advancement.md`'s. The life staff scales **damage and healing** with FOC. Pairs that share an attribute (basis of
+are [advancement.md](advancement.md)'s. The life staff scales **damage and healing** with FOC. Pairs that share an attribute (basis of
 §2.5): STR (sword, hatchet, hammer, greatsword), DEX (bow, crossbow, spear, daggers), INT/FOC (fire, frost), and the
 bridges by the secondary: DEX in the STR weapons, STR in the spear and the bow, INT in the crossbow and the daggers,
 FOC in the frost gauntlet (with the life staff).
@@ -140,21 +143,22 @@ by tag, so no specialization lists weapon ids.
 | War hammer | `melee`, `two_handed` |
 | Greatsword | `melee`, `two_handed` |
 | Spear | `melee`, `two_handed`, `polearm` |
-| Twin daggers | `melee`, `one_handed` |
+| Twin daggers | `melee`, `one_handed`, `skirmish` |
 | Great axe | `melee`, `two_handed` |
 
 | Specialization | Favored tags | Favored weapons at launch | In the first vertical slice | Suggested attributes |
 |---|---|---|---|---|
 | Vanguard | `shield`, `polearm` | sword and shield, spear | sword and shield | CON / STR |
 | Linebreaker | `two_handed`, `thrown` | war hammer, greatsword, spear, hatchet | hatchet | STR / CON |
-| Hunter | `ranged`, `thrown` | bow, crossbow, hatchet | bow, hatchet | DEX / STR |
+| Hunter | `ranged`, `thrown`, `skirmish` | bow, crossbow, hatchet (twin daggers when they arrive) | bow, hatchet | DEX / STR |
 | Healer | `healing`, `shield` | life staff, sword and shield | life staff, sword and shield | FOC / CON |
 | Arcanist | `elemental`, `staff` | fire staff, frost gauntlet, life staff | none: arrives with the fire staff, right after the slice | INT / FOC |
 | Sapper (phase 7) | `two_handed`, `siege` | war hammer, greatsword | none | STR / CON |
 
-The validator (V12) checks that every weapon of a phase is favored by at least one specialization and that at least
+The `skirmish` tag exists so that the twin daggers (CMB-61) are favored by one specialization from the day they enter: the Hunter
+harries and punishes whoever strays. The validator (V12) checks that every weapon of a phase is favored by at least one specialization and that at least
 **40 %** of the value of every rank is general (works with any weapon). The ranks and the ultimates are in
-`advancement.md`.
+[advancement.md](advancement.md).
 
 ### 2.5 Two-weapon combos (suggestions)
 
@@ -196,12 +200,14 @@ Rules that hold for every weapon (the validator of §5.7 checks them from the da
 - **Burst**: maximum damage in 3 s against a still dummy with lights and the 3 base abilities, ≤ 500 (half the base
   health). No single-player combination kills in 3 s.
 - **Areas**: radius ≤ 6 m, ≤ 8 targets per hit or pulse, and every area hit of 150 or more with a warning: cast ≥ 0.4 s
-  or delay ≥ 0.5 s. At most 48 areas per zone and 2 per owner.
+  or delay ≥ 0.5 s. At most 48 areas per zone and 2 per owner. Specialization ultimates are exempt from the radius and target
+  caps of weapon areas and have their own: radius ≤ 10 m and ≤ `ultimate_max_targets` (10) per pulse (the Bulwark Banner, Hail of
+  Shafts and Prayer of the Flame of [advancement.md](advancement.md) §8.4 need it).
 - **Healing**: ≤ 0.75 × 156.3 = 117 HPS sustained on one ally with lights and the strongest legal triple of abilities
   on cooldown; self-healing ×0.6.
-- **Cooldowns**: ≥ 6 s on actives, ≥ 60 s on ultimates (150 s in practice).
+- **Cooldowns**: ≥ 6 s on actives, ≥ 120 s on ultimates (150 s in practice).
 - **Passives of a tree**: the sum adds at most **8 %** of effectiveness per weapon tree (damage, mitigation or
-  healing), checked by the validator of `advancement.md` with this figure (V12).
+  healing), checked by the validator of [advancement.md](advancement.md) with this figure (V12).
 
 Why these bands: the weapons without a shield pay their higher DPS (+6 % to +16 %) with a block that lets 30-40 % through
 and no wall; the ranged weapons pay with misses and with not blocking; the spear pays its reach; the magic weapons pay
@@ -231,7 +237,7 @@ in Vado Gris with each new pair.
 - **Changing an ability**: out of combat. A slot's cooldown is kept in the slot (an absolute tick): replacing an
   ability that is cooling down by another does not make it ready.
 - **Production at launch**: 10 weapons × 5 = **50 actives**, at most 20 variants (3 planned), 5 ultimates (+1 of the
-  Sapper) and 300 talent nodes with about 40 passives from a closed set (`advancement.md`).
+  Sapper) and 300 talent nodes with about 40 passives from a closed set ([advancement.md](advancement.md)).
 
 ### 3.3 Resource: mana and the tonic
 
@@ -257,7 +263,7 @@ and charges per life (abilities.md §2.3). The two consumable keys do not grow.
 
 **Dodge.** One `standard_dodge.tres` for every weapon. Only the load class of the worn armor changes it (class 0 light,
 1 medium, 2 heavy; two bits of the state, §6.1): distance, stamina cost and the stamina regeneration delay come from
-the table in W8, which `items.md` owns. Weapon, specialization and talents never change it (W5).
+the table in W8, which [items.md](items.md) owns. Weapon, specialization and talents never change it (W5).
 
 **Block** (`can_block`, `block_mitigation`, `block_angle_deg` per weapon):
 
@@ -334,16 +340,17 @@ A `GroundAreaDefinition` (§5.3) is created at the commit of an ability or the i
 point the camera ray finds, within `placement_range_m`; at the caster's feet if there is no ground) or `ORIGIN` (where
 a dash started). A `delay_s` gives the warning the client draws, filling during that time. `trigger_once` makes a trap
 (the first enemy that enters fires it) and `blocks_projectiles` a wall (the frost wall). Areas never change the
-simulation: the slows and roots they apply enter through the movement slots, as today. Budgets: radius ≤ 6 m, ≤ 8
-targets per pulse (`area_max_targets_cap`), 48 areas per zone and 2 per owner; the oldest of an owner is removed when
+simulation: the slows and roots they apply enter through the movement slots, as today. Budgets for weapon areas: radius ≤ 6 m, ≤ 8
+targets per pulse (`area_max_targets_cap`); an ultimate's area is exempt and has radius ≤ 10 m and ≤ 10 targets
+(`ultimate_max_targets`); 48 areas per zone and 2 per owner; the oldest of an owner is removed when
 a third is placed. Whoever owns an area dying or leaving the zone removes it.
 
 ### 3.9 Power, Eldrun and the item scale
 
-The weapon (family) gives timings, shapes and base damage; the **item** gives the power. The scale is `items.md`'s
+The weapon (family) gives timings, shapes and base damage; the **item** gives the power. The scale is [items.md](items.md)'s
 (W17): everything on an item is multiplied by `k(NOe) / k(52)`, so a level-1 item deals 0.40 of the reference and one of
 level 60 deals 1.10. In the normalized zones (Eldrun, Vado Gris) the level and the attributes are rescaled and the
-reference is used (`advancement.md`). The bands of §3.1 are relations between weapons, so they are valid at any power.
+reference is used ([advancement.md](advancement.md)). The bands of §3.1 are relations between weapons, so they are valid at any power.
 `ItemDefinition.required_level` goes to `@export_range(1, 60)`.
 
 ---
@@ -355,7 +362,7 @@ Notation: times in seconds (ticks at 60 Hz in parentheses where they matter); "c
 angle; heights 0.2-2.0 m unless said otherwise). Names are in English with the Spanish name in the localization file
 (§5.6); the `id` is the file name. Each weapon lists exactly **five actives** (three base and one per branch), the
 variants it has (if any, with the predicted field that changes) and the reserve abilities it keeps for later
-(appendix A). The branch names are those of the mastery tree (`advancement.md`).
+(appendix A). The branch names are those of the mastery tree ([advancement.md](advancement.md)).
 
 ### 4.1 Sword and shield (`sword_shield`) · done
 
@@ -737,7 +744,7 @@ The `.tres` files are the only source of the combat data (W18). `tools/combat/co
 `build/combat/combat_table.csv` (one row per attack and ability, numeric fields only) and `--apply <csv>` writes the
 values back into the `.tres`. The CSV serves to balance in a spreadsheet and is not versioned as a source; a test exports,
 applies and checks that the repository does not change. The generated numeric tables of the other systems (curve, loot,
-affixes) are CSV that a deterministic generator turns into `.tres` with a "generated" header (`advancement.md`); the
+affixes) are CSV that a deterministic generator turns into `.tres` with a "generated" header ([advancement.md](advancement.md)); the
 combat data is the structured exception (I64).
 
 ### 5.6 Localization
@@ -755,16 +762,16 @@ In `CombatTables.errors` (the validation of abilities.md §2.2 exists) and a new
 |---|---|
 | V1 | Every weapon: 1-4 lights, one heavy, **5 actives** in `ability_pool` (3 marked base), at most 15 with variants (and at most 2 variants); every ability in a single set (or in the consumables or in a specialization); every `_2` variant points with `upgrade_of` to an ability of the same set and **differs from its base in at least one predicted field** |
 | V2 | `uses_mana` ⇔ all its heavies and abilities have `mana_cost > 0` or `mana_per_s > 0`; the others, 0 |
-| V3 | Cooldowns ≥ 6 s (and the `REARM_TICKS` rule); ultimates ≥ 60 s |
+| V3 | Cooldowns ≥ 6 s (and the `REARM_TICKS` rule); ultimates ≥ 120 s |
 | V4 | DPS of combo and heavy computed from the ticks inside its band (§3.1, `weapon_bands.tres`) |
 | V5 | Base abilities on cooldown ≤ 25 % (physical) or 60 % (magic) of the light, for the default triple and for the strongest legal triple |
 | V6 | Base control ≤ 2.5 s per 20 s with the weights of §3.1 |
 | V7 | Burst computed in 3 s ≤ 500 |
 | V8 | Sustained healing computed ≤ 117 HPS (the light plus the strongest legal triple) |
-| V9 | Areas: radius ≤ 6 m, targets ≤ 8, duration a multiple of the pulse, hit ≥ 150 with a warning (cast ≥ 0.4 s or delay ≥ 0.5 s) |
+| V9 | Areas of weapon abilities: radius ≤ 6 m, targets ≤ 8; areas of ultimates: radius ≤ 10 m, targets ≤ `ultimate_max_targets` (10); both: duration a multiple of the pulse, hit ≥ 150 with a warning (cast ≥ 0.4 s or delay ≥ 0.5 s) |
 | V10 | `display_name` and `description` not empty; the description's parameters exist in the data |
 | V11 (client) | The weapon's `CombatClipSet` has an entry for every attack and ability (or its `upgrade_of`); its `WeaponVisualDefinition` and the icon of each ability exist |
-| V12 | The passives of a tree add at most **8 %** per tree, and every weapon of a phase is favored by a specialization with ≥ 40 % of each rank general (checked by `advancement.md`'s validator with these figures) |
+| V12 | The passives of a tree add at most **8 %** per tree, and every weapon of a phase is favored by a specialization with ≥ 40 % of each rank general (checked by [advancement.md](advancement.md)'s validator with these figures) |
 
 V4 to V8 are computed from the data (fast, in every test). `tools/combat_balance.gd --weapons=all` measures them with the
 server and no network, and `test_combat_balance` demands that what is measured equals what is computed, as today with
@@ -816,7 +823,7 @@ byte is full today (active slot, six held-button bits, no-cooldowns command): th
 | LOADOUT (ENTITY_EVENT 9) **v2** | `u8 template_id`, `u16 weapon_1`, `u16 weapon_2`, `u8 charges`, `u8[3] ability_picks` (same nibbles as the state), `u16 ultimate_id`: 11 B of data, **20 B** in total. To the owner with everything; to whoever sees the player, picks and ultimate at 0 and `charges` 0 (picks are private; the enemy learns the ultimate when it is cast). Sent again when the picks change (out of combat only) |
 | Action byte | ABILITY with bits 4-5 = 3 (free in ABILITY) is the **ultimate**, and its phase (0 cast, 1 active or channel, 2 recovery) goes in bits 6-7 |
 | Entity kind **AREA** | See §6.5 and networking.md |
-| Build messages | The picks are chosen with BUILD_REQUEST `SET_ABILITIES` (`advancement.md`); the server validates against what is unlocked |
+| Build messages | The picks are chosen with BUILD_REQUEST `SET_ABILITIES` ([advancement.md](advancement.md)); the server validates against what is unlocked |
 
 ### 6.3 Per-tick rules added
 
@@ -986,9 +993,9 @@ measured band, `test_damage_formula` with types, `test_knockdown`, 0 prediction 
 
 | Document | What this needs | What it gives |
 |---|---|---|
-| `advancement.md` | Attribute formula and returns; mastery XP; rows, passives and reset of the trees; specializations, ranks and ultimates; normalization | Attributes per weapon (§2.3), five actives and the variants per weapon, unlock rules (W4), the 8 % cap (V12), bands valid at any power |
-| `items.md` | Power per item level (§3.9), weapon items by tier up to 60, rarities and affixes ("% damage of the family"), load class and the dodge and armor numbers | Families (`ref_id`), tags, attributes |
-| `npcs.md` | Enemies with the new weapons (archers, fire mages in the 1-10 zone), weapon masters in the capital, abilities by `ai_role`, healing threat | `ai_role`, `taunt_s`, `npc_*` weapons that reuse family abilities |
+| [advancement.md](advancement.md) | Attribute formula and returns; mastery XP; rows, passives and reset of the trees; specializations, ranks and ultimates; normalization | Attributes per weapon (§2.3), five actives and the variants per weapon, unlock rules (W4), the 8 % cap (V12), bands valid at any power |
+| [items.md](items.md) | Power per item level (§3.9), weapon items by tier up to 60, rarities and affixes ("% damage of the family"), load class and the dodge and armor numbers | Families (`ref_id`), tags, attributes |
+| [npcs.md](npcs.md) | Enemies with the new weapons (archers, fire mages in the 1-10 zone), weapon masters in the capital, abilities by `ai_role`, healing threat | `ai_role`, `taunt_s`, `npc_*` weapons that reuse family abilities |
 | [world.md](world.md) | Training grounds with dummies in each capital; doors and walls (GUE-10, GUE-27) for the hammer | Multipliers against structures |
 | War and performance (CMB-36, TEC-34) | Candidate grid, caps per area, projectile budget | The caps of §3.1, `max_areas_per_zone`, areas without snapshot records |
 | [art.md](art.md) | Models, clips, VFX, icons | Sheets with the clips of each action |
@@ -1073,8 +1080,8 @@ Ids assigned by the integrated design (the backlog itself is written elsewhere):
 | CMB-33 | Life staff (rewritten) | 6 |
 | CMB-35 | Fire staff (rewritten: important, phase 6) | 6 |
 | CMB-54 | Ultimate slot (F) | 6 |
-| CMB-55 | Passive system (with `advancement.md`) | 6 |
-| CMB-56 | Specialization ultimates (with `advancement.md`) | 6 |
+| CMB-55 | Passive system (with [advancement.md](advancement.md)) | 6 |
+| CMB-56 | Specialization ultimates (with [advancement.md](advancement.md)) | 6 |
 | CMB-57 | Damage types and physical and elemental armor | 6 |
 | CMB-58 | Knockdown and pull | 7 |
 | CMB-59 | Crossbow | 7 |

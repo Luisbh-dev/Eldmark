@@ -21,7 +21,7 @@ taken at night; they are in "Decisions taken" in the backlog):
 
 | Question | Decision |
 |---|---|
-| Classes | No classes: the role is given by the equipped weapons. *Superseded in phases 6-8 (I01, user decision of 2026-11-06)*: weapons stay free, and a **specialization** chosen at level 10 adds ranks and an ultimate on top of them; the role still comes from the two weapons ([weapons.md W1](weapons.md#0-decisions), `advancement.md`). |
+| Classes | No classes: the role is given by the equipped weapons. *Superseded in phases 6-8 (I01, user decision of 2026-11-06)*: weapons stay free, and a **specialization** chosen at level 10 adds ranks and an ultimate on top of them; the role still comes from the two weapons ([weapons.md W1](weapons.md#0-decisions), [advancement.md](advancement.md)). |
 | Equipped weapons | Two slots with quick swap (CMB-24, phase 4). In phase 3 there is only sword and shield. |
 | Numbers | **Integers** for health, stamina and damage. |
 | Durations in the data | **Seconds** in the `.tres`, converted to ticks on load with `roundi(s · 60)`. The already converted catalog goes into the `sim_hash`. |
@@ -460,7 +460,7 @@ final   = roundi((raw − mitig.) × 1000 / (1000 + armor)),  minimum 1 if anyth
   ```
 
   `armor_ref` is the armor of the reference character, 393 physical (a medium set at item level 52; the elemental
-  reference is defined with the item scale in `items.md`). A combatant with no equipment data (the dummy, bots, `test_world`
+  reference is defined with the item scale in [items.md](items.md)). A combatant with no equipment data (the dummy, bots, `test_world`
   with no progress) is given the reference armor, so a duel keeps the figures of the sheet in §12 and the formula reduces
   to the one above. Below the reference level the armor is lower and the damage received higher, but the player's own damage
   is lower too, so the TTK is defended as §12.5 asks. Block (`block_mitigation` by weapon, `block_magic_mitigation` against
@@ -912,7 +912,7 @@ Closed during K5 (integration):
 > reference armor, health 1000, damage factor 1.0), which is what every normalized zone (Vado Gris, Eldrun, `test_world`)
 > plays; so none of these figures changes with the content design, and each new weapon is measured against the bands that
 > start from the 156.3 DPS of the sword combo ([weapons.md §3.1](weapons.md#31-role-budgets-bands)). Below level 60 a
-> character is weaker than this sheet by the scale of `advancement.md`.
+> character is weaker than this sheet by the scale of [advancement.md](advancement.md).
 
 First pass with **sword and shield**, the only kit of phase 3. It is repeated when the abilities (CMB-21)
 and the bow (CMB-23) arrive —done in H5: 12.8—; the two parts that depend on content that does not exist yet, the fort
