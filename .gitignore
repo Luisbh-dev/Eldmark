@@ -49,3 +49,6 @@ platform/deploy/secrets/
 # Python caches (asset tools)
 __pycache__/
 *.pyc
+
+# Revision baked into the export pack by tools/export.* (scripts/shared/build_info.gd)
+/build_id.txt

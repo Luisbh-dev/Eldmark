@@ -107,11 +107,9 @@ func now_msec() -> int:
 	return Time.get_ticks_msec()
 
 
-## Identifier of this client version for [constant BUILD_HEADER]: [code]eldmark-<version>-p<protocol>[/code]
-## (the same format as the zones' registration).
+## Identifier of this client version for [constant BUILD_HEADER] (see [BuildInfo]; the same as the zones' registration).
 static func build_id() -> String:
-	var version: String = str(ProjectSettings.get_setting("application/config/version", "0"))
-	return ("eldmark-%s-p%d" % [version, NetProtocol.PROTOCOL_VERSION]).replace(" ", "_").left(64)
+	return BuildInfo.build_id()
 
 
 ## The headers of a request with the token [param access_token] (empty = no session) and with or without a body.

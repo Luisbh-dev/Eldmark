@@ -4358,6 +4358,7 @@ func _build_report() -> Dictionary:
 		substituted_percent = 100.0 * float(substituted) / float(inputs)
 	return {
 		"version": 1,
+		"build": BuildInfo.build_id(),
 		"zone": _config.zone_id if _config != null else "",
 		"port": _config.port if _config != null else 0,
 		"ticks": _tick,

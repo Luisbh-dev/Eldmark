@@ -317,8 +317,8 @@ func test_requests_carry_the_headers_of_section_4_1() -> void:
 	assert_eq(request.headers.get("authorization"), "Bearer %s" % OLD_ACCESS)
 	assert_eq(request.headers.get("x-eldmark-protocol"), str(NetProtocol.PROTOCOL_VERSION))
 	assert_eq(request.headers.get("x-eldmark-build"), PlatformApi.build_id())
-	assert_true(PlatformApi.build_id().begins_with("eldmark-") and PlatformApi.build_id().ends_with(
-			"-p%d" % NetProtocol.PROTOCOL_VERSION))
+	assert_true(PlatformApi.build_id().begins_with("eldmark-") and PlatformApi.build_id().contains(
+			"-p%d+" % NetProtocol.PROTOCOL_VERSION))
 	assert_eq(request.headers.get("content-type"), "application/json")
 	assert_eq(request.json(), {"name": "Aneira", "realm": "vardheim"})
 	_http.script("GET", "/v1/status", 200, {"status": "ok"})

@@ -246,10 +246,9 @@ static func registration_body(config: ServerConfig) -> Dictionary:
 	}
 
 
-## Zone version for the registration: the project's and the protocol's.
+## Zone version for the registration (see [BuildInfo]): the project's, the protocol's and the revision's.
 static func build_id() -> String:
-	var version: String = str(ProjectSettings.get_setting("application/config/version", "0"))
-	return ("eldmark-%s-p%d" % [version, NetProtocol.PROTOCOL_VERSION]).replace(" ", "_").left(64)
+	return BuildInfo.build_id()
 
 
 func _register(not_before_msec: int) -> void:

@@ -384,6 +384,7 @@ func test_state_log_and_report() -> void:
 
 	var report: Dictionary = _read_json(_report_path())
 	assert_eq(int(report.get("version", 0)), 1)
+	assert_eq(report.get("build"), BuildInfo.build_id(), "the report carries the build id")
 	assert_eq(report.get("zone"), "test_world")
 	assert_eq(int(report.get("port", 0)), 24999)
 	assert_eq(int(report.get("ticks", 0)), _server.get_tick(), "ticks")
