@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please **do not open a public issue** for security problems. Report them privately using
-GitHub's private vulnerability reporting: go to the repository's **Security** tab and choose
+GitHub's private vulnerability reporting (enabled on this repository): go to the repository's **Security** tab and choose
 **Report a vulnerability** (a private security advisory). Include:
 
 - what the problem is and which component it affects,
@@ -35,5 +35,3 @@ upstream), denial of service by raw network flooding, and social engineering.
 The private keys in `tests/fixtures/dtls/` and the fixed passwords in `platform/deploy/dev.sh`
 exist only for automated tests and local development. They are not secrets. Never reuse them
 in a real deployment.
-
-<!-- Maintainer note: when the repository is made public, enable Settings > Code security > Private vulnerability reporting, otherwise the link above does not work. -->

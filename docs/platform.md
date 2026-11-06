@@ -3837,5 +3837,6 @@ Both are below the goal of 30 s per test (§15): the 60 s cap is not needed.
 `.godot/` cache and the timings there); end-to-end DTLS (the zone with `--dtls-*` and the bot that pins it: P9c tested
 it against the fake and a dedicated server, not against the Go platform).
 
-**Left for later:** `platform/e2e/progress_test.go` (progression.md P8); seeing "Plataforma e2e" green on GitHub and
-marking it as a required check in the branch protection (user).
+**Status (6 November 2026):** `platform/e2e/progress_test.go` exists (progression.md P8) and the "Plataforma e2e" job is
+green on GitHub for `main` (run 42265474791, with "Plataforma" and the four Godot shards). **Left for the owner:**
+marking the jobs as required checks in the branch protection once their names are in English (TEC-66).
