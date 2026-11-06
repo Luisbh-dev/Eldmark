@@ -90,6 +90,21 @@ func bind(client: NetClient, camera_rig: CameraRig = null) -> void:
 	_telegraph_marks.bind(client)
 
 
+## Screen rectangles (in the coordinates of this control) of the notices in the middle of the screen that floating
+## damage numbers must not cover: the band of the war notice and the boss bar, when they are visible.
+func get_reserved_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	var origin: Vector2 = global_position
+	if is_instance_valid(_banners) and _banners.is_band_visible():
+		var band: Rect2 = _banners.get_band().get_global_rect()
+		rects.append(Rect2(band.position - origin, band.size))
+	if is_instance_valid(_boss_bar):
+		var bar: Rect2 = _boss_bar.get_bar_rect()
+		if bar.size != Vector2.ZERO:
+			rects.append(Rect2(bar.position - origin, bar.size))
+	return rects
+
+
 func get_capture_panel() -> CapturePanel:
 	return _capture_panel
 

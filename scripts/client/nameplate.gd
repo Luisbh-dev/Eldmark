@@ -261,10 +261,11 @@ func _draw() -> void:
 		draw_rect(Rect2(rect.position, Vector2(rect.size.x * _fraction, rect.size.y)), fill)
 		draw_rect(rect, OUTLINE_COLOR, false, 1.0)
 		if _downed:
-			# Knocked-down icon: an orange diamond to the left of the bar.
+			# Knocked-down icon: a lavender triangle pointing down (someone who fell) to the left of the bar. Not a diamond,
+			# which is the enemy mark, and not amber, which is the telegraph (Q13).
 			var center := Vector2(rect.position.x - 9.0, rect.get_center().y)
-			var diamond := PackedVector2Array([center + Vector2(0.0, -6.0), center + Vector2(6.0, 0.0),
-					center + Vector2(0.0, 6.0), center + Vector2(-6.0, 0.0)])
+			var diamond := PackedVector2Array([center + Vector2(-6.0, -5.0), center + Vector2(6.0, -5.0),
+					center + Vector2(0.0, 6.0)])
 			draw_colored_polygon(diamond, CombatIcons.DOWNED_COLOR)
 			draw_polyline(diamond + PackedVector2Array([diamond[0]]), OUTLINE_COLOR, 1.0, true)
 
