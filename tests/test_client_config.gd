@@ -348,6 +348,16 @@ func test_platform_url_rules() -> void:
 	assert_eq(empty.warnings.size(), 1, "an empty --platform warns")
 
 
+func test_bot_names_option_keeps_the_valid_names() -> void:
+	var named: ClientConfig = _parse(["--bots=3", "--connect=127.0.0.1", "--bot-names=Hakon,Lucía, Brenna "])
+	assert_eq(named.bot_names, PackedStringArray(["Hakon", "Lucía", "Brenna"]))
+	assert_eq(named.warnings.size(), 0)
+	var bad: ClientConfig = _parse(["--bots=2", "--connect=127.0.0.1", "--bot-names=Hakon,x1,Eldmark"])
+	assert_eq(bad.bot_names, PackedStringArray(["Hakon"]), "invalid or reserved names are dropped")
+	assert_eq(bad.warnings.size(), 2)
+	assert_eq(_parse(["--bots=2", "--connect=127.0.0.1"]).bot_names.size(), 0, "no names by default")
+
+
 func test_duplicate_config_copies_everything_independently() -> void:
 	var config: ClientConfig = _parse(["--bot", "--platform=http://127.0.0.1:24680", "--login=a@b.c",
 			"--report=build/r.json", "--bot-seed=5", "--world=2"])

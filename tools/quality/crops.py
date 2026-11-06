@@ -16,10 +16,10 @@ from PIL import Image
 CROPS = [
     ("recorte_barra_de_habilidades_y_vida.png", "hud_en_pelea_05.png", (640, 830, 640, 180), 2),
     ("recorte_numeros_de_dano.png", "hud_en_pelea_02.png", (700, 380, 360, 120), 3),
-    ("recorte_placas_de_nombre.png", "hud_en_pelea_02.png", (0, 430, 420, 130), 3),
+    ("recorte_placas_de_nombre.png", "hud_en_pelea_02.png", (700, 440, 560, 130), 3),
     ("recorte_barra_de_jefe.png", "barra_de_jefe_01.png", (640, 180, 640, 110), 2),
     ("recorte_panel_captura_fuerte.png", "captura_fuerte_01.png", (940, 40, 460, 120), 3),
-    ("recorte_registro_de_bajas.png", "hud_en_pelea_02.png", (1480, 10, 440, 90), 2),
+    ("recorte_registro_de_bajas.png", "hud_en_pelea_02.png", (1640, 10, 280, 190), 3),
     ("recorte_barra_de_ayuda_inferior.png", "hud_en_pelea_02.png", (160, 1030, 1620, 40), 1),
 ]
 
