@@ -193,6 +193,12 @@ The design documents are long and written as decision records, including what wa
 | [docs/abilities.md](docs/abilities.md) | Abilities, status effects, weapons and projectiles |
 | [docs/fortress.md](docs/fortress.md) | The capturable fort: state, gate, NPC garrison, alerts, siege bots |
 | [docs/progression.md](docs/progression.md) | Items, inventory, currencies, levels, races and appearance |
+| [docs/advancement.md](docs/advancement.md) | Level curve 1-60, experience sources, attributes, mastery, talent trees, specializations and ultimates, normalization |
+| [docs/items.md](docs/items.md) | Item levels, equipment slots, rarity and affixes, loot, crafting, upgrades and the gold economy |
+| [docs/weapons.md](docs/weapons.md) | Weapon catalog, five abilities per weapon, mana, ground areas and combat v6 |
+| [docs/npcs.md](docs/npcs.md) | NPC ranks, bestiary, AI, camps, bosses and service NPCs |
+| [docs/quests.md](docs/quests.md) | Quest model, objectives, rewards, boards, world events and the quest tools |
+| [docs/story.md](docs/story.md) | Story bible: the Sundering, the three realms, the six acts and the first chain in Hondal |
 | [docs/social.md](docs/social.md) | Chat, parties, moderation and what crosses between realms |
 | [docs/platform.md](docs/platform.md) | Accounts, tickets, persistence, privacy, deployment |
 | [docs/art.md](docs/art.md) | Art direction and asset plan |

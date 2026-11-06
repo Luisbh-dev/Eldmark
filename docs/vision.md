@@ -33,7 +33,7 @@ Each realm has:
 - One human people, purely cosmetic: hairstyles, beards, marks and the cut of the outfits, with the same skeleton and no racial stats
 - A wall surrounding the whole realm, with gates that open onto the war zone
 
-The sizes of the maps (capital 1 × 1 km, PvE zones 1.5 × 1.5 or 2 × 2 km, border zones 3 × 1.5 km and Eldrun 3 × 3 km) are in the [Scale](world.md#scale) section of world.md.
+The sizes of the maps (capital 1 × 1 km, PvE zones 1.5 × 1.5 or 2 × 2 km, border zones 3 × 1.5 km and Eldrun 3 × 3 km) are in the [Scale](world.md#63-scale) section of world.md.
 
 ## Central war zone
 
