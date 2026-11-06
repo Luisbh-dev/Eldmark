@@ -95,7 +95,7 @@ loads the zone, CLIENT_READY ─────────────────
 ## 2. The service (TEC-22)
 ### 2.1 Structure
 ```
-platform/            go.mod: module eldmark/platform, go 1.24.0, toolchain go1.24.7 · .gdignore (Godot does not scan it)
+platform/            go.mod: module eldmark/platform, go 1.26.10 (raised from 1.24.7 on 6 November 2026 for the standard-library advisories that govulncheck reports) · .gdignore (Godot does not scan it)
   cmd/eldmark-platform/   subcommands serve, migrate, admin
   internal/  config logx db httpx (router, errors, limits) jsonx (JSON integers and ids, §4.1) migrate
              (+ migrations/*.sql with embed) testdb passwords accounts names gamedata (progression_rules.json, §4.4)
@@ -3235,7 +3235,7 @@ reapply-purges`, which is brought forward from P9a (below):
 | `restore_check.sh` | `<backup> <purges.txt>`, or `--dir <folder>` (the most recent backup from `daily/` and `weekly/` and its `purges.txt`). Ephemeral cluster (like `testdb`, socket only), `pg_restore`, the emails the backup still has for the accounts in `purges.txt` (in a separate schema of the test cluster), `migrate up` if the backup lacks migrations, `admin --actor <the backup's admin> reapply-purges`, `migrate status` and the integrity queries, which must give 0 (below). Exits with 1 if anything fails and with 2 if the usage is invalid; deletes the cluster on exit |
 | `pitr_check.sh` | The one in §12: a primary with `archive_command` to a folder, `pg_basebackup`, 500 rows that are only in the WAL, the target time, a deletion and `pg_switch_wal` (waits for the segment to be archived); the base backup with `restore_command`, `recovery_target_time`, `recovery_target_action = 'promote'` and `recovery.signal` must have the 1500 rows from before the deletion and no others. Only `fsync=off`: the WAL and full-page writes, as on the VPS |
 | `pglib.sh` | What is common to the three that start PostgreSQL: the binaries (`ELDMARK_PG_BIN`, `pg_config` or the highest `/usr/lib/postgresql/*/bin`), `runuser` as root (`ELDMARK_PG_USER`), `initdb`, start, stop and the socket path (107 B) |
-| `Dockerfile` | `build` (golang:1.24.7-bookworm, `CGO_ENABLED=0`, `GOTOOLCHAIN=local`), `platform` (debian:bookworm-slim with `ca-certificates` and `tzdata`, user 10001, `serve`, both APIs on 0.0.0.0 inside the container) and `ops` (postgres:16-bookworm with the binary and the scripts). Context `platform/`, with `platform/.dockerignore` (secrets, backups, `*.env`, `*.pem`, `*.key` and the binary excluded) |
+| `Dockerfile` | `build` (golang:1.26.10-bookworm, `CGO_ENABLED=0`, `GOTOOLCHAIN=local`), `platform` (debian:bookworm-slim with `ca-certificates` and `tzdata`, user 10001, `serve`, both APIs on 0.0.0.0 inside the container) and `ops` (postgres:16-bookworm with the binary and the scripts). Context `platform/`, with `platform/.dockerignore` (secrets, backups, `*.env`, `*.pem`, `*.key` and the binary excluded) |
 | `docker-compose.yml` | `db` (postgres:16), `platform`, `caddy`, `zone-vado-gris` (profile `zonas`) and `backup`, `restore-check` and `pitr-check` (profile `ops`; the last two without a network). All with `logging: {driver: journald, options: {tag: "{{.Name}}"}}`; the service ones, `restart: unless-stopped`. Nine file secrets in `ELDMARK_SECRETS_DIR`, mounted at `/run/secrets` and read with the `*_FILE`. Networks `edge` (Caddy, with a fixed IP: the only one in `ELDMARK_TRUSTED_PROXIES`), `zones` (the zones and the internal API) and `data` (internal: the database does not reach the Internet). Only Caddy (80, 443 and 443/udp) and the zone (24600/udp) publish ports. WAL with configurable WAL-G (`ELDMARK_DB_IMAGE`, `ELDMARK_PG_ARCHIVE_MODE`, `ELDMARK_PG_ARCHIVE_COMMAND`); project name `eldmark-<environment>` |
 | `Caddyfile` | §10.1: `reverse_proxy platform:24680 { header_up X-Real-IP {remote_host} }` (overwrites any client `X-Real-IP`), no `log` directive (no access log), HSTS, `nosniff` and no `Server`. Validated with Caddy 2.10.2 (`caddy validate` and `adapt`: no `logs`) |
 | `staging.env.example`, `production.env.example` | The compose's variables: environment, domain and ACME email, GHCR images, `public_host` and `ELDMARK_ZONE_HOSTS`, minimum protocol, sender, realms, secrets and backup folders, WAL and Caddy's network. No secrets (CI checks it) |
@@ -3837,5 +3837,6 @@ Both are below the goal of 30 s per test (§15): the 60 s cap is not needed.
 `.godot/` cache and the timings there); end-to-end DTLS (the zone with `--dtls-*` and the bot that pins it: P9c tested
 it against the fake and a dedicated server, not against the Go platform).
 
-**Left for later:** `platform/e2e/progress_test.go` (progression.md P8); seeing "Plataforma e2e" green on GitHub and
-marking it as a required check in the branch protection (user).
+**Status (6 November 2026):** `platform/e2e/progress_test.go` exists (progression.md P8) and the "Plataforma e2e" job is
+green on GitHub for `main` (run 42265474791, with "Plataforma" and the four Godot shards). **Left for the owner:**
+marking the jobs as required checks in the branch protection once their names are in English (TEC-66).

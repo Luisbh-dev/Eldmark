@@ -28,7 +28,7 @@ Contents:
 
 - Godot 4.7 (standard build, GDScript). CI uses 4.7.2-stable.
 - Git. Models, textures, audio, terrain region files and native binaries are normal files in the repository (see `.gitattributes`); Git LFS is not used.
-- For the platform service: Go 1.24 and PostgreSQL 16 binaries.
+- For the platform service: Go 1.26 (1.26.10, `GOTOOLCHAIN=local`) and PostgreSQL 16 binaries.
 - For the capture bench: Python 3 with Pillow, and a machine with a window and a GPU.
 
 ```bash
@@ -274,7 +274,7 @@ godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --secon
 
 ## Platform service (Go)
 
-`platform/` is the accounts, characters and persistence service, in Go 1.24 on PostgreSQL 16 (design in [platform.md](platform.md); what is implemented, in its section 19). Godot does not scan or export it (`platform/.gdignore`). It is configured with `ELDMARK_*` environment variables (section 2.3 of the design).
+`platform/` is the accounts, characters and persistence service, in Go 1.26 on PostgreSQL 16 (design in [platform.md](platform.md); what is implemented, in its section 19). Godot does not scan or export it (`platform/.gdignore`). It is configured with `ELDMARK_*` environment variables (section 2.3 of the design).
 
 ```bash
 cd platform
@@ -361,7 +361,7 @@ godot --headless --path . -s res://tests/run_tests.gd -- --shard=2/4
 
 How it works: `tests/run_tests.gd` discovers `res://tests/test_*.gd` (each extends `TestCase`), runs every method starting with `test_` (they may use `await`) with optional `before_each()` and `after_each()`, prints PASS or FAIL per test and a summary, and exits with 0 if everything passes or 1 if anything fails. A test also fails if a script or engine error is logged while it runs (unless it calls `allow_logged_errors()`, which tolerates engine errors only). It never hangs: every phase has a timeout and there is a global timer. `--shard=K/N` runs only part K (1 to N) of the test files, distributed round-robin in alphabetical order. Before each test the runner forces the interface language to English (`L10n.force("en")`, whatever the machine or its `settings.cfg` says), turns on strict mode (a lookup with no Spanish entry in `locale/es.po` fails the test) and points `ClientSettings` to an empty temporary file; a test that checks the Spanish on purpose calls `with_locale("es")`. The tests that start client processes pass `--locale=en`.
 
-There are 221 test files and 2,993 test methods, plus about 300 Go tests under `platform/`. Many of them start servers and clients inside a single process (each in its own `SubViewport` with its own physics world) or launch real Godot processes, so the whole suite takes several minutes on a four-core machine. Two suites can run at once on the same machine: each process picks its own port slot and writes its reports to its own `build/<pid>/` folder. Some tests also need Python with Pillow or the Go toolchain and skip themselves when it is missing.
+There are 223 test files and 3,027 test methods, plus about 300 Go tests under `platform/`. Many of them start servers and clients inside a single process (each in its own `SubViewport` with its own physics world) or launch real Godot processes, so the whole suite takes several minutes on a four-core machine. Two suites can run at once on the same machine: each process picks its own port slot and writes its reports to its own `build/<pid>/` folder. Some tests also need Python with Pillow or the Go toolchain and skip themselves when it is missing.
 
 `tests/test_architecture.gd`, part of the suite, enforces the dependency rules between `scripts/shared`, `scripts/server` and `scripts/client` ([architecture.md](architecture.md#dependency-rules)).
 
@@ -376,6 +376,12 @@ There are 221 test files and 2,993 test methods, plus about 300 Go tests under `
 - **Plataforma e2e**: the Go platform in the test process against real `test_world` zones and real Godot bots with accounts (`platform/e2e`, tag `e2e`).
 
 The workflow and job names (`Pruebas`, `Suite completa`, `Plataforma`) are still in Spanish.
+
+Three more files in `.github/` protect the public repository (TEC-66):
+
+- **Security analysis** (`workflows/codeql.yml`): CodeQL for Go and for the workflow files, and `govulncheck` over `platform/`, on pushes to `main`, pull requests and once a week. Findings appear in the repository's Security tab.
+- **Nightly** (`workflows/nightly.yml`, also by hand): the whole suite on `windows-latest` in two parts and `tools/load_test.gd --brawl` on Linux. The load test has no threshold yet; its report is kept as an artifact to follow the trend, and the step fails only if the tool did not produce its summary.
+- **Dependabot** (`dependabot.yml`): weekly pull requests for the GitHub Actions (pinned by commit SHA), the Go modules of `platform/` and the platform's Docker base images.
 
 ## Quality capture bench
 

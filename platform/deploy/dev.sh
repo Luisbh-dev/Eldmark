@@ -20,7 +20,7 @@
 #   ELDMARK_PLATFORM_BIN   an already compiled binary (otherwise, go build to <folder>/eldmark-platform)
 #   ELDMARK_PG_BIN, ELDMARK_PG_USER   as in internal/testdb (pglib.sh)
 #
-# Needs bash, the PostgreSQL 16 binaries and Go 1.24 (Linux, macOS or WSL). None of this is valid
+# Needs bash, the PostgreSQL 16 binaries and Go 1.26 (Linux, macOS or WSL). None of this is valid
 # for staging or production: the database has no password and the keys are throwaway.
 set -euo pipefail
 
@@ -54,7 +54,7 @@ platform_bin() {
 		[ -x "$bin" ] || eld_die "ELDMARK_PLATFORM_BIN=$bin no es un ejecutable"
 		return 0
 	fi
-	command -v go > /dev/null 2>&1 || eld_die "falta Go 1.24 para compilar la plataforma (o da ELDMARK_PLATFORM_BIN)"
+	command -v go > /dev/null 2>&1 || eld_die "falta Go 1.26 para compilar la plataforma (o da ELDMARK_PLATFORM_BIN)"
 	bin="$dir/eldmark-platform"
 	eld_log "compilando la plataforma en $bin"
 	(cd "$repo/platform" && GOTOOLCHAIN=local go build -o "$bin" ./cmd/eldmark-platform) ||

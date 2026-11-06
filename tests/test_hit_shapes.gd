@@ -401,6 +401,40 @@ func _sector_at(shape: HitShape, target_feet: Vector3) -> bool:
 	return _sector(shape, 0.0, target_feet)
 
 
+## CMB-05, "a fast hit that does not skip over the target": a segment that covers several metres in a
+## single tick (a projectile or a swept swing) touches a thin target even when both of its ends
+## fall well clear of it, which testing only the position at each tick would miss.
+func test_a_fast_segment_does_not_skip_over_a_thin_target() -> void:
+	var feet := Vector3.ZERO
+	var r: float = HitShapes.CAPSULE_RADIUS
+	var h: float = HitShapes.CAPSULE_HEIGHT
+	var skipped_by_point_tests: int = 0
+	# Speeds from 20 to 120 m/s at the tick rate: 0.33 to 2 m per tick; the two fastest exceed the 0.8 m
+	# the capsule is wide.
+	for speed: float in [20.0, 45.0, 90.0, 120.0]:
+		var step: float = speed / float(Ballistics.TICK_RATE)
+		# Ends of the tick placed symmetrically around the target, at several heights and with the
+		# trajectory off the axis by less than the radius.
+		for offset: float in [-0.35, -0.1, 0.0, 0.1, 0.35]:
+			for height: float in [0.5, 0.9, 1.3]:
+				var a := Vector3(-step * 0.5, height, offset)
+				var b := Vector3(step * 0.5, height, offset)
+				assert_true(_segment(a, b, feet, r, h),
+						"speed %s, offset %s, height %s: the segment crosses the target" % [speed, offset, height])
+				# Both ends of a fast tick fall outside the body: a point test would have missed it.
+				if not _segment(a, a, feet, r, h) and not _segment(b, b, feet, r, h):
+					skipped_by_point_tests += 1
+	assert_true(skipped_by_point_tests > 0, "some of them would have been skipped by point tests")
+	# A segment that passes the same target outside the radius still does not touch it.
+	var far_step: float = 90.0 / float(Ballistics.TICK_RATE)
+	assert_false(_segment(Vector3(-far_step * 0.5, 0.9, r + MARGIN), Vector3(far_step * 0.5, 0.9, r + MARGIN),
+			feet, r, h), "a fast segment that passes outside the radius does not touch")
+	# The entry fraction is where the capsule's face is, not the end of the tick.
+	var fraction: float = HitShapes.segment_capsule_fraction(Vector3(-far_step * 0.5, 0.9, 0.0),
+			Vector3(far_step * 0.5, 0.9, 0.0), feet, r, h)
+	assert_near(fraction, (far_step * 0.5 - r) / far_step, 1e-5, "it enters at the near face of the capsule")
+
+
 func _segment(a: Vector3, b: Vector3, feet: Vector3, radius: float, height: float) -> bool:
 	return HitShapes.segment_hits_capsule(a, b, feet, radius, height)
 
