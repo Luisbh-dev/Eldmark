@@ -700,7 +700,7 @@ The heaviest files are `test_party_manager` (38), `test_gm_progress` (23), `test
 Every increment ends with the same screens captured with the quality bench (`tools/quality/run.py`) in Spanish and in English, and in pseudolocalization when the increment is about lengths. The pairs are composed side by side and archived outside the repository, in the capture archive next to it (`../Eldmark-capturas/`), as for the quality waves.
 
 **Bench changes (L1a):**
-- `run.py` gets `--locale es|en|pseudo` (default `es`, so existing commands keep producing the Spanish captures). It adds `--locale=<code>` to the user arguments of every client it starts (the `online_driver.gd` runs, the gallery and the chat preview), never to the server or the bots.
+- `run.py` gets `--locale es|en|pseudo` (default `es`, so existing commands keep producing the Spanish captures). It adds `--locale=<code>` to the user arguments of every client it starts (the `online_driver.gd` runs, the gallery, the chat preview and the offline demo), never to the server or the bots.
 - `sc_interfaz.gd` names the settings captures after the tab id through a fixed slug table (`graphics → graficos`, `audio → audio`, `camera → camara`, `interface → interfaz`), so the file names stay those of the existing archive instead of depending on the tab title.
 - `sc_front.gd` adds a light capture of the settings window over the title screen (`interfaz/titulo_ajustes_f10_<n>_<slug>.png`), which needs no server. The in-game ones (`interfaz/ajustes_f10_<n>_<slug>.png`, step `hud`) need a dedicated server and 6 bots per realm.
 

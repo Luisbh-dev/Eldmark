@@ -366,7 +366,7 @@ def area_mundo(ctx):
         demo = ctx.out / "mundo" / "demo_sandbox"
         demo.mkdir(parents=True, exist_ok=True)
         run_godot(ctx, "demo_sandbox", ["--path", ROOT, "--resolution", ctx.res, "--", "--zone=vado_gris", "--demo",
-                                        "--shots=%s" % ctx.posix(demo), "--quit-after-demo"], timeout=900)
+                                        "--shots=%s" % ctx.posix(demo), "--quit-after-demo", ctx.locale_arg()], timeout=900)
 
 
 def area_combate(ctx):

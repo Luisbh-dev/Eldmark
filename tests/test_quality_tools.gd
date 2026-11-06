@@ -374,6 +374,7 @@ func test_run_py_takes_a_locale_for_the_clients_only() -> void:
 	var driver_part: String = source.substr(source.find("def driver("), source.find("def compose_all(") - source.find("def driver("))
 	assert_true(driver_part.contains("ctx.locale_arg()"), "the capture client does")
 	assert_true(source.contains("\"--shots=%s\" % ctx.posix(folder), ctx.locale_arg()"), "and so does the chat preview")
+	assert_true(source.contains("\"--quit-after-demo\", ctx.locale_arg()"), "and the offline demo")
 
 
 func _remove_dir(path: String) -> void:
