@@ -11,6 +11,9 @@
 
 ## 0. Decisions
 
+The ids W1-W17 are local to this document: other documents cite them with the file ("world.md W5"), because
+[weapons.md](weapons.md) also numbers its decisions W1-W20.
+
 | # | Decision | Why |
 |---|---|---|
 | W1 | **Six zones per realm**: capital, zone 1 (1-10), zone 2 (10-20), zone 3 (20-32), zone 4 (32-45) and the border (45-60). That is 18 realm zones plus Eldrun, **six shared instanced dungeons** and the Vado Gris: **26 maps** | A level 60 cap needs about one zone per band of 12 levels. Six per realm is the minimum that does not triple the work |
@@ -28,7 +31,7 @@
 | W13 | **Vardheim first, Solmarch second, Askarra last;** then each band in the three realms at once | Vardheim already has pines, palisade and snow in the shader, and its signature pieces are the easiest to build by script. The RvR needs parity |
 | W14 | **Fast travel only inside the realm** (poles, phase 7); mounts after launch, with hooks now. In phase 6, a **provisional pass from Hondal to the Vardheim camp of the Vado Gris** (minimum level 10) | The full border (45-60) is not needed for the vertical slice |
 | W15 | **Vado Gris is a `SKIRMISH` zone** normalized from **level 10**; **Eldrun is entered from level 20**, normalized | With everything normalized, entering early only gives up mastery and talents, which are bounded |
-| W16 | **Capital districts** include a **Hall of Arms** (the Master of the Orders and one mentor per specialization, six slots), a training yard and a crafts quarter | The class design of `advancement.md`: the specialization is chosen and changed in the capital |
+| W16 | **Capital districts** include a **Hall of Arms** (the Master of the Orders and one mentor per specialization, six slots), a training yard and a crafts quarter | The class design of [advancement.md](advancement.md): the specialization is chosen and changed in the capital |
 | W17 | **The simulation runs at 60 Hz** (`physics_ticks_per_second=60`, `WELCOME.tick_rate`); only the snapshots go at 30 Hz | Budgets in this document are given in ticks of 16.7 ms |
 
 ## 1. History
@@ -185,14 +188,14 @@ Each realm has five rings:
 
 | Band | Own world | RvR | Shared dungeon | For other domains |
 |---|---|---|---|---|
-| 1-10 | Capital + zone 1 | Vado Gris from level 10 (skirmish) | none | Main chain 1, which ends in "Call to the front" |
+| 1-10 | Capital + zone 1 | Vado Gris from level 10 (skirmish) | none | Main chain 1, which ends at m13 "Report from the Front" after the Baptism of Fire; "Call to the front" is a level 20 quest (Eldrun's minimum) |
 | 10-20 | Zone 2 | **Eldrun from level 20**, normalized | D1 Ossuaries of Eld (15-19) | The specialization is chosen at level 10, in the capital |
 | 20-32 | Zone 3 | Eldrun | D2 Sunken Aqueduct (24-29) | |
 | 32-45 | Zone 4 | Eldrun | D3 Oath Archive (35-39) and D4 Flame Foundry (41-45) | |
 | 45-60 | Border | Eldrun, next to the gates | D5 Sundering Roots (50-55) | Upgrades with Ember Shards in the Bastion |
 | 60 | Border (elites, events, commissions) | Eldrun and Aldcor | D6 Last King's Chamber (60, hard) | End game |
 
-**Hours of play** (the leveling curve of `advancement.md` fixes them; about 50 h to level 60): zone 1 about 3.5 h, zone 2 about
+**Hours of play** (the leveling curve of [advancement.md](advancement.md) fixes them; about 50 h to level 60): zone 1 about 3.5 h, zone 2 about
 6.5 h (zone 3-4 h, D1, the Vado Gris, commissions), zone 3 about 10 h, zone 4 about 13 h and the border about 17 h with
 dungeons, Eldrun and repeatables. The open world alone is roughly 22-25 h; the dungeons, Eldrun and the commissions fill the
 rest, as a game whose heart is the war asks. If progression picks another duration, the level ranges of each zone move and
@@ -248,7 +251,7 @@ in [Road network](#611-road-network-the-ember-lines).
 - **While Askarra is closed** (until its first slices exist), its two gates and forts exist in Eldrun but are held by the
   Hollow, and bots or fake players are used for tests.
 - **Entry:** from level 20, with level, attributes and equipment normalized (see [Vado Gris](#5-the-skirmish-zone-the-vado-gris-phase-4)
-  and `advancement.md`).
+  and [advancement.md](advancement.md)).
 
 ### 4.3 The PvE layer
 
@@ -266,7 +269,7 @@ for levels 10-19, or turn it into a rotating battleground.
 ## 5. The skirmish zone: the Vado Gris (phase 4)
 
 With the level 60 cap the Vado Gris is a `SKIRMISH` zone: **normalized** (`ZoneDefinition.normalized = true`, level 60 rules for
-everybody, see `advancement.md`) and entered **from level 10**, as the Baptism of Fire of the story. Its NPCs keep their literal
+everybody, see [advancement.md](advancement.md)) and entered **from level 10**, as the Baptism of Fire of the story. Its NPCs keep their literal
 figures (`scales_with_level = false`, [npcs.md](npcs.md#12-formulas-shared-scriptssharedainpc_statsgd)). In phase 6 it is reached
 through the provisional pass from [Hondal](zones/hondal.md#passes-arrivals-and-shrines); what happens to the map once Eldrun exists is
 open (MUN-74). Sheet of the zone: [vado_gris.md](zones/vado_gris.md).
@@ -332,7 +335,7 @@ captured.
 | `TEST` | Test scenes | One process | `test_world` |
 
 Minor towns and villages go inside the PvE zones; they are not zones of their own. `SKIRMISH` and `WARZONE` zones are
-**normalized** (`ZoneDefinition.normalized = true`): the same rules of level 60 for everybody, defined in `advancement.md`.
+**normalized** (`ZoneDefinition.normalized = true`): the same rules of level 60 for everybody, defined in [advancement.md](advancement.md).
 
 ### 6.3 Scale
 

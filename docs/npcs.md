@@ -8,8 +8,8 @@ It builds on what exists: the AI of [fortress.md](fortress.md#4-npcs-mun-06--mun
 tokens, spawners), the damage formula and the reference DPS of [combat.md](combat.md), the rewards of
 [progression.md](progression.md), the zones of [world.md](world.md), the localization rules of
 [localization.md](localization.md) and the wire costs of [networking.md](networking.md). The level curve, the power
-scale O(L) and D(L) and the reference character are owned by `advancement.md`; weapons, abilities and damage types by
-`weapons.md`; loot by `items.md`; quests by `quests.md`. Links to those documents are plain text until they land.
+scale O(L) and D(L) and the reference character are owned by [advancement.md](advancement.md); weapons, abilities and damage types by
+[weapons.md](weapons.md); loot by [items.md](items.md); quests by [quests.md](quests.md). Links to those documents are plain text until they land.
 
 Everything here is **provisional**: the figures are the starting values, adjusted when measured with
 `tools/ai/bestiary_balance.gd` and the load test (TEC-68).
@@ -19,7 +19,7 @@ Everything here is **provisional**: the figures are the starting values, adjuste
 | # | Decision | Why |
 |---|---|---|
 | D1 | **One definition per variant, not per level.** `NpcDefinition` describes a variant (e.g. `bandit_archer`) valid in a level range; the **level comes from the camp** and the figures from one shared table (`NpcScalingRules`) | 60 levels × 3 realms would be thousands of files. With a template plus a level, about 120 definitions cover the whole game and balancing happens in a table |
-| D2 | **Scaling reads O(L) and D(L) from `advancement.md`** (the offense and the effective health of a player "at their level" against the reference character). NPC health is proportional to O(L), NPC damage to D(L). In normalized zones the reference (1.0) applies. There is no provisional `vida_ref` table | The time to kill and the danger of an NPC stay the same from level 1 to 60, whatever the curve of the player: a normal dies in 8-12 s and kills an undefended player in 25-35 s |
+| D2 | **Scaling reads O(L) and D(L) from [advancement.md](advancement.md)** (the offense and the effective health of a player "at their level" against the reference character). NPC health is proportional to O(L), NPC damage to D(L). In normalized zones the reference (1.0) applies. There is no provisional `vida_ref` table | The time to kill and the danger of an NPC stay the same from level 1 to 60, whatever the curve of the player: a normal dies in 8-12 s and kills an undefended player in 25-35 s |
 | D3 | **Realm variant = visual only.** `bandit_swordsman` is the same sheet in the three realms; `visual_by_realm` picks the clan outlaw (Vardheim), crusade deserter (Solmarch) or caravan raider (Askarra) | Triples the visible variety without tripling the balancing |
 | D4 | **Eight ranks** (minion, normal, strong, elite, named, boss, dungeon boss, world boss) with health ×0.4/1/2/6/10/25/45/120 and XP ×0.25/1/2/6/12/25/40/60; mastery of 10 per normal in the same proportion | One table, shared with progression. The health multipliers follow the time to kill |
 | D5 | **Level difference:** the XP follows the progression table (×0.40 to ×1.20) and **gray (-8 or lower) gives 0 XP and 0 mastery**; in PvE combat ±4 % per level beyond ±2, capped at ±40 %; grays do not attack first | Zero is clearer than a token amount and removes farming. The moderate modifier gives the feeling of a band without nullifying skill |
@@ -38,7 +38,7 @@ Everything here is **provisional**: the figures are the starting values, adjuste
 
 ### 1.1 The reference character and the power scale
 
-`advancement.md` defines the **reference character**: level 60, attributes 75/25 and 33 constitution, equipment of item
+[advancement.md](advancement.md) defines the **reference character**: level 60, attributes 75/25 and 33 constitution, equipment of item
 level 52 in every slot. Its figures are today's combat figures: health 1000, damage factor 1.0, sword 90/90/130, a time
 to kill of 10.7 s. For a player "at their level" (60/20/20 point split, common equipment of their level, medium armor)
 the sheet gives an offense **O(L)** and an effective health **D(L)**, both relative to the reference:
@@ -53,7 +53,7 @@ the sheet gives an offense **O(L)** and an effective health **D(L)**, both relat
 | 45 | 0.87 | 0.87 | 892 | 360 | 867 |
 | 60 | 1.10 | 1.01 | 987 | 430 | 1 103 |
 
-The table is `advancement.md`'s (the curve is a table, not a formula); NPC code only reads it.
+The table is [advancement.md](advancement.md)'s (the curve is a table, not a formula); NPC code only reads it.
 
 ### 1.2 Formulas (shared, `scripts/shared/ai/npc_stats.gd`)
 
@@ -76,7 +76,7 @@ player → NPC hit:   damage_scale *= (1 - diff_mod(d)) · (1 + family_resistanc
 - `scales_with_level = false` leaves an NPC with its literal figures: the five NPCs of Vado Gris carry it and do not
   change. In **normalized zones** (Vado Gris from level 10, Eldrun from level 20) the NPCs use the reference (O = D = 1)
   through `ZoneDefinition.content_level`, and there is no `diff_mod` in RvR.
-- Resistances by family use the damage types of `weapons.md` (slashing, piercing, blunt, fire, frost, light). Starting
+- Resistances by family use the damage types of [weapons.md](weapons.md) (slashing, piercing, blunt, fire, frost, light). Starting
   values give a reason to swap weapon with Q: the Hollow resist piercing (-25 %) and suffer blunt (+20 %); beasts suffer
   fire (+20 %); golems resist slashing (-25 %). Frost and light start at 0 until the weapon bands are measured.
 
@@ -87,14 +87,16 @@ player → NPC hit:   damage_scale *= (1 - diff_mod(d)) · (1 + family_resistanc
 | Minion | 0.4 | 0.6 | 4 s alone | 0.25 | 0.25 | 25 % of one | 10 % | normal |
 | Normal | 1.0 | 1.0 | 8-12 s alone | 1 | 1 | 1 | 10 % | normal |
 | Strong | 2.0 | 1.2 | 18-24 s alone | 2 | 2 | 1 + 25 % | 10 % | push ×0.5 |
-| Elite | 6.0 | 1.5 | 25-35 s with 2-3 | 6 | 5 | 2 + 1 guaranteed uncommon | 5 % | no push, stun ×0.5 |
-| Named (rare) | 10 | 1.6 | 35-50 s with 2-3 | 12 | 10 | 3 + 1 guaranteed rare | 5 % | like elite |
+| Elite | 6.0 | 1.5 | 25-35 s with 2-3 | 6 | 3 | 40 % of one `elite` roll | 5 % | no push, stun ×0.5 |
+| Named (rare) | 10 | 1.6 | 35-50 s with 2-3 | 12 | 10 | 1 `elite` roll + 25 % of another | 5 % | like elite |
 | Boss (camp, fort) | 25 | 1.8 | 90-150 s with 3-5 | 25 | 25 | boss table | 3 % | immune except punish windows |
 | Dungeon boss | 45 (× 0.70 / 0.85 / 1.00 with 3 / 4 / 5) | 2.0 | 2-4 min with 3-5 | 40 | 40 | boss table | 3 % | like boss |
 | World / event boss | 120 × clamp(participants / 10, 1, 4) | 2.2 | 5-8 min with 15-30 | 60 | 60 | event table | 1 % and within 100 m | like boss |
 
+- **Gold and loot of the Elite, Named and Boss ranks are owned by [items.md](items.md) §8.2 (PRG-21)**; the columns above copy its table and
+  the loot tables win if they ever differ. The Minion, Strong and dungeon or event boss rows are this document's.
 - The XP of a normal is `0.006 · r(L)` of the leveling pace (36 at level 1, 68 at 10, 140 at 30, 248 at 60), then times
-  the rank and the level-difference factor of `advancement.md`. Mastery is 10 per normal and follows the same rank
+  the rank and the level-difference factor of [advancement.md](advancement.md). Mastery is 10 per normal and follows the same rank
   proportion; it comes only from credit events (kills), never from hitting.
 - The existing figures fall inside the envelopes: a Hollow of 2500 is a strong (×2.5), the realm guard of 2500 is
   strong, the Ford Captain of 30 000 is a boss (×30) at the reference.
@@ -340,7 +342,7 @@ respawn(s) = max(rank_minimum, rank_base / (1 + 0.35 · (p - 1)))      p = livin
 ### 4.3 Named rares
 
 On clearing a whole camp (all dead at once), a seeded roll of `rare_chance`; if it hits, the rare appears in place of the
-boss or the marked post on the next respawn and does not return for `rare_cooldown_s`. Loot: a guaranteed rare. No chat
+boss or the marked post on the next respawn and does not return for `rare_cooldown_s`. Loot: one `elite` roll and a 25 % chance of another ([items.md](items.md) §8.2). No chat
 announcement; the innkeeper of the village gives hints through dialogue.
 
 ### 4.4 Credit by contribution
@@ -381,7 +383,7 @@ credit    = { p : points(p) >= rank_threshold · max_health }
 | Downed ally | Revive | (the `INTERACT` bit, exists) | 3 s | exists | none | [abilities.md 4.5](abilities.md#45-knocked-down-reviving-and-executing-downedsystem-scriptsserverdowned_systemgd) |
 
 There is **no loot-bag and no skin interaction**: personal loot goes straight to the bag and the satchel
-(`items.md`), and hides are dropped by the loot table.
+([items.md](items.md)), and hides are dropped by the loot table.
 
 ### 5.2 Shared rule and protocol
 
@@ -457,8 +459,8 @@ far; 810-849 reserved. New parameter types: 8 QUEST, 9 EVENT, 10 SPEC, 11 NPC, 1
 | Armorer / smith | capital, large village, garrison | `OPEN_VENDOR`, `OPEN_REPAIR` | items |
 | Crafting-station artisan | capital | orders and recipes (the station is an object) | items |
 | Banker | capital (2), never in Eldrun | `OPEN_BANK` | items (after the first slice) |
-| **Master of the Orders** | capital, in the Hall of Arms | `OPEN_SPECIALIZATION`: the first choice (free, after the trial at level 10), changing it in the capital out of combat for `8·L + 20` gold, and re-spending talents | `advancement.md` |
-| **Mentor** (one per specialization) | capital, in the Hall of Arms | gives the role trial and the flavor of the order; opens the dialogue branch of their specialization | `advancement.md`, `quests.md` |
+| **Master of the Orders** | capital, in the Hall of Arms | `OPEN_SPECIALIZATION`: the first choice (free, after the trial at level 10), changing it in the capital out of combat for `8·L + 20` gold, and re-spending talents | [advancement.md](advancement.md) |
+| **Mentor** (one per specialization) | capital, in the Hall of Arms | gives the role trial and the flavor of the order; opens the dialogue branch of their specialization | [advancement.md](advancement.md), [quests.md](quests.md) |
 | Caravan master (the "stable") | capital, villages, garrison | `OPEN_TRAVEL` | MUN-33 (mounts: MUN-40) |
 | War quartermaster | capital, garrison | `OPEN_VENDOR` in merits | PRG-33 (phase 7) |
 | Quest giver | everywhere | `ACCEPT_QUEST`, `TURN_IN_QUEST` | MUN-17 |
@@ -624,11 +626,11 @@ its tactic, `ThreatTable` and activity LOD without changing this order.
 
 | Domain | What this needs | What this gives |
 |---|---|---|
-| Progression (`advancement.md`) | O(L) and D(L) for 1-60; XP by level difference; `MAX_LEVEL` 60; the normalization of Eldrun | rank multipliers of XP and gold; death events with level and rank |
-| Classes (`advancement.md`) | the specialization list (names, mentors), taunt of the Vanguard, cost and cooldown of the change | the Master and mentor NPCs, the `OPEN_SPECIALIZATION` action, the `SPECIALIZATION` condition, the threat and taunt API |
-| Weapons (`weapons.md`) | `AbilityDefinition` for NPCs, damage types and resistances, effects (bleed, slow, stun, root, burn, `VULNERABLE`), life staff threat | families with weaknesses that reward swapping weapons with Q |
-| Items (`items.md`) | `LootTable`, personal loot, rarity, tables per family and rank, vendors, repair, bank | a `loot_table` on each variant, credit, the NPCs and actions that open each service |
-| Quests (`quests.md`) | the quest service, persisted flags, "!" and "?" markers | dialogue with `ACCEPT/TURN_IN`, events `npc_killed`, `camp_cleared`, `talked`, `interacted`, a stable `npc_tag` |
+| Progression ([advancement.md](advancement.md)) | O(L) and D(L) for 1-60; XP by level difference; `MAX_LEVEL` 60; the normalization of Eldrun | rank multipliers of XP and gold; death events with level and rank |
+| Classes ([advancement.md](advancement.md)) | the specialization list (names, mentors), taunt of the Vanguard, cost and cooldown of the change | the Master and mentor NPCs, the `OPEN_SPECIALIZATION` action, the `SPECIALIZATION` condition, the threat and taunt API |
+| Weapons ([weapons.md](weapons.md)) | `AbilityDefinition` for NPCs, damage types and resistances, effects (bleed, slow, stun, root, burn, `VULNERABLE`), life staff threat | families with weaknesses that reward swapping weapons with Q |
+| Items ([items.md](items.md)) | `LootTable`, personal loot, rarity, tables per family and rank, vendors, repair, bank | a `loot_table` on each variant, credit, the NPCs and actions that open each service |
+| Quests ([quests.md](quests.md)) | the quest service, persisted flags, "!" and "?" markers | dialogue with `ACCEPT/TURN_IN`, events `npc_killed`, `camp_cleared`, `talked`, `interacted`, a stable `npc_tag` |
 | World ([world.md](world.md)) | `ZoneDefinition` with level range, `content_level` (RvR) and the budget; the points of interest; the mesh per zone; the clock | camp prefabs, the budget and kill-capacity validator, service markers |
 | Network and server | radius interest in PvE (TEC-32, brought to phase 6), TEC-65 integrated, one coordinated protocol bump | NPC metrics in `ZoneReport`; TEC-68, the load test |
 | Art ([art.md](art.md)) | skeletons of small and large quadrupeds with clips (rest, walk, run, bite, leap or charge, hurt, die, howl), civilians with life clips, the final Hollow, ember and frost materials | `NpcVisualCatalog` and a bestiary gallery to review |

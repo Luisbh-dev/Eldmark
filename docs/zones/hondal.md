@@ -38,7 +38,7 @@ capital with the first Ember.
 | m11 (level 10) | Isenholm | The Squire's Choice: the specialization trial |
 | m12-m13 (level 10) | Provisional pass, Vado Gris | Baptism of fire in the skirmish, the report to the Jarla |
 
-The sheet does not write the quests (that is `quests.md`); it reserves their anchors and guarantees that the main
+The sheet does not write the quests (that is [quests.md](../quests.md)); it reserves their anchors and guarantees that the main
 chain walks the zone in the order of `hub_order`.
 
 ## Layout
@@ -203,10 +203,10 @@ rocks, and the Ranger and Peasant outfits for the NPCs.
 | Domain | What Hondal needs |
 |---|---|
 | NPCs ([npcs.md](../npcs.md)) | The 18 T1 sheets and their [Hondal additions](../npcs.md#34-hondal-additions-derived-from-the-t1-sheets) (Forsworn, Eldhald Guardian, Gunnar Halfhand, Hjalmar); `NpcCamp` prefabs for the six camp types; village guards; the service and ambient NPCs of Granvik; the quadruped placeholders for wolves, boars and deer |
-| Quests (`quests.md`, `story.md`) | Anchors (`quest_anchors`) at every POI, the places, the Act I chain m01-m13, 15 side quests, 18 lore texts, Echo I at Eldhald, the Granvik board and the Hollow Incursion event (arena at the Granvik palisade) |
-| Items (`items.md`) | G1 gathering nodes (120-180 slots: firewood, resin, hides, herbs, iron scrap), the `LootTable` per family, chests (one per camp, personal lock) and the vendor stock of the provisions merchant and the armorer |
-| Combat (`weapons.md`, [abilities.md](../abilities.md)) | Ground-area telegraphs for the emberbinder, line telegraphs for the boar charge and the archers, the dummy of Granvik |
-| Progression (`advancement.md`) | The leveling simulator's targets for the zone (about 3.5 h at the reference pace) and the discovery XP for the 12 places |
+| Quests ([quests.md](../quests.md), [story.md](../story.md)) | Anchors (`quest_anchors`) at every POI, the places, the Act I chain m01-m13, 15 side quests, 18 lore texts, Echo I at Eldhald, the Granvik board and the Hollow Incursion event (arena at the Granvik palisade) |
+| Items ([items.md](../items.md)) | G1 gathering nodes (120-180 slots: firewood, resin, hides, herbs, iron scrap), the `LootTable` per family, chests (one per camp, personal lock) and the vendor stock of the provisions merchant and the armorer |
+| Combat ([weapons.md](../weapons.md), [abilities.md](../abilities.md)) | Ground-area telegraphs for the emberbinder, line telegraphs for the boar charge and the archers, the dummy of Granvik |
+| Progression ([advancement.md](../advancement.md)) | The leveling simulator's targets for the zone (about 3.5 h at the reference pace) and the discovery XP for the 12 places |
 | Art ([art.md](../art.md)) | The pine and farmland biome profile, the longhouse, runestone and pillar pieces, Vardheim outfits for the Granvik NPCs, the quadruped rig (pending P4), the Eld ruin kit for Eldhald |
 | Technology | The handoff to Isenholm and to Vado Gris, the AI activity LOD and radius interest (a zone with 150 hostiles), and the load test with 48 bots and 200 NPCs |
 
@@ -281,7 +281,7 @@ head of the fjord.
 | **City gate** | Yes | Arrival `from_hondal` (default), the pass to Hondal as a gate, two guards, the central travel post (marker only) |
 | **Market square** | Yes | The provisions merchant, the armorer (repairs), Jarl Ase's stand, the notice board (post-slice), the well, 12 ambient NPCs; reserved slots for the banker and the auctioneer |
 | **Hall of Arms** | Yes | The **Master of the Orders** and **one mentor per specialization**: four in the slice (Vanguard, Linebreaker, Hunter, Healer), the Arcanist and Sapper slots reserved, so **six slots** |
-| **Training yard** | Yes | Dummies for each weapon family, a sparring ground, an area where the Master at Arms (Hakon in the Act I quests) gives the combat teaching |
+| **Training yard** | Yes | Dummies for each weapon family, a sparring ground, an area where Hakon, the Master of the Orders (the Hall of Arms' master at arms in the Act I quests), gives the combat teaching |
 | **Jarl's great hall** | Yes | Jarla Ragnhild, the steward Einar, the council table; the signature landmark of the capital (a Blender piece, longhouse language scaled up) |
 | Crafts quarter | Gray model | Station posts for later (forge, tannery, carpentry, alchemy, refining) |
 | Quays | Gray model, walkable | Jarl Sten Hrafnsson (m09) |
