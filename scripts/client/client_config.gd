@@ -85,6 +85,10 @@ var display_name: String = ""
 var net_sim_spec: String = ""
 var bot_seed: int = 1
 var bot_count: int = 0
+## Optional names for the swarm bots ([code]--bot-names=Aldric,Brenna,...[/code]): bot [i]i[/i] takes the
+## [i]i[/i]-th valid one; the rest keep [method NameRules.bot_name]. Used by the quality bench so that
+## captures do not show "Botaaab".
+var bot_names: PackedStringArray = PackedStringArray()
 ## Cheating bot mode ([code]--bot-cheat=<mode>[/code], [constant BotCheater.MODES]): traffic
 ## ([code]version[/code], [code]future[/code], [code]dupes[/code], [code]garbage[/code],
 ## [code]flood[/code]) or combat ([code]rewind[/code], [code]reach[/code], [code]rate[/code] and, since
@@ -183,6 +187,11 @@ static func from_args(args: PackedStringArray, exported: bool = false) -> Client
 	config.bot_count = _int_option(args, "--bots=", config.bot_count, 1, _MAX_BOTS,
 			config.warnings)
 	config.net_sim_spec = _string_option(args, "--net-sim=")
+	for bot_name: String in _string_option(args, "--bot-names=").split(",", false):
+		if NameRules.validate(bot_name.strip_edges()) == NameRules.Reason.OK:
+			config.bot_names.append(bot_name.strip_edges())
+		else:
+			config.warnings.append("Nombre de bot no válido '%s'" % bot_name)
 	config.bot_cheat = _string_option(args, "--bot-cheat=").to_lower()
 	config.bot_brain = _string_option(args, "--bot-brain=").to_lower()
 	if not config.bot_brain.is_empty() and not BOT_BRAINS.has(config.bot_brain):

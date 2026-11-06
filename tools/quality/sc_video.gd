@@ -6,21 +6,26 @@ extends RefCounted
 ## smoothness. The driver throttles the game to real time while recording ([code]online_driver.gd[/code]), so that the server
 ## and the client stay in sync.
 ## [br][br]
-## Script (by frames, so it lasts the same recorded or not): the first 45 % against the Hollow and the fort's Captain
-## (debug command 8 so that all of them are there) and the rest against an enemy combat bot, in front of its camp.
+## Script (by frames, so it lasts the same recorded or not): the first 45 % in the fort courtyard against the Hollow and
+## the Captain (debug command 8 so that all of them are there, and again when they are all down), alternating fighting
+## and shield-up stretches (block sparks), and the rest against an enemy combat bot, in front of its camp.
 ## The client fights with [code]spar.gd[/code] (light attacks, abilities, dodge, block and heavy attacks). Duration with
 ## [code]--seconds=N[/code] (60 by default).
 
 const Spar = preload("res://tools/quality/spar.gd")
 
 const FPS: int = 60
-## Fort courtyard (the closed gate does not let anyone pass on foot): the client appears inside, near the Captain and the Hollow.
-const FORT_SPOT: Vector3 = Vector3(-12.0, 0.0, -6.0)
-const FORT_YAW: float = -60.0
+## Open spots of the fort courtyard (the closed gate does not let anyone pass on foot): the client appears inside, near the
+## Captain and the Hollow; [method online_driver.open_spot] picks the one with the fewest obstacles around.
+const FORT_SPOTS: Array = [Vector2(-12.0, -6.0), Vector2(-12.0, 6.0), Vector2(-14.0, 0.0), Vector2(8.0, -14.0), Vector2(8.0, 14.0)]
+## Parts of the first (fort) stretch, as fractions of the video: [start, end, mode]. "tank" holds the shield up to
+## show block sparks; the others fight (light attacks, abilities, dodge, block, heavy attacks).
+const FORT_PLAN: Array = [[0.0, 0.14, "fight"], [0.14, 0.24, "tank"], [0.24, 0.36, "fight"], [0.36, 0.45, "tank"]]
 
 var d: Variant
 var spar: Variant
 var _bot_spot: Vector2 = Vector2(0.0, 105.0)
+var _fort_spot: Vector2 = Vector2(-12.0, -6.0)
 var _seconds: int = 60
 var _start_frame: int = 0
 
@@ -38,7 +43,8 @@ func run(drv: Variant) -> void:
 	# Fort full of NPCs and the client at the gate.
 	d.cmd(NetProtocol.DEBUG_FORT_RESET)
 	await d.wait_healing(3.0)
-	await d.tp(FORT_SPOT.x, FORT_SPOT.z, FORT_YAW, 5.0, NAN, 1.0)
+	_fort_spot = d.open_spot(FORT_SPOTS)
+	await d.tp(_fort_spot.x, _fort_spot.y, d.yaw_to(_fort_spot.x, _fort_spot.y, 0.0, 0.0), 5.0, NAN, 1.0)
 	_start_frame = Engine.get_process_frames()
 	d.note("vídeo: %d s (%d fotogramas a %d por segundo)" % [_seconds, _seconds * FPS, FPS])
 	await _fight_until(0.45, "npc")
@@ -59,6 +65,7 @@ func _fight_until(until: float, kind: String) -> void:
 	var next_heal: int = 0
 	spar.set_mode("fight")
 	var heavy_next: int = Time.get_ticks_msec() + 6000
+	var next_reset: int = 0
 	while _elapsed_fraction() < until:
 		var now: int = Time.get_ticks_msec()
 		if now >= next_heal:
@@ -68,14 +75,27 @@ func _fight_until(until: float, kind: String) -> void:
 			spar.stop()
 			await d.ensure_alive()
 			if kind == "npc":
-				await d.tp(FORT_SPOT.x, FORT_SPOT.z, FORT_YAW, 5.0, NAN, 0.6)
+				await d.tp(_fort_spot.x, _fort_spot.y, d.yaw_to(_fort_spot.x, _fort_spot.y, 0.0, 0.0), 5.0, NAN, 0.6)
 			else:
 				await d.tp(_bot_spot.x, _bot_spot.y, 180.0, 6.0, NAN, 0.6)
 		var enemy: Dictionary = _nearest(kind)
 		if enemy.is_empty():
 			spar.stop()
+			if kind == "npc" and now >= next_reset:
+				# Everyone in the fort is down: it is reset so that the Hollow and the Captain come back.
+				next_reset = now + 6000
+				d.cmd(NetProtocol.DEBUG_FORT_RESET)
+				await d.wait_healing(2.5)
+				await d.tp(_fort_spot.x, _fort_spot.y, d.yaw_to(_fort_spot.x, _fort_spot.y, 0.0, 0.0), 5.0, NAN, 0.4)
 			await d.step()
 			continue
+		if kind == "npc" and _plan_mode() == "tank":
+			spar.set_mode("tank")
+			spar.step(enemy["pos"])
+			await d.step()
+			continue
+		if spar.mode == "tank":
+			spar.set_mode("fight")
 		# Now and then, a charged heavy attack to see the hitstop and the knockdown.
 		if now >= heavy_next and spar.mode == "fight":
 			spar.set_mode("heavy")
@@ -85,6 +105,14 @@ func _fight_until(until: float, kind: String) -> void:
 		spar.step(enemy["pos"])
 		await d.step()
 	spar.stop()
+
+
+func _plan_mode() -> String:
+	var f: float = _elapsed_fraction()
+	for part: Array in FORT_PLAN:
+		if f >= float(part[0]) and f < float(part[1]):
+			return String(part[2])
+	return "fight"
 
 
 func _nearest(kind: String) -> Dictionary:
