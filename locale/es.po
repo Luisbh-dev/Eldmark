@@ -68,7 +68,7 @@ msgstr "Cancelar"
 
 #: scripts/client/ui/ui_confirm_dialog.gd
 msgctxt "button"
-msgid "Accept"
+msgid "OK"
 msgstr "Aceptar"
 
 # --- Graphics ---
@@ -215,7 +215,7 @@ msgid "Interface volume"
 msgstr "Volumen: Interfaz"
 
 #: scripts/client/audio/audio_buses.gd
-msgid "Voices volume"
+msgid "Voice volume"
 msgstr "Volumen: Voces"
 
 # --- Camera ---

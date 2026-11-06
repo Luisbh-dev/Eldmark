@@ -1,6 +1,6 @@
 class_name UIConfirmDialog
 extends Control
-## Modal confirmation dialog (UI-09): a title, a message and two buttons ("Accept" and "Cancel" by
+## Modal confirmation dialog (UI-09): a title, a message and two buttons ("OK" and "Cancel" by
 ## default) over a veil that dims and blocks the rest of the screen. It emits
 ## [signal confirmed] or [signal canceled] and closes before emitting.
 ## [br][br]
@@ -93,7 +93,7 @@ func _input(event: InputEvent) -> void:
 
 
 ## Opens the dialog with [param title] and [param message]. An empty [param confirm_text] or
-## [param cancel_text] means the default one ("Accept", "Cancel"), translated now. [param danger] puts the
+## [param cancel_text] means the default one ("OK", "Cancel"), translated now. [param danger] puts the
 ## confirm button in the danger style and, with [param focus_cancel] (or whenever it is dangerous), focus
 ## starts on "Cancel".
 func open(title: String, message: String, confirm_text: String = "", cancel_text: String = "",
@@ -101,7 +101,7 @@ func open(title: String, message: String, confirm_text: String = "", cancel_text
 	_title.text = title
 	_title.visible = not title.is_empty()
 	_message.text = message
-	_confirm_button.text = confirm_text if not confirm_text.is_empty() else L10n.t("Accept", &"button")
+	_confirm_button.text = confirm_text if not confirm_text.is_empty() else L10n.t("OK", &"button")
 	_cancel_button.text = cancel_text if not cancel_text.is_empty() else L10n.t("Cancel", &"button")
 	_confirm_button.theme_type_variation = &"DangerButton" if danger else &""
 	_focus_cancel = focus_cancel or danger

@@ -371,7 +371,7 @@ static func _ensure() -> void:
 		_catalogs["es"] = spanish
 		_domain().add_translation(spanish)
 	for arg: String in OS.get_cmdline_user_args():
-		if arg == STRICT_ARG:
+		if arg == STRICT_ARG and OS.is_debug_build():
 			_strict = true
 		elif arg.begins_with(LOCALE_ARG_PREFIX):
 			var code: String = arg.trim_prefix(LOCALE_ARG_PREFIX).strip_edges().to_lower()

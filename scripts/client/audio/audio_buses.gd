@@ -31,7 +31,7 @@ const ALL: Array[StringName] = [MASTER, MUSIC, SFX, AMBIENCE, UI, VOICES]
 ## to glue after "Volume: ", because the word order is not the same in every language.
 const VOLUME_LABELS: Dictionary = {
 	MASTER: "Master volume", MUSIC: "Music volume", SFX: "Effects volume",
-	AMBIENCE: "Ambience volume", UI: "Interface volume", VOICES: "Voices volume",
+	AMBIENCE: "Ambience volume", UI: "Interface volume", VOICES: "Voice volume",
 }
 ## Default linear volume of each bus.
 const DEFAULT_VOLUMES: Dictionary = {
