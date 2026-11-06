@@ -180,7 +180,7 @@ jobs:
         timeout-minutes: 8
         run: |
           sudo apt-get install -y gdb > /dev/null 2>&1 || true
-          tools/ci/crash_diag.sh exports/server "$HOME/godot/${GODOT_FILE}" 26210 | tee -a "$GITHUB_STEP_SUMMARY"
+          bash tools/ci/crash_diag.sh exports/server "$HOME/godot/${GODOT_FILE}" 26210 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke test
         timeout-minutes: 8
