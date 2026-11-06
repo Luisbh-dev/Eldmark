@@ -12,8 +12,9 @@
 # output is block-buffered when redirected, so the log file (flushed) is what says that the zone is listening.
 #
 # The connection is over DTLS with the certificate of the tests, as in production (the platform only hands out zones with DTLS).
-# Over plain UDP the exported RELEASE server dies with SIGBUS when a client connects (the debug export and the editor do
-# not): that is a known open issue, see docs/operations.md section 9, and is not what this test is about.
+# With PLAIN=1 it is over plain UDP instead (the local and test servers): the client waits for the server to cut the
+# connection, because a disconnect started by the client crashes the exported release server (docs/operations.md
+# section 9; tools/ci/engine_canary.sh watches for that).
 #
 # Exit code: 0 if everything checks out, 1 if not.
 set -euo pipefail
@@ -30,9 +31,16 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 SERVER_CMD="${SERVER_CMD:-$SERVER_DIR/eldmark-server.x86_64 --headless --log-file $OUT/server.log --}"
 
+SERVER_DTLS=(--dtls-cert="$DTLS_CERT" --dtls-key="$DTLS_KEY")
+BOT_DTLS=(--dtls-cert="$DTLS_CERT" --dtls-name="$DTLS_NAME")
+if [ "${PLAIN:-0}" = "1" ]; then
+	SERVER_DTLS=()
+	BOT_DTLS=()
+fi
+
 # shellcheck disable=SC2086
 $SERVER_CMD --server --zone=vado_gris --port="$PORT" --quit-after-ticks=1500 --report="$OUT/server.json" \
-	--dtls-cert="$DTLS_CERT" --dtls-key="$DTLS_KEY" \
+	"${SERVER_DTLS[@]}" \
 	> "$OUT/server.stdout" 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2> /dev/null || true' EXIT
@@ -53,7 +61,7 @@ sleep 2
 
 "$GODOT" --headless --path "$ROOT" -- --bots=1 --connect="127.0.0.1:$PORT" --bot-seed=1 \
 	--quit-after-ticks=300 --report="$OUT/swarm.json" \
-	--dtls-cert="$DTLS_CERT" --dtls-name="$DTLS_NAME" > "$OUT/swarm.log" 2>&1 || {
+	"${BOT_DTLS[@]}" > "$OUT/swarm.log" 2>&1 || {
 	echo "The SwarmBot failed:" >&2
 	tail -n 40 "$OUT/swarm.log" >&2
 	exit 1

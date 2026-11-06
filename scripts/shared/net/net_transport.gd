@@ -74,6 +74,8 @@ const THROTTLE_DECELERATION: int = 0
 const WIRE_SAMPLE_TICKS: int = 60
 ## Id of the server as seen from the client.
 const SERVER_PEER_ID: int = 1
+## Environment variable that makes a client start the disconnect (CI canary of the engine crash, see disconnect_after_flush).
+const ENV_CLIENT_STARTS_DISCONNECT: String = "ELDMARK_CLIENT_STARTS_DISCONNECT"
 ## Scale of [constant ENetPacketPeer.PEER_PACKET_LOSS] (ENET_PEER_PACKET_LOSS_SCALE).
 const PACKET_LOSS_SCALE: float = 65536.0
 
@@ -115,6 +117,8 @@ var _guard: GuardedEnetPeer = null
 var _is_server: bool = false
 # The connection goes over DTLS (host or connect_to with TLSOptions).
 var _dtls: bool = false
+# Test hook (ENV_CLIENT_STARTS_DISCONNECT): the client starts the disconnect, as it did before.
+var _client_starts_disconnect: bool = false
 var _now_tick: int = 0
 # Increases on every close(): stops event delivery if a listener closes the transport.
 var _epoch: int = 0
@@ -144,6 +148,7 @@ var _last_wire_sample_tick: int = 0
 
 
 func _enter_tree() -> void:
+	_client_starts_disconnect = OS.get_environment(ENV_CLIENT_STARTS_DISCONNECT) == "1"
 	_mp = SceneMultiplayer.new()
 	_mp.server_relay = false
 	_mp.allow_object_decoding = false
@@ -324,7 +329,7 @@ func complete_auth(peer_id: int) -> Error:
 ## that moment on [method send] and [method send_auth] return [constant ERR_UNAVAILABLE] for that
 ## peer.
 ## [br][br]
-## [b]With DTLS, the client does not start the disconnect[/b] (docs/platform.md §19.18, P9c): it
+## [b]The client never starts the disconnect[/b] (docs/platform.md §19.18, P9c; docs/networking.md section 15), over DTLS or not: it
 ## flushes its own data and waits for the server to cut it, which is how the server answers the
 ## CLIENT_LEAVE. Godot's DTLS server forgets a peer's session as soon as ENet considers it
 ## disconnected; if the client starts the disconnect, its DTLS close notice arrives one round trip
@@ -333,6 +338,11 @@ func complete_auth(peer_id: int) -> Error:
 ## in 0 of 6 started by the server). If the server does not cut within
 ## [constant FORCE_DISCONNECT_TICKS] ticks, the client closes the whole connection: the DISCONNECT
 ## and the DTLS close go out in the same send and arrive together (also 0 of 6).
+## [br][br]
+## Over plain UDP the same rule avoids a crash of the engine: the exported [i]release[/i] Linux server (4.7.2) dies
+## with SIGBUS when it handles a DISCONNECT that the client started (it does not with a disconnect it started
+## itself). [constant ENV_CLIENT_STARTS_DISCONNECT] brings the old behavior back for the canary of CI
+## (tools/ci/smoke_server.sh --canary), which tells when an engine update fixes it.
 func disconnect_after_flush(peer_id: int) -> void:
 	if _enet == null or not _is_known(peer_id) or _closing.has(peer_id):
 		return
@@ -341,7 +351,7 @@ func disconnect_after_flush(peer_id: int) -> void:
 			_send_packet_now(packet)
 	_flush_host()
 	var packet_peer: ENetPacketPeer = _enet.get_peer(peer_id)
-	if packet_peer != null and _is_server:
+	if packet_peer != null and (_is_server or _client_starts_disconnect):
 		packet_peer.peer_disconnect_later()
 	if _guard != null:
 		# It is already being disconnected: anything it keeps sending is dropped without being counted.
@@ -604,7 +614,7 @@ func _force_pending_disconnects() -> void:
 		if _enet == null:
 			_closing.erase(peer_id)
 			continue
-		if not _is_server and _is_known(peer_id):
+		if not _is_server and not _client_starts_disconnect and _is_known(peer_id):
 			# With DTLS, the client closes the whole connection (see disconnect_after_flush).
 			var was_mp_connected: bool = _mp_connected.has(peer_id)
 			_forget_peer(peer_id)
