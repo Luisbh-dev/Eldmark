@@ -1,0 +1,34 @@
+# Dependabot version updates (weekly). Security alerts and security updates are switched on in the
+# repository settings (docs/getting-started.md, "Continuous integration").
+version: 2
+updates:
+  # The actions used by .github/workflows/*.yml are pinned by commit SHA; Dependabot keeps the SHAs
+  # (and the version comments next to them) up to date.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "CI"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The platform service in Go.
+  - package-ecosystem: gomod
+    directory: /platform
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "Platform"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+
+  # Base images of the platform container.
+  - package-ecosystem: docker
+    directory: /platform/deploy
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "Platform"

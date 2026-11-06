@@ -1,0 +1,35 @@
+name: tmp gobump
+on:
+  workflow_dispatch:
+  push:
+    branches: [wip/backlog-ci]
+permissions:
+  contents: read
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: platform
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: false
+      - run: |
+          go version
+          go mod edit -go=1.26.10 -toolchain=none
+          go get golang.org/x/text@latest github.com/jackc/pgx/v5@latest
+          go mod tidy
+          go build ./...
+          go vet ./...
+          git diff --stat
+          cat go.mod
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gomod
+          path: |
+            platform/go.mod
+            platform/go.sum

@@ -1,0 +1,166 @@
+name: Nightly
+
+# Once a night (and by hand): the whole GDScript suite on Windows, the platform where the game is
+# developed and where the process tests behave differently, and the phase-3 brawl load test as a
+# trend artifact. The load test has no threshold yet: the numbers are kept to see the trend, a
+# threshold will come when there are enough runs to know the noise of the runners.
+
+on:
+  schedule:
+    - cron: "37 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2-stable
+
+jobs:
+  suite-windows:
+    name: Full suite (Windows, part ${{ matrix.shard }}/2)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      GODOT_WIN_FILE: Godot_v4.7.2-stable_win64
+      # SHA-512 checksum of the zip, from SHA512-SUMS.txt of the 4.7.2-stable release.
+      GODOT_WIN_SHA512: 83decd58fdf67b9d657958a1ae6bf1929c20785315a81effe245874cdc57acb709bf868e00778a96984338c1b29dafdb453c6847747694621c6ecf5da2259993
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Godot cache
+        id: godot-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/godot
+          key: godot-win-${{ env.GODOT_VERSION }}-${{ env.GODOT_WIN_SHA512 }}
+
+      - name: Download Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_WIN_FILE}.exe.zip"
+          echo "${GODOT_WIN_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          7z x -y -o"$HOME/godot" "$RUNNER_TEMP/godot.zip"
+
+      # The console executable looks up the main one by its own name without "_console": a "godot"
+      # script calls it by its original name (same trick as the Windows job of tests.yml).
+      - name: Godot on the PATH
+        run: |
+          printf '#!/usr/bin/env bash\nexec "%s/%s_console.exe" "$@"\n' "$HOME/godot" "$GODOT_WIN_FILE" > "$HOME/godot/godot"
+          chmod +x "$HOME/godot/godot"
+          cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
+
+      - name: Import the project
+        run: |
+          mkdir -p build
+          godot --headless --path . --import > build/import.log 2>&1 || {
+            cat build/import.log
+            exit 1
+          }
+
+      - name: Tests
+        timeout-minutes: 80
+        run: |
+          set -o pipefail
+          godot --headless --path . -s res://tests/run_tests.gd -- --shard=${{ matrix.shard }}/2 2>&1 | tee build/tests.log
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f build/tests.log ]; then
+            grep -E "^(FAIL|Resumen|Summary)" build/tests.log | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Upload logs and reports
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-logs-windows-${{ matrix.shard }}
+          path: build/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  load-test:
+    name: Load test (brawl)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GODOT_FILE: Godot_v4.7.2-stable_linux.x86_64
+      # SHA-512 checksum of the zip, from SHA512-SUMS.txt of the 4.7.2-stable release.
+      GODOT_SHA512: 9aa00f7a605200940bce3027a567b782f49bd8e940dd06ae9e987bd65aee1b1467edd56ed84fcdcbdd44354bf613bdbb4e5d2913e925850368e150c59ed54c65
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Godot cache
+        id: godot-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
+
+      - name: Download Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_FILE}.zip"
+          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
+          chmod +x "$HOME/godot/${GODOT_FILE}"
+
+      - name: Godot on the PATH
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$HOME/godot/${GODOT_FILE}" "$HOME/.local/bin/godot"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Import the project
+        run: |
+          mkdir -p build
+          godot --headless --path . --import > build/import.log 2>&1 || {
+            cat build/import.log
+            exit 1
+          }
+
+      # No threshold: the exit code is only about the tool running, the numbers go to the artifact.
+      - name: Brawl matrix
+        timeout-minutes: 35
+        run: |
+          set -o pipefail
+          godot --headless --path . -s res://tools/load_test.gd -- --brawl 2>&1 | tee build/load_test.log || echo "load_test exited with $?"
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f build/load_test/summary.txt ]; then
+            tee -a "$GITHUB_STEP_SUMMARY" < build/load_test/summary.txt
+          fi
+
+      - name: Upload the load test report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: load-test-brawl-${{ github.run_id }}
+          path: |
+            build/load_test/
+            build/load_test.log
+          if-no-files-found: warn
+          retention-days: 90
