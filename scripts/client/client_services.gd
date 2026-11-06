@@ -58,10 +58,11 @@ func _ready() -> void:
 	_layer.name = "WindowLayer"
 	_layer.layer = UI_LAYER
 	add_child(_layer)
-	_confirm = UIConfirmDialog.new()
-	_layer.add_child(_confirm)
 	_menu = SettingsMenu.new()
 	_layer.add_child(_menu)
+	# The dialog goes after the window so it draws over it: "Restore all" opens it from inside the window.
+	_confirm = UIConfirmDialog.new()
+	_layer.add_child(_confirm)
 
 	_menu.setup(_settings, _confirm)
 	_settings.apply_all(get_tree(), true)

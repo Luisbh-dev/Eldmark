@@ -97,5 +97,12 @@ func _settings_over_the_title(main: Node) -> void:
 		var slug: String = String(TAB_SLUGS.get(ClientSettings.TABS[i], ClientSettings.TABS[i]))
 		await d.shot("interfaz/titulo_ajustes_f10_%d_%s.png" % [i + 1, slug],
 				"ajustes (F10) sobre el título, pestaña «%s»" % tabs.get_tab_title(i), "tecla F10 y cambio de pestaña")
+	# "Restore all" opens the confirmation dialog (UIConfirmDialog) with its default button texts.
+	menu.restore_all()
+	await d.wait(0.5)
+	await d.shot("interfaz/titulo_ajustes_f10_5_confirmar.png", "ajustes (F10) sobre el título, diálogo de confirmación de «Restaurar todo»",
+			"tecla F10 y restore_all()")
+	services.get_confirm_dialog().cancel()
+	await d.wait(0.3)
 	await d.key(KEY_F10)
 	await d.wait(0.4)
