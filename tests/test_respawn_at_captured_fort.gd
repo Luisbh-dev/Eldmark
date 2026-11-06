@@ -1,5 +1,5 @@
 extends TestCase
-## GUE-14 and UI-21, end to end: after a real capture on the server, the respawn index that the client
+## GUE-14 and UI-21, as a server integration test (no networking: it calls the combat director directly): after a real capture on the server, the respawn index that the client
 ## computes from the map ([RespawnPointList], the same list the death screen and [WorldMap] use) puts the
 ## player inside the freshly captured fort, and the server refuses what the client should never send: an
 ## enemy fort, a fort that is being attacked or a fort that is not owned yet.

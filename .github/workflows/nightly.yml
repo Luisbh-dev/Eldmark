@@ -140,12 +140,16 @@ jobs:
             exit 1
           }
 
-      # No threshold: the exit code is only about the tool running, the numbers go to the artifact.
+      # No threshold on the numbers (they go to the artifact); the next step fails if the tool left no report.
       - name: Brawl matrix
         timeout-minutes: 35
         run: |
           set -o pipefail
           godot --headless --path . -s res://tools/load_test.gd -- --brawl 2>&1 | tee build/load_test.log || echo "load_test exited with $?"
+
+      # The numbers have no threshold, but a crash or a parse error must not look like a green run.
+      - name: Check that the tool produced its report
+        run: test -s build/load_test/summary.json
 
       - name: Summary
         if: always()

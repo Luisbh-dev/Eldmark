@@ -409,8 +409,8 @@ func test_a_fast_segment_does_not_skip_over_a_thin_target() -> void:
 	var r: float = HitShapes.CAPSULE_RADIUS
 	var h: float = HitShapes.CAPSULE_HEIGHT
 	var skipped_by_point_tests: int = 0
-	# Speeds from 20 to 120 m/s at the tick rate: 0.7 to 4 m per tick, always more than the 0.8 m
-	# the capsule is wide for the fastest ones.
+	# Speeds from 20 to 120 m/s at the tick rate: 0.33 to 2 m per tick; the two fastest exceed the 0.8 m
+	# the capsule is wide.
 	for speed: float in [20.0, 45.0, 90.0, 120.0]:
 		var step: float = speed / float(Ballistics.TICK_RATE)
 		# Ends of the tick placed symmetrically around the target, at several heights and with the

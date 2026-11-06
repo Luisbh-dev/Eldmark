@@ -78,6 +78,7 @@ jobs:
           cache-dependency-path: platform/go.sum
 
       - name: Install govulncheck
+        # Pinned by version; Dependabot does not track it, bump it by hand (noted in backlog TEC-66).
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
       - name: govulncheck
