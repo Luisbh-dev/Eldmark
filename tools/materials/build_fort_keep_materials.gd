@@ -4,7 +4,7 @@ extends SceneTree
 ## names as the GLB materials (keep_stone, keep_trim...), so that the game replaces the
 ## glTF ones with these and the keep takes on each realm's palette.
 ##
-## Stone, cloth, wood, roof and earth use assets/materials/shaders/fort_keep_surface.gdshader
+## Stone, cloth, wood and roof use assets/materials/shaders/fort_keep_surface.gdshader
 ## (it recolors the texture towards the color in docs/world.md, "Palette per material", and reads the model's
 ## vertex color: value of each ashlar block, joint occlusion, dirt and wear mask).
 ## The fabrics use fort_keep_cloth.gdshader (emblem atlas, faction color, capture and wind per
@@ -58,14 +58,6 @@ const ROOF_HOLES: Dictionary = {
 	"eldrun": 0.27,
 }
 
-## Earth skirt: multiplier of the vertex color per realm.
-const EARTH_TINT: Dictionary = {
-	"vardheim": Color("#eef3f6"),
-	"solmarch": Color("#ffffff"),
-	"askarra": Color("#fff1da"),
-	"eldrun": Color("#f6f6f2"),
-}
-
 ## material -> [texture, target color, tint, extras]. Extras: detail, gain, layer (factor on
 ## the realm's layer), weather (factor on the weathering), metal, rough, ember (0/1), holes (0/1),
 ## normal (normal map strength).
@@ -79,7 +71,6 @@ const REALMS: Dictionary = {
 		"keep_roof": ["shingle", Color("#5e564e"), 1.0, {"detail": 1.0, "layer": 1.0, "weather": 0.0}],
 		"keep_iron": ["flat", Color("#3f4448"), 1.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "metal": 0.6, "rough": 0.5}],
 		"keep_dark": ["flat", Color("#0b0c0f"), 1.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "rough": 1.0}],
-		"keep_earth": ["flat", Color("#ffffff"), 0.0, {"detail": 0.0, "layer": 0.9, "weather": 0.0, "rough": 1.0}],
 	},
 	"solmarch": {
 		"keep_stone": ["stone", Color("#dcd3c1"), 1.0, {"detail": 0.8, "gain": 0.97}],
@@ -90,7 +81,6 @@ const REALMS: Dictionary = {
 		"keep_roof": ["shingle", Color("#4a5870"), 1.0, {"detail": 1.0, "layer": 0.6, "weather": 0.0}],
 		"keep_iron": ["flat", Color("#c9a227"), 1.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "metal": 0.8, "rough": 0.35}],
 		"keep_dark": ["flat", Color("#14120f"), 1.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "rough": 1.0}],
-		"keep_earth": ["flat", Color("#ffffff"), 0.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "rough": 1.0}],
 	},
 	"askarra": {
 		"keep_stone": ["stone", Color("#a9583b"), 1.0, {"detail": 0.85}],
@@ -101,7 +91,6 @@ const REALMS: Dictionary = {
 		"keep_roof": ["shingle", Color("#b9643a"), 1.0, {"detail": 1.0, "layer": 0.6, "weather": 0.0}],
 		"keep_iron": ["flat", Color("#a97b3d"), 1.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "metal": 0.75, "rough": 0.4}],
 		"keep_dark": ["flat", Color("#120d0b"), 1.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "rough": 1.0}],
-		"keep_earth": ["flat", Color("#ffffff"), 0.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "rough": 1.0}],
 	},
 	"eldrun": {
 		"keep_stone": ["stone", Color("#8c8d84"), 1.0, {"detail": 0.9, "ember": 1.0}],
@@ -112,7 +101,6 @@ const REALMS: Dictionary = {
 		"keep_roof": ["shingle", Color("#6b665e"), 1.0, {"detail": 1.0, "layer": 0.8, "weather": 0.0, "holes": 1.0}],
 		"keep_iron": ["flat", Color("#6e4a35"), 1.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "metal": 0.5, "rough": 0.6}],
 		"keep_dark": ["flat", Color("#0d0d10"), 1.0, {"detail": 0.0, "layer": 0.0, "weather": 0.0, "rough": 1.0}],
-		"keep_earth": ["flat", Color("#ffffff"), 0.0, {"detail": 0.0, "layer": 0.3, "weather": 0.0, "rough": 1.0}],
 	},
 }
 
@@ -175,8 +163,6 @@ func _build(shader: Shader, realm: String, material_name: String, spec: Array) -
 		material.set_shader_parameter(&"ember_from_texture", float(extras.get("ember_vertex", 0.0)) <= 0.0)
 	if ROOF_HOLES.has(realm) and float(extras.get("holes", 0.0)) > 0.0:
 		material.set_shader_parameter(&"hole_amount", ROOF_HOLES[realm])
-	if material_name == "keep_earth":
-		material.set_shader_parameter(&"tint_color", EARTH_TINT[realm])
 	var mapping: Dictionary = {
 		"rough": &"roughness", "metal": &"metallic", "detail": &"detail_strength", "gain": &"albedo_gain",
 	}

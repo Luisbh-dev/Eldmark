@@ -5,8 +5,7 @@ flagpole) and 9.1 m wide at the base, with a battered plinth, a wall with a gent
 recessed panels), large ashlar corners hugging both faces, arrow slits and deep
 windows, a string course, a cornice with corbels, a wooden hoarding under a hipped roof,
 a crenellated parapet, a stair turret with a small roof, a door with a voussoir arch and ironwork
-under a porch, banners in their own node and a foot buried in the hill with fallen stones and
-a skirt of earth.
+under a porch, banners in their own node and a foot buried in the hill with fallen stones.
 
 Usage, from the repo root (the custom textures have to be generated first):
 
@@ -58,7 +57,6 @@ Materials (by name, so the game can swap them for the realm ones):
     keep_iron       ironwork                  keep_dark     openings of arrow slits and windows
     keep_cloth      pennant                   keep_pendant  hanging banners
     keep_roof       roof shingles             keep_wall     cut-ashlar masonry panel (LOD 1 and 2)
-    keep_earth      earth skirt at the foot
 
 GLB import settings that are NOT the defaults and must be kept if the editor
 regenerates fort_keep.glb.import (the .import is versioned; if it is recreated, set them again):
@@ -129,14 +127,14 @@ WOOD_TILE = 3.0
 ROOF_TILE = 2.0               # one shingle of the texture measures 0.2 m of course
 
 MATERIALS = ["keep_stone", "keep_mortar", "keep_trim", "keep_wood", "keep_iron", "keep_dark",
-		"keep_cloth", "keep_pendant", "keep_roof", "keep_wall", "keep_earth"]
+		"keep_cloth", "keep_pendant", "keep_roof", "keep_wall"]
 
 # Base color of each material in the glTF (only visible if the game does not replace it with the realm one).
 MATERIAL_COLORS = {
 	"keep_stone": (0.46, 0.46, 0.45), "keep_mortar": (0.17, 0.16, 0.15), "keep_trim": (0.58, 0.57, 0.55),
 	"keep_wood": (0.30, 0.21, 0.14), "keep_iron": (0.08, 0.08, 0.09), "keep_dark": (0.012, 0.012, 0.015),
 	"keep_cloth": (0.80, 0.78, 0.70), "keep_pendant": (0.80, 0.78, 0.70), "keep_roof": (0.28, 0.30, 0.34),
-	"keep_wall": (0.46, 0.46, 0.45), "keep_earth": (0.30, 0.27, 0.19), "col": (1.0, 0.0, 1.0),
+	"keep_wall": (0.46, 0.46, 0.45), "col": (1.0, 0.0, 1.0),
 }
 
 
@@ -1633,55 +1631,8 @@ class Builder:
 			stone(-PORCH_FRONT + 0.4, sgn * (PORCH_HALF + 0.95), Vector((0.55, 0.45, 0.34)), rng.uniform(0, 3), 0.1)
 		stone(-PORCH_FRONT - 1.15, 0.15, Vector((1.3, 0.8, 0.22)), 0.25, 0.12)
 
-	def foot_skirt(self) -> None:
-		"""Skirt of earth and grass that climbs the plinth and sinks into the terrain: the plinth no longer
-		ends in a hard line over the courtyard. Vertex colors from earth to grass."""
-		g = self.g
-		rng = random.Random(777)
-		HB = PLINTH_HALF_BOTTOM + PLINTH.q
-		loop = []
-		for k, (sx, sy) in enumerate(CORNER_SIGNS):
-			# each stretch goes from one corner to the next along the side that joins them
-			nxt = CORNER_SIGNS[(k + 1) % 4]
-			steps = 13
-			for s in range(steps):
-				f = s / steps
-				nx = sx + (nxt[0] - sx) * f
-				ny = sy + (nxt[1] - sy) * f
-				ln = math.hypot(nx, ny)
-				loop.append((HB * nx, HB * ny, nx / ln, ny / ln))
-		count = len(loop)
-		noise = [rng.uniform(0.0, 1.0) for _ in range(count)]
-		# (distance from the plinth, height, color from earth to grass)
-		profile = [(-0.15, 0.40, (0.075, 0.058, 0.040)), (0.40, 0.30, (0.088, 0.071, 0.046)),
-				(1.00, 0.12, (0.095, 0.104, 0.058)), (1.75, -0.04, (0.104, 0.128, 0.070)), (2.35, -0.30, (0.107, 0.133, 0.074))]
-		rings = []
-		for off, z, col in profile:
-			ring = []
-			for i, (x, y, nx, ny) in enumerate(loop):
-				w = 0.65 + 0.7 * (0.5 * noise[i] + 0.5 * noise[(i + 1) % count])
-				o = off if off < 0.1 else off * w
-				px = x + nx * o
-				py = y + ny * o
-				zz = z + (0.06 * (noise[i] - 0.5) if off > 0.1 else 0.0)
-				# next to the porch the skirt drops so as not to cover the threshold
-				if px < 0 and abs(py) < PORCH_HALF + 0.7 and off < 1.5:
-					zz = min(zz, 0.02)
-				shade = 0.88 + 0.24 * noise[(i * 7) % count]
-				ring.append((Vector((px, py, zz)), (col[0] * shade, col[1] * shade, col[2] * shade)))
-			rings.append(ring)
-		for r in range(len(rings) - 1):
-			a, b = rings[r], rings[r + 1]
-			for i in range(count):
-				j = (i + 1) % count
-				pts = [a[i][0], a[j][0], b[j][0], b[i][0]]
-				cols = [a[i][1], a[j][1], b[j][1], b[i][1]]
-				uvs = [(p.x * 0.3, p.y * 0.3) for p in pts]
-				g.add("keep_earth", pts, uvs, Z, cols, 1.0)
-
 	def run(self) -> Geo:
 		self.plinth()
-		self.foot_skirt()
 		self.foot_rubble()
 		self.bays()
 		self.string_courses()

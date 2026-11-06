@@ -1558,13 +1558,9 @@ func _paint_fort_ground() -> void:
 	_cast_shadow(PackedVector2Array([Vector2(x0, yn), Vector2(x1, yn), Vector2(x1, ys), Vector2(x0, ys)]), wall_height * 1.2, 0.36)
 	# North wall, seen from the inside, and its corner towers (behind everything).
 	_draw_log_band(x0, x1, yn + thickness * 0.5, wall_height, 0)
-	var tower_half: float = _m(4.4)
-	var tower_height: float = _m(15.0)
+	# The game has a palisade with no corner towers: the corners are only taller log posts.
 	for corner_x: float in [x0, x1]:
-		var corners: PackedVector2Array = _draw_prism(Vector2(corner_x, yn), tower_half, tower_half, tower_height, FACE_SOUTH, FACE_EAST,
-				STONE_LIGHT, _line(0.42, 1.7), 15, _m(1.1), 0.4)
-		_draw_slit(Vector2(corner_x, yn), tower_half, tower_half, tower_height, 0.5, 0.55, _m(0.9))
-		_draw_flag(corners[0].lerp(corners[2], 0.5), _m(8.0), neutral)
+		_draw_post(Vector2(corner_x, yn), wall_height)
 	# Yard of packed earth with the road that enters through the west gate.
 	var yard: PackedVector2Array = PackedVector2Array([Vector2(x0 + thickness * 0.5, yn + thickness * 0.5), Vector2(x1 - thickness * 0.5, yn + thickness * 0.5),
 			Vector2(x1 - thickness * 0.5, ys - thickness * 0.5), Vector2(x0 + thickness * 0.5, ys - thickness * 0.5)])
@@ -1613,20 +1609,18 @@ func _paint_fort_ground() -> void:
 	_draw_slit(keep_top, keep_half, keep_half, keep_height, 0.30, 0.50, _m(1.0))
 	_draw_slit(keep_top, keep_half, keep_half, keep_height, 0.70, 0.50, _m(1.0))
 	_draw_flag(keep_corners[0].lerp(keep_corners[2], 0.5), _m(15.0), neutral)
-	# West gate: two small towers on the sides of the gap and the posts of the passage.
+	# West gate: a gap in the palisade framed by two log posts.
 	for side_sign: float in [-1.0, 1.0]:
-		var gate_center: Vector2 = Vector2(x0, center.y + side_sign * (gate_half + _m(3.0)))
-		var gate_corners: PackedVector2Array = _draw_prism(gate_center, _m(3.0), _m(3.0), _m(11.0), FACE_SOUTH.lightened(0.05), FACE_EAST,
-				STONE_LIGHT.lightened(0.05), _line(0.4, 1.6), 15, _m(0.95), 0.38)
-		_draw_slit(gate_center, _m(3.0), _m(3.0), _m(11.0), 0.5, 0.55, _m(0.8))
-		_draw_flag(gate_corners[0].lerp(gate_corners[2], 0.5), _m(8.5), neutral)
+		_draw_post(Vector2(x0, center.y + side_sign * (gate_half + _m(0.8))), wall_height)
 	# South wall, seen from the outside, and the south corner towers (in front of everything).
 	_draw_log_band(x0, x1, ys + thickness * 0.5, wall_height, 1)
 	for corner_x: float in [x0, x1]:
-		var corners: PackedVector2Array = _draw_prism(Vector2(corner_x, ys), tower_half, tower_half, tower_height, FACE_SOUTH, FACE_EAST,
-				STONE_LIGHT, _line(0.42, 1.7), 15, _m(1.1), 0.4)
-		_draw_slit(Vector2(corner_x, ys), tower_half, tower_half, tower_height, 0.5, 0.55, _m(0.9))
-		_draw_flag(corners[0].lerp(corners[2], 0.5), _m(8.0), neutral)
+		_draw_post(Vector2(corner_x, ys), wall_height)
+
+
+## A tall log post of the palisade (corner or gate jamb): a wooden prism a little taller than the wall.
+func _draw_post(at: Vector2, wall_elevation: float) -> void:
+	_draw_prism(at, _m(1.1), _m(1.1), wall_elevation + _m(1.8), LOG_A, LOG_B, WOOD.lightened(0.28), _line(0.3, 1.4), 0, 0.0, 0.3)
 
 
 ## A canvas of pointed south-facing logs (the palisade seen from the front): from [param xa] to [param xb], with its
