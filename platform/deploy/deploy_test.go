@@ -703,8 +703,7 @@ func TestZoneImageFiles(t *testing.T) {
 		}
 	}
 	ignore := string(readFile(t, "zone.Dockerfile.dockerignore"))
-	if !strings.HasPrefix(ignore, "*
-") || !strings.Contains(ignore, "!exports/server") {
+	if !strings.HasPrefix(ignore, "*\n") || !strings.Contains(ignore, "!exports/server") {
 		t.Errorf("zone.Dockerfile.dockerignore does not restrict the context: %q", ignore)
 	}
 }
@@ -721,20 +720,13 @@ func TestZoneEntrypoint(t *testing.T) {
 	fake := filepath.Join(dir, "fake-server.sh")
 	// The "server": arguments after "--" are the options; it writes the report, waits for the stop-file and exits 0
 	// (or with the code in FAKE_EXIT).
-	script := "#!/usr/bin/env bash
-" +
-		"for a in \"$@\"; do case \"$a\" in --stop-file=*) stop=\"${a#*=}\";; --report=*) report=\"${a#*=}\";; esac; done
-" +
-		"echo '{\"closed\": false}' > \"$report\"
-" +
-		"echo ready
-" +
-		"while [ ! -f \"$stop\" ]; do sleep 0.1; done
-" +
-		"echo '{\"closed\": true}' > \"$report\"
-" +
-		"exit \"${FAKE_EXIT:-0}\"
-"
+	script := "#!/usr/bin/env bash\n" +
+		"for a in \"$@\"; do case \"$a\" in --stop-file=*) stop=\"${a#*=}\";; --report=*) report=\"${a#*=}\";; esac; done\n" +
+		"echo '{\"closed\": false}' > \"$report\"\n" +
+		"echo ready\n" +
+		"while [ ! -f \"$stop\" ]; do sleep 0.1; done\n" +
+		"echo '{\"closed\": true}' > \"$report\"\n" +
+		"exit \"${FAKE_EXIT:-0}\"\n"
 	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -756,8 +748,7 @@ func TestZoneEntrypoint(t *testing.T) {
 		for !strings.Contains(string(readFileOrEmpty(report)), "false") {
 			if time.Now().After(deadline) {
 				_ = cmd.Process.Kill()
-				t.Fatalf("the fake server never wrote its report:
-%s", out.String())
+				t.Fatalf("the fake server never wrote its report:\n%s", out.String())
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -791,13 +782,11 @@ func TestZoneEntrypoint(t *testing.T) {
 				t.Fatal(err)
 			}
 			if code != tc.want {
-				t.Fatalf("%v: the entrypoint exits with %d, expected the server's %d:
-%s", tc.sig, code, tc.want, out.String())
+				t.Fatalf("%v: the entrypoint exits with %d, expected the server's %d:\n%s", tc.sig, code, tc.want, out.String())
 			}
 		case <-time.After(10 * time.Second):
 			_ = cmd.Process.Kill()
-			t.Fatalf("%v: the entrypoint does not finish:
-%s", tc.sig, out.String())
+			t.Fatalf("%v: the entrypoint does not finish:\n%s", tc.sig, out.String())
 		}
 		if !strings.Contains(string(readFileOrEmpty(report)), "true") {
 			t.Fatalf("%v: the server did not get to write its final report", tc.sig)
