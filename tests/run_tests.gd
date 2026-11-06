@@ -35,8 +35,9 @@ const GLOBAL_TIMEOUT_SEC: float = 3600.0
 const TestCaseScript = preload("res://tests/test_case.gd")
 
 ## Settings file the tests use instead of the developer's real [code]user://settings.cfg[/code] (one per
-## shard, so that shards running at once do not share it).
-const TEST_SETTINGS_FORMAT: String = "user://test_run_settings_%d.cfg"
+## process and shard, so that suites running at once, even from other worktrees, which share [code]user://[/code],
+## never share it). It is deleted when the run ends.
+const TEST_SETTINGS_FORMAT: String = "user://test_run_settings_%d_%d.cfg"
 
 
 ## Captures engine and script errors while each test runs.
@@ -272,11 +273,15 @@ func _prepare_environment() -> void:
 	L10n.set_strict(true)
 	L10n.take_misses()
 	L10n.take_drawn()
-	var settings_path: String = TEST_SETTINGS_FORMAT % _shard_index
+	var settings_path: String = _settings_path()
 	ClientSettings.default_path = settings_path
 	if FileAccess.file_exists(settings_path):
 		DirAccess.remove_absolute(settings_path)
 	ClientSettings.set_current(null)
+
+
+func _settings_path() -> String:
+	return TEST_SETTINGS_FORMAT % [OS.get_process_id(), _shard_index]
 
 
 ## Calls a method (synchronous or coroutine) and waits for it to finish, with a time limit.
@@ -323,4 +328,6 @@ func _finish(exit_code: int) -> void:
 	if _finished:
 		return
 	_finished = true
+	if FileAccess.file_exists(_settings_path()):
+		DirAccess.remove_absolute(_settings_path())
 	quit(exit_code)
