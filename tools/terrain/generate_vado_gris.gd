@@ -211,6 +211,8 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Separate generator for what is only decoration (undergrowth, pebbles): this way the gameplay
 ## cover (trees and rocks with collision), which comes from [member _rng], never moves.
 var _decor_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+## Grass has its own stream: changing its density must not reshuffle the bushes and the road stones that follow.
+var _grass_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _terrain: Terrain3D
 var _zone: Node3D
 var _heights: PackedFloat32Array
@@ -233,6 +235,7 @@ func _run() -> void:
 	_layout = Layout.new()
 	_rng.seed = SEED
 	_decor_rng.seed = SEED + 7
+	_grass_rng.seed = SEED + 13
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(DATA_DIR))
 
 	_zone = Node3D.new()
@@ -899,7 +902,7 @@ func _place_grass() -> void:
 				keep *= 0.3
 			if _in_ruins(cx, cz, 0.5):
 				keep *= 0.35
-			if _rng.randf() > (keep * 0.6 if not _in_play_area(cx, cz) else keep):
+			if _grass_rng.randf() > (keep * 0.6 if not _in_play_area(cx, cz) else keep):
 				continue
 			var tufts: int = 3 if keep < 0.8 else 5
 			# Outside the playable area the grass is only seen from afar: half the density keeps the
@@ -908,17 +911,17 @@ func _place_grass() -> void:
 			if outside:
 				tufts = mini(tufts, 2)
 			for t: int in tufts:
-				var x: float = cx + _rng.randf_range(-0.5, 0.5)
-				var z: float = cz + _rng.randf_range(-0.5, 0.5)
+				var x: float = cx + _grass_rng.randf_range(-0.5, 0.5)
+				var z: float = cz + _grass_rng.randf_range(-0.5, 0.5)
 				var h: float = _ground(x, z)
 				if is_nan(h) or h > 40.0 or _ground_slope(x, z) > 32.0:
 					continue
 				var dryness: float = clampf(0.5 + _layout.paint_noise(x, z) * 1.3 + smoothstep(-20.0, 150.0, -z) * 0.4 - smoothstep(-20.0, 150.0, z) * 0.6, 0.0, 1.0)
 				var center: float = 1.0 - smoothstep(30.0, 110.0, absf(z))
-				var dry_chance: float = clampf(dryness * 0.8 + center * 0.3, 0.0, 0.92)
+				var dry_chance: float = clampf(dryness * 0.55 + center * 0.12, 0.0, 0.7)
 				var mesh_id: int = _grass_variant(z, dry_chance)
-				var scale: float = _rng.randf_range(0.18, 0.3) if road < 4.5 else _rng.randf_range(0.2, 0.36)
-				var basis: Basis = Basis(Vector3.UP, _rng.randf_range(0.0, TAU)).scaled(Vector3(scale, scale * _rng.randf_range(0.8, 1.2), scale))
+				var scale: float = _grass_rng.randf_range(0.18, 0.3) if road < 4.5 else _grass_rng.randf_range(0.2, 0.36)
+				var basis: Basis = Basis(Vector3.UP, _grass_rng.randf_range(0.0, TAU)).scaled(Vector3(scale, scale * _grass_rng.randf_range(0.8, 1.2), scale))
 				_add_instance(mesh_id, Transform3D(basis, Vector3(x, h - 0.03, z)))
 		gx += step
 
@@ -944,11 +947,11 @@ func _scatter_scrub(x: float, z: float) -> void:
 ## cold greens, in the central strip (Eldrun) dry and gray, in the south (Solmarch) vivid green. The
 ## thin, expensive-leaved one (wispy, 190 triangles) only comes in at a small proportion.
 func _grass_variant(z: float, dry_chance: float) -> int:
-	if _rng.randf() < dry_chance:
-		return M_GRASS_DRY if _rng.randf() < 0.18 else M_GRASS_DRY_SHORT
-	if z < -55.0 and _rng.randf() < smoothstep(-55.0, -120.0, z) * 0.9 + 0.1:
+	if _grass_rng.randf() < dry_chance:
+		return M_GRASS_DRY if _grass_rng.randf() < 0.18 else M_GRASS_DRY_SHORT
+	if z < -55.0 and _grass_rng.randf() < smoothstep(-55.0, -120.0, z) * 0.9 + 0.1:
 		return M_GRASS_FROST
-	if z > 55.0 and _rng.randf() < smoothstep(55.0, 120.0, z) * 0.9 + 0.1:
+	if z > 55.0 and _grass_rng.randf() < smoothstep(55.0, 120.0, z) * 0.9 + 0.1:
 		return M_GRASS_LUSH
 	return M_GRASS
 

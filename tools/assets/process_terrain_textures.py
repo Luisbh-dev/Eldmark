@@ -49,13 +49,14 @@ SETS: dict[str, tuple[float, float, float, float, float]] = {
 }
 
 
-# Minimum roughness per set (Q15): the rock and gravel scales are lit by a strong low sun and the original
-# maps have wet-looking patches (roughness below 0.4) that sparkle white. Dry rock is never that glossy.
+# Roughness floor per set (Q15): the rock and gravel scales are lit by a strong low sun and the original maps have
+# wet-looking patches (roughness below 0.4) that sparkle white. Dry rock is never that glossy. The channel is remapped
+# to [floor, 1] instead of clipped, so the sparkle is gone and the variation of the original map is kept.
 MIN_ROUGHNESS: dict[str, float] = {
-    "rock_boulder_dry": 0.97,
-    "rocky_trail": 0.95,
-    "ground_grey": 0.95,
-    "dirt_floor": 0.7,
+    "rock_boulder_dry": 0.8,
+    "rocky_trail": 0.78,
+    "ground_grey": 0.78,
+    "dirt_floor": 0.5,
 }
 
 
@@ -74,7 +75,8 @@ def process(set_id: str, sat: float, bright: float, contrast: float, ao_share: f
     ao = load(set_id, "ao", "jpg", "L")[..., None]
     height = load(set_id, "disp", "png", "L")
     rough = load(set_id, "rough", "jpg", "L", NORMAL_SIZE)
-    rough = np.maximum(rough, MIN_ROUGHNESS.get(set_id, 0.0))
+    floor = MIN_ROUGHNESS.get(set_id, 0.0)
+    rough = floor + (1.0 - floor) * rough
     normal = load(set_id, "nor_gl", "png", "RGB", NORMAL_SIZE)
 
     luma = (diffuse * np.array([0.299, 0.587, 0.114], dtype=np.float32)).sum(axis=2, keepdims=True)
