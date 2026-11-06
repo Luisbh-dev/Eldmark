@@ -57,6 +57,15 @@ const PRIORITY_AREA: int = 20
 const OPTION_RADIUS: float = 13.0
 const PICK_RADIUS: float = 16.0
 const FONT_SIZE: int = 15
+## Icons (markers, places) closer than this to an ally dot absorb it, so the dot does not cover them.
+const ALLY_MERGE_RADIUS: float = 11.0
+## The baked scale bar (southeast corner of the image): 80 m in four sections, [code]SCALE_BAR_END_MARGIN[/code] m
+## from the east edge and [code]SCALE_BAR_SOUTH_MARGIN[/code] m from the south one (see the parchment baker).
+const SCALE_BAR_SPAN: float = 80.0
+const SCALE_BAR_SECTION: float = 20.0
+const SCALE_BAR_END_MARGIN: float = 14.0
+const SCALE_BAR_SOUTH_MARGIN: float = 23.0
+const SCALE_LABEL_SIZE: int = 13
 const TITLE_SIZE: int = 24
 
 const TEXT_TITLE: String = "Mapa · %s"
@@ -68,6 +77,10 @@ const TEXT_YOU: String = "Tú"
 const TEXT_ALLIES: String = "Compañeros de reino"
 const TEXT_RESPAWN_VALID: String = "Reaparición disponible"
 const TEXT_RESPAWN_INVALID: String = "Reaparición no disponible"
+const TEXT_REALMS: String = "Reinos"
+const TEXT_CONTROLS_TITLE: String = "Controles"
+const TEXT_CONTROL_LINES: Array[String] = ["Rueda: acercar", "Arrastrar: mover", "Doble clic: ver todo", "M o Esc: cerrar"]
+const TEXT_SCALE_UNIT: String = "%d m"
 const TEXT_NO_MAP: String = "Esta zona no tiene mapa"
 const TEXT_CAPTURE: String = "Captura: %d %%"
 const KIND_NAMES: Dictionary = {
@@ -568,11 +581,18 @@ func _draw() -> void:
 		var place_at: Vector2 = world_to_screen(landmark.position)
 		if not landmark.area and rect.has_point(place_at):
 			_draw_place_icon(place_at)
+	var icon_points: PackedVector2Array = PackedVector2Array()
+	for marker: WorldMarker in _markers:
+		icon_points.append(world_to_screen(marker.position))
+	for landmark: MapLandmark in _places:
+		if not landmark.area:
+			icon_points.append(world_to_screen(landmark.position))
 	for ally: Vector3 in _allies:
 		var ally_at: Vector2 = world_to_screen(ally)
-		if rect.has_point(ally_at):
+		if rect.has_point(ally_at) and not _touches_an_icon(ally_at, icon_points):
 			draw_circle(ally_at, 4.5, MarkerIcons.OUTLINE_COLOR)
 			draw_circle(ally_at, 3.5, UIPalette.faction_color_of_code(_realm()))
+	_draw_scale_numbers(rect)
 	_draw_options()
 	_draw_point_labels()
 	if _has_player and rect.has_point(world_to_screen(_player_position)):
@@ -648,8 +668,42 @@ func _draw_options() -> void:
 		draw_arc(at, radius, 0.0, TAU, 28, color, 3.0, true)
 
 
+# true if [param point] is within [constant ALLY_MERGE_RADIUS] of any of [param icons].
+static func _touches_an_icon(point: Vector2, icons: PackedVector2Array) -> bool:
+	for icon: Vector2 in icons:
+		if icon.distance_to(point) < ALLY_MERGE_RADIUS:
+			return true
+	return false
+
+
+## Numbers under the baked scale bar (0, 20, 40, 60 and 80 m), placed with the map so they follow zoom and drag.
+func _draw_scale_numbers(rect: Rect2) -> void:
+	if _map == null:
+		return
+	var x_end: float = _map.world_origin.x + _map.world_size.x - SCALE_BAR_END_MARGIN
+	var z: float = _map.world_origin.y + _map.world_size.y - SCALE_BAR_SOUTH_MARGIN + 6.0
+	var font: Font = get_theme_default_font()
+	var count: int = roundi(SCALE_BAR_SPAN / SCALE_BAR_SECTION)
+	for i: int in count + 1:
+		var meters: int = roundi(SCALE_BAR_SECTION * float(i))
+		var at: Vector2 = world_to_screen(Vector3(x_end - SCALE_BAR_SPAN + float(meters), 0.0, z))
+		if not rect.grow(-4.0).has_point(at):
+			continue
+		var text: String = TEXT_SCALE_UNIT % meters if i == count else str(meters)
+		var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, SCALE_LABEL_SIZE).x
+		var origin: Vector2 = Vector2(at.x - width * 0.5, at.y)
+		draw_string_outline(font, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, SCALE_LABEL_SIZE, 3, INK_HALO)
+		draw_string(font, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, SCALE_LABEL_SIZE, INK_COLOR)
+
+
+## Height the legend content needs (the panel is drawn only that tall, never beyond [method get_legend_rect]).
+func _legend_content_height() -> float:
+	return 26.0 + 12.0 + 26.0 * float(get_legend_entries().size()) + 30.0 + 22.0 * float(get_fortress_lines().size()) 			+ 40.0 + 26.0 * float(RealmCatalog.FACTION_IDS.size()) + 40.0 + 24.0 * float(TEXT_CONTROL_LINES.size()) + 24.0
+
+
 func _draw_legend() -> void:
 	var rect: Rect2 = get_legend_rect()
+	rect.size.y = minf(rect.size.y, _legend_content_height())
 	draw_rect(rect, BACK_COLOR)
 	draw_rect(rect, FRAME_COLOR, false, 1.5)
 	var y: float = rect.position.y + 26.0
@@ -673,6 +727,20 @@ func _draw_legend() -> void:
 	for line: String in get_fortress_lines():
 		y += 22.0
 		_draw_label(line, Vector2(rect.position.x + 14.0, y), FONT_SIZE - 1, TEXT_COLOR)
+	y += 40.0
+	_draw_label(TEXT_REALMS, Vector2(rect.position.x + 14.0, y), FONT_SIZE, UIPalette.TITLE)
+	var sides: Array[StringName] = RealmCatalog.FACTION_IDS
+	for realm_id: StringName in sides:
+		y += 26.0
+		var swatch: Rect2 = Rect2(Vector2(rect.position.x + 18.0, y - 15.0), Vector2(12.0, 12.0))
+		draw_rect(swatch.grow(1.5), MarkerIcons.OUTLINE_COLOR)
+		draw_rect(swatch, RealmCatalog.color_of(realm_id))
+		_draw_label(RealmCatalog.display_name(realm_id), Vector2(rect.position.x + 44.0, y), FONT_SIZE - 1, TEXT_COLOR)
+	y += 40.0
+	_draw_label(TEXT_CONTROLS_TITLE, Vector2(rect.position.x + 14.0, y), FONT_SIZE, UIPalette.TITLE)
+	for line: String in TEXT_CONTROL_LINES:
+		y += 24.0
+		_draw_label(line, Vector2(rect.position.x + 14.0, y), FONT_SIZE - 1, TEXT_DIM)
 
 
 func _draw_label(text: String, at: Vector2, font_size: int, color: Color) -> void:
