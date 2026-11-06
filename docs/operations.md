@@ -123,16 +123,19 @@ Daily dumps, the weekly restore test and point-in-time recovery are in [platform
 | Job | Checks |
 |---|---|
 | Export | both presets export with the templates of the right version; the revision is inside both packs; `BUILD_ID` is the same in both |
-| Smoke test | the exported server loads Vado Gris, simulates 1500 ticks, a SwarmBot plays on it and the report's `build` is `BUILD_ID` |
+| Smoke test | the exported server loads Vado Gris, simulates 1500 ticks, a SwarmBot plays on it (over DTLS and over plain UDP) and the report's `build` is `BUILD_ID`; the engine canary reports whether the crash below is still there (it never fails the run) |
 | Determinism | the same seeded scenario (16 fake players with the combat brain, 3600 ticks) on Linux and on Windows, compared by `tools/diff_state_logs.gd`; the figures are in [networking.md](networking.md) §14 |
 | Zone in a container | the image built from the exported server; with the database and the platform (`docker compose`, test secrets): a bot enters over DTLS with a ticket, plays the progress scenario (bow, 50 gold, potion), leaves; the same account comes back and sees it; `docker stop` with a bot inside gives code 0, the shutdown messages, a final save, a released lease, an instance in `stopped` and a report with `closed: true` |
 
-**Known open issue (found while building the smoke test):** the exported *release* server dies with SIGBUS (exit code 135)
-a few seconds after a client connects over **plain UDP** (no DTLS), with or without NPCs and with or without a platform. The
-debug export and the editor do not, and neither does the release server over DTLS (the smoke test and the container job
-connect over DTLS, which is also how production runs: the platform only hands out zones with DTLS). It does not block the test
-server, but it must be understood before anything runs a release server without a certificate; the repro is
-`tools/export.sh server`, then the server without `--dtls-*` and `--bots=1` against it.
+**Known engine crash (found while building the smoke test, understood and avoided).** The exported *release* Linux server of
+Godot 4.7.2 dies with SIGBUS (exit code 135) when it handles a DISCONNECT that a **plain-UDP** client started. A core dump from the
+runner puts the main thread in the engine, in a loop that follows a pointer that is not canonical, always at the same address; it
+is not a file or alignment problem and it is not in our scripts. It does not happen over DTLS (production), in the debug export,
+in the editor or on Windows, nor when the server starts the disconnect. The game never triggers it: the client waits for the server
+to cut ([networking.md section 3](networking.md#who-starts-the-disconnect-an-engine-crash-tec-12)). What this means for you:
+plain UDP is for local and test servers; do not run a release server without a certificate on a machine that strangers can reach,
+because a raw ENet DISCONNECT from anyone takes it down. `tools/ci/engine_canary.sh` runs on every CI run and tells (as a notice)
+when an engine update fixes it.
 
 `tools/ci/zone_container_check.sh <godot>` runs the last one on any machine with Docker, after `tools/export.sh server`.
 

@@ -468,6 +468,30 @@ the simulation and the catalogs whose ids travel (`CombatCatalog`, `ItemDatabase
   "La simulación del cliente no coincide con la del servidor", the client simulation does not match
   the server's).
 
+### Who starts the disconnect (an engine crash, TEC-12)
+
+The client never starts the disconnect, over DTLS or over plain UDP: it sends `CLIENT_LEAVE`, flushes and waits for the
+server to cut (`NetTransport.disconnect_after_flush`), and closes everything itself only if the server does not cut within
+60 ticks. Over DTLS this avoids a handshake error (see the method). Over plain UDP it avoids a crash of the engine:
+
+- **What happens.** The exported *release* Linux server of Godot 4.7.2 dies with SIGBUS (exit code 135) as soon as it
+  handles a DISCONNECT that a plain-UDP client started. The same server over DTLS, the debug export, the editor and the
+  Windows export do not die, and neither does the release server when it is the one that starts the disconnect.
+- **Where.** In the engine, not in the game: a core dump from the CI runner shows the main thread at the same address
+  every time (also with `MALLOC_PERTURB_` and without ASLR), in a loop that follows a `next` pointer and dereferences
+  it (`mov 0x0(%rbp),%rax`). The signal is SIGBUS with `si_code` 128 (`SI_KERNEL`) because the pointer is not canonical, and
+  an access through `rbp` with a non-canonical address is a stack-segment fault, which Linux delivers as SIGBUS. It is
+  not a file mapping or an alignment problem. The template is stripped, so there are no symbols to say which function it is;
+  the trigger is the ENet disconnect path of a peer that the remote side closed.
+- **What we do.** The rule above. The crash can still be triggered by anything that sends a raw ENet DISCONNECT to a plain-UDP
+  release server, so plain UDP is for local and test servers only (production zones are DTLS-only: the platform does not
+  hand out any other).
+- **How we notice.** `tools/ci/engine_canary.sh` (a step of `export.yml` that never fails the run) sets
+  `ELDMARK_CLIENT_STARTS_DISCONNECT=1`, which brings the old behavior back, and reports as a warning if the server still dies
+  and as a notice if it survives (an engine update fixed it: remove the variable and the canary). The smoke test also runs
+  over plain UDP with the rule in place (`PLAIN=1 tools/ci/smoke_server.sh`), and `tests/test_dtls_loopback.gd` checks that the
+  client's ENet peer stays connected after `disconnect_after_flush`.
+
 ---
 
 ## 4. Ticks and clock

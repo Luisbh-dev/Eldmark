@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Canary of an ENGINE crash (TEC-12; docs/operations.md section 9, docs/networking.md section 15).
+# Canary of an ENGINE crash (TEC-12; docs/operations.md section 9, docs/networking.md section 3).
 #
 # The exported RELEASE Linux server of Godot 4.7.2 dies with SIGBUS (exit code 135) when it handles a DISCONNECT that a
 # client over plain UDP started; over DTLS, or when the server starts the disconnect, it does not. NetTransport avoids

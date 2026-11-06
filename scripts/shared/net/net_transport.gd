@@ -329,7 +329,7 @@ func complete_auth(peer_id: int) -> Error:
 ## that moment on [method send] and [method send_auth] return [constant ERR_UNAVAILABLE] for that
 ## peer.
 ## [br][br]
-## [b]The client never starts the disconnect[/b] (docs/platform.md §19.18, P9c; docs/networking.md section 15), over DTLS or not: it
+## [b]The client never starts the disconnect[/b] (docs/platform.md §19.18, P9c; docs/networking.md section 3), over DTLS or not: it
 ## flushes its own data and waits for the server to cut it, which is how the server answers the
 ## CLIENT_LEAVE. Godot's DTLS server forgets a peer's session as soon as ENet considers it
 ## disconnected; if the client starts the disconnect, its DTLS close notice arrives one round trip
