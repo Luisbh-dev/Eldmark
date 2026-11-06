@@ -157,7 +157,8 @@ func update_remote(action_byte: int, delta: float, weapon_id: int = 0, moving: b
 	var action: int = action_byte & 15
 	var phase: int = (action_byte >> 4) & 3
 	var step: int = ActionWire.step_of(action_byte)
-	_swing_active = (action == CombatState.Action.LIGHT or action == CombatState.Action.HEAVY) 			and phase == ActionMachine.PHASE_ACTIVE
+	_swing_active = (action == CombatState.Action.LIGHT or action == CombatState.Action.HEAVY) \
+			and phase == ActionMachine.PHASE_ACTIVE
 	var combo: int = step if action == CombatState.Action.LIGHT else 0
 	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id) if weapon_id != 0 else null
 	if weapon == null:

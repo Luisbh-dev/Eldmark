@@ -56,7 +56,8 @@ func _camera_at(distance: float, visual: HumanoidVisual) -> Camera3D:
 	var camera := Camera3D.new()
 	_world.add_child(camera)
 	_nodes.append(camera)
-	camera.global_position = visual.global_position + Vector3.UP * HumanoidVisual.CAMERA_FADE_CHEST_HEIGHT 			+ Vector3(0.0, 0.0, distance)
+	camera.global_position = visual.global_position + Vector3.UP * HumanoidVisual.CAMERA_FADE_CHEST_HEIGHT \
+			+ Vector3(0.0, 0.0, distance)
 	camera.make_current()
 	return camera
 

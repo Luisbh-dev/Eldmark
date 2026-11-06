@@ -2512,25 +2512,28 @@ func _rounded_rect(center: Vector2, half_x: float, half_y: float, radius: float)
 	return polygon
 
 
-## 100 m scale bar (five 20 m sections, the first with 5 m marks) in the southeast corner.
+## 80 m scale bar (four 20 m sections, the first with 5 m marks) in the southeast corner. Its numbers come from
+## [WorldMap], which draws the figures under the bar, so the two cannot drift apart.
 func _paint_scale_bar() -> void:
-	var span: float = 80.0
-	var x1: float = _def.world_origin.x + _def.world_size.x - 14.0
+	var span: float = WorldMap.SCALE_BAR_SPAN
+	var section: float = WorldMap.SCALE_BAR_SECTION
+	var x1: float = _def.world_origin.x + _def.world_size.x - WorldMap.SCALE_BAR_END_MARGIN
 	var x0: float = x1 - span
-	var z: float = _def.world_origin.y + _def.world_size.y - 23.0
+	var z: float = _def.world_origin.y + _def.world_size.y - WorldMap.SCALE_BAR_SOUTH_MARGIN
 	# Clean paper cartouche in the southeast corner.
 	_paint_cartouche(_px((x0 + x1) * 0.5, z - 1.0), _m(span * 0.5 + 7.0), _m(14.5))
 	var bar_h: float = 1.3
-	for segment: int in 4:
-		var sx0: float = x0 + 20.0 * float(segment)
-		var cell: PackedVector2Array = PackedVector2Array([_px(sx0, z - bar_h), _px(sx0 + 20.0, z - bar_h), _px(sx0 + 20.0, z + bar_h), _px(sx0, z + bar_h)])
+	var sections: int = roundi(span / section)
+	for segment: int in sections:
+		var sx0: float = x0 + section * float(segment)
+		var cell: PackedVector2Array = PackedVector2Array([_px(sx0, z - bar_h), _px(sx0 + section, z - bar_h), _px(sx0 + section, z + bar_h), _px(sx0, z + bar_h)])
 		if segment % 2 == 0:
 			var polys: Array[PackedVector2Array] = [cell]
 			_fill(polys, ParchmentCanvas.MODE_OVER, Color(0.22, 0.16, 0.11), 0.94, 0.3)
 	_ink_line(PackedVector2Array([_px(x0, z - bar_h), _px(x1, z - bar_h), _px(x1, z + bar_h), _px(x0, z + bar_h)]),
 			_line(0.30, 1.3), 0.95, INK, ParchmentCanvas.MODE_MULTIPLY, 0.2, true)
-	for tick: int in 5:
-		var tx: float = x0 + 20.0 * float(tick)
+	for tick: int in sections + 1:
+		var tx: float = x0 + section * float(tick)
 		_ink_line(PackedVector2Array([_px(tx, z - bar_h - 2.2), _px(tx, z - bar_h)]), _line(0.28, 1.2), 0.92, INK,
 				ParchmentCanvas.MODE_MULTIPLY, 0.2)
 	for tick: int in range(1, 4):

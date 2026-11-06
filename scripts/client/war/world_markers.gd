@@ -61,6 +61,10 @@ const COMBAT_SECONDS: float = 5.0
 ## overlap (the fort and a pass that falls behind it in the distance), and the one that comes later is not drawn.
 const LABEL_SPACING: Vector2 = Vector2(240.0, 24.0)
 
+## Optional [code]func() -> float[/code]: bottom edge (px, in the coordinates of this control) of what the HUD shows
+## under the compass (the fort panel and the objective line), so that markers stuck to the top edge do not land on it.
+var top_clearance_provider: Callable = Callable()
+
 var _client: NetClient = null
 var _view: FortressView = null
 var _camera_rig: CameraRig = null
@@ -101,6 +105,13 @@ func bind(client: NetClient, view: FortressView, camera_rig: CameraRig, map: Zon
 	_objective_id = &""
 
 
+## Free margin (px) at the top: [constant TOP_MARGIN], or more when the fort panel or the objective line hang below it.
+func top_margin() -> float:
+	if not top_clearance_provider.is_valid():
+		return TOP_MARGIN
+	return maxf(TOP_MARGIN, float(top_clearance_provider.call()) + 14.0)
+
+
 ## Recomputes where each marker falls on the screen, which ones are drawn, and redraws.
 func refresh() -> void:
 	_items.clear()
@@ -124,7 +135,7 @@ func refresh() -> void:
 		var distance: float = marker.distance_from(here)
 		if distance > max_distance_for(marker.kind):
 			continue
-		var projected: Dictionary = project(camera, screen_size, marker.position, EDGE_MARGIN, BOTTOM_MARGIN, TOP_MARGIN)
+		var projected: Dictionary = project(camera, screen_size, marker.position, EDGE_MARGIN, BOTTOM_MARGIN, top_margin())
 		_items.append({
 			"marker": marker, "distance": distance, "screen": projected["screen"],
 			"on_edge": projected["on_edge"], "angle": projected["angle"],
@@ -285,8 +296,10 @@ static func push_from_aim(rect: Rect2, aim: Vector2, min_distance: float, bounds
 	var placements: Array[Rect2] = []
 	var costs: Array[float] = []
 	var above: Rect2 = Rect2(Vector2(rect.position.x, aim.y - min_distance - rect.size.y), rect.size)
-	var left: Rect2 = Rect2(Vector2(aim.x - min_distance - rect.size.x, rect.position.y), rect.size)
-	var right: Rect2 = Rect2(Vector2(aim.x + min_distance, rect.position.y), rect.size)
+	# The sides stay at the height of the crosshair at most: below it is where the character stands (Q5).
+	var side_y: float = minf(rect.position.y, aim.y - rect.size.y)
+	var left: Rect2 = Rect2(Vector2(aim.x - min_distance - rect.size.x, side_y), rect.size)
+	var right: Rect2 = Rect2(Vector2(aim.x + min_distance, side_y), rect.size)
 	placements.append(above)
 	costs.append(1.0)
 	placements.append(left)
@@ -349,7 +362,7 @@ func _draw() -> void:
 		var rect := Rect2(Vector2(screen.x - size.x * 0.5, screen.y + ICON_SIZE + 4.0), size)
 		rect.position.x = clampf(rect.position.x, 2.0, maxf(self.size.x - size.x - 2.0, 2.0))
 		var pushed: Rect2 = push_from_aim(rect, self.size * 0.5, LABEL_MIN_AIM_DISTANCE,
-				Rect2(Vector2(2.0, TOP_MARGIN), self.size - Vector2(4.0, TOP_MARGIN + BOTTOM_MARGIN * 0.5)))
+				Rect2(Vector2(2.0, top_margin()), self.size - Vector2(4.0, top_margin() + BOTTOM_MARGIN * 0.5)))
 		if pushed.position != rect.position:
 			# Label moved away from the crosshair: guide line to the icon.
 			var edge := Vector2(clampf(screen.x, pushed.position.x, pushed.end.x),

@@ -264,10 +264,14 @@ func _draw() -> void:
 			# Knocked-down icon: a lavender triangle pointing down (someone who fell) to the left of the bar. Not a diamond,
 			# which is the enemy mark, and not amber, which is the telegraph (Q13).
 			var center := Vector2(rect.position.x - 9.0, rect.get_center().y)
-			var diamond := PackedVector2Array([center + Vector2(-6.0, -5.0), center + Vector2(6.0, -5.0),
-					center + Vector2(0.0, 6.0)])
-			draw_colored_polygon(diamond, CombatIcons.DOWNED_COLOR)
-			draw_polyline(diamond + PackedVector2Array([diamond[0]]), OUTLINE_COLOR, 1.0, true)
+			var triangle: PackedVector2Array = downed_mark_points(center)
+			draw_colored_polygon(triangle, CombatIcons.DOWNED_COLOR)
+			draw_polyline(triangle + PackedVector2Array([triangle[0]]), OUTLINE_COLOR, 1.0, true)
+
+
+## Vertices of the knocked-down mark around [param center]: a triangle with the tip down.
+static func downed_mark_points(center: Vector2) -> PackedVector2Array:
+	return PackedVector2Array([center + Vector2(-6.0, -5.0), center + Vector2(6.0, -5.0), center + Vector2(0.0, 6.0)])
 
 
 # The side mark: a circle with a light ring for allies and a diamond with a dark ring for enemies,

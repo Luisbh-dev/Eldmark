@@ -30,13 +30,42 @@ func test_damage_numbers_use_the_provider_when_placing() -> void:
 	var numbers := DamageNumbers.new()
 	numbers.size = Vector2(1920.0, 1080.0)
 	tree.root.add_child(numbers)
-	var strip := Rect2(Vector2(0.0, 0.0), Vector2(1920.0, 400.0))
+	# Without a camera the number is at the center of the screen: the strip is put over it.
+	var strip := Rect2(Vector2(0.0, 480.0), Vector2(1920.0, 120.0))
+	var free_label: Label = numbers.add_number(1, Vector3.ZERO, 100)
+	var free_position: Vector2 = free_label.position
+	numbers.clear()
 	numbers.reserved_provider = func() -> Array: return [strip]
 	var label: Label = numbers.add_number(1, Vector3.ZERO, 100)
 	var drawn := Rect2(label.position + label.size * 0.5 - label.get_minimum_size() * 0.5, label.get_minimum_size())
+	assert_true(label.position != free_position, "the provider moved the number")
 	assert_false(drawn.intersects(strip), "the number is not left over the reserved strip")
 	tree.root.remove_child(numbers)
 	numbers.free()
+
+
+func test_stacked_numbers_keep_their_spacing_when_a_strip_pushes_them() -> void:
+	var strip := Rect2(Vector2(700.0, 300.0), Vector2(520.0, 90.0))
+	var first := Rect2(Vector2(900.0, 330.0), Vector2(40.0, 24.0))
+	var second := Rect2(Vector2(905.0, 330.0), Vector2(40.0, 24.0))
+	var a: Rect2 = DamageNumbers.place_stacked(first, 0.0, [strip])
+	var b: Rect2 = DamageNumbers.place_stacked(second, DamageNumbers.STACK_STEP_PX, [strip])
+	assert_false(a.intersects(strip) or b.intersects(strip), "neither is left on the strip")
+	assert_false(a.intersects(b), "and they do not pile on each other under it")
+	assert_true(absf(b.position.y - a.position.y) >= DamageNumbers.STACK_STEP_PX - 0.01, "they keep the stack step")
+	# Without a strip the stack still grows upward.
+	var free: Rect2 = DamageNumbers.place_stacked(second, DamageNumbers.STACK_STEP_PX, [])
+	assert_true(free.position.y < second.position.y)
+
+
+func test_markers_do_not_land_on_the_fort_panel() -> void:
+	var markers := WorldMarkers.new()
+	assert_eq(markers.top_margin(), WorldMarkers.TOP_MARGIN, "without a provider the margin is the compass one")
+	markers.top_clearance_provider = func() -> float: return 185.0
+	assert_true(markers.top_margin() >= 185.0, "with the fort panel visible markers stay below it")
+	markers.top_clearance_provider = func() -> float: return 0.0
+	assert_eq(markers.top_margin(), WorldMarkers.TOP_MARGIN)
+	markers.free()
 
 
 func test_the_gate_bar_text_is_larger_and_outlined() -> void:
@@ -102,6 +131,15 @@ func test_the_label_is_pushed_up_or_aside_never_down() -> void:
 	assert_true(side.position.x >= aim.x + 149.0 or side.end.x <= aim.x - 149.0)
 
 
+func test_a_label_moved_aside_never_stays_below_the_crosshair() -> void:
+	var aim := Vector2(800.0, 450.0)
+	var below_left := Rect2(Vector2(700.0, 500.0), Vector2(60.0, 18.0))
+	var pushed: Rect2 = WorldMarkers.push_from_aim(below_left, aim, WorldMarkers.LABEL_MIN_AIM_DISTANCE,
+			Rect2(Vector2(2.0, 92.0), Vector2(1916.0, 900.0)))
+	assert_true(pushed.position != below_left.position, "it was too close to the crosshair, so it moved")
+	assert_true(pushed.end.y <= aim.y + 0.01, "it ends at the crosshair height at most, not over the character")
+
+
 func test_markers_stuck_to_the_top_stay_below_the_compass() -> void:
 	var camera := Camera3D.new()
 	tree.root.add_child(camera)
@@ -115,6 +153,14 @@ func test_markers_stuck_to_the_top_stay_below_the_compass() -> void:
 			"the icon and its distance are below the compass and its heading plate")
 	tree.root.remove_child(camera)
 	camera.free()
+
+
+func test_the_downed_mark_is_a_triangle_pointing_down() -> void:
+	var points: PackedVector2Array = Nameplate.downed_mark_points(Vector2(10.0, 10.0))
+	assert_eq(points.size(), 3, "three vertices: not the enemy diamond")
+	assert_eq(points[0].y, points[1].y, "the flat side is on top")
+	assert_true(points[2].y > points[0].y, "and the tip points down")
+	assert_near(points[2].x, 10.0, 0.0001, "centered under the flat side")
 
 
 func test_downed_color_is_not_the_telegraph_amber() -> void:

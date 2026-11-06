@@ -70,6 +70,7 @@ func bind(client: NetClient, camera_rig: CameraRig = null) -> void:
 	_world_markers.name = "WorldMarkers"
 	add_child(_world_markers)
 	_world_markers.bind(client, view, camera_rig, _map)
+	_world_markers.top_clearance_provider = get_top_clearance
 	_compass = Compass.new()
 	_compass.name = "Compass"
 	add_child(_compass)
@@ -103,6 +104,17 @@ func get_reserved_rects() -> Array[Rect2]:
 		if bar.size != Vector2.ZERO:
 			rects.append(Rect2(bar.position - origin, bar.size))
 	return rects
+
+
+## Bottom edge (px, local) of the fort panel and the objective line when they are visible, 0 if neither is.
+func get_top_clearance() -> float:
+	var bottom: float = 0.0
+	var origin: Vector2 = global_position
+	if is_instance_valid(_capture_panel) and _capture_panel.is_visible_in_tree():
+		bottom = maxf(bottom, _capture_panel.get_global_rect().end.y - origin.y)
+	if is_instance_valid(_objective_line) and _objective_line.is_visible_in_tree():
+		bottom = maxf(bottom, _objective_line.get_global_rect().end.y - origin.y)
+	return bottom
 
 
 func get_capture_panel() -> CapturePanel:

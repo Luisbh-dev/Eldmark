@@ -191,7 +191,12 @@ func test_dead_undrawn_and_allied_views_are_not_valid_targets() -> void:
 
 
 func test_an_enemy_realm_is_not_a_target_in_a_safe_zone() -> void:
-	_client.fake_welcome.zone_id = "no_such_zone"
+	# No safe zone is registered yet, so the stand-in is a zone id that the catalog must keep SAFE: if it ever turns
+	# RvR this precondition fails instead of the test silently proving nothing.
+	const SAFE_ZONE: StringName = &"solmarch_capital"
+	assert_eq(Zones.get_pvp_mode(SAFE_ZONE), Zones.PvpMode.SAFE, "the stand-in zone is safe in the catalog")
+	assert_eq(Zones.get_pvp_mode(StringName(ZONE)), Zones.PvpMode.RVR, "while the war zone of the other tests is RvR")
+	_client.fake_welcome.zone_id = SAFE_ZONE
 	var enemy: FakeView = _view(24, Vector3(0.0, 0.0, -1.8), NetProtocol.Realm.SOLMARCH)
 	assert_false(_feedback.is_valid_target(enemy), "enemy realms do not damage each other outside an RvR zone")
 	_feedback._try_predict(_character, _swing(&"sword_light_1"))

@@ -301,15 +301,27 @@ func _place(number: _Number) -> void:
 			return
 		screen = _camera.unproject_position(anchor)
 	screen.y -= number.age * RISE_SPEED
-	screen += number.offset
-	label.position = screen - label.size * 0.5
 	var pop: float = lerpf(POP_SCALE, 1.0, clampf(number.age / POP_SECONDS, 0.0, 1.0))
 	label.scale = Vector2.ONE * pop
 	if reserved_provider.is_valid():
+		# The stack is resolved after the avoidance, from the anchor: a displaced group keeps its spacing.
 		var text_size: Vector2 = label.get_minimum_size() * pop
-		var rect := Rect2(screen - text_size * 0.5, text_size)
-		var moved: Rect2 = avoid_rects(rect, reserved_provider.call() as Array)
-		label.position += moved.position - rect.position
+		var base := Rect2(screen + Vector2(number.offset.x, 0.0) - text_size * 0.5, text_size)
+		var placed: Rect2 = place_stacked(base, -number.offset.y, reserved_provider.call() as Array)
+		label.position = placed.position + text_size * 0.5 - label.size * 0.5
+	else:
+		screen += number.offset
+		label.position = screen - label.size * 0.5
+
+
+## Places [param base] (a number without its stack offset) out of the [param reserved] rectangles and then stacks it
+## [param stack_px] away from the anchor. The stack grows upward, or downward when the number was pushed down under a
+## strip, so the numbers of one target keep their spacing instead of piling on the strip's lower edge.
+static func place_stacked(base: Rect2, stack_px: float, reserved: Array) -> Rect2:
+	var moved: Rect2 = avoid_rects(base, reserved)
+	var direction: float = 1.0 if moved.position.y > base.position.y + 0.5 else -1.0
+	moved.position.y += direction * stack_px
+	return avoid_rects(moved, reserved) if direction < 0.0 else moved
 
 
 ## Moves [param rect] (the text of a number) out of the [param reserved] rectangles it overlaps (with
