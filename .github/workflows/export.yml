@@ -248,9 +248,9 @@ jobs:
       - name: Run it with a SwarmBot
         run: |
           cd exports/server
-          ./eldmark-server.x86_64 --headless -- --server --zone=vado_gris --port=26230 --quit-after-ticks=1500 > "$RUNNER_TEMP/debug-server.log" 2>&1 &
+          ./eldmark-server.x86_64 --headless -- --server --zone=vado_gris --port=26230 --quit-after-ticks=4000 > "$RUNNER_TEMP/debug-server.log" 2>&1 &
           pid=$!
-          sleep 25
+          sleep 20
           "$HOME/godot/${GODOT_FILE}" --headless --path "$GITHUB_WORKSPACE" -- --bots=1 --connect=127.0.0.1:26230 --bot-seed=1 --quit-after-ticks=300 > "$RUNNER_TEMP/debug-swarm.log" 2>&1 || true
           wait "$pid" || echo "server exit code $?"
           grep -v '^\s*at:\|^WARNING\|^More than\|^This causes\|^Consider' "$RUNNER_TEMP/debug-server.log" | tail -60
