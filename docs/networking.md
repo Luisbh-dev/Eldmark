@@ -675,7 +675,8 @@ The size of an ENTITY_SPAWN depends on `kind` (see 5.5).
 
 The formats of `0x50`–`0x55` (v7) are from [progression.md](progression.md) §4.6 and §12 and live in
 `scripts/shared/net/progress_messages.gd` (`ProgressMessages`), separate from `net_messages.gd`. `0x56` to `0x5F`
-are reserved (phase 6 bank, trade and mail). `NetClient` decodes them and exposes them through signals; `SwarmBot`
+are no longer all reserved: `0x56` and `0x57` stay free, `0x58` to `0x5F` go to quests and `0x70` to `0x77` are reserved for
+the bank, trade and mail (registry in [5.8](#58-phases-6-8-content-additions)). `NetClient` decodes them and exposes them through signals; `SwarmBot`
 decodes and discards them; both count as malformed only what fails to decode. Since progression.md
 P5b the server uses them (§19.12 there): it handles `0x50` and `0x53` in the "poll" (their rates, in 12) and applies the
 requests at the end of the tick; it sends INVENTORY_FULL, one WALLET_UPDATE per currency and one PROGRESS_UPDATE after the
@@ -858,7 +859,9 @@ because it does not change the simulation ([combat.md 1](combat.md#1-what-is-pre
   the other, or if `health > max_health`.
 - **Capacity.** With own state and extra block, the header (with `section_count`) takes 134 B (v6;
   92 B up to v5). With one players section, ⌊(1200 − 134 − 2) / 21⌋ = **50 records** fit (52
-  up to v5).
+  up to v5). *Phases 6-8*: `PlayerState` grows to 124 B (`CombatState` v6, [abilities.md 3.1](abilities.md#31-combatstate-v5)),
+  the header with own state and extra block to 147 B (149 with `section_count`) and ⌊(1200 − 149) / 21⌋ = **50 records**
+  still fit, with a slack of a single byte (see [5.8](#58-phases-6-8-content-additions)).
 - **The player themself** never appears among the records: that is what their state is for.
 
 **Entity record** (`kind` 1 PLAYER; 2 NPC reuses the format), 21 B:
@@ -1062,6 +1065,8 @@ NPC, today a fortress ([fortress.md 2](fortress.md#2-stateful-replication-object
 ### 5.6 Reserved
 
 - **HANDOFF** (`0x31`, phase 6): zone, channel, host, port and ticket.
+- **Phases 6-8**: the ranges `0x24`-`0x28`, `0x58`-`0x5F`, `0x60`-`0x62`, `0x68`-`0x6D` and `0x70`-`0x77` have owners
+  ([5.8](#58-phases-6-8-content-additions)).
 
 Taking one of these types raises `PROTOCOL_VERSION`. ENTITY_EVENT (`0x23`) stopped being
 reserved in phase 3 and OBJECT_STATE (`0x22`) in phase 4 (protocol 3): their formats are in
@@ -1078,6 +1083,74 @@ reserved in phase 3 and OBJECT_STATE (`0x22`) in phase 4 (protocol 3): their for
   rate excesses count warnings ([12](#12-phase-2-security)). So do packets that are
   not part of the `SceneMultiplayer` protocol (see [2](#2-transport-and-channels)): they no longer reach
   the point of logging engine errors.
+
+### 5.8 Phases 6-8 content additions
+
+What the content design of phases 6 to 8 puts on the wire, assigned in one place so the lanes do not collide. Each
+document that owns a system defines the bytes of its messages (quests in `quests.md`, build in `advancement.md`, items and
+economy in `items.md`, interaction and NPCs in `npcs.md`, combat in [weapons.md §6](weapons.md#6-state-machine-and-protocol)
+and [abilities.md 5.7](abilities.md#57-phases-6-8-changes)); this section fixes the numbers.
+
+**Message-type registry.** Free before this design: `0x08`-`0x0F`, `0x24`-`0x2F`, `0x33`-`0x3F`, `0x42`-`0x47` and
+`0x56`-`0xFF`.
+
+| Range | Use | Messages |
+|---|---|---|
+| `0x24`-`0x28` | Interaction and dialogue (MUN-16, MUN-18) | `0x24` INTERACT_REQUEST (C→S), `0x25` INTERACT_RESULT, `0x26` DIALOGUE_SHOW (about 12 B, by indices), `0x27` DIALOGUE_CHOOSE (C→S), `0x28` DIALOGUE_CLOSE |
+| `0x58`-`0x5F` | Quests (MUN-17, TEC-69) | `0x58` QUEST_LOG_FULL, `0x59` QUEST_UPDATE, `0x5A` QUEST_AVAILABLE, `0x5B` QUEST_REQUEST (C→S), `0x5C` QUEST_SHARE_OFFER, `0x5D` COMMISSION_BOARD; `0x5E`-`0x5F` free |
+| `0x60`-`0x62` | Build (PRG-17 to PRG-19, PRG-49) | `0x60` BUILD_REQUEST (C→S), `0x61` BUILD_STATE (no per-character cooldowns), `0x62` MASTERY_UPDATE; `0x63`-`0x67` free |
+| `0x68`-`0x6D` | Economy services (TEC-70) | `0x68` SERVICE_REQUEST (C→S), `0x69` SERVICE_REPLY, `0x6A` LOOT_NOTICE, `0x6B` VENDOR_STOCK, `0x6C` DURABILITY_UPDATE, `0x6D` PROFESSION_UPDATE; `0x6E`-`0x6F` free |
+| `0x70`-`0x77` | **Reserved**: bank, trade and mail (PRG-25, PRG-28, SOC-28) | none yet |
+
+`0x56`-`0x57` and `0x78`-`0xFF` stay free. The `ServerMessages` id ranges (600-699 quests and events, 700-749 build and
+specialization, 750-799 loot and economy services, 800-849 interaction and dialogue) and the new parameter types are in
+localization.md.
+
+**Protocol version policy (I65).** `PROTOCOL_VERSION` 8 belongs to localization L4a (TEC-57, the format of the server
+messages). From then on **each lane that changes a format raises the number when it merges** (9, 10...), in merge order; no
+number is reserved per lane. Both sides check the number in HELLO (§5.3) and `sim_hash` covers the predicted data, so a
+lane that only changes server fields does not need a bump.
+
+**Entities.**
+
+- **Kind 5 AREA** (ground areas, [weapons.md §3.8](weapons.md#38-ground-areas)). Kind 4 is STRUCTURE since protocol 3, so
+  the area takes 5 (the content design wrote 4, which is taken). Reliable SPAWN and DESPAWN, **no snapshot records**:
+  payload `u16 owner`, `u16 area_def_id`, `u16 source`, `u64 position`, `u16 yaw` after the usual header (26 B in total);
+  the definition gives the shape, radius, delay and duration, and `spawn_tick` starts the clock. DESPAWN reasons 6 EXPIRED
+  and 7 REMOVED (owner died or left, or the cap was hit). Recipients: whoever has the owner as relevant on the tick of
+  creation, as with projectiles.
+- **PLAYER SPAWN tail.** `+1 B` specialization (0 toward another realm: the enemy does not see it) and `+14 B` appearance
+  of the equipment (7 × `u16` indices: 5 armor pieces and 2 weapons; 0 = the realm's base clothes). It follows the 9 B of
+  v7 (level and 8 B of character appearance). Size: 10 + 124 + 1 + n + 9 + 1 + 14 B.
+- **NPC SPAWN tail.** `+7 B` after `npc_def_id`: `u8 level`, `u8 rank`, `u8 role`, `u32 tag`. Size: 10 + 124 + 1 + n + 2 + 7 B.
+- **ENTITY_EVENT.** `17 SPEC_CHANGED` (`u8` specialization; only to the player's own realm) and `18 EQUIPMENT_VISUAL`
+  (the new appearance indices, to whoever has the player as relevant). The ids 12-15 stay free. LOADOUT (9) v2 is 20 B
+  ([abilities.md 5.7](abilities.md#57-phases-6-8-changes)).
+- **Action byte.** Action **14 KNOCKED** (bits 0-3); the ultimate is ABILITY with bits 4-5 = 3.
+- **TELEGRAPH line.** `shape` 2 is a **line** (a charge or an aimed shot): `position` is the origin, `yaw` the direction,
+  `radius_cm` the length and a new `u16 width_cm` follows `impact_in_ticks`. The message goes from 26 B (`len` 17) to **28 B**
+  (`len` 19) for every shape, with the width ignored (0) for circles and sectors.
+
+**Records per snapshot.** With `PlayerState` of 124 B the own part of the header is 13 + 124 + 9 + 1 = 147 B, 149 with
+`section_count`, and ⌊(1200 − 149) / 21⌋ = **50 records** fit (1050 of the 1051 B left). The margin is **1 B**: any lane
+that adds 2 B or more to `PlayerState`, to the header or to the record drops the snapshot to 49 records. A change like that
+has to say so and recompute this paragraph; the other levers are the weapon cooldowns as relative u16 (abilities.md §8) or a
+section for each realm.
+
+**Interest policy for PvE zones (TEC-32 advanced to phase 6).** The populated PvE zones (150-320 hostile NPCs, up to 48
+players per channel) and the capitals (60-120 ambient NPCs) need interest by distance before Eldrun does:
+
+| Rule | Value |
+|---|---|
+| Structure | Uniform 64 m grid (or a plain radius test while the grid is not ready); an entity changes list only when it changes cell |
+| Combatants | Enter at 200 m, leave at 230 m (hysteresis) |
+| Ambient NPCs | Enter at 90 m with weight 0.3, outside `StateHistory`; they have no hit queries |
+| Evaluation | Every 6 ticks, staggered by `(s + net_id) % 6`, and on every spawn (§11) |
+| Weight | `clamp(1 − d/R, 0.1, 1)`, more if the entity is fighting the observer or has them as a target; fortresses and objects `ALWAYS_RELEVANT` |
+| Expected load | A client in a camp sees 10-15 NPCs and about 20 players, at most 50 records |
+| Done when | 240 NPCs in the test zone stay below 37 KB/s per client and a client receives only what is near |
+
+Areas and projectiles follow the owner's relevance. Delta snapshots and the Eldrun budget stay with TEC-33 and TEC-34.
 
 ---
 
@@ -1628,6 +1701,8 @@ fort NPCs, 73 foreign ones, too; it becomes one in three with more than 100). Ve
   - The weight depends on distance (`clamp(1 − d/R, 0.1, 1)`), with more weight if the entity
     is fighting the observer or has them as a target.
   - See [15](#eldrun).
+- **PvE zones (phase 6).** The same policy comes ahead of Eldrun for the zones with many NPCs: a radius policy, or the
+  64 m grid if it is ready, with the figures of [5.8](#58-phases-6-8-content-additions) (TEC-32 advanced).
 
 ---
 
@@ -2164,6 +2239,17 @@ Tick in ms of the last 34 s stretch; sections, p50 (p99):
   (`scripts/server/social/`), which `ZoneServer` only feeds with types `0x40` to `0x4F`. `NetClient`
   decodes the S→C ones (CHAT_MESSAGE and PARTY_*) and emits signals; `SwarmBot` decodes them and discards them without
   counting them as malformed ([social.md](social.md#12-implementation-phase-4), 12.7).
+
+### Phases 6-8: content design
+
+- **Registry and versions.** The message types, entity kinds, event ids and action ids that the content lanes need are
+  assigned once in [5.8](#58-phases-6-8-content-additions); every lane that changes a format raises `PROTOCOL_VERSION` when
+  it merges.
+- **State.** `CombatState` v6 (13 B: picked abilities, ultimate, mana, load class) and the knockdown action 14
+  ([weapons.md §6](weapons.md#6-state-machine-and-protocol)); the snapshot capacity stays at 50 records.
+- **Entities.** Ground areas are a new entity kind with no snapshot records, like the projectiles.
+- **Interest.** The radius policy of the PvE zones comes in phase 6 (TEC-32 advanced); Eldrun keeps the delta snapshots
+  and the budget of TEC-33.
 
 ### Phases 5 and 6: accounts and handoffs
 

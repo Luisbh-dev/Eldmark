@@ -21,7 +21,7 @@ taken at night; they are in "Decisions taken" in the backlog):
 
 | Question | Decision |
 |---|---|
-| Classes | No classes: the role is given by the equipped weapons. |
+| Classes | No classes: the role is given by the equipped weapons. *Superseded in phases 6-8 (I01, user decision of 2026-11-06)*: weapons stay free, and a **specialization** chosen at level 10 adds ranks and an ultimate on top of them; the role still comes from the two weapons ([weapons.md W1](weapons.md#0-decisions), `advancement.md`). |
 | Equipped weapons | Two slots with quick swap (CMB-24, phase 4). In phase 3 there is only sword and shield. |
 | Numbers | **Integers** for health, stamina and damage. |
 | Durations in the data | **Seconds** in the `.tres`, converted to ticks on load with `roundi(s · 60)`. The already converted catalog goes into the `sim_hash`. |
@@ -203,6 +203,12 @@ unambiguously.
 **Phase 4.** Version 5 of `CombatState` (76 B, `PlayerState` of 111 B) adds at the end the other weapon,
 the cooldowns, the consumables and the movement effects, and `buffered` becomes bits 0–3 type
 and 4–7 ticks: [abilities.md 3.1](abilities.md#31-combatstate-v5).
+
+**Phases 6-8.** Version 6 (89 B, `PlayerState` of 124 B) adds the picked abilities, the ultimate's cooldown, the mana and
+the load class (13 B), and `Action` gains **14 KNOCKED**, a knockdown imposed by the server like the stun
+(`impose_knockdown(c, t, until)`, no dodge, `knockdown_getup_s` of 0.6 s at the end; 15 stays free). The extra actions of
+phase 4 (9 ABILITY, 10 SWAP, 11 DOWNED, 12 REVIVE, 13 EXECUTE) are in [abilities.md 3.1](abilities.md#31-combatstate-v5) and the
+v6 fields in [weapons.md §6](weapons.md#6-state-machine-and-protocol).
 
 ### 3.2 Substituted inputs (closes the note in networking.md §8.2)
 
@@ -445,6 +451,21 @@ final   = roundi((raw − mitig.) × 1000 / (1000 + armor)),  minimum 1 if anyth
   sample).
 - Damage types slashing, piercing, blunt, elemental, with resistances per type (0 in
   phase 3). Armor 0 in phase 3.
+- **Phases 6-8.** The types become six: slashing 0, piercing 1, blunt 2, **fire 3** (the `ELEMENTAL` of phase 3, which no
+  data used), **frost 4** and **light 5**. Armor is split in two classes, **physical** (types 0-2) and **elemental**
+  (types 3-5), and the resistances by type (CMB-07) apply on top. Mitigation is **relative to the reference armor** (I20):
+
+  ```
+  final = roundi((raw − mitig.) × (1000 + armor_ref) / (1000 + armor)),  minimum 1 if anything is left
+  ```
+
+  `armor_ref` is the armor of the reference character, 393 physical (a medium set at item level 52; the elemental
+  reference is defined with the item scale in `items.md`). A combatant with no equipment data (the dummy, bots, `test_world`
+  with no progress) is given the reference armor, so a duel keeps the figures of the sheet in §12 and the formula reduces
+  to the one above. Below the reference level the armor is lower and the damage received higher, but the player's own damage
+  is lower too, so the TTK is defended as §12.5 asks. Block (`block_mitigation` by weapon, `block_magic_mitigation` against
+  fire, frost and light) and the new status factors (`WEAKEN`, `VULNERABLE`, `FORTIFY`) apply before the armor
+  ([weapons.md §3.4 to §3.7](weapons.md#34-dodge-and-block)).
 - **Block**: the defender spends `roundi(mitig. × block_stamina_per_damage)`. If it falls short, only the
   proportional part is absorbed, the rest goes through as damage and there is a **guard break**
   (stun of `guard_break_stun_s`).
@@ -687,7 +708,7 @@ static func is_in_front(defender_pos: Vector3, defender_yaw: float, attacker_pos
 
 # scripts/shared/combat/damage_formula.gd
 class_name DamageFormula extends RefCounted
-enum DamageType { SLASH, PIERCE, BLUNT, ELEMENTAL }
+enum DamageType { SLASH, PIERCE, BLUNT, ELEMENTAL, FROST, LIGHT }   # phases 6-8: ELEMENTAL (3) is fire
 class Result:
 	var damage: int; var absorbed: int; var stamina_cost: int; var critical: bool
 	var guard_break: bool
@@ -886,6 +907,12 @@ Closed during K5 (integration):
 ---
 
 ## 12. First balance pass (CMB-29)
+
+> **Phases 6-8.** The sheet measured here and in 12.8 is the **level-60 reference** character (equipment of item level 52,
+> reference armor, health 1000, damage factor 1.0), which is what every normalized zone (Vado Gris, Eldrun, `test_world`)
+> plays; so none of these figures changes with the content design, and each new weapon is measured against the bands that
+> start from the 156.3 DPS of the sword combo ([weapons.md §3.1](weapons.md#31-role-budgets-bands)). Below level 60 a
+> character is weaker than this sheet by the scale of `advancement.md`.
 
 First pass with **sword and shield**, the only kit of phase 3. It is repeated when the abilities (CMB-21)
 and the bow (CMB-23) arrive —done in H5: 12.8—; the two parts that depend on content that does not exist yet, the fort

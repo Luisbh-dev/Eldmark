@@ -10,6 +10,11 @@ with rewind (CMB-22), bow (CMB-23), weapon swap (CMB-24), knocked down (CMB-28),
 Version 2: version 1 after the review by three reviewers (§10). Anything marked "verified" comes from probes in
 headless Godot 4.7.2 (not committed).
 
+**Phases 6-8 update.** This document keeps its phase 4 text as the record of what was built. The expansion that follows
+(twelve weapons, five abilities per weapon with three picked, the ultimate on F, mana, ground areas, healing, new status
+kinds, `CombatState` v6 and LOADOUT v2) is designed in [weapons.md](weapons.md); where a phase 4 rule is replaced the
+section says so in a "Phases 6-8" note, and the rows of §0 that no longer hold are marked *Superseded*.
+
 Coexistence: F4 (NPCs) and chat and parties (SOC-03 to SOC-08, protocol 5) are merged **before**
 any H package (§7.1). F4 adds weapons `data/combat/npc_*.tres`, `AttackDefinition.unblockable`
 (server only) and command 12: **no catalog id is fixed**, everything is requested by name
@@ -26,24 +31,26 @@ The first four were pending backlog items that blocked progress; they are taken 
 
 | Question | Decision |
 |---|---|
-| Resource for abilities | Cooldown only on physical weapons; mana only on staves (phase 6). Stamina remains the defensive resource. *Provisional, decided overnight.* |
+| Resource for abilities | Cooldown only on physical weapons; mana only on staves (phase 6). Stamina remains the defensive resource. *Provisional, decided overnight.* **Phases 6-8: confirmed and extended**: mana only on the three magic weapons (life staff, fire staff, frost gauntlet), 1000 shared between the two weapons, and abilities keep their cooldown ([weapons.md §3.3](weapons.md#33-resource-mana-and-the-tonic)). |
 | Origin and direction of projectiles | Canonical camera ray from `look_yaw`, `look_pitch` and a shoulder bit; the arrow leaves the chest toward the aimed point, which converges at the depth of the enemy closest to the crosshair (§4.4). *Provisional, decided overnight.* |
 | Knocked down | PvP only: if the killing blow comes from a player of another realm, the victim stays knocked down for 20 s. Against NPCs, the environment or in PvE, direct death. *Provisional, decided overnight.* |
-| HUD and secondary resource | Action layout: health, stamina and bar at the bottom center; stamina hides when full; the secondary resource slot stays reserved for staves. *Provisional, decided overnight.* |
+| HUD and secondary resource | Action layout: health, stamina and bar at the bottom center; stamina hides when full; the secondary resource slot stays reserved for staves. *Provisional, decided overnight.* **Phases 6-8**: the slot holds the mana bar (UI-77) and a fourth slot, F, holds the ultimate (UI-76). |
 | When the cooldown starts | At **commitment**: the first active tick of the ability. Channels set it when they end. A control effect or a dodge before commitment does not spend it. |
-| Potions | Two fixed ones (health on R, stamina on T), shared 20 s cooldown and charges per life from the template. They are spent when the drink finishes: a hit that interrupts does not consume the potion. |
+| Potions | Two fixed ones (health on R, stamina on T), shared 20 s cooldown and charges per life from the template. They are spent when the drink finishes: a hit that interrupts does not consume the potion. **Phases 6-8**: the stamina potion becomes the **tonic** (+400 stamina and +300 mana, both predicted); the keys do not change. |
 | Bow | The light attack is the quick shot and the heavy attack's charge is the draw: the phase 3 machine with no shape changes. No block. No random spread: accuracy is ballistics. |
 | Projectiles over the network | No records in the snapshot: reliable ENTITY_SPAWN and ENTITY_DESPAWN with the ballistics (§5.3); the client computes the flight. 40 arrows in the air would cost 840 B per snapshot. |
 | Own arrow | Seen instantly (predicted); marker and number on confirmation, like melee. |
 | Weapon swap | Q, 0.4 s; the weapon changes on the first tick; cooldowns are kept (absolute ticks). Active weapon in `CombatState` and in bit 3 of the record's `flags`. |
-| Templates | Squire (sword and shield) and marksman (bow and sword and shield). They are chosen before entering or on the death screen; they apply on the next spawn. |
-| Equipment | Only the two weapons. Armor, `StatBlock` and derived sheet are left for PRG-01 and PRG-06 (§9). |
+| Templates | Squire (sword and shield) and marksman (bow and sword and shield). They are chosen before entering or on the death screen; they apply on the next spawn. *Superseded for characters in phases 6-8*: weapons are free (any two, from the character's loadout, [weapons.md W1](weapons.md#0-decisions)); templates stay for the camp refill, tests and NPCs. |
+| Equipment | Only the two weapons. Armor, `StatBlock` and derived sheet are left for PRG-01 and PRG-06 (§9). *Superseded in phases 6-8*: 11 equipment slots, load classes and the item scale are in `items.md`. |
 | Effects that move | Two slots in `CombatState` (slow, root); the rest lives on the server. |
 | Shield bash | Unblockable (`AttackDefinition.unblockable`, from F4) and stuns for 0.8 s. It can be dodged. |
 | Shield wall | 180° block and a box that stops enemy projectiles: it protects those behind from arrows, not from blows. |
 | Interruption | Only a HIT from a blow or an arrow with result IMPACT, damage > 0 and a hostile author (not pulses or environment) cuts drinking and the marked casts (phase 0, `[0, cast)`), reviving and executing. Control effects cut any action, as today. |
 | Friendly fire | Still none: arrows and areas pass through allies. |
-| New keys | Q swap weapon, R health potion, T stamina potion. They are rebindable with UI-17. |
+| New keys | Q swap weapon, R health potion, T stamina potion. They are rebindable with UI-17. **Phases 6-8**: **F** is the ultimate (`PlayerInput` bit 13 `ULTIMATE`, rebindable): 150 s cooldown that survives death and logout. |
+| Classes (phases 6-8) | *Superseded*: there are no fixed classes; the role comes from the two weapons plus a **specialization** chosen at level 10 (`advancement.md`). Each character carries 3 of the 5 abilities of each weapon, chosen for free out of combat ([weapons.md §3.2](weapons.md#32-the-ability-set-of-a-weapon)). |
+| Dodge (phases 6-8) | `sword_dodge` is renamed `standard_dodge`: one dodge for every weapon, changed only by the armor load class ([weapons.md §3.4](weapons.md#34-dodge-and-block)). |
 | Deviations from the backlog | CMB-21: the wall protects those behind only from arrows. CMB-23: no spread; the charge gives damage and speed (flatter trajectory). CMB-24: the active weapon goes in bit 3 of the record's `flags`, not in the action byte. PRG-04: only the two weapons, no derived sheet (§9). Noted in backlog.md. |
 
 ---
@@ -67,6 +74,10 @@ The first four were pending backlog items that blocked progress; they are taken 
 Rule from networking.md §6.7: whatever the server decides and changes the simulation enters `PlayerState`, even if
 it is not predicted (movement effects, knocked down).
 
+*Phases 6-8.* Per character only the weapons, the picked abilities, the ultimate, the mana and the load class are
+predicted; passives, talents, attributes and affixes touch server values only, and whatever must change a predicted
+field is a catalog variant ([weapons.md §1](weapons.md#1-what-is-predicted-and-what-the-server-decides)).
+
 ---
 
 ## 2. Data
@@ -74,8 +85,8 @@ it is not predicted (movement effects, knocked down).
 ### 2.1 Resources (`scripts/shared/combat/`, data in `data/combat/`)
 
 Seconds in the `.tres` files, ticks on load with `roundi(s · 60)`. "P" = predicted (enters
-`prediction_hash`); "S" = server only. Everything in the `data/combat/` folder (the catalog does not enter
-subfolders and distinguishes by type).
+`prediction_hash`); "S" = server only. Everything in the `data/combat/` folder (in phase 4 the catalog does not enter
+subfolders and distinguishes by type; from phase 6 it does, see §2.2).
 
 ```gdscript
 class_name AbilityDefinition extends Resource
@@ -153,6 +164,16 @@ Changes to existing resources:
   1..n in alphabetical order of `id`, 0 = none. Effects and templates fit in u8 (≤ 255; more is an
   error). Nobody writes an id by hand: `ability_id(name)`, `status_id(name)`, `projectile_id(name)`,
   `template_id(name)`. The F4 ones (`npc_*`) only shift numbers.
+- **Per-family subfolders (phases 6-8).** With twelve weapons there are some 230 `.tres`, so the catalog stops being one
+  folder: it **walks subfolders** and the files live in `data/combat/<family>/` (`<family>.tres`, `<family>_light_<n>.tres`,
+  `abilities/<id>.tres`, `shapes/`) plus `data/combat/shared/` (`status/`, `projectiles/`, `areas/`) and
+  `data/combat/specializations/` (layout and the rest in [weapons.md §5.1](weapons.md#51-folders-and-resources)). Ids keep
+  being assigned by name in alphabetical order in separate spaces, so moving a file does not change an id. Moving the
+  phase 4 files is a pure move: the ids by name and the `prediction_hash` do not change (`test_combat_catalog`).
+- **Pool and picks (phases 6-8).** A weapon gains `ability_pool` (five actives and at most two variants, 15 entries at
+  most) and `default_picks`; the 3 abilities in the bar are chosen from the pool, and a variant `<id>_2` is a catalog entry
+  of its own only where a predicted field changes ([weapons.md §3.2](weapons.md#32-the-ability-set-of-a-weapon)). The
+  `slot` stored in `AbilityTicks` becomes the *default* slot; the slot in use comes from `ability_picks` (§3.1).
 - **`AbilityTicks`** also stores `slot` (0–2) and `weapon_id`, or `consumable_index` (0–1) if it is a
   consumable, and `hit: AttackTicks`: a **synthesized** attack with the ability's windows
   (windup = `cast`) and its S fields, which is not in the attack table. This way the resolver tests
@@ -175,7 +196,10 @@ Changes to existing resources:
 
 ### 2.3 Starting values
 
-Sword and shield (`sword_shield.tres` gains `abilities`). Ticks in parentheses.
+Sword and shield (`sword_shield.tres` gains `abilities`). Ticks in parentheses. In phases 6-8 these three and the bow's
+three become the *base* abilities of their weapons, each with two more (one per branch of the mastery tree); the sheets
+are in [weapons.md §4.1](weapons.md#41-sword-and-shield-sword_shield--done) and
+[§4.2](weapons.md#42-bow-bow--done).
 
 | Ability | Slot | Cast | Active | Recovery | Cooldown | Effect |
 |---|---|---|---|---|---|---|
@@ -183,7 +207,8 @@ Sword and shield (`sword_shield.tres` gains `abilities`). Ticks in parentheses.
 | Shield rush `shield_rush` | 2 | 0.15 (9) | 0.4 (24) | 0.35 (21) | 16 s | 6 m dash in the active phase (flat curve); sector 1.8 m, 140°; 50 blunt; stagger 0.4 s and knockback 6 m/s; hyper armor in the active phase |
 | Shield wall `shield_wall` | 3 | 0.2 (12) | up to 6 s (360), channeled | 0 | 18 s when it ends | 180° block (stamina 0.6 per point); 2.6 × 2.0 × 0.3 m box 0.7 m in front that stops enemy arrows; movement ×0.3, turn 4; released with 3; dodge from the end of the cast |
 
-Bow (`bow.tres`, `bow_quick.tres`, `bow_drawn.tres`; dodge = `sword_dodge.tres`; `can_block = false`).
+Bow (`bow.tres`, `bow_quick.tres`, `bow_drawn.tres`; dodge = `sword_dodge.tres`, renamed **`standard_dodge.tres`** in phases 6-8 since it
+belongs to the load and not to the weapon; `can_block = false`).
 
 | Action | Timings | Projectile | Damage | Other |
 |---|---|---|---|---|
@@ -200,7 +225,7 @@ Consumables (`CombatRules.consumables`), shared cooldown of 20 s (1200):
 | Potion | Drink | Movement | On commitment |
 |---|---|---|---|
 | Health `potion_health` (R) | 0.6 (36) + 1 + 0.2 (12) | ×0.4, no sprint or jump | `potion_regen`: 300 health over 3 s |
-| Stamina `potion_stamina` (T) | 0.4 (24) + 1 + 0.2 (12) | ×0.4 | +400 stamina (predicted) |
+| Stamina `potion_stamina` (T) | 0.4 (24) + 1 + 0.2 (12) | ×0.4 | +400 stamina (predicted). Phases 6-8: renamed the **tonic**, it also gives +300 mana (`mana_restore`, predicted) |
 
 Effects: `slowed` (SLOW ×0.6, 3 s, the strongest wins), `potion_regen` (heal 50 every 0.5 s for 3
 s: 6 pulses; refresh), `bleed` (15 per stack every 1 s for 6 s: 6 pulses; up to 3; slashing;
@@ -276,12 +301,35 @@ records** (previously 52). With 64 players, 63 others in 50 slots: each one gets
 more than 100 others). Below the cap, +42 B × 30/s = **+1.26 KB/s** per client; at the cap the
 packet was already full (36.8 KB/s): what is lost is 2 records per snapshot.
 
+**Phases 6-8: `CombatState` v6.** The picked abilities, the ultimate, the mana and the load class add **13 B**:
+`PlayerState.ENCODED_SIZE` goes from 111 to **124 B** (and `CombatState` from 76 to 89 B). The offsets before 111 do not
+change:
+
+| Offset | Type | Field | What it is |
+|---|---|---|---|
+| 111 | u8 × 3 | `ability_picks` | one nibble per slot: index 1-15 in the weapon's `ability_pool`, 0 = empty. Nibbles 0-2 are the active weapon's three slots, 3-5 the other weapon's; the swap exchanges them together with `ability_ready` |
+| 114 | u32 | `ultimate_ready` | first tick at which the ultimate is usable again; it survives respawn and logout (the timer `ability:<id>`) |
+| 118 | u16 | `mana` | bits 0-9 mana (0-1000), bits 10-11 `load_class` (0 light, 1 medium, 2 heavy), bit 12 reserved |
+| 120 | u32 | `mana_regen_tick` | first tick at which mana regenerates again |
+
+- `combat_flags` bit 7 is the new `ULTIMATE_HELD` (the button was pressed on the previous tick). The ultimate's **id** is
+  not in the state: it is configuration applied out of combat (LOADOUT v2 and the build state), like the weapons chosen
+  for a life.
+- `action`: **14 KNOCKED** (knockdown, imposed by the server like the stun; 15 stays free).
+- Header with own state and extra block: 13 + 124 + 9 + 1 = **147 B**; with one section ⌊(1200 − 149) / 21⌋ = **50
+  records**, the same as v5, so nothing is lost per snapshot. The own state grows 13 B × 30/s = +0.4 KB/s per client.
+- The load class takes the two top bits of the `mana` word and not two bits of `combat_flags2`, which is full in v5
+  (active slot, six held-button bits and the no-cooldowns command): the layout is fixed by a test.
+
+Full design: [weapons.md §6](weapons.md#6-state-machine-and-protocol).
+
 ### 3.2 Buttons and substituted inputs
 
 `PlayerInput`: bit 9 `SWAP_WEAPON` (Q), bit 10 `AIM_LEFT` (left shoulder: set by the client with the
 camera's effective shoulder; it is a level, not a press), bit 11 `CONSUMABLE_1` (R), bit 12
 `CONSUMABLE_2` (T). Bits 13–14 reserved; 15 remains `SUBSTITUTED`. `VALID_BUTTONS = (1 << 13) −
-1`. With `SUBSTITUTED`, as in combat.md §3.2, the machine sees no edges (the substitute repeats the
+1`. **Phases 6-8**: bit 13 is `ULTIMATE` (key F; priority after ABILITY_3, its previous-tick bit is bit 7 of
+`combat_flags`), `VALID_BUTTONS = (1 << 14) − 1` and only bit 14 stays reserved. With `SUBSTITUTED`, as in combat.md §3.2, the machine sees no edges (the substitute repeats the
 buttons), does not cut a channel for moving and does not release what is held. No loss invents
 an ability, a weapon swap or a potion.
 
@@ -746,6 +794,27 @@ Downstream per client = (136 + n · 21 + 40) B × 30/s: 10 visible ~11.6 KB/s (p
 per arrow and recipient: 20 arrows per second in view, ~1 KB/s. Server output with 64: from
 ~2.4 to ~2.5 MB/s. H2 updates networking.md §5.2, §5.4, §5.5 and §14.
 
+### 5.7 Phases 6-8 changes
+
+Each lane that changes the format raises `PROTOCOL_VERSION` when it merges (8 is L4a; networking.md §5.8). What this
+document's formats gain:
+
+- **LOADOUT (ENTITY_EVENT 9) v2**: `u8 template_id`, `u16 weapon_1`, `u16 weapon_2`, `u8 charges`, `u8[3] ability_picks`
+  (the nibbles of the state, active weapon first) and `u16 ultimate_id`: 11 B of data, **20 B** in total (v1 was 15 B). The
+  owner receives everything; whoever sees the player receives the weapons only, with picks, ultimate and `charges` at 0
+  (the picks are private; the enemy learns the ultimate when it is cast). It is sent again when the picks change, which
+  is only allowed out of combat with no action in progress.
+- **Action byte**: ABILITY with bits 4-5 = 3 (free in ABILITY, which only uses 0-2 for the phase) is the **ultimate**, and
+  its phase (0 cast, 1 active or channel, 2 recovery) moves to bits 6-7. The re-arm margin of §5.5 applies to it too.
+- **State**: `PlayerState` of 124 B in the own state, the own SPAWN and the others' SPAWN. In the others' SPAWN the new
+  fields revert to their initial values (picks 0, `ultimate_ready` 0, `mana` 0 and the load class kept, since the dodge
+  distance of a player is visible), except the weapons, which stay public.
+- **Header and capacity**: 147 B with own state and extra block, 50 records per snapshot (§3.1).
+- **Entity kind 5 AREA** (kind 4 is STRUCTURE since protocol 3) and the other formats of the content design:
+  [networking.md §5.8](networking.md#58-phases-6-8-content-additions).
+- Changing the picks goes through BUILD_REQUEST (`SET_ABILITIES`, `advancement.md`), validated against what the character
+  has unlocked; a locked pick counts a warning and is replaced by the default.
+
 ---
 
 ## 6. Client
@@ -790,6 +859,11 @@ predicted tick`, with sweep and seconds; flash when it becomes ready; `ability_s
 strikes them through (NO_CHARGES); the dodge blinks without stamina (bit1, as today). On swapping weapons the
 icons change. A press during cooldown blinks the slot on the client (it does not travel). Provisional icons:
 squares with the weapon's initial and color until ART-12.
+
+*Phases 6-8.* The three slots show the picked abilities (the icon of a variant is its base's), a fourth slot on **F** shows
+the ultimate with its 150 s sweep, and the mana bar sits in the reserved slot with each ability's cost on its icon
+(UI-76, UI-77; [weapons.md §8](weapons.md#8-client-and-content-tools)). A slot whose ability costs more mana than the
+character has blinks like the dodge without stamina.
 
 ### 6.4 Statuses (UI-45, `StatusTracker` and `StatusIcons`)
 
@@ -862,6 +936,9 @@ All of H starts with **F4 and SOC-03 to SOC-08 merged**: H1a touches `attack_def
 H2 and H1b in parallel after H1a; H3a → H3b → H3c in series (all touch `zone_server.gd` and
 `combat_director.gd`) and H4 at the same time; H5 at the end. With two agents: one H1a → H1b → H3a → H3b → H3c, the other
 H2 → H4 → H5.
+
+*Phases 6-8.* The packages above are done. The expansion is organized in the lanes E (combat v6), F (allies, healing and
+areas) and G (the weapons of the first slice) of [weapons.md §9](weapons.md#9-packages-and-contracts).
 
 ### 7.2 Contracts
 
