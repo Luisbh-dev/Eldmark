@@ -127,12 +127,36 @@ if [ "$PACK_ONLY" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
 	fi
 fi
 
-# Build identifier (git describe), stored next to the exported files.
-BUILD_ID="$(git describe --tags --always --dirty 2> /dev/null || echo desconocido)"
-echo "Godot $GODOT_VERSION · compilación $BUILD_ID · destino: $TARGET ($MODE)"
+# Build id (scripts/shared/build_info.gd): the revision (git describe --always --dirty, or ELDMARK_REVISION,
+# which the CI sets before importing so that the import does not make the tree look dirty) is baked into
+# build_id.txt, which git ignores and the export filters include. It is removed when the script ends so that
+# the editor goes back to "dev". BUILD_ID, next to each export, holds the whole id.
+REVISION="${ELDMARK_REVISION:-$(git describe --always --dirty 2> /dev/null || echo unknown)}"
+BUILD_ID="eldmark-unknown+$REVISION"
+BAKED_FILE="$ROOT/build_id.txt"
+cleanup_bake() {
+	rm -f "$BAKED_FILE"
+}
+trap cleanup_bake EXIT
+echo "Godot $GODOT_VERSION · revisión $REVISION · destino: $TARGET ($MODE)"
 
 # Imports the resources (brings the .godot/ cache that the export uses up to date).
 run "$GODOT" --headless --path "$ROOT" --import
+
+# Bakes the revision and asks the project for the whole id (the class BuildInfo, the one the game reports).
+if [ "$DRY_RUN" -eq 0 ]; then
+	printf '%s
+' "$REVISION" > "$BAKED_FILE"
+	BUILD_ID="$("$GODOT" --headless --path "$ROOT" -s res://tools/print_build_id.gd 2> /dev/null | tr -d '\r' | sed -n 's/^BUILD_ID=//p' | head -n 1)"
+	if [ -z "$BUILD_ID" ]; then
+		echo "No se pudo obtener el build id del proyecto (tools/print_build_id.gd)." >&2
+		exit 1
+	fi
+else
+	echo "+ echo $REVISION > build_id.txt"
+	echo "+ $GODOT --headless --path $ROOT -s res://tools/print_build_id.gd"
+fi
+echo "Build id: $BUILD_ID"
 
 export_preset() {
 	local preset="$1" out="$2"

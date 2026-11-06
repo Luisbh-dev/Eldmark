@@ -58,6 +58,7 @@ $ErrorActionPreference = 'Stop'
 function Fail {
 	param([string]$Message, [int]$Code)
 	[Console]::Error.WriteLine($Message)
+	if ($script:BakedFile) { Remove-Item -Force -ErrorAction SilentlyContinue $script:BakedFile }
 	exit $Code
 }
 
@@ -141,13 +142,30 @@ if (-not $PackOnly -and -not $DryRun) {
 	if ($Target -in 'server', 'all') { Test-Templates "linux_${Mode}*" 'Linux' }
 }
 
-# Build identifier (git describe), stored next to the exported files.
-try { $BuildId = (git describe --tags --always --dirty 2>$null) } catch { $BuildId = $null }
-if (-not $BuildId) { $BuildId = 'desconocido' }
-Write-Host "Godot $GodotVersion · compilación $BuildId · destino: $Target ($Mode)"
+# Build id (scripts/shared/build_info.gd): the revision (git describe --always --dirty, or ELDMARK_REVISION,
+# which the CI sets before importing) is baked into build_id.txt, which git ignores and the export filters
+# include. It is removed when the script ends. BUILD_ID, next to each export, holds the whole id.
+$Revision = $env:ELDMARK_REVISION
+if (-not $Revision) { try { $Revision = (git describe --always --dirty 2>$null) } catch { $Revision = $null } }
+if (-not $Revision) { $Revision = 'unknown' }
+$BuildId = "eldmark-unknown+$Revision"
+$BakedFile = Join-Path $Root 'build_id.txt'
+Write-Host "Godot $GodotVersion · revisión $Revision · destino: $Target ($Mode)"
 
 # Imports the resources (brings the .godot/ cache that the export uses up to date).
 Invoke-Step $Godot @('--headless', '--path', $Root, '--import')
+
+# Bakes the revision and asks the project for the whole id (the class BuildInfo, the one the game reports).
+if (-not $DryRun) {
+	Set-Content -Path $BakedFile -Value $Revision -Encoding ascii
+	$line = & $Godot --headless --path $Root -s res://tools/print_build_id.gd 2>$null | Where-Object { $_ -like 'BUILD_ID=*' } | Select-Object -First 1
+	if (-not $line) { Remove-Item -Force -ErrorAction SilentlyContinue $BakedFile; Fail 'No se pudo obtener el build id del proyecto (tools/print_build_id.gd).' 1 }
+	$BuildId = ($line -replace '^BUILD_ID=', '').Trim()
+} else {
+	Write-Host "+ echo $Revision > build_id.txt"
+	Write-Host "+ $Godot --headless --path $Root -s res://tools/print_build_id.gd"
+}
+Write-Host "Build id: $BuildId"
 
 function Export-Preset {
 	param([string]$Preset, [string]$Out)
@@ -194,4 +212,5 @@ exec ./eldmark-server.x86_64 --headless -- --server "$@"
 	if ($Zip) { Compress-Export 'exports/server' 'Eldmark-server.zip' }
 }
 
+if ($BakedFile) { Remove-Item -Force -ErrorAction SilentlyContinue $BakedFile }
 Write-Host "Listo. Lo exportado está en $Root\exports\"
