@@ -95,6 +95,13 @@ extends SceneTree
 ## fakes, [constant DTLS_COMPARE_SECONDS] s) without and with DTLS, alternating, [code]--repeat=N[/code] times each
 ## ([constant DTLS_COMPARE_REPEAT]); at the end, the comparison ([method dtls_comparison]) and the criterion. Exits with 1 if it
 ## is not met and implies [code]--check[/code].
+## [br]- [code]--soak[/code] the long run (TEC-12, TEC-20): [constant SOAK_FAKES] clustered fake players and [constant SOAK_BOTS]
+## real clients that join and leave all the time (each stays [constant SOAK_BOT_MIN_SECONDS] to [constant SOAK_BOT_MAX_SECONDS] s and
+## comes back after a short pause), for [code]--seconds=[/code] ([constant SOAK_SECONDS] = 2 h by default; [code]--port=[/code] fixes the port).
+## Every report rewrite of the server (10 s) is a sample of tick p99, static memory and object counts, kept in
+## [code]soak_*_series.json[/code] (draw it with [code]tools/soak_chart.py[/code]). The criterion ([method LoadTestSummary.soak_figures]):
+## after the first 10 minutes, memory and objects grow less than 10 %, the p99 of the tick drifts less than 10 %, and there are no kicks
+## or errors. It never runs at the same time as other measurements or videos: it needs the machine to itself.
 ## [br]- [code]--check[/code] exits with code 1 if any scenario fails the phase 2 criterion.
 ## [br][br]
 ## [b]What it measures[/b] (from the server's [code]--report[/code], from [method ZoneServer.write_report], and from that of each
@@ -218,6 +225,18 @@ const SIEGE_SECONDS: int = 120
 const SIEGE_EXTRA_SETTLE_SECONDS: float = 50.0
 ## Seconds of measurement for a single scenario.
 const DEFAULT_SECONDS: int = 30
+
+## The soak (--soak): fake players, real clients that come and go, duration and the bounds of how long each client stays.
+const SOAK_FAKES: int = 40
+const SOAK_BOTS: int = 8
+const SOAK_SECONDS: int = 7200
+const SOAK_BOT_MIN_SECONDS: int = 60
+const SOAK_BOT_MAX_SECONDS: int = 180
+## Pause before a client that left comes back.
+const SOAK_BOT_PAUSE_MIN_SECONDS: int = 5
+const SOAK_BOT_PAUSE_MAX_SECONDS: int = 20
+## Seconds between two samples (the server rewrites its report every 10 s).
+const SOAK_SAMPLE_SECONDS: float = 10.0
 ## Certificate, key and DTLS name of [code]--dtls[/code] if no others are given: the test ones
 ## (docs/platform.md §10.2).
 const DTLS_TEST_CERT: String = "res://tests/fixtures/dtls/zone_cert.pem"
@@ -258,6 +277,9 @@ func _run() -> void:
 				run["dtls"] = with_dtls
 				run["pass"] = i + 1
 				runs.append(run)
+	elif args.has("--soak"):
+		runs.append(_make_run(args, "soak", _int_option(args, "--fakes=", SOAK_FAKES),
+				_int_option(args, "--bots=", SOAK_BOTS), "", SOAK_SECONDS))
 	elif args.has("--matrix"):
 		for entry: Array in MATRIX:
 			runs.append(_make_run(args, entry[0], entry[1], entry[2], entry[3], MATRIX_SECONDS))
@@ -335,6 +357,8 @@ func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int,
 # Launches the server and the swarms, waits for them to finish and returns the summary of what was measured.
 func _run_scenario(run: Dictionary) -> Dictionary:
 	var scenario: String = run["scenario"]
+	if scenario == "soak":
+		return await _run_soak(run)
 	var fakes: int = run["fakes"]
 	var bots: int = run["bots"]
 	var swarms: int = mini(run["swarms"], maxi(bots, 1))
@@ -662,6 +686,8 @@ func _print_summary(summary: Dictionary) -> void:
 		lines.append("   ERROR: %s" % summary["error"])
 	if summary.has("sections_us"):
 		lines.append_array(_summary_lines(summary))
+	if summary.has("soak"):
+		lines.append_array(_soak_lines(summary))
 	_print_lines(lines)
 
 
@@ -988,3 +1014,152 @@ func _option(args: PackedStringArray, prefix: String, fallback: String) -> Strin
 func _int_option(args: PackedStringArray, prefix: String, fallback: int) -> int:
 	var text: String = _option(args, prefix, "")
 	return text.to_int() if text.is_valid_int() else fallback
+
+
+# --- The soak ---------------------------------------------------------------------------------
+
+# The long run: one server with fake players and a few real clients that join and leave, sampled for hours. See --soak.
+func _run_soak(run: Dictionary) -> Dictionary:
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	var fakes: int = run["fakes"]
+	var bots: int = run["bots"]
+	var seconds: int = run["seconds"]
+	var tag: String = "soak_%df_%db" % [fakes, bots]
+	var port: int = _int_option(args, "--port=", 0)
+	if port <= 0:
+		port = _free_port()
+	var summary: Dictionary = {"tag": tag, "run": run, "port": port, "ok": false}
+	if port < 0:
+		summary["error"] = "no hay ningún puerto UDP libre"
+		return summary
+	var server_report: String = _out_dir.path_join("%s_server.json" % tag)
+	var server_log: String = _out_dir.path_join("%s_server.log" % tag)
+	var series_path: String = _out_dir.path_join("%s_series.json" % tag)
+	DirAccess.remove_absolute(server_report)
+	var server_ticks: int = (seconds + int(SETTLE_SECONDS)) * _tick_rate
+	var server_args := PackedStringArray([
+		"--server", "--port=%d" % port, "--max-players=%d" % (fakes + bots + 8),
+		"--quit-after-ticks=%d" % server_ticks, "--report=%s" % server_report,
+		"--fake-players=%d" % fakes, "--fake-layout=cluster",
+	])
+	if not str(run["zone"]).is_empty():
+		server_args.append("--zone=%s" % run["zone"])
+	print("\n== soak: %d falsos, %d bots que entran y salen, %d s (servidor %d ticks, puerto %d) ==" % [
+		fakes, bots, seconds, server_ticks, port])
+	var server_pid: int = _launch(server_args, server_log)
+	if server_pid <= 0:
+		summary["error"] = "no se pudo lanzar el servidor"
+		return summary
+	if not await _wait_until(func() -> bool:
+		return FileAccess.get_file_as_string(server_log).contains("escuchando en el puerto") \
+				or not OS.is_process_running(server_pid), LISTEN_TIMEOUT_SECONDS):
+		summary["error"] = "el servidor no llegó a escuchar"
+		return summary
+	if not OS.is_process_running(server_pid):
+		summary["error"] = "el servidor se cerró al arrancar (mira %s)" % server_log
+		return summary
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20261106
+	# One slot per client: its process, when it leaves and when it comes back.
+	var slots: Array[Dictionary] = []
+	for index: int in bots:
+		slots.append({"pid": 0, "leave_at": 0.0, "return_at": float(index) * 3.0, "launches": 0})
+	var series: Array[Dictionary] = []
+	var started_msec: int = Time.get_ticks_msec()
+	var next_sample: float = 0.0
+	var last_ticks: int = -1
+	var deadline: float = float(seconds) * SLOW_SERVER_FACTOR + FINISH_MARGIN_SECONDS + SETTLE_SECONDS
+	while OS.is_process_running(server_pid):
+		var now: float = float(Time.get_ticks_msec() - started_msec) / 1000.0
+		if now > deadline:
+			summary["error"] = "el servidor no terminó a tiempo (se mató)"
+			OS.kill(server_pid)
+			break
+		var running: bool = now < float(seconds)
+		for index: int in slots.size():
+			var slot: Dictionary = slots[index]
+			var pid: int = slot["pid"]
+			if pid > 0 and (now >= float(slot["leave_at"]) or not OS.is_process_running(pid)):
+				if OS.is_process_running(pid):
+					OS.kill(pid)
+				slot["pid"] = 0
+				slot["return_at"] = now + float(rng.randi_range(SOAK_BOT_PAUSE_MIN_SECONDS, SOAK_BOT_PAUSE_MAX_SECONDS))
+			elif pid == 0 and running and now >= float(slot["return_at"]):
+				var stay: int = rng.randi_range(SOAK_BOT_MIN_SECONDS, SOAK_BOT_MAX_SECONDS)
+				var launches: int = int(slot["launches"]) + 1
+				slot["launches"] = launches
+				var bot_args := PackedStringArray([
+					"--bots=1", "--connect=127.0.0.1:%d" % port, "--bot-seed=%d" % (1000 * (index + 1) + launches),
+					"--realm=vardheim", "--quit-after-ticks=%d" % ((stay + 5) * _tick_rate),
+				])
+				slot["pid"] = _launch(bot_args, _out_dir.path_join("%s_bot%d.log" % [tag, index]))
+				slot["leave_at"] = now + float(stay)
+		if now >= next_sample:
+			next_sample = now + SOAK_SAMPLE_SECONDS
+			var report: Dictionary = _read_json(server_report)
+			if not report.is_empty() and int(report.get("ticks", 0)) != last_ticks:
+				last_ticks = int(report.get("ticks", 0))
+				series.append(LoadTestSummary.soak_sample(report, now))
+				if series.size() % 30 == 0:
+					print("   soak t=%d s: p99 %d µs, memoria %.1f MB, objetos %d, jugadores %d" % [
+						int(now), series[-1]["p99_us"], float(series[-1]["static_memory"]) / 1048576.0,
+						series[-1]["object_count"], series[-1]["players"]])
+		await create_timer(1.0).timeout
+	for slot: Dictionary in slots:
+		if int(slot["pid"]) > 0 and OS.is_process_running(int(slot["pid"])):
+			OS.kill(int(slot["pid"]))
+	var final_report: Dictionary = _read_json(server_report)
+	if not final_report.is_empty():
+		series.append(LoadTestSummary.soak_sample(final_report, float(Time.get_ticks_msec() - started_msec) / 1000.0))
+	var file: FileAccess = FileAccess.open(series_path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(series, "\t"))
+		file.close()
+	var figures: Dictionary = LoadTestSummary.soak_figures(series)
+	var errors: int = _count_errors(server_log)
+	figures["server_errors"] = errors
+	if errors > 0:
+		(figures["problems"] as PackedStringArray).append("%d error lines in the server log" % errors)
+		figures["criterion_met"] = false
+	figures["series"] = series_path
+	var launches_per_slot: Array[int] = []
+	for slot: Dictionary in slots:
+		launches_per_slot.append(int(slot["launches"]))
+	figures["bot_launches"] = launches_per_slot
+	summary["soak"] = figures
+	summary["criterion_met"] = bool(figures["criterion_met"])
+	summary["ok"] = not summary.has("error") and not series.is_empty()
+	return summary
+
+
+# Lines of ERROR / SCRIPT ERROR / USER ERROR in a server log before it began to shut down (the engine always complains about
+# leaked objects at exit).
+func _count_errors(log_path: String) -> int:
+	var text: String = FileAccess.get_file_as_string(log_path)
+	var cut: int = text.find("Cierre del servidor")
+	if cut >= 0:
+		text = text.substr(0, cut)
+	var count: int = 0
+	for line: String in text.split("\n"):
+		if line.begins_with("ERROR:") or line.begins_with("SCRIPT ERROR:") or line.begins_with("USER ERROR:"):
+			count += 1
+	return count
+
+
+func _soak_lines(summary: Dictionary) -> PackedStringArray:
+	var figures: Dictionary = summary["soak"]
+	var lines := PackedStringArray()
+	lines.append("   Muestras: %d (%d tras el calentamiento de %d s)" % [figures["samples"], figures["judged_samples"],
+			int(LoadTestSummary.SOAK_WARMUP_SECONDS)])
+	if figures.has("p99_drift_percent"):
+		lines.append("   Memoria estática: %+.1f %%   objetos: %+.1f %%   nodos: %+.1f %%" % [
+			figures["static_memory_growth_percent"], figures["object_count_growth_percent"], figures["node_count_growth_percent"]])
+		lines.append("   p99 del tick: %.0f µs -> %.0f µs (%+.1f %%)" % [figures["p99_before_us"], figures["p99_after_us"],
+				figures["p99_drift_percent"]])
+	lines.append("   Expulsiones: %s   errores de física: %s   líneas de error en el log: %s" % [
+		figures.get("kicks", "?"), figures.get("physics_errors", "?"), figures.get("server_errors", "?")])
+	for problem: String in figures["problems"]:
+		lines.append("   FALLO: %s" % problem)
+	lines.append("   Serie: %s   Criterio del soak: %s" % [figures["series"], "cumplido" if summary["criterion_met"] else "NO cumplido"])
+	return lines

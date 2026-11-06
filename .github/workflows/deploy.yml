@@ -175,6 +175,6 @@ jobs:
           set -euo pipefail
           prefix="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/eldmark"
           ssh_opts=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes)
-          scp "${ssh_opts[@]}" platform/deploy/docker-compose.yml platform/deploy/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          scp "${ssh_opts[@]}" platform/deploy/docker-compose.yml platform/deploy/Caddyfile tools/ci/remote_deploy.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
           ssh "${ssh_opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" bash -s -- "$DEPLOY_PATH" "$prefix" "$TAG" deploy \
             < tools/ci/remote_deploy.sh

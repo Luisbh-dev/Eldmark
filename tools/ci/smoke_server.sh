@@ -7,7 +7,9 @@
 #   server_dir  folder of the exported server (eldmark-server.x86_64, run-server.sh, BUILD_ID)
 #   godot       Godot executable that runs the bot from the project sources
 #   port        UDP port (default 26200)
-# Environment: SERVER_CMD replaces "<server_dir>/run-server.sh" (to try the script against the sources).
+# Environment: SERVER_CMD replaces the command that starts the server up to and including the "--" that precedes the
+# game options (to try the script against the sources). The default is the exported binary with --log-file: its standard
+# output is block-buffered when redirected, so the log file (flushed) is what says that the zone is listening.
 #
 # Exit code: 0 if everything checks out, 1 if not.
 set -euo pipefail
@@ -19,11 +21,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="$ROOT/build/smoke"
 rm -rf "$OUT"
 mkdir -p "$OUT"
-SERVER_CMD="${SERVER_CMD:-$SERVER_DIR/run-server.sh}"
+SERVER_CMD="${SERVER_CMD:-$SERVER_DIR/eldmark-server.x86_64 --headless --log-file $OUT/server.log --}"
 
 # shellcheck disable=SC2086
-$SERVER_CMD --zone=vado_gris --port="$PORT" --quit-after-ticks=1500 --report="$OUT/server.json" \
-	> "$OUT/server.log" 2>&1 &
+$SERVER_CMD --server --zone=vado_gris --port="$PORT" --quit-after-ticks=1500 --report="$OUT/server.json" \
+	> "$OUT/server.stdout" 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2> /dev/null || true' EXIT
 

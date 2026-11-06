@@ -327,3 +327,51 @@ func test_fort_arrivals_count_the_real_bots_that_reached_the_fort_before_the_win
 			{"bots": 4, "arrived": 3, "before_window": 2, "last_tick": 3600},
 			"four of siege (the one that is not does not count), three arrive and two before the window (the tick of its start included)")
 	assert_eq(LoadTestSummary.fort_arrivals([], 100), {"bots": 0, "arrived": 0, "before_window": 0, "last_tick": -1})
+
+
+# --- The soak (LoadTestSummary.soak_figures) ---------------------------------------------------
+
+func _soak_series(memory_growth: float, p99_growth: float, kicks: int = 0) -> Array:
+	var series: Array = []
+	for index: int in 120:
+		var progress: float = float(index) / 119.0
+		series.append({
+			"t": float(index) * 10.0 + 300.0, "p99_us": int(2000.0 * (1.0 + p99_growth * progress)),
+			"static_memory": int(100000000.0 * (1.0 + memory_growth * progress)), "object_count": 5000,
+			"node_count": 800, "kicks": kicks, "physics_errors": 0, "players": 48,
+		})
+	return series
+
+
+func test_a_flat_soak_meets_the_criterion() -> void:
+	var figures: Dictionary = LoadTestSummary.soak_figures(_soak_series(0.01, 0.02))
+	assert_true(bool(figures["criterion_met"]), str(figures["problems"]))
+	assert_true(int(figures["judged_samples"]) < 120, "the first 10 minutes are not judged")
+
+
+func test_memory_growth_and_p99_drift_fail_it() -> void:
+	var leak: Dictionary = LoadTestSummary.soak_figures(_soak_series(0.5, 0.0))
+	assert_false(bool(leak["criterion_met"]))
+	assert_true(float(leak["static_memory_growth_percent"]) > 10.0)
+	var slow: Dictionary = LoadTestSummary.soak_figures(_soak_series(0.0, 0.5))
+	assert_false(bool(slow["criterion_met"]))
+	assert_true(float(slow["p99_drift_percent"]) > 10.0)
+
+
+func test_kicks_and_too_short_a_run_fail_it() -> void:
+	assert_false(bool(LoadTestSummary.soak_figures(_soak_series(0.0, 0.0, 2))["criterion_met"]), "kicks")
+	assert_false(bool(LoadTestSummary.soak_figures(_soak_series(0.0, 0.0).slice(0, 20))["criterion_met"]), "too few samples")
+
+
+func test_a_sample_is_read_from_the_server_report() -> void:
+	var report: Dictionary = {"ticks": 600, "players": {"current": 5, "joined_total": 9, "left_total": 4},
+			"strikes": {"kicks_total": 1}, "physics_errors": 2,
+			"metrics": {"sections": {"tick": {"p50": 800, "p99": 1500, "max": 3000}},
+			"process": {"static_memory": 123, "object_count": 45, "node_count": 6, "orphan_node_count": 0}}}
+	var sample: Dictionary = LoadTestSummary.soak_sample(report, 30.0)
+	assert_eq(int(sample["p99_us"]), 1500)
+	assert_eq(int(sample["static_memory"]), 123)
+	assert_eq(int(sample["players"]), 5)
+	assert_eq(int(sample["kicks"]), 1)
+	assert_eq(int(sample["physics_errors"]), 2)
+	assert_true(ServerMetrics.process_figures().has("static_memory"), "the server reports its own memory")

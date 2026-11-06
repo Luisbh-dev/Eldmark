@@ -297,3 +297,92 @@ static func phase_4_figures(server: Dictionary, seconds: float) -> Dictionary:
 		"executions": int(combat.get("executions", 0)),
 		"bled_out": int(combat.get("bled_out", 0)),
 	}
+
+
+# --- Soak (tools/load_test.gd --soak) -------------------------------------------------------------
+
+## Seconds at the start of a soak that are not judged (the zone and the caches warm up).
+const SOAK_WARMUP_SECONDS: float = 600.0
+## Maximum growth of static memory and of the object count after the warm-up, in percent.
+const SOAK_MAX_GROWTH_PERCENT: float = 10.0
+## Maximum drift of the tick p99 between the start and the end of the judged part, in percent.
+const SOAK_MAX_P99_DRIFT_PERCENT: float = 10.0
+## Samples averaged at each end of the judged part, so that one odd sample does not decide.
+const SOAK_EDGE_SAMPLES: int = 6
+
+
+## A sample of the soak out of the server's report (a [method ZoneServer.write_report] dictionary) at second [param t].
+static func soak_sample(report: Dictionary, t: float) -> Dictionary:
+	var metrics: Dictionary = report.get("metrics", {})
+	var tick: Dictionary = (metrics.get("sections", {}) as Dictionary).get("tick", {})
+	var process: Dictionary = metrics.get("process", {})
+	var players: Dictionary = report.get("players", {})
+	var strikes: Dictionary = report.get("strikes", {})
+	return {
+		"t": t,
+		"tick": int(report.get("ticks", 0)),
+		"p50_us": int(tick.get("p50", 0)),
+		"p99_us": int(tick.get("p99", 0)),
+		"max_us": int(tick.get("max", 0)),
+		"static_memory": int(process.get("static_memory", 0)),
+		"object_count": int(process.get("object_count", 0)),
+		"node_count": int(process.get("node_count", 0)),
+		"orphan_node_count": int(process.get("orphan_node_count", 0)),
+		"players": int(players.get("current", 0)),
+		"joined_total": int(players.get("joined_total", 0)),
+		"left_total": int(players.get("left_total", 0)),
+		"kicks": int(strikes.get("kicks_total", 0)),
+		"physics_errors": int(report.get("physics_errors", 0)),
+	}
+
+
+## Judges a soak: [param series] is a list of [method soak_sample]. After [constant SOAK_WARMUP_SECONDS], the growth of
+## static memory and of the object count (from the average of the first samples to that of the last ones) must stay
+## below [constant SOAK_MAX_GROWTH_PERCENT], the drift of the tick p99 below [constant SOAK_MAX_P99_DRIFT_PERCENT],
+## and there must be no kicks and no physics errors. [code]problems[/code] says what failed.
+static func soak_figures(series: Array, warmup_seconds: float = SOAK_WARMUP_SECONDS) -> Dictionary:
+	var judged: Array[Dictionary] = []
+	for sample: Dictionary in series:
+		if float(sample["t"]) >= warmup_seconds:
+			judged.append(sample)
+	var figures: Dictionary = {"samples": series.size(), "judged_samples": judged.size(), "problems": PackedStringArray()}
+	var problems: PackedStringArray = figures["problems"]
+	if judged.size() < 2 * SOAK_EDGE_SAMPLES:
+		problems.append("too few samples after the warm-up (%d)" % judged.size())
+		figures["criterion_met"] = false
+		return figures
+	var edge: int = mini(SOAK_EDGE_SAMPLES, judged.size() / 2)
+	var first: Array = judged.slice(0, edge)
+	var last: Array = judged.slice(judged.size() - edge)
+	for key: String in ["static_memory", "object_count", "node_count"]:
+		var before: float = _average(first, key)
+		var after: float = _average(last, key)
+		var growth: float = 100.0 * (after - before) / before if before > 0.0 else 0.0
+		figures["%s_growth_percent" % key] = growth
+		if key != "node_count" and growth > SOAK_MAX_GROWTH_PERCENT:
+			problems.append("%s grew %.1f %% (limit %.0f %%)" % [key, growth, SOAK_MAX_GROWTH_PERCENT])
+	var p99_before: float = _average(first, "p99_us")
+	var p99_after: float = _average(last, "p99_us")
+	var drift: float = 100.0 * (p99_after - p99_before) / p99_before if p99_before > 0.0 else 0.0
+	figures["p99_before_us"] = p99_before
+	figures["p99_after_us"] = p99_after
+	figures["p99_drift_percent"] = drift
+	if drift > SOAK_MAX_P99_DRIFT_PERCENT:
+		problems.append("the tick p99 drifted %.1f %% (limit %.0f %%)" % [drift, SOAK_MAX_P99_DRIFT_PERCENT])
+	var kicks: int = int((series[series.size() - 1] as Dictionary)["kicks"])
+	var physics_errors: int = int((series[series.size() - 1] as Dictionary)["physics_errors"])
+	figures["kicks"] = kicks
+	figures["physics_errors"] = physics_errors
+	if kicks > 0:
+		problems.append("%d kicks" % kicks)
+	if physics_errors > 0:
+		problems.append("%d physics errors" % physics_errors)
+	figures["criterion_met"] = problems.is_empty()
+	return figures
+
+
+static func _average(samples: Array, key: String) -> float:
+	var total: float = 0.0
+	for sample: Dictionary in samples:
+		total += float(sample[key])
+	return total / float(maxi(samples.size(), 1))

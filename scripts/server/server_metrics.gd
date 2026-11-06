@@ -211,6 +211,19 @@ func summary() -> Dictionary:
 		"kb_in_per_s": _kb_per_second(get_counter(COUNTER_BYTES_IN), seconds),
 		"kb_out_per_s": _kb_per_second(get_counter(COUNTER_BYTES_OUT), seconds),
 		"substituted_percent": get_substituted_percent(),
+		"process": process_figures(),
+	}
+
+
+## Memory and object figures of THIS process, for the soak test (tools/load_test.gd --soak): a leak shows as these
+## growing without the player count growing. [code]static_memory[/code] is in bytes.
+static func process_figures() -> Dictionary:
+	return {
+		"static_memory": int(Performance.get_monitor(Performance.MEMORY_STATIC)),
+		"object_count": int(Performance.get_monitor(Performance.OBJECT_COUNT)),
+		"node_count": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+		"orphan_node_count": int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)),
+		"resource_count": int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)),
 	}
 
 
