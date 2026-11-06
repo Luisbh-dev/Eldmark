@@ -181,7 +181,7 @@ jobs:
         timeout-minutes: 6
         run: |
           ulimit -c 0 || true
-          tools/ci/server_exit_diag.sh exports/server 26210 | tee -a "$GITHUB_STEP_SUMMARY"
+          tools/ci/server_exit_diag.sh exports/server "$HOME/godot/${GODOT_FILE}" 26210 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke test
         timeout-minutes: 8

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Diagnostic (TEC-12): how the EXPORTED server ends in several ways, to tell a crash at exit from a crash while running.
-# Usage: tools/ci/server_exit_diag.sh <server_dir> [port]
+# Usage: tools/ci/server_exit_diag.sh <server_dir> <godot> [port]
 # It only prints; it always exits 0.
 set -u
 
 SERVER_DIR="${1:?server_dir}"
-PORT="${2:-26210}"
+GODOT="${2:?godot}"
+PORT="${3:-26210}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="$ROOT/build/exit-diag"
 rm -rf "$OUT"
@@ -32,4 +33,20 @@ touch_stop &
 	> "$OUT/stopfile.stdout" 2>&1
 echo "stopfile: exit code $?"
 tail -n 3 "$OUT/quit300.stdout" | cut -c1-200
+
+# With a SwarmBot connected (the case that crashed in the smoke test).
+with_bot() { # name, server options...
+	local name="$1"
+	shift
+	"$BIN" --headless -- --server --zone=vado_gris --port="$PORT" --quit-after-ticks=1500 "$@" > "$OUT/$name.stdout" 2>&1 &
+	local pid=$!
+	sleep 12
+	"$GODOT" --headless --path "$ROOT" -- --bots=1 --connect="127.0.0.1:$PORT" --bot-seed=1 --quit-after-ticks=300 		> "$OUT/$name.swarm.log" 2>&1
+	echo "$name: swarm exit code $?"
+	wait "$pid"
+	echo "$name: server exit code $?"
+}
+with_bot bot_default
+with_bot bot_nonpcs --no-npcs --no-dummies
+with_bot bot_report --report="$OUT/bot_report.json"
 exit 0
