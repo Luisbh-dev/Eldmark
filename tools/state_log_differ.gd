@@ -5,12 +5,18 @@ extends RefCounted
 ## looks for floating point drift between platforms: each line is [code]tick,net_id,substituted,hex(state)[/code]
 ## and the lines are matched by [code](tick, net_id)[/code].
 ## [br][br]
-## The encoded state is read as 32-bit words. A line that differs is [b]last bit[/b] if every word that
-## differs is at most one unit apart as an integer (for a float32 that is one ULP, the rounding noise of a different
-## libm or instruction mix); otherwise it is a [b]larger[/b] difference. An integer field that differs by one is
-## counted as last bit as well: the figure is an upper bound of the rounding noise.
+## The encoded state is read as 32-bit words and the distance of a word is the difference of its bits as an integer
+## (for a float32 of the same sign that is the number of ULPs). The distance of a line is its largest word distance:
+## [br]- [b]last bit[/b]: 1 (the rounding noise of a different libm or instruction mix);
+## [br]- [b]drift[/b]: 2 to [constant DRIFT_MAX_ULPS] (that noise integrated over a few ticks);
+## [br]- [b]larger[/b]: beyond that (a discrete decision went the other way: a hit, a state change).
+## An integer field that differs by one counts as last bit as well: the figures are upper bounds of the rounding noise.
+## Once a player diverges it stays diverged (the error feeds the next tick), so the report also gives, for each player,
+## the tick of its FIRST difference and how big it was: that is the real measure of how often the platforms disagree.
 
 const MAX_LISTED: int = 10
+## Largest distance that still counts as drift.
+const DRIFT_MAX_ULPS: int = 16
 
 
 class Result:
@@ -21,6 +27,7 @@ class Result:
 	var compared: int = 0
 	var identical: int = 0
 	var last_bit: int = 0
+	var drift: int = 0
 	var larger: int = 0
 	## Lines that exist in one log and not in the other.
 	var unpaired: int = 0
@@ -29,9 +36,24 @@ class Result:
 	## First tick with a larger difference, -1 if none.
 	var first_larger_tick: int = -1
 	var listed: Array[String] = []
+	## Players that ever differ, and of those, how many started with a last-bit difference.
+	var players_total: int = 0
+	var players_diverged: int = 0
+	var players_diverged_by_last_bit: int = 0
+	## "net_id N: tick T, D ulps" for each player that diverged.
+	var first_divergences: Array[String] = []
 
-	func is_ok() -> bool:
-		return error.is_empty() and larger == 0 and unpaired == 0
+	## true if the logs could be compared line by line (no error, nothing in only one of them).
+	func is_comparable() -> bool:
+		return error.is_empty() and unpaired == 0
+
+	## true if the logs are the same bit for bit.
+	func is_exact() -> bool:
+		return is_comparable() and last_bit == 0 and drift == 0 and larger == 0
+
+	## Fraction of the compared lines that differ at all.
+	func difference_rate() -> float:
+		return 0.0 if compared == 0 else float(last_bit + drift + larger) / float(compared)
 
 	## Fraction of the compared lines that differ in the last bit only.
 	func last_bit_rate() -> float:
@@ -44,14 +66,18 @@ class Result:
 		lines.append("State log diff (A against B)")
 		lines.append("  Lines compared ................ %d" % compared)
 		lines.append("  Identical ..................... %d" % identical)
-		lines.append("  Last-bit differences .......... %d (%.4f%%)" % [last_bit, last_bit_rate() * 100.0])
+		lines.append("  Last-bit differences (1 ulp) . %d (%.4f%%)" % [last_bit, last_bit_rate() * 100.0])
+		lines.append("  Drift (2 to %d ulps) .......... %d" % [DRIFT_MAX_ULPS, drift])
 		lines.append("  Larger differences ............ %d" % larger)
+		lines.append("  Lines that differ ............. %.4f%%" % (difference_rate() * 100.0))
 		lines.append("  Lines in only one log ......... %d" % unpaired)
 		lines.append("  First difference at tick ...... %d" % first_difference_tick)
 		lines.append("  First larger difference at .... %d" % first_larger_tick)
-		for entry: String in listed:
+		lines.append("  Players that diverge .......... %d of %d (%d of them started with a last-bit difference)" % [
+				players_diverged, players_total, players_diverged_by_last_bit])
+		for entry: String in first_divergences:
 			lines.append("    " + entry)
-		lines.append("Result: %s" % ("OK (at most last-bit noise)" if is_ok() else "DIFFERENCES"))
+		lines.append("Result: %s" % ("IDENTICAL" if is_exact() else ("COMPARED, THEY DIFFER" if is_comparable() else "NOT COMPARABLE")))
 		return "\n".join(lines)
 
 
@@ -73,6 +99,8 @@ static func compare_texts(text_a: String, text_b: String) -> Result:
 		result.error = "a log has no lines"
 		return result
 	var keys: Array = a.keys()
+	keys.sort_custom(func(left: String, right: String) -> bool: return _tick_of(left) < _tick_of(right))
+	var players: Dictionary = {}
 	for key: Variant in keys:
 		if not b.has(key):
 			result.unpaired += 1
@@ -83,20 +111,33 @@ static func compare_texts(text_a: String, text_b: String) -> Result:
 		if state_a == state_b:
 			result.identical += 1
 			continue
-		var tick: int = int(str(key).get_slice(":", 0))
+		var tick: int = _tick_of(str(key))
+		var net_id: String = str(key).get_slice(":", 1)
+		var distance: int = _distance(state_a, state_b)
 		if result.first_difference_tick < 0 or tick < result.first_difference_tick:
 			result.first_difference_tick = tick
-		if _only_last_bit(state_a, state_b):
+		if distance <= 1:
 			result.last_bit += 1
+		elif distance <= DRIFT_MAX_ULPS:
+			result.drift += 1
 		else:
 			result.larger += 1
 			if result.first_larger_tick < 0 or tick < result.first_larger_tick:
 				result.first_larger_tick = tick
-			if result.listed.size() < MAX_LISTED:
-				result.listed.append("tick %d net_id %s" % [tick, str(key).get_slice(":", 1)])
+		if not players.has(net_id):
+			players[net_id] = true
+			result.players_diverged += 1
+			if distance <= 1:
+				result.players_diverged_by_last_bit += 1
+			if result.first_divergences.size() < MAX_LISTED * 2:
+				result.first_divergences.append("net_id %s: tick %d, %d ulps" % [net_id, tick, distance])
 	for key: Variant in b.keys():
 		if not a.has(key):
 			result.unpaired += 1
+	var ids: Dictionary = {}
+	for key: Variant in a.keys():
+		ids[str(key).get_slice(":", 1)] = true
+	result.players_total = ids.size()
 	return result
 
 
@@ -110,23 +151,27 @@ static func _index(text: String) -> Dictionary:
 	return lines
 
 
-## true if the two hexadecimal states have the same length and every 32-bit word that differs is one unit apart.
-static func _only_last_bit(hex_a: String, hex_b: String) -> bool:
-	if hex_a.length() != hex_b.length() or hex_a.length() % 8 != 0:
-		return false
+## The largest distance between the 32-bit words of two hexadecimal states; a different length is infinite.
+static func _distance(hex_a: String, hex_b: String) -> int:
+	if hex_a.length() != hex_b.length() or hex_a.length() % 2 != 0:
+		return 1 << 40
+	var largest: int = 0
 	for offset: int in range(0, hex_a.length(), 8):
 		var word_a: String = hex_a.substr(offset, 8)
 		var word_b: String = hex_b.substr(offset, 8)
-		if word_a == word_b:
-			continue
-		if absi(_word(word_a) - _word(word_b)) > 1:
-			return false
-	return true
+		if word_a != word_b:
+			largest = maxi(largest, absi(_word(word_a) - _word(word_b)))
+	return largest
 
 
-## The 32-bit word as the integer of its little-endian bytes (the encoding is little-endian).
+static func _tick_of(key: String) -> int:
+	return int(key.get_slice(":", 0))
+
+
+## The word (up to four bytes; the last one of a state may be shorter) as the integer of its little-endian bytes.
 static func _word(hex: String) -> int:
 	var bytes: PackedByteArray = hex.hex_decode()
-	if bytes.size() != 4:
-		return 0
-	return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)
+	var value: int = 0
+	for index: int in bytes.size():
+		value |= bytes[index] << (8 * index)
+	return value
