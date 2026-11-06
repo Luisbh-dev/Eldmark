@@ -26,6 +26,7 @@ fi
 mkdir -p "$RUN_DIR"
 rm -f "$STOP_FILE" "$REPORT"
 
+# shellcheck disable=SC2329 # invoked by the trap below
 request_stop() {
 	echo "[entrypoint] signal received: asking the zone for an orderly shutdown"
 	: > "$STOP_FILE"
