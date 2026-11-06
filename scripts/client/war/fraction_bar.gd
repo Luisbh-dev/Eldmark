@@ -23,6 +23,8 @@ var text: String = "":
 		queue_redraw()
 ## Font size of the text.
 var font_size: int = 13
+## Thickness (px) of the dark outline around the text; thicker where the text sits on a bright fill.
+var outline_size: int = 3
 
 var _fraction: float = 0.0
 
@@ -57,5 +59,5 @@ func _draw() -> void:
 	var text_size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size)
 	var baseline := Vector2((size.x - text_size.x) * 0.5,
 			(size.y + font.get_ascent(font_size) - font.get_descent(font_size)) * 0.5)
-	draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, 3, TEXT_OUTLINE)
+	draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, outline_size, TEXT_OUTLINE)
 	draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, TEXT_COLOR)

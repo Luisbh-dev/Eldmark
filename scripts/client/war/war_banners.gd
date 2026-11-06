@@ -32,6 +32,11 @@ const BIG_EVENTS: Array[int] = [
 	WarEvents.CAPTAIN_DOWN, WarEvents.GATE_BROKEN, WarEvents.FORT_CAPTURED, WarEvents.FORT_RESET,
 ]
 
+## Notices about the state of a fort that a later capture or reset makes obsolete.
+const STALE_EVENTS: Array[int] = [
+	WarEvents.CAPTURE_STARTED, WarEvents.CAPTURE_CONTESTED, WarEvents.GATE_BROKEN, WarEvents.UNDER_ATTACK,
+]
+
 var _client: NetClient = null
 var _view: FortressView = null
 var _band: PanelContainer = null
@@ -79,8 +84,12 @@ func show_war_event(event: NetMessages.EntityEvent) -> String:
 		if definition != null:
 			fortress_name = definition.display_name
 	var text: String = WarEvents.text(event.war_event, event.war_realm, fortress_name)
+	# A capture or a reset leaves the older notices of that fort about its capture or its gate meaningless
+	# (the panel already shows the new state), so they leave the queue before the new one comes in.
+	if event.war_event == WarEvents.FORT_CAPTURED or event.war_event == WarEvents.FORT_RESET:
+		discard_stale(event.net_id)
 	add_banner(text, color_for(event.war_event, event.war_realm), BIG_EVENTS.has(event.war_event),
-			emblem_for(event.war_event, event.war_realm))
+			emblem_for(event.war_event, event.war_realm), event.net_id, event.war_event)
 	return text
 
 
@@ -100,8 +109,10 @@ static func emblem_for(war_event: int, realm: int) -> Texture2D:
 
 
 ## Queues a banner with [param text] in color [param color]; [param big] makes it big and longer.
-## [param emblem] is the emblem it carries on its sides (optional).
-func add_banner(text: String, color: Color, big: bool = false, emblem: Texture2D = null) -> void:
+## [param emblem] is the emblem it carries on its sides (optional). [param fort_id] and [param war_event] say which
+## fort and which notice it is, so that [method discard_stale] can find it (-1 and 0: unknown, never discarded).
+func add_banner(text: String, color: Color, big: bool = false, emblem: Texture2D = null, fort_id: int = -1,
+		war_event: int = 0) -> void:
 	_ensure_built()
 	if text.is_empty():
 		return
@@ -109,8 +120,22 @@ func add_banner(text: String, color: Color, big: bool = false, emblem: Texture2D
 		# The oldest one not yet visible is dropped: the visible notice is not cut halfway.
 		_banners.remove_at(1 if _banners.size() > 1 else 0)
 	_banners.append({"left": BIG_SECONDS if big else NORMAL_SECONDS, "text": text, "big": big,
-			"color": color, "emblem": emblem})
+			"color": color, "emblem": emblem, "fort": fort_id, "event": war_event})
 	_refresh_view()
+
+
+## Drops the waiting notices of fort [param fort_id] that a capture or a reset has left without meaning
+## ([constant STALE_EVENTS]). The one on screen stays: it is not cut halfway. Returns how many were dropped.
+func discard_stale(fort_id: int) -> int:
+	var dropped: int = 0
+	var index: int = _banners.size() - 1
+	while index >= 1:
+		var banner: Dictionary = _banners[index]
+		if int(banner["fort"]) == fort_id and STALE_EVENTS.has(int(banner["event"])):
+			_banners.remove_at(index)
+			dropped += 1
+		index -= 1
+	return dropped
 
 
 ## Advances [param delta] seconds: only the time of the notice on screen runs; when it ends, the next one comes in.

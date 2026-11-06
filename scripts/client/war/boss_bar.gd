@@ -137,6 +137,13 @@ func get_health_fraction() -> float:
 	return _bar.get_fraction() if _bar != null else 0.0
 
 
+## Screen rectangle taken by the name and the bar (empty while the bar is not visible).
+func get_bar_rect() -> Rect2:
+	if not visible or _bar == null or not is_inside_tree():
+		return Rect2()
+	return (_bar.get_parent() as Control).get_global_rect()
+
+
 func _hide() -> void:
 	_shown_id = 0
 	visible = false
