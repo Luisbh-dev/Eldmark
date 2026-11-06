@@ -5,6 +5,10 @@
 > - **Skeleton in the Bestiary.** "Skeletons" only appears as a tag. The quaternius.com page says "7 Monsters" without naming them ([itch](https://quaternius.itch.io/bestiary-dungeon-monsters-kit), [quaternius.com](https://quaternius.com/packs/bestiarydungeonmonsterskit.html)).
 >
 > I have not downloaded anything. Downloads from itch.io have to be done by a person, by hand.
+>
+> **Phases 6-8 (level 60 content):** the decisions on equipment sets, weapon models, quadrupeds, grass, biomes and the dungeon and wall
+> kits are in [6](#6-phases-6-8-equipment-weapons-and-creatures) and [7](#7-phases-6-8-world-art). They keep to free packs and our own
+> Blender scripts: no paid packs and no generative AI.
 
 ---
 
@@ -109,7 +113,7 @@ Anything marked "QAL" or "not CC0" is flagged. Everything else is CC0 1.0.
 - **License:** **QAL v1.0** (2026-08-28), at https://quaternius.com/license.html. It allows commercial use and selling the game without attribution. Section 3(a) **forbids redistributing the loose files**. Note: the quaternius.com FAQ says "everything is CC0", which contradicts this license.
 - **Contents:** 7 monsters with weapons and 3 colors each, on the UAL-compatible rig. No animations.
 - **Condition:** download it and check whether the Standard includes a skeleton. If it does, it works for the Hollow (4 guards and the Captain in a different color). If not, apply plan B from section 4.8.
-- **In the repo:** `assets/models/enemies/bestiary/`. This is fine while the repo is private. If it is made public, it must be removed before the repo goes public.
+- **In the repo:** `assets/models/enemies/bestiary/`. The repo is public since 2026-11-05, so this pack **must not be used** (see [6.4](#64-quadruped-rigs-pending-p4)).
 
 **7. Medieval Village MegaKit, Standard**
 - **Author:** Quaternius
@@ -438,3 +442,127 @@ The first piece of final art made in-house (ART-06), and the template for the fo
 - **Packs discarded by the research:** EmaceArt (contradictory license), Avraman (files withdrawn over license), Cenji (paid and not CC0; unverified), Gobkit (AI provenance), poly.pizza (mixed styles), Ultimate Fantasy RTS (RTS scale and no textures) and Explosive LLC RPG Animations (unstable version 0.1.0).
 
 Sources for the new check: [UAL1 on itch](https://quaternius.itch.io/universal-animation-library), [Bestiary on itch](https://quaternius.itch.io/bestiary-dungeon-monsters-kit) and [Bestiary on quaternius.com](https://quaternius.com/packs/bestiarydungeonmonsterskit.html). The rest of the data comes from the verified research I received.
+
+---
+
+## 6. Phases 6-8: equipment, weapons and creatures
+
+Decisions of the level 60 content design. They add to sections 1-5 and change none of them, except where a note says so.
+
+| # | Decision | Why |
+|---|---|---|
+| A1 | **No paid packs and no generative AI.** Everything comes from the free CC0 packs already listed, from Blender scripts and from numpy textures made in the repo. What we make is CC BY 4.0 | The knight and mage outfits and the Village Source are paid; the project is open source and the free versions are enough with scripted pieces |
+| A2 | **Light and medium armor come from Peasant and Ranger with a mask shader;** heavy plate is **our own rigid meshes** weighted to one bone | The free outfits give two body-modular sets; plate does not exist in any free pack |
+| A3 | **Three visual grades** per armor category, a catalog that only grows, and no leak of rarity or affixes through the look | Players read the category and the band of an RvR rival, never the quality |
+| A4 | **Weapon models by Blender script** with a realm variant each and a `WeaponVisualDefinition` | Section 4.9 is the template; the realm reads from the blade |
+| A5 | **Two-handed weapons use left-hand IK** over one-handed clips, plus our own pose clip tool; KayKit Free is a trial with a gate | The free animation libraries have no two-handed, spear or crossbow clips |
+| A6 | **Quadrupeds have our own Blender rigs** (small and large), with placeholders until then (pending decision P4) | The Quaternius Bestiary is QAL and cannot be redistributed in a public repo |
+
+### 6.1 Equipment visual sets per realm
+
+What is free (CC0, already downloaded in `../Eldmark-raw/`):
+
+| Pack | Pieces that help | What for |
+|---|---|---|
+| Modular Character Outfits - Fantasy (Standard) | **Ranger:** hood, body, arms, legs, boots and shoulder pad. **Peasant:** body, arms, legs and feet. Each in male and female, with 3 texture variants | Light: Peasant with the Ranger hood. Medium: Ranger with the shoulder pad. The realm's "no armor" (tinted Peasant). The inner layer of heavy |
+| Universal Base Characters (Standard) | 2 bodies and 5 hairstyles | The base body (the female one is still missing in the repo, ART-20) |
+| RPG Weapons Free (Binbun) | 70 weapons, including pick, hatchet and dagger | Tools (pick and hatchet) and the gatherer's knife |
+| Stylized Nature MegaKit (Standard) | Rocks, trees, ferns and plants | Gathering nodes: veins are rocks with inlays made by script; felling trees and plants, recolored |
+| game-icons.net (CC BY 3.0; credit per author; two authors are CC0) | 4 180 SVG icons | Icons of materials, consumables, gems and jewels, with the credits file that its license asks for (not the two `various-artists` ones) |
+
+What we make in Blender by script, in the flow of [4.9](#49-custom-modeling-with-blender-the-sword):
+
+| Piece | Quantity | How |
+|---|---|---|
+| Heavy plate: helmet, breastplate with pauldrons, gauntlets, greaves and sabatons | 5 types × 3 realms × 3 visual grades = **45 meshes** | Rigid, **weighted 1 to a single bone** and not as `BoneAttachment`, so they can be merged with the rest of the character (ART-35). Silhouette per realm: nasal helm with a wolf crest (Vardheim), great helm with a sun visor (Solmarch), sallet with a bronze crest (Askarra). Numpy textures (`tools/blender/*_textures.py`) |
+| Leather cap for medium | 3 grades | Same |
+| Trims per grade (rivets, edges, emblem of wolf, sun or anvil) | About 12 | Small rigid pieces |
+| Icons of armor and weapons | One per `visual_id` | A tool that renders thumbnails in Godot (`tools/icons/bake_item_icons.gd`), no AI (ART-75) |
+
+- **Three visual grades** per category: **I** (item level 1-20) is only a recolor; **II** (21-40) adds trims and a second color;
+  **III** (41-60) adds the realm emblem and metal detail, with a faint emissive in Askarra. Light and medium armor are made **with the
+  shader and masks** from the base texture (like `realm_surface`, [4.4](#44-recoloring-per-realm)), with no new textures per realm and
+  grade. Heavy carries its meshes.
+- **The category is told at a glance** (cloth, leather or plate): in RvR it matters to know if a rival is heavy. The look never reveals
+  rarity or affixes; it does reveal the level band approximately, through the grade.
+- **Catalog:** `data/items/visuals/armor_visual_catalog.tres`, append-only and frozen by `armor_visual_ids.txt`. Each entry carries id,
+  slot, category, visual grade, the scene per body and per realm, its layers, `hides_hair` and `hides_beard`.
+  `ItemDefinition.visual_id` replaces `visual_paths`, which becomes obsolete.
+- Realm guards and bandits ([npcs.md](npcs.md)) can wear the same sets. Items: ART-73 (heavy plate), ART-74 (light and medium with the
+  realm mask shader), ART-76 (gathering tools and nodes), ART-80 (named NPCs of Hondal and Isenholm).
+
+### 6.2 Weapon models and `WeaponVisualDefinition`
+
+Every weapon is modeled by a Blender script with the conventions of [4.9](#49-custom-modeling-with-blender-the-sword) (origin at the grip,
+`TrailBase` and `TrailTip`, two LODs) and **one variant per realm**: they share the geometry and the UVs and differ in the texture and
+the hilt pieces, so that the realm reads from the game camera. The first ones are the hatchet and the life staff (ART-66); the rest
+of the catalog (fire staff, crossbow, frost gauntlet, war hammer, greatsword, spear) follows ART-67 in the order the weapons arrive.
+
+`WeaponVisualDefinition` (ART-65, `data/weapons/visuals/<weapon>.tres`, client only) gathers per weapon: the model per realm, the
+grip offset and rotation in the hand, the left-hand marker for two-handed weapons, the stance (idle pose and sheathing), the trail
+markers and the LOD ranges. `WeaponProps` reads it instead of constants per weapon. The server never loads it.
+
+### 6.3 Two-handed grips, the pose clip tool and the KayKit gate
+
+- **Left-hand IK (ART-68).** Greatsword, hammer, spear and staves use a `GripLeft` marker on the model; the left hand follows it with an
+  IK modifier on top of one-handed clips, and the stance of each weapon (feet, guard, idle) is one pose per weapon.
+- **Own pose clip tool (ART-69).** The free libraries (UAL1, UAL2) have no two-handed, spear or crossbow attacks. A script-driven tool
+  builds clips from key poses (bone rotations stored as text) and exports `Animation` resources, so the missing ones can be made and
+  reviewed in a diff.
+- **KayKit Free retarget trial (ART-70, phase 6).** A trial of retargeting 3-5 KayKit clips (block impact, directional dodge, bow) onto
+  the UAL rig. **Gate:** the user's eye approves the result on the first weapon before more clips are retargeted; if it does not
+  look right, the pose tool above covers the weapon. Mixamo stays a last resort ([5](#5-what-i-do-not-recommend-and-why)).
+- VFX of magic, area decals and warnings: ART-71; ability icons and specialization emblems: ART-72; ultimate VFX: ART-85.
+
+### 6.4 Quadruped rigs (pending P4)
+
+- **Two own skeletons** made in Blender by script: a **small** one (wolf, boar, deer) and a **large** one (bear), CC BY 4.0, with the
+  clips rest, walk, run, bite, leap or charge, hurt, die and howl. They are the part of the bestiary art with no free package (ART-78).
+- **Placeholders** in the meantime: bodies of capsules colored by family with transforms by state, in the bestiary gallery; they block
+  no code and no test (ART-77).
+- **The Quaternius Bestiary - Dungeon Monsters Kit is under the QAL license** (section 3(a) forbids redistributing the loose files),
+  which is not compatible with a public repository. This corrects the note of [2](#2-recommended-download-list), item 6: it must not
+  be imported, and anything of it that was imported is removed. The Hollow use the human skeleton instead (plan B of [4.8](#48-risks-and-gaps)).
+- Spiders, scorpions and fliers are out of the launch (no free skeletons). The wandering embers are a simple mesh with particles.
+- This is **pending the user's decision P4**: own rigs, with the animation strips approved before the second one is made, or a CC0 animal
+  pack even if it clashes with the style. The recommendation is our own.
+
+## 7. Phases 6-8: world art
+
+### 7.1 Client-side grass (ART-81)
+
+`GrassField` (`scripts/client/world/grass_field.gd`) generates the grass around the camera from the Terrain3D control map and height,
+without saving instances: grass was most of the 2.6 MB of a region and has no collision. It reuses the custom `grass_blade.gdshader`
+and its variants per zone, is drawn up to about 48 m and shares the wind shader. Only the client has it; the server needs nothing.
+
+### 7.2 Biome profiles
+
+**Four or five profiles per realm** (ART-24, ART-38, ART-42, ART-43), plus the Eldrun profile and the dungeon interior. Zones that share
+a profile share its cost.
+
+| Realm | Profiles |
+|---|---|
+| Vardheim | Pine valley with farms (Hondal; burnt-pine variant in Wolf March), fjord and wrecks (Skarven), tundra and mounds (Grimfell), glacier (Hrimvald Glacier) |
+| Solmarch | Vineyards and fields (Amber Fields, Penitent Plains), deciduous forest and abbeys (Lirien Forest), corrupted marsh (Morvel Marsh), limestone heights and quarries (Vaucelle Heights) |
+| Askarra | Oasis and irrigated land (Thal Oasis), canyons and mines (Ruhn Canyons), volcanic fields (Ash Waste, Ossar Forges), salt flats and glass dunes (Qesh Salt Flats) |
+
+### 7.3 Own vegetation and rocks (ART-84)
+
+The free Stylized Nature MegaKit has 68 models: 5 pines, 5 common trees, 5 dead, 5 twisted, 3 medium rocks, bushes, ferns, flowers and
+stones. It has **no palms, acacias, willows, birches, vines or cliffs**, so Solmarch and Askarra need their own: palm, acacia, agave,
+vine trellis, willow, rocks and cliffs, made in Blender by script (CC BY 4.0). Vardheim covers most of its needs with the pack. Askarra
+is built last because it needs the most.
+
+### 7.4 The Eld dungeon interior kit (ART-83)
+
+An interior kit on top of the Eld kit of ART-31, for the six shared dungeons: corridors, round-arch halls, stairs, sarcophagi and
+ossuaries (D1), aqueduct channels (D2), archive shelves (D3), forge pits (D4), rift caverns (D5) and the throne chamber (D6). It uses
+`LightmapGI` in interiors, a budget of 1200 draw calls and 1.5 M primitives per instance ([world.md](world.md#11-performance-budget-per-zone)),
+and the entrances of each realm use that realm's kit (mound, abbey crypt, mine shaft).
+
+### 7.5 The frontier wall kit (ART-82)
+
+The wall of the front is a kit **shared by two zones**: the same pieces form the inner face in the border and the outer face in Eldrun.
+Vardheim and Solmarch already have a tower and a gate body in `scenes/world/props/walls/`; **Askarra's Bronze Belt** (reinforced
+sandstone) is missing. The fit to the terrain reuses what ART-61 did for the Vado Gris, and the outer stretches of the wall toward the
+sea, the desert or the mountain are scenery in the non-playable ring ([world.md](world.md#66-border-zones-wall-and-gates)).

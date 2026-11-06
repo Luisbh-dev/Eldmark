@@ -1,5 +1,12 @@
 # Eldmark · Phase 5: progression design
 
+> **Phases 6-8 supersede parts of this document.** The level cap of 40 and the XP sources of phase 5 (§6.1, §6.2), the rule that level
+> changes nothing (§0), the 7-slot equipment (§4.1) and the currencies and reason codes (§5) are extended by
+> [advancement.md](advancement.md) (curve 1-60, XP, attributes, mastery, talents, specializations, normalization, persistence of the
+> build) and [items.md](items.md) (11 slots, item level, rarity and affixes, loot, durability, professions, economy). This file stays
+> the **single registry** of currencies, containers, ledger reasons, `ref_kind` and operation kinds (§4.1, §5.1, §5.3); the phase 5 text
+> that is replaced is marked "historical" where it appears.
+
 Design of what is saved for a character and what is played with it, in step 5 of the
 [roadmap](vision.md#roadmap): items (PRG-02), what is saved and its invariants (PRG-10),
 authoritative inventory (PRG-11), currencies and ledger (PRG-12), levels (PRG-13), races (PRG-14),
@@ -37,12 +44,13 @@ rewards, caps). The ones from the backlog recommendation and those left by the r
 | Currencies and bank per character or per account? | **Per character** (§5) |
 | Spendable merits and realm points separate? | **Two counters with the same event** (fortress.md §0): spendable merits (currency) and realm points, which only go down when reverting the merits that gave them (I9) |
 | Who gets XP and credit without target selection? | **Contribution**: everyone who deals ≥ 10 % of the damage in the last 900 ticks (`DamageLedger`, GUE-05), with a personal reward (§6) |
-| Does level change stats in phase 5? | **No.** The base sheet is the same at any level until the PvE zone (PRG-22) and Eldrun normalization (PRG-31) enable it. Vado Gris is the only zone and it is RvR |
-| What equipment is there in phase 5? | **The two weapons and the potions.** Armors, `StatBlock` and the derived sheet wait for PRG-01 and PRG-06, as in abilities.md §9. Equipment slots 2–6 exist and are reserved. *Provisional, made overnight* |
+| Level cap | **40**, provisional (§6.1). **Superseded in phases 6-8: 60**, with a generated curve of about 50 h ([advancement.md](advancement.md) §1) |
+| Does level change stats in phase 5? | **No.** The base sheet is the same at any level until the PvE zone (PRG-22) and Eldrun normalization (PRG-31) enable it. Vado Gris is the only zone and it is RvR. **Superseded in phases 6-8:** level changes base health, ability slots, talent rows and specialization ranks, and the normalized zones read level 60 ([advancement.md](advancement.md) §3, §4, §10) |
+| What equipment is there in phase 5? | **The two weapons and the potions.** Armors, `StatBlock` and the derived sheet wait for PRG-01 and PRG-06, as in abilities.md §9. Equipment slots 2–6 exist and are reserved. *Provisional, made overnight*. **Superseded in phases 6-8:** 11 slots, three armor categories with load, item level and rarity ([items.md](items.md) §2-§5) |
 | Gold unit | A single integer, "gold", with no silver or copper |
 | Can you equip in combat? | No: equip and unequip only out of combat and with no action in progress. Switching between the two weapons (Q, CMB-24) does work in combat |
 | Phase 4 templates (PRG-07) | They become the **starter kit** (§2.5). The template is chosen **at creation** of the character (UI-24, platform.md §4.4) and is the kit of the first entry |
-| Potions (PRG-08) | Stackable, bound items. The `CombatState` charges are the potions in the bag (cap 15). The camp refills the **total** to 3 health and 2 stamina, the squire's charges (§4.4) |
+| Potions (PRG-08) | Stackable, bound items. The `CombatState` charges are the potions in the bag (cap 15). The camp refills the **total** to 3 health and 2 stamina, the squire's charges (§4.4). *In phases 6-8 the T potion becomes the tonic (+400 stamina and +300 mana) and charges are per potion family: [items.md](items.md) §12* |
 | Who owns CMB-30? Does time run offline? | **This document** (§8). **Yes**: long cooldowns are saved with their end in UTC. In phase 5 only `/atascado` (stuck) reaches 30 s. *Provisional, made overnight* |
 | Loading, saving and idempotency | **Those of platform.md**: progress is the `progress` section of `CharacterSaver`, arrives in the claim before WELCOME and each save is applied once per `(lease_id, seq)` (platform.md §5.2 and §7; here, §9) |
 | Position and health | They go in the record of §3.4; the rule for returning to the world is that of §8. In the RvR zones (all of those in phase 5) you return to the realm camp |
@@ -51,7 +59,9 @@ rewards, caps). The ones from the backlog recommendation and those left by the r
 
 The following remain **pending** (phase 6) and the model admits any answer: binding rules (the field
 exists; starter items are bound), death penalty (durability exists and does not drop in
-phase 5), format of the design data (in phase 5, hand-written `.tres`) and level in Eldrun.
+phase 5), format of the design data (in phase 5, hand-written `.tres`) and level in Eldrun. **Closed in phases 6-8:** binding and the death
+penalty in [items.md](items.md) §0 (I38, I39), the data format (CSV and generator) in [advancement.md](advancement.md) §0 (I64) and the
+Eldrun entry (level 20) and normalization in [advancement.md](advancement.md) §10.
 `vision.md` ("To be defined: races") is updated on integration.
 
 ## 1. Who owns what
@@ -397,7 +407,10 @@ rejects the record.
 | Container | Slots | Rules |
 |---|---|---|
 | 0 BAG | `bag_slots` (30; cap 120) | Any item; stacks merge |
-| 1 EQUIPMENT | 7: 0 WEAPON_1, 1 WEAPON_2; 2 HEAD, 3 CHEST, 4 HANDS, 5 LEGS, 6 FEET reserved | One weapon per slot; in phase 5 slots 2–6 give CANNOT_EQUIP |
+| 1 EQUIPMENT | Phase 5: 7 (0 WEAPON_1, 1 WEAPON_2; 2 HEAD, 3 CHEST, 4 HANDS, 5 LEGS, 6 FEET reserved). **Phases 6-8: 11** (adds 7 AMULET, 8 and 9 RING, 10 EARRING; 11 TABARD reserved) | One definition of its `EquipSlot` per slot; in phase 5 slots 2–6 give CANNOT_EQUIP ([items.md](items.md) §2) |
+| 2 BANK | 40 base, +10 per purchase up to 120 | Phase 6+; reserved ([items.md](items.md) §14) |
+| 3 LOOT_SATCHEL | 24 | Phase 6+: loot that did not fit in the bag; items are taken out with MOVE and nothing can be put in ([items.md](items.md) §8.4). Does not grow |
+| 4 QUEST | 30 (provisional) | Phase 6+: quest objects; they cannot be sold, traded or destroyed except by their quest ([quests.md](quests.md)). Does not grow |
 
 The worn equipment **is** the EQUIPMENT container. After each confirmed change to slots 0 or 1, the
 zone imposes the weapons on the `CombatState`:
@@ -587,6 +600,7 @@ rejects 2 and 3 in phase 5) and each item per §2.3. It returns null in any othe
 |---|---|---|---|---|
 | 1 | Gold | 1 000 000 000 | Defeated NPCs, captures, GM | GM only. Phase 6 opens trading, repair and skill-tree reset |
 | 2 | Merits | 1 000 000 000 | PvP and objectives (PRG-09), GM | GM only. The quartermaster arrives in phase 7 (PRG-33) |
+| 3 | Veteran seals | 10 000 | The XP that overflows at level 60: one seal per 40 000 XP, reason `VETERAN_SEAL` 18 (phase 8, [advancement.md](advancement.md) §9.1) | Cosmetics, titles, war consumables and a few Ember Shards per week; horizontal rewards only |
 
 - **Per character**, `int64`, never negative (CHECK in the DB and `CurrencyRules` in the zone).
 - **Realm points**: they are not a currency. They go up with each merit entry of reason 3–5, in the same
@@ -601,7 +615,7 @@ rejects 2 and 3 in phase 5) and each item per §2.3. It returns null in any othe
   match its range) and `ref_kind`, `ref_id`: 0 none; 1 character (PvP victim: their
   `character_id`); 2 NPC and 3 fort (the u32 fingerprint of its text id: `HandoffTicket.zone_key_of(id)`,
   the same function as the `zone_key` of platform.md §5.1, and `tickets.ZoneKey` if Go needs it; the
-  `NpcCatalog` ids change when NPCs are added); 4 operation (the reverted one). Example: `hollow` gives 3021413298
+  `NpcCatalog` ids change when NPCs are added); 4 operation (the reverted one); **phases 6-8:** 5 quest, 6 world event, 7 attributes, 8 talents, 9 specialization (§5.3). Example: `hollow` gives 3021413298
   (the test case here); `vado_gris`, 0x19efc013, the one from the platform.md vector.
 - `seq` (1, 2, 3… per balance) is **set by the service**: `last_seq + 1` in journal order. The zone does not
   send it.
@@ -640,7 +654,24 @@ Range 1–63: **sources** (`delta > 0`). Range 64–127: **sinks** (`delta < 0`)
 
 The same codes serve for item events. Operation kinds (`economy_ops.kind`,
 `EconomyOp.Kind`): 1 PLAYER, 2 GAMEPLAY, 3 STARTER_KIT, 4 GM, 5 REVERSAL, 6 MIGRATION; 7 TRADE and 8 MAIL
-(phase 6); 9–15 reserved.
+(phase 6); **9 CRAFT** (refine, make, salvage and transform) and **10 VENDOR** (buy, sell, buy back and repair) (phases 6-8); 11–15 reserved.
+
+**Added in phases 6-8** (this file stays the single registry; the codes are fixed and never reused):
+
+| Code | Reason | Defined by | Code | Reason | Defined by |
+|---|---|---|---|---|---|
+| 14 | WORLD_EVENT | [quests.md](quests.md) | 75 | QUEST_TURN_IN | [quests.md](quests.md) |
+| 15 | GATHER | [items.md](items.md) §10 | 76 | SALVAGE_INPUT | [items.md](items.md) §11.5 |
+| 16 | SALVAGE_OUTPUT | [items.md](items.md) §11.5 | 77 | UPGRADE | [items.md](items.md) §11.1 |
+| 17 | TRANSFORM_OUTPUT | [items.md](items.md) §11 | 78 | REFORGE | [items.md](items.md) §11.4 |
+| 18 | VETERAN_SEAL | [advancement.md](advancement.md) §9.1 | 79 | SOCKET | [items.md](items.md) §11.3 |
+| | | | 80 | STATION_FEE | [items.md](items.md) §10.5 |
+| | | | 81 | BAG_EXPAND | [items.md](items.md) §14 |
+| | | | 82 | BANK_EXPAND | [items.md](items.md) §14 |
+| | | | 83 | TRAVEL | [world.md](world.md) (fast travel) |
+| | | | 84 | LOOT_LOST | [items.md](items.md) §8.4 |
+
+`RESPEC` (69, already above) carries `ref_kind` 7 attributes, 8 talents or 9 specialization ([advancement.md](advancement.md) §8.5).
 
 ### 5.4 Rules
 
@@ -661,6 +692,9 @@ The same codes serve for item events. Operation kinds (`economy_ops.kind`,
 
 ### 6.1 Curve
 
+> **Historical (phase 5).** Phases 6-8 replace this curve: the cap is **60**, the curve is generated and totals 1 327 360 XP (about 50 h):
+> see [advancement.md](advancement.md) §1. Below is the phase 5 text as merged.
+
 `LevelCurve` (`data/progression/level_curve.tres`): `level_cap = 40`, `xp_to_next:
 PackedInt32Array` of 39 values and `attribute_points_per_level = 1`. The values were generated with
 `round((500 + 150 · (L − 1)^1.6) / 10) · 10`, but the data is the table, not the formula:
@@ -677,6 +711,10 @@ With about 3000 XP per hour of battle in Vado Gris, level 10 arrives in about 8 
 and the hours per level are set by PRG-22 in phase 6 with the PvE zone.
 
 ### 6.2 Sources in phase 5
+
+> **Historical (phase 5).** The XP sources, the NPC rank multipliers, the level-difference table, group XP and the quest reward table of
+> phases 6-8 are in [advancement.md](advancement.md) §2; merits become `0.0025 · r(L)` XP instead of `merits × 10`. Below is the phase 5
+> text as merged.
 
 | Source | XP | Gold | Rule |
 |---|---|---|---|
@@ -706,7 +744,7 @@ and the hours per level are set by PRG-22 in phase 6 with the PvE zone.
   to collect with a command. Without platform, as today.
 - Capture without defenders is not penalized yet: in Vado Gris the normal thing is to take it from the
   Hollow. Arranged captures and farming belong to GUE-35 (phase 7).
-- Group XP sharing belongs to SOC-23 (phase 6).
+- Group XP sharing belongs to SOC-23 (phase 6): each member within 100 m receives the whole XP ([advancement.md](advancement.md) §2.4).
 
 ### 6.3 Leveling up
 

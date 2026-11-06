@@ -9,7 +9,8 @@ contracts), combat ([combat.md](combat.md) §1 and §5), the fort ([fortress.md]
 ([social.md](social.md) §8 to §11). Items, inventory, currencies, levels, races, appearance and the saved combat
 configuration (CMB-30) belong to `docs/progression.md` (PRG-02, PRG-10 to PRG-16, CMB-30, ART-19, in progress at the
 same time). The boundary is here (§7.5); what was agreed with that document and where each rule lives is in §17.
-Revised after three reviews and later reconciled with progression.md (§18).
+Revised after three reviews and later reconciled with progression.md (§18). What the phases 6-8 content design adds to the platform
+(migrations, the `quests` section, new save checks, exported rules and export) is in [§20](#20-phases-6-8-what-the-content-design-adds-to-the-platform).
 
 What is taken as verified was measured on this machine with probes in `build/` (Go 1.24.7, PostgreSQL 16.15, Godot
 4.7.2 headless; the review probes are in `build/probe_rev/`, which is not committed). Whatever was not is marked
@@ -3840,3 +3841,86 @@ it against the fake and a dedicated server, not against the Go platform).
 **Status (6 November 2026):** `platform/e2e/progress_test.go` exists (progression.md P8) and the "Plataforma e2e" job is
 green on GitHub for `main` (run 42265474791, with "Plataforma" and the four Godot shards). **Left for the owner:**
 marking the jobs as required checks in the branch protection once their names are in English (TEC-66).
+
+## 20. Phases 6-8: what the content design adds to the platform
+
+The content design of phases 6-8 ([advancement.md](advancement.md), [items.md](items.md) and [quests.md](quests.md)) changes what a character saves, but not
+how it is saved: lease, `seq`, idempotency and the envelope of §7 stay as they are. This section lists, in one place, the platform side of
+those changes. The rules themselves are in the documents that own them.
+
+### 20.1 Migrations
+
+The numbering rule of §2.4 holds: each new migration takes the next free number above the highest in the repository, whoever owns it, and a
+number is never reused. Every one has its `.down.sql`, its seed `internal/migrate/testdata/seed_NNNN.sql` and the preservation test of §2.4.
+
+| Migration | Owner | What it does |
+|---|---|---|
+| **0011** (if nobody has taken it) | [advancement.md](advancement.md) §13.3 | The build: `character_progress.level` becomes `check (level between 1 and 60)` and the same migration recomputes `level` from `xp_total` with the new curve; adds `attr_str`, `attr_dex`, `attr_int`, `attr_foc`, `attr_con` (smallint 0-118), `specialization_id`, `spec_changes` and `veteran_xp`; admits currency 3 (veteran seals) in `character_wallets`; creates `character_masteries`, `character_talents` (`nodes text[]`, ≤ 20) and `character_loadouts` (`abilities text[]`, ≤ 3), with cascading foreign keys to `characters`. The level recomputation is a data change: its `.down.sql` restores the old `check` but not the old levels, so the file starts with `-- irreversible` as §2.4 requires (phase 5 test data) |
+| **Next free** (items v2) | [items.md](items.md) §17.4 | `item_instances` gains `item_level`, `upgrade`, `gems text[]` and `crafted`; the `container` check admits 2 (bank), 3 (satchel) and 4 (quest objects); creates `character_professions (character_id, profession, level, xp_total)` with primary key (`character_id`, `profession`) and cascade |
+| **Next free after that** (quests) | [quests.md](quests.md) | The quest state tables of the `quests` section of the save (active quests, objectives, completions and the state of commission and board timers), with cascading foreign keys |
+
+Expand and contract (§2.4) holds for all three: a binary of the previous version works with the new schema because everything new comes with a
+default, and nothing is dropped or renamed in the same version that stops using it. The order of rollout is: migrate, then the Go service, then
+the zones (a zone registers its `record_format`, so a zone still on format 1 is refused with 409 `schema_mismatch` and nothing is saved in a
+format the store does not know).
+
+### 20.2 The envelope and the formats
+
+- `save_format` 1 keeps its envelope with one key per section. **`progress_format` becomes 2** (the registration's `record_format`,
+  `ZonePlatform.RECORD_FORMAT`; `ProgressRecord.FORMAT` has the same value and the test of [progression.md](progression.md) §13.1 checks it).
+- **A new section `quests`** joins `progress` and `pvp`. It is built by the quest system of the zone and is applied **in the same transaction as
+  `progress`**: either both are written or neither, because a reward and the quest state that granted it must not diverge. Like `pvp`, a body
+  without the section does not lower it; a body with it that fails its checks is rejected whole (400 `invalid_save`, `fields.check` = the
+  failing Q check).
+- The ids that the new operations create (a new `uid` for every upgrade, socketing or reforging; one `op_id` per CRAFT, VENDOR or build
+  operation) fall in the `id_blocks` blocks as before (S2, S5). Transformations consume more uids than phase 5, so the zone asks for the next
+  block earlier (`running_low`, [progression.md](progression.md) §4.5).
+- The 1 MB body limit (§6) holds: about 1 KB of build, 10-12 KB of items in the worst case (155 slots at up to 41 B plus JSON) and the quest
+  section.
+
+### 20.3 Save checks (Go)
+
+The checks live in `internal/progress` and are numbered after S8 of [progression.md](progression.md) §13.3. They repeat in Go what the zone
+already guarantees, as S3 to S6 do, and use the same fixtures generated by `write_fixtures.gd` (the cases are committed and the Go tests read them).
+
+| Checks | Owner | What they validate |
+|---|---|---|
+| **S9, S10, S11** | [advancement.md](advancement.md) §13.4 | S9: attributes (each ≥ 0, Σ ≤ `2·(level − 1)`). S10: mastery XP, talent nodes (existing tree, no repeats, ≤ mastery level, row open by branch points and level, parent present) and chosen abilities (≤ 3, distinct, from the pool and open). S11: specialization (null, or `level ≥ 10` and `available`) and `veteran_xp > 0` only at the cap |
+| **S12-S15** | [items.md](items.md) §17.4 | S12: item level inside the definition's band and the upgrade limit by item level. S13: affix count by rarity, affix ids in the exported catalog and valid for the slot, gems and sockets. S14: nothing enters the satchel with MOVE and the quest container holds only quest items. S15: professions (level 1-60, XP non-decreasing, only with GATHER or CRAFT operations) |
+| **Q1-Q6** | [quests.md](quests.md) | The `quests` section: known quests and objectives, valid state transitions, completions that match the quest's repeatability, rewards that match the reward table, timers, and the item and ledger operations that a turn-in must carry |
+
+Changes to the existing checks:
+
+- **S2** admits the new operation kinds 9 CRAFT and 10 VENDOR and, per kind, only their reasons in entries and events (the registry is
+  [progression.md](progression.md) §5.3: sources 14-18, sinks 75-84, RESPEC 69 in PLAYER operations, VETERAN_SEAL 18 in GAMEPLAY); `ref_kind` 5-9.
+- **S3** knows currency 3 (cap 10 000). **S4** conserves per definition across transformations, which retire a uid and create another (two events).
+- **S5** accepts containers 2, 3 and 4, 11 equipment slots and the item fields of format 2. **S6** uses the 60-level curve.
+- **S7** admits the timer `ability:<id>` of the ultimate (the key fits `^[a-z0-9_:]{1,48}$`) and the `elixir:`, `food:`, `oil:`, `brew:` and
+  `chest:<id>` keys of [items.md](items.md).
+
+### 20.4 Exported rules
+
+`platform/internal/gamedata/progression_rules.json` ([progression.md](progression.md) §13.4) gains these sections, all generated by
+`ProgressionRulesExport.build()` and checked by `test_progression_rules_export.gd`:
+
+| Section | Content | Defined by |
+|---|---|---|
+| `level_curve` | 59 values (cap 60) | [advancement.md](advancement.md) §1 |
+| `attributes` | Base, points per level, caps | [advancement.md](advancement.md) §5 |
+| `mastery_curve` | The 20 values | [advancement.md](advancement.md) §6 |
+| `talent_trees` | Per family: node ids, branch, row, parent, opened ability | [advancement.md](advancement.md) §7 |
+| `specializations` | Ids, minimum level, `available` | [advancement.md](advancement.md) §8 |
+| `currencies`, `reasons`, `containers` | Currency 3; reason ranges and codes 14-18 and 75-84; operation kinds 9-10; containers 2-4 and 11 equipment slots | [progression.md](progression.md) §4.1, §5 |
+| `items` | Adds `affixes`, `item_level`, `tier` and `sockets` | [items.md](items.md) §17 |
+| `professions` | Ids and levels | [items.md](items.md) §10 |
+| `quests` | The quest catalog that the Q checks need | [quests.md](quests.md) |
+
+### 20.5 Privacy and export (TEC-43)
+
+- **Export** (§11.2): `ProgressStore.Export` of each character includes the new data under `characters[i].progress`: attributes, masteries, talents,
+  chosen abilities, specialization and veteran XP; item instances with their item level, upgrade, gems and affixes; professions; and the `quests`
+  state. The ledger and the item events of CRAFT and VENDOR operations come with the others.
+- **Purge** (§11.2): `ProgressStore.Purge` deletes the new state tables (`character_masteries`, `character_talents`, `character_loadouts`,
+  `character_professions` and the quest tables) with the rest of the progress state; the cascade of the foreign keys makes this automatic.
+  Append-only data (ledger, events) follows the retention of §11.1.
+- No new category of personal data is introduced: the build, the items and the quests are character state, like the progress of phase 5.

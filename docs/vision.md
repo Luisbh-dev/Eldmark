@@ -29,8 +29,11 @@ first border zone are in [world.md](world.md).
 Each realm has:
 
 - A capital city, plus further towns and villages
-- Several PvE zones with progressive levels
+- Six zones in all: the capital, four PvE zones (levels 1-10, 10-20, 20-32 and 32-45) and a border zone (45-60). The level cap is 60, reached in about 50 hours with the first character, and shared dungeons for groups of 3-5 open from level 15
+- One human people, purely cosmetic: hairstyles, beards, marks and the cut of the outfits, with the same skeleton and no racial stats
 - A wall surrounding the whole realm, with gates that open onto the war zone
+
+The sizes of the maps (capital 1 × 1 km, PvE zones 1.5 × 1.5 or 2 × 2 km, border zones 3 × 1.5 km and Eldrun 3 × 3 km) are in the [Scale](world.md#63-scale) section of world.md.
 
 ## Central war zone
 
@@ -42,7 +45,8 @@ connects to it through the gates of its wall.
 - Destructible gates and walls, and siege weapons.
 - NPC defenders (guards and a fortress lord) who must be defeated to capture the fortress.
 - The realm that captures a fortress keeps it until another realm takes it away.
-- Controlling fortresses grants rewards to the whole realm (to be defined).
+- Controlling fortresses grants rewards to the whole realm: Embers for the realm treasury, which pay automatic blessings and the siege, and, personally, merits, Ember Shards and war ranks. All of it is horizontal: nothing here makes a veteran stronger than a newcomer.
+- Vado Gris (from level 10) and Eldrun (from level 20) are normalized: everyone fights at level 60 with their attributes and equipment compressed, so that skill weighs more than hours played.
 
 ## Technical decisions that follow from this vision
 
@@ -67,7 +71,7 @@ Third-person action combat, New World style:
 - Light and heavy attacks, block and dodge, managed with stamina.
 - No target selection: attacks hit if the weapon's arc or the projectile
   touches the enemy.
-- Abilities with cooldowns, tied to the equipped weapon.
+- Abilities with cooldowns, tied to the equipped weapon: five per weapon, of which three are carried, plus an ultimate of the chosen specialization on its own key (F, 150 s cooldown).
 
 How it works over the network without the server losing authority:
 
@@ -82,6 +86,12 @@ How it works over the network without the server losing authority:
 - **Player cap per battle**: action combat is more expensive to
   compute. We need to measure early how many players the war zone can handle
   and design the sieges accordingly.
+
+## Characters and progression
+
+There are no fixed classes. Any weapon can be used, two at once with a quick swap, and the role comes from the weapons and from a **specialization** chosen at level 10 after a role trial:
+Vanguard, Linebreaker, Hunter, Healer and Arcanist, with the Sapper joining with the siege. A specialization gives passives by rank and an ultimate; it can be changed later only in a capital, for gold.
+Each weapon family has its own mastery and a talent tree, and ten weapons are planned at launch. The design is in [advancement.md](advancement.md), [weapons.md](weapons.md), [items.md](items.md), [npcs.md](npcs.md) and [quests.md](quests.md).
 
 ## Community and communication
 
@@ -110,10 +120,3 @@ The breakdown into tasks, with dependencies and pending decisions, is in [backlo
 6. First realm: capital city, one PvE zone, wall and gate
 7. Full war zone: several forts and castles, siege weapons and rewards
 8. The three full realms and scaling to multiple servers
-
-## To be defined
-
-- Playable races of each realm
-- Classes
-- Map sizes
-- Rewards for dominating the war zone

@@ -38,7 +38,8 @@ the client cannot ask for something the server does not send.
 | Appearance, position and animations | Yes | It is the game: you see the enemy, their tabards and their emblem |
 | Side color and emblem | Yes | Always visible (also on the nameplate) |
 | Character name | Only when aimed at | The enemy's nameplate shows the name while the reticle points at it (a few seconds of grace after looking away), and it always appears in the combat log and on the death screen ("Te ha derrotado X", "X has defeated you") |
-| Enemy guild, level and equipment | No | Only an ally's are visible. Inspecting an enemy (SOC-29) returns no equipment, attributes, guild or level; only what is already visible and, from phase 8, their war rank |
+| Enemy guild, level and equipment | No | Only an ally's are visible. Inspecting an enemy (SOC-29) returns no equipment, attributes, specialization, build, guild or level; only what is already visible and, from phase 8, their war rank |
+| Specialization | Allies only | The specialization icon shows on an ally's nameplate and party frame and in their inspection; the enemy receives the weapon (which is visible on the model) and the ultimate only when it is cast (its effect and its name in the combat log). The server does not send the specialization to another realm |
 | Enemy health | Yes, on their nameplate | When aimed at or after damaging them (combat decision in combat.md) |
 | Chat (say, zone and the other channels) | No | The server **never** sends a client text from another realm |
 | Whispers | No | Whispering an enemy answers "no está conectado" (is not online), without revealing that they exist |
@@ -98,13 +99,78 @@ you type a channel command without text (`/g` leaves the party channel active).
 | Invitation | Expires after **60 s**; at most 5 pending per sender | Accept and decline from the keyboard |
 | Leader | The first one; the next oldest inherits on leaving | Can kick and change leader |
 | Shared state | Health, stamina and position of each member at 2 Hz, even outside the interest radius (SOC-06, SOC-09) | |
-| XP and credit sharing | Members within **100 m** (SOC-23); loot is personal (PRG-21) | |
+| XP and credit sharing | Every member within **100 m** with an action in the last **60 s** gets the full XP and the full kill credit (section 3.1, SOC-23); loot is personal (PRG-21) | Not divided |
+| Specialization icon | Shown to allies on the party frame (SOC-08) and the nameplate | Never to the enemy (section 1) |
+| Inspecting an ally | Shows the build (section 3.2, SOC-29) | |
+| Quest sharing | Inside the same zone (section 3.3) | |
 | Reconnection | **5 min** of grace keeping the spot (SOC-22) | |
 | War warband | Up to **4 parties (20 players)** in the first version; the final cap is set by TEC-34 with Eldrun's measured capacity | Leader and assistants, `/banda`, compact frames, pings to the whole warband (SOC-30) |
 | Open warbands | Anyone in the realm joins with one click or by approaching the fortress they are attacking (SOC-31) | Phase 7 |
 
 The party is 5 and not 6 or 8 because party frames have to stay readable while the eyes are on an
 action combat with no target selection; for more people there is the warband.
+
+### 3.1 Experience, credit and loot in a party (SOC-23)
+
+Experience is **not divided**: grouping never makes a kill worth less to anyone, so there is no reason to level alone.
+
+| Rule | Value |
+|---|---|
+| Who is eligible | Every party member alive, in the same zone, **within 100 m** of the dead NPC, with **an action in the last 60 s** (damage, healing to someone who has credit, or damage blocked while being targeted) |
+| XP | The whole XP of the kill to each eligible member, with their own level-difference modifier (gray = 0) |
+| Kill credit | The same members count as having killed it: quest objectives (KILL), mastery, merits and bounties. In PvP, the 100 m rule also applies to realm rewards |
+| Loot | **Personal** (PRG-21): each eligible member rolls their own loot, which goes straight into their bag or loot satchel; nobody can take another's. No loot modes (free, round robin, need/greed) exist, and the chat notice only says what the member got |
+| Far or idle members | A member beyond 100 m or with no action in the last 60 s gets nothing from that kill; standing next to a fight does not pay |
+| Party frame | Dims a member beyond 100 m, so everybody sees who will not count |
+| Quest items | Rolled per person (quests.md D9) |
+
+The contribution threshold of the NPC (10 % for a normal NPC, 5 / 3 / 1 % for higher ranks) is **shared with the
+party** within the same 100 m, so a healer who does little direct damage still counts. The exact definition of an
+action for an NPC kill is in [npcs.md](npcs.md). A fake or forced party member (`--fake-players`, GM) never gives credit that
+pays something persistent.
+
+### 3.2 Inspecting allies (SOC-29)
+
+Inspecting a player of your own realm (at 20 m, 1 every 2 s) returns, in addition to the appearance, the **build**:
+
+| Shown | Detail |
+|---|---|
+| Level, specialization and rank | With the specialization's icon (phase 6 onward) |
+| Weapons | The two equipped weapons and, for each, the three chosen abilities and the mastery level |
+| Talent points | The points in each branch of the weapon trees |
+| Attributes | The five attributes with the totals |
+| Equipment | The 11 slots with item level, rarity, affixes and the **Equipment Score** |
+| Not shown | Bag, gold, coins, quests, position history, anything about the account |
+
+The server builds the reply from the target's state and sends nothing else; a player cannot hide from allies. It does
+not work on enemies (section 1) and it is refused if the target has inspection turned off in the privacy settings
+(provisional: a single toggle that hides the build from everyone but the party). The inspection window is part of the
+equipment window (UI-79).
+
+### 3.3 Quest sharing
+
+Any member can offer an active shareable quest to the rest of the party **inside the same zone**
+(quests.md section 2.5): it reaches whoever meets the requirements and has not done it, and starting it at stage 0 is
+their choice (`QUEST_SHARE_OFFER`). One offer every 3 s per player. The members turn in the quest in person. The offer
+travels only to the realm's own party, like every party message.
+
+### 3.4 Dungeon group finder (SOC-41)
+
+The six dungeons of Eld ([world.md](world.md)) are for groups of 3 to 5 of one realm, so the party needs a way to be
+formed by people who do not know each other.
+
+| Piece | Value (provisional) |
+|---|---|
+| Where | A board in the capital and in the entrance zone of each dungeon, and a window opened from the map |
+| Listing | A leader posts a group: dungeon, level range, open slots (3-5 in total) and a note up to 40 characters; a player without a group registers as "looking for a group" with the dungeon and their role |
+| Roles | The specialization icon is shown to the allies on the board (the same visibility as section 1); the board does not enforce a tank/healer/damage composition |
+| Matching | By dungeon, then by player level inside the dungeon's range; a click sends a join request to the leader, who accepts or refuses |
+| Scope | Same realm and cross-zone (it uses the cross-zone parties of SOC-22); never between realms |
+| Rate | 1 post every 10 s per player and 1 join request every 2 s |
+| Entry | Entering the dungeon uses the party's instance (the `DUNGEON_ENTRANCE` pass of `world.md`) |
+
+SOC-31 (war bands and open bands) keeps its own board for fortresses; both share the window and the rate limits. The
+finder depends on MUN-35 (the first dungeon) and on SOC-22, so it ships with phase 8.
 
 ## 4. Commands in Spanish
 
@@ -238,7 +304,7 @@ review (SOC-38).
 | 5 | Unique names (SOC-13), GM roles and audit (SOC-14), persistent log (SOC-15), ignored players, reports and sanctions (SOC-16 to SOC-18) |
 | 6 | Emotes (SOC-11), cross-zone whispers and realm channels, trade and newcomers (SOC-20, SOC-21), cross-zone parties (SOC-22), friends, guilds, filter, mail and inspection (SOC-24 to SOC-29) |
 | 7 | War warbands (SOC-30), looking for group (SOC-31), war channel (SOC-32), heraldry and guild fortresses (SOC-33 to SOC-35) |
-| 8 | Requests to a GM, moderation panel, anti-spam and scaling (SOC-36 to SOC-39) |
+| 8 | Requests to a GM, moderation panel, anti-spam and scaling (SOC-36 to SOC-39), dungeon group finder (SOC-41) |
 
 Whoever implements a piece must respect the realm filter from section 1 on the server, even if the
 client "no longer shows" what it should not: the acceptance test of SOC-04 is that a client from another
