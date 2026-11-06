@@ -6,6 +6,8 @@ extends TestCase
 ## - Bare [NetTransport]: handshake, 1200 B packets in both directions and over all three channels, the client's
 ## exit (which does not start the cut: the server does on receiving its CLIENT_LEAVE, or it closes everything itself
 ## after 60 ticks) and that no client packet is dropped by the filter.
+## - The same rule over plain UDP: the client does not start the disconnect either (the exported release server of
+## Godot 4.7.2 crashes with SIGBUS when it handles one that a client started: docs/operations.md section 9).
 ## - A client that pins another certificate, that expects another name or that goes in the clear does not manage to connect (those
 ## failures are logged by the engine: they are the only tests that allow them).
 ## - [ZoneServer] with [member ServerConfig.dtls] and a [NetClient] (the predicting bot) and the real swarm
@@ -254,6 +256,36 @@ func test_a_dtls_client_whose_leave_gets_no_answer_closes_everything_after_sixty
 			"and connects again")
 	assert_true(await _run_until(pair, func() -> bool: return client.connected.size() == 2), "inside again")
 	_close_all(pair)
+
+
+func test_a_plain_udp_client_does_not_start_the_disconnect_and_the_server_cuts() -> void:
+	var server := Endpoint.new(_transport("PlainServer"))
+	var client := Endpoint.new(_transport("PlainClient"))
+	var pair: Array[Endpoint] = [server, client]
+	_port = NetHarness.free_udp_port()
+	assert_eq(server.transport.host(_port, 4), OK, "the server opens the port in the clear")
+	assert_eq(client.transport.connect_to("127.0.0.1", _port), OK, "the client starts to connect")
+	assert_false(server.transport.is_dtls() or client.transport.is_dtls(), "neither goes over DTLS")
+	if not assert_true(await _run_until(pair, func() -> bool:
+			return server.connected.size() == 1 and client.connected.size() == 1), "they connect"):
+		_close_all(pair)
+		return
+	var leave := NetMessages.ClientLeave.new()
+	leave.reason = NetMessages.ClientLeave.REASON_QUIT
+	assert_eq(client.transport.send(1, NetProtocol.CH_RELIABLE, leave.encode()), OK)
+	client.transport.disconnect_after_flush(1)
+	# The client's own ENet peer is still connected: it waits for the server instead of sending a DISCONNECT.
+	var packet_peer: ENetPacketPeer = client.transport._enet.get_peer(1)
+	assert_eq(packet_peer.get_state(), ENetPacketPeer.STATE_CONNECTED, "the client did not start the disconnect")
+	var asked_at: int = _tick
+	assert_true(await _run_until(pair, func() -> bool:
+		return server.disconnected.size() == 1 and client.disconnected.size() == 1, 120), "both see the cut")
+	assert_true(_tick - asked_at < NetTransport.FORCE_DISCONNECT_TICKS,
+			"without waiting for the forced cut (%d ticks)" % (_tick - asked_at))
+	for _i: int in 30:
+		await _step(pair)
+	_close_all(pair)
+	assert_eq(server.failed + client.failed, 0, "no connection failures")
 
 
 func test_a_client_with_another_certificate_another_name_or_in_clear_does_not_connect() -> void:
