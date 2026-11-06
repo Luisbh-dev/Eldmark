@@ -69,6 +69,35 @@ const BOW_WEAPON: StringName = &"bow"
 const STEEL_COLOR: Color = Color(0.72, 0.74, 0.8, 1.0)
 const GUARD_COLOR: Color = Color(0.45, 0.33, 0.12, 1.0)
 const SHIELD_COLOR: Color = Color(0.4, 0.26, 0.14, 1.0)
+const SHIELD_RIM_COLOR: Color = Color(0.5, 0.52, 0.58, 1.0)
+## Shield details: dome height (fraction of the radius), rim width, boss radius (m).
+const SHIELD_DOME: float = 0.3
+const SHIELD_RIM_WIDTH: float = 0.022
+const SHIELD_BOSS_RADIUS: float = 0.07
+const SHIELD_WOOD_SHADER: String = """
+shader_type spatial;
+uniform vec4 wood_a : source_color;
+uniform vec4 wood_b : source_color;
+uniform float planks = 5.0;
+uniform float half_width = 0.26;
+varying vec3 local_pos;
+
+void vertex() {
+	local_pos = VERTEX;
+}
+
+void fragment() {
+	float u = (local_pos.x / half_width * 0.5 + 0.5) * planks;
+	float index = floor(u);
+	float tone = fract(sin(index * 12.9898) * 43758.5453);
+	float seam = smoothstep(0.0, 0.06, fract(u)) * smoothstep(1.0, 0.94, fract(u));
+	float grain = 0.5 + 0.5 * sin(local_pos.z * 55.0 + tone * 31.0 + local_pos.x * 9.0);
+	vec3 color = mix(wood_a.rgb, wood_b.rgb, tone) * (0.88 + 0.12 * grain) * mix(0.45, 1.0, seam);
+	ALBEDO = color;
+	ROUGHNESS = 0.82;
+	METALLIC = 0.0;
+}
+"""
 
 
 ## Hangs the provisional sword and shield from [param skeleton] and returns the two
@@ -242,27 +271,114 @@ static func _make_sword() -> Node3D:
 	return root
 
 
-# The shield: a flattened cylinder whose axis is Z, in front of the hand (toward -Z).
+# Meshes and materials of the shield, built once and shared by every shield (a fort full of armed characters would
+# otherwise build four meshes, a shader and two materials each).
+static var _shield_parts: Dictionary[StringName, Mesh] = {}
+
+
+static func _shield_part(part: StringName) -> Mesh:
+	if _shield_parts.has(part):
+		return _shield_parts[part]
+	var wood: ShaderMaterial = _shield_wood_material()
+	var steel: StandardMaterial3D = _material(SHIELD_RIM_COLOR, 0.85, 0.42)
+	var mesh: Mesh = null
+	match part:
+		&"disc":
+			var cylinder := CylinderMesh.new()
+			cylinder.top_radius = SHIELD_RADIUS
+			cylinder.bottom_radius = SHIELD_RADIUS
+			cylinder.height = SHIELD_THICKNESS
+			cylinder.radial_segments = 28
+			cylinder.rings = 1
+			cylinder.material = wood
+			mesh = cylinder
+		&"dome":
+			# A hemisphere: the back half would stick out behind the board, toward the forearm.
+			var dome_mesh := SphereMesh.new()
+			dome_mesh.radius = SHIELD_RADIUS * 0.97
+			dome_mesh.height = SHIELD_RADIUS * 0.97
+			dome_mesh.is_hemisphere = true
+			dome_mesh.radial_segments = 28
+			dome_mesh.rings = 7
+			dome_mesh.material = wood
+			mesh = dome_mesh
+		&"rim":
+			var rim_mesh := TorusMesh.new()
+			rim_mesh.inner_radius = SHIELD_RADIUS - SHIELD_RIM_WIDTH
+			rim_mesh.outer_radius = SHIELD_RADIUS + SHIELD_RIM_WIDTH * 0.35
+			rim_mesh.rings = 28
+			rim_mesh.ring_segments = 8
+			rim_mesh.material = steel
+			mesh = rim_mesh
+		_:
+			var boss_mesh := SphereMesh.new()
+			boss_mesh.radius = SHIELD_BOSS_RADIUS
+			boss_mesh.height = SHIELD_BOSS_RADIUS
+			boss_mesh.is_hemisphere = true
+			boss_mesh.radial_segments = 16
+			boss_mesh.rings = 4
+			boss_mesh.material = steel
+			mesh = boss_mesh
+	_shield_parts[part] = mesh
+	return mesh
+
+
+# The shield: a round wooden shield whose axis is Z, in front of the hand (toward -Z): planked wood face with a shallow dome,
+# a steel rim and a central boss, so that it catches the light like a real shield instead of a flat disc.
 static func _make_shield() -> Node3D:
 	var root := Node3D.new()
 	root.name = SHIELD_MESH
 	root.set_meta(&"placeholder", true)
+	# Godot's cylinder and torus have their axis on Y: they are laid down so the axis is Z. The hemispheres
+	# point their dome along +Y, which is turned toward -Z (away from the arm).
+	var lay_down := Vector3(PI * 0.5, 0.0, 0.0)
+	var dome_out := Vector3(-PI * 0.5, 0.0, 0.0)
+	var center := Vector3(0.0, 0.0, -SHIELD_FORWARD)
 	var disc := MeshInstance3D.new()
 	disc.name = "Disco"
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = SHIELD_RADIUS
-	mesh.bottom_radius = SHIELD_RADIUS
-	mesh.height = SHIELD_THICKNESS
-	mesh.radial_segments = 20
-	mesh.rings = 1
-	mesh.material = _material(SHIELD_COLOR, 0.0, 0.8)
-	disc.mesh = mesh
-	# Godot's cylinder has its axis on Y: it is laid down so the axis is Z.
-	disc.rotation = Vector3(PI * 0.5, 0.0, 0.0)
-	disc.position = Vector3(0.0, 0.0, -SHIELD_FORWARD)
+	disc.mesh = _shield_part(&"disc")
+	disc.rotation = lay_down
+	disc.position = center
 	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.add_child(disc)
+	var dome := MeshInstance3D.new()
+	dome.name = "Cupula"
+	dome.mesh = _shield_part(&"dome")
+	dome.rotation = dome_out
+	dome.scale = Vector3(1.0, SHIELD_DOME, 1.0)
+	dome.position = center
+	root.add_child(dome)
+	var rim := MeshInstance3D.new()
+	rim.name = "Aro"
+	rim.mesh = _shield_part(&"rim")
+	rim.rotation = lay_down
+	rim.scale = Vector3(1.0, 1.6, 1.0)
+	rim.position = center
+	rim.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	root.add_child(rim)
+	var boss := MeshInstance3D.new()
+	boss.name = "Broca"
+	boss.mesh = _shield_part(&"boss")
+	boss.rotation = dome_out
+	boss.scale = Vector3(1.0, 0.6, 1.0)
+	boss.position = center + Vector3(0.0, 0.0, -SHIELD_RADIUS * SHIELD_DOME * 0.85)
+	boss.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	root.add_child(boss)
 	return root
+
+
+# Planked wood in the mesh's local plane (x across the planks, z along them): every plank with its own tone, dark seams and a
+# faint grain. Shared by the disc and the dome of the shield.
+static func _shield_wood_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = SHIELD_WOOD_SHADER
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter(&"wood_a", SHIELD_COLOR)
+	material.set_shader_parameter(&"wood_b", SHIELD_COLOR.lightened(0.28))
+	material.set_shader_parameter(&"planks", 5.0)
+	material.set_shader_parameter(&"half_width", SHIELD_RADIUS)
+	return material
 
 
 # The bow: the straight grip along +X of the hand (pointing up with the arm extended) and a

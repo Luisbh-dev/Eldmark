@@ -377,3 +377,32 @@ func test_the_objective_line_composes_a_compact_status_text() -> void:
 	assert_eq(ObjectiveLine.WIDTH, Compass.WIDTH, "as wide as the compass, below it")
 	assert_true(ObjectiveLine.TOP_MARGIN >= Compass.TOP_MARGIN + Compass.HEIGHT, "and without overlapping it")
 	assert_true(CapturePanel.TOP_MARGIN >= Compass.TOP_MARGIN + Compass.HEIGHT, "the capture panel does not overlap the compass either")
+
+
+# --- Wave 6 polish: ally absorption, legend measure and scale bar figures ---------------------------------------
+
+func test_an_ally_on_an_icon_is_absorbed_by_it_and_one_apart_is_not() -> void:
+	var icons := PackedVector2Array([Vector2(100.0, 100.0), Vector2(300.0, 100.0)])
+	assert_eq(WorldMap.nearest_icon(Vector2(104.0, 100.0), icons), 0, "inside the merge radius: absorbed by the first")
+	assert_eq(WorldMap.nearest_icon(Vector2(296.0, 103.0), icons), 1, "or by the second")
+	assert_eq(WorldMap.nearest_icon(Vector2(200.0, 100.0), icons), -1, "apart from both it stays a free dot")
+	assert_eq(WorldMap.nearest_icon(Vector2(100.0 + WorldMap.ALLY_MERGE_RADIUS + 1.0, 100.0), icons), -1)
+
+
+func test_the_legend_panel_is_as_tall_as_what_is_drawn() -> void:
+	var world_map := WorldMap.new()
+	world_map.size = SCREEN
+	_nodes.append(world_map)
+	var drawn_to: float = world_map._legend_pass(Rect2(), false)
+	assert_near(world_map._legend_content_height(), drawn_to + WorldMap.LEGEND_BOTTOM_PAD, 0.0001,
+			"the panel is cut at the last line drawn plus the padding")
+	var rows: int = world_map.get_legend_entries().size() + world_map.get_fortress_lines().size() \
+			+ RealmCatalog.FACTION_IDS.size()
+	assert_true(drawn_to >= 22.0 * float(rows), "every row counts toward the height")
+
+
+func test_the_scale_bar_figures_match_the_baked_bar() -> void:
+	assert_near(WorldMap.SCALE_BAR_SPAN, 80.0, 0.0001)
+	assert_near(WorldMap.SCALE_BAR_SPAN / WorldMap.SCALE_BAR_SECTION, 4.0, 0.0001, "four sections")
+	assert_true(FileAccess.get_file_as_string("res://tools/map/parchment_map_baker.gd").contains("WorldMap.SCALE_BAR_SPAN"),
+			"the baker takes the numbers from the map window")

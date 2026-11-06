@@ -383,8 +383,10 @@ func _build() -> void:
 		_present_row.add_child(label)
 	_gate = FractionBar.new()
 	_gate.name = "Puerta"
-	_gate.custom_minimum_size = Vector2(0.0, 14.0)
-	_gate.font_size = 12
+	# White text over the orange fill was barely legible (R6): taller bar, larger text and a heavier outline.
+	_gate.custom_minimum_size = Vector2(0.0, 18.0)
+	_gate.font_size = 14
+	_gate.outline_size = 6
 	_gate.fill_color = GATE_COLOR
 	_gate.visible = false
 	column.add_child(_gate)

@@ -361,9 +361,13 @@ func _play_step(position: Vector3, character: PlayerCharacter) -> void:
 	var audio: CombatAudio = CombatAudio.get_instance()
 	if audio == null:
 		return
+	var local: bool = not get_animator().is_remote()
+	# The ray and the terrain query are only worth it for a step somebody hears.
+	if not audio.is_step_audible(position, local):
+		return
 	var run: float = maxf(character.run_speed, 0.001)
 	audio.play_step(position, FootstepSurface.kind_at(self, position),
-			clampf(character.get_horizontal_speed() / run, 0.0, 1.0), not get_animator().is_remote())
+			clampf(character.get_horizontal_speed() / run, 0.0, 1.0), local)
 
 
 func _on_jumped_visual() -> void:

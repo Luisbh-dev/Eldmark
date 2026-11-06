@@ -210,7 +210,8 @@ func setup(index: int, config: ClientConfig, dtls: TLSOptions = null) -> void:
 	if _siege_mode:
 		_siege_view = SiegeView.new()
 		_threat_sight = BotThreatSight.new(_is_enemy_npc)
-	_display_name = NameRules.bot_name(config.bot_seed + index)
+	_display_name = config.bot_names[index] if index < config.bot_names.size() \
+			else NameRules.bot_name(config.bot_seed + index)
 	_realm = config.realm if config.realm != NetProtocol.Realm.NONE \
 			else DEFAULT_REALMS[index % DEFAULT_REALMS.size()]
 	name = "SwarmBot%d" % index

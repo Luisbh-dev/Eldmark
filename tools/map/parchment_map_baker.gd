@@ -1558,13 +1558,9 @@ func _paint_fort_ground() -> void:
 	_cast_shadow(PackedVector2Array([Vector2(x0, yn), Vector2(x1, yn), Vector2(x1, ys), Vector2(x0, ys)]), wall_height * 1.2, 0.36)
 	# North wall, seen from the inside, and its corner towers (behind everything).
 	_draw_log_band(x0, x1, yn + thickness * 0.5, wall_height, 0)
-	var tower_half: float = _m(4.4)
-	var tower_height: float = _m(15.0)
+	# The game has a palisade with no corner towers: the corners are only taller log posts.
 	for corner_x: float in [x0, x1]:
-		var corners: PackedVector2Array = _draw_prism(Vector2(corner_x, yn), tower_half, tower_half, tower_height, FACE_SOUTH, FACE_EAST,
-				STONE_LIGHT, _line(0.42, 1.7), 15, _m(1.1), 0.4)
-		_draw_slit(Vector2(corner_x, yn), tower_half, tower_half, tower_height, 0.5, 0.55, _m(0.9))
-		_draw_flag(corners[0].lerp(corners[2], 0.5), _m(8.0), neutral)
+		_draw_post(Vector2(corner_x, yn), wall_height)
 	# Yard of packed earth with the road that enters through the west gate.
 	var yard: PackedVector2Array = PackedVector2Array([Vector2(x0 + thickness * 0.5, yn + thickness * 0.5), Vector2(x1 - thickness * 0.5, yn + thickness * 0.5),
 			Vector2(x1 - thickness * 0.5, ys - thickness * 0.5), Vector2(x0 + thickness * 0.5, ys - thickness * 0.5)])
@@ -1613,20 +1609,18 @@ func _paint_fort_ground() -> void:
 	_draw_slit(keep_top, keep_half, keep_half, keep_height, 0.30, 0.50, _m(1.0))
 	_draw_slit(keep_top, keep_half, keep_half, keep_height, 0.70, 0.50, _m(1.0))
 	_draw_flag(keep_corners[0].lerp(keep_corners[2], 0.5), _m(15.0), neutral)
-	# West gate: two small towers on the sides of the gap and the posts of the passage.
+	# West gate: a gap in the palisade framed by two log posts.
 	for side_sign: float in [-1.0, 1.0]:
-		var gate_center: Vector2 = Vector2(x0, center.y + side_sign * (gate_half + _m(3.0)))
-		var gate_corners: PackedVector2Array = _draw_prism(gate_center, _m(3.0), _m(3.0), _m(11.0), FACE_SOUTH.lightened(0.05), FACE_EAST,
-				STONE_LIGHT.lightened(0.05), _line(0.4, 1.6), 15, _m(0.95), 0.38)
-		_draw_slit(gate_center, _m(3.0), _m(3.0), _m(11.0), 0.5, 0.55, _m(0.8))
-		_draw_flag(gate_corners[0].lerp(gate_corners[2], 0.5), _m(8.5), neutral)
+		_draw_post(Vector2(x0, center.y + side_sign * (gate_half + _m(0.8))), wall_height)
 	# South wall, seen from the outside, and the south corner towers (in front of everything).
 	_draw_log_band(x0, x1, ys + thickness * 0.5, wall_height, 1)
 	for corner_x: float in [x0, x1]:
-		var corners: PackedVector2Array = _draw_prism(Vector2(corner_x, ys), tower_half, tower_half, tower_height, FACE_SOUTH, FACE_EAST,
-				STONE_LIGHT, _line(0.42, 1.7), 15, _m(1.1), 0.4)
-		_draw_slit(Vector2(corner_x, ys), tower_half, tower_half, tower_height, 0.5, 0.55, _m(0.9))
-		_draw_flag(corners[0].lerp(corners[2], 0.5), _m(8.0), neutral)
+		_draw_post(Vector2(corner_x, ys), wall_height)
+
+
+## A tall log post of the palisade (corner or gate jamb): a wooden prism a little taller than the wall.
+func _draw_post(at: Vector2, wall_elevation: float) -> void:
+	_draw_prism(at, _m(1.1), _m(1.1), wall_elevation + _m(1.8), LOG_A, LOG_B, WOOD.lightened(0.28), _line(0.3, 1.4), 0, 0.0, 0.3)
 
 
 ## A canvas of pointed south-facing logs (the palisade seen from the front): from [param xa] to [param xb], with its
@@ -2518,25 +2512,28 @@ func _rounded_rect(center: Vector2, half_x: float, half_y: float, radius: float)
 	return polygon
 
 
-## 100 m scale bar (five 20 m sections, the first with 5 m marks) in the southeast corner.
+## 80 m scale bar (four 20 m sections, the first with 5 m marks) in the southeast corner. Its numbers come from
+## [WorldMap], which draws the figures under the bar, so the two cannot drift apart.
 func _paint_scale_bar() -> void:
-	var span: float = 80.0
-	var x1: float = _def.world_origin.x + _def.world_size.x - 14.0
+	var span: float = WorldMap.SCALE_BAR_SPAN
+	var section: float = WorldMap.SCALE_BAR_SECTION
+	var x1: float = _def.world_origin.x + _def.world_size.x - WorldMap.SCALE_BAR_END_MARGIN
 	var x0: float = x1 - span
-	var z: float = _def.world_origin.y + _def.world_size.y - 23.0
+	var z: float = _def.world_origin.y + _def.world_size.y - WorldMap.SCALE_BAR_SOUTH_MARGIN
 	# Clean paper cartouche in the southeast corner.
 	_paint_cartouche(_px((x0 + x1) * 0.5, z - 1.0), _m(span * 0.5 + 7.0), _m(14.5))
 	var bar_h: float = 1.3
-	for segment: int in 4:
-		var sx0: float = x0 + 20.0 * float(segment)
-		var cell: PackedVector2Array = PackedVector2Array([_px(sx0, z - bar_h), _px(sx0 + 20.0, z - bar_h), _px(sx0 + 20.0, z + bar_h), _px(sx0, z + bar_h)])
+	var sections: int = roundi(span / section)
+	for segment: int in sections:
+		var sx0: float = x0 + section * float(segment)
+		var cell: PackedVector2Array = PackedVector2Array([_px(sx0, z - bar_h), _px(sx0 + section, z - bar_h), _px(sx0 + section, z + bar_h), _px(sx0, z + bar_h)])
 		if segment % 2 == 0:
 			var polys: Array[PackedVector2Array] = [cell]
 			_fill(polys, ParchmentCanvas.MODE_OVER, Color(0.22, 0.16, 0.11), 0.94, 0.3)
 	_ink_line(PackedVector2Array([_px(x0, z - bar_h), _px(x1, z - bar_h), _px(x1, z + bar_h), _px(x0, z + bar_h)]),
 			_line(0.30, 1.3), 0.95, INK, ParchmentCanvas.MODE_MULTIPLY, 0.2, true)
-	for tick: int in 5:
-		var tx: float = x0 + 20.0 * float(tick)
+	for tick: int in sections + 1:
+		var tx: float = x0 + section * float(tick)
 		_ink_line(PackedVector2Array([_px(tx, z - bar_h - 2.2), _px(tx, z - bar_h)]), _line(0.28, 1.2), 0.92, INK,
 				ParchmentCanvas.MODE_MULTIPLY, 0.2)
 	for tick: int in range(1, 4):

@@ -178,6 +178,7 @@ blend_in_s = 0.08
 blend_out_s = 0.15
 lower_weight = 1.0
 keep_left_arm = true
+lower_weight_windup = 0.5
 
 [sub_resource type="Resource" id="Anim_charge"]
 script = ExtResource("2_anim")
