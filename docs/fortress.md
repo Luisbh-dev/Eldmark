@@ -308,6 +308,21 @@ of the owner realm; each query (`NavigationPathQueryParameters3D`) filters with
 - **Gate Guardians** (MUN-12): 2 per camp, `ignores_safe_area`, high damage and long
   reach; they attack only enemies inside the safe zone (an intruder dies in under 10 s).
 
+### 4.4 Extensions of phases 6-8 (pointers)
+
+The AI above is the base of the PvE bestiary too. The design of the creatures, the camps and the bosses is in
+[npcs.md](npcs.md); what changes here:
+
+- `HfsmBrain` gains a **pluggable tactic** in COMBAT (`NpcTactic`), **`ThreatTable`** (threat from damage, healing and taunt, which
+  replaces the sum of `damage_by` plus proximity) and **activity LOD** (the brain thinks at 10 Hz, 2 Hz or sleeps, MUN-51). The
+  state log with the same seed does not change for the NPCs of this section ([npcs.md section 2](npcs.md#2-ai-archetypes-on-hfsmbrain),
+  [section 8](npcs.md#8-performance-and-budget-per-zone)).
+- The **Ford Captain migrates to `BossScript`** (phase 1 `npc_captain` with `special_every = 3`, phase 2 at 50 % with two Hollow as
+  adds) **with the same state log**; `test_npc_system` and `test_hfsm_brain` must give the same registry with the same seed
+  ([npcs.md 2.2](npcs.md#22-boss-framework-bossscript)).
+- The NPC definitions of this section keep their literal figures (`scales_with_level = false`), and the Vado Gris is a normalized
+  skirmish zone ([world.md section 5](world.md#5-the-skirmish-zone-the-vado-gris-phase-4)).
+
 ---
 
 ## 5. Notices, respawn, leaving and /atascado
