@@ -891,7 +891,7 @@ func _place_grass() -> void:
 			# Patches: high density in the meadows, clearings between them.
 			var clump: float = _layout.paint_noise(cx * 2.2 + 57.0, cz * 2.2 - 11.0) * 0.7 \
 					+ _layout.paint_noise(cx * 0.7 - 23.0, cz * 0.7 + 41.0) * 0.6
-			var keep: float = clampf(0.58 + clump * 1.5, 0.1, 0.97)
+			var keep: float = clampf(0.9 + clump * 0.6, 0.55, 1.0)
 			# Next to the roads, a thicker edge of tufts.
 			if road < 4.5:
 				keep = maxf(keep, 0.7)
@@ -899,9 +899,14 @@ func _place_grass() -> void:
 				keep *= 0.3
 			if _in_ruins(cx, cz, 0.5):
 				keep *= 0.35
-			if _rng.randf() > keep:
+			if _rng.randf() > (keep * 0.6 if not _in_play_area(cx, cz) else keep):
 				continue
-			var tufts: int = 1 if keep < 0.5 else (2 if keep < 0.8 else 3)
+			var tufts: int = 3 if keep < 0.8 else 5
+			# Outside the playable area the grass is only seen from afar: half the density keeps the
+			# region files (and the server pack) small.
+			var outside: bool = not _in_play_area(cx, cz)
+			if outside:
+				tufts = mini(tufts, 2)
 			for t: int in tufts:
 				var x: float = cx + _rng.randf_range(-0.5, 0.5)
 				var z: float = cz + _rng.randf_range(-0.5, 0.5)
@@ -912,7 +917,7 @@ func _place_grass() -> void:
 				var center: float = 1.0 - smoothstep(30.0, 110.0, absf(z))
 				var dry_chance: float = clampf(dryness * 0.8 + center * 0.3, 0.0, 0.92)
 				var mesh_id: int = _grass_variant(z, dry_chance)
-				var scale: float = _rng.randf_range(0.2, 0.34) if road < 4.5 else _rng.randf_range(0.24, 0.42)
+				var scale: float = _rng.randf_range(0.18, 0.3) if road < 4.5 else _rng.randf_range(0.2, 0.36)
 				var basis: Basis = Basis(Vector3.UP, _rng.randf_range(0.0, TAU)).scaled(Vector3(scale, scale * _rng.randf_range(0.8, 1.2), scale))
 				_add_instance(mesh_id, Transform3D(basis, Vector3(x, h - 0.03, z)))
 		gx += step
