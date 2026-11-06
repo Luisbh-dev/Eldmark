@@ -1,4 +1,4 @@
 label	Restaurar todos los ajustes
-label	Todos los ajustes volverán a sus valores por defecto.
+label	Todos los ajustes, salvo el idioma, volverán a sus valores por defecto.
 button	Cancelar
 button	Restaurar todo

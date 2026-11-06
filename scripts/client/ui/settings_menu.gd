@@ -111,7 +111,7 @@ func restore_current_tab() -> void:
 func restore_all() -> void:
 	if _confirm != null:
 		_confirm.open(L10n.t("Restore all settings"),
-				L10n.t("All settings will return to their default values."), L10n.t("Restore all"),
+				L10n.t("All settings except the language will return to their default values."), L10n.t("Restore all"),
 				L10n.t("Cancel", &"button"), true)
 	else:
 		_on_restore_confirmed()

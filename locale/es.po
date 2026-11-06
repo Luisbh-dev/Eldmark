@@ -52,8 +52,8 @@ msgid "Restore all settings"
 msgstr "Restaurar todos los ajustes"
 
 #: scripts/client/ui/settings_menu.gd
-msgid "All settings will return to their default values."
-msgstr "Todos los ajustes volverán a sus valores por defecto."
+msgid "All settings except the language will return to their default values."
+msgstr "Todos los ajustes, salvo el idioma, volverán a sus valores por defecto."
 
 #: scripts/client/ui/settings_menu.gd
 msgctxt "button"
