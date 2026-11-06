@@ -14,6 +14,9 @@ const PLAYER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn
 const DEFAULT_SIZE: Vector2i = Vector2i(360, 480)
 ## Radians the camera turns per dragged pixel.
 const TURN_RATE: float = 0.01
+## Radians the camera starts away from the front: a three-quarter view, so the shield is seen at an angle (with its
+## dome and rim) instead of as a disc facing the camera.
+const DEFAULT_TURN: float = -0.45
 ## Camera distance to the figure's center: default, minimum and maximum, and wheel step.
 const DEFAULT_DISTANCE: float = 3.3
 const MIN_DISTANCE: float = 1.6
@@ -28,7 +31,7 @@ var _viewport: SubViewport = null
 var _camera: Camera3D = null
 var _preview: PlayerCharacter = null
 var _visual: HumanoidVisual = null
-var _yaw: float = PI
+var _yaw: float = PI + DEFAULT_TURN
 var _distance: float = DEFAULT_DISTANCE
 var _dragging: bool = false
 var _appearance: CharacterAppearance = null

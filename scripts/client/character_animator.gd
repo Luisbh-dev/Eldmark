@@ -454,7 +454,9 @@ func _process(delta: float) -> void:
 	var velocity: Vector3 = _character.velocity
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var real_speed: float = horizontal.length()
-	_speed = lerpf(_speed, real_speed, 1.0 - exp(-speed_smoothing * delta))
+	# The advance of an attack's lunge is not walking: the legs stay in the stance instead of striding (the feet stay planted).
+	var stride_speed: float = maxf(real_speed - _current_lunge_speed(), 0.0)
+	_speed = lerpf(_speed, stride_speed, 1.0 - exp(-speed_smoothing * delta))
 
 	_update_air(delta, velocity.y)
 	_update_facing(delta, horizontal, real_speed)

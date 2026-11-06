@@ -109,6 +109,15 @@ func play_impact(position: Vector3, material: int, heavy: bool, blocked: bool, p
 		_play(&"hollow_hurt", position, 0.0, 1.0, local)
 
 
+## true if a footstep at [param position] would be heard: the local player's always is; another one's only inside
+## [constant STEP_HEARING_DISTANCE]. Lets the caller skip the ground query of a step nobody hears.
+func is_step_audible(position: Vector3, local: bool) -> bool:
+	if local:
+		return true
+	var director: AudioDirector = AudioDirector.get_instance()
+	return director != null and director.get_listener_position().distance_to(position) <= STEP_HEARING_DISTANCE
+
+
 ## Footstep of a character at [param position] on [param surface]. [param speed_fraction] (0 = walking, 1 = sprint)
 ## gives it a bit more force; other players' footsteps attenuate with distance and have lower priority.
 func play_step(position: Vector3, surface: StringName, speed_fraction: float, local: bool) -> void:

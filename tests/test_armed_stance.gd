@@ -628,3 +628,77 @@ func test_the_weapon_the_visual_shows_picks_the_profile() -> void:
 	character.combat.weapon_id = CombatCatalog.weapon_id(&"sword_shield")
 	await wait_process_frames(3)
 	assert_null(visual.get_profile(), "and the sword and shield, none")
+
+
+# --- Review items Q5 and C12: planted feet and cheap stance -----------------------------------
+
+func test_the_lunge_of_an_attack_does_not_make_the_legs_stride() -> void:
+	var visual: HumanoidVisual = _make_visual()
+	var animator: CharacterAnimator = visual.get_animator()
+	var character: PlayerCharacter = animator.get_character()
+	await wait_physics_frames(2)
+	var combat := CombatState.initial(CombatCatalog.rules(), CombatCatalog.default_weapon_id())
+	var input := PlayerInput.new()
+	input.tick = START_TICK + 1
+	ActionMachine.step(combat, input, true)
+	input.tick = START_TICK + 2
+	input.buttons = PlayerInput.PRIMARY
+	ActionMachine.step(combat, input, true)
+	character.combat.copy_from(combat)
+	character.last_input_tick = input.tick
+	var attack: AttackTicks = CombatCatalog.attack(combat.action_id)
+	assert_true(attack.lunge_speed > 0.0, "the attack advances the character")
+	character.velocity = Vector3.ZERO
+	await wait_process_frames(2)
+	character.velocity = Vector3(0.0, 0.0, -attack.lunge_speed)
+	await wait_process_frames(2)
+	assert_true(animator.get_move_weight() < 0.05,
+			"the lunge is not walking: the legs stay in the stance (move weight %.3f)" % animator.get_move_weight())
+	# Walking on top of the lunge still counts.
+	character.velocity = Vector3(0.0, 0.0, -(attack.lunge_speed + character.run_speed))
+	await wait_process_frames(4)
+	assert_true(animator.get_move_weight() > 0.9, "real walking during the attack does stride")
+
+
+func test_the_third_light_attack_and_the_heavy_one_use_the_stance_legs_in_the_windup() -> void:
+	for attack_name: StringName in [&"sword_light_3", &"sword_heavy"]:
+		var entry: CombatActionAnim = _clips.find(attack_name)
+		assert_near(entry.lower_weight_for_phase(ActionMachine.PHASE_WINDUP), 0.0, 0.0001,
+				"%s: the anticipation clip does not take the legs (its jump and raised foot)" % attack_name)
+		assert_near(entry.lower_weight_for_phase(ActionMachine.PHASE_ACTIVE), 1.0, 0.0001,
+				"%s: the hit still takes the whole body" % attack_name)
+
+
+func test_the_stance_is_not_applied_beyond_the_cull_distance_from_the_camera() -> void:
+	var visual: HumanoidVisual = _make_visual()
+	var animator: CharacterAnimator = visual.get_animator()
+	var stance: ArmedStanceModifier = animator.get_stance_modifier()
+	await wait_process_frames(2)
+	animator.set_process(false)
+	var camera := Camera3D.new()
+	tree.root.add_child(camera)
+	camera.current = true
+	stance.master_weight = 1.0
+	stance.rest_weight = 1.0
+	camera.global_position = visual.global_position + Vector3(0.0, 1.5, stance.cull_distance + 10.0)
+	var before: int = stance.get_applied_count()
+	stance._process_modification()
+	assert_eq(stance.get_applied_count(), before, "far from the camera nothing is applied")
+	camera.global_position = visual.global_position + Vector3(0.0, 1.5, 5.0)
+	stance._process_modification()
+	assert_eq(stance.get_applied_count(), before + 1, "near it, it is")
+	camera.current = false
+	tree.root.remove_child(camera)
+	camera.free()
+
+
+func test_the_shield_is_a_domed_planked_shield_with_a_rim_and_a_boss() -> void:
+	var shield: Node3D = WeaponProps._make_shield()
+	_nodes.append(shield)
+	for part: String in ["Disco", "Cupula", "Aro", "Broca"]:
+		assert_not_null(shield.find_child(part, true, false), "the shield has its %s" % part)
+	var disc: MeshInstance3D = shield.find_child("Disco", true, false) as MeshInstance3D
+	assert_true(disc.mesh.material is ShaderMaterial, "the face is the planked wood, not a flat colour")
+	var rim: MeshInstance3D = shield.find_child("Aro", true, false) as MeshInstance3D
+	var steel: StandardMaterial3D = rim.mesh.material as StandardMaterial3D
+	assert_true(steel != null and steel.metallic > 0.5, "the rim is metal, so it catches the light")
