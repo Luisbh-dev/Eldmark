@@ -4,7 +4,7 @@ Input: ../Eldmark-raw/texturas_polyhaven_2k/extracted/<id>/<id>_{diff,nor_gl,rou
 Output: assets/textures/terrain/polyhaven/<id>_alb_ht.png (desaturated albedo, with the height in the
 alpha, as Terrain3D requires) and <id>_nrm_rough.png (OpenGL normal, with the roughness in the alpha), at
 1024 x 1024 for the albedo and 512 x 512 for the normal (each family of the same size, a Terrain3D requirement; the
-normal at 512 so that the server package, which carries every resource in the repo, stays under the 35 MB
+normal at 512 so that the server package, which carries every resource in the repo, stays under the 42 MB
 of tests/test_export_config.gd).
 
 Style (docs/art.md): stylized and muted, so it is desaturated, the contrast is compressed a little
@@ -49,6 +49,16 @@ SETS: dict[str, tuple[float, float, float, float, float]] = {
 }
 
 
+# Minimum roughness per set (Q15): the rock and gravel scales are lit by a strong low sun and the original
+# maps have wet-looking patches (roughness below 0.4) that sparkle white. Dry rock is never that glossy.
+MIN_ROUGHNESS: dict[str, float] = {
+    "rock_boulder_dry": 0.97,
+    "rocky_trail": 0.95,
+    "ground_grey": 0.95,
+    "dirt_floor": 0.7,
+}
+
+
 def load(set_id: str, kind: str, ext: str, mode: str, size: int = SIZE) -> np.ndarray:
     path = RAW / set_id / f"{set_id}_{kind}_2k.{ext}"
     image = Image.open(path)
@@ -64,6 +74,7 @@ def process(set_id: str, sat: float, bright: float, contrast: float, ao_share: f
     ao = load(set_id, "ao", "jpg", "L")[..., None]
     height = load(set_id, "disp", "png", "L")
     rough = load(set_id, "rough", "jpg", "L", NORMAL_SIZE)
+    rough = np.maximum(rough, MIN_ROUGHNESS.get(set_id, 0.0))
     normal = load(set_id, "nor_gl", "png", "RGB", NORMAL_SIZE)
 
     luma = (diffuse * np.array([0.299, 0.587, 0.114], dtype=np.float32)).sum(axis=2, keepdims=True)

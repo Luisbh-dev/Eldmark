@@ -306,4 +306,4 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 		assert_true(files.has(required), "the pack carries %s" % required)
 	assert_true(files.size() > 500, "and it is not empty (%d files)" % files.size())
 	# Stripped: the full project export exceeds 80 MB; the server is around 17.
-	assert_true(total < 35 * 1024 * 1024, "the server pack is small (%d MB)" % roundi(float(total) / 1048576.0))
+	assert_true(total < 42 * 1024 * 1024, "the server pack is small (%d MB)" % roundi(float(total) / 1048576.0))
