@@ -47,6 +47,26 @@ with_bot() { # name, server options...
 	echo "$name: server exit code $?"
 }
 with_bot bot_default
+if command -v gdb > /dev/null 2>&1; then
+	# The same case under gdb: a backtrace says which library the SIGBUS is in.
+	gdb -batch -ex "handle SIGPIPE nostop noprint pass" -ex run -ex bt -ex "info sharedlibrary" 		--args "$BIN" --headless -- --server --zone=vado_gris --port="$PORT" --quit-after-ticks=1500 > "$OUT/gdb.stdout" 2>&1 &
+	gdb_pid=$!
+	sleep 25
+	"$GODOT" --headless --path "$ROOT" -- --bots=1 --connect="127.0.0.1:$PORT" --bot-seed=1 --quit-after-ticks=300 > "$OUT/gdb.swarm.log" 2>&1
+	wait "$gdb_pid"
+	echo "gdb: finished"
+	grep -v "^\[Eldmark\]\|^WARNING\|^   at:" "$OUT/gdb.stdout" | tail -40
+fi
+# Over DTLS, with the certificate of the tests (the container job, which does not crash, uses DTLS).
+CERT="$ROOT/tests/fixtures/dtls/zone_cert.pem"
+KEY="$ROOT/tests/fixtures/dtls/zone_key.pem"
+"$BIN" --headless -- --server --zone=vado_gris --port="$PORT" --quit-after-ticks=2400 --dtls-cert="$CERT" --dtls-key="$KEY" > "$OUT/dtls.stdout" 2>&1 &
+dtls_pid=$!
+sleep 12
+"$GODOT" --headless --path "$ROOT" -- --bots=1 --connect="127.0.0.1:$PORT" --bot-seed=1 --quit-after-ticks=300 --dtls-cert="$CERT" 	--dtls-name=zona-pruebas.eldmark.test > "$OUT/dtls.swarm.log" 2>&1
+echo "dtls: swarm exit code $?"
+wait "$dtls_pid"
+echo "dtls: server exit code $?"
 with_bot bot_nonpcs --no-npcs --no-dummies
 with_bot bot_report --report="$OUT/bot_report.json"
 exit 0
