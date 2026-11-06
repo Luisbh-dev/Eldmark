@@ -1,0 +1,180 @@
+name: Deploy
+
+# Publishes the images to GHCR and deploys them to the VPS over SSH (TEC-20, docs/operations.md). It is READY BUT SWITCHED
+# OFF: it can only be started by hand (workflow_dispatch, never by a push or a tag), it does nothing unless the input
+# "publish" is true AND the repository secrets below exist, and it does not build the game itself: it takes the
+# exported server from a successful run of export.yml (input "export_run_id"). Nothing is published until the project
+# owner decides to: no image in GHCR, no Release, no tag.
+#
+# Secrets (Settings > Secrets and variables > Actions):
+#   DEPLOY_HOST         address of the VPS
+#   DEPLOY_USER         SSH user (in the docker group, nothing else)
+#   DEPLOY_SSH_KEY      private key of that user (a deploy-only key)
+#   DEPLOY_KNOWN_HOSTS  the output of ssh-keyscan for the VPS (so the host key is pinned, not trusted on first use)
+#   DEPLOY_PATH         folder on the VPS with staging.env and secrets/ (docs/operations.md)
+# The images go to ghcr.io/<owner>/eldmark-{zone,platform,ops}:<tag> with the workflow's own GITHUB_TOKEN.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Really publish and deploy (false = the workflow does nothing)"
+        type: boolean
+        default: false
+      export_run_id:
+        description: "Id of the successful Export run whose server artifact goes into the zone image"
+        type: string
+        required: true
+      tag:
+        description: "Image tag (for example staging-2026-11-06); never latest"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.check.outputs.go }}
+    env:
+      HAS_HOST: ${{ secrets.DEPLOY_HOST != '' }}
+      HAS_USER: ${{ secrets.DEPLOY_USER != '' }}
+      HAS_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+      HAS_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS != '' }}
+      HAS_PATH: ${{ secrets.DEPLOY_PATH != '' }}
+      PUBLISH: ${{ inputs.publish }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - id: check
+        run: |
+          if [ "$PUBLISH" != "true" ]; then
+            echo "publish is not true: nothing to do"
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          for name in HOST USER KEY KNOWN_HOSTS PATH; do
+            var="HAS_$name"
+            if [ "${!var}" != "true" ]; then
+              echo "::notice::The secret DEPLOY_$name is missing: nothing is published"
+              echo "go=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          case "$TAG" in
+            latest | "" | *[!A-Za-z0-9._-]*) echo "::error::Bad tag"; exit 1 ;;
+          esac
+          echo "go=true" >> "$GITHUB_OUTPUT"
+
+  images:
+    name: Images in GHCR
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: The exported server of the chosen run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: eldmark-linux-server
+          path: artifact
+          run-id: ${{ inputs.export_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Unpack the server
+        run: |
+          (cd artifact && sha256sum --check SHA256SUMS)
+          mkdir -p exports/server
+          unzip -q artifact/Eldmark-server.zip -d exports/server
+          chmod +x exports/server/eldmark-server.x86_64
+          echo "Build id: $(cat artifact/BUILD_ID)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image names
+        id: names
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: echo "prefix=ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/eldmark" >> "$GITHUB_OUTPUT"
+
+      - name: Zone image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: platform/deploy/zone.Dockerfile
+          push: true
+          tags: ${{ steps.names.outputs.prefix }}-zone:${{ inputs.tag }}
+
+      - name: Platform image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: platform
+          file: platform/deploy/Dockerfile
+          target: platform
+          push: true
+          tags: ${{ steps.names.outputs.prefix }}-platform:${{ inputs.tag }}
+
+      - name: Ops image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: platform
+          file: platform/deploy/Dockerfile
+          target: ops
+          push: true
+          tags: ${{ steps.names.outputs.prefix }}-ops:${{ inputs.tag }}
+
+  deploy:
+    name: Deploy to the VPS
+    needs: [gate, images]
+    if: needs.gate.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Copy the compose files and deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          prefix="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/eldmark"
+          ssh_opts=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes)
+          scp "${ssh_opts[@]}" platform/deploy/docker-compose.yml platform/deploy/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          ssh "${ssh_opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" bash -s -- "$DEPLOY_PATH" "$prefix" "$TAG" deploy \
+            < tools/ci/remote_deploy.sh
