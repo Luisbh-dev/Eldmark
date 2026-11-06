@@ -15,8 +15,6 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
-    # TEMPORARY (to try the workflow before it reaches main, where workflow_dispatch exists): removed at the end.
-    branches: ["wip/release-ci"]
 
 permissions:
   contents: read
