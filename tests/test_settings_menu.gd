@@ -427,6 +427,30 @@ func test_lights_that_arrive_later_get_the_players_shadow_setting() -> void:
 	assert_true(other.shadow_enabled)
 
 
+func test_the_dialog_draws_over_the_settings_window() -> void:
+	var services: ClientServices = ClientServices.install(tree.root)
+	_nodes.append(services)
+	assert_true(services.get_confirm_dialog().get_index() > services.get_settings_menu().get_index(),
+			"the confirmation dialog is added after the window, so it draws over it")
+
+
+func test_the_saved_language_applies_when_the_services_start() -> void:
+	var config: ConfigFile = ConfigFile.new()
+	config.set_value("interface", "language", "en")
+	assert_eq(config.save(TEST_PATH), OK)
+	_settings = ClientSettings.load_from(TEST_PATH)
+	ClientSettings.set_current(_settings)
+	# Not forced, as in a real start; "auto" would give Spanish, so English can only come from the file.
+	L10n.force("")
+	L10n.set_language("auto")
+	L10n.flush()
+	assert_eq(L10n.language(), "es", "without the saved choice the game is in Spanish")
+	var services: ClientServices = _add(ClientServices.new()) as ClientServices
+	assert_eq(L10n.language(), "en", "the saved language is applied before the first screen")
+	assert_eq(services.get_settings_menu().window_title, "Settings", "and the window comes out in it")
+	L10n.force("en")
+
+
 func test_services_save_unsaved_changes_when_leaving() -> void:
 	var services: ClientServices = _add(ClientServices.new()) as ClientServices
 	_settings.set_value(ClientSettings.FOV, 77.0)

@@ -10,6 +10,14 @@ const FIXTURE: String = "res://tests/fixtures/l10n/fixture_es.po"
 const TEST_DOMAIN: StringName = &"eldmark_test"
 
 
+## A control that counts how many times the engine calls its [code]_draw[/code].
+class DrawCounter extends Control:
+	var draws: int = 0
+
+	func _draw() -> void:
+		draws += 1
+
+
 ## A label that counts the translation notifications it receives.
 class CountingLabel extends Label:
 	var changes: int = 0
@@ -200,3 +208,27 @@ func test_groups_only_list_nodes_in_the_tree() -> void:
 	var found: Array[Node] = tree.get_nodes_in_group(&"l10n_runtime_probe")
 	assert_true(found.has(inside), "a node in the tree is listed")
 	assert_false(found.has(outside), "an orphan is not: bound nodes outside the tree must reapply on re-entry")
+
+
+# --- Pseudolocalization and drawing -----------------------------------------------------------
+
+func test_the_engine_pseudolocalization_breaks_placeholders_and_bbcode() -> void:
+	# This is why L10n has its own pseudolocalization instead of switching the engine's on.
+	var text: String = "Free slots: {free} of %d [b]Bold[/b]"
+	var engine_text: String = TranslationServer.pseudolocalize(text)
+	assert_true(engine_text != text, "the engine does change the text")
+	assert_false(engine_text.contains("{free}") and engine_text.contains("[b]Bold[/b]") and engine_text.contains("%d"),
+			"and it does not leave every placeholder and tag intact: %s" % engine_text)
+
+
+func test_draw_runs_in_headless_after_queue_redraw() -> void:
+	# The screen tests rely on _draw running without a window to record the strings drawn with UIFonts.
+	var control: DrawCounter = DrawCounter.new()
+	control.size = Vector2(40.0, 40.0)
+	tree.root.add_child(control)
+	_nodes.append(control)
+	await wait_process_frames(2)
+	control.draws = 0
+	control.queue_redraw()
+	await wait_process_frames(2)
+	assert_true(control.draws >= 1, "_draw ran after queue_redraw (draws: %d)" % control.draws)

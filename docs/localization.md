@@ -32,7 +32,7 @@ Related documents:
 | Format | gettext: `locale/eldmark.pot` (template) and `locale/es.po`. No CSV and no keys. | 2.1 |
 | Source text | The `msgid` is the English text. `es.po` holds today's Spanish texts verbatim. There is no `en.po`: the template is the English catalog. | 2.2 |
 | Context, plurals and placeholders | `msgctxt` for ambiguous short strings and for each content type. gettext plurals. Named placeholders. Formatted text is never stored. | 2.3–2.5 |
-| Runtime | The catalog lives in a private `TranslationDomain` (`eldmark`). The main domain stays empty, so the engine never translates a node by itself, and `L10n` is the only way text gets translated. | 4.1–4.2 |
+| Runtime | The Spanish catalog is a `Translation` held by `L10n`, which resolves every lookup straight against it (`Translation.get_message`), and it is also added to a private `TranslationDomain` (`eldmark`) so that it is never in the main domain. The main domain stays empty, so the engine never translates a node by itself, and `L10n` is the only way text gets translated. | 4.1–4.2 |
 | Pseudolocalization | Implemented in `L10n`. The engine's pseudolocalization is never used: in 4.7.2 it breaks `{name}` and BBCode, skips plurals and uses glyphs our fonts lack. | 4.5 |
 | Default language | The `language` setting is `auto` by default. Until the final review (UI-39), `auto` means Spanish, so nobody sees a half-translated game without asking for it. From UI-39 on, `auto` follows the OS language, with English for languages that have no catalog. | 4.3 |
 | Selector | "Language" in the Interface tab: Automatic, English or Español. Saved, applied before the first screen and switched live, also from the selector itself. "Restore all" does not touch it. `--locale=` forces a language for one run and is not saved. | 4.3–4.4 |
@@ -174,6 +174,7 @@ These facts were checked with headless spikes on 4.7.2. `tests/test_l10n_runtime
 | `TranslationServer.set_locale` sends `NOTIFICATION_TRANSLATION_CHANGED` synchronously to the nodes in the tree, and only when the locale string changes (`en` → `en_US` notifies; `es` → `es` does not). It also notifies when the main domain is empty. | `L10n.set_language` propagates the notification itself when the locale string stays the same (pseudo on and off, `auto` resolving to the current language). |
 | `get_nodes_in_group` only returns nodes in the tree. | Bound nodes outside the tree (pools, closed windows) reapply their text when they enter it (4.4). |
 | The engine's pseudolocalization turns "Free slots: {free} of {total}" into a text whose placeholders carry accents (`{f́ŕéé}`), so `format()` no longer replaces them; it breaks BBCode tags (`[ḅ]`); it leaves plurals untouched; `skip_placeholders` only protects `%` markers; and it uses characters (ḅ, ṕ, Ŝ, Ĥ, ŧ, a combining accent) that Cinzel and IM Fell English lack. | Own pseudolocalization (4.5). |
+| `_draw` runs in headless mode after `queue_redraw()`, with no window. | The screen tests can record the strings drawn with `UIFonts.draw_text` (`note_drawn`). |
 | `CanvasItem._draw` runs in headless mode after `queue_redraw()`. | Drawn text can be checked by the screen test (4.4). |
 | Godot's PO parser does not decode `\uXXXX`. | Extractor rule (2.6). |
 
@@ -197,7 +198,12 @@ These facts were checked with headless spikes on 4.7.2. `tests/test_l10n_runtime
 | `raw(node)` | Marks a node whose text comes from a player or from staff. Never translated; the screen test skips it. |
 | `note_drawn(canvas_item, text)` | Called by `UIFonts.draw_text` for every drawn string. Records it in test mode; does nothing otherwise. |
 | `set_strict(on)`, `take_misses() -> PackedStringArray` | Strict mode (4.6). |
-| `format_int`, `format_decimal`, `format_percent`, `format_duration`, `format_datetime`, `format_date` | Numbers and dates (4.7). |
+| `forced() -> String` | The language forced for this run (`""` if none). |
+| `flush()` | Applies the language in use right now (refreshes the bound nodes, notifies the tree). `force` calls it; the tests call it after `set_language`, which is deferred. |
+| `pseudolocalize(text) -> String` | The own pseudolocalization (4.5), exposed for tests. |
+| `take_drawn() -> PackedStringArray` | The strings recorded by `note_drawn` since the last call; clears them. |
+| `use_spanish_catalog(translation)` | Test hook: replaces the Spanish catalog; `null` puts the real one back. |
+| `format_int`, `format_decimal`, `format_percent`, `format_multiplier`, `format_unit`, `format_duration` | Numbers and units (4.7). `format_date` and `format_datetime` are not there yet: they arrive in L2a. |
 | `quote(text)`, `escape_bbcode(text)` | Quotation marks for the language («» or “”), and safe parameters for a `RichTextLabel`. |
 
 ### 4.3 Choosing the language
@@ -248,7 +254,7 @@ Pseudolocalization proves that a text went through `L10n`, not that it has a Spa
 
 - With `L10n.set_strict(true)`, every lookup (`t`, `tn`, `tf`, `tfn`, `bind`, the format helpers) checks that the pair (context, `msgid`) has a non-empty, non-fuzzy entry in the Spanish catalog, whatever the language in use. A miss is recorded once per entry and reported with `push_error`.
 - The test runner turns strict mode on before each test and fails the test when `L10n.take_misses()` is not empty, even when the test allows logged engine errors.
-- Release builds never run in strict mode. Debug builds can turn it on with `--l10n-strict`.
+- Release builds never run in strict mode: `L10n` only accepts `--l10n-strict` when `OS.is_debug_build()` is true. Debug builds can turn it on with it.
 
 ### 4.7 Numbers, dates and units
 
@@ -661,8 +667,8 @@ A "Localización" job in `.github/workflows/tests.yml` (setup-python 3.14) runs 
 ### 12.1 Which language the tests run in
 
 - **Fixed language.** Before each test, `tests/run_tests.gd` calls `L10n.force("en")`, turns strict mode on, turns pseudo off and clears the misses and the drawn-text records. A forced language cannot be overridden by the saved setting, so `ClientServices` applying a stored `language`, or "Restore all" emitting `changed`, cannot switch the language in the middle of a test.
-- **No real settings file.** `ClientSettings` gets a `static var default_path` (`user://settings.cfg` by default). The runner points it to an empty temporary file before each test and calls `ClientSettings.set_current(null)`. Today `test_front_main`, `test_online_main`, `test_client_zone`, `test_realm_select` and `test_account_flow` mount scenes with `ClientServices`, which reads and writes the developer's real `user://settings.cfg`.
-- **Spawned processes.** Tests that start client processes pass `--locale=en` (`tests/net_harness.gd`, `tests/process_probe.gd`, `test_combat_processes`, `test_fortress_processes` and the others that launch Godot).
+- **No real settings file.** `ClientSettings` gets a `static var default_path` (`user://settings.cfg` by default). The runner points it to an empty temporary file before each test (named after the process and the shard, so suites running at once never share it, and deleted when the run ends) and calls `ClientSettings.set_current(null)`. Today `test_front_main`, `test_online_main`, `test_client_zone`, `test_realm_select` and `test_account_flow` mount scenes with `ClientServices`, which reads and writes the developer's real `user://settings.cfg`.
+- **Spawned processes.** Tests that start client processes pass `--locale=en` (`tests/net_harness.gd` and the others that launch a client; `process_probe.gd`, `test_combat_processes` and `test_fortress_processes` start servers or scripts, not clients, so they do not need it).
 - `TestCase.with_locale(code)` forces another language for one test; the runner restores English before the next one. A few tests check the Spanish on purpose: tab names, the decimal comma, the date pattern and one sentence per catalog.
 - **Why English and not Spanish:** English is what the code says. With the suite in Spanish, a community edit of `es.po` could break CI, and new tests would compare against translations instead of the source.
 
@@ -759,7 +765,7 @@ The recommended order is the one of the table. After L1c, the front end (L2), th
   - `tests/test_architecture.gd` rules (6);
   - bench changes (13);
   - this document, and the rule for interface text in `CLAUDE.md` and `CONTRIBUTING.md`.
-- **Main files:** new `scripts/client/l10n/l10n.gd`, `locale/es.po`, the four tests and `tests/l10n_golden/`; changed `project.godot`, `export_presets.cfg`, `scripts/boot.gd`, `scripts/client/client_services.gd`, `ui/client_settings.gd`, `ui/settings_menu.gd`, `ui/ui_confirm_dialog.gd`, `audio/audio_buses.gd`, `tests/run_tests.gd`, `test_case.gd`, `net_harness.gd`, `process_probe.gd`, `test_settings_menu.gd`, `test_client_settings.gd`, `test_client_launcher.gd`, `test_architecture.gd`, `test_export_config.gd`, `test_quality_tools.gd`, `tools/quality/run.py`, `sc_front.gd`, `sc_interfaz.gd`.
+- **Main files:** new `scripts/client/l10n/l10n.gd`, `locale/es.po`, the four tests and `tests/l10n_golden/`; changed `project.godot`, `export_presets.cfg`, `scripts/boot.gd`, `scripts/client/client_services.gd`, `ui/client_settings.gd`, `ui/settings_menu.gd`, `ui/ui_confirm_dialog.gd`, `audio/audio_buses.gd`, `tests/run_tests.gd`, `test_case.gd`, `net_harness.gd`, `test_settings_menu.gd`, `test_client_settings.gd`, `test_client_launcher.gd`, `test_architecture.gd`, `test_export_config.gd`, `test_quality_tools.gd`, `tools/quality/run.py`, `sc_front.gd`, `sc_interfaz.gd`.
 - **Done when:**
   - the settings window shows everything in English, Spanish and pseudo, and its Spanish snapshot is identical to the one taken before the change;
   - choosing English in its own selector switches the open window, and the choice survives a restart; `--locale` overrides it without saving;
