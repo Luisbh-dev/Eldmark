@@ -5,7 +5,7 @@
 # client over plain UDP started; over DTLS, or when the server starts the disconnect, it does not. NetTransport avoids
 # it (the client waits for the server to cut), so the game never triggers it. This script brings the old behavior back
 # (ELDMARK_CLIENT_STARTS_DISCONNECT=1) and reports what the server does:
-#   - it dies with 135: the bug is still there (a warning; the workaround stays);
+#   - it dies from a signal (exit code 128 or more: 135 SIGBUS in most runs, 139 SIGSEGV in some): the bug is still there (a warning; the workaround stays);
 #   - it ends well: the engine no longer has it (a notice: the workaround and this canary can be removed).
 # It never fails: what it reports is information. Exit code 2 only if the server could not even start.
 #
@@ -40,9 +40,9 @@ fi
 wait "$SERVER_PID"
 code=$?
 trap - EXIT
-if [ "$code" -eq 135 ]; then
-	echo "::warning title=Engine crash still present::the release server died with SIGBUS (135) on a DISCONNECT started by a plain-UDP client; NetTransport avoids it"
-	echo "canary: the engine bug is still there (server exit code 135)"
+if [ "$code" -ge 128 ]; then
+	echo "::warning title=Engine crash still present::the release server died from a signal (exit code $code; 135 is SIGBUS, 139 SIGSEGV) on a DISCONNECT started by a plain-UDP client; NetTransport avoids it"
+	echo "canary: the engine bug is still there (server exit code $code)"
 elif [ "$code" -eq 0 ]; then
 	echo "::notice title=Engine crash gone::the release server survived a client-started plain-UDP disconnect: ELDMARK_CLIENT_STARTS_DISCONNECT and this canary can be retired"
 	echo "canary: the engine no longer crashes (server exit code 0)"

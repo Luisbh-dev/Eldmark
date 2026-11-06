@@ -474,7 +474,7 @@ The client never starts the disconnect, over DTLS or over plain UDP: it sends `C
 server to cut (`NetTransport.disconnect_after_flush`), and closes everything itself only if the server does not cut within
 60 ticks. Over DTLS this avoids a handshake error (see the method). Over plain UDP it avoids a crash of the engine:
 
-- **What happens.** The exported *release* Linux server of Godot 4.7.2 dies with SIGBUS (exit code 135) as soon as it
+- **What happens.** The exported *release* Linux server of Godot 4.7.2 dies with SIGBUS (exit code 135; once, in the canary, SIGSEGV, 139) as soon as it
   handles a DISCONNECT that a plain-UDP client started. The same server over DTLS, the debug export, the editor and the
   Windows export do not die, and neither does the release server when it is the one that starts the disconnect.
 - **Where.** In the engine, not in the game: a core dump from the CI runner shows the main thread at the same address
