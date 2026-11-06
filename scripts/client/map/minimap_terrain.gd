@@ -22,6 +22,13 @@ const DISC_EDGE: float = 0.025
 ## Width (fraction of the radius) and strength of the fog that dims the terrain toward the minimap ring.
 const RIM_FADE: float = 0.2
 const RIM_STRENGTH: float = 0.55
+## Extra contrast for the small disc (quality decision 3: the same layers with more contrast than the map window): a curve
+## around [constant CONTRAST_PIVOT], more saturation and a vivid tint where the paint is bluish (the river).
+const CONTRAST: float = 1.45
+const CONTRAST_PIVOT: float = 0.42
+const SATURATION: float = 1.5
+const WATER_TINT: Color = Color(0.16, 0.46, 0.80, 1.0)
+const WATER_STRENGTH: float = 0.75
 
 const _SHADER_CODE: String = """
 shader_type canvas_item;
@@ -34,6 +41,11 @@ uniform vec4 fog_color : source_color = vec4(0.2, 0.225, 0.25, 1.0);
 uniform float disc_edge = 0.025;
 uniform float rim_fade = 0.2;
 uniform float rim_strength = 0.55;
+uniform float contrast = 1.45;
+uniform float contrast_pivot = 0.42;
+uniform float saturation = 1.5;
+uniform vec4 water_tint : source_color = vec4(0.16, 0.46, 0.8, 1.0);
+uniform float water_strength = 0.75;
 
 void fragment() {
 	vec2 p = UV * 2.0 - vec2(1.0);
@@ -42,6 +54,12 @@ void fragment() {
 	vec2 edge = min(uv, vec2(1.0) - uv) / fade_uv;
 	float keep = smoothstep(0.0, 1.0, min(edge.x, edge.y));
 	vec3 terrain = texture(map_tex, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
+	float luma = dot(terrain, vec3(0.299, 0.587, 0.114));
+	float bluish = smoothstep(0.015, 0.07, terrain.b - terrain.r);
+	terrain = mix(vec3(luma), terrain, saturation);
+	terrain = (terrain - vec3(contrast_pivot)) * contrast + vec3(contrast_pivot);
+	terrain = mix(terrain, water_tint.rgb * (0.65 + 0.7 * luma), bluish * water_strength);
+	terrain = clamp(terrain, vec3(0.0), vec3(1.0));
 	float disc = 1.0 - smoothstep(1.0 - disc_edge, 1.0, length(p));
 	// Niebla en el borde del círculo (UI-52): el terreno se apaga hacia el aro y deja de verse el corte.
 	float rim = smoothstep(1.0 - rim_fade, 1.0, length(p)) * rim_strength;
@@ -73,6 +91,11 @@ func _init() -> void:
 	_material.set_shader_parameter(&"disc_edge", DISC_EDGE)
 	_material.set_shader_parameter(&"rim_fade", RIM_FADE)
 	_material.set_shader_parameter(&"rim_strength", RIM_STRENGTH)
+	_material.set_shader_parameter(&"contrast", CONTRAST)
+	_material.set_shader_parameter(&"contrast_pivot", CONTRAST_PIVOT)
+	_material.set_shader_parameter(&"saturation", SATURATION)
+	_material.set_shader_parameter(&"water_tint", WATER_TINT)
+	_material.set_shader_parameter(&"water_strength", WATER_STRENGTH)
 	material = _material
 
 
