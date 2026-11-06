@@ -149,3 +149,5 @@ python -I tools/soak_chart.py build/load_test/soak_40f_8b_series.json
 ```
 
 It runs 40 fake players and 8 clients that join and leave; the criterion is that, after the first 10 minutes, static memory and the object count grow by less than 10 %, the tick p99 drifts by less than 10 % and there are no kicks or errors. The chart (memory and p99 over time) is the SVG next to the series.
+
+The scenario was tried for 150 s on 2026-11-06 (`--soak --seconds=150`): 40 fake players and 8 bots, up to 49 joins and 2 leaves, 0 kicks, 0 physics errors, 16 samples in the series and the chart written. The criterion itself needs more than the 10 minutes of warm-up, so that short run reports it as not met on purpose; the 2-hour run has not been done (its own night turn).
