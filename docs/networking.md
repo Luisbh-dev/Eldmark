@@ -2122,6 +2122,29 @@ Tick in ms of the last 34 s stretch; sections, p50 (p99):
 6. Port `simulate()` to C++ on both sides if it exceeds 25 µs per character.
 7. Eldrun at 30 Hz, announced in `WELCOME.tick_rate`.
 
+**Linux against Windows** (TEC-12, `export.yml` job "Determinism"; `tools/diff_state_logs.gd`). The same seeded
+scenario runs on a GitHub Linux runner and on a Windows runner: Vado Gris, 16 fake players in a cluster with the combat
+brain, 3600 ticks (60 s), `--state-log` of the server. The simulation hash (`sim_hash`) is the same on both; the
+state logs are not bit for bit. Run on 2026-11-06 (57 600 player-ticks):
+
+| | Player-ticks | Share |
+|---|---|---|
+| identical | 56 027 | 97.27 % |
+| differ by 1 ulp in some field (the **last bit**) | 1 083 | 1.88 % |
+| differ by 2 to 16 ulps (that noise integrated over a few ticks) | 418 | 0.73 % |
+| differ by more (a discrete decision went the other way) | 72 | 0.13 % |
+
+What matters more than the share of lines is how often a player first leaves the other platform's trajectory, because
+once it does the error feeds the next tick: **15 of 16 players diverged at some point within 60 s, 8 of them with a
+1-ulp difference** (the others with a larger first difference, the signature of a hit, a state change or a path decision
+that went the other way). The first divergence came at tick 117 and the median one at tick 527 (9 s). So a state log from one platform cannot
+be replayed bit for bit on the other, and a test that compares logs across platforms has to compare with a tolerance.
+This does not touch the model: the server is authoritative and decides on one platform (Linux in production), and the
+client predicts and reconciles against it anyway; what the measurement says is that a Windows client's prediction will
+sometimes differ from a Linux server's in the last bit, which reconciliation absorbs. The scenario is deterministic on each platform (two runs on Windows gave
+identical logs), so the figures above repeat; the CI job prints them on every run and does not fail on them
+(`--strict` would).
+
 ---
 
 ## 15. Extension points

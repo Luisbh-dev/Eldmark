@@ -144,6 +144,14 @@ for _ in $(seq 1 120); do
 done
 [ "$LIVE" = "1" ] || fail "the zone never became live"
 ZONE_ID="$(compose ps -q zone-vado-gris)"
+# The platform received the zone's build id when it registered: it is the one of the exported server.
+EXPECTED_BUILD="$(tr -d '
+' < exports/server/BUILD_ID 2> /dev/null || true)"
+if [ -n "$EXPECTED_BUILD" ]; then
+	REGISTERED_BUILD="$(psql "select build_id from zone_instances where status = 'live' limit 1")"
+	[ "$REGISTERED_BUILD" = "$EXPECTED_BUILD" ] || fail "the platform has build id \"$REGISTERED_BUILD\", expected \"$EXPECTED_BUILD\""
+	echo "Build id registered by the zone: $REGISTERED_BUILD"
+fi
 
 run_bot() { # name, extra options...
 	local name="$1"

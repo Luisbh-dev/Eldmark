@@ -401,7 +401,7 @@ jobs:
         if: always()
         run: |
           if [ -f build/zone-container-check.log ]; then
-            grep -E "^(First session|second session|docker stop|The container|final report|CONTAINER CHECK|FAILED)" build/zone-container-check.log | tee -a "$GITHUB_STEP_SUMMARY" || true
+            grep -E "^(Build id registered|First session|second session|docker stop|The container|final report|CONTAINER CHECK|FAILED)" build/zone-container-check.log | tee -a "$GITHUB_STEP_SUMMARY" || true
           fi
 
       - name: Upload logs
