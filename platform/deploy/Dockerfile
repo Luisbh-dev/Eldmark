@@ -5,7 +5,7 @@
 # docker-compose.yml builds them the same way. The legal texts go inside the binary (embed).
 
 # Build: static binary (no cgo), with the toolchain pinned in go.mod (§2.2).
-FROM golang:1.26.10-bookworm AS build
+FROM golang:1.27.0-bookworm AS build
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
