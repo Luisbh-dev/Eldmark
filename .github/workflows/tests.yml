@@ -42,11 +42,11 @@ jobs:
         shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Godot cache
         id: godot-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/godot
           key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
@@ -95,7 +95,7 @@ jobs:
 
       - name: Upload logs and reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-logs-${{ matrix.shard }}
           path: build/
@@ -129,11 +129,11 @@ jobs:
         shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Godot cache
         id: godot-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/godot
           key: godot-win-${{ env.GODOT_VERSION }}-${{ env.GODOT_WIN_SHA512 }}
@@ -182,7 +182,7 @@ jobs:
 
       - name: Upload logs and reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-logs-windows
           path: build/
@@ -209,13 +209,13 @@ jobs:
         shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Secrets outside the repository
         run: tools/check_secrets.sh
 
       - name: Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: platform/go.mod
           cache-dependency-path: platform/go.sum
@@ -272,11 +272,11 @@ jobs:
         shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Godot cache
         id: godot-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/godot
           key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
@@ -292,7 +292,7 @@ jobs:
           chmod +x "$HOME/godot/${GODOT_FILE}"
 
       - name: Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: platform/go.mod
           cache-dependency-path: platform/go.sum
@@ -330,7 +330,7 @@ jobs:
 
       - name: Upload logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: platform-e2e-logs
           path: ${{ runner.temp }}/e2e/
