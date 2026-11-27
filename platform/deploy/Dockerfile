@@ -34,7 +34,7 @@ CMD ["serve"]
 # PostgreSQL 16 image, which ships pg_dump, pg_restore, initdb and pg_ctl of the same version as the
 # database, with the same platform binary (reapply-purges and migrate in restore_check.sh). It runs
 # as root and the scripts bring up their test clusters with the postgres user (runuser).
-FROM postgres:16-bookworm AS ops
+FROM postgres:19-bookworm AS ops
 COPY --from=build /out/eldmark-platform /usr/local/bin/eldmark-platform
 COPY deploy/pglib.sh deploy/backup.sh deploy/restore_check.sh deploy/pitr_check.sh /opt/eldmark/deploy/
 ENV ELDMARK_PLATFORM_BIN=/usr/local/bin/eldmark-platform \
